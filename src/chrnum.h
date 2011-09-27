@@ -1,4 +1,4 @@
-/* $Id: chrnum.h,v 1.12 2005/07/25 17:58:10 twu Exp $ */
+/* $Id: chrnum.h,v 1.13 2006/05/11 17:15:00 twu Exp $ */
 #ifndef CHRNUM_INCLUDED
 #define CHRNUM_INCLUDED
 #include "bool.h"
@@ -7,7 +7,7 @@
 typedef int Chrnum_T;
 
 extern char *
-Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit);
+Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit, bool allocp);
 extern char *
 Chrnum_to_string_signed (Chrnum_T chrnum, IIT_T chromosome_iit, bool watsonp);
 extern unsigned int

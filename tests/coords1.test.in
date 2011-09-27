@@ -1,6 +1,11 @@
 #! @SHELL@
 
-cp ../util/fa_coords.pl fa_coords
+if test -z "$srcdir"; then
+  srcdir=.
+fi
+. ${srcdir}/defs
+
+cp ${top_builddir}/util/fa_coords.pl fa_coords
 chmod +x fa_coords
 ./fa_coords -o coords.chr17test ${srcdir}/ss.chr17test
 diff coords.chr17test ${srcdir}/coords1.test.ok

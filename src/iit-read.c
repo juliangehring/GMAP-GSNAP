@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.73 2005/12/15 14:21:00 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.80 2006/11/13 04:05:29 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -38,6 +38,7 @@ static char rcsid[] = "$Id: iit-read.c,v 1.73 2005/12/15 14:21:00 twu Exp $";
 #include "mem.h"
 #include "fopen.h"
 #include "chrom.h"
+#include "uintlist.h"
 
 /* Integer interval tree. */
 
@@ -62,6 +63,7 @@ static char rcsid[] = "$Id: iit-read.c,v 1.73 2005/12/15 14:21:00 twu Exp $";
 #else
 #define debug(x)
 #endif
+
 
 #define T IIT_T
 
@@ -153,15 +155,43 @@ IIT_label (T this, int index) {
 }
 
 static void
-annotations_move_absolute (T this, unsigned int start) {
+file_move_absolute (T this, unsigned int start) {
   off_t offset = this->offset + start*((off_t) sizeof(char));
 
   if (lseek(this->fd,offset,SEEK_SET) < 0) {
-    perror("Error in gmap, annotations_move_absolute");
+    perror("Error in gmap, file_move_absolute");
     exit(9);
   }
   return;
 }
+
+static char *
+IIT_label_to_string (T this, int index, bool *allocp) {
+  char *label;
+  int recno;
+  unsigned int start, end;
+
+  recno = index - 1; /* Convert to 0-based */
+  start = this->labelpointers[recno];
+  if (this->access == FILEIO) {
+    end = this->labelpointers[recno+1];
+    label = (char *) CALLOC(end-start,sizeof(char));
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->read_mutex);
+#endif
+    file_move_absolute(this,start);
+    read(this->fd,label,end-start);
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->read_mutex);
+#endif
+    *allocp = true;
+    return label;
+  } else {
+    *allocp = false;
+    return &(this->labels[start]);
+  }
+}
+
 
 /* The iit file has a '\0' after each string, so functions know where
    it ends */
@@ -179,7 +209,7 @@ IIT_annotation (T this, int index, bool *allocp) {
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->read_mutex);
 #endif
-    annotations_move_absolute(this,start);
+    file_move_absolute(this,start);
     read(this->fd,annotation,end-start);
 #ifdef HAVE_PTHREAD
     pthread_mutex_unlock(&this->read_mutex);
@@ -206,7 +236,7 @@ IIT_annotation_firstchar (T this, int index) {
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->read_mutex);
 #endif
-    annotations_move_absolute(this,start);
+    file_move_absolute(this,start);
     read(this->fd,buffer,1);
 #ifdef HAVE_PTHREAD
     pthread_mutex_unlock(&this->read_mutex);
@@ -254,21 +284,23 @@ IIT_dump_typestrings (FILE *fp, T this) {
 
 
 void
-IIT_dump (T this) {
+IIT_dump (T this, bool annotationonlyp) {
   int i;
   Interval_T interval;
   char *annotation;
   bool allocp;
 
   for (i = 0; i < this->nintervals; i++) {
-    printf(">%s",IIT_label(this,i+1));
+    if (annotationonlyp == false) {
+      printf(">%s",IIT_label(this,i+1));
 
-    interval = &(this->intervals[i]);
-    printf(" %u %u",Interval_low(interval),Interval_high(interval));
-    if (Interval_type(interval) > 0) {
-      printf(" %s",IIT_typestring(this,Interval_type(interval)));
+      interval = &(this->intervals[i]);
+      printf(" %u %u",Interval_low(interval),Interval_high(interval));
+      if (Interval_type(interval) > 0) {
+	printf(" %s",IIT_typestring(this,Interval_type(interval)));
+      }
+      printf("\n");
     }
-    printf("\n");
 
     annotation = IIT_annotation(this,i+1,&allocp);
     if (strlen(annotation) == 0) {
@@ -291,7 +323,6 @@ IIT_dump_formatted (T this, bool directionalp) {
   Interval_T interval;
   unsigned int start, startpos, endpos;
   char *label, firstchar;
-
 
   for (i = 0; i < this->nintervals; i++) {
     interval = &(this->intervals[i]);
@@ -321,6 +352,109 @@ IIT_dump_formatted (T this, bool directionalp) {
   return;
 }
 
+static int
+uint_cmp (const void *x, const void *y) {
+  unsigned int a = * (unsigned int *) x;
+  unsigned int b = * (unsigned int *) y;
+
+  if (a < b) {
+    return -1;
+  } else if (a > b) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+void
+IIT_dump_counts (T this, bool alphabetizep) { 
+  int type, index, i, t, k;
+  Interval_T interval;
+  Uintlist_T *edgelists;
+  int *matches, nmatches, nedges;
+  unsigned int *edges, edge, lastedge;
+  char *typestring;
+  Chrom_T *chroms;
+
+  edgelists = (Uintlist_T *) CALLOC(this->ntypes,sizeof(Uintlist_T));
+  for (i = 0; i < this->nintervals; i++) {
+    interval = &(this->intervals[i]);
+    type = Interval_type(interval);
+    edgelists[type] = Uintlist_push(edgelists[type],Interval_low(interval));
+    edgelists[type] = Uintlist_push(edgelists[type],Interval_high(interval));
+  }
+
+  if (alphabetizep == true) {
+    chroms = (Chrom_T *) CALLOC(this->ntypes,sizeof(Chrom_T));
+    for (type = 0; type < this->ntypes; type++) {
+      typestring = IIT_typestring(this,type);
+      chroms[type] = Chrom_from_string(typestring);
+    }
+    qsort(chroms,this->ntypes,sizeof(Chrom_T),Chrom_compare);
+  }
+
+  for (t = 0; t < this->ntypes; t++) {
+    if (alphabetizep == false) {
+      type = t;
+      typestring = IIT_typestring(this,type);
+    } else {
+      typestring = Chrom_to_string(chroms[t]);
+      type = IIT_typeint(this,typestring);
+    }
+
+    if (Uintlist_length(edgelists[type]) > 0) {
+      edges = Uintlist_to_array(&nedges,edgelists[type]);
+      qsort(edges,nedges,sizeof(unsigned int),uint_cmp);
+
+      edge = edges[0];
+      matches = IIT_get_typed(&nmatches,this,edge,edge,type);
+      printf("%s\t%u\t%d",typestring,edge,nmatches);
+
+      index = matches[0];
+      printf("\t%s",IIT_label(this,index));
+      for (k = 1; k < nmatches; k++) {
+	index = matches[k];
+	printf(",%s",IIT_label(this,index));
+      }
+      printf("\n");
+
+      lastedge = edge;
+
+      for (i = 1; i < nedges; i++) {
+	if ((edge = edges[i]) != lastedge) {
+	  matches = IIT_get_typed(&nmatches,this,edge,edge,type);
+	  printf("%s\t%u\t%d",typestring,edge,nmatches);
+	  
+	  index = matches[0];
+	  printf("\t%s",IIT_label(this,index));
+	  for (k = 1; k < nmatches; k++) {
+	    index = matches[k];
+	    printf(",%s",IIT_label(this,index));
+	  }
+	  printf("\n");
+	  
+	  lastedge = edge;
+	}
+      }
+
+      Uintlist_free(&(edgelists[type]));
+      FREE(edges);
+    }
+
+  }
+
+  if (alphabetizep == true) {
+    for (t = 0; t < this->ntypes; t++) {
+      Chrom_free(&(chroms[t]));
+    }
+    FREE(chroms);
+  }
+
+  FREE(edgelists);
+
+  return;
+}
 
 /************************************************************************
  * File format:
@@ -853,7 +987,7 @@ int_compare (const void *a, const void *b) {
 
 int *
 IIT_get (int *nmatches, T this, unsigned int x, unsigned int y) {
-  int *result = NULL, *matches, neval, i, j;
+  int *matches = NULL, *uniq, neval, nuniq, i, j;
   int lambda, prev;
   int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
 
@@ -866,53 +1000,207 @@ IIT_get (int *nmatches, T this, unsigned int x, unsigned int y) {
   if (max2 >= min1) {
     neval = (max2 - min1 + 1) + (max2 - min1 + 1);
     matches = (int *) CALLOC(neval,sizeof(int));
-    for (lambda = min1, i = 0; lambda <= max2; lambda++, i++) {
-      if (Interval_overlap_p(x,y,this->intervals,this->sigmas[lambda]) == true) {
-	matches[i] = this->sigmas[lambda];
-	debug(printf("Pushing %d\n",this->sigmas[lambda]));
-      }
-    }
-    for (lambda = min1; lambda <= max2; lambda++, i++) {
-      if (Interval_overlap_p(x,y,this->intervals,this->omegas[lambda]) == true) {
-	matches[i] = this->omegas[lambda];
-	debug(printf("Pushing %d\n",this->omegas[lambda]));
-      }
+    uniq = (int *) CALLOC(neval,sizeof(int));
+
+    i = 0;
+    for (lambda = min1; lambda <= max2; lambda++) {
+      matches[i++] = this->sigmas[lambda];
+      matches[i++] = this->omegas[lambda];
     }
 
     /* Eliminate duplicates */
     qsort(matches,neval,sizeof(int),int_compare);
-    i = 0;
-    while (i < neval && matches[i] == 0) {
-      i++;
-    }
-
-    if (i < neval) {
-      prev = matches[i];
-      (*nmatches)++;
-      for (i++; i < neval; i++) {
-	if (matches[i] == prev) {
-	  matches[i] = 0;		/* recnos are 1-based, so 0 means dup */
-	} else {
-	  prev = matches[i];
-	  (*nmatches)++;
-	}
+    nuniq = 0;
+    prev = 0;
+    debug(printf("unique segments in lambda %d to %d:",min1,max2));
+    for (i = 0; i < neval; i++) {
+      if (matches[i] != prev) {
+	debug(printf(" %d",matches[i]));
+	uniq[nuniq++] = matches[i];
+	prev = matches[i];
       }
-    
-      if (*nmatches > 0) {
-	result = (int *) CALLOC(*nmatches,sizeof(int));
-	j = 0;
-	for (i = 0; i < neval; i++) {
-	  if (matches[i] != 0) {
-	    result[j++] = matches[i];
-	  }
-	}
+    }
+    debug(printf("\n"));
+
+    for (i = 0; i < nuniq; i++) {
+      if (Interval_overlap_p(x,y,this->intervals,uniq[i]) == true) {
+	matches[(*nmatches)++] = uniq[i];
+	debug(printf("Pushing overlapping segment %d\n",uniq[i]));
+      } else {
+	debug(printf("Not pushing non-overlapping segment %d\n",uniq[i]));
       }
     }
 
-    FREE(matches);
+    FREE(uniq);
   }
 
-  return result;
+  return matches;
+}
+
+void
+IIT_get_flanking (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
+		  T this, unsigned int x, unsigned int y, int nflanking) {
+  int lambda;
+  int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
+
+  debug(printf("Entering IIT_get_flanking with query %u %u, nflanking = %d\n",x,y,nflanking));
+  fnode_query_aux(&min1,&max1,this,0,x);
+  fnode_query_aux(&min2,&max2,this,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  /* Look at sigmas for right flank */
+  *rightflanks = (int *) CALLOC(nflanking,sizeof(int));
+  lambda = min1;
+  while (lambda <= this->nintervals && Interval_low(&(this->intervals[this->sigmas[lambda]-1])) <= y) {
+    lambda++;
+  }
+
+  *nrightflanks = 0;
+  while (*nrightflanks < nflanking && lambda <= this->nintervals) {
+    (*rightflanks)[(*nrightflanks)++] = this->sigmas[lambda];
+    debug(printf("Pushed lambda %d, segment %d as right flank number %d\n",lambda,this->sigmas[lambda],*nrightflanks));
+    lambda++;
+  }
+
+  /* Look at omegas for left flank */
+  *leftflanks = (int *) CALLOC(nflanking,sizeof(int));
+  lambda = max2;
+  while (lambda >= 1 && Interval_high(&(this->intervals[this->omegas[lambda]-1])) >= x) {
+    lambda--;
+  }
+  
+  *nleftflanks = 0;
+  while (*nleftflanks < nflanking && lambda >= 1) {
+    (*leftflanks)[(*nleftflanks)++] = this->omegas[lambda];
+    debug(printf("Pushed lambda %d, segment %d as left flank number %d\n",lambda,this->omegas[lambda],*nleftflanks));
+    lambda--;
+  }
+
+  return;
+}
+
+void
+IIT_get_flanking_typed (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
+			T this, unsigned int x, unsigned int y, int nflanking, int type) {
+  int lambda;
+  int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
+  Interval_T interval;
+  bool stopp;
+
+  debug(printf("Entering IIT_get with query %u %u\n",x,y));
+  fnode_query_aux(&min1,&max1,this,0,x);
+  fnode_query_aux(&min2,&max2,this,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  /* Look at sigmas for right flank */
+  lambda = min1;
+  *rightflanks = (int *) CALLOC(nflanking,sizeof(int));
+  *nrightflanks = 0;
+  stopp = false;
+  while (lambda <= this->nintervals && stopp == false) {
+    interval = &(this->intervals[this->sigmas[lambda]-1]);
+    if (Interval_low(interval) <= y) {
+      lambda++;
+    } else if (Interval_type(interval) != type) {
+      lambda++;
+    } else {
+      (*rightflanks)[(*nrightflanks)++] = this->sigmas[lambda];
+      if (*nrightflanks < nflanking) {
+	lambda++;
+      } else {
+	stopp = true;
+      }
+    }
+  }
+
+  /* Look at omegas for left flank */
+  lambda = max2;
+  *leftflanks = (int *) CALLOC(nflanking,sizeof(int));
+  *nleftflanks = 0;
+  stopp = false;
+  while (lambda >= 1 && stopp == false) {
+    interval = &(this->intervals[this->omegas[lambda]-1]);
+    if (Interval_high(interval) >= x) {
+      lambda--;
+    } else if (Interval_type(interval) != type) {
+      lambda--;
+    } else {
+      (*leftflanks)[(*nleftflanks)++] = this->omegas[lambda];
+      if (*nleftflanks < nflanking) {
+	lambda--;
+      } else {
+	stopp = true;
+      }
+    }
+  }
+
+  return;
+}
+
+void
+IIT_get_flanking_multiple_typed (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
+				 T this, unsigned int x, unsigned int y, int nflanking, int *types, int ntypes) {
+  int k;
+  int lambda;
+  int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
+  Interval_T interval;
+  bool stopp;
+
+  debug(printf("Entering IIT_get with query %u %u\n",x,y));
+  fnode_query_aux(&min1,&max1,this,0,x);
+  fnode_query_aux(&min2,&max2,this,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  /* Look at sigmas for right flank */
+  lambda = min1;
+  *rightflanks = (int *) CALLOC(nflanking,sizeof(int));
+  *nrightflanks = 0;
+  stopp = false;
+  while (lambda <= this->nintervals && stopp == false) {
+    interval = &(this->intervals[this->sigmas[lambda]-1]);
+    if (Interval_low(interval) <= y) {
+      lambda++;
+    } else {
+      k = 0;
+      while (k < ntypes && Interval_type(interval) != types[k]) {
+	k++;
+      }
+      if (k >= ntypes) {
+	lambda++;
+      } else {
+	(*rightflanks)[(*nrightflanks)++] = this->sigmas[lambda];
+	if (*nrightflanks < nflanking) {
+	  lambda++;
+	} else {
+	  stopp = true;
+	}
+      }
+    }
+  }
+
+  /* Look at omegas for left flank */
+  lambda = max2;
+  *leftflanks = (int *) CALLOC(nflanking,sizeof(int));
+  *nleftflanks = 0;
+  stopp = false;
+  while (lambda >= 1 && stopp == false) {
+    interval = &(this->intervals[this->omegas[lambda]-1]);
+    if (Interval_high(interval) >= x) {
+      lambda--;
+    } else {
+      k = 0;
+      while (k < ntypes && Interval_type(interval) != types[k]) {
+	k++;
+      }
+      if (k >= ntypes) {
+	lambda--;
+      } else {
+	stopp = true;
+      }
+    }
+  }
+
+  return;
 }
 
 
@@ -941,9 +1229,8 @@ IIT_get_one (T this, unsigned int x, unsigned int y) {
     }
   }
 
-  fprintf(stderr,"Expected one match for %u--%u, but got none\n",
-	  x,y);
-  /* abort(); */
+  fprintf(stderr,"Expected one match for %u--%u, but got none\n",x,y);
+
   return -1;
 }
 
@@ -1002,6 +1289,50 @@ IIT_get_typed (int *ntypematches, T this, unsigned int x, unsigned int y, int ty
   return typematches;
 }
 
+int *
+IIT_get_multiple_typed (int *ntypematches, T this, unsigned int x, unsigned int y, 
+			int *types, int ntypes) {
+  int index;
+  int *typematches = NULL, *matches, nmatches, i, j, k;
+  Interval_T interval;
+
+  *ntypematches = 0;
+  matches = IIT_get(&nmatches,this,x,y);
+  for (i = 0; i < nmatches; i++) {
+    index = matches[i];
+    interval = &(this->intervals[index-1]);
+    k = 0;
+    while (k < ntypes && Interval_type(interval) != types[k]) {
+      k++;
+    }
+    if (k < ntypes) {
+      (*ntypematches)++;
+    }
+  }
+
+  if (*ntypematches > 0) {
+    typematches = (int *) CALLOC(*ntypematches,sizeof(int));
+    j = 0;
+    for (i = 0; i < nmatches; i++) {
+      index = matches[i];
+      interval = &(this->intervals[index-1]);
+      k = 0;
+      while (k < ntypes && Interval_type(interval) != types[k]) {
+	k++;
+      }
+      if (k < ntypes) {
+	typematches[j++] = index;
+      }
+    }
+  }
+  
+  if (matches != NULL) {
+    FREE(matches);
+  }
+
+  return typematches;
+}
+
 int
 IIT_get_exact (T this, unsigned int x, unsigned int y, int type) {
   int index;
@@ -1039,11 +1370,11 @@ print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int l
   start = this->annotpointers[recno];
   end = this->annotpointers[recno+1];
   
-  if (this->access == FILEIO) {
-    string = IIT_annotation(this,start,&allocp);
+  if (end <= start + 1U) {
+    /* No annotation; use label */
+    string = IIT_label_to_string(this,recno+1,&allocp);
   } else {
-    string = (char *) CALLOC(end - start + 1,sizeof(char));
-    strncpy(string,&(this->annotations[start]),end-start);
+    string = IIT_annotation(this,recno+1,&allocp);
   }
 
   printf("    %s",this->name);
@@ -1070,7 +1401,9 @@ print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int l
     printf("\n");
   }
 
-  FREE(string);
+  if (allocp == true) {
+    FREE(string);
+  }
 
   return;
 }
@@ -1078,18 +1411,32 @@ print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int l
 
 void
 IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p,
-	   T chromosome_iit, int *levels) {
+	   T chromosome_iit, int *levels, bool reversep) {
   int recno, i;
 
   if (levels == NULL) {
-    for (i = 0; i < nmatches; i++) {
-      recno = matches[i] - 1;	/* Convert to 0-based */
-      print_record(this,recno,map_bothstrands_p,chromosome_iit,/*level*/-1);
+    if (reversep == true) {
+      for (i = nmatches-1; i >= 0; i--) {
+	recno = matches[i] - 1;	/* Convert to 0-based */
+	print_record(this,recno,map_bothstrands_p,chromosome_iit,/*level*/-1);
+      }
+    } else {
+      for (i = 0; i < nmatches; i++) {
+	recno = matches[i] - 1;	/* Convert to 0-based */
+	print_record(this,recno,map_bothstrands_p,chromosome_iit,/*level*/-1);
+      }
     }
   } else {
-    for (i = 0; i < nmatches; i++) {
-      recno = matches[i] - 1;	/* Convert to 0-based */
-      print_record(this,recno,map_bothstrands_p,chromosome_iit,levels[i]);
+    if (reversep == true) {
+      for (i = nmatches-1; i >= 0; i--) {
+	recno = matches[i] - 1;	/* Convert to 0-based */
+	print_record(this,recno,map_bothstrands_p,chromosome_iit,levels[i]);
+      }
+    } else {
+      for (i = 0; i < nmatches; i++) {
+	recno = matches[i] - 1;	/* Convert to 0-based */
+	print_record(this,recno,map_bothstrands_p,chromosome_iit,levels[i]);
+      }
     }
   }
 

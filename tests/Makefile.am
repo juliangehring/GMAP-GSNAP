@@ -1,6 +1,6 @@
 
 
-EXTRA_DIST = ss.chr17test ss.her2 \
+EXTRA_DIST = defs ss.chr17test ss.her2 \
              align.test.ok coords1.test.ok \
              setup.genomecomp.ok setup.idxpositions.ok \
              map.test.ok \
@@ -8,12 +8,23 @@ EXTRA_DIST = ss.chr17test ss.her2 \
 
 CLEANFILES = align.test.out \
              fa_coords coords.chr17test \
-             gmap_setup gmap_process gmapindex chr17test.* Makefile.chr17test INSTALL.chr17test \
+             gmap_setup gmap_process gmapindex chr17test.* Makefile.chr17test \
              map.test.out \
              iittest.iit iit_get.out iit_dump.out
 
-TESTS = align.test coords1.test setup1.test map.test \
-        iit_store.test iit_get.test iit_dump.test
+if MAINTAINER
+TESTS = align.test coords1.test setup1.test iit.test \
+        bioinfo.splicing.test
+else
+TESTS = align.test coords1.test setup1.test iit.test 
+endif
+
+TESTS_ENVIRONMENT = top_builddir=$(top_builddir)
+
+testsubdir = testSubDir
+
+distclean-local:
+	rm -rf $(testsubdir)
 
 okay:
 	../src/gmap -A -g ss.chr17test ss.her2 > align.test.ok

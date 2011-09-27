@@ -1,10 +1,14 @@
-/* $Id: sequence.h,v 1.36 2006/04/06 23:20:23 twu Exp $ */
+/* $Id: sequence.h,v 1.38 2006/12/15 12:00:59 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
 #include "bool.h"
 
+#ifdef PMAP
+#define MAXSEQLEN 300000
+#else
 #define MAXSEQLEN 1000000
+#endif
 #define HALFLEN MAXSEQLEN/2
 
 #define T Sequence_T
@@ -39,8 +43,10 @@ extern T
 Sequence_read (int *nextchar, FILE *input, bool maponlyp);
 extern T
 Sequence_read_unlimited (FILE *input);
+#ifdef PMAP
 extern T
 Sequence_convert_to_nucleotides (T this);
+#endif
 extern int
 Sequence_count_bad (T this, int pos, int max, int direction);
 

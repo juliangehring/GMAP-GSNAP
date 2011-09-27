@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_setup.pl.in,v 1.39 2006/04/21 16:37:51 twu Exp $
+# $Id: gmap_setup.pl.in,v 1.40 2006/11/30 17:23:31 twu Exp $
 
 $gmapdb = "@GMAPDB@";
 $bindir = "@BINDIR@";
@@ -24,7 +24,7 @@ undef($opt_E);			# interpret argument as a command
 undef($opt_B);			# bindir (needed for "make check")
 
 $opt_q = 6;			# GMAP interval;
-$opt_Q = 7;			# PMAP interval;
+$opt_Q = 6;			# PMAP interval;
 
 #undef($opt_9);			# debug
 
@@ -97,7 +97,7 @@ print $MAKEFILE "\n";
 print $MAKEFILE "GMAPINDEX_INTERVAL = $opt_q # Change this only for special situations.  Intervals < 6\n";
 print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 
-print $MAKEFILE "PMAPINDEX_INTERVAL = $opt_Q # Change this only for special situations.  Intervals < 7\n";
+print $MAKEFILE "PMAPINDEX_INTERVAL = $opt_Q # Change this only for special situations.  Intervals < 6\n";
 print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 
 print $MAKEFILE "\n";
@@ -119,7 +119,7 @@ print $MAKEFILE "\n";
 
 print $MAKEFILE "gmapdb: checkcoords genomedb gmapindices gmapmsg\n";
 
-print $MAKEFILE "raw: checkcoords rawgenomedb gmapindices rawmsg\n";
+print $MAKEFILE "fullascii: checkcoords asciigenomedb gmapindices asciimsg\n";
 print $MAKEFILE "pmapdb: checkgenomecomp pmapindices pmapmsg\n";
 print $MAKEFILE "\n";
 
@@ -145,7 +145,7 @@ print $MAKEFILE "\tfi\n";
 print $MAKEFILE "\n";
 
 print $MAKEFILE "genomedb: \$(GENOME).genomecomp \$(GENOME).version\n";
-print $MAKEFILE "rawgenomedb: \$(GENOME).genomecomp \$(GENOME).genome \$(GENOME).version\n";
+print $MAKEFILE "asciigenomedb: \$(GENOME).genomecomp \$(GENOME).genome \$(GENOME).version\n";
 print $MAKEFILE "\n";
 
 print $MAKEFILE "gmapindices: \$(GENOME).idxpositions\n";
@@ -155,12 +155,12 @@ print $MAKEFILE "\n";
 
 print $MAKEFILE "gmapmsg:\n";
 print $MAKEFILE "\techo gmapdb for $genome_name complete.\n";
-print $MAKEFILE "\techo To make a raw genome file, do: make -f Makefile.$genome_name raw [optional]\n";
+print $MAKEFILE "\techo To make a full ASCII genome file, do: make -f Makefile.$genome_name fullascii [optional]\n";
 #print $MAKEFILE "\techo To make pmapdb, do: make -f Makefile.$genome_name pmapdb\n";
 print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
 
-print $MAKEFILE "rawmsg:\n";
-print $MAKEFILE "\techo raw genome for $genome_name complete.\n";
+print $MAKEFILE "asciimsg:\n";
+print $MAKEFILE "\techo full ASCII genome for $genome_name complete.\n";
 #print $MAKEFILE "\techo To make pmapdb, do: make -f Makefile.$genome_name pmapdb\n";
 print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
 
@@ -171,6 +171,8 @@ print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n"
 
 print $MAKEFILE "clean:\n";
 print $MAKEFILE "\trm -f \$(GENOME).*\n";
+print $MAKEFILE "\trm -f *.\$(GENOME)\n";
+print $MAKEFILE "\techo To start over again, run gmap_setup\n";
 print $MAKEFILE "\n";
 
 
@@ -216,7 +218,7 @@ print $MAKEFILE "\n";
 
 
 print $MAKEFILE "\$(GENOME).genome: \$(GENOME).contig.iit\n";
-print $MAKEFILE "\techo Making raw, or uncompressed, genome file...\n";
+print $MAKEFILE "\techo Making full ASCII genome file...\n";
 print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) \$(WRITEFILE) -g\n";
 print $MAKEFILE "\n";
 
@@ -300,8 +302,8 @@ sub print_instructions {
   print $FP <<INSTRUCTIONS1;
 ============================================================
 
-A Makefile has been created for your genome $genome_name.  You may
-inspect and edit it if necessary.  To start the build of your genome,
+A Makefile called Makefile.$genome_name has been created for your genome.
+You may inspect and edit it if necessary.  To start the build of your genome,
 do
 
 INSTRUCTIONS1
@@ -309,24 +311,28 @@ INSTRUCTIONS1
 if ($outputfile eq "Makefile") {
   print $FP "    make coords\n";
   print $FP "    make gmapdb\n";
-  print $FP "    make raw [optional]\n";
+  print $FP "    make fullascii [optional]\n";
   print $FP "    (edit the .chrsubset file [optional])\n";
   print $FP "    make install\n";
 } else {
   print $FP "    make -f $outputfile coords\n";
   print $FP "    make -f $outputfile gmapdb\n";
-  print $FP "    make -f $outputfile raw [optional]\n";
+  print $FP "    make -f $outputfile fullascii [optional]\n";
   print $FP "    (edit the .chrsubset file [optional])\n";
   print $FP "    make -f $outputfile install\n";
 }
 
 print $FP <<INSTRUCTIONS2;
 
-Note that the "make gmapdb" and "make raw" commands can take a while
+Note that the "make gmapdb" and "make fullascii" commands can take a while
 to index a large genome.
 
-The optional "make raw" command is intended to represent genomes where
-it is important to show lower-case or non-standard characters
+If you need to start over again, do
+
+    make -f $outputfile clean
+
+The optional "make fullascii" command is intended to represent genomes
+where it is important to show lower-case or non-standard characters
 (anything other than A, C, G, T, N, or X) in the alignment.  This step
 is optional.  For human- or mouse-sized genomes, it requires that your
 computer can address files greater than 2 gigabytes in size.  See the
@@ -365,7 +371,7 @@ Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-M <.md file>]
     -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
     -E    interpret argument as a command, instead of a list of FASTA files
     -q    GMAP indexing interval (default: 6 nt)
-    -Q    PMAP indexing interval (default: 7 aa)
+    -Q    PMAP indexing interval (default: 6 aa)
 
 These flags are explained below:
 

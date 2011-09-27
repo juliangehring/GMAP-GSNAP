@@ -1,5 +1,0 @@
-#! @SHELL@
-
-../src/iit_dump iittest.iit > iit_dump.out
-diff iit_dump.out ${srcdir}/fa.iittest
-

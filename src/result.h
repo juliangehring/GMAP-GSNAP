@@ -1,4 +1,4 @@
-/* $Id: result.h,v 1.38 2006/03/05 03:15:42 twu Exp $ */
+/* $Id: result.h,v 1.41 2006/10/09 16:58:10 twu Exp $ */
 #ifndef RESULT_INCLUDED
 #define RESULT_INCLUDED
 
@@ -8,9 +8,10 @@ typedef struct Chimera_T *Chimera_T;
 #include "chimera.h"
 #endif
 
+#include "stage1.h"
 #include "stage3.h"
 
-typedef enum {NO_FAILURE, EMPTY_SEQUENCE, REPETITIVE} Failure_T;
+typedef enum {NO_FAILURE, EMPTY_SEQUENCE, POOR_SEQUENCE, REPETITIVE} Failure_T;
 
 #define T Result_T
 typedef struct T *T;
@@ -28,9 +29,15 @@ Result_failuretype (T this);
 
 extern T
 Result_new (int id, int worker_id, Chimera_T chimera,
-	    Stage3_T *array, int npaths, Failure_T failuretype);
+	    Stage3_T *array, int npaths, Failure_T failuretype,
+#ifndef PMAP
+	    double oligodepth, int badoligos, int repoligos, int trimoligos, int trim_start, int trim_end,
+#endif
+	    Stage1_T stage1);
 extern void
 Result_free (T *old);
+extern void
+Result_print_diagnostics (T this);
 
 #undef T
 #endif

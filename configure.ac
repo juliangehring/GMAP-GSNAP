@@ -1,6 +1,8 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
+# $Id: configure.ac,v 1.41 2006/11/30 17:25:11 twu Exp $
+
 AC_PREREQ(2.57)
 
 ## We want to get the version number from file 'VERSION' (rather than
@@ -35,6 +37,13 @@ AC_ARG_ENABLE([fulldist],
 	      [enable_fulldist="yes"],
               [enable_fulldist="no"])
 
+AM_CONDITIONAL(MAINTAINER,test "$enable_maintainer" = yes)
+AC_ARG_ENABLE([maintainer],
+	       AC_HELP_STRING([--enable-maintainer],
+                              [For use by program maintainer]),
+	      [enable_maintainer="yes"],
+              [enable_maintainer="no"])
+
 ### Read defaults
 if test -z "$CONFIG_SITE"; then
   CONFIG_SITE=""
@@ -61,7 +70,7 @@ AC_ARG_WITH([gmapdb],
                            [default GMAP database directory]),
             [answer="$withval"],
             [answer=""])
-if test x"$answer" == x; then
+if test x"$answer" = x; then
 	ACX_EXPAND(GMAPDB,'${prefix}/share')
 else
 	GMAPDB=$answer
@@ -139,7 +148,7 @@ esac
 # Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_DIRENT
-AC_CHECK_HEADERS([fcntl.h limits.h stddef.h stdlib.h string.h strings.h unistd.h])
+AC_CHECK_HEADERS([fcntl.h limits.h stddef.h stdlib.h string.h strings.h unistd.h sys/types.h memory.])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_BIGENDIAN
@@ -155,13 +164,18 @@ AC_CHECK_SIZEOF(unsigned long)
 #AC_FUNC_REALLOC -- Causes use of rpl_realloc
 #AC_FUNC_CLOSEDIR_VOID -- We are checking return value
 
+AC_FUNC_FSEEKO
 AC_FUNC_MMAP
 ACX_MMAP_FLAGS
 ACX_MADVISE_FLAGS
 
-AC_CHECK_FUNCS([ceil floor log madvise memcpy memmove memset munmap pow rint strtoul sysconf sysctl])
+AC_CHECK_FUNCS([ceil floor index log madvise memcpy memmove memset munmap pow rint strtoul sysconf sysctl sigaction])
 
 ACX_PAGESIZE
+
+ACX_FUNC_FOPEN_BINARY
+ACX_FUNC_FOPEN_TEXT
+
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
@@ -177,10 +191,7 @@ AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/align.test],[chmod +x tests/align.test])
 AC_CONFIG_FILES([tests/coords1.test],[chmod +x tests/coords1.test])
 AC_CONFIG_FILES([tests/setup1.test],[chmod +x tests/setup1.test])
-AC_CONFIG_FILES([tests/map.test],[chmod +x tests/map.test])
-AC_CONFIG_FILES([tests/iit_store.test],[chmod +x tests/iit_store.test])
-AC_CONFIG_FILES([tests/iit_get.test],[chmod +x tests/iit_get.test])
-AC_CONFIG_FILES([tests/iit_dump.test],[chmod +x tests/iit_dump.test])
+AC_CONFIG_FILES([tests/iit.test],[chmod +x tests/iit.test])
 
 AC_OUTPUT
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c,v 1.58 2006/03/02 02:20:10 twu Exp $";
+static char rcsid[] = "$Id: translation.c,v 1.71 2006/12/18 13:20:14 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,6 +20,7 @@ static char rcsid[] = "$Id: translation.c,v 1.58 2006/03/02 02:20:10 twu Exp $";
 #define MIN_NPAIRS 30
 
 
+/* Finding coding sequence bounds */
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -40,9 +41,18 @@ static char rcsid[] = "$Id: translation.c,v 1.58 2006/03/02 02:20:10 twu Exp $";
 #define debug2(x)
 #endif
 
+/* Translate cDNA for PMAP */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
+#endif
+
 
 
 typedef enum {FRAME0, FRAME1, FRAME2, NOFRAME} Frame_T;
+static char complCode[128] = COMPLEMENT_UC;
+static char uppercaseCode[128] = UPPERCASE_U2T;
 
 #define T Translation_T
 struct T {
@@ -105,7 +115,7 @@ Translation_dump (struct Pair_T *pairs, struct T *translation, int translationle
   int i;
 
   for (i = 0; i < translationlen; i++) {
-    if (pairs[i].aamarker_g == true || pairs[i].aamarker_e == true) {
+    if (pairs[i].aaphase_g == 0 || pairs[i].aaphase_e == 0) {
       printf("=> %c %c ",pairs[i].aa_g,pairs[i].aa_e);
     } else {
       printf("       ");
@@ -126,8 +136,8 @@ Translation_dump (struct Pair_T *pairs, struct T *translation, int translationle
 /************************************************************************/
 
 
-static char
-get_codon (char a, char b, char c) {
+char
+Translation_get_codon (char a, char b, char c) {
   switch (b) {
   case 'T':
     switch (a) {
@@ -209,8 +219,8 @@ get_codon (char a, char b, char c) {
 
 
 static void
-find_bounds_forward (int *translation_frame, int *translation_start, 
-		     int *translation_end, int *translation_length,
+find_bounds_forward (int *translation_frame, int *translation_starti, 
+		     int *translation_endi, int *translation_length,
 		     bool *endstopp, struct T *translation, 
 		     int translationlen, bool fulllengthp) {
   int beststart0, beststart1, beststart2, bestend0, bestend1, bestend2;
@@ -338,18 +348,18 @@ find_bounds_forward (int *translation_frame, int *translation_start,
   if (bestorf2 == *translation_length) {
     debug(printf("Assigning frame 2\n"));
     *translation_frame = FRAME2;
-    *translation_start = beststart2;
-    *translation_end = bestend2;
+    *translation_starti = beststart2;
+    *translation_endi = bestend2;
   } else if (bestorf1 == *translation_length) {
     debug(printf("Assigning frame 1\n"));
     *translation_frame = FRAME1;
-    *translation_start = beststart1;
-    *translation_end = bestend1;
+    *translation_starti = beststart1;
+    *translation_endi = bestend1;
   } else if (bestorf0 == *translation_length) {
     debug(printf("Assigning frame 0\n"));
     *translation_frame = FRAME0;
-    *translation_start = beststart0;
-    *translation_end = bestend0;
+    *translation_starti = beststart0;
+    *translation_endi = bestend0;
   } else {
     abort();
   }
@@ -365,8 +375,8 @@ find_bounds_forward (int *translation_frame, int *translation_start,
 }
 
 static void
-find_bounds_backward (int *translation_frame, int *translation_start,
-		      int *translation_end, int *translation_length,
+find_bounds_backward (int *translation_frame, int *translation_starti,
+		      int *translation_endi, int *translation_length,
 		      bool *endstopp, struct T *translation, int translationlen, bool fulllengthp) {
   int beststart0, beststart1, beststart2, bestend0, bestend1, bestend2;
   int bestorf0 = 0, bestorf1 = 0, bestorf2 = 0, orf0 = 0, orf1 = 0, orf2 = 0;
@@ -487,18 +497,18 @@ find_bounds_backward (int *translation_frame, int *translation_start,
   if (bestorf0 == *translation_length) {
     debug(printf("Assigning frame 0\n"));
     *translation_frame = FRAME0;
-    *translation_start = beststart0;
-    *translation_end = bestend0;
+    *translation_starti = beststart0;
+    *translation_endi = bestend0;
   } else if (bestorf1 == *translation_length) {
     debug(printf("Assigning frame 1\n"));
     *translation_frame = FRAME1;
-    *translation_start = beststart1;
-    *translation_end = bestend1;
+    *translation_starti = beststart1;
+    *translation_endi = bestend1;
   } else if (bestorf2 == *translation_length) {
     debug(printf("Assigning frame 2\n"));
     *translation_frame = FRAME2;
-    *translation_start = beststart2;
-    *translation_end = bestend2;
+    *translation_starti = beststart2;
+    *translation_endi = bestend2;
   } else {
     abort();
   }
@@ -516,27 +526,30 @@ find_bounds_backward (int *translation_frame, int *translation_start,
 
 #ifdef PMAP
 static void
-translate_pairs_cdna (int *translation_start, int *translation_end, int *translation_length,
+translate_pairs_cdna (int *translation_starti, int *translation_endi, int *translation_length,
 		      struct Pair_T *pairs, int npairs, char *queryaaseq_ptr) {
   struct Pair_T *ptr, *pair;
   int i;
 
   /* Go backward so we put aa at beginning of codon */
   /* printf("lastquerypos is %d\n",pairs[npairs-1].querypos); */
-  switch (pairs[npairs-1].querypos % 3) {
-  case 0: *translation_end = npairs-2; break; /* codon is on last character */
-  case 1: *translation_end = npairs-3; break;
-  case 2: *translation_end = npairs-1; break;
+  i = npairs-1;
+  while (i >= 0 && pairs[i].querypos % 3 != 2) {
+    i--;
   }
-  if (*translation_end < 0) {
-    *translation_end = 0;
+  *translation_endi = i;
+  if (*translation_endi < 0) {
+    *translation_endi = 0;
   }
 
-  *translation_start = *translation_end;
+  debug3(printf("Entering translate_pairs_cdna with npairs=%d, translation_endi = %d\n",
+		npairs,*translation_endi));
+
+  *translation_starti = *translation_endi;
   *translation_length = 0;
 
-  ptr = &(pairs[(*translation_end)+1]);
-  for (i = *translation_end; i >= 0; --i) {
+  ptr = &(pairs[(*translation_endi)+1]);
+  for (i = *translation_endi; i >= 0; --i) {
     pair = --ptr;
     pair->aapos = pair->querypos/3 + 1;
     if (pair->gapp == true) {
@@ -544,10 +557,9 @@ translate_pairs_cdna (int *translation_start, int *translation_end, int *transla
     } else if (pair->cdna == ' ') {
       /* pair->aa_e = ' '; */
     } else {
-      if (pair->querypos % 3 == 0) {
+      if ((pair->aaphase_e = pair->querypos % 3) == 0) {
 	pair->aa_e = queryaaseq_ptr[pair->querypos/3];
-	pair->aamarker_e = true;
-	*translation_start = i;
+	*translation_starti = i;
 	(*translation_length) += 1;
       }
     }
@@ -564,7 +576,6 @@ translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
   struct Pair_T *ptr, *pair;
   int i, gpos = 0;
   char codon, nt2 = 'X', nt1 = 'X', nt0 = 'X';
-  char complCode[128] = COMPLEMENT;
 
   translation = Translation_array_new(npairs);
 
@@ -579,9 +590,9 @@ translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
     } else {
       nt2 = nt1;
       nt1 = nt0;
-      nt0 = revcompp ? complCode[toupper((int) pair->genome)] : toupper((int) pair->genome);
+      nt0 = revcompp ? complCode[pair->genome] : uppercaseCode[pair->genome];
 
-      codon = get_codon(nt0,nt1,nt2);
+      codon = Translation_get_codon(nt0,nt1,nt2);
       if (gpos < 2 && codon == 'X') {
 	/* translation[i].aa = ' '; */
       } else {
@@ -605,7 +616,6 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
   struct Pair_T *ptr, *pair;
   int i, gpos = 0;
   char codon, nt2 = 'X', nt1 = 'X', nt0 = 'X';
-  char complCode[128] = COMPLEMENT;
 
   translation = Translation_array_new(npairs);
 
@@ -620,9 +630,9 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
     } else {
       nt2 = nt1;
       nt1 = nt0;
-      nt0 = revcompp ? complCode[toupper((int) pair->genome)] : toupper((int) pair->genome);
+      nt0 = revcompp ? complCode[pair->genome] : uppercaseCode[pair->genome];
 
-      codon = get_codon(nt0,nt1,nt2);
+      codon = Translation_get_codon(nt0,nt1,nt2);
       if (gpos < 2 && codon == 'X') {
 	/* translation[i].aa = ' '; */
       } else {
@@ -645,12 +655,12 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
 
 
 static int
-count_cdna_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end) {
+count_cdna_forward_strict (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ncdna = 0, j;
 
   j = starti;
-  while (j <= end) {
-    if (j > starti && pairs[j].aamarker_g == true && pairs[j].cdna != ' ') {
+  while (j < npairs) {
+    if (ncdna >= 3 && pairs[j].cdna != ' ') {
       *nexti = j;
       return ncdna;
     } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
@@ -665,12 +675,32 @@ count_cdna_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, in
 
 
 static int
-count_cdna_forward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end) {
+count_cdna_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
+  int ncdna = 0, j;
+
+  j = starti;
+  while (j <= endi) {
+    if (j > starti && pairs[j].aaphase_g == 0 && pairs[j].cdna != ' ') {
+      *nexti = j;
+      return ncdna;
+    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+      ncdna++;
+    }
+    j++;
+  }
+
+  *nexti = j;
+  return ncdna;
+}
+
+
+static int
+count_cdna_forward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ncdna = 0, j;
   
   j = starti;
-  while (j <= end && ncdna <= HORIZON) {
-    if (j > starti && pairs[j].aamarker_g == true && pairs[j].cdna != ' ' &&
+  while (j <= endi && ncdna <= HORIZON) {
+    if (j > starti && pairs[j].aaphase_g == 0 && pairs[j].cdna != ' ' &&
 	(ncdna % 3) == 0) {
       *nexti = j;
       return ncdna;
@@ -685,12 +715,31 @@ count_cdna_forward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int start
 }
 
 static int
-count_cdna_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end) {
+count_cdna_backward_strict (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ncdna = 0, j;
 
   j = starti;
-  while (j >= end) {
-    if (j < starti && pairs[j].aamarker_g == true && pairs[j].cdna != ' ') {
+  while (j >= 0) {
+    if (ncdna >= 3 && pairs[j].cdna != ' ') {
+      *nexti = j;
+      return ncdna;
+    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+      ncdna++;
+    }
+    j--;
+  }
+
+  *nexti = j;
+  return ncdna;
+}
+
+static int
+count_cdna_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
+  int ncdna = 0, j;
+
+  j = starti;
+  while (j >= endi) {
+    if (j < starti && pairs[j].aaphase_g == 0 && pairs[j].cdna != ' ') {
       *nexti = j;
       return ncdna;
     } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
@@ -705,12 +754,12 @@ count_cdna_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, i
 
 
 static int
-count_cdna_backward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end) {
+count_cdna_backward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ncdna = 0, j;
   
   j = starti;
-  while (j >= end && ncdna <= HORIZON) {
-    if (j < starti && pairs[j].aamarker_g == true && pairs[j].cdna != ' ' &&
+  while (j >= endi && ncdna <= HORIZON) {
+    if (j < starti && pairs[j].aaphase_g == 0 && pairs[j].cdna != ' ' &&
 	(ncdna % 3) == 0) {
       *nexti = j;
       return ncdna;
@@ -726,12 +775,12 @@ count_cdna_backward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int star
 
 
 static int
-count_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end) {
+count_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ngenomic = 0, j;
 
   j = starti;
-  while (j <= end) {
-    if (j > starti && pairs[j].aamarker_e == true && pairs[j].genome != ' ') {
+  while (j <= endi) {
+    if (j > starti && pairs[j].aaphase_e == 0 && pairs[j].genome != ' ') {
       *nexti = j;
       return ngenomic;
     } else if (pairs[j].gapp == false && pairs[j].genome != ' ') {
@@ -746,12 +795,12 @@ count_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end
 
 
 static int
-count_genomic_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, int end) {
+count_genomic_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ngenomic = 0, j;
   
   j = starti;
-  while (j <= end && ngenomic <= HORIZON) {
-    if (j > starti && pairs[j].aamarker_e == true && pairs[j].genome != ' ' &&
+  while (j <= endi && ngenomic <= HORIZON) {
+    if (j > starti && pairs[j].aaphase_e == 0 && pairs[j].genome != ' ' &&
 	(ngenomic % 3) == 0) {
       *nexti = j;
       return ngenomic;
@@ -768,9 +817,9 @@ count_genomic_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int starti, in
 /************************************************************************/
 
 static int
-get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, 
-		   char *complCode, bool revcompp) {
+get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, bool revcompp) {
   char nt2 = 'X', nt1 = 'X', nt0 = 'X';
+  int j2 = -1, j1 = -1, j0 = -1;
   int ncdna = 0, j;
 
   j = starti;
@@ -778,7 +827,10 @@ get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti,
     if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = revcompp ? complCode[toupper((int) pairs[j].cdna)] : toupper((int) pairs[j].cdna);
+      nt2 = revcompp ? complCode[pairs[j].cdna] : uppercaseCode[pairs[j].cdna];
+      j0 = j1;
+      j1 = j2;
+      j2 = j;
       ncdna++;
     }
     j++;
@@ -790,13 +842,20 @@ get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti,
   }
 
   *nexti = j;
-  return get_codon(nt0,nt1,nt2);
+  
+  if (j0 >= 0) {
+    pairs[j0].aaphase_e = 0;
+    pairs[j1].aaphase_e = 1;
+    pairs[j2].aaphase_e = 2;
+  }
+
+  return Translation_get_codon(nt0,nt1,nt2);
 }
 
 static int
-get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti,
-		   char *complCode, bool revcompp) {
+get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, bool revcompp) {
   char nt2 = 'X', nt1 = 'X', nt0 = 'X';
+  int j2 = -1, j1 = -1, j0 = -1;
   int ncdna = 0, j;
 
   j = starti;
@@ -804,7 +863,10 @@ get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti,
     if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = revcompp ? complCode[toupper((int) pairs[j].cdna)] : toupper((int) pairs[j].cdna);
+      nt2 = revcompp ? complCode[pairs[j].cdna] : uppercaseCode[pairs[j].cdna];
+      j0 = j1;
+      j1 = j2;
+      j2 = j;
       ncdna++;
     }
     --j;
@@ -816,7 +878,14 @@ get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti,
   }
 
   *nexti = j;
-  return get_codon(nt0,nt1,nt2);
+
+  if (j0 >= 0) {
+    pairs[j0].aaphase_e = 0;
+    pairs[j1].aaphase_e = 1;
+    pairs[j2].aaphase_e = 2;
+  }
+
+  return Translation_get_codon(nt0,nt1,nt2);
 }
 
 
@@ -824,6 +893,7 @@ get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti,
 static int
 get_codon_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti) {
   char nt2 = 'X', nt1 = 'X', nt0 = 'X';
+  int j0, j1, j2;
   int ngenomic = 0, j;
 
   j = starti;
@@ -831,7 +901,10 @@ get_codon_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti) {
     if (pairs[j].gapp == false && pairs[j].genome != ' ') {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = toupper(pairs[j].genome);
+      nt2 = uppercaseCode[pairs[j].genome];
+      j0 = j1;
+      j1 = j2;
+      j2 = j;
       ngenomic++;
     }
     j++;
@@ -843,76 +916,88 @@ get_codon_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti) {
   }
 
   *nexti = j;
-  return get_codon(nt0,nt1,nt2);
+
+  pairs[j0].aaphase_g = 0;
+  pairs[j1].aaphase_g = 1;
+  pairs[j2].aaphase_g = 2;
+
+  return Translation_get_codon(nt0,nt1,nt2);
 }
 #endif
 
 
 
-static void
-assign_cdna_forward (int ncdna, struct Pair_T *pairs, int npairs, char *complCode, bool revcompp, 
-		     int starti) {
+static int
+assign_cdna_forward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
-  int i, nexti, j = 0;
+  int i, nexti, j = 0, codon;
 
   i = starti;
   while (j < ncdna) {
     pair = &(pairs[i]);
-    pair->aamarker_e = true;
-    pair->aa_e = get_codon_forward(&nexti,pairs,npairs,i,complCode,revcompp);
+    codon = pair->aa_e = get_codon_forward(&nexti,pairs,npairs,i,revcompp);
+    debug2(Pair_dump_one(pair,true));
+    debug2(printf(" marked with amino acid %c\n",pair->aa_e));
     i = nexti;
     j += 3;
   }
-  return;
+  return codon;
 }
 
 static void
-terminate_cdna_forward (struct Pair_T *pairs, int npairs, char *complCode, bool revcompp, 
-			int starti) {
+terminate_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
   int i, nexti;
   char lastcodon = ' ';
 
   i = starti;
+  while (i < npairs && (pairs[i].gapp == true || pairs[i].cdna == ' ')) {
+    i++;
+  }
   while (i <= npairs-3 && lastcodon != '*') {
     pair = &(pairs[i]);
-    pair->aamarker_e = true;
-    lastcodon = pair->aa_e = get_codon_forward(&nexti,pairs,npairs,i,complCode,revcompp);
+    lastcodon = pair->aa_e = get_codon_forward(&nexti,pairs,npairs,i,revcompp);
+    debug2(Pair_dump_one(pair,true));
+    debug2(printf(" marked with amino acid %c\n",pair->aa_e));
     i = nexti;
   }
   return;
 }
 
-static void
-assign_cdna_backward (int ncdna, struct Pair_T *pairs, int npairs, char *complCode, bool revcompp,
-		      int starti) {
+static int
+assign_cdna_backward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
-  int i, nexti, j = 0;
+  int i, nexti, j = 0, codon;
 
   i = starti;
   while (j < ncdna) {
     pair = &(pairs[i]);
-    pair->aamarker_e = true;
-    pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,complCode,revcompp);
+    pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,revcompp);
+    debug2(Pair_dump_one(pair,true));
+    debug2(printf(" marked with amino acid %c\n",pair->aa_e));
     i = nexti;
     j += 3;
   }
-  return;
+  return ncdna;
 }
 
 static void
-terminate_cdna_backward (struct Pair_T *pairs, int npairs, char *complCode, bool revcompp, 
-			int starti) {
+terminate_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
   int i, nexti;
   char lastcodon = ' ';
 
   i = starti;
+  while (i >= 0 && (pairs[i].gapp == true || pairs[i].cdna == ' ')) {
+    --i;
+  }
+
   /* i > 1 is equivalent to i >= 2 */
   while (i > 1 && lastcodon != '*') {
     pair = &(pairs[i]);
-    pair->aamarker_e = true;
-    lastcodon = pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,complCode,revcompp);
+    lastcodon = pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,revcompp);
+    debug2(Pair_dump_one(pair,true));
+    debug2(printf(" marked with amino acid %c\n",pair->aa_e));
     i = nexti;
   }
   return;
@@ -927,7 +1012,6 @@ assign_genomic (int ngenomic, struct Pair_T *pairs, int npairs, int starti) {
   i = starti;
   while (j < ngenomic) {
     pair = &(pairs[i]);
-    pair->aamarker_g = true;
     pair->aa_g = get_codon_genomic(&nexti,pairs,npairs,i);
     i = nexti;
     j += 3;
@@ -944,7 +1028,6 @@ terminate_genomic (struct Pair_T *pairs, int npairs, int starti) {
   i = starti;
   while (i <= npairs - 3 && lastcodon != '*') {
     pair = &(pairs[i]);
-    pair->aamarker_g = true;
     lastcodon = pair->aa_g = get_codon_genomic(&nexti,pairs,npairs,i);
     i = nexti;
   }
@@ -955,36 +1038,67 @@ terminate_genomic (struct Pair_T *pairs, int npairs, int starti) {
 
 
 static void
-mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int start, int end) {
+mark_cdna_forward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
+  struct Pair_T *pair;
+  int i, nexti, nexti_alt, ncdna, ncdna_alt, codon = ' ';
+
+  debug2(printf("mark_cdna_forward_strict called with pairs #%d..%d\n",starti,endi));
+
+  i = starti;
+
+  /* Advance to same start as genomic */
+  pair = &(pairs[i]);
+  while (i < endi && pair->aaphase_g != 0) {
+    i++;
+    pair = &(pairs[i]);
+  }
+
+  while (i < npairs && codon != '*') {
+    pair = &(pairs[i]);
+    ncdna = count_cdna_forward_strict(&nexti,pairs,npairs,i,endi);
+    if (ncdna == 3) {
+      codon = assign_cdna_forward(ncdna,pairs,npairs,revcompp,i);
+    }
+    i = nexti;
+  }
+
+  if (codon != '*') {
+    terminate_cdna_forward(pairs,npairs,revcompp,i);
+  }
+
+  return;
+}  
+
+static void
+mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
   struct Pair_T *pair;
   int i, nexti, nexti_alt, ncdna, ncdna_alt;
-  char complCode[128] = COMPLEMENT;
 
-  debug2(printf("mark_cdna_forward called with pairs #%d..%d\n",start,end));
+  debug2(printf("mark_cdna_forward called with pairs #%d..%d\n",starti,endi));
 
-  i = start;
-  while (i < end) {
+  i = starti;
+  while (i < endi) {
     pair = &(pairs[i]);
-    if (pair->aamarker_g == false) {
+    if (pair->aaphase_g != 0) {
       i++;
     } else {
-      ncdna = count_cdna_forward(&nexti,pairs,npairs,i,end);
+      ncdna = count_cdna_forward(&nexti,pairs,npairs,i,endi);
       if (ncdna == 3) {
-	assign_cdna_forward(ncdna,pairs,npairs,complCode,revcompp,i);
+	assign_cdna_forward(ncdna,pairs,npairs,revcompp,i);
       } else if ((ncdna % 3) == 0) {
 	debug2(printf("At %d, saw %d with mod == 0\n",pair->aapos,ncdna));
-	assign_cdna_forward(ncdna,pairs,npairs,complCode,revcompp,i);
-      } else if (i + 2 > end) {
-	debug2(printf("At %d, saw last codon: %d+2 > %d\n",pair->aapos,i,end));
-	assign_cdna_forward(ncdna,pairs,npairs,complCode,revcompp,i);
+	assign_cdna_forward(ncdna,pairs,npairs,revcompp,i);
+      } else if (i + 2 > endi) {
+	debug2(printf("At %d, saw last codon: %d+2 > %d\n",pair->aapos,i,endi));
+	assign_cdna_forward(ncdna,pairs,npairs,revcompp,i);
       } else {
 	debug2(printf("At %d, saw %d with mod != 0\n",pair->aapos,ncdna));	
-	ncdna_alt = count_cdna_forward_mod3(&nexti_alt,pairs,npairs,i,end);
+	ncdna_alt = count_cdna_forward_mod3(&nexti_alt,pairs,npairs,i,endi);
 
 	debug2(printf("  Alternate search yields %d\n",ncdna_alt));
 	if ((ncdna_alt % 3) == 0) {
 	  debug2(printf("  Using alternate search\n"));
-	  assign_cdna_forward(ncdna_alt,pairs,npairs,complCode,revcompp,i);
+	  assign_cdna_forward(ncdna_alt,pairs,npairs,revcompp,i);
 	  nexti = nexti_alt;
 
 	} else if (ncdna < 3) {
@@ -992,49 +1106,80 @@ mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int start, i
 
 	} else {
 	  debug2(printf("  Using original count - 3 = %d\n",ncdna-3));
-	  assign_cdna_forward(ncdna-3,pairs,npairs,complCode,revcompp,i);
+	  assign_cdna_forward(ncdna-3,pairs,npairs,revcompp,i);
 	}
       }
       i = nexti;
     }
   }
 
-  terminate_cdna_forward(pairs,npairs,complCode,revcompp,i);
+  terminate_cdna_forward(pairs,npairs,revcompp,i);
 
   return;
 }  
 
 static void
-mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int start, int end) {
+mark_cdna_backward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
+  struct Pair_T *pair;
+  int i, nexti, nexti_alt, ncdna, ncdna_alt, codon = ' ';
+
+  debug2(printf("mark_cdna_backward called with pairs #%d..%d\n",starti,endi));
+
+  i = starti;
+
+  /* Advance to same start as genomic */
+  pair = &(pairs[i]);
+  while (i > endi && pair->aaphase_g != 0) {
+    i--;
+    pair = &(pairs[i]);
+  }
+
+  while (i >= 0 && codon != '*') {
+    pair = &(pairs[i]);
+    ncdna = count_cdna_backward_strict(&nexti,pairs,npairs,i,endi);
+    if (ncdna == 3) {
+      codon = assign_cdna_backward(ncdna,pairs,npairs,revcompp,i);
+    }
+    i = nexti;
+  }
+
+  if (codon != '*') {
+    terminate_cdna_backward(pairs,npairs,revcompp,i);
+  }
+
+  return;
+}  
+
+static void
+mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
   struct Pair_T *pair;
   int i, nexti, nexti_alt, ncdna, ncdna_alt;
-  char complCode[128] = COMPLEMENT;
 
-  debug2(printf("mark_cdna_backward called with pairs #%d..%d\n",start,end));
+  debug2(printf("mark_cdna_backward called with pairs #%d..%d\n",starti,endi));
 
-  i = start;
-  while (i > end) {
+  i = starti;
+  while (i > endi) {
     pair = &(pairs[i]);
-    if (pair->aamarker_g == false) {
+    if (pair->aaphase_g != 0) {
       i--;
     } else {
-      ncdna = count_cdna_backward(&nexti,pairs,npairs,i,end);
+      ncdna = count_cdna_backward(&nexti,pairs,npairs,i,endi);
       if (ncdna == 3) {
-	assign_cdna_backward(ncdna,pairs,npairs,complCode,revcompp,i);
+	assign_cdna_backward(ncdna,pairs,npairs,revcompp,i);
       } else if ((ncdna % 3) == 0) {
 	debug2(printf("At %d, saw %d with mod == 0\n",pair->aapos,ncdna));
-	assign_cdna_backward(ncdna,pairs,npairs,complCode,revcompp,i);
-      } else if (i - 2 < end) {
-	debug2(printf("At %d, saw last codon: %d-2 < %d\n",pair->aapos,i,end));
-	assign_cdna_backward(ncdna,pairs,npairs,complCode,revcompp,i);
+	assign_cdna_backward(ncdna,pairs,npairs,revcompp,i);
+      } else if (i - 2 < endi) {
+	debug2(printf("At %d, saw last codon: %d-2 < %d\n",pair->aapos,i,endi));
+	assign_cdna_backward(ncdna,pairs,npairs,revcompp,i);
       } else {
 	debug2(printf("At %d, saw %d with mod != 0\n",pair->aapos,ncdna));	
-	ncdna_alt = count_cdna_backward_mod3(&nexti_alt,pairs,npairs,i,end);
+	ncdna_alt = count_cdna_backward_mod3(&nexti_alt,pairs,npairs,i,endi);
 
 	debug2(printf("  Alternate search yields %d\n",ncdna_alt));
 	if ((ncdna_alt % 3) == 0) {
 	  debug2(printf("  Using alternate search\n"));
-	  assign_cdna_backward(ncdna_alt,pairs,npairs,complCode,revcompp,i);
+	  assign_cdna_backward(ncdna_alt,pairs,npairs,revcompp,i);
 	  nexti = nexti_alt;
 
 	} else if (ncdna < 3) {
@@ -1042,14 +1187,14 @@ mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int start, 
 
 	} else {
 	  debug2(printf("  Using original count - 3 = %d\n",ncdna-3));
-	  assign_cdna_backward(ncdna-3,pairs,npairs,complCode,revcompp,i);
+	  assign_cdna_backward(ncdna-3,pairs,npairs,revcompp,i);
 	}
       }
       i = nexti;
     }
   }
 
-  terminate_cdna_backward(pairs,npairs,complCode,revcompp,i);
+  terminate_cdna_backward(pairs,npairs,revcompp,i);
 
   return;
 }  
@@ -1057,30 +1202,34 @@ mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int start, 
 
 #ifdef PMAP
 static void
-mark_genomic (struct Pair_T *pairs, int npairs, int start, int end) {
+mark_genomic (struct Pair_T *pairs, int npairs, int starti, int endi) {
   struct Pair_T *pair;
   int i, nexti, nexti_alt, ngenomic, ngenomic_alt;
 
-  debug2(printf("mark_genomic called with %d %d\n",start,end));
+  debug2(printf("mark_genomic called with pairs #%d %d\n",starti,endi));
 
-  i = start;
-  while (i < end) {
+  i = starti;
+  while (i < endi) {
     pair = &(pairs[i]);
-    if (pair->aamarker_e == false) {
+    if (pair->aaphase_e != 0) {
       i++;
     } else {
-      ngenomic = count_genomic(&nexti,pairs,npairs,i,end);
+      ngenomic = count_genomic(&nexti,pairs,npairs,i,endi);
       if (ngenomic == 3) {
 	assign_genomic(ngenomic,pairs,npairs,i);
       } else if ((ngenomic % 3) == 0) {
 	debug2(printf("At %d, saw %d with mod == 0\n",pair->aapos,ngenomic));
 	assign_genomic(ngenomic,pairs,npairs,i);
+      } else if (i + 2 > endi) {
+	debug2(printf("At %d, saw last codon: %d+2 > %d\n",pair->aapos,i,endi));
+	assign_genomic(ngenomic,pairs,npairs,i);
       } else {
 	debug2(printf("At %d, saw %d with mod != 0\n",pair->aapos,ngenomic));
-	ngenomic_alt = count_genomic_mod3(&nexti_alt,pairs,npairs,i,end);
+	ngenomic_alt = count_genomic_mod3(&nexti_alt,pairs,npairs,i,endi);
 
 	debug2(printf("  Alternate search yields %d\n",ngenomic_alt));
 	if ((ngenomic_alt % 3) == 0) {
+	  debug2(printf("  Using alternate search\n"));
 	  assign_genomic(ngenomic_alt,pairs,npairs,i);
 	  nexti = nexti_alt;
 
@@ -1088,8 +1237,8 @@ mark_genomic (struct Pair_T *pairs, int npairs, int start, int end) {
 	  debug2(printf("Skipping\n"));
 
 	} else {
-	  /* Use original count */
-	  assign_genomic(ngenomic,pairs,npairs,i);
+	  debug2(printf("  Using original count - 3 = %d\n",ngenomic-3));
+	  assign_genomic(ngenomic-3,pairs,npairs,i);
 	}
       }
       i = nexti;
@@ -1109,7 +1258,45 @@ void
 Translation_via_cdna (int *translation_leftpos, int *translation_rightpos, int *translation_length,
 		      int *relaastart, int *relaaend,
 		      struct Pair_T *pairs, int npairs, char *queryaaseq_ptr) {
-  int translation_start, translation_end, i;
+  int translation_starti, translation_endi, i;
+
+  /* Don't check for MIN_NPAIRS */
+
+  for (i = 0; i < npairs; i++) {
+    pairs[i].refquerypos = pairs[i].querypos;
+    pairs[i].aa_g = pairs[i].aa_e = ' ';
+  }
+
+  translate_pairs_cdna(&translation_starti,&translation_endi,&(*translation_length),
+		       pairs,npairs,queryaaseq_ptr);
+
+  *translation_leftpos = pairs[translation_starti].querypos;
+  *translation_rightpos = pairs[translation_endi].querypos;
+
+  debug(printf("Translation start = pair #%d (querypos %d)\n",translation_starti,*translation_leftpos));
+  debug(printf("Translation end = pair #%d (querypos %d)\n",translation_endi,*translation_rightpos));
+
+  /* Take care of genomic side */
+    
+  *relaastart = pairs[translation_starti].aapos;
+  *relaaend = pairs[translation_endi].aapos;
+
+  mark_genomic(pairs,npairs,translation_starti,translation_endi);
+
+  return;
+}
+#else
+void
+Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, int *translation_length,
+			 int *relaastart, int *relaaend,
+			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp,
+			 bool strictp) {
+  char lastaa;
+  struct T *translation;
+  bool endstopp;
+  int i, aapos = 0;
+  int translation_frame, translation_starti = 0, translation_endi = 0, phase;
+  int minpos, maxpos;
 
   if (npairs < MIN_NPAIRS) {
     *translation_leftpos = 0;
@@ -1120,63 +1307,27 @@ Translation_via_cdna (int *translation_leftpos, int *translation_rightpos, int *
     return;
   }
 
-  for (i = 0; i < npairs; i++) {
-    pairs[i].refquerypos = pairs[i].querypos;
-    pairs[i].aa_g = pairs[i].aa_e = ' ';
-  }
-
-  translate_pairs_cdna(&translation_start,&translation_end,&(*translation_length),
-		       pairs,npairs,queryaaseq_ptr);
-
-  *translation_leftpos = translation_start;
-  *translation_rightpos = translation_end;
-
-  /* Take care of genomic side */
-    
-  *relaastart = pairs[translation_start].aapos;
-  *relaaend = pairs[translation_end].aapos;
-
-  mark_genomic(pairs,npairs,translation_start,translation_end);
-
-  return;
-}
-#else
-void
-Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, int *translation_length,
-			 int *relaastart, int *relaaend,
-			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp) {
-  char lastaa;
-  struct T *translation;
-  bool endstopp;
-  int i, aapos = 0;
-  int translation_frame, translation_start = 0, translation_end = 0;
-  int minpos, maxpos;
-
-  if (npairs < MIN_NPAIRS) {
-    return;
-  }
-
   if (backwardp == false) {
     translation = translate_pairs_forward(pairs,npairs,revcompp);
-    find_bounds_forward(&translation_frame,&translation_start,
-			&translation_end,&(*translation_length),&endstopp,
+    find_bounds_forward(&translation_frame,&translation_starti,
+			&translation_endi,&(*translation_length),&endstopp,
 			translation,npairs,fulllengthp);
     if (fulllengthp == true && *translation_length == 0) {
       /* fprintf(stderr,"No full length gene found.  Assuming partial length.\n"); */
-      find_bounds_forward(&translation_frame,&translation_start,
-			  &translation_end,&(*translation_length),&endstopp,
+      find_bounds_forward(&translation_frame,&translation_starti,
+			  &translation_endi,&(*translation_length),&endstopp,
 			  translation,npairs,/*fulllengthp*/false);
     }
 
   } else {
     translation = translate_pairs_backward(pairs,npairs,revcompp);
-    find_bounds_backward(&translation_frame,&translation_start,
-			 &translation_end,&(*translation_length),&endstopp,
+    find_bounds_backward(&translation_frame,&translation_starti,
+			 &translation_endi,&(*translation_length),&endstopp,
 			 translation,npairs,fulllengthp);
     if (fulllengthp == true && *translation_length == 0) {
       /* fprintf(stderr,"No full length gene found.  Assuming partial length.\n"); */
-      find_bounds_backward(&translation_frame,&translation_start,
-			   &translation_end,&(*translation_length),&endstopp,
+      find_bounds_backward(&translation_frame,&translation_starti,
+			   &translation_endi,&(*translation_length),&endstopp,
 			   translation,npairs,/*fulllengthp*/false);
     }
   }
@@ -1188,16 +1339,16 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
     pairs[i].aa_g = pairs[i].aa_e = ' ';
   }
 
-  if (translation_start < 0 || translation_end < 0) {
+  if (translation_starti < 0 || translation_endi < 0) {
     *translation_leftpos = *translation_rightpos = -1;
     *relaastart = *relaaend = -1;
   } else {
-    minpos = npairs;
-    maxpos = 0;
+    minpos = pairs[npairs-1].querypos;
+    maxpos = pairs[0].querypos;
     if (backwardp == false) {
       /* forward */
-      debug(printf("Translation is forward pairs %d..%d\n",translation_start,translation_end));
-      for (i = translation_start; i <= translation_end; i++) {
+      debug(printf("Translation is forward pairs %d..%d\n",translation_starti,translation_endi));
+      for (i = translation_starti; i <= translation_endi; i++) {
 	/* Avoid problems with genome position advancing prematurely */
 	if (pairs[i].genome != ' ') {
 	  if (translation[i].frame == translation_frame) {
@@ -1210,18 +1361,24 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 	      }
 	      lastaa = pairs[i].aa_g;
 	      aapos++;
-	      pairs[i].aamarker_g = true;
+	      pairs[i].aaphase_g = 0;
 	    }
+	  } else if (translation[i].frame != 3) {
+	    if ((phase = translation_frame - translation[i].frame) < 0) {
+	      phase += 3;
+	    }
+	    pairs[i].aaphase_g = phase;
 	  }
 	}
 	pairs[i].aapos = aapos;
       }
       *translation_leftpos = minpos;
-      *translation_rightpos = maxpos;
+      *translation_rightpos = maxpos + 2;
       if (lastaa == '*') {
 	*translation_length -= 1;
       }
       
+#if 0
       if (i < npairs) {
 	*translation_rightpos += 1;
 	pairs[i++].aapos = aapos;
@@ -1230,6 +1387,7 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 	*translation_rightpos += 1;
 	pairs[i].aapos = aapos;
       }
+#endif
     
       /* Fill in aapos to the end */
       for ( ; i < npairs; i++) {
@@ -1238,9 +1396,9 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 
     } else {
       /* backward */
-      debug(printf("Translation is backward pairs %d..%d\n",translation_start,translation_end));
+      debug(printf("Translation is backward pairs %d..%d\n",translation_starti,translation_endi));
       
-      for (i = translation_start; i >= translation_end; --i) {
+      for (i = translation_starti; i >= translation_endi; --i) {
 	/* Avoid problems with genome position advancing prematurely */
 	if (pairs[i].genome != ' ') {
 	  if (translation[i].frame == translation_frame) {
@@ -1253,18 +1411,24 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 	      }
 	      lastaa = pairs[i].aa_g;
 	      aapos++;
-	      pairs[i].aamarker_g = true;
+	      pairs[i].aaphase_g = 0;
 	    }
+	  } else if (translation[i].frame != 3) {
+	    if ((phase = translation_frame - translation[i].frame) < 0) {
+	      phase += 3;
+	    }
+	    pairs[i].aaphase_g = phase;
 	  }
 	}
 	pairs[i].aapos = aapos;
       }
-      *translation_leftpos = minpos;
+      *translation_leftpos = minpos - 2;
       *translation_rightpos = maxpos;
       if (lastaa == '*') {
 	*translation_length -= 1;
       }
       
+#if 0
       if (i >= 0) {
 	*translation_leftpos -= 1;
 	pairs[i--].aapos = aapos;
@@ -1273,6 +1437,7 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 	*translation_leftpos -= 1;
 	pairs[i].aapos = aapos;
       }
+#endif
 
       /* Fill in aapos to the end */
       for ( ; i >= 0; --i) {
@@ -1282,16 +1447,24 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
     
     /* Take care of cDNA side */
     
-    debug(printf("Translation start = %d\n",translation_start));
-    debug(printf("Translation end = %d\n",translation_end));
+    debug(printf("Translation start = pair #%d (querypos %d)\n",translation_starti,*translation_leftpos));
+    debug(printf("Translation end = pair #%d (querypos %d)\n",translation_endi,*translation_rightpos));
     
-    *relaastart = pairs[translation_start].aapos;
-    *relaaend = pairs[translation_end].aapos;
+    *relaastart = pairs[translation_starti].aapos;
+    *relaaend = pairs[translation_endi].aapos;
 
-    if (revcompp == false) {
-      mark_cdna_forward(pairs,npairs,revcompp,translation_start,translation_end);
+    if (strictp == true) {
+      if (revcompp == false) {
+	mark_cdna_forward_strict(pairs,npairs,revcompp,translation_starti,translation_endi);
+      } else {
+	mark_cdna_backward_strict(pairs,npairs,revcompp,translation_starti,translation_endi);
+      }
     } else {
-      mark_cdna_backward(pairs,npairs,revcompp,translation_start,translation_end);
+      if (revcompp == false) {
+	mark_cdna_forward(pairs,npairs,revcompp,translation_starti,translation_endi);
+      } else {
+	mark_cdna_backward(pairs,npairs,revcompp,translation_starti,translation_endi);
+      }
     }
   }
 
@@ -1342,7 +1515,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
 	  }
 	  *end = j;
 	}
-	pairs[j].aamarker_g = refpairs[i].aamarker_g;
+	pairs[j].aaphase_g = refpairs[i].aaphase_g;
 	refquerypos = refpairs[i].querypos;
 	aapos = refpairs[i++].aapos;
 	pairs[j].refquerypos = refquerypos;
@@ -1393,7 +1566,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
 	  }
 	  *start = j;
 	}
-	pairs[j].aamarker_g = refpairs[i].aamarker_g;
+	pairs[j].aaphase_g = refpairs[i].aaphase_g;
 	refquerypos = refpairs[i].querypos;
 	aapos = refpairs[i++].aapos;
 	pairs[j].refquerypos = refquerypos;
@@ -1426,7 +1599,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
 	  }
 	  *end = j;
 	}
-	pairs[j].aamarker_g = refpairs[i].aamarker_g;
+	pairs[j].aaphase_g = refpairs[i].aaphase_g;
 	refquerypos = refpairs[i].querypos;
 	aapos = refpairs[i--].aapos;
 	pairs[j].refquerypos = refquerypos;
@@ -1477,7 +1650,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
 	  }
 	  *start = j;
 	}
-	pairs[j].aamarker_g = refpairs[i].aamarker_g;
+	pairs[j].aaphase_g = refpairs[i].aaphase_g;
 	refquerypos = refpairs[i].querypos;
 	aapos = refpairs[i--].aapos;
 	pairs[j].refquerypos = refquerypos;
@@ -1502,6 +1675,8 @@ Translation_via_reference (int *relaastart, int *relaaend,
   int start, end, i;
 
   if (npairs < MIN_NPAIRS) {
+    *relaastart = 0;
+    *relaaend = 0;
     return;
   }
 
@@ -1526,7 +1701,7 @@ Translation_via_reference (int *relaastart, int *relaaend,
     }
 
     for (i = 0; i < npairs; i++) {
-      if (pairs[i].aamarker_g == true) {
+      if (pairs[i].aaphase_g == 0) {
 	pairs[i].aa_g = translation[i].aa;
       } else {
 	pairs[i].aa_g = ' ';
@@ -1557,7 +1732,7 @@ lookup_aa (int aapos, struct Pair_T *refpairs, int nrefpairs) {
   int i;
 
   for (i = 0; i < nrefpairs; i++) {
-    if (refpairs[i].aapos == aapos && refpairs[i].aamarker_g == true) {
+    if (refpairs[i].aapos == aapos && refpairs[i].aaphase_g == 0) {
       return refpairs[i].aa_g;
     }
   }
@@ -1618,7 +1793,7 @@ fill_aa_fwd (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = start; this <= end && i1 < MAXMUT && k1 < MAXMUT; this++) {
     if (this->gapp == false) {
       if (this->genome != ' ') {
-	nt_genomicseg[i1++] = toupper(this->genome);
+	nt_genomicseg[i1++] = uppercaseCode[this->genome];
       } else {
 	*netchars += 1;
       }
@@ -1631,7 +1806,7 @@ fill_aa_fwd (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = start; this <= end && i2 < MAXMUT && k2 < MAXMUT; this++) {
     if (this->gapp == false) {
       if (this->cdna != ' ') {
-	nt_queryseq[i2++] = toupper(this->cdna);
+	nt_queryseq[i2++] = uppercaseCode[this->cdna];
       } else {
 	*netchars -= 1;
       }
@@ -1665,7 +1840,7 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = end; this >= start && i1 < MAXMUT && k1 < MAXMUT; --this) {
     if (this->gapp == false) {
       if (this->genome != ' ') {
-	nt_genomicseg[i1++] = toupper(this->genome);
+	nt_genomicseg[i1++] = uppercaseCode[this->genome];
       } else {
 	*netchars += 1;
       }
@@ -1678,7 +1853,7 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = end; this >= start && i2 < MAXMUT && k2 < MAXMUT; --this) {
     if (this->gapp == false) {
       if (this->cdna != ' ') {
-	nt_queryseq[i2++] = toupper(this->cdna);
+	nt_queryseq[i2++] = uppercaseCode[this->cdna];
       } else {
 	*netchars -= 1;
       }

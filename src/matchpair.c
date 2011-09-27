@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpair.c,v 1.45 2006/03/05 03:27:28 twu Exp $";
+static char rcsid[] = "$Id: matchpair.c,v 1.55 2006/12/18 13:19:33 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,11 +14,20 @@ static char rcsid[] = "$Id: matchpair.c,v 1.45 2006/03/05 03:27:28 twu Exp $";
 #include "pair.h"
 #include "pairdef.h"
 #include "comp.h"
+#include "indexdb.h"
 
 #define MAXCANDIDATES 10
 #define MIN_STAGE1_FSUPPORT 0.20
 #define MAX_STAGE1_STRETCH 2000.0
 
+#ifdef PMAP
+#define SUFFICIENT_SUPPORT 6
+#else
+#define SUFFICIENT_SUPPORT 12
+#endif
+
+#define EXTRA_SHORTEND 1000
+#define EXTRA_LONGEND 3000
 
 #ifdef DEBUG
 #define debug(x) x
@@ -47,20 +56,39 @@ static char rcsid[] = "$Id: matchpair.c,v 1.45 2006/03/05 03:27:28 twu Exp $";
 #define debug3(x)
 #endif
 
+/* Separating of strands */
+#ifdef DEBUG4
+#define debug4(x) x
+#else
+#define debug4(x)
+#endif
+
+/* Sufficient support */
+#ifdef DEBUG5
+#define debug5(x) x
+#else
+#define debug5(x)
+#endif
 
 
 #define T Matchpair_T
 struct T {
   Match_T bound5;
   Match_T bound3;
+  unsigned int extension5;
+  unsigned int extension3;
+  int trimstart;
+  int trimend;
   unsigned int low;		/* low position */
   unsigned int high;		/* high position */
   int clustersize;		/* for cluster algorithm */
   int stage1size;
   int support;
+  double fsupport;
   Matchpairend_T matchpairend;
   bool usep;
   bool watsonp;
+  bool continuep;
 };
 
 Match_T
@@ -71,6 +99,16 @@ Matchpair_bound5 (T this) {
 Match_T
 Matchpair_bound3 (T this) {
   return this->bound3;
+}
+
+unsigned int
+Matchpair_extension5 (T this) {
+  return this->extension5;
+}
+
+unsigned int
+Matchpair_extension3 (T this) {
+  return this->extension3;
 }
 
 bool
@@ -110,6 +148,11 @@ Matchpair_support (T this) {
   return this->support;
 }
 
+double
+Matchpair_fsupport (T this) {
+  return this->fsupport;
+}
+
 
 static double
 compute_fsupport (Match_T bound5, Match_T bound3, int stage1size, int trimlength) {
@@ -117,8 +160,8 @@ compute_fsupport (Match_T bound5, Match_T bound3, int stage1size, int trimlength
 }
 
 
-static double
-compute_stretch (Match_T bound5, Match_T bound3) {
+double
+Matchpair_compute_stretch (Match_T bound5, Match_T bound3) {
   Genomicpos_T position5, position3;
   int querypos5, querypos3;
 
@@ -147,21 +190,23 @@ compute_stretch (Match_T bound5, Match_T bound3) {
 }
 
 T
-Matchpair_new (Match_T bound5, Match_T bound3, int stage1size, int clustersize, int trimlength,
-	       Matchpairend_T matchpairend) {
+Matchpair_new (Match_T bound5, Match_T bound3, int stage1size, int clustersize, 
+	       int trimstart, int trimend, int trimlength, Matchpairend_T matchpairend) {
   T new;
   unsigned int temp;
+  double fsupport;
 
   debug3(printf("support = %d/trimlength = %d\n",
 		Match_querypos(bound3) - Match_querypos(bound5) + stage1size,trimlength));
-  debug3(printf("stretch = %f\n",compute_stretch(bound5,bound3)));
+  debug3(printf("stretch = %f\n",Matchpair_compute_stretch(bound5,bound3)));
 
   if (clustersize == 1) {
     debug3(printf("clustersize is 1, so must be salvage\n"));
-  } else if (compute_fsupport(bound5,bound3,stage1size,trimlength) < MIN_STAGE1_FSUPPORT) {
+    fsupport = 0.0;
+  } else if ((fsupport = compute_fsupport(bound5,bound3,stage1size,trimlength)) < MIN_STAGE1_FSUPPORT) {
     debug3(printf("Insufficient coverage of the query sequence\n"));
     return NULL;
-  } else if (compute_stretch(bound5,bound3) > MAX_STAGE1_STRETCH) {
+  } else if (Matchpair_compute_stretch(bound5,bound3) > MAX_STAGE1_STRETCH) {
     debug3(printf("Genomic region is too large relative to matching cDNA region\n"));
     return NULL;
   }
@@ -169,12 +214,18 @@ Matchpair_new (Match_T bound5, Match_T bound3, int stage1size, int clustersize, 
   new = (T) MALLOC(sizeof(*new));
   new->bound5 = bound5;
   new->bound3 = bound3;
+  new->extension5 = 0U;
+  new->extension3 = 0U;
+  new->trimstart = trimstart;
+  new->trimend = trimend;
   new->clustersize = clustersize;
   new->stage1size = stage1size;
   new->support = Match_querypos(bound3) - Match_querypos(bound5) + stage1size;
+  new->fsupport = fsupport;
   new->matchpairend = matchpairend;
   new->usep = true;
   new->watsonp = Match_forwardp(bound5);
+  new->continuep = false;
 
   new->low = Match_position(bound5);
   new->high = Match_position(bound3);
@@ -201,7 +252,7 @@ static int
 Matchpair_dominate (const void *a, const void *b) {
   T x = * (T *) a;
   T y = * (T *) b;
-  
+
   if (x->watsonp != y->watsonp) {
     return 0;			/* Different strands */
 
@@ -277,68 +328,7 @@ Matchpair_support_cmp (const void *a, const void *b) {
 
 
 List_T
-Matchpair_filter_duplicates (List_T matchpairlist) {
-  List_T unique = NULL, p, q;
-  T x, y, matchpair;
-  int n, i, j;
-  bool *eliminate;
-
-  n = List_length(matchpairlist);
-  if (n == 0) {
-    return NULL;
-  }
-
-  debug(
-	for (p = matchpairlist, i = 0; p != NULL; p = p->rest, i++) {
-	  matchpair = (T) p->first;
-	  printf("  Initial %d: %u-%u (watsonp = %d)\n",
-		 i,matchpair->low,matchpair->high,matchpair->watsonp);
-	}
-	);
-
-  eliminate = (bool *) CALLOC(n,sizeof(bool));
-
-  /* Check for duplicates */
-  for (p = matchpairlist, i = 0; p != NULL; p = p->rest, i++) {
-    x = (T) p->first;
-    for (q = p->rest, j = i+1; q != NULL; q = q->rest, j++) {
-      y = q->first;
-      if (Matchpair_equal(&x,&y) == true) {
-	eliminate[j] = true;
-      }
-    }
-  }
-
-  for (p = matchpairlist, i = 0; p != NULL; p = p->rest, i++) {
-    if (eliminate[i] == false) {
-      debug(matchpair = p->first);
-      debug(printf("  Keeping %u-%u (watsonp = %d)\n",matchpair->low,matchpair->high,matchpair->watsonp));
-      unique = List_push(unique,(void *) p->first);
-    } else {
-      matchpair = (T) p->first;
-      debug(printf("  Eliminating %u-%u (watsonp = %d)\n",matchpair->low,matchpair->high,matchpair->watsonp));
-      Matchpair_free(&matchpair);
-    }
-  }
-
-  FREE(eliminate);
-  List_free(&matchpairlist);
-
-  debug(
-	for (p = unique, i = 0; p != NULL; p = p->rest, i++) {
-	  matchpair = (T) p->first;
-	  printf("  Final %d: %u-%u (watsonp = %d)\n",
-		 i,matchpair->low,matchpair->high,matchpair->watsonp);
-	}
-	);
-
-  return unique;
-}
-
-
-
-List_T
-Matchpair_filter_unique (List_T matchpairlist) {
+Matchpair_filter_unique (List_T matchpairlist, bool removedupsp) {
   List_T unique = NULL, p, q;
   T x, y, matchpair;
   int n, i, j, cmp;
@@ -358,6 +348,14 @@ Matchpair_filter_unique (List_T matchpairlist) {
 	);
 
   eliminate = (bool *) CALLOC(n,sizeof(bool));
+
+  /* Not necessary if false is zero */
+  /*
+  for (i = 0; i < n; i++) {
+    eliminate[i] = false;
+  }
+  */
+
   /* Check for subsumption */
   for (p = matchpairlist, i = 0; p != NULL; p = p->rest, i++) {
     x = (T) p->first;
@@ -367,6 +365,8 @@ Matchpair_filter_unique (List_T matchpairlist) {
 	eliminate[j] = true;
       } else if (cmp == 1) {
 	eliminate[i] = true;
+      } else if (removedupsp == true && Matchpair_equal(&x,&y) == true) {
+	eliminate[j] = true;
       }
     }
   }
@@ -397,6 +397,49 @@ Matchpair_filter_unique (List_T matchpairlist) {
   return unique;
 }
 
+bool
+Matchpair_sufficient_support (T this) {
+  Match_T match5, match3;
+  unsigned int extension5, extension3;
+
+  match5 = this->bound5;
+  match3 = this->bound3;
+  extension5 = this->extension5;
+  extension3 = this->extension3;
+#ifdef PMAP
+  debug5(printf("  Testing bound5+extension5 = %d - %u < %d + %d, bound3+extension3 = %d + %u (+%d) > %d - %d\n",
+		Match_querypos(match5),extension5,this->trimstart,SUFFICIENT_SUPPORT,
+		Match_querypos(match3),extension3,INDEX1PART_AA,this->trimend,SUFFICIENT_SUPPORT));
+  if (Match_querypos(match5) - extension5 < this->trimstart + SUFFICIENT_SUPPORT && 
+      Match_querypos(match3) + extension3 + INDEX1PART_AA > this->trimend - SUFFICIENT_SUPPORT) {
+    return true;
+  } else {
+    return false;
+  }
+#else
+  debug5(printf("  Testing bound5+extension5 = %d - %u < %d + %d, bound3+extension3 = %d + %u (+%d) > %d - %d\n",
+		Match_querypos(match5),extension5,this->trimstart,SUFFICIENT_SUPPORT,
+		Match_querypos(match3),extension3,INDEX1PART,this->trimend,SUFFICIENT_SUPPORT));
+  if (Match_querypos(match5) - extension5 < this->trimstart + SUFFICIENT_SUPPORT && 
+      Match_querypos(match3) + extension3 + INDEX1PART > this->trimend - SUFFICIENT_SUPPORT) {
+    return true;
+  } else {
+    return false;
+  }
+#endif
+}
+
+void
+Matchpair_continue (T this, Stage1_T stage1, int maxextension) {
+  if (this->continuep == false) {
+    Stage1_find_extensions(&this->extension5,&this->extension3,stage1,this->bound5,this->bound3,maxextension,/*continuousp*/true);
+    this->support = Match_querypos(this->bound3) + this->extension3 + this->stage1size - Match_querypos(this->bound5) + this->extension5;
+    this->continuep = true;
+  }
+  return;
+}
+
+
 void
 Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
 		      bool *watsonp, T this, Stage1_T stage1, Genomicpos_T chrlength, int maxextension,
@@ -404,27 +447,36 @@ Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicp
   Match_T match1, match2;
   Genomicpos_T chrpos1, genomicpos1, genomicpos2, left, right;
 
-  if (Match_position(this->bound3) > Match_position(this->bound5)) {
-    *watsonp = true;
-    Stage1_find_extensions(&left,&right,stage1,this->bound5,this->bound3,maxextension,maponlyp);
-    match1 = this->bound5;
-    match2 = this->bound3;
-  } else if (Match_position(this->bound3) < Match_position(this->bound5)) {
-    *watsonp = false;
-    Stage1_find_extensions(&right,&left,stage1,this->bound5,this->bound3,maxextension,maponlyp);
-    match1 = this->bound3;
-    match2 = this->bound5;
-  } else {
-    /* Special case of a single match */
-    if (Match_forwardp(this->bound5) == true) {
-      *watsonp = true;
-      Stage1_find_extensions(&left,&right,stage1,this->bound5,this->bound3,maxextension,maponlyp);
+  *watsonp = this->watsonp;
+
+  if (Matchpair_sufficient_support(this) == true) {
+    if (this->watsonp == true) {
+      left = this->extension5;
+      right = this->extension3;
+      match1 = this->bound5;
+      match2 = this->bound3;
     } else {
-      *watsonp = false;
-      Stage1_find_extensions(&right,&left,stage1,this->bound5,this->bound3,maxextension,maponlyp);
+      right = this->extension5;
+      left = this->extension3;
+      match1 = this->bound3;
+      match2 = this->bound5;
     }
-    match1 = match2 = this->bound5;
+    left += EXTRA_SHORTEND;
+    right += EXTRA_SHORTEND;
+  } else {
+    if (this->watsonp == true) {
+      Stage1_find_extensions(&left,&right,stage1,this->bound5,this->bound3,maxextension,maponlyp);
+      match1 = this->bound5;
+      match2 = this->bound3;
+    } else {
+      Stage1_find_extensions(&right,&left,stage1,this->bound5,this->bound3,maxextension,maponlyp);
+      match1 = this->bound3;
+      match2 = this->bound5;
+    }
+    left += EXTRA_LONGEND;
+    right += EXTRA_LONGEND;
   }
+
 
   if (Match_chrpos(match1) < left) {
     debug(printf("Proposed left is negative: %u < %u.  Problem!\n",
@@ -465,7 +517,7 @@ Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicp
 
 static T
 find_best_path (int *size, Match_T *matches, int n, int stage1size, int minsize, 
-		Match_T prevstart, Match_T prevend, int trimlength, bool plusp) {
+		Match_T prevstart, Match_T prevend, int trimstart, int trimend, int trimlength, bool plusp) {
   T matchpair;
   int *prev, *score, j, i, bestj, besti, bestscore, width;
   bool fivep = false, threep = false;
@@ -578,10 +630,11 @@ find_best_path (int *size, Match_T *matches, int n, int stage1size, int minsize,
 	abort();
       }
       if (plusp == true) {
-	matchpair = Matchpair_new(matches[besti],matches[bestj],stage1size,bestscore+1,trimlength,matchpairend);
+	matchpair = Matchpair_new(matches[besti],matches[bestj],stage1size,bestscore+1,trimstart,trimend,trimlength,matchpairend);
       } else {
-	matchpair = Matchpair_new(matches[bestj],matches[besti],stage1size,bestscore+1,trimlength,matchpairend);
+	matchpair = Matchpair_new(matches[bestj],matches[besti],stage1size,bestscore+1,trimstart,trimend,trimlength,matchpairend);
       }
+      debug1(printf("Creating matchpair %p\n",matchpair));
     }
     debug1(printf("\n"));
   }
@@ -589,13 +642,14 @@ find_best_path (int *size, Match_T *matches, int n, int stage1size, int minsize,
   FREE(score);
   FREE(prev);
 
+  debug1(printf("Returning %p\n",matchpair));
   return matchpair;
 }
 
 static List_T
 find_paths_bounded (int *bestsize, List_T clusterlist, Match_T *matches, int npositions, 
 		    int maxintronlen, int stage1size, int minclustersize, double sizebound, 
-		    int trimlength, bool plusp) {
+		    int trimstart, int trimend,int trimlength, bool plusp) {
   int starti, endi;
   Chrnum_T startchrnum;
   Match_T prevstart = NULL, prevend = NULL;
@@ -619,10 +673,12 @@ find_paths_bounded (int *bestsize, List_T clusterlist, Match_T *matches, int npo
     }
     if (endi - starti + 1 >= minsize) {
       if ((matchpair = find_best_path(&size,&(matches[starti]),endi-starti+1,stage1size,
-				      minsize,prevstart,prevend,trimlength,plusp)) == NULL) {
+				      minsize,prevstart,prevend,trimstart,trimend,trimlength,plusp)) == NULL) {
+	debug1(printf("Matchpair was NULL\n"));
 	prevstart = prevend = NULL;
       } else {
 	clusterlist = List_push(clusterlist,(void *) matchpair);
+	debug1(printf("Now clusterlist has %d entries\n",List_length(clusterlist)));
 	if (plusp == true) {
 	  prevstart = matchpair->bound5;
 	  prevend = matchpair->bound3;
@@ -648,7 +704,7 @@ find_paths_bounded (int *bestsize, List_T clusterlist, Match_T *matches, int npo
 static void
 separate_strands (Match_T **plus_matches, int *plus_npositions,
 		  Match_T **minus_matches, int *minus_npositions,
-		  List_T matches5, List_T matches3, int querylen) {
+		  List_T matches5, List_T matches3, int maxintronlen) {
   List_T p;
   Match_T match, *plus_candidates, *minus_candidates;
   int plus_ncandidates = 0, minus_ncandidates = 0, i = 0, j = 0, nkeep;
@@ -657,18 +713,28 @@ separate_strands (Match_T **plus_matches, int *plus_npositions,
   /* Count */
   for (p = matches5; p != NULL; p = p->rest) {
     match = (Match_T) p->first;
+    debug4(printf("Separating match at 5' end, #%d:%u (%d,%d,%d), to ",Match_chrnum(match),
+		  Match_chrpos(match),Match_querypos(match),
+		  Match_forwardp(match),Match_fivep(match)));
     if (Match_forwardp(match) == true) {
+      debug4(printf("plus candidates\n"));
       plus_ncandidates++;
     } else {
+      debug4(printf("minus candidates\n"));
       minus_ncandidates++;
     }
   }
 
   for (p = matches3; p != NULL; p = p->rest) {
     match = (Match_T) p->first;
+    debug4(printf("Separating match at 3' end, #%d:%u (%d,%d,%d), to ",Match_chrnum(match),
+		  Match_chrpos(match),Match_querypos(match),
+		  Match_forwardp(match),Match_fivep(match)));
     if (Match_forwardp(match) == true) {
+      debug4(printf("plus candidates\n"));
       plus_ncandidates++;
     } else {
+      debug4(printf("minus candidates\n"));
       minus_ncandidates++;
     }
   }
@@ -713,6 +779,8 @@ separate_strands (Match_T **plus_matches, int *plus_npositions,
     qsort(minus_candidates,minus_ncandidates,sizeof(Match_T),Match_cmp);
   }
 
+  debug4(printf("Criterion for keeping hit is maxintronlen %d\n",maxintronlen));
+
   /* Filter plus candidates based on queryseq length */
   if (plus_ncandidates <= 1) {
     *plus_npositions = 0;
@@ -722,7 +790,7 @@ separate_strands (Match_T **plus_matches, int *plus_npositions,
     keepp = (bool *) CALLOC(plus_ncandidates,sizeof(bool));
     for (i = 0; i < plus_ncandidates - 1; i++) {
       if (Match_chrnum(plus_candidates[i+1]) == Match_chrnum(plus_candidates[i]) &&
-	  Match_chrpos(plus_candidates[i+1]) < Match_chrpos(plus_candidates[i]) + querylen) {
+	  Match_chrpos(plus_candidates[i+1]) < Match_chrpos(plus_candidates[i]) + maxintronlen) {
 	keepp[i] = true;
 	keepp[i+1] = true;
       }
@@ -732,6 +800,12 @@ separate_strands (Match_T **plus_matches, int *plus_npositions,
     for (i = 0; i < plus_ncandidates; i++) {
       if (keepp[i] == true) {
 	nkeep++;
+      } else {
+	debug4(match = plus_candidates[i];
+	       printf("Not keeping plus candidate #%d:%u (%d,%d,%d)\n",
+		      Match_chrnum(match),Match_chrpos(match),Match_querypos(match),
+		      Match_forwardp(match),Match_fivep(match));
+	       );
       }
     }
 
@@ -760,7 +834,7 @@ separate_strands (Match_T **plus_matches, int *plus_npositions,
     keepp = (bool *) CALLOC(minus_ncandidates,sizeof(bool));
     for (i = 0; i < minus_ncandidates - 1; i++) {
       if (Match_chrnum(minus_candidates[i+1]) == Match_chrnum(minus_candidates[i]) &&
-	  Match_chrpos(minus_candidates[i+1]) < Match_chrpos(minus_candidates[i]) + querylen) {
+	  Match_chrpos(minus_candidates[i+1]) < Match_chrpos(minus_candidates[i]) + maxintronlen) {
 	keepp[i] = true;
 	keepp[i+1] = true;
       }
@@ -770,6 +844,12 @@ separate_strands (Match_T **plus_matches, int *plus_npositions,
     for (i = 0; i < minus_ncandidates; i++) {
       if (keepp[i] == true) {
 	nkeep++;
+      } else {
+	debug4(match = minus_candidates[i];
+	       printf("Not keeping minus candidate #%d:%u (%d,%d,%d)\n",
+		      Match_chrnum(match),Match_chrpos(match),Match_querypos(match),
+		      Match_forwardp(match),Match_fivep(match));
+	       );
       }
     }
 
@@ -818,8 +898,7 @@ bound_results_testing (List_T clusterlist, int bestsize, double sizebound) {
   }
   List_free(&clusterlist);
 
-  boundedlist = Matchpair_filter_unique(boundedlist);
-  boundedlist = Matchpair_filter_duplicates(boundedlist);
+  boundedlist = Matchpair_filter_unique(boundedlist,/*removedupsp*/true);
 
   return boundedlist;
 }
@@ -831,8 +910,7 @@ bound_results_limited (List_T clusterlist, int bestsize, double sizebound) {
   T matchpair;
   int *counts, minsize, total;
 
-  clusterlist = Matchpair_filter_unique(clusterlist);
-  clusterlist = Matchpair_filter_duplicates(clusterlist);
+  clusterlist = Matchpair_filter_unique(clusterlist,/*removedupsp*/true);
 
   counts = (int *) CALLOC(bestsize+1,sizeof(int));
   for (p = clusterlist; p != NULL; p = p->rest) {
@@ -889,22 +967,23 @@ print_clusters (List_T list) {
 List_T
 Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size, 
 			 int maxintronlen, int minclustersize, double sizebound, 
-			 int trimlength, Boundmethod_T boundmethod, int querylen) {
+			 int trimstart, int trimend, int trimlength, Boundmethod_T boundmethod) {
   List_T boundedlist = NULL, clusterlist = NULL, p;
   Match_T *plus_matches = NULL, *minus_matches = NULL;
   T matchpair;
   int plus_npositions, minus_npositions, bestsize = 0;
 
-  separate_strands(&plus_matches,&plus_npositions,&minus_matches,&minus_npositions,matches5,matches3,querylen);
+  separate_strands(&plus_matches,&plus_npositions,&minus_matches,&minus_npositions,matches5,matches3,
+		   maxintronlen);
 
   if (plus_npositions > 0) {
     clusterlist = find_paths_bounded(&bestsize,clusterlist,plus_matches,plus_npositions,maxintronlen,
-				     stage1size,minclustersize,sizebound,trimlength,/*plusp*/true);
+				     stage1size,minclustersize,sizebound,trimstart,trimend,trimlength,/*plusp*/true);
   }
 
   if (minus_npositions > 0) {
     clusterlist = find_paths_bounded(&bestsize,clusterlist,minus_matches,minus_npositions,maxintronlen,
-				     stage1size,minclustersize,sizebound,trimlength,/*plusp*/false);
+				     stage1size,minclustersize,sizebound,trimstart,trimend,trimlength,/*plusp*/false);
   }
 	
   if (plus_matches != NULL) {
@@ -952,14 +1031,14 @@ Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size,
 
 
 List_T
-Matchpair_salvage_hits (List_T matches5, List_T matches3, int stage1size, int trimlength) {
+Matchpair_salvage_hits (List_T matches5, List_T matches3, int stage1size, int trimstart, int trimend, int trimlength) {
   List_T list = NULL, p;
   Match_T match;
   T matchpair;
 
   for (p = matches5; p != NULL; p = p->rest) {
     match = (Match_T) p->first;
-    matchpair = Matchpair_new(match,match,stage1size,/*clustersize*/1,trimlength,
+    matchpair = Matchpair_new(match,match,stage1size,/*clustersize*/1,trimstart,trimend,trimlength,
 			      /*matchpairend*/FIVEONLY);
     if (matchpair != NULL) {
       list = List_push(list,(void *) matchpair);
@@ -968,7 +1047,7 @@ Matchpair_salvage_hits (List_T matches5, List_T matches3, int stage1size, int tr
 
   for (p = matches3; p != NULL; p = p->rest) {
     match = (Match_T) p->first;
-    matchpair = Matchpair_new(match,match,stage1size,/*clustersize*/1,trimlength,
+    matchpair = Matchpair_new(match,match,stage1size,/*clustersize*/1,trimstart,trimend,trimlength,
 			      /*matchpairend*/THREEONLY);
     if (matchpair != NULL) {
       list = List_push(list,(void *) matchpair);
@@ -981,7 +1060,7 @@ Matchpair_salvage_hits (List_T matches5, List_T matches3, int stage1size, int tr
 
 List_T
 Matchpair_make_path (T this, char *queryseq_ptr, Pairpool_T pairpool, Genome_T genome, 
-		     Genomicpos_T chroffset, Genomicpos_T chrpos, char *gbuffer1, char *gbuffer2, int gbufferlen) {
+		     Genomicpos_T chroffset, Genomicpos_T chrpos, Gbuffer_T gbuffer) {
   List_T path = NULL;
   Pair_T pair;
   Match_T start, end;
@@ -1001,16 +1080,18 @@ Matchpair_make_path (T this, char *queryseq_ptr, Pairpool_T pairpool, Genome_T g
 
   /* Handle the 5' end */
   if (this->watsonp == true) {
-    genomicseg = Genome_get_segment(genome,position1,this->stage1size,/*revcomp*/false,gbuffer1,gbuffer2,gbufferlen);
+    genomicseg = Genome_get_segment(genome,position1,this->stage1size,/*revcomp*/false,
+				    Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
   } else {
-    genomicseg = Genome_get_segment(genome,position1-(this->stage1size-1U),this->stage1size,/*revcomp*/true,gbuffer1,gbuffer2,gbufferlen);
+    genomicseg = Genome_get_segment(genome,position1-(this->stage1size-1U),this->stage1size,/*revcomp*/true,
+				    Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
   }
   genomicseg_ptr = Sequence_fullpointer(genomicseg);
 
   genomepos = position1 - chroffset - chrpos;
   for (i = querypos1, j = 0; i < querypos1 + this->stage1size; i++, j++) {
     /* printf("%c %c\n",queryseq_ptr[i],genomicseg_ptr[j]); */
-    path = Pairpool_push(path,pairpool,i,genomepos,queryseq_ptr[i],MATCH_COMP,genomicseg_ptr[j],/*gapp*/false);
+    path = Pairpool_push(path,pairpool,i,genomepos,queryseq_ptr[i],MATCH_COMP,genomicseg_ptr[j],/*dynprogindex*/0);
     if (this->watsonp == true) {
       genomepos += 1U;
     } else {
@@ -1022,23 +1103,25 @@ Matchpair_make_path (T this, char *queryseq_ptr, Pairpool_T pairpool, Genome_T g
   /* Handle the gap */
   queryjump = querypos2 - querypos1;
   genomejump = position2 - position1;
-  path = Pairpool_push_gap(path,pairpool,queryjump,genomejump);
+  path = Pairpool_push_gapholder(path,pairpool,queryjump,genomejump);
   pair = (Pair_T) path->first;
   pair->comp = DUALBREAK_COMP;
   /* printf("\n"); */
 
   /* Handle the 3' end */
   if (this->watsonp == true) {
-    genomicseg = Genome_get_segment(genome,position2,this->stage1size,/*revcomp*/false,gbuffer1,gbuffer2,gbufferlen);
+    genomicseg = Genome_get_segment(genome,position2,this->stage1size,/*revcomp*/false,
+				    Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
   } else {
-    genomicseg = Genome_get_segment(genome,position2-(this->stage1size-1U),this->stage1size,/*revcomp*/true,gbuffer1,gbuffer2,gbufferlen);
+    genomicseg = Genome_get_segment(genome,position2-(this->stage1size-1U),this->stage1size,/*revcomp*/true,
+				    Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
   }
   genomicseg_ptr = Sequence_fullpointer(genomicseg);
 
   genomepos = position2 - chroffset - chrpos;
   for (i = querypos2, j = 0; i < querypos2 + this->stage1size; i++, j++) {
     /* printf("%c %c\n",queryseq_ptr[i],genomicseg_ptr[j]); */
-    path = Pairpool_push(path,pairpool,i,genomepos,queryseq_ptr[i],MATCH_COMP,genomicseg_ptr[j],/*gapp*/false);
+    path = Pairpool_push(path,pairpool,i,genomepos,queryseq_ptr[i],MATCH_COMP,genomicseg_ptr[j],/*dynprogindex*/0);
     if (this->watsonp == true) {
       genomepos += 1U;
     } else {

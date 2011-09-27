@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c,v 1.40 2006/03/04 22:00:26 twu Exp $";
+static char rcsid[] = "$Id: oligo.c,v 1.41 2006/10/09 16:59:06 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -76,8 +76,9 @@ Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb,
 	      bool shiftp,
 #endif
 	      Storedoligomer_T storedoligo) {
-  int nentries, i;
-  char *nt;
+  int nentries;
+  debug(char *nt);
+  debug1(int i);
   
   debug(nt = Oligo_one_nt(storedoligo,16);
 	printf("Oligo on entry = %06X (%s)",storedoligo,nt);

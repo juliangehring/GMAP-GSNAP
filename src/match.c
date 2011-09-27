@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c,v 1.73 2006/03/21 02:03:08 twu Exp $";
+static char rcsid[] = "$Id: match.c,v 1.76 2006/12/08 16:34:22 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -50,6 +50,11 @@ Match_position (T this) {
 Chrnum_T
 Match_chrnum (T this) {
   return this->chrnum;
+}
+
+char *
+Match_chr (T this, IIT_T chromosome_iit) {
+  return Chrnum_to_string(this->chrnum,chromosome_iit,/*allocp*/false);
 }
 
 Genomicpos_T
@@ -132,32 +137,45 @@ Match_free (T *old) {
 
 
 /* Static gbuffer1, gbuffer2 are allowable only for debugging */
+#ifdef PMAP
+#define MAXSTAGE1SIZE 36
+#else
 #define MAXSTAGE1SIZE 24
+#endif
 
 void
 Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size) {
   char gbuffer1[MAXSTAGE1SIZE+1], gbuffer2[MAXSTAGE1SIZE+1], *genomicseg_ptr;
   Sequence_T genomicseg;
-  int querypos, i, j;
+  int querypos;
   Genomicpos_T position;
 
   querypos = this->querypos;
   position = this->position;
 
+#ifdef PMAP
+  if (this->forwardp == true) {
+    genomicseg = Genome_get_segment(genome,position,3*stage1size,/*revcomp*/false,gbuffer1,gbuffer2,3*stage1size);
+  } else {
+    genomicseg = Genome_get_segment(genome,position-(3*stage1size-1U),3*stage1size,/*revcomp*/true,gbuffer1,gbuffer2,3*stage1size);
+  }
+#else
   if (this->forwardp == true) {
     genomicseg = Genome_get_segment(genome,position,stage1size,/*revcomp*/false,gbuffer1,gbuffer2,stage1size);
   } else {
     genomicseg = Genome_get_segment(genome,position-(stage1size-1U),stage1size,/*revcomp*/true,gbuffer1,gbuffer2,stage1size);
   }
+#endif
   genomicseg_ptr = Sequence_fullpointer(genomicseg);
 
-  for (i = querypos; i < querypos + stage1size; i++) {
-    printf("%c",queryseq_ptr[i]);
-  }
-  printf(" ");
-  for (j = 0; j < stage1size; j++) {
-    printf("%c",genomicseg_ptr[j]);
-  }
+  printf("%.*s ",stage1size,&(queryseq_ptr[querypos]));
+#ifdef PMAP
+  printf("%.*s",3*stage1size,genomicseg_ptr);
+#else
+  printf("%.*s",stage1size,genomicseg_ptr);
+#endif
+
+  Sequence_free(&genomicseg);
 
   return;
 }

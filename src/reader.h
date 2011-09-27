@@ -1,4 +1,4 @@
-/* $Id: reader.h,v 1.12 2005/07/21 22:44:39 twu Exp $ */
+/* $Id: reader.h,v 1.13 2006/05/19 17:14:14 twu Exp $ */
 #ifndef READER_INCLUDED
 #define READER_INCLUDED
 #include <stdio.h>
@@ -16,6 +16,10 @@ extern int
 Reader_startpos (T this);
 extern int
 Reader_endpos (T this);
+extern void
+Reader_reset_start (T this, int querypos);
+extern void
+Reader_reset_end (T this, int querypos);
 extern void
 Reader_reset_ends (T this);
 

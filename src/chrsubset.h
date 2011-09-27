@@ -1,4 +1,4 @@
-/* $Id: chrsubset.h,v 1.7 2006/04/21 16:36:58 twu Exp $ */
+/* $Id: chrsubset.h,v 1.8 2006/05/19 21:36:06 twu Exp $ */
 #ifndef CHRSUBSET_INCLUDED
 #define CHRSUBSET_INCLUDED
 #include "bool.h"
@@ -12,6 +12,8 @@ typedef struct T *T;
 extern void
 Chrsubset_free (T *old);
 
+extern T
+Chrsubset_make (Chrnum_T chrnum, IIT_T chromosome_iit);
 extern void
 Chrsubset_print (T this);
 extern void

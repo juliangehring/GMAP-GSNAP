@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.103 2006/01/19 22:26:36 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.106 2006/11/30 17:16:50 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -254,7 +254,7 @@ skip_sequence (Genomicpos_T seglength) {
 
 static bool
 process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Tableint_T contigtype_table, 
-		      Tableint_T chrlength_table) {
+		      Tableint_T chrlength_table, char *fileroot) {
   char Buffer[BUFFERSIZE], accession_p[BUFFERSIZE], *accession, 
     chrpos_string[100], *chr_string, *coords, *typestring, *p, *ptr;
   Genomicpos_T chrpos1, chrpos2, lower, upper, seglength;
@@ -270,7 +270,7 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
     fprintf(stderr,"Can't parse line %s\n",Buffer);
     exit(1);
   } else {
-    fprintf(stderr,"Logging contig %s at %s\n",accession_p,chrpos_string);
+    fprintf(stderr,"Logging contig %s at %s in genome %s\n",accession_p,chrpos_string,fileroot);
     if (!index(chrpos_string,':')) {
       fprintf(stderr,"Can't parse chromosomal coordinates %s\n",chrpos_string);
       exit(1);
@@ -754,7 +754,7 @@ main (int argc, char *argv[]) {
     contigtypelist = List_push(NULL,refstrain);
     ncontigs = 0;
     while (process_sequence_aux(&contigtypelist,accsegmentpos_table,contigtype_table,
-				chrlength_table) == true) {
+				chrlength_table,fileroot) == true) {
       ncontigs++;
     }
     if (ncontigs == 0) {
@@ -859,8 +859,8 @@ main (int argc, char *argv[]) {
 
     /* Reference strain */
     offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				  strlen(".idxoffsets")+1,sizeof(char));
-    sprintf(offsetsfile,"%s/%s.idxoffsets",destdir,fileroot);
+				  +strlen(".")+strlen(IDXOFFSETS)+1,sizeof(char));
+    sprintf(offsetsfile,"%s/%s.%s",destdir,fileroot,IDXOFFSETS);
     if ((offsets_fp = FOPEN_WRITE_BINARY(offsetsfile)) == NULL) {
       fprintf(stderr,"Can't write to file %s\n",offsetsfile);
       exit(9);
@@ -871,7 +871,7 @@ main (int argc, char *argv[]) {
     sprintf(iitfile,"%s/%s.altstrain.iit",sourcedir,fileroot);
     altstrain_iit = IIT_read(iitfile,NULL,true);
 
-    Indexdb_write_offsets(offsets_fp,stdin,altstrain_iit,index1interval,uncompressedp);
+    Indexdb_write_offsets(offsets_fp,stdin,altstrain_iit,index1interval,uncompressedp,fileroot);
 
     IIT_free(&altstrain_iit);
     FREE(iitfile);
@@ -885,15 +885,15 @@ main (int argc, char *argv[]) {
 
     /* Reference strain */
     offsetsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-				  strlen(".idxoffsets")+1,sizeof(char));
-    sprintf(offsetsfile,"%s/%s.idxoffsets",sourcedir,fileroot);
+				  strlen(".")+strlen(IDXOFFSETS)+1,sizeof(char));
+    sprintf(offsetsfile,"%s/%s.%s",sourcedir,fileroot,IDXOFFSETS);
     if ((offsets_fp = FOPEN_READ_BINARY(offsetsfile)) == NULL) {
       fprintf(stderr,"Can't open file %s\n",offsetsfile);
       exit(9);
     }
     positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				    strlen(".idxpositions")+1,sizeof(char));
-    sprintf(positionsfile,"%s/%s.idxpositions",destdir,fileroot);
+				    strlen(".")+strlen(IDXPOSITIONS)+1,sizeof(char));
+    sprintf(positionsfile,"%s/%s.%s",destdir,fileroot,IDXPOSITIONS);
 
     iitfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 			      strlen(fileroot)+strlen(".altstrain.iit")+1,sizeof(char));
@@ -901,7 +901,7 @@ main (int argc, char *argv[]) {
     altstrain_iit = IIT_read(iitfile,NULL,true);
 
     Indexdb_write_positions(positionsfile,offsets_fp,stdin,altstrain_iit,index1interval,
-			    uncompressedp,writefilep);
+			    uncompressedp,writefilep,fileroot);
 
     IIT_free(&altstrain_iit);
     FREE(iitfile);

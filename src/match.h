@@ -1,4 +1,4 @@
-/* $Id: match.h,v 1.43 2006/03/05 03:26:03 twu Exp $ */
+/* $Id: match.h,v 1.44 2006/12/01 23:20:40 twu Exp $ */
 #ifndef MATCH_INCLUDED
 #define MATCH_INCLUDED
 #include "bool.h"
@@ -6,6 +6,7 @@
 #include "iit-read.h"
 #include "list.h"
 #include "genome.h"
+#include "chrnum.h"
 
 #define T Match_T
 typedef struct T *T;
@@ -18,8 +19,10 @@ extern bool
 Match_fivep (T this);
 extern Genomicpos_T
 Match_position (T this);
-extern int
+extern Chrnum_T
 Match_chrnum (T this);
+extern char *
+Match_chr (T this, IIT_T chromosome_iit);
 extern Genomicpos_T
 Match_chrpos (T this);
 extern int

@@ -6,8 +6,6 @@ bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump
 endif
 
 
-if FULLDIST
-
 GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
@@ -16,7 +14,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h indexdb.c indexdb.h \
+ gbuffer.c gbuffer.h genome.c genome.h indexdb.c indexdb.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
@@ -27,51 +25,31 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
  translation.c translation.h \
- stage3.c stage3.h \
- maxent.c maxent.h chimera.c chimera.h \
+ changepoint.c changepoint.h stage3.c stage3.h \
  request.c request.h reqpost.c reqpost.h \
  result.c result.h blackboard.c blackboard.h \
  params.c params.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
-else
 
-GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
- littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
- genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h indexdb.c indexdb.h \
- oligo.c oligo.h block.c block.h \
- chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
- matchpool.c matchpool.h stage1.c stage1.h \
- oligoindex.c oligoindex.h \
- scores.h intron.c intron.h pairdef.h pair.c pair.h \
- pairpool.c pairpool.h stage2.c stage2.h \
- smooth.c smooth.h \
- boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
- translation.c translation.h \
- stage3.c stage3.h \
- request.c request.h reqpost.c reqpost.h \
- result.c result.h blackboard.c blackboard.h \
- params.c params.h datadir.c datadir.h \
- getopt.c getopt1.c getopt.h gmap.c
+# Note: dist_ commands get read by bootstrap, and don't follow the flags
 
-endif
+# In front of stage3
+#if FULLDIST
+GMAP_FILES_BETA =
+#else
+#GMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
+#endif
 
 gmap_CC = $(PTHREAD_CC)
 if FULLDIST
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
 else
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 endif
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
-dist_gmap_SOURCES = $(GMAP_FILES)
+dist_gmap_SOURCES = $(GMAP_FILES) $(GMAP_FILES_BETA)
 
 
 PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
@@ -81,7 +59,7 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  list.c list.h listdef.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h indexdb.c indexdb.h \
+ gbuffer.c gbuffer.h genome.c genome.h indexdb.c indexdb.h \
  complement.h intlist.c intlist.h md5.c md5.h sequence.c sequence.h \
  reader.c reader.h oligop.c oligop.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
@@ -92,7 +70,7 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h dynprog.c dynprog.h boyer-moore.c boyer-moore.h \
  translation.c translation.h backtranslation.c backtranslation.h \
- stage3.c stage3.h \
+ changepoint.c changepoint.h stage3.c stage3.h \
  datadir.c datadir.h request.c request.h reqpost.c reqpost.h result.c result.h \
  blackboard.c blackboard.h params.c params.h \
  getopt.c getopt1.c getopt.h gmap.c
@@ -101,7 +79,7 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
 
 pmap_CC = $(PTHREAD_CC)
-pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1 -DPMAP=1
+pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1 -DPMAP=1
 pmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmap_LDADD = $(PTHREAD_LIBS)
 dist_pmap_SOURCES = 
@@ -133,7 +111,8 @@ IIT_STORE_FILES = fopen.h bool.h types.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-write.c iit-write.h \
- tableint.c tableint.h iit_store.c
+ tableint.c tableint.h \
+ getopt.c getopt1.c getopt.h iit_store.c
 iit_store_CFLAGS = $(AM_CFLAGS)  $(PTHREAD_CFLAGS)
 iit_store_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_store_LDADD =
@@ -146,7 +125,7 @@ IIT_GET_FILES = fopen.h bool.h types.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
  chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- iit_get.c
+ getopt.c getopt1.c getopt.h iit_get.c
 iit_get_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 iit_get_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_get_LDADD = 
@@ -159,7 +138,7 @@ IIT_DUMP_FILES = fopen.h bool.h types.h \
  intlist.c intlist.h list.c list.h \
  interval.c interval.h uintlist.c uintlist.h \
  chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- iit_dump.c
+ getopt.c getopt1.c getopt.h iit_dump.c
 
 iit_dump_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)

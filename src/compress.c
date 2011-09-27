@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.13 2005/10/27 22:53:09 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.16 2006/11/16 03:02:00 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,10 +13,15 @@ static char rcsid[] = "$Id: compress.c,v 1.13 2005/10/27 22:53:09 twu Exp $";
 #else
 #include "littleendian.h"
 #endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>		/* For off_t */
+#endif
+#include "complement.h"
 
 /* Another MONITOR_INTERVAL is in indexdb.c */
 #define MONITOR_INTERVAL 10000000 /* 10 million nt */
 
+static char uppercaseCode[128] = UPPERCASE_U2T;
 
 /* We use int *, rather than char *, because we eventually return an int,
    and we see problems converting from char to int */
@@ -66,10 +71,16 @@ int
 Compress_get_char (FILE *sequence_fp, Genomicpos_T position, bool uncompressedp) {
   UINT4 high, low, flags;
   static int SAVEBUFFER[32];
-  int ptr;
+  int ptr, c;
 
   if (uncompressedp == true) {
-    return toupper(fgetc(sequence_fp));
+    while ((c = fgetc(sequence_fp)) != EOF && isspace(c)) {
+    }
+    if (c == EOF) {
+      return EOF;
+    } else {
+      return c;
+    }
   } else if ((ptr = position % 32) == 0) {
     if (FREAD_UINT(&high,sequence_fp) <= 0 ||
 	FREAD_UINT(&low,sequence_fp) <= 0 ||
@@ -126,7 +137,7 @@ Compress_compress (FILE *fp) {
       case 3U: low |= LEFT_T; break;
       }
 
-      switch (toupper(c)) {
+      switch (uppercaseCode[c]) {
       case 'A': break;
       case 'C': high |= LEFT_C; break;
       case 'G': high |= LEFT_G; break;
@@ -291,7 +302,7 @@ write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
     case 3U: low |= LEFT_T; break;
     }
 
-    switch (toupper((int) Buffer[i])) {
+    switch (uppercaseCode[Buffer[i]]) {
     case 'A': break;
     case 'C': high |= LEFT_C; break;
     case 'G': high |= LEFT_G; break;
@@ -330,7 +341,7 @@ put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
     case 3U: low |= LEFT_T; break;
     }
 
-    switch (toupper((int) Buffer[i])) {
+    switch (uppercaseCode[Buffer[i]]) {
     case 'A': break;
     case 'C': high |= LEFT_C; break;
     case 'G': high |= LEFT_G; break;

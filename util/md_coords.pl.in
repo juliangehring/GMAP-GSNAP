@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: md_coords.pl.in,v 1.11 2006/03/21 01:48:56 twu Exp $
+# $Id: md_coords.pl.in,v 1.15 2006/11/30 17:24:01 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
@@ -38,8 +38,19 @@ $nstrains = $#{$strains} + 1;
 if ($nstrains > 1 && $altstrainp == 1) {
   $firstpass = parse_md_file($mdfile,$contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol,
 			     $altstrainp,$refstrain);
-  ($separate_chromosome,$treat_as_reference) = check_strains($mdfile,$chrcol,$chrstartcol,$chrendcol,
-							     $straincol,$refstrain,$firstpass);
+  ($altstrains,$separate_chromosome,$treat_as_reference) = check_strains($mdfile,$chrcol,$chrstartcol,$chrendcol,
+									 $straincol,$altstrainp,$refstrain,$firstpass);
+  $naltstrains = $#{$altstrains} + 1;
+  if ($naltstrains == 0) {
+    # print STDOUT "No alternate strains\n";
+    $altstrainp = 0;
+  } else {
+    print STDOUT "Remaining non-reference strains: " . join(", ",@ {$altstrains}) . "\n";
+    print STDOUT "Would you like to rename any of these strains for GMAP?\n";
+    if (input_yn("n") == 1) {
+      rename_strains($altstrains);
+    }
+  }
 }
 
 
@@ -117,6 +128,7 @@ sub parse_md_file {
       $altstrainp, $refstrain, $separate_chromosome, $treat_as_reference) = @_;
   my ($FP, $line, $dir, $strain);
   my @output = ();
+  my %chrend = ();		# Need to reset, in case this procedure is run again
 
   $FP = new IO::File("$mdfile") or die "Can't open file $mdfile";
   while (defined($line = <$FP>)) {
@@ -183,8 +195,12 @@ sub parse_md_file {
 	$string = "$contig\t$chrinfo\t\n";
 	push @output,$string;
       } elsif ($altstrainp == 0 && $strain ne $refstrain) {
-	$string = "#$contig\t$chrinfo\t\n";
-	push @output,$string;
+	if (defined($newname{$strain})) {
+	  $string = "$contig\t$chrinfo\t$newname{$strain}\n";
+	} else {
+	  $string = "$contig\t$chrinfo\t$strain\n";
+	}
+	push @output,"#" . $string;
       } else {
 	if (defined($newname{$strain})) {
 	  $string = "$contig\t$chrinfo\t$newname{$strain}\n";
@@ -647,8 +663,10 @@ sub find_reference_strain {
 
       if (!defined($straincount{$strain})) {
 	$straincount{$strain} = 0;
+	$strainlength{$strain} = 0;
       }
       $straincount{$strain} += 1;
+      $strainlength{$strain} += $fields[$chrendcol-1] - $fields[$chrstartcol-1];
     }
   }
   close($FP);
@@ -671,24 +689,22 @@ sub find_reference_strain {
   } else {
     # Find reference strain (value with highest count)
     $refstrain = "";
-    $refstraincount = 0;
+    $refstrainlength = 0;
     foreach $strain (@strains) {
-      if ($straincount{$strain} > $refstraincount) {
-	$refstraincount = $straincount{$strain};
+      if ($strainlength{$strain} > $refstrainlength) {
+	$refstrainlength = $strainlength{$strain};
 	$refstrain = $strain;
       }
     }
 
-    print STDOUT "$nstrains strains detected: " . join(", ",@strains) . "\n";
-
-    print STDOUT "Would you like to rename any strains for GMAP?\n";
-    if (input_yn("n") == 1) {
-      rename_strains(\@strains);
+    print STDOUT "$nstrains apparent \"strains\" detected:\n";
+    foreach $strain (@strains) {
+      print STDOUT "   $strain ($straincount{$strain} contigs, $strainlength{$strain} total nucleotides)\n";
     }
 
     print STDOUT "Include multiple strains (y or n)?\n";
     if (input_yn("y") != 1) {
-      printf STDOUT ("Strain with the most lines is '%s'.  Is this the one to use?\n",$refstrain);
+      printf STDOUT ("Strain with the most nucleotides is '%s'.  Is this the one to use as the reference strain?\n",$refstrain);
       $input = input_yn("y");
       if ($input == 1) {
 	return (0,\@strains,$refstrain);
@@ -697,7 +713,7 @@ sub find_reference_strain {
 	  print STDOUT "Which strain is the reference (choose from below)?\n";
 	  $refstrain = input_choices(\@strains,1);
 	  if (defined($straincount{$refstrain})) {
-	    return (1,\@strains,$refstrain);
+	    return (0,\@strains,$refstrain);
 	  }
 	}
       }
@@ -763,13 +779,13 @@ sub overlapp {
   my @fields;
 
   foreach $line1 (@ {$firstpass}) {
-    chop $line1;
+    chomp $line1;
     @fields = split /\t/,$line1;
     $strain1 = $fields[2];
     if ($strain1 eq $altstrain) {
       $chrinfo1 = $fields[1];
       foreach $line2 (@ {$firstpass}) {
-	chop $line2;
+	chomp $line2;
 	@fields = split /\t/,$line2;
 	$strain2 = $fields[2];
 	if ($strain2 eq $refstrain) {
@@ -786,7 +802,9 @@ sub overlapp {
 
 
 sub check_strains {
-  my ($mdfile, $chrcol, $chrstartcol, $chrendcol, $straincol, $refstrain, $firstpass) = @_;
+  my ($mdfile, $chrcol, $chrstartcol, $chrendcol, $straincol, $altstrainp, $refstrain, $firstpass) = @_;
+  my @strains = ();
+  my @altstrains = ();
 
   $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
   while (defined($line = <$FP>)) {
@@ -804,7 +822,7 @@ sub check_strains {
 	$referencelength{$chr} += $seglength;
       } else {
 	if (!defined($seenstrainp{$strain})) {
-	  push @altstrains,$strain;
+	  push @strains,$strain;
 	  $seenstrainp{$strain} = 1;
 	  % {$seenchrp{$strain}} = ();
 	  $nchr{$strain} = 0;
@@ -820,43 +838,76 @@ sub check_strains {
   }
   close($FP);
 
-  foreach $strain (@altstrains) {
-    if ($nchr{$strain} == 1) {
+  # Collect altstrains or convert to reference
+  foreach $strain (@strains) {
+    if ($strain eq $refstrain) {
+      # Skip
+    } elsif ($nchr{$strain} == 1) {
       $chr = $lastchr{$strain};
-      print STDOUT "Alternate strain '$strain' contains a single chromosome: $chr\n";
       if (!defined($referencelength{$chr}) || $referencelength{$chr} == 0) {
+	print STDOUT "Alternate strain '$strain' contains a single chromosome: $chr\n";
 	print STDOUT "This chromosome does not exist on the reference strain\n";
-	print STDOUT "Add this chromosome to the reference strain (y or n)?\n";
+	print STDOUT "Treat this chromosome as part of the reference strain (y or n)?\n";
 	$default = "y";
 
 	if (input_yn($default) == 1) {
+	  print STDOUT "Okay, will treat chromosome $chr as part of the reference strain\n";
 	  $treat_as_reference{$strain} = 1;
+	} elsif ($altstrainp == 0) {
+	  print STDOUT "Okay, will ignore contigs belonging to strain $strain\n";
+	} else {
+	  push @altstrains,$strain;
 	}
 
       } elsif (overlapp($strain,$refstrain,$firstpass) == 0) {
+	print STDOUT "Alternate strain '$strain' contains a single chromosome: $chr\n";
 	print STDOUT "On this chromosome, this strain does not overlap the reference strain\n";
-	print STDOUT "Treat this strain as part of the reference strain (y or n)?\n";
+	print STDOUT "Include this strain as part of the reference strain (y or n)?\n";
 	$default = "y";
 
 	if (input_yn($default) == 1) {
+	  print STDOUT "Okay, will include strain $strain as part of the reference strain\n";
 	  $treat_as_reference{$strain} = 1;
+	} elsif ($altstrainp == 0) {
+	  print STDOUT "Okay, will ignore contigs belonging to strain $strain\n";
+	} else {
+	  push @altstrains,$strain;
 	}
 
       } else {
 	$coverage = $altlength{$strain . "_" . $chr}/$referencelength{$chr};
-	printf STDOUT ("This chromosome has %.1f%% of the length as the reference strain\n",100.0*$coverage);
 	if ($coverage > 0.30) {
-	  print STDOUT "Because of its long length, it probably represents an alternate version of chromosome $chr,\n";
-	  print STDOUT "  rather than an alternate strain\n";
-	  $default = "y";
-	} else {
-	  print STDOUT "Because of its short length, it probably represents an alternate strain,\n";
-	  print STDOUT "  rather than an alternate version of chromosome $chr\n";
-	  $default = "n";
-	}
-	print STDOUT "Treat this chromosome as an alternate version of chromosome $chr (y or n)?\n";
+	  print STDOUT "Alternate strain '$strain' contains a single chromosome: $chr\n";
+	  printf STDOUT ("This chromosome has %.1f%% of the length as the reference strain\n",100.0*$coverage);
+	  print STDOUT "Because of its long length, it probably represents an entire alternate version of chromosome $chr,\n";
+	  print STDOUT "  rather than a localized strain variant\n";
+	  print STDOUT "Treat this strain as part of the reference strain, as an entire alternate version of chromosome $chr (y or n)?\n";
+	  $altstrain_answer = 0;
 
-	if (input_yn($default) == 1) {
+	} elsif ($altstrainp == 0) {
+	  # Looks like a localized strain variant, and user doesn't want these, so skip any further actions
+	  undef $altstrain_answer;
+
+	} else {
+	  print STDOUT "Alternate strain '$strain' contains a single chromosome: $chr\n";
+	  printf STDOUT ("This chromosome has %.1f%% of the length as the reference strain\n",100.0*$coverage);
+	  print STDOUT "Because of its short length, it probably represents a localized strain variant,\n";
+	  print STDOUT "  rather than an entire alternate version of chromosome $chr\n";
+	  print STDOUT "Keep this strain as a localized strain variant (y or n)?\n";
+	  $altstrain_answer = 1;
+	}
+
+	if (!defined($altstrain_answer)) {
+	  # Skip any actions
+	} elsif (input_yn("y") == $altstrain_answer) {
+	  if ($altstrainp == 0) {
+	    print STDOUT "Okay, will ignore contigs belonging to strain $strain\n";
+	  } else {
+	    print STDOUT "Okay, will keep strain $strain as a localized strain variant\n";
+	    push @altstrains,$strain;
+	  }
+	} else {
+	  print STDOUT "Okay, will treat strain $strain as part of the reference strain, as an entire alternate version of chromosome $chr\n";
 	  undef $existingchrnamep{$chr};
 	  $donep = 0;
 	  while ($donep == 0) {
@@ -875,7 +926,7 @@ sub check_strains {
     }
   }
 
-  return (\%separate_chromosome,\%treat_as_reference);
+  return (\@altstrains,\%separate_chromosome,\%treat_as_reference);
 }
 
 

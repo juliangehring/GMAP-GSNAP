@@ -1,10 +1,10 @@
-static char rcsid[] = "$Id: intron.c,v 1.10 2006/02/23 22:06:37 twu Exp $";
+static char rcsid[] = "$Id: intron.c,v 1.12 2006/10/09 16:59:39 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "intron.h"
-
+#include <stdlib.h>		/* For abort() */
 
 int
 Intron_type (char left1, char left2, char right2, char right1, int cdna_direction) {
@@ -56,6 +56,20 @@ Intron_type (char left1, char left2, char right2, char right1, int cdna_directio
     abort();
   }
 }
+
+
+char *
+Intron_type_string (int introntype) {
+  switch (introntype) {
+  case GTAG_FWD: return "GT-AG, fwd";
+  case GCAG_FWD: return "GC-AG, fwd";
+  case ATAC_FWD: return "AT-AC, fwd";
+  case GTAG_REV: return "GT-AG, rev";
+  case GCAG_REV: return "GC-AG, rev";
+  case ATAC_REV: return "AT-AC, rev";
+  default: return "nonintron";
+  }
+}    
 
 
 bool

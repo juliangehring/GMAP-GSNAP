@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: fa_coords.pl.in,v 1.15 2006/04/21 16:37:38 twu Exp $
+# $Id: fa_coords.pl.in,v 1.17 2006/08/03 21:15:12 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
@@ -9,7 +9,7 @@ undef($opt_o);			# Output file
 undef($opt_S);			# Treat each sequence as a separate chromosome
 undef($opt_E);			# Interpret argument as a command
 use Getopt::Std;
-getopts("o:CE");
+getopts("o:SE");
 
 # Usage: fa_coords [-o <output>] [-S] [-E] <fastafiles or command>
 
@@ -124,6 +124,7 @@ sub parse_fa_files {
   my @output = ();
   my @skipped = ();
   my $seglength;
+  my $chronlyp;
 
   foreach $arg (@ {$argv}) {
     if (defined($opt_E)) {
@@ -155,8 +156,13 @@ sub parse_fa_files {
 	      print STDOUT "\n";
 	      $shortp = 0;
 	    }
-	    printf STDOUT ("  Processed contig %s at chromosomal coordinates %s:%d..",
-			   $contig,$chr,$chrpos{$chr});
+	    if ($chronlyp == 1) {
+	      printf STDOUT ("  Contig %s: concatenated at chromosome end: %s:%d..",
+			     $contig,$chr,$chrpos{$chr});
+	    } else {
+	      printf STDOUT ("  Contig %s: parsed chromosomal coordinates: %s:%d..",
+			     $contig,$chr,$chrpos{$chr});
+	    }
 	    printf STDOUT ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
 	    if (defined($orientation) && $orientation eq "rev") {
 	      printf STDOUT (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
@@ -182,6 +188,7 @@ sub parse_fa_files {
 	    $lowest{$chr} = $chrpos{$chr};
 	  }
 	  $chrpos{$chr} += $seglength; # Used only when a header doesn't have a chrpos for this chr
+	  $chronlyp = 1;
 	}
 
 	# Handle current header
@@ -191,25 +198,36 @@ sub parse_fa_files {
 	undef $orientation;
 	if (defined($opt_S)) {
 	  $chr = $contig;
+	  $chronlyp = 1;
+
+	} elsif ($line =~ /[Cc]hr_(\S+)/) {
+	  # Seen in some TIGR contigs
+	  $chr = $1;
+	  $chronlyp = 1;
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /[Cc]hr\s*=?\s*(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+	  $chronlyp = 0;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /[Cc]hr\s*=?\s*(\S+)/) {
 	  $chr = $1;
+	  $chronlyp = 1;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /[Cc]hromosome\s*(\S+)/) {
 	  # NCBI .mfa format
 	  $chr = $1;
+	  $chronlyp = 1;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /[Cc]hromosome:[^:]+:([^:]+):(\d+)/) {
 	  # Ensembl format: chromosome:NCBI35:22:1:49554710:1
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+	  $chronlyp = 0;
 
 	  if ($chr =~ /(\S+?)_N\D_\d+/) {
 	    # Ensembl notation for unmapped contig
@@ -221,8 +239,9 @@ sub parse_fa_files {
 	  # Celera format
 	  ($chr) = $line =~ /\/[Cc]hromosome=(\S+)/;
 	  if ($line =~ /\/alignment=\((\d+)-\d+\)/) {
-	    ($chrpos{$chr}) = $1;
+	    $chrpos{$chr} = $1;
 	    $chrpos{$chr} += 1;	# Because Celera uses 0-based coordinates
+	    $chronlyp = 0;
 	  }
 	  if ($line =~ /\/orientation=rev/) {
 	    $orientation = "rev";
@@ -232,10 +251,12 @@ sub parse_fa_files {
 	} elsif ($line =~ /[Cc]hr\s*(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+	  $chronlyp = 0;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /[Cc]hr\s*(\S+)/ && $1 ne "omosome") {
 	  $chr = $1;
+	  $chronlyp = 1;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} else {
@@ -260,8 +281,13 @@ sub parse_fa_files {
 	  print STDOUT "\n";
 	  $shortp = 0;
 	}
-	printf STDOUT ("  Processed contig %s at chromosomal coordinates %s:%d..",
-		       $contig,$chr,$chrpos{$chr});
+	if ($chronlyp == 1) {
+	  printf STDOUT ("  Contig %s: concatenated at chromosome end: %s:%d..",
+			 $contig,$chr,$chrpos{$chr});
+	} else {
+	  printf STDOUT ("  Contig %s: parsed chromosomal coordinates: %s:%d..",
+			 $contig,$chr,$chrpos{$chr});
+	}
 	printf STDOUT ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
 	if (defined($orientation) && $orientation eq "rev") {
 	  printf STDOUT (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});

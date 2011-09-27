@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.84 2006/03/05 03:14:48 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.86 2006/11/16 03:02:51 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -143,7 +143,7 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 	new->access = FILEIO;
       } else {
 	fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
-		new->len,npages,seconds);
+		(long unsigned int) new->len,npages,seconds);
 	new->access = MMAPPED;
       }
     } else {
@@ -173,7 +173,7 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 	new->access = FILEIO;
       } else {
 	fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
-		new->len,npages,seconds);
+		(long unsigned int) new->len,npages,seconds);
 	new->access = MMAPPED;
       }
     } else {
@@ -201,11 +201,11 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 
 static void
 make_complement_buffered (char *complement, char *sequence, Genomicpos_T length) {
-  char complCode[128] = COMPLEMENT;
+  char complCode[128] = COMPLEMENT_LC;
   int i, j;
 
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[(int) sequence[i]];
+    complement[j] = complCode[sequence[i]];
   }
   complement[length] = '\0';
   return;

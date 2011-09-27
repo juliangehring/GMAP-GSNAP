@@ -1,4 +1,4 @@
-/* $Id: complement.h,v 1.7 2005/10/01 05:03:04 twu Exp $ */
+/* $Id: complement.h,v 1.8 2006/11/16 03:00:03 twu Exp $ */
 #ifndef COMPLEMENT_INCLUDED
 #define COMPLEMENT_INCLUDED
 
@@ -20,15 +20,18 @@
 /* Also provides reverse of comp symbols |, >, <, ), (, ], [, =, # */
    
 /*
-                              1111111111222222222233333333334444444444555555555566666666667777777777888888888899999999990000000000111111111122222222
-                    01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567
-                    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~@
+                                 1111111111222222222233333333334444444444555555555566666666667777777777888888888899999999990000000000111111111122222222
+                       01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567
+                       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~@
 */
 
 /* Don't translate double quotation, because it is interpreted as end of string */
 /* Don't translate backslash, because it is interpreted as an escape character */
-#define COMPLEMENT "???????????????????????????????? ??#$%&')(*+,-./0123456789:;>=<??TVGHEFCDIJMLKNOPQYSAUBWXRZ]?[^_`tvghefcdijmlknopqysaubwxrz}|{~?"
+/* Both complement series account for U->T */
+#define COMPLEMENT_LC "???????????????????????????????? ??#$%&')(*+,-./0123456789:;>=<??TVGHEFCDIJMLKNOPQYSAABWXRZ]?[^_`tvghefcdijmlknopqysaabwxrz}|{~?"
+#define COMPLEMENT_UC "???????????????????????????????? ??#$%&')(*+,-./0123456789:;>=<??TVGHEFCDIJMLKNOPQYSAABWXRZ]?[^_`TVGHEFCDIJMLKNOPQYSAABWXRZ}|{~?"
 
-#define UPPERCASE  "???????????????????????????????? ??#$%&'()*+,-./0123456789:;<=>??ABCDEFGHIJKLMNOPQRSTUVWXYZ[?]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~?"
+#define UPPERCASE_STD "???????????????????????????????? ??#$%&'()*+,-./0123456789:;<=>??ABCDEFGHIJKLMNOPQRSTUVWXYZ[?]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~?"
+#define UPPERCASE_U2T "???????????????????????????????? ??#$%&'()*+,-./0123456789:;<=>??ABCDEFGHIJKLMNOPQRSTTVWXYZ[?]^_`ABCDEFGHIJKLMNOPQRSTTVWXYZ{|}~?"
 
 #endif

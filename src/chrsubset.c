@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.16 2006/04/21 16:36:58 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.18 2006/05/19 21:36:06 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -27,6 +27,31 @@ struct T {
   int *newindices;
   int *oldindices;
 };
+
+
+T
+Chrsubset_make (Chrnum_T chrnum, IIT_T chromosome_iit) {
+  T new = (T) MALLOC(sizeof(*new));
+  int nchromosomes, i;
+
+  new->name = NULL;
+  new->nincluded = 1;
+
+  nchromosomes = IIT_nintervals(chromosome_iit);
+  new->includep = (bool *) CALLOC(nchromosomes,sizeof(bool));
+  new->includep[chrnum] = true;
+
+  new->newindices = (int *) CALLOC(nchromosomes,sizeof(int));
+  for (i = 0; i < nchromosomes; i++) {
+    new->newindices[i] = -1;
+  }
+  new->newindices[chrnum] = 1;
+
+  new->oldindices = (int *) CALLOC(1,sizeof(int));
+  new->oldindices[0] = chrnum + 1;
+  
+  return new;
+}
 
 
 void
@@ -347,7 +372,7 @@ T
 Chrsubset_new_single (Chrnum_T chrnum, IIT_T chromosome_iit) {
   T new = (T) MALLOC(sizeof(*new));
 
-  new->name = Chrnum_to_string(chrnum,chromosome_iit);
+  new->name = Chrnum_to_string(chrnum,chromosome_iit,/*allocp*/true);
   new->includep = (bool *) CALLOC(IIT_nintervals(chromosome_iit),sizeof(bool));
   new->includep[chrnum-1] = true;
   new->nincluded = 1;

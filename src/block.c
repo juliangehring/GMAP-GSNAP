@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c,v 1.47 2006/03/04 22:00:26 twu Exp $";
+static char rcsid[] = "$Id: block.c,v 1.49 2006/10/09 17:02:25 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,7 @@ static char rcsid[] = "$Id: block.c,v 1.47 2006/03/04 22:00:26 twu Exp $";
 
 #include <stdio.h>
 #include "mem.h"
+#include "indexdb.h"		/* for INDEX1PART */
 #ifdef PMAP
 #include "oligop.h"
 #else
@@ -58,6 +59,56 @@ Block_revcomp (T this) {
 }
 #endif
 
+
+extern void
+Block_save (T save, T this) {
+  /* save->reader = this->reader; -- not necessary */
+  /* save->cdnaend = this->cdnaend; -- not necessary */
+
+  save->last_querypos = this->last_querypos;
+  save->last_state = this->last_state;
+#ifdef PMAP
+  save->aaindex = this->aaindex;
+  debug(printf("Saving block at last_querypos %d, aaindex %u\n",this->last_querypos,this->aaindex));
+#else
+  save->forward = this->forward;
+  save->revcomp = this->revcomp;
+  debug(printf("Saving block at last_querypos %d, forward %u, revcomp %u\n",
+	       this->last_querypos,this->forward,this->revcomp));
+#endif
+
+  return;
+}
+
+extern void
+Block_restore (T this, T save) {
+  /* this->reader = save->reader; -- not necessary */
+  /* this->cdnaend = save->cdnaend; -- not necessary */
+
+  if (this->cdnaend == FIVE) {
+#ifdef PMAP
+    Reader_reset_start(this->reader,save->last_querypos+INDEX1PART_AA);
+#else
+    Reader_reset_start(this->reader,save->last_querypos+INDEX1PART);
+#endif
+  } else {
+#ifdef PMAP
+    Reader_reset_end(this->reader,save->last_querypos-1);
+#else
+    Reader_reset_end(this->reader,save->last_querypos-1);
+#endif
+  }
+
+  this->last_querypos = save->last_querypos;
+  this->last_state = save->last_state;
+#ifdef PMAP
+  this->aaindex = save->aaindex;
+#else
+  this->forward = save->forward;
+  this->revcomp = save->revcomp;
+#endif
+  return;
+}
 
 extern void
 Block_reset_ends (T this) {
@@ -117,7 +168,7 @@ Block_free (T *old) {
 
 bool
 Block_next (T this) {
-  char *nt;
+  debug(char *nt);
 
   if (this->last_state == DONE) {
     return false;

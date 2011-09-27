@@ -1,17 +1,25 @@
-static char rcsid[] = "$Id: boyer-moore.c,v 1.7 2005/10/01 15:29:21 twu Exp $";
+static char rcsid[] = "$Id: boyer-moore.c,v 1.8 2006/10/01 03:55:23 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
+#ifndef STANDALONE
 #include "boyer-moore.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#ifdef STANDALONE
+#define CALLOC calloc
+#define FREE free
+#else
 #include "mem.h"
+#endif
 #include "bool.h"
 
-#define ASIZE 5			/* A, C, G, T, other */
+
+#define ASIZE 5			/* In genomic sequence: A, C, G, T, other */
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #ifdef DEBUG
@@ -25,6 +33,75 @@ static char rcsid[] = "$Id: boyer-moore.c,v 1.7 2005/10/01 15:29:21 twu Exp $";
 #define debug1(x) x
 #else
 #define debug1(x)
+#endif
+
+/* PMAP good suffix calculation */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
+#endif
+
+#ifdef PMAP
+/* Same as in dynprog.c */
+/* Handle only cases in iupac table in dynprog.c */
+static bool matchtable[26][26] = 
+/*  A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z */
+  {{1,0,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,0,0,0,0,1,0,0,0}, /* A */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* B */
+   {0,0,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0,0,1,0,0,0,0,0,1,0}, /* C */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* D */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* E */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* F */
+   {0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,0}, /* G */
+   {1,0,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,1,1,0,0,1,0,1,0}, /* H = [ACT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* I */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* J */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* K */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* L */
+   {1,0,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,1,0,0,0,1,0,1,0}, /* M = [AC] */
+   {1,0,1,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,1,0,0,1,0,1,0}, /* N = [ACGT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* O */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* P */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* Q */
+   {1,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,0,0,0,1,0,0,0}, /* R = [AG] */
+   {0,0,1,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,1,0}, /* S = [CG] */
+   {0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,1,0,1,0}, /* T */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* U */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* V */
+   {1,0,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,0,1,0,0,1,0,1,0}, /* W = [AT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* X */
+   {0,0,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0,0,1,1,0,0,1,0,1,0}, /* Y = [CT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}}; /* Z */
+
+static bool inverse_matchtable[26][26] = 
+/*  A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z */
+  {{0,0,1,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,1,0,0,1,0,1,0}, /* not A = [CGT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* B */
+   {1,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,1,0,0,1,0,1,0}, /* not C = [AGT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* D */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* E */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* F */
+   {1,0,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,1,1,0,0,1,0,1,0}, /* not G = [ACT] */
+   {0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,0}, /* not H = [G] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* I */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* J */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* K */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* L */
+   {0,0,0,0,0,0,1,1,0,0,0,0,0,1,0,0,0,1,1,1,0,0,1,0,1,0}, /* not M = [GT] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* not N = [] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* O */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* P */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* Q */
+   {0,0,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0,0,1,1,0,0,1,0,1,0}, /* not R = [CT] */
+   {1,0,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,0,1,0,0,1,0,1,0}, /* not S = [AT] */
+   {1,0,1,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,0,0,0,1,0,1,0}, /* not T = [ACG] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* U */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* V */
+   {0,0,1,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,1,0}, /* not W = [CG] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* X */
+   {1,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,0,0,0,1,0,0,0}, /* not Y = [AG] */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}}; /* Z */
 #endif
 
 
@@ -46,14 +123,83 @@ precompute_bad_char_shift (char *query, int querylen) {
   char *p;
 
   bad_char_shift = (int *) CALLOC(ASIZE,sizeof(int));
+
   for (i = 0; i < ASIZE; i++) {
     bad_char_shift[i] = querylen;
   }
   for (i = 0, p = query; i < querylen - 1; i++, p++) {
+#ifdef PMAP
+    if (matchtable[*p-'A']['A'-'A'] == true) {
+      bad_char_shift[na_index('A')] = querylen - i - 1;
+    }
+    if (matchtable[*p-'A']['C'-'A'] == true) {
+      bad_char_shift[na_index('C')] = querylen - i - 1;
+    }
+    if (matchtable[*p-'A']['G'-'A'] == true) {
+      bad_char_shift[na_index('G')] = querylen - i - 1;
+    }
+    if (matchtable[*p-'A']['T'-'A'] == true) {
+      bad_char_shift[na_index('T')] = querylen - i - 1;
+    }
+#else
     bad_char_shift[na_index(*p)] = querylen - i - 1;
+#endif
   }
+
   return bad_char_shift;
 }
+
+
+#ifdef PMAP
+static bool
+suffixp (char *query, int querylen, int subseqlen, int j) {
+  int i;
+
+  debug2(printf("Entering suffixp at subseqlen = %d, j = %d\n",subseqlen,j));
+  for (i = querylen - 1; i >= querylen - 1 - subseqlen + 1 && j >= 0; i--, j--) {
+    if (matchtable[query[i]-'A'][query[j]-'A'] == false) {
+      debug2(printf("Returning false at i = %d\n",i));
+      return false;
+    }
+  }
+  if (j >= 0) {
+    if (inverse_matchtable[query[i]-'A'][query[j]-'A'] == false) {
+      debug2(printf("Returning false at i = %d\n",i));
+      return false;
+    }
+  }
+  debug2(printf("Returning true\n"));
+  return true;
+}
+
+static int
+suffix_jump (char *query, int querylen, int subseqlen) {
+  int j;
+
+  for (j = querylen - 1; j >= 0; j--) {
+    if (suffixp(query,querylen,subseqlen,j) == true) {
+      return querylen - 1 - j;
+    }
+  }
+  return querylen;
+}
+
+static int *
+precompute_good_suffix_shift (char *query, int querylen) {
+  int *good_suffix_shift;
+  int subseqlen;
+
+  good_suffix_shift = (int *) CALLOC(querylen,sizeof(int));
+  
+  for (subseqlen = 0; subseqlen < querylen; subseqlen++) {
+    good_suffix_shift[querylen - 1 - subseqlen] = suffix_jump(query,querylen,subseqlen);
+    debug2(printf("Assigning %d to position %d\n",good_suffix_shift[querylen - 1 - subseqlen],querylen-1-subseqlen));
+  }
+
+  return good_suffix_shift;
+}
+
+#else
 
 static int *
 precompute_suffix (char *query, int querylen) {
@@ -64,7 +210,7 @@ precompute_suffix (char *query, int querylen) {
   suffix[querylen - 1] = querylen;
   g = querylen - 1;
   for (i = querylen - 2; i >= 0; i--) {
-    if (i > g && suffix[i + querylen - 1 -f] < i - g) {
+    if (i > g && suffix[i + querylen - 1 - f] < i - g) {
       suffix[i] = suffix[i + querylen - 1 - f];
     } else {
       if (i < g) {
@@ -77,6 +223,13 @@ precompute_suffix (char *query, int querylen) {
       suffix[i] = f - g;
     }
   }
+  debug(
+	printf("suffix:\n");
+	for (i = 0; i < querylen; i++) {
+	  printf("%d %d\n",i,suffix[i]);
+	}
+	printf("\n");
+	);
   return suffix;
 }
   
@@ -108,25 +261,40 @@ precompute_good_suffix_shift (char *query, int querylen) {
   FREE(suffix);
   return good_suffix_shift;
 }
-
+#endif
 
 static bool
 query_okay (char *query, int querylen) {
   int i;
   char *p, c;
 
+#ifdef PMAP
+  for (i = 0, p = query; i < querylen; i++, p++) {
+    c = *p;
+    if (c < 'A' || c > 'Y') {
+      return false;
+    }
+  }
+#else
   for (i = 0, p = query; i < querylen; i++, p++) {
     c = *p;
     if (c != 'A' && c != 'C' && c != 'G' && c != 'T') {
       return false;
     }
   }
+#endif
   return true;
 }
 
+#ifdef STANDALONE
+static void
+#else
 Intlist_T
+#endif
 BoyerMoore (char *query, int querylen, char *text, int textlen) {
+#ifndef STANDALONE
   Intlist_T hits = NULL;
+#endif
   int i, j, *good_suffix_shift, *bad_char_shift;
 
   if (query_okay(query,querylen)) {
@@ -134,10 +302,12 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
     bad_char_shift = precompute_bad_char_shift(query,querylen);
 
     debug(
+	  printf("bad_char_shift:\n");
 	  for (i = 0; i < ASIZE; i++) {
 	    printf("%d %d\n",i,bad_char_shift[i]);
 	  }
 	  printf("\n");
+	  printf("good_suffix_shift:\n");
 	  for (i = 0; i < querylen; i++) {
 	    printf("%d %d\n",i,good_suffix_shift[i]);
 	  }
@@ -145,9 +315,15 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 
     j = 0;
     while (j <= textlen - querylen) {
+#ifdef PMAP
+      for (i = querylen - 1; i >= 0 && matchtable[query[i]-'A'][text[i+j]-'A'] == true; i--) ;
+#else
       for (i = querylen - 1; i >= 0 && query[i] == text[i+j]; i--) ;
+#endif
       if (i < 0) {
+#ifndef STANDALONE
 	hits = Intlist_push(hits,j);
+#endif
 	
 	debug1(printf("Success at %d\n",j));
 	debug(printf("Shift by %d (Gs[0])\n",good_suffix_shift[0]));
@@ -172,22 +348,34 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
     FREE(good_suffix_shift);
   }
 
+#ifndef STANDALONE
   return hits;
+#endif
 }
 
 
-/*
+#ifdef STANDALONE
 int
 main (int argc, char *argv[]) {
   char *query, *text;
   int querylen, textlen;
 
-  text = argv[1];
-  query = argv[2];
+#ifdef PMAP
+  int i, j;
+  for (i = 0; i < 26; i++) {
+    for (j = 0; j < 26; j++) {
+      if (matchtable[i][j] != matchtable[j][i]) {
+	fprintf(stderr,"Assymetry problem at %d,%d\n",i,j);
+      }
+    }
+  }
+#endif
+
+  query = argv[1];
+  text = argv[2];
   querylen = strlen(query);
   textlen = strlen(text);
   BoyerMoore(query,querylen,text,textlen);
   return 0;
 }
-*/
-
+#endif

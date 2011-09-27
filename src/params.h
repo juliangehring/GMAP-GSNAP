@@ -1,4 +1,4 @@
-/* $Id: params.h,v 1.64 2005/11/19 06:36:13 twu Exp $ */
+/* $Id: params.h,v 1.68 2006/11/28 00:50:11 twu Exp $ */
 #ifndef PARAMS_INCLUDED
 #define PARAMS_INCLUDED
 #include "bool.h"
@@ -33,14 +33,22 @@ extern IIT_T
 Params_contig_iit (T this);
 extern IIT_T
 Params_map_iit (T this);
+extern bool
+Params_map_iit_universal_p (T this);
 extern int
-Params_maxextension (T this);
+Params_map_iit_forward_type (T this);
+extern int
+Params_map_iit_reverse_type (T this);
 extern int
 Params_stuttercycles (T this);
 extern int
 Params_stutterhits (T this);
 extern int
-Params_indexsize (T this);
+Params_maxoligohits (T this);
+extern int
+Params_minindexsize (T this);
+extern int
+Params_maxindexsize (T this);
 extern int
 Params_maxpeelback (T this);
 extern int
@@ -70,8 +78,10 @@ Params_new (Genome_T genome, IIT_T altstrain_iit,
 	    Indexdb_T indexdb, 
 #endif
 	    IIT_T chromosome_iit, Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T map_iit, 
-	    int maxextension, int stuttercycles, int stutterhits, 
-	    int indexsize, int maxpeelback, int sufflookback, int nsufflookback, int nullgap, 
+	    bool map_iit_universal_p, int map_iit_forward_type, int map_iit_reverse_type,
+	    int stuttercycles, int stutterhits, int maxoligohits,
+	    int minindexsize, int maxindexsize, int maxpeelback,
+	    int sufflookback, int nsufflookback, int nullgap, 
 	    int extramaterial_end, int extramaterial_paired,
 	    int extraband_single, int extraband_end, int extraband_paired,
 	    int maxmutations);

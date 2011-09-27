@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.15 2005/12/02 22:54:30 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.16 2006/05/19 17:12:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -55,7 +55,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   assert(nbytes > 0);
   ptr = malloc(nbytes);
   debug(printf("Allocating %p to %p -- Malloc of %d bytes requested from %s:%d\n",
-	       ptr,ptr+nbytes-1,nbytes,file,line));
+	       ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 
 #ifdef TRAP
   if (ptr == trap_location) {
@@ -116,7 +116,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
   debug(printf("Allocating %p to %p -- Calloc of %d x %d bytes requested from %s:%d\n",
-	       ptr,ptr+count*nbytes-1,count,nbytes,file,line));
+	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,file,line));
 
   if (ptr == NULL) {
     if (file == NULL) {

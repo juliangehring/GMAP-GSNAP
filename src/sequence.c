@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.66 2006/03/17 23:50:55 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.74 2006/12/15 12:00:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,11 +15,13 @@ static char rcsid[] = "$Id: sequence.c,v 1.66 2006/03/17 23:50:55 twu Exp $";
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>		/* For rindex */
+#include <ctype.h>		/* For iscntrl and isspace */
 #include "mem.h"
 #include "complement.h"
 #include "intlist.h"
 #include "md5.h"
 
+/* Before setting DEBUG, may want to reduce MAXSEQLEN in sequence.h */
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -55,6 +57,9 @@ struct T {
   int trimstart;		/* Start of trim */
   int trimend;			/* End of trim */
   int fulllength;		/* Full length */
+#ifdef PMAP
+  int fulllength_given;		/* Full length minus implicit stop codon at end */
+#endif
   int subseq_offset;		/* Used only for subsequences */
   int skiplength;		/* Used only for sequences longer than MAXSEQLEN */
   bool free_contents_p;
@@ -87,6 +92,15 @@ Sequence_ntlength (T this) {
 int
 Sequence_fulllength (T this) {
   return this->fulllength;
+}
+
+int
+Sequence_fulllength_given (T this) {
+#ifdef PMAP
+  return this->fulllength_given;
+#else
+  return this->fulllength;
+#endif
 }
 
 int
@@ -138,6 +152,7 @@ Sequence_free (T *old) {
   return;
 }
 
+#ifdef PMAP
 T
 Sequence_convert_to_nucleotides (T this) {
   T new = (T) MALLOC(sizeof(*new));
@@ -146,6 +161,7 @@ Sequence_convert_to_nucleotides (T this) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->fulllength = this->fulllength*3;
+  new->fulllength_given = this->fulllength_given*3;
   new->contents = (char *) CALLOC(new->fulllength+1,sizeof(char));
   for (i = 0; i < new->fulllength; i++) {
     new->contents[i] = '?';
@@ -158,7 +174,7 @@ Sequence_convert_to_nucleotides (T this) {
 
   return new;
 }
-
+#endif
 
 int
 Sequence_count_bad (T this, int pos, int max, int direction) {
@@ -205,12 +221,25 @@ static int Initc = '\0';
 /* Returns '>' if FASTA file, first sequence char if not */
 static int
 input_init (FILE *fp) {
+  int c;
+  bool okayp = false;
+
   Header[0] = '\0';
   Sequence[0] = '\0';
   Firsthalf = &(Sequence1[0]);
   Secondhalf = &(Sequence2[0]);
 
-  return fgetc(fp);
+  while (okayp == false && (c = fgetc(fp)) != EOF) {
+    debug(printf("Read character %c\n",c));
+    if (iscntrl(c)) {
+    } else if (isspace(c)) {
+    } else {
+      okayp = true;
+    }
+  }
+
+  debug(printf("Returning initial character %c\n",c));
+  return c;
 }
 
 static void
@@ -285,11 +314,34 @@ print_contents (char *p, int length) {
 }
 
 
-/* Returns 1 if done reading sequence, 0 if not */
-static bool
+#define CONTROLM 13		/* From PC */
+#define SPACE 32
+
+static char *
+find_bad_char (char *line) {
+  char *p1, *p2;
+
+  p1 = index(line,CONTROLM);
+  p2 = index(line,SPACE);
+
+  if (p1 == NULL && p2 == NULL) {
+    return NULL;
+  } else if (p1 == NULL) {
+    return p2;
+  } else if (p2 == NULL) {
+    return p1;
+  } else if (p1 < p2) {
+    return p1;
+  } else {
+    return p2;
+  }
+}
+
+
+static int
 read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
-  int remainder;
-  char *ptr, *p;
+  int remainder, strlenp;
+  char *ptr, *p = NULL;
   int c;
 
   ptr = &(Firsthalf[0]);
@@ -326,30 +378,39 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 	*ptr++ = (char) c;
 	remainder--;
 	*eolnp = false;
+	p = NULL;
 	debug(printf("c == sth.  Continuing\n"));
       }
 
     } else {
       debug(printf("Trying to read remainder of %d\n",remainder));
-      if (fgets(ptr,remainder+1,fp) == NULL) {
+      if (p != NULL) {
+	strlenp = strlen(p);
+	memmove(ptr,p,strlenp);
+        ptr[strlenp] = '\0';
+      } else {
+	p = fgets(ptr,remainder+1,fp);
+      }
+      if (p == NULL) {
 	debug(printf("line == NULL.  Returning true\n"));
 	*nextchar = EOF;
 	debug1(printf("read_first_half returning length1 of %d\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
 	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else {
 	debug(printf("Read %s\n",ptr));
-	if ((p = rindex(ptr,13)) != NULL) {
+	if ((p = find_bad_char(ptr)) != NULL) {
 	  /* Handle PC line feed ^M */
-	  ptr = p;
-	  *eolnp = true;
-	  debug(printf("line == EOLN.  Continuing\n"));
-	} else if ((p = rindex(ptr,'\n')) != NULL) {
+	  ptr = p++;
+	  *eolnp = false;
+	  debug(printf("Found control-M/space.  Advancing to %s\n",p));
+	} else if ((p = index(ptr,'\n')) != NULL) {
 	  ptr = p;
 	  *eolnp = true;
 	  debug(printf("line == EOLN.  Continuing\n"));
 	} else {
 	  ptr += strlen(ptr);
 	  *eolnp = false;
+	  p = NULL;
 	  debug(printf("line != EOLN.  Continuing\n"));
 	}
 	remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
@@ -364,9 +425,9 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 static int
 read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer2b, int *length2b,
 		  bool eolnp, FILE *fp) {
-  int skiplength, ncycles = 0, remainder, terminator;
+  int skiplength, ncycles = 0, remainder, terminator, strlenp;
   char *ptr;
-  char *p;
+  char *p = NULL;
   int c;
   
   ptr = &(Secondhalf[0]);
@@ -399,23 +460,37 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 	*ptr++ = (char) c;
 	remainder--;
 	eolnp = false;
+	p = NULL;
 	debug(printf("c == sth.  Continuing\n"));
       }
       
     } else {
-
-      if (fgets(ptr,remainder+1,fp) == NULL) {
+      if (p != NULL) {
+        strlenp = strlen(p);
+	memmove(ptr,p,strlenp);
+        ptr[strlenp] = '\0';
+      } else {
+	p = fgets(ptr,remainder+1,fp);
+      }
+      if (p == NULL) {
 	debug(printf("line == NULL.  Returning\n"));
 	*nextchar = EOF;
 	break;
       } else {
-	if ((p = rindex(ptr,'\n')) != NULL) {
+	debug(printf("Read %s\n",ptr));
+	if ((p = find_bad_char(ptr)) != NULL) {
+	  /* Handle PC line feed ^M */
+	  ptr = p++;
+	  eolnp = false;
+	  debug(printf("Found control-M/space.  Advancing to %s\n",p));
+	} else if ((p = index(ptr,'\n')) != NULL) {
 	  ptr = p;
 	  eolnp = true;
 	  debug(printf("line == EOLN.  Continuing\n"));
 	} else {
 	  ptr += strlen(ptr);
 	  eolnp = false;
+	  p = NULL;
 	  debug(printf("line != EOLN.  Continuing\n"));
 	}
 	remainder = (&(Secondhalf[HALFLEN+2]) - ptr)/sizeof(char);
@@ -463,8 +538,6 @@ static int
 input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, int *length2a,
 		char **pointer2b, int *length2b, int *skiplength, FILE *fp) {
   bool eolnp = true;
-  int fulllength;
-  char *ptr;
 
   *pointer1 = &(Firsthalf[0]);
   *pointer2a = (char *) NULL;
@@ -474,6 +547,7 @@ input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, 
 
   if ((*length1 = read_first_half(&(*nextchar),&eolnp,fp)) == 0) {
     *pointer1 = (char *) NULL;
+    *skiplength = 0;
   } else if (*length1 < HALFLEN) {
     *skiplength = 0;
   } else {
@@ -500,6 +574,9 @@ Sequence_genomic_new (char *contents, int length) {
   new->contents = contents;
   new->trimstart = 0;
   new->trimend = new->fulllength = length;
+#ifdef PMAP
+  new->fulllength_given = length;
+#endif
   new->free_contents_p = false;	/* Called only by Genome_get_segment, which provides
 				   its own buffer */
   new->subseq_offset = 0;
@@ -507,15 +584,16 @@ Sequence_genomic_new (char *contents, int length) {
   return new;
 }
 
+static char complCode[128] = COMPLEMENT_LC;
+
 static char *
 make_complement (char *sequence, unsigned int length) {
   char *complement;
-  char complCode[128] = COMPLEMENT;
   int i, j;
 
   complement = (char *) CALLOC(length+1,sizeof(char));
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[(int) sequence[i]];
+    complement[j] = complCode[sequence[i]];
   }
   complement[length] = '\0';
   return complement;
@@ -523,12 +601,11 @@ make_complement (char *sequence, unsigned int length) {
 
 static void
 make_complement_buffered (char *complement, char *sequence, unsigned int length) {
-  char complCode[128] = COMPLEMENT;
   int i, j;
 
   /* complement = (char *) CALLOC(length+1,sizeof(char)); */
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[(int) sequence[i]];
+    complement[j] = complCode[sequence[i]];
   }
   complement[length] = '\0';
   return;
@@ -571,6 +648,9 @@ Sequence_subsequence (T this, int start, int end) {
     new->restofheader = (char *) NULL;
     new->contents = &(this->contents[start]); 
     new->fulllength = end - start;
+#ifdef PMAP
+    new->fulllength_given = new->fulllength;
+#endif
     if ((new->trimstart = this->trimstart - start) < 0) {
       new->trimstart = 0;
     }
@@ -593,6 +673,9 @@ Sequence_revcomp (T this) {
   new->restofheader = (char *) NULL;
   new->contents = make_complement(this->contents,this->fulllength);
   new->fulllength = this->fulllength;
+#ifdef PMAP
+  new->fulllength_given = this->fulllength_given;
+#endif
   new->trimstart = this->trimstart;
   new->trimend = this->trimend;
   new->free_contents_p = true;
@@ -604,7 +687,11 @@ Sequence_revcomp (T this) {
 static char *
 make_uppercase (char *sequence, unsigned int length) {
   char *uppercase;
-  char uppercaseCode[128] = UPPERCASE;
+#ifdef PMAP
+  char uppercaseCode[128] = UPPERCASE_STD;
+#else
+  char uppercaseCode[128] = UPPERCASE_U2T;
+#endif
   int i;
 
   uppercase = (char *) CALLOC(length+1,sizeof(char));
@@ -624,6 +711,9 @@ Sequence_uppercase (T this) {
   new->restofheader = (char *) NULL;
   new->contents = make_uppercase(this->contents,this->fulllength);
   new->fulllength = this->fulllength;
+#ifdef PMAP
+  new->fulllength_given = this->fulllength_given;
+#endif
   new->trimstart = this->trimstart;
   new->trimend = this->trimend;
   new->free_contents_p = true;
@@ -640,6 +730,9 @@ Sequence_alias (T this) {
   new->restofheader = (char *) NULL;
   new->contents = this->contents;
   new->fulllength = this->fulllength;
+#ifdef PMAP
+  new->fulllength_given = this->fulllength_given;
+#endif
   new->trimstart = this->trimstart;
   new->trimend = this->trimend;
   new->free_contents_p = false;
@@ -662,6 +755,9 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   int fulllength, skiplength;
   char *pointer1, *pointer2a, *pointer2b;
   int length1, length2a, length2b;
+#ifdef PMAP
+  char lastchar = '*';
+#endif
 
   if (feof(input)) {
     *nextchar = EOF;
@@ -692,19 +788,38 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
 
   if (skiplength > 0) {
     if (maponlyp == false) {
-      fprintf(stderr,"Warning: cDNA sequence exceeds maximum length of %d.  Truncating %d chars in middle.\n",
-	      MAXSEQLEN,skiplength);
+      fprintf(stderr,"Warning: cDNA sequence length of %d exceeds maximum length of %d.  Truncating %d chars in middle.\n",
+	      fulllength+skiplength,MAXSEQLEN,skiplength);
       fprintf(stderr,"  (For long sequences, perhaps you want maponly mode, by providing the '-1' flag.)\n");
     }
   }
 
+#ifdef PMAP
+  if (length1 > 0) {
+    lastchar = pointer1[length1-1];
+    if (length2a > 0) {
+      lastchar = pointer2a[length2a-1];
+    }
+    if (length2b > 0) {
+      lastchar = pointer2b[length2b-1];
+    }
+  }
+
+  new->fulllength_given = fulllength;
+  if (lastchar != '*') {
+    debug(printf("Sequence does not end with *, so adding it\n"));
+    fulllength++;
+  }
+#endif
+
+  debug(printf("fulllength = %d\n",fulllength));
   new->fulllength = fulllength;
   new->skiplength = skiplength;
 
   new->trimstart = 0;
-  new->trimend = new->fulllength;
+  new->trimend = fulllength;
 
-  new->contents = (char *) CALLOC(new->fulllength+1,sizeof(char));
+  new->contents = (char *) CALLOC(fulllength+1,sizeof(char));
   if (length1 > 0) {
     strncpy(new->contents,pointer1,length1);
     if (length2a > 0) {
@@ -714,9 +829,16 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
       strncpy(&(new->contents[length1+length2a]),pointer2b,length2b);
     }
   }
+#ifdef PMAP
+  if (lastchar != '*') {
+    new->contents[fulllength-1] = '*';
+  }
+#endif
   new->free_contents_p = true;
   new->subseq_offset = 0;
 
+  debug(printf("Final query sequence is:\n"));
+  debug(Sequence_print(new,/*uppercasep*/false,/*wraplength*/60,/*trimmedp*/false));
   return new;
 }
 
@@ -773,6 +895,9 @@ Sequence_read_unlimited (FILE *input) {
     return NULL;
   } else {
     new->fulllength = new->trimend = length;
+#ifdef PMAP
+    new->fulllength_given = length;
+#endif
     new->trimstart = 0;
 
     new->free_contents_p = true;
@@ -796,13 +921,18 @@ Sequence_print_digest (T this) {
   return;
 }
 
+/* Calling procedure needs to print the initial ">", if desired */
 void
 Sequence_print_header (T this, bool checksump) {
 
+#if 0
 #ifdef PMAP
-  printf(">%s (%d aa) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
+  printf("%s (%d aa) %s",this->acc,this->fulllength_given+this->skiplength,this->restofheader);
 #else
-  printf(">%s (%d bp) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
+  printf("%s (%d bp) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
+#endif
+#else
+  printf("%s %s",this->acc,this->restofheader);
 #endif
   if (checksump == true) {
     printf(" md5:");
@@ -815,7 +945,7 @@ Sequence_print_header (T this, bool checksump) {
 void
 Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
   int i = 0, pos, start, end;
-  char uppercaseCode[128] = UPPERCASE;
+  char uppercaseCode[128] = UPPERCASE_STD;
 
   if (trimmedp == true) {
     start = this->trimstart;
@@ -827,7 +957,7 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
 
   if (uppercasep == true) {
     for (pos = start; pos < end; pos++, i++) {
-      printf("%c",uppercaseCode[(int) (this->contents[i])]);
+      printf("%c",uppercaseCode[this->contents[i]]);
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }
@@ -849,7 +979,6 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
 void
 Sequence_print_raw (T this) {
   int i = 0, pos, start, end;
-  char uppercaseCode[128] = UPPERCASE;
 
   start = 0;
   end = this->fulllength;

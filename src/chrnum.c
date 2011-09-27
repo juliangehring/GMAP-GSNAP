@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrnum.c,v 1.20 2005/07/25 17:58:09 twu Exp $";
+static char rcsid[] = "$Id: chrnum.c,v 1.21 2006/05/11 17:14:59 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,14 +11,24 @@ static char rcsid[] = "$Id: chrnum.c,v 1.20 2005/07/25 17:58:09 twu Exp $";
 #include "interval.h"
 
 char *
-Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit) {
+Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit, bool allocp) {
   char *string, *label;
 
   label = IIT_label(chromosome_iit,chrnum);
-  string = (char *) CALLOC(strlen(label)+1,sizeof(char));
-  strcpy(string,label);
-
-  return string;
+#if 0
+  if (strip_spaces_p) {
+    while (*label != '\0' && isspace(*label)) {
+      label++;
+    }
+  }
+#endif
+  if (allocp == false) {
+    return label;
+  } else {
+    string = (char *) CALLOC(strlen(label)+1,sizeof(char));
+    strcpy(string,label);
+    return string;
+  }
 }
 
 char *

@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_process.pl.in,v 1.3 2006/01/19 22:33:40 twu Exp $
+# $Id: gmap_process.pl.in,v 1.4 2006/11/30 17:22:50 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -16,6 +16,7 @@ if (!defined($coord_file = $opt_c)) {
 
 read_coords($coord_file);
 process_fasta();
+check_processed();
 
 exit;
 
@@ -103,6 +104,7 @@ sub process_fasta {
 	# If $chrpos2 < $chrpos1, then contig needs to be reverse complement.
 	# However, gmapindex knows how to handle this
 
+	$processedp{$contig} = 1;
 	printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
 	$printp = 1;
 
@@ -110,6 +112,23 @@ sub process_fasta {
     } elsif ($printp == 1) {
       print $line;
     }
+  }
+  return;
+}
+
+
+sub check_processed {
+  $nwarnings = 0;
+  foreach $contig (keys %coords) {
+    if (!defined($processedp{$contig})) {
+      print STDERR "Warning!!  Contig $contig was listed in coords file, but not seen in a FASTA file\n";
+      $nwarnings++;
+    }
+  }
+  if ($nwarnings > 0) {
+    print STDERR "Build halted.  A total of $nwarnings contigs were listed in coords file, but not seen in a FASTA file\n";
+    print STDERR "Either provide the correct FASTA files, or comment out these contigs in the coords file $coord_file\n";
+    exit(9);
   }
   return;
 }

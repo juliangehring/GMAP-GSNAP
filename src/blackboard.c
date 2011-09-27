@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: blackboard.c,v 1.15 2005/10/14 19:05:33 twu Exp $";
+static char rcsid[] = "$Id: blackboard.c,v 1.17 2006/11/01 22:27:28 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -97,9 +97,12 @@ Blackboard_free (T *old) {
     FREE((*old)->output_ready);
     
     pthread_mutex_destroy(&(*old)->lock);
+    /* Let each thread destroy its own reqpost */
+    /*
     for (i = 0; i < (*old)->nworkers; i++) {
       Reqpost_free(&((*old)->reqposts[i]));
     }
+    */
     FREE((*old)->reqposts);
     FREE(*old);
   }
@@ -156,11 +159,11 @@ Blackboard_put_request (T this, Request_T request) {
   this->input_ready[this->inputi] = false;
   this->n_input_ready -= 1;
   this->ninputs++;
-  pthread_mutex_unlock(&this->lock);
 
   if (++this->inputi >= this->nworkers) {
     this->inputi = 0;
   }
+  pthread_mutex_unlock(&this->lock);
 
   return;
 }
@@ -225,12 +228,12 @@ Blackboard_get_result (Request_T *request, T this) {
       pthread_cond_signal(&this->input_ready_p);
     }
 
-    pthread_mutex_unlock(&this->lock);
-
     this->noutputs++;
     if (++this->outputi >= this->nworkers) {
       this->outputi = 0;
     }
+
+    pthread_mutex_unlock(&this->lock);
 
     debug(printf("Blackboard: Returning result id %d\n",Result_id(result)));
     return result;

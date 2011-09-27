@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_uncompress.pl.in,v 1.16 2005/11/05 00:31:00 twu Exp $
+# $Id: gmap_uncompress.pl.in,v 1.18 2006/06/12 18:52:11 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -107,7 +107,7 @@ sub process_one {
   ($genheader,$fwdsequence) = get_genomic_sequence($genomevers,$chrrange);
   @ {$gsequence} = split '',$fwdsequence;
 
-  print ">$cdna_acc ($cdnalength bp)";
+  print ">$cdna_acc";
   if (defined($flags)) {
     print " $flags";
   }
@@ -117,7 +117,7 @@ sub process_one {
   print "    cDNA direction: " . cdna_direction($agreements) . "\n";
   print "    Genomic pos: $genomevers:$genomerange ($strand strand)\n";
   print "    Number of exons: $nexons\n";
-  print "    Coverage: $coverage\n";
+  print "    Coverage: $coverage (query length: $cdnalength bp)\n";
   print "    Percent identity: $pctidentity\n";
   print "\n";
 

@@ -1,4 +1,4 @@
-/* $Id: translation.h,v 1.20 2005/11/19 06:36:14 twu Exp $ */
+/* $Id: translation.h,v 1.22 2006/11/20 20:42:10 twu Exp $ */
 #ifndef TRANSLATION_INCLUDED
 #define TRANSLATION_INCLUDED
 #include "bool.h"
@@ -6,6 +6,9 @@
 
 #define T Translation_T
 typedef struct T *T;
+
+extern char
+Translation_get_codon (char a, char b, char c);
 
 #ifdef PMAP
 extern void
@@ -16,7 +19,8 @@ Translation_via_cdna (int *translation_leftpos, int *translation_rightpos, int *
 extern void
 Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, int *translation_length,
 			 int *relaastart, int *relaaend,
-			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp);
+			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp,
+			 bool strictp);
 #endif
 
 extern void

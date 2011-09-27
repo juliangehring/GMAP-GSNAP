@@ -1,4 +1,4 @@
-/* $Id: intron.h,v 1.7 2006/02/23 22:06:38 twu Exp $ */
+/* $Id: intron.h,v 1.8 2006/05/06 07:43:30 twu Exp $ */
 #ifndef INTRON_INCLUDED
 #define INTRON_INCLUDED
 #include "bool.h"
@@ -27,6 +27,8 @@
 
 extern int
 Intron_type (char left1, char left2, char right2, char right1, int cdna_direction);
+extern char *
+Intron_type_string (int introntype);
 
 extern bool
 Intron_canonical_fwd_p (char donor1, char donor2, char acceptor2, char acceptor1);

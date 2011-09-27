@@ -74,6 +74,8 @@ LIBS = @LIBS@
 LIBTOOL = @LIBTOOL@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
+MAINTAINER_FALSE = @MAINTAINER_FALSE@
+MAINTAINER_TRUE = @MAINTAINER_TRUE@
 MAKEINFO = @MAKEINFO@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
@@ -133,7 +135,7 @@ target_cpu = @target_cpu@
 target_os = @target_os@
 target_vendor = @target_vendor@
 
-EXTRA_DIST = ss.chr17test ss.her2 \
+EXTRA_DIST = defs ss.chr17test ss.her2 \
              align.test.ok coords1.test.ok \
              setup.genomecomp.ok setup.idxpositions.ok \
              map.test.ok \
@@ -142,24 +144,27 @@ EXTRA_DIST = ss.chr17test ss.her2 \
 
 CLEANFILES = align.test.out \
              fa_coords coords.chr17test \
-             gmap_setup gmap_process gmapindex chr17test.* Makefile.chr17test INSTALL.chr17test \
+             gmap_setup gmap_process gmapindex chr17test.* Makefile.chr17test \
              map.test.out \
              iittest.iit iit_get.out iit_dump.out
 
 
-TESTS = align.test coords1.test setup1.test map.test \
-        iit_store.test iit_get.test iit_dump.test
+@MAINTAINER_TRUE@TESTS = align.test coords1.test setup1.test iit.test \
+@MAINTAINER_TRUE@        bioinfo.splicing.test
 
+@MAINTAINER_FALSE@TESTS = align.test coords1.test setup1.test iit.test 
+
+TESTS_ENVIRONMENT = top_builddir=$(top_builddir)
+
+testsubdir = testSubDir
 subdir = tests
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = align.test coords1.test setup1.test map.test \
-	iit_store.test iit_get.test iit_dump.test
+CONFIG_CLEAN_FILES = align.test coords1.test setup1.test iit.test
 DIST_SOURCES =
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am align.test.in \
-	coords1.test.in iit_dump.test.in iit_get.test.in \
-	iit_store.test.in map.test.in setup1.test.in
+	coords1.test.in iit.test.in setup1.test.in
 all: all-am
 
 .SUFFIXES:
@@ -174,13 +179,7 @@ coords1.test: $(top_builddir)/config.status coords1.test.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 setup1.test: $(top_builddir)/config.status setup1.test.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-map.test: $(top_builddir)/config.status map.test.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-iit_store.test: $(top_builddir)/config.status iit_store.test.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-iit_get.test: $(top_builddir)/config.status iit_get.test.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-iit_dump.test: $(top_builddir)/config.status iit_dump.test.in
+iit.test: $(top_builddir)/config.status iit.test.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 
 mostlyclean-libtool:
@@ -340,7 +339,8 @@ clean-am: clean-generic clean-libtool mostlyclean-am
 
 distclean: distclean-am
 	-rm -f Makefile
-distclean-am: clean-am distclean-generic distclean-libtool
+distclean-am: clean-am distclean-generic distclean-libtool \
+	distclean-local
 
 dvi: dvi-am
 
@@ -380,14 +380,17 @@ uninstall-am: uninstall-info-am
 
 .PHONY: all all-am check check-TESTS check-am clean clean-generic \
 	clean-libtool distclean distclean-generic distclean-libtool \
-	distdir dvi dvi-am info info-am install install-am install-data \
-	install-data-am install-exec install-exec-am install-info \
-	install-info-am install-man install-strip installcheck \
-	installcheck-am installdirs maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-generic \
-	mostlyclean-libtool pdf pdf-am ps ps-am uninstall uninstall-am \
-	uninstall-info-am
+	distclean-local distdir dvi dvi-am info info-am install \
+	install-am install-data install-data-am install-exec \
+	install-exec-am install-info install-info-am install-man \
+	install-strip installcheck installcheck-am installdirs \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
+	uninstall uninstall-am uninstall-info-am
 
+
+distclean-local:
+	rm -rf $(testsubdir)
 
 okay:
 	../src/gmap -A -g ss.chr17test ss.her2 > align.test.ok

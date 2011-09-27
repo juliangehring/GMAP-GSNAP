@@ -1,5 +1,0 @@
-#! @SHELL@
-
-../src/iit_store -o iittest ${srcdir}/fa.iittest
-diff iittest.iit ${srcdir}/iittest.iit.ok
-

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: params.c,v 1.63 2005/11/19 06:36:13 twu Exp $";
+static char rcsid[] = "$Id: params.c,v 1.67 2006/11/28 00:50:11 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,11 +21,15 @@ struct T {
   Chrsubset_T chrsubset;
   IIT_T contig_iit;
   IIT_T map_iit;
-  int maxextension;
+  bool map_iit_universal_p;
+  int map_iit_forward_type;
+  int map_iit_reverse_type;
 
   int stuttercycles;
   int stutterhits;
-  int indexsize;
+  int maxoligohits;
+  int minindexsize;
+  int maxindexsize;
   int maxpeelback;
   int sufflookback;
   int nsufflookback;
@@ -91,9 +95,19 @@ Params_map_iit (T this) {
   return this->map_iit;
 }
 
+bool
+Params_map_iit_universal_p (T this) {
+  return this->map_iit_universal_p;
+}
+
 int
-Params_maxextension (T this) {
-  return this->maxextension;
+Params_map_iit_forward_type (T this) {
+  return this->map_iit_forward_type;
+}
+
+int
+Params_map_iit_reverse_type (T this) {
+  return this->map_iit_reverse_type;
 }
 
 int
@@ -107,8 +121,18 @@ Params_stutterhits (T this) {
 }
 
 int
-Params_indexsize (T this) {
-  return this->indexsize;
+Params_maxoligohits (T this) {
+  return this->maxoligohits;
+}
+
+int
+Params_minindexsize (T this) {
+  return this->minindexsize;
+}
+
+int
+Params_maxindexsize (T this) {
+  return this->maxindexsize;
 }
 
 int
@@ -171,8 +195,10 @@ Params_new (Genome_T genome, IIT_T altstrain_iit,
 	    Indexdb_T indexdb, 
 #endif
 	    IIT_T chromosome_iit, Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T map_iit, 
-	    int maxextension, int stuttercycles, int stutterhits, int indexsize,
-	    int maxpeelback, int sufflookback, int nsufflookback, int nullgap, 
+	    bool map_iit_universal_p, int map_iit_forward_type, int map_iit_reverse_type,
+	    int stuttercycles, int stutterhits, int maxoligohits,
+	    int minindexsize, int maxindexsize, int maxpeelback,
+	    int sufflookback, int nsufflookback, int nullgap, 
 	    int extramaterial_end, int extramaterial_paired,
 	    int extraband_single, int extraband_end, int extraband_paired,
 	    int maxmutations) {
@@ -190,10 +216,14 @@ Params_new (Genome_T genome, IIT_T altstrain_iit,
   new->contig_iit = contig_iit;
   new->chrsubset = chrsubset;
   new->map_iit = map_iit;
-  new->maxextension = maxextension;
+  new->map_iit_universal_p = map_iit_universal_p;
+  new->map_iit_forward_type = map_iit_forward_type;
+  new->map_iit_reverse_type = map_iit_reverse_type;
   new->stuttercycles = stuttercycles;
   new->stutterhits = stutterhits;
-  new->indexsize = indexsize;
+  new->maxoligohits = maxoligohits;
+  new->minindexsize = minindexsize;
+  new->maxindexsize = maxindexsize;
   new->maxpeelback = maxpeelback;
   new->sufflookback = sufflookback;
   new->nsufflookback = nsufflookback;

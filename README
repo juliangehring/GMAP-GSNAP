@@ -56,15 +56,74 @@ this
     /path/to/gmapdb/NHGD_R35/NHGD_R35.version
 
 
-Building a GMAP database
-========================
+Building a GMAP database (quick guide)
+=====================================
 
 The program gmap_setup can build and install a GMAP database from a
 set of FASTA files containing either entire chromosomes or contigs
-that represent pieces of chromosomes.  This program requires that the
-sequences in the FASTA file be mapped onto chromosomal coordinates.
-This mapping is in a file called coords.<genome>, with one line per
-sequence in the following format
+that represent pieces of chromosomes.  Run this command
+
+    gmap_setup -d <genome> <fasta_file>...
+
+and then follow the directions.  Note that the term
+
+    <fasta_file>... 
+
+above indicates that multiple files can be listed.  The files can be
+in any order, and the contigs can be in any order within these files.
+The GMAP setup process will assemble the contigs and chromosomes into
+their appropriate alphanumeric order.
+
+If your FASTA headers contain information about the chromosomal
+coordinates, gmap_setup will try to parse that information from the
+headers.  The program knows how to parse the following patterns:
+
+    chr=1:217281..257582  [may insert spaces around '=', or omit '=' character]
+    chr=1                 [may insert spaces around '=', or omit '=' character]
+    chromosome 1                                                         [NCBI .mfa format]
+    chromosome:NCBI35:22:1:49554710:1                                    [Ensembl format]
+    /chromosome=2                                                        [Celera format]
+    /chromosome=2 /alignment=(88840247-88864134) /orientation=rev        [Celera format]
+    chr1:217281..257582
+    chr1                  [may insert spaces after 'chr']
+
+If only the chromosome is specified, without coordinates, the program
+will assign its own chromosomal coordinates by concatenating the
+contigs within each chromosome.
+
+
+Building a GMAP database (using an MD file)
+===========================================
+
+Genomes from NCBI typically include an ".md" file (like seq_contig.md)
+that specifies the chromosomal coordinates for each contig.  To use
+this information, provide the -M flag to gmap_setup, like this
+
+    gmap_setup -d <genome> -M <mdfile> <fasta_file>...
+
+The program will then try to parse the mdfile (which often changes
+formats) and verify with you which columns contain the contig names
+and chromosomal coordinates.
+
+
+Building a GMAP database (details)
+==================================
+
+The gmap_setup program will create a Makefile, called
+Makefile.<genome>.  You will then be prompted to use this Makefile
+through the following commands:
+
+    make -f Makefile.<genome> coords
+    make -f Makefile.<genome> gmapdb
+    make -f Makefile.<genome> fullascii [optional]
+    (edit the <genome>.chrsubset file [optional])
+    make -f Makefile.<genome> install
+
+
+1.  The first step in using this Makefile is to create
+a file called coords.<genome>.  You may manually edit this file, if
+you wish, before proceeding with the rest of the Makefile steps.  The
+coords file contains one contig per line, in the following format:
 
 <contig_name>	<chromosomal_mapping>	<optional_strain>
 
@@ -80,73 +139,15 @@ higher number), like this:
 
 NT_039199.1	1:61563373..61273712
 
-
-You can create the coords file yourself, but typically gmap_setup
-creates it for you from either the FASTA files themselves or from the
-".md" file included in NCBI genome releases.  If the FASTA files are
-used, each header line must have some indication of at least the
-chromosome, in one of these forms
-
-    chr=1:217281..257582  [may insert spaces around '=', or omit '=' character]
-    chr=1                 [may insert spaces around '=', or omit '=' character]
-    chromosome 1                                                         [NCBI .mfa format]
-    chromosome:NCBI35:22:1:49554710:1                                    [Ensembl format]
-    /chromosome=2                                                        [Celera format]
-    /chromosome=2 /alignment=(88840247-88864134) /orientation=rev        [Celera format]
-    chr1:217281..257582
-    chr1                  [may insert spaces after 'chr']
-
-If only the chromosome is specified, without coordinates, the program
-will assign chromosomal coordinates by concatenating the contigs within
-each chromosome.
-
-In summary, then, to build a GMAP DB file, first run gmap_setup in one
-of the following ways:
-
-Method 1 (from the FASTA files themselves): 
-
-    gmap_setup -d <genome> <fasta_file>...
-
-Method 2 (from a seq_contig.md file): 
-
-    gmap_setup -d <genome> -M <mdfile> <fasta_file>...
-
-Method 3 (from a manually created coords file):
-
-    [create coords.<genome>]
-    gmap_setup -d <genome> <fasta_file>...
+You may delete lines or comment them out with a '#' character, which
+will effectively omit those contigs from your genome build.  You may
+also change chromosomal assignments (in column 2) or assign contigs to
+alternative strains (in column 3).
 
 
-Note that the term <fasta_file>... above indicates that multiple files
-can be listed.  The files can be in any order, and the contigs can be
-in any order within these files.  The GMAP setup process will assemble
-the contigs and chromosomes into their appropriate alphanumeric order.
-
-
-These methods will then create a makefile called Makefile.<genome>.
-You will then be prompted to execute these makefile commands, which
-are essentially
-
-    make -f Makefile.<genome> coords [not necessary if you create it manually]
-    make -f Makefile.<genome> gmapdb
-    make -f Makefile.<genome> raw [optional]
-    (edit the <genome>.chrsubset file [optional])
-    make -f Makefile.<genome> install
-
-
-Advanced notes:
-
-1.  After running "make -f Makefile.<genome> coords" to make the
-coords.<genome> file, you may edit it directly if you want to make
-changes.  You may delete lines or comment them out with a '#'
-character, which will effectively omit those contigs from your genome
-build.  You may also change chromosomal assignments (in column 2) or
-assign contigs to alternative strains (in column 3).
-
-
-2.  The optional "make raw" command is intended to represent genomes
-where it is important to show lower-case or non-standard characters
-(anything other than A, C, G, T, N, or X) in the alignment.
+2.  The optional "make fullascii" command is intended to represent
+genomes where it is important to show lower-case or non-standard
+characters (anything other than A, C, G, T, N, or X) in the alignment.
 
 Normally, gmap_setup creates only a compressed version of the
 genome, in the file <genome>.genomecomp, which can hold only the
@@ -155,26 +156,25 @@ lower-case characters to upper-case, and all non-ACGTNX characters to
 'N'.  
 
 If you wish to show lower-case or non-standard characters in the
-alignment, you may create a raw, or uncompressed, genome file with the
-command
+alignment, you may create a full ASCII genome file with the command
 
-    make -f Makefile.<genome> raw
+    make -f Makefile.<genome> fullascii
 
 after the "make gmapdb" command.  This will create the file
 <genome>.genome, in addition to the <genome>.genomecomp file.
 
-The raw genome can then be used by GMAP instead of the compressed
-genome by specifying the -G flag to GMAP.  Note that a raw genome
-file has a size equal to the total genome length, and some computers
-cannot handle files larger than 2 gigabytes.  In such cases, only the
-standard compressed genome will work.
+The full ASCII genome can then be used by GMAP instead of the
+compressed genome by specifying the -G flag to GMAP.  Note that a full
+ASCII genome file has a size equal to the total genome length, and
+some computers cannot handle files larger than 2 gigabytes.  In such
+cases, only the standard compressed genome will work.
 
-Note, however, that the raw genome does not affect the GMAP
+Note, however, that the full ASCII genome does not affect the GMAP
 computation, only the printed alignment shown by GMAP with its -A
 flag.  Also, you do not need to mask the genome; GMAP will work fine
 on the entire genome.  But if you wish to indicate masked regions in
 the alignment with lower-case characters, then you will need to create
-a raw genome file.
+a full ASCII genome file.
 
 
 3.  The full usage for gmap_setup is as follows:
@@ -187,7 +187,7 @@ Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>]
     -o    name of output Makefile (default is "Makefile.<genome>")
     -M    use coordinates from an .md file (e.g., seq_contig.md file from NCBI)
     -S    treat each sequence as a separate chromosome
-    -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
+    -W    write some output directly to file, instead of using RAM (slow; use only if RAM is limited)
     -E    interpret argument as a command, instead of a list of FASTA files
     -q    GMAP indexing interval (default: 6 nt)
 
@@ -213,9 +213,11 @@ need to insert chromosomal information in the header lines, you can
 specify a command instead of multiple fasta_files, like these
 examples:
 
-    gmap_setup -d <genome> -E 'gunzip -c genomefiles.gz'
+    gmap_setup -d <genome> -E 'gunzip -c chr*.gz'
     gmap_setup -d <genome> -E 'cat *.fa | ./add-chromosomal-info.pl'
 
+You can think of the command as a Unix pipe for processing each FASTA
+file before it is read by gmap_setup.
 
 * The -W flag: The gmap_setup process works best if you have a
 computer with enough RAM to hold the entire genome (e.g., 3
@@ -373,19 +375,36 @@ Step 1: Put your map information for a given genome (e.g. NHGD_R35)
 into a FASTA file with the following format:
    
     >label start end optional_tag
-    optional_annotation (which may be multiple lines)
+    optional_annotation (which may be zero, one, or multiple lines)
 
 For example, the label may be an EST accession, with the start and end
-numbers representing their position in the genome database, and the
-tag indicating whether the EST aligns to the forward or reverse strand.
+numbers representing their position in the genome database.
 
-The start and end values must be in universal coordinates, which are
-the coordinates when chromosomes are concatenated.  The GMAP program
-provides these coordinates in its alignments.  In addition, the
-get-genome program can translate chromosomal coordinates to universal
-coordinates with its -C flag:
+Tags are very general and can be used for a variety of purposes.  For
+mapping purposes, GMAP understands two conventions for coordinates and
+tags: whole-genome and chromosomal.  At this time, the chromosomal
+convention is preferred, but the earlier, whole-genome convention is
+still supported for backwards compatibility.  The chromosomal option
+uses chromosomal coordinates and the tag indicates the chromosome and
+strand (using '+' or '-'):
 
-    get-genome -d NHGD_R35 -C 22:10000..11000
+    >NM_004448 35109780 35138441 17+
+
+The whole-genome convention has just two tags to indicate the two
+strands of the genome.  The tags should be either in ("FWD","REV")
+style or ("+","-") style (don't mix the two styles in the same file).
+In this convention, the coordinates are universal coordinates, which
+are the coordinates computed when chromosomes are concatenated.  The
+GMAP program provides these coordinates in its alignments.  In
+addition, the get-genome program can translate chromosomal coordinates
+to universal coordinates with its -C flag:
+
+    get-genome -d NHGD_R35 -C 17:35109780..35138441
+
+Since this returns "2690002715--2690031376", the resulting header
+would be
+
+    >NM_004448 2690002715 2690031376 FWD
 
 
 Step 2: Run iit_store on this FASTA file, and put the file into the
@@ -397,7 +416,7 @@ program will add ".iit" to the filename.
 
 Now you can retrieve this information with iit_get
 
-    iit_get myannot.iit start [optional_end [optional_tag]]
+    iit_get myannot.iit start [optional_end [optional_tags...]]
 
 You can also retrieve this information with gmap, if you store the map
 file in the appropriate genome database, like this
@@ -407,5 +426,18 @@ file in the appropriate genome database, like this
 Then you can retrieve map information for a given cDNA sequence by
 specifying the desired map file with the -m flag:
 
-   gmap -d NHGD_R35 -m myannot <cdna_file>
+    gmap -d NHGD_R35 -m myannot <cdna_file>
+
+
+The iit_get program has other capabilities, including the ability to
+retrieve information by label, like this:
+
+    iit_get myannot.iit label
+
+More details can be found by doing "iit_get --help".
+
+Finally, GMAP and the IIT utilities support the GFF3 format.  GMAP can
+generate its results in GFF3 format, and iit_store can parse GFF3
+files using its -G and -l flags.  More details about iit_store can be
+found by doing "iit_store --help".
 

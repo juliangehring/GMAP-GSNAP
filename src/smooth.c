@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c,v 1.23 2006/04/04 23:21:53 twu Exp $";
+static char rcsid[] = "$Id: smooth.c,v 1.39 2006/12/15 11:59:20 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,15 +6,30 @@ static char rcsid[] = "$Id: smooth.c,v 1.23 2006/04/04 23:21:53 twu Exp $";
 #include "smooth.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>		/* For pow() */
+#include <math.h>		/* For pow(), log() */
+#include "bool.h"
 #include "mem.h"
+#include "except.h"
+#include "comp.h"
 #include "pair.h"
 #include "pairdef.h"
 #include "intlist.h"
 
-/* Will mark internal exons smaller than this for dual genome gap */
-#define SHORTEXONLEN_MID 20
+
+/* Will examine internal exons smaller than this prior to single gaps */
 #define ZERONETGAP 9
+#define SHORTEXONLEN_NETGAP 15
+
+/* Will delete/mark internal exons smaller than this for dual genome gap */
+#define DELETE_THRESHOLD 0.1
+#define MARK_THRESHOLD 1e-7
+
+/* Will delete internal exons smaller than this at ends */
+#define SHORTEXONLEN_END 10
+#define SHORTEXONPROB_END 0.05
+
+#define BIGGAP 9
+
 
 #ifdef DEBUG
 #define debug(x) x
@@ -26,82 +41,149 @@ static char rcsid[] = "$Id: smooth.c,v 1.23 2006/04/04 23:21:53 twu Exp $";
 typedef enum {KEEP, DELETE, MARK} Exonstatus_T;
 
 
+static bool
+big_gap_p (Pair_T pair) {
+  int length;
+
+  if (pair->genomejump > pair->queryjump) {
+    return (pair->genomejump - pair->queryjump) > BIGGAP ? true : false;
+  } else {
+    return false;
+  }
+}
+
+
 static int *
-get_exonlengths (int *nexons, List_T pairs) {
+get_exonlengths (int **exonmatches, int *nexons, List_T pairs) {
   int *exonlengths;
-  Intlist_T list = NULL;
+  Intlist_T list = NULL, matchlist = NULL;
   Pair_T firstpair, pair;
-  int querypos, i;
+  int querypos, i, nmatches = 0;
 
-  /* Initialize */
   firstpair = List_head(pairs);
+  querypos = firstpair->querypos;
 
-  /* Find short first and middle exons */
   while (pairs != NULL) {
     pair = List_head(pairs);
-    if (pair->gapp == true) {
+    if (pair->gapp == true && big_gap_p(pair) == true) {
       list = Intlist_push(list,querypos-firstpair->querypos+1);
+      matchlist = Intlist_push(matchlist,nmatches);
+
       pairs = List_next(pairs);
-      firstpair = List_head(pairs);
+      if (pairs != NULL) {
+	firstpair = List_head(pairs);
+	querypos = firstpair->querypos;
+	nmatches = 0;
+      }
     } else {
       querypos = pair->querypos;
+      if (pair->comp == MATCH_COMP || pair->comp == DYNPROG_MATCH_COMP) {
+	nmatches++;
+      }
+      pairs = List_next(pairs);
     }
-    pairs = List_next(pairs);
   }
 
   list = Intlist_push(list,querypos-firstpair->querypos+1);
   list = Intlist_reverse(list);
+  matchlist = Intlist_push(matchlist,nmatches);
+  matchlist = Intlist_reverse(matchlist);
+
   exonlengths = Intlist_to_array(&(*nexons),list);
+  *exonmatches = Intlist_to_array(&(*nexons),matchlist);
+  debug(
+	printf("%d exons: ",*nexons);
+	for (i = 0; i < *nexons; i++) {
+	  printf("%d (%d matches),",exonlengths[i],(*exonmatches)[i]);
+	}
+	printf("\n");
+	);
   Intlist_free(&list);
+  Intlist_free(&matchlist);
 
   return exonlengths;
 }
 
 static int *
 get_intronlengths (int *nintrons, List_T pairs) {
-  int *intronlengths, i;
+  int *intronlengths, length, i;
   Intlist_T list = NULL;
   Pair_T pair;
 
   while (pairs != NULL) {
     pair = List_head(pairs);
-    if (pair->gapp == true) {
-      list = Intlist_push(list,pair->genomejump - pair->queryjump);
+    if (pair->gapp == true && big_gap_p(pair) == true) {
+#if 0
+      if (pair->genomejump > pair->queryjump) {
+	list = Intlist_push(list,pair->genomejump);
+      } else {
+	list = Intlist_push(list,pair->queryjump);
+      }
+#else
+      if ((length = pair->genomejump - pair->queryjump) < 0) {
+	/* cDNA insertion */
+	list = Intlist_push(list,-length);
+      } else {
+	list = Intlist_push(list,length);
+      }
+#endif
     }
     pairs = List_next(pairs);
   }
 
   list = Intlist_reverse(list);
   intronlengths = Intlist_to_array(&(*nintrons),list);
+  debug(
+	printf("%d introns: ",*nintrons);
+	for (i = 0; i < *nintrons; i++) {
+	  printf("%d,",intronlengths[i]);
+	}
+	printf("\n");
+	);
   Intlist_free(&list);
 
   return intronlengths;
 }
 
 
+static const Except_T length_error = {"Negative exon or intron length"};
 
-static bool
-short_end_exon (int exonlen, int intronlen) {
+static double
+compute_prob (int exonlen, int intronlen, int indexsize) {
   double prob;
 
-  if (exonlen < 0) {
-    /*
-    fprintf(stderr,"Bug in short_end_exon.  exonlen = %d.  Please report to twu@gene.com\n",exonlen);
-    abort();
-    */
-    return false;
+  if (exonlen < indexsize) {
+    prob = 1.0;
   } else {
     prob = 1 - pow(1.0-pow(4.0,(double) -exonlen),(double) intronlen);
-    debug(printf("Probability of exon of length %d with intron of length %d is %g\n",
-		 exonlen,intronlen,prob));
-    if (prob < 0.001) {
-      return false;
-    } else {
-      return true;
-    }
+  }
+  debug(printf("Probability of exon of length %d (indexsize %d) with intron of length %d is %g\n",
+	       exonlen,indexsize,intronlen,prob));
+  return prob;
+}
+
+static bool
+short_exon_byprob (int exonlen, int intronlen, int indexsize, double prob_threshold) {
+  double prob;
+
+  prob = compute_prob(exonlen,intronlen,indexsize);
+  if (prob < prob_threshold) {
+    return false;
+  } else {
+    return true;
   }
 }
 
+static bool
+short_exon_bylength (int exonlen, int intronlen, int length_threshold) {
+  double prob;
+
+  if (exonlen >= length_threshold) {
+    return false;
+  } else {
+    return true;
+  }
+}
 
 static void
 zero_net_gap (int *starti, int *startj, int i, int j, int *intronlengths) {
@@ -137,103 +219,46 @@ zero_net_gap (int *starti, int *startj, int i, int j, int *intronlengths) {
   return;
 }
 
-static int
-longest_middle_exon (int i, int j, int *exonlengths, int indexsize) {
-  int length, bestlength = indexsize;
-  int besti = -1, k;
-
-  for (k = i; k < j; k++) {
-    debug(printf("longest_middle_exon: looking at exon %d with length %d\n",k,exonlengths[k]));
-    if (exonlengths[k] > bestlength) {
-      bestlength = exonlengths[k];
-      besti = k;
-    }
-  }
-
-  debug(printf("longest_middle_exon: best result is exon %d\n",besti));
-
-  return besti;
-}
-
-
 
 static int *
-get_exonstatus (int *nexons, int *nshortexons, int *ndeleteexons, List_T pairs, int indexsize) {
-  int *exonstatus, *exonlengths, *intronlengths, nintrons, i, j, k;
-  int starti, startj, longi;
+find_internal_shorts_by_netgap (bool *deletep, int *exonmatches, int nexons,
+				int *intronlengths, int nintrons, int stage2_indexsize) {
+  int *exonstatus;
+  int starti, startj, i, j;
+  int exonlen, intronlen;
+  double prob;
 
-  exonlengths = get_exonlengths(&(*nexons),pairs);
-  intronlengths = get_intronlengths(&nintrons,pairs);
-  /* Debugging */
-  debug(
-	for (i = 0; i < *nexons-1; i++) {
-	  printf("Exon %d of length %d\n",i,exonlengths[i]);
-	  printf("Intron %d of length %d\n",i,intronlengths[i]);
-	}
-	printf("Exon %d of length %d\n",*nexons-1,exonlengths[*nexons-1]);
-	);
-
-  exonstatus = (int *) CALLOC(*nexons,sizeof(int));
-  for (i = 0; i < *nexons; i++) {
+  *deletep = false;
+  exonstatus = (int *) CALLOC(nexons,sizeof(int));
+  for (i = 0; i < nexons; i++) {
     exonstatus[i] = KEEP;
   }
   
-  /* Mark middle exons */
-  for (i = 0; i < *nexons; i++) {
-    if (exonlengths[i] < SHORTEXONLEN_MID) {
+  /* Mark short middle exons */
+  for (i = 1; i < nexons - 1; i++) {
+    exonlen = exonmatches[i];
+    if (exonlen < SHORTEXONLEN_NETGAP) {
       exonstatus[i] = MARK;
     }
   }
 
-  /* Trim 5' end */
+  /* Find internal shorts */
   i = 0;
-  j = 0;
-  while (i < *nexons && j < nintrons && short_end_exon(exonlengths[i],intronlengths[j])) {
-    exonstatus[i] = DELETE;
-    i++;
-    j++;
-  }
-  if (i < *nexons) {
-    /* Keep next exon regardless of length */
-    exonstatus[i] = KEEP;
-  }
-
-  /* Trim 3' end */
-  i = (*nexons) - 1;
-  j = nintrons - 1;
-  while (i >= 0 && j >= 0 && short_end_exon(exonlengths[i],intronlengths[j])) {
-    exonstatus[i] = DELETE;
-    --i;
-    --j;
-  }
-  if (i >= 0) {
-    /* Keep next exon regardless of length */
-    exonstatus[i] = KEEP;
-  }
-
-  /* Remove short exons */
-  i = 0;
-  while (i < *nexons) {
+  while (i < nexons) {
     if (exonstatus[i] == MARK) {
       j = i;
-      while (j < *nexons && exonstatus[j] == MARK) {
+      while (j < nexons && exonstatus[j] == MARK) {
 	j++;
       }
       debug(printf("Calling zero_net_gap with %d exons\n",j-i));
       zero_net_gap(&starti,&startj,i,j,intronlengths);
       if (starti >= 0) {
 	for (j = starti; j <= startj; j++) {
+	  *deletep = true;
 	  exonstatus[j] = DELETE;
 	}
       } else if (j - i == 1) {
 	exonstatus[i] = MARK;
-      } else {
-	for (k = i; k < j; k++) {
-	  exonstatus[k] = DELETE;
-	}
-	if ((longi = longest_middle_exon(i,j,exonlengths,indexsize)) >= 0) {
-	  exonstatus[longi] = MARK;
-	}
       }
       i = j;
     } else {
@@ -241,62 +266,110 @@ get_exonstatus (int *nexons, int *nshortexons, int *ndeleteexons, List_T pairs, 
     }
   }
 
-  /* Count */
-  *nshortexons = 0;
-  *ndeleteexons = 0;
-  for (i = 0; i < *nexons; i++) {
-    if (exonstatus[i] == MARK) {
-      (*nshortexons)++;
-    } else if (exonstatus[i] == DELETE) {
-      (*ndeleteexons)++;
+  return exonstatus;
+}
+
+static int *
+find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int nexons,
+			      int *intronlengths, int nintrons, int stage2_indexsize) {
+  int *exonstatus;
+  int starti, startj, i, j;
+  int exonlen, intronlen;
+  double prob;
+
+  *shortp = *deletep = false;
+  exonstatus = (int *) CALLOC(nexons,sizeof(int));
+  for (i = 0; i < nexons; i++) {
+    exonstatus[i] = KEEP;
+  }
+  
+  /* Mark short middle exons */
+  for (i = 1; i < nexons - 1; i++) {
+    exonlen = exonmatches[i];
+    intronlen = intronlengths[i-1]+intronlengths[i];
+    prob = compute_prob(exonlen,intronlen,stage2_indexsize);
+    if (prob > DELETE_THRESHOLD) {
+      *deletep = true;
+      exonstatus[i] = DELETE;
+    } else if (prob > MARK_THRESHOLD) {
+      *shortp = true;
+      exonstatus[i] = MARK;
     }
   }
 
-  /* Debugging */
+  return exonstatus;
+}
+
+
+/* For ends, we turn off the indexsize parameter */
+static int *
+trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int nintrons, int stage2_indexsize) {
+  int *exonstatus, i;
+  bool shortp;
+
+  *deletep = false;
+  exonstatus = (int *) CALLOC(nexons,sizeof(int));
+  for (i = 0; i < nexons; i++) {
+    exonstatus[i] = KEEP;
+  }
+
+  shortp = true;
+  i = 0;
+  while (i < nexons - 1 && shortp == true) {
+    if (short_exon_bylength(exonmatches[i],intronlengths[i],SHORTEXONLEN_END) == true &&
+	short_exon_byprob(exonmatches[i],intronlengths[i],/*indexsize*/0,SHORTEXONPROB_END) == true) {
+      *deletep = true;
+      exonstatus[i] = DELETE;
+    } else {
+      shortp = false;
+    }
+    i++;
+  }
+    
+  shortp = true;
+  i = nexons - 1;
+  while (i > 0 && shortp == true) {
+    if (short_exon_bylength(exonmatches[i],intronlengths[i-1],SHORTEXONLEN_END) == true &&
+	short_exon_byprob(exonmatches[i],intronlengths[i-1],/*indexsize*/0,SHORTEXONPROB_END) == true) {
+      *deletep = true;
+      exonstatus[i] = DELETE;
+    } else {
+      shortp = false;
+    }
+    --i;
+  }
+    
+  return exonstatus;
+}
+
+
+static List_T
+delete_and_mark_exons (List_T pairs, Pairpool_T pairpool, int *exonstatus, int *exonmatches, int nexons,
+		       bool markp) {
+  List_T newpairs = NULL;
+  Pair_T pair;
+  int currstatus, prevstatus;
+  int i;
+
   debug(
-	for (i = 0; i < *nexons; i++) {
+	for (i = 0; i < nexons; i++) {
 	  if (exonstatus[i] == KEEP) {
-	    printf("Long exon %d of length %d => keep\n",i,exonlengths[i]);
+	    printf("Long exon %d of %d matches => keep\n",i,exonmatches[i]);
 	  } else if (exonstatus[i] == MARK) {
-	    printf("Short exon %d of length %d => mark\n",i,exonlengths[i]);
+	    printf("Short exon %d of %d matches => mark\n",i,exonmatches[i]);
 	  } else if (exonstatus[i] == DELETE) {
-	    printf("Short exon %d of length %d => delete\n",i,exonlengths[i]);
+	    printf("Exon %d of %d matches => delete\n",i,exonmatches[i]);
 	  } else {
 	    abort();
 	  }
 	}
 	);
 
-  if (nintrons > 0) {
-    FREE(intronlengths);
-  }
-  FREE(exonlengths);
-
-  return exonstatus;
-}
-
-
-/* Assumes pairs are from 1..querylength.  Reverses the pairs to be querylength..1 */
-List_T
-Smooth_pairs (int *nshortexons, int *ndeleteexons, List_T pairs, Pairpool_T pairpool,
-	      int indexsize) {
-  List_T newpairs = NULL, p;
-  int *exonstatus, nexons, i;
-  Pair_T pair;
-  int prevstatus, currstatus;
-
-  exonstatus = get_exonstatus(&nexons,&(*nshortexons),&(*ndeleteexons),pairs,indexsize);
-
-  if (*nshortexons == 0 && *ndeleteexons == 0) {
-    FREE(exonstatus);
-    return pairs;
-  }
-
   i = 0;
   currstatus = exonstatus[i];
   while (pairs != NULL) {
     pair = List_head(pairs);
-    if (pair->gapp == true) {
+    if (pair->gapp == true && big_gap_p(pair) == true) {
       prevstatus = currstatus;
       currstatus = exonstatus[++i];
       debug(printf("Gap observed\n"));
@@ -309,23 +382,41 @@ Smooth_pairs (int *nshortexons, int *ndeleteexons, List_T pairs, Pairpool_T pair
       newpairs = Pairpool_push_existing(newpairs,pairpool,pair);
     } else if (currstatus == MARK) {
       debug(printf("Marking position %d as short\n",pair->querypos));
-      pair->shortexonp = true;
+      if (markp == true) {
+	pair->shortexonp = true;
+      }
       newpairs = Pairpool_push_existing(newpairs,pairpool,pair);
     } else {
       debug(printf("Marking position %d for deletion\n",pair->querypos));
     }
     pairs = List_next(pairs);
   }
-	
-  debug(printf("\n"));
-  FREE(exonstatus);
 
-  return List_reverse(newpairs);
+  /* Remove gaps at end */
+  if (newpairs != NULL) {
+    pair = List_head(newpairs);
+  }
+  while (newpairs != NULL && pair->gapp == true) {
+    debug(printf("Popping gap at end\n"));
+    newpairs = Pairpool_pop(newpairs,&pair);
+  }
+
+  /* Remove gaps at beginning */
+  newpairs = List_reverse(newpairs);
+  if (newpairs != NULL) {
+    pair = List_head(newpairs);
+  }
+  while (newpairs != NULL && pair->gapp == true) {
+    debug(printf("Popping gap at beginning\n"));
+    newpairs = Pairpool_pop(newpairs,&pair);
+  }
+
+  return newpairs;
 }
 
 
-void
-Smooth_reset (List_T pairs) {
+static void
+smooth_reset (List_T pairs) {
   List_T p;
   Pair_T pair;
 
@@ -334,6 +425,132 @@ Smooth_reset (List_T pairs) {
     pair->shortexonp = false;
   }
   return;
+}
+
+
+
+/* Assumes pairs are from 1..querylength.  Reverses the pairs to be querylength..1 */
+List_T
+Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool, int stage2_indexsize) {
+  int *exonstatus;
+  int *exonlengths, *exonmatches, *intronlengths, nexons, nintrons, i;
+  bool delete1p, delete2p;
+
+  *deletep = false;
+  smooth_reset(pairs);
+  if (pairs != NULL) {
+    /* Remove internal shorts */
+    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs);
+    intronlengths = get_intronlengths(&nintrons,pairs);
+
+    debug(
+	  printf("Beginning of smoothing.  Initial structure:\n");
+	  for (i = 0; i < nexons-1; i++) {
+	    printf("Exon %d of length %d (%d matches)\n",i,exonlengths[i],exonmatches[i]);
+	    printf("Intron %d of length %d\n",i,intronlengths[i]);
+	  }
+	  printf("Exon %d of length %d (%d matches)\n",nexons-1,exonlengths[nexons-1],exonmatches[nexons-1]);
+	  );
+
+    debug(printf("\nFind internal shorts\n"));
+    exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
+    debug(printf("\nRemove internal shorts\n"));
+    if (*deletep == true) {
+      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false);
+    }
+    
+    debug(
+	  printf("After removing internal shorts:\n");
+	  for (i = 0; i < nexons-1; i++) {
+	    printf("Exon %d of length %d (%d matches)\n",i,exonlengths[i],exonmatches[i]);
+	    printf("Intron %d of length %d\n",i,intronlengths[i]);
+	  }
+	  printf("Exon %d of length %d\n",nexons-1,exonlengths[nexons-1]);
+	  );
+
+    FREE(exonstatus);
+    FREE(intronlengths);
+    FREE(exonmatches);
+    FREE(exonlengths);
+
+    debug(printf("Ending of smoothing\n\n"));
+  }
+
+  return pairs;
+}
+
+
+/* Assumes pairs are from 1..querylength.  Reverses the pairs to be querylength..1 */
+List_T
+Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pairpool, int stage2_indexsize) {
+  int *exonstatus;
+  int *exonlengths, *exonmatches, *intronlengths, nexons, nintrons, i;
+  bool delete1p, delete2p;
+
+  *shortp = *deletep = false;
+  smooth_reset(pairs);
+  if (pairs != NULL) {
+    /* Trim ends */
+    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs);
+    intronlengths = get_intronlengths(&nintrons,pairs);
+
+    debug(printf("\nTrim ends\n"));
+    exonstatus = trim_ends(&delete1p,exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
+    if (delete1p == true) {
+      *deletep = true;
+      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false);
+    }
+
+    FREE(exonstatus);
+
+    FREE(intronlengths);
+    FREE(exonmatches);
+    FREE(exonlengths);
+  }
+
+  if (pairs != NULL) {
+    /* Remove internal shorts */
+    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs);
+    intronlengths = get_intronlengths(&nintrons,pairs);
+
+    debug(
+	  printf("Beginning of smoothing.  Initial structure:\n");
+	  for (i = 0; i < nexons-1; i++) {
+	    printf("Exon %d of length %d (%d matches)\n",i,exonlengths[i],exonmatches[i]);
+	    printf("Intron %d of length %d\n",i,intronlengths[i]);
+	  }
+	  printf("Exon %d of length %d (%d matches)\n",nexons-1,exonlengths[nexons-1],exonmatches[nexons-1]);
+	  );
+
+    debug(printf("\nFind internal shorts\n"));
+    exonstatus = find_internal_shorts_by_size(&(*shortp),&delete2p,exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
+    debug(printf("\nRemove internal shorts\n"));
+    if (delete2p == true) {
+      *deletep = true;
+    }
+    if (delete2p == true || *shortp == true) {
+      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/true);
+    }
+
+    debug(
+	  printf("After removing internal shorts:\n");
+	  for (i = 0; i < nexons-1; i++) {
+	    printf("Exon %d of length %d (%d matches)\n",i,exonlengths[i],exonmatches[i]);
+	    printf("Intron %d of length %d\n",i,intronlengths[i]);
+	  }
+	  printf("Exon %d of length %d\n",nexons-1,exonlengths[nexons-1]);
+	  );
+
+    FREE(exonstatus);
+    FREE(intronlengths);
+    FREE(exonmatches);
+    FREE(exonlengths);
+
+  }
+
+  debug(printf("Ending of smoothing\n\n"));
+
+  return pairs;
 }
 
 

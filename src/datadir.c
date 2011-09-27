@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c,v 1.24 2006/04/21 16:36:32 twu Exp $";
+static char rcsid[] = "$Id: datadir.c,v 1.25 2006/05/02 15:58:30 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -68,16 +68,23 @@ find_homedir_config () {
     
 
 static char *
-find_fileroot (char *genomesubdir) {
+find_fileroot (char *genomesubdir, char *genomedir, char *dbroot) {
   char *fileroot, *filename, *p;
   struct dirent *entry;
   DIR *dp;
 
   if ((dp = opendir(genomesubdir)) == NULL) {
-    fprintf(stderr,"Unable to open default directory %s.  Either recompile GMAP\n",genomesubdir);
-    fprintf(stderr,"to have the correct default directory (seen by doing gmap --version),\n");
-    fprintf(stderr,"or add the -D flag to gmap to specify the genome directory.\n");
-    exit(9);
+    /* Problem found.  Try to diagnose */
+    if ((dp = opendir(genomedir)) == NULL) {
+      fprintf(stderr,"Unable to find default directory %s.  Either recompile GMAP\n",genomedir);
+      fprintf(stderr,"to have the correct default directory (seen by doing gmap --version),\n");
+      fprintf(stderr,"or add the -D flag to gmap to specify the genome directory.\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"Unable to find genome %s in default directory %s.\n",dbroot,genomedir);
+      fprintf(stderr,"Make sure you have typed the genome correctly.\n");
+      exit(9);
+    }
   }
   while ((entry = readdir(dp)) != NULL) {
     filename = entry->d_name;
@@ -186,10 +193,10 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
     FREE(filename);
     genomesubdir = (char *) CALLOC(strlen(genomedir) + strlen("/") + strlen(dbroot) + 1,sizeof(char));
     sprintf(genomesubdir,"%s/%s",genomedir,dbroot);
-    FREE(genomedir);
 
-    if ((*fileroot = find_fileroot(genomesubdir)) != NULL) {
+    if ((*fileroot = find_fileroot(genomesubdir,genomedir,dbroot)) != NULL) {
       /* Found in subdirectory */
+       FREE(genomedir);
     } else {
       fprintf(stderr,"Error: Can't open genome files in %s or %s.\n",genomedir,genomesubdir);
       fprintf(stderr,"       Please specify directory using -D flag, GMAPDB environment variable,\n");

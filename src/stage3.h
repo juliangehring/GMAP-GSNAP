@@ -1,4 +1,4 @@
-/* $Id: stage3.h,v 1.105 2006/03/21 01:47:24 twu Exp $ */
+/* $Id: stage3.h,v 1.123 2006/11/13 04:09:35 twu Exp $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 #include "bool.h"
@@ -13,6 +13,8 @@
 #include "dynprog.h"
 #include "iit-read.h"
 #include "reader.h"		/* For cDNAEnd_T */
+#include "gbuffer.h"
+#include "stopwatch.h"
 
 #define EXTRAQUERYGAP 10
 
@@ -84,9 +86,7 @@ extern T
 Stage3_backtranslate_cdna (T this, bool diagnosticp);
 #else
 extern T
-Stage3_truncate_fulllength (Stage3_T old, bool translatep);
-extern T
-Stage3_translate_genomic (T this, bool fulllengthp, bool truncatep);
+Stage3_translate_genomic (T this, bool fulllengthp, bool truncatep, bool strictp);
 #endif
 extern void
 Stage3_translate_cdna_via_reference (T this, T reference, bool literalrefp);
@@ -94,9 +94,9 @@ extern void
 Stage3_fix_cdna_direction (T this, T reference);
 extern void
 Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit, 
-			  IIT_T altstrain_iit, Sequence_T queryaaseq, bool fulllengthp, bool truncatep,
-			  char *dbversion, int maxmutations, bool zerobasedp, bool diagnosticp,
-			  bool maponlyp);
+			  IIT_T altstrain_iit, Sequence_T queryseq, bool fulllengthp, 
+			  bool truncatep, bool strictp, char *dbversion, int maxmutations, 
+			  bool zerobasedp, bool diagnosticp, bool maponlyp);
 extern void
 Stage3_print_pslformat_nt (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq);
 #ifdef PMAP
@@ -104,23 +104,31 @@ extern void
 Stage3_print_pslformat_pro (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq);
 #endif
 extern void
-Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion,
-			bool showalignp, bool zerobasedp, 
+Stage3_print_gff3 (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq, char *dbversion,
+		   bool diagnosticp, bool fulllengthp, bool truncatep, bool strictp,
+		   bool gff_gene_format_p, char *user_genomicseg);
+extern void
+Stage3_print_iit_map (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq);
+
+extern void
+Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, Sequence_T queryseq,
+			char *dbversion, bool showalignp, bool zerobasedp, 
 			bool continuousp, bool diagnosticp, int proteinmode,
-			int invertmode, bool nointronlenp, int wraplength, int ngap,
+			int invertmode, bool nointronlenp, int wraplength,
 			int maxmutations);
 extern void
-Stage3_print_map (T this, IIT_T map_iit, IIT_T chromosome_iit,
-		  int pathnum, bool map_exons_p, bool map_bothstrands_p);
+Stage3_print_map (T this, IIT_T map_iit, bool map_iit_universal_p, int map_iit_forward_type,
+		  int map_iit_reverse_type, IIT_T chromosome_iit,
+		  int pathnum, bool map_exons_p, bool map_bothstrands_p, int nflanking);
 extern void
 Stage3_print_alignment (T this, Sequence_T queryaaseq,
 			IIT_T chromosome_iit, bool alignsummaryonlyp, bool universalp, bool zerobasedp,
 			bool continuousp, bool diagnosticp, bool genomefirstp, int proteinmode,
-			int invertmode, bool nointronlenp, int wraplength, int ngap, bool maponlyp);
+			int invertmode, bool nointronlenp, int wraplength, bool maponlyp);
 
 extern void
 Stage3_print_coordinates (T this, Sequence_T queryaaseq, IIT_T chromosome_iit, bool zerobasedp,
-			  int invertmode, bool fulllengthp, bool truncatep, bool maponlyp);
+			  int invertmode, bool fulllengthp, bool truncatep, bool strictp, bool maponlyp);
 extern void
 Stage3_print_cdna_exons (T this, int wraplength, int ngap);
 
@@ -128,21 +136,22 @@ extern void
 Stage3_print_genomic_exons (T this, int wraplength, int ngap);
 
 extern void
-Stage3_print_cdna (T this, Sequence_T queryaaseq, bool fulllengthp, bool truncatep, int wraplength);
+Stage3_print_cdna (T this, Sequence_T queryaaseq, bool fulllengthp, bool truncatep, bool strictp, int wraplength);
 
 extern void
-Stage3_print_protein_genomic (T this, Sequence_T queryaaseq, bool fulllengthp, bool truncatep,
+Stage3_print_protein_genomic (T this, Sequence_T queryaaseq, bool fulllengthp, bool truncatep, bool strictp,
 			      int wraplength);
 
 extern void
 Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
-			 char *version, int pathnum, int npaths,
+			 char *dbversion, int pathnum, int npaths,
 			 bool checksump, int chimerapos, int chimeraequivpos,
 			 double donor_prob, double acceptor_prob, 
-			 int chimera_cdna_direction, bool zerobasedp, bool truncatep, int worker_id);
+			 int chimera_cdna_direction, bool zerobasedp, bool truncatep, bool strictp,
+			 int worker_id);
 
 extern T
-Stage3_compute (Stage2_T stage2, 
+Stage3_compute (Stage2_T stage2,  Genomicpos_T stage1_genomicstart, Genomicpos_T stage1_genomiclength,
 #ifdef PMAP
 		Sequence_T queryaaseq,
 #endif
@@ -153,9 +162,10 @@ Stage3_compute (Stage2_T stage2,
 		bool watsonp, int maxpeelback, int maxlookback, 
 		int extramaterial_end, int extramaterial_paired,
 		int extraband_single, int extraband_end, int extraband_paired,
-		bool extend_mismatch_p, bool end_microexons_p, Pairpool_T pairpool, 
-		Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		IIT_T altstrain_iit, int indexsize, int ngap);
+		bool end_microexons_p, Pairpool_T pairpool, 
+		Gbuffer_T gbuffer, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+		IIT_T altstrain_iit, int ngap, int maxdualbreak, bool debug_stage2_p, bool debug_smooth_p,
+		bool diagnosticp, Stopwatch_T stopwatch, double trimexonpct);
 
 
 extern T
@@ -165,7 +175,7 @@ Stage3_direct (Matchpair_T matchpair,
 #endif
 	       Sequence_T queryseq, Sequence_T queryuc, Pairpool_T pairpool, Genome_T genome,
 	       Matchpairend_T matchpairend, Chrnum_T chrnum,  Genomicpos_T chroffset, Genomicpos_T chrpos, bool watsonp,
-	       int ngap, char *gbuffer1, char *gbuffer2, int gbufferlen, Dynprog_T dynprogL, Dynprog_T dynprogR,
+	       int ngap, int maxdualbreak, Gbuffer_T gbuffer, Dynprog_T dynprogL, Dynprog_T dynprogR,
 	       int extramaterial_end, int extraband_end);
 
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.33 2006/02/24 20:39:59 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.37 2006/10/11 00:08:34 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -125,7 +125,7 @@ Pairpool_reset (T this) {
    SHORTGAP_COMP */
 
 List_T
-Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome, bool gapp) {
+Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome, int dynprogindex) {
   List_T listcell;
   Pair_T pair;
   List_T p;
@@ -145,20 +145,83 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->querypos = querypos;
   pair->genomepos = genomepos;
   pair->aapos = 0;
-  pair->aamarker_g = false;
-  pair->aamarker_e = false;
+  pair->aaphase_g = -1;
+  pair->aaphase_e = -1;
   pair->cdna = cdna;
   pair->comp = comp;
   pair->genome = genome;
+  pair->dynprogindex = dynprogindex;
+
+  pair->aa_g = ' ';
+  pair->aa_e = ' ';
   pair->shortexonp = false;
-  pair->gapp = gapp;
+  pair->gapp = false;
   
   pair->queryjump = 0;
   pair->genomejump = 0;
 
   debug(
-	printf("Creating: %d %d %c %c %c\n",
-	       pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	printf("Creating %p: %d %d %c %c %c\n",
+	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	);
+
+	if (this->listcellctr >= this->nlistcells) {
+    this->listcellptr = add_new_listcellchunk(this);
+  } else if ((this->listcellctr % CHUNKSIZE) == 0) {
+    for (n = this->nlistcells - CHUNKSIZE, p = this->listcellchunks;
+	 n > this->listcellctr; p = p->rest, n -= CHUNKSIZE) ;
+    this->listcellptr = (struct List_T *) p->first;
+    debug1(printf("Located listcell %d at %p\n",this->listcellctr,this->listcellptr));
+  }
+  listcell = this->listcellptr++;
+  this->listcellctr++;
+
+  listcell->first = (void *) pair;
+  listcell->rest = list;
+
+  return listcell;
+}
+
+
+List_T
+Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome) {
+  List_T listcell;
+  Pair_T pair;
+  List_T p;
+  int n;
+
+  if (this->pairctr >= this->npairs) {
+    this->pairptr = add_new_pairchunk(this);
+  } else if ((this->pairctr % CHUNKSIZE) == 0) {
+    for (n = this->npairs - CHUNKSIZE, p = this->pairchunks;
+	 n > this->pairctr; p = p->rest, n -= CHUNKSIZE) ;
+    this->pairptr = (struct Pair_T *) p->first;
+    debug1(printf("Located pair %d at %p\n",this->pairctr,this->pairptr));
+  }    
+  pair = this->pairptr++;
+  this->pairctr++;
+
+  pair->querypos = querypos;
+  pair->genomepos = genomepos;
+  pair->aapos = 0;
+  pair->aaphase_g = -1;
+  pair->aaphase_e = -1;
+  pair->cdna = cdna;
+  pair->comp = comp;
+  pair->genome = genome;
+  pair->dynprogindex = 0;
+
+  pair->aa_g = ' ';
+  pair->aa_e = ' ';
+  pair->shortexonp = false;
+  pair->gapp = true;
+  
+  pair->queryjump = 0;
+  pair->genomejump = 0;
+
+  debug(
+	printf("Creating %p: %d %d %c %c %c\n",
+	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	);
 
 	if (this->listcellctr >= this->nlistcells) {
@@ -179,7 +242,7 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
 }
 
 List_T
-Pairpool_push_gap (List_T list, T this, int queryjump, int genomejump) {
+Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump) {
   List_T listcell;
   Pair_T pair;
   List_T p;
@@ -200,18 +263,22 @@ Pairpool_push_gap (List_T list, T this, int queryjump, int genomejump) {
   pair->genomepos = -1;
 
   pair->aapos = 0;
-  pair->aamarker_g = false;
-  pair->aamarker_e = false;
+  pair->aaphase_g = -1;
+  pair->aaphase_e = -1;
   pair->cdna = ' ';
   pair->comp = ' ';
   pair->genome = ' ';
+  pair->dynprogindex = 0;
+
+  pair->aa_g = ' ';
+  pair->aa_e = ' ';
   pair->shortexonp = false;
   pair->gapp = true;
 
   pair->queryjump = queryjump;
   pair->genomejump = genomejump;
 
-  debug(printf("Creating gap, queryjump=%d, genomejump=%d\n",queryjump,genomejump));
+  debug(printf("Creating gap %p, queryjump=%d, genomejump=%d\n",pair,queryjump,genomejump));
 
   if (this->listcellctr >= this->nlistcells) {
     this->listcellptr = add_new_listcellchunk(this);
@@ -238,11 +305,11 @@ Pairpool_push_existing (List_T list, T this, Pair_T pair) {
 
   debug(
 	if (pair->gapp == true) {
-	  printf("Pushing gap: queryjump=%d, genomejump=%d\n",
-		 pair->queryjump,pair->genomejump);
+	  printf("Pushing gap %p: queryjump=%d, genomejump=%d\n",
+		 pair,pair->queryjump,pair->genomejump);
 	} else {
-	  printf("Pushing: %d %d %c %c %c\n",
-		 pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	  printf("Pushing %p: %d %d %c %c %c\n",
+		 pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	}
 	);
   
@@ -301,11 +368,11 @@ Pairpool_transfer (List_T dest, List_T source) {
 	    abort();
 	  }
 	  if (pair->gapp) {
-	    printf("Transferring gap: queryjump=%d, genomejump=%d\n",
-		   pair->queryjump,pair->genomejump);
+	    printf("Transferring gap %p: queryjump=%d, genomejump=%d\n",
+		   pair,pair->queryjump,pair->genomejump);
 	  } else {
-	    printf("Transferring: %d %d %c %c %c\n",
-		   pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	    printf("Transferring %p: %d %d %c %c %c\n",
+		   pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	  }
 	  );
     next = p->rest;
@@ -346,8 +413,8 @@ Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
 	  if (pair->cdna == '\0' || pair->genome == '\0') {
 	    abort();
 	  }
-	  printf("Transferring: %d %d %c %c %c\n",
-		 pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	  printf("Transferring %p: %d %d %c %c %c\n",
+		 pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	  );
     pair = List_head(p);
     next = p->rest;
@@ -383,8 +450,8 @@ Pairpool_copy (List_T source, T this) {
       abort();
     } else {
       dest = Pairpool_push(dest,this,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome,/*gapp*/false);
-      debug(printf("Copying: %d %d %c %c %c\n",
-		   pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome));
+      debug(printf("Copying %p: %d %d %c %c %c\n",
+		   pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome));
     }
     source = source->rest;
   }

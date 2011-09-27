@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.62 2006/04/21 16:36:58 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.65 2006/11/13 04:05:55 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -50,6 +50,7 @@ static bool rawp = false;
 
 static char *user_mapdir = NULL;
 static char *map_iitfile = NULL;
+static int nflanking = 0;
 
 /* Dump options */
 static bool dumpchrp = false;
@@ -72,10 +73,12 @@ static struct option long_options[] = {
   {"fullgenome", no_argument, 0, 'G'}, /* uncompressedp */
   {"header", required_argument, 0, 'h'}, /* header */
 
+  /* External map options */
   {"mapdir", required_argument, 0, 'M'}, /* user_mapdir */
   {"map", required_argument, 0, 'm'},	/* map_iitfile */
   {"ranks", no_argument, 0, 'k'}, /* levelsp */
   {"raw", no_argument, 0, 'r'}, /* rawp */
+  {"flanking", required_argument, 0, 'u'}, /* nflanking */
 
   /* Dump options */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
@@ -92,7 +95,7 @@ static struct option long_options[] = {
 static void
 print_program_version () {
   fprintf(stdout,"\n");
-  fprintf(stdout,"get-genome: retrieves genomic segments\n");
+  fprintf(stdout,"get-genome: retrieval utility for genomic segments\n");
   fprintf(stdout,"Part of GMAP package, version %s\n",PACKAGE_VERSION);
   fprintf(stdout,"Thomas D. Wu and Colin K. Watanabe, Genentech, Inc.\n");
   fprintf(stdout,"Contact: twu@gene.com\n");
@@ -125,10 +128,13 @@ Output options\n\
   -l, --wraplength=INT    Wrap length for sequence (default=60)\n\
   -G, --fullgenome        Use full (uncompressed) version of genome\n\
   -h, --header=STRING     Desired header line\n\
+\n\
+External map file options\n\
   -M, --mapdir=directory  Map directory\n\
   -m, --map=iitfile       Map file\n\
   -k, --ranks             Prints levels for non-overlapping printing of map hits\n\
   -r, --raw               Prints sequence as ASCII numeric codes\n\
+  -u, --flanking=INT      Show flanking hits (default 0)\n\
 \n\
 Dump options\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
@@ -282,12 +288,16 @@ convert_to_chrpos (unsigned int *chrpos, char *genomesubdir, char *fileroot, uns
 static void
 print_map (IIT_T map_iit, IIT_T chromosome_iit, unsigned int left, unsigned int length) {
   int *matches, *submatches, index, i, j, k;
-  int nmatches, nsubmatches;
+  int nmatches, nsubmatches, *leftflanks, nleftflanks, *rightflanks, nrightflanks;
   int *levels = NULL, maxlevel;
   Interval_T interval;
   unsigned int low, high;
 
   matches = IIT_get(&nmatches,map_iit,left,left+length);
+  if (nflanking > 0) {
+    IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,map_iit,left,left+length,nflanking);
+  }
+
   if (levelsp == true) {
     levels = (int *) CALLOC(nmatches,sizeof(int));
     for (i = 0; i < nmatches; i++) {
@@ -318,12 +328,25 @@ print_map (IIT_T map_iit, IIT_T chromosome_iit, unsigned int left, unsigned int 
     }
   }
 
-  IIT_print(map_iit,matches,nmatches,/*bothstrandsp*/true,chromosome_iit,levels);
+  if (nflanking > 0) {
+    IIT_print(map_iit,leftflanks,nleftflanks,/*bothstrandsp*/true,chromosome_iit,/*levels*/NULL,/*reversep*/true);
+    printf("    ====================\n");
+  }
+  IIT_print(map_iit,matches,nmatches,/*bothstrandsp*/true,chromosome_iit,levels,/*reversep*/false);
+  if (nflanking > 0) {
+    printf("    ====================\n");
+    IIT_print(map_iit,rightflanks,nrightflanks,/*bothstrandsp*/true,chromosome_iit,/*levels*/NULL,/*reversep*/false);
+  }
 
   if (levels != NULL) {
     FREE(levels);
   }
+  if (nflanking > 0) {
+    FREE(rightflanks);
+    FREE(leftflanks);
+  }
   FREE(matches);
+
   return;
 }
 
@@ -531,22 +554,153 @@ index_compare (const void *a, const void *b) {
 }
 
 
+static void
+print_sequence (char *genomesubdir, char *fileroot, char *dbversion, Genomicpos_T genomicstart, Genomicpos_T genomiclength) {
+  char *gbuffer1, *gbuffer2, *gbuffer3;
+  char *iitfile;
+  Genome_T genome;
+  Interval_T interval;
+  Sequence_T genomicseg;
+  Genomicpos_T sourcelength, extra;
+  IIT_T altstrain_iit = NULL;
+  int user_type = -1, type, *indexarray, nindices, i, j;
+  char *strain;
+
+  gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
+  gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
+  genome = Genome_new(genomesubdir,fileroot,uncompressedp,false);
+
+  /* Handle reference strain */
+  if (user_typestring != NULL) {
+    /* Don't print a header */
+  } else if (header != NULL) {
+    printf(">%s\n",header);
+  } else if (revcomp == true) {
+    printf(">%s:%u%s%u_rc\n",dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength);
+  } else {
+    printf(">%s:%u%s%u\n",dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength);
+  }
+
+  genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,revcomp,
+				  gbuffer1,gbuffer2,genomiclength);
+
+  if (user_typestring == NULL) {
+    if (rawp == true) {
+      Sequence_print_raw(genomicseg);
+    } else {
+      Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+    }
+    Sequence_free(&genomicseg);
+  }
+
+  /* Handle alternate strains */
+  if (altstrainp == true || user_typestring != NULL) {
+    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			      strlen(fileroot)+strlen(".altstrain.iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.altstrain.iit",genomesubdir,fileroot);
+    global_altstrain_iit = altstrain_iit = IIT_read(iitfile,NULL,true);
+    FREE(iitfile);
+  } else {
+    global_altstrain_iit = altstrain_iit = (IIT_T) NULL;
+  }
+
+  /* We rely upon the fact that gbuffer1 still holds the genomic segment.  This code is duplicated in gmap.c. */
+  if (altstrain_iit != NULL) {
+    if (user_typestring == NULL) {
+      /* No user-specified strain.  Get all indices. */
+      indexarray = IIT_get(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1);
+    } else {
+      user_type = IIT_typeint(altstrain_iit,user_typestring);
+      if (user_type < 0) {
+	/* Invalid user-specified strain.  Print nothing. */
+	fprintf(stderr,"No such type as %s.  Allowed strains are:\n",user_typestring);
+	IIT_dump_typestrings(stderr,altstrain_iit);
+	indexarray = NULL;
+	nindices = 0;
+	Sequence_free(&genomicseg);
+      } else {
+	/* Valid user-specified strain.  Get subset of indices. */
+	indexarray = IIT_get_typed(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,user_type);
+	if (nindices == 0) {
+	  /* Print reference strain */
+	  if (rawp == true) {
+	    Sequence_print_raw(genomicseg);
+	  } else {
+	    Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	  }
+	  Sequence_free(&genomicseg);
+	}
+      }
+    }
+
+    if (nindices > 0) {
+      /* Sort according to type and genome position*/
+      qsort(indexarray,nindices,sizeof(int),index_compare);
+
+      for (j = 0; j < nindices; ) {
+	i = j++;
+	type = Interval_type(interval = IIT_interval(altstrain_iit,indexarray[i]));
+	strain = IIT_typestring(altstrain_iit,type);
+	sourcelength = IIT_annotation_strlen(altstrain_iit,indexarray[i]);
+	if (sourcelength > Interval_length(interval)) {
+	  extra = sourcelength - Interval_length(interval);
+	} else {
+	  extra = 0;
+	}
+	while (j < nindices && Interval_type(interval = IIT_interval(altstrain_iit,indexarray[j])) == type) {
+	  sourcelength = IIT_annotation_strlen(altstrain_iit,indexarray[j]);
+	  if (sourcelength > Interval_length(interval)) {
+	    extra += sourcelength - Interval_length(interval);
+	  }
+	  j++;
+	}
+	/* Patch from i to j */
+	gbuffer3 = (char *) CALLOC(genomiclength+extra+1,sizeof(char));
+	genomicseg = Genome_patch_strain(&(indexarray[i]),j-i,altstrain_iit,
+					 genomicstart,genomiclength,
+					 revcomp,gbuffer1,gbuffer2,gbuffer3,
+					 genomiclength+extra);
+
+	if (header != NULL) {
+	  printf(">%s\n",header);
+	} else if (revcomp == true) {
+	  printf(">%s:%u%s%u_rc variant:%s\n",
+		 dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
+	} else {
+	  printf(">%s:%u%s%u variant:%s\n",
+		 dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
+	}
+	if (rawp == true) {
+	  Sequence_print_raw(genomicseg);
+	} else {
+	  Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	}
+	Sequence_free(&genomicseg);
+	FREE(gbuffer3);
+      }
+      FREE(indexarray);
+    }
+    IIT_free(&altstrain_iit);
+  }
+  Genome_free(&genome);
+  FREE(gbuffer2);
+  FREE(gbuffer1);
+
+  return;
+}
+
+
 #define BUFFERLEN 1024
+
 
 int
 main (int argc, char *argv[]) {
   char *iitfile, *chrsubsetfile;
   FILE *fp;
-  Genomicpos_T genomicstart, genomiclength, sourcelength, extra;
-  char *genomesubdir = NULL, *mapdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL, *p;
-  char *gbuffer1, *gbuffer2, *gbuffer3;
-  Sequence_T genomicseg;
-  Genome_T genome;
-  IIT_T chromosome_iit, contig_iit, altstrain_iit = NULL, map_iit = NULL;
-  Interval_T interval;
+  Genomicpos_T genomicstart, genomiclength;
+  char *genomesubdir = NULL, *mapdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL, *p, *ptr;
+  IIT_T chromosome_iit, contig_iit, map_iit = NULL;
   Chrsubset_T chrsubset;
-  char *strain;
-  int user_type = -1, type, *indexarray, nindices, i, j;
   char Buffer[BUFFERLEN], subsetname[BUFFERLEN];
 
   int opt;
@@ -554,7 +708,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:M:m:krLIcV?",
+  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:M:m:kru:LIcV?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -572,10 +726,12 @@ main (int argc, char *argv[]) {
     case 'l': wraplength = atoi(optarg); break;
     case 'G': uncompressedp = true; break;
     case 'h': header = optarg; break;
+
     case 'M': user_mapdir = optarg; break;
     case 'm': map_iitfile = optarg; break;
     case 'k': levelsp = true; break;
     case 'r': uncompressedp = true; rawp = true; break;
+    case 'u': nflanking = atoi(optarg); break;
 
     case 'L': dumpchrp = true; break;
     case 'I': dumpsegsp = true; break;
@@ -661,171 +817,83 @@ main (int argc, char *argv[]) {
 
     return 0;
 
-  } else if (argc < 1) {
-    print_program_usage();
-    exit(9);
-
   }
 
   if (replacex == true) {
     Genome_replace_x();
   }
 
-  if (parse_query(&genomicstart,&genomiclength,&revcomp,argv[0],genomesubdir,fileroot,dbversion) == true) {
-    debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
-		 genomicstart,genomiclength,revcomp));
+  if (map_iitfile != NULL) {
+    mapdir = Datadir_find_mapdir(user_mapdir,genomesubdir,fileroot);
+    iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
+			      strlen(map_iitfile)+strlen(".iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.iit",mapdir,map_iitfile);
+    if ((map_iit = IIT_read(iitfile,map_iitfile,true)) == NULL) {
+      fprintf(stderr,"Map file %s.iit not found in %s.  Available files:\n",map_iitfile,mapdir);
+      Datadir_list_directory(stderr,mapdir);
+      fprintf(stderr,"Either install file %s.iit or specify a full directory path\n",map_iitfile);
+      fprintf(stderr,"using the -M flag to gmap.\n");
+      exit(9);
+    }
+    FREE(iitfile);
+    FREE(mapdir);
 
-    if (map_iitfile != NULL) {
-      mapdir = Datadir_find_mapdir(user_mapdir,genomesubdir,fileroot);
-      iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
-				strlen(map_iitfile)+strlen(".iit")+1,sizeof(char));
-      sprintf(iitfile,"%s/%s.iit",mapdir,map_iitfile);
-      if ((map_iit = IIT_read(iitfile,map_iitfile,true)) == NULL) {
-	fprintf(stderr,"Map file %s.iit not found in %s.  Available files:\n",map_iitfile,mapdir);
-	Datadir_list_directory(stderr,mapdir);
-	fprintf(stderr,"Either install file %s.iit or specify a full directory path\n",map_iitfile);
-	fprintf(stderr,"using the -M flag to gmap.\n");
-	exit(9);
-      }
-      FREE(iitfile);
-      FREE(mapdir);
+    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
+    chromosome_iit = IIT_read(iitfile,NULL,true);
+    FREE(iitfile);
+  }
 
-      iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
-				strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
-      sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-      chromosome_iit = IIT_read(iitfile,NULL,true);
-      FREE(iitfile);
+  if (argc >= 1) {
+    if (parse_query(&genomicstart,&genomiclength,&revcomp,argv[0],genomesubdir,fileroot,dbversion) == true) {
+      debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
+		   genomicstart,genomiclength,revcomp));
+      if (map_iitfile != NULL) {
+	print_map(map_iit,chromosome_iit,genomicstart,genomiclength);
 
-      print_map(map_iit,chromosome_iit,genomicstart,genomiclength);
-      IIT_free(&chromosome_iit);
-      IIT_free(&map_iit);
+      } else if (coordp == true) {
+	print_two_coords(genomesubdir,fileroot,genomicstart,genomiclength);
 
-    } else if (coordp == true) {
-      print_two_coords(genomesubdir,fileroot,genomicstart,genomiclength);
-
-    } else {
-      gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-      gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-      genome = Genome_new(genomesubdir,fileroot,uncompressedp,false);
-
-      /* Handle reference strain */
-      if (user_typestring != NULL) {
-	/* Don't print a header */
-      } else if (header != NULL) {
-	printf(">%s\n",header);
-      } else if (revcomp == true) {
-	printf(">%s:%u%s%u_rc\n",dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength);
       } else {
-	printf(">%s:%u%s%u\n",dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength);
+	print_sequence(genomesubdir,fileroot,dbversion,genomicstart,genomiclength);
       }
-
-      genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,revcomp,
-				      gbuffer1,gbuffer2,genomiclength);
-
-      if (user_typestring == NULL) {
-	if (rawp == true) {
-	  Sequence_print_raw(genomicseg);
+    }
+  } else {
+    while (fgets(Buffer,BUFFERLEN,stdin) != NULL) {
+      if ((ptr = rindex(Buffer,'\n')) != NULL) {
+	*ptr = '\0';
+      }
+      if (map_iitfile != NULL) {
+	fprintf(stdout,"# Query: %s\n",Buffer);
+	if ((ptr = index(Buffer,' ')) != NULL) {
+	  /* Just look at first part */
+	  *ptr = '\0';
+	}
+      }
+      if (parse_query(&genomicstart,&genomiclength,&revcomp,Buffer,genomesubdir,fileroot,dbversion) == true) {
+	debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
+		     genomicstart,genomiclength,revcomp));
+	if (map_iitfile != NULL) {
+	  print_map(map_iit,chromosome_iit,genomicstart,genomiclength);
+	  fprintf(stdout,"# End\n");
+	  fflush(stdout);
+	  
+	} else if (coordp == true) {
+	  print_two_coords(genomesubdir,fileroot,genomicstart,genomiclength);
+	  
 	} else {
-	  Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	  print_sequence(genomesubdir,fileroot,dbversion,genomicstart,genomiclength);
 	}
-	Sequence_free(&genomicseg);
       }
-
-      /* Handle alternate strains */
-      if (altstrainp == true || user_typestring != NULL) {
-	iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
-				  strlen(fileroot)+strlen(".altstrain.iit")+1,sizeof(char));
-	sprintf(iitfile,"%s/%s.altstrain.iit",genomesubdir,fileroot);
-	global_altstrain_iit = altstrain_iit = IIT_read(iitfile,NULL,true);
-	FREE(iitfile);
-      } else {
-	global_altstrain_iit = altstrain_iit = (IIT_T) NULL;
-      }
-
-      /* We rely upon the fact that gbuffer1 still holds the genomic segment.  This code is duplicated in gmap.c. */
-      if (altstrain_iit != NULL) {
-	if (user_typestring == NULL) {
-	  /* No user-specified strain.  Get all indices. */
-	  indexarray = IIT_get(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1);
-	} else {
-	  user_type = IIT_typeint(altstrain_iit,user_typestring);
-	  if (user_type < 0) {
-	    /* Invalid user-specified strain.  Print nothing. */
-	    fprintf(stderr,"No such type as %s.  Allowed strains are:\n",user_typestring);
-	    IIT_dump_typestrings(stderr,altstrain_iit);
-	    indexarray = NULL;
-	    nindices = 0;
-	    Sequence_free(&genomicseg);
-	  } else {
-	    /* Valid user-specified strain.  Get subset of indices. */
-	    indexarray = IIT_get_typed(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,user_type);
-	    if (nindices == 0) {
-	      /* Print reference strain */
-	      if (rawp == true) {
-		Sequence_print_raw(genomicseg);
-	      } else {
-		Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
-	      }
-	      Sequence_free(&genomicseg);
-	    }
-	  }
-	}
-
-	if (nindices > 0) {
-	  /* Sort according to type and genome position*/
-	  qsort(indexarray,nindices,sizeof(int),index_compare);
-
-	  for (j = 0; j < nindices; ) {
-	    i = j++;
-	    type = Interval_type(interval = IIT_interval(altstrain_iit,indexarray[i]));
-	    strain = IIT_typestring(altstrain_iit,type);
-	    sourcelength = IIT_annotation_strlen(altstrain_iit,indexarray[i]);
-	    if (sourcelength > Interval_length(interval)) {
-	      extra = sourcelength - Interval_length(interval);
-	    } else {
-	      extra = 0;
-	    }
-	    while (j < nindices && Interval_type(interval = IIT_interval(altstrain_iit,indexarray[j])) == type) {
-	      sourcelength = IIT_annotation_strlen(altstrain_iit,indexarray[j]);
-	      if (sourcelength > Interval_length(interval)) {
-		extra += sourcelength - Interval_length(interval);
-	      }
-	      j++;
-	    }
-	    /* Patch from i to j */
-	    gbuffer3 = (char *) CALLOC(genomiclength+extra+1,sizeof(char));
-	    genomicseg = Genome_patch_strain(&(indexarray[i]),j-i,altstrain_iit,
-					     genomicstart,genomiclength,
-					     revcomp,gbuffer1,gbuffer2,gbuffer3,
-					     genomiclength+extra);
-
-	    if (header != NULL) {
-	      printf(">%s\n",header);
-	    } else if (revcomp == true) {
-	      printf(">%s:%u%s%u_rc variant:%s\n",
-		     dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
-	    } else {
-	      printf(">%s:%u%s%u variant:%s\n",
-		     dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
-	    }
-	    if (rawp == true) {
-	      Sequence_print_raw(genomicseg);
-	    } else {
-	      Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
-	    }
-	    Sequence_free(&genomicseg);
-	    FREE(gbuffer3);
-	  }
-	  FREE(indexarray);
-	}
-	IIT_free(&altstrain_iit);
-      }
-      Genome_free(&genome);
-      FREE(gbuffer2);
-      FREE(gbuffer1);
     }
   }
     
+  if (map_iitfile != NULL) {
+    IIT_free(&chromosome_iit);
+    IIT_free(&map_iit);
+  }
+
   FREE(dbversion);
   FREE(genomesubdir);
   FREE(fileroot);

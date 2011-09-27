@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reader.c,v 1.15 2005/07/21 22:44:39 twu Exp $";
+static char rcsid[] = "$Id: reader.c,v 1.16 2006/05/19 17:14:14 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -22,6 +22,9 @@ struct T {
   char *startinit;
   char *startptr;
   char *endptr;
+
+  char *startbound;
+  char *endbound;
 };
 
 int
@@ -46,12 +49,38 @@ Reader_endpos (T this) {
 
 
 void
+Reader_reset_start (T this, int querypos) {
+  char *sequence;
+
+  sequence = this->startinit;
+  this->startptr = &(sequence[querypos]);
+  return;
+}
+
+void
+Reader_reset_end (T this, int querypos) {
+  char *sequence;
+
+  sequence = this->startinit;
+  this->endptr = &(sequence[querypos]);
+  return;
+}
+
+
+void
 Reader_reset_ends (T this) {
   char *sequence;
 
   sequence = this->startinit;
+
+  /*
   this->startptr = &(sequence[this->querystart]);
   this->endptr = &(sequence[this->queryend-1]);
+  */
+
+  this->startptr = this->startbound;
+  this->endptr = this->endbound;
+
   return;
 }
 
@@ -66,8 +95,8 @@ Reader_new (char *sequence, int querystart, int queryend, int blocksize) {
   new->blocksize = blocksize;
 
   new->startinit = sequence;
-  new->startptr = &(sequence[querystart]);
-  new->endptr = &(sequence[queryend-1]);
+  new->startbound = new->startptr = &(sequence[querystart]);
+  new->endbound = new->endptr = &(sequence[queryend-1]);
   return new;
 }
 
@@ -80,7 +109,7 @@ Reader_free (T *old) {
 }
 
 char
-Reader_getc (T this, cDNAEnd_T cdnaend) {
+Reader_getc_old (T this, cDNAEnd_T cdnaend) {
   debug(fprintf(stderr,"Read_getc has startptr %d and endptr %d\n",
 		this->startptr-this->startinit,this->endptr-this->startinit));
   if (this->startptr - this->endptr >= this->blocksize) {
@@ -89,6 +118,25 @@ Reader_getc (T this, cDNAEnd_T cdnaend) {
     return *(this->startptr++);
   } else { 
     return *(this->endptr--);
+  }
+}
+
+char
+Reader_getc (T this, cDNAEnd_T cdnaend) {
+  debug(fprintf(stderr,"Read_getc has startptr %d and endptr %d\n",
+		this->startptr-this->startinit,this->endptr-this->startinit));
+  if (cdnaend == FIVE) {
+    if (this->startptr >= this->endbound) {
+      return '\0';
+    } else {
+      return *(this->startptr++);
+    }
+  } else {
+    if (this->endptr <= this->startbound) {
+      return '\0';
+    } else {
+      return *(this->endptr--);
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-/* $Id: matchpool.h,v 1.1 2005/12/04 15:31:05 twu Exp $ */
+/* $Id: matchpool.h,v 1.2 2006/10/09 16:59:23 twu Exp $ */
 #ifndef MATCHPOOL_INCLUDED
 #define MATCHPOOL_INCLUDED
 #include "bool.h"
@@ -16,6 +16,10 @@ extern T
 Matchpool_new (void);
 extern void
 Matchpool_reset (T this);
+extern void
+Matchpool_save (T this);
+extern void
+Matchpool_restore (T this);
 extern List_T
 Matchpool_push (List_T list, T this, int querypos, bool forwardp, bool fivep,
 		Genomicpos_T position, IIT_T chromosome_iit);

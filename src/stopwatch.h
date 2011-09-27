@@ -1,12 +1,20 @@
-/* $Id: stopwatch.h,v 1.5 2005/07/08 14:43:19 twu Exp $ */
+/* $Id: stopwatch.h,v 1.6 2006/10/04 19:24:58 twu Exp $ */
 #ifndef STOPWATCH_INCLUDED
 #define STOPWATCH_INCLUDED
 
-extern void
-Stopwatch_start (void);
-extern double 
-Stopwatch_stop (void);
+#define T Stopwatch_T
+typedef struct T *T;
 
+extern T
+Stopwatch_new ();
+extern void
+Stopwatch_free (T *old);
+extern void
+Stopwatch_start (T this);
+extern double 
+Stopwatch_stop (T this);
+
+#undef T
 #endif
 
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c,v 1.8 2005/12/02 22:57:21 twu Exp $";
+static char rcsid[] = "$Id: access.c,v 1.10 2006/10/09 17:02:43 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -78,8 +78,8 @@ Access_fileio_rw (char *filename) {
 void *
 Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) {
   void *memory;
-  int fd;
   FILE *fp;
+  Stopwatch_T stopwatch;
 
   *len = (size_t) Access_filesize(filename);
 
@@ -88,14 +88,15 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
     exit(9);
   }
 
-  Stopwatch_start();
+  Stopwatch_start(stopwatch = Stopwatch_new());
   memory = (void *) MALLOC(*len);
   FREAD_UINTS(memory,(*len)/eltsize,fp);
 
   /* Note: the following (old non-batch mode) requires conversion to bigendian later, as needed */
   /* fread(new->offsets,eltsize,sb.st_size/eltsize,fp); */
 
-  *seconds = Stopwatch_stop();
+  *seconds = Stopwatch_stop(stopwatch);
+  Stopwatch_free(&stopwatch);
 
   fclose(fp);
 
@@ -257,6 +258,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
   int pagesize, indicesperpage;
   size_t totalindices, i;	/* Needs to handle uncompressed genomes > 2 gigabytes */
   int nzero = 0, npos = 0;
+  Stopwatch_T stopwatch;
 
 #ifdef PAGESIZE_VIA_SYSCTL
   size_t pagelen;
@@ -298,7 +300,8 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 #endif
 
     indicesperpage = pagesize/eltsize;
-    Stopwatch_start();
+    
+    Stopwatch_start(stopwatch = Stopwatch_new());
 
     memory = mmap(NULL,length,PROT_READ,0
 #ifdef HAVE_MMAP_MAP_SHARED
@@ -314,7 +317,8 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
     if (memory == MAP_FAILED) {
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
-      Stopwatch_stop();
+      Stopwatch_stop(stopwatch);
+      Stopwatch_free(&stopwatch);
     } else {
       /* Touch all pages */
       debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
@@ -325,7 +329,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 #endif
       totalindices = (*len)/eltsize;
       for (i = 0; i < totalindices; i += indicesperpage) {
-	if (memory[i] == 0U) {
+	if (((char *) memory)[i] == 0) {
 	  nzero++;
 	} else {
 	  npos++;
@@ -335,7 +339,8 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 	}
       }
       *npages = nzero + npos;
-      *seconds = Stopwatch_stop();
+      *seconds = Stopwatch_stop(stopwatch);
+      Stopwatch_free(&stopwatch);
     }
   }
 

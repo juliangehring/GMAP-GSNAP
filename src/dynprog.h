@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.47 2006/03/21 01:45:02 twu Exp $ */
+/* $Id: dynprog.h,v 1.52 2006/10/12 16:30:38 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -29,7 +29,8 @@ Dynprog_init (int maxlookback, int extraquerygap, int maxpeelback,
 	      int extramaterial_end, int extramaterial_paired);
 
 extern List_T
-Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
+Dynprog_single_gap (int *dynprogindex, int *finalscore,
+		    int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    T dynprog, char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2,
 #ifdef PMAP
@@ -38,8 +39,8 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 		    int cdna_direction, Pairpool_T pairpool, int extraband_single, double defect_rate);
 
 extern List_T
-Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR, 
-		  char *sequence1L, char *sequenceuc1L,
+Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
+		  T dynprogL, T dynprogR, char *sequence1L, char *sequenceuc1L,
 		  char *revsequence1R, char *revsequenceuc1R,
 		  char *sequence2, char *sequenceuc2,
 		  int length1L, int length1R, int length2,
@@ -47,10 +48,12 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  int cdna_direction, Pairpool_T pairpool, int extraband_paired, double defect_rate);
+		  int cdna_direction, Pairpool_T pairpool, int extraband_paired, double defect_rate,
+		  bool forcep);
 
 extern List_T
-Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
+Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, int *new_rightgenomepos,
+		    int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    int *exonhead, int *introntype, T dynprogL, T dynprogR, 
 		    char *sequence1, char *sequenceuc1,
 		    char *sequence2L, char *sequenceuc2L,
@@ -61,10 +64,10 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 		    char *queryaaseq,
 #endif
 		    int cdna_direction, Pairpool_T pairpool, int extraband_paired,
-		    bool endp, double defect_rate, bool returnpairsp, bool addgapp, int maxpeelback);
+		    bool endp, double defect_rate, int maxpeelback, bool halfp, bool finalp);
 
 extern List_T
-Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches,
+Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
 		  int *nopens, int *nindels, T dynprog,
 		  char *revsequence1, char *revsequenceuc1,
 		  char *revsequence2, char *revsequenceuc2,
@@ -76,7 +79,7 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches,
 		  bool extend_mismatch_p);
 
 extern List_T
-Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches,
+Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
 		  int *nopens, int *nindels, T dynprog,
 		  char *sequence1, char *sequenceuc1,
 		  char *sequence2, char *sequenceuc2,
@@ -88,7 +91,7 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches,
 		  bool extend_mismatch_p);
 
 extern List_T
-Dynprog_microexon_int (int *microintrontype,
+Dynprog_microexon_int (int *dynprogindex, int *microintrontype,
 		       char *sequence1, char *sequenceuc1,
 		       char *sequence2L, char *sequenceuc2L,
 		       char *revsequence2R, char *revsequenceuc2R,
@@ -98,10 +101,10 @@ Dynprog_microexon_int (int *microintrontype,
 		       char *queryaaseq,
 #endif
 		       char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-		       Pairpool_T pairpool);
+		       Pairpool_T pairpool, double defect_rate);
 
 extern List_T
-Dynprog_microexon_5 (int *microintrontype, int *microexonlength,
+Dynprog_microexon_5 (int *dynprogindex, int *microintrontype, int *microexonlength,
 		     char *revsequence1, char *revsequenceuc1,
 		     char *revsequence2, char *revsequenceuc2,
 		     int length1, int length2, int revoffset1, int revoffset2, int cdna_direction,
@@ -112,7 +115,7 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength,
 		     Pairpool_T pairpool, bool end_microexons_p);
 
 extern List_T
-Dynprog_microexon_3 (int *microintrontype, int *microexonlength,
+Dynprog_microexon_3 (int *dynprogindex, int *microintrontype, int *microexonlength,
 		     char *sequence1, char *sequenceuc1,
 		     char *sequence2, char *sequenceuc2,
 		     int length1, int length2, int offset1, int offset2, int cdna_direction,

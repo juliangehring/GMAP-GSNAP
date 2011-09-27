@@ -1,9 +1,10 @@
-static char rcsid[] = "$Id: stopwatch.c,v 1.9 2005/07/08 14:43:19 twu Exp $";
+static char rcsid[] = "$Id: stopwatch.c,v 1.10 2006/10/04 19:24:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "stopwatch.h"
+#include "mem.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For sysconf */
@@ -13,26 +14,50 @@ static char rcsid[] = "$Id: stopwatch.c,v 1.9 2005/07/08 14:43:19 twu Exp $";
 #endif
 #include <sys/times.h>
 
-static struct tms start;
-static struct tms stop;
-static clock_t start_elapsed;
-static clock_t stop_elapsed;
+#define T Stopwatch_T
+struct T {
+  struct tms start;
+  struct tms stop;
+  clock_t start_elapsed;
+  clock_t stop_elapsed;
+};
+
+T
+Stopwatch_new () {
+  T new = (T) MALLOC(sizeof(*new));
+  return new;
+}
 
 void
-Stopwatch_start (void) {
-  start_elapsed = times(&start);
+Stopwatch_free (T *old) {
+  if (*old) {
+    FREE(*old);
+  }
+  return;
+}
+
+void
+Stopwatch_start (T this) {
+  if (this != NULL) {
+    this->start_elapsed = times(&this->start);
+  }
+  return;
 }
 
 /* Returns user seconds elapsed since start of process. */
 /* struct tms is defined in <sys/times.h> (see man times); tms values are
    in "clock ticks per second", CLK_TCK */
 double 
-Stopwatch_stop (void) {
+Stopwatch_stop (T this) {
   long clk_tck = sysconf(_SC_CLK_TCK);
 
-  stop_elapsed = times(&stop);
+  if (this == NULL) {
+    return 0.0;
+  } else {
+    this->stop_elapsed = times(&this->stop);
 
-  /* user time is in stop.tms_utime */
-  return (double) (stop_elapsed - start_elapsed)/(double) clk_tck;
+    /* user time is in stop.tms_utime */
+    return (double) (this->stop_elapsed - this->start_elapsed)/(double) clk_tck;
+  }
 }
 

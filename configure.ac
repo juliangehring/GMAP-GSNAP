@@ -34,14 +34,14 @@ AC_ARG_PROGRAM
 #AM_INIT_AUTOMAKE([no-dependencies])
 AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
 
-AM_CONDITIONAL(FULLDIST,test "$enable_fulldist" = yes)
+AM_CONDITIONAL(FULLDIST,test "x$enable_fulldist" = xyes)
 AC_ARG_ENABLE([fulldist],
 	       AC_HELP_STRING([--enable-fulldist],
                               [For use by program maintainer]),
 	      [enable_fulldist="yes"],
               [enable_fulldist="no"])
 
-AM_CONDITIONAL(MAINTAINER,test "$enable_maintainer" = yes)
+AM_CONDITIONAL(MAINTAINER,test "x$enable_maintainer" = xyes)
 AC_ARG_ENABLE([maintainer],
 	       AC_HELP_STRING([--enable-maintainer],
                               [For use by program maintainer]),
@@ -66,22 +66,6 @@ AC_MSG_CHECKING(bindir)
 ACX_EXPAND(BINDIR,$bindir)
 AC_SUBST(BINDIR)
 AC_MSG_RESULT($BINDIR)
-
-# Genome directory
-AC_MSG_CHECKING(gmapdb)
-AC_ARG_WITH([gmapdb],
-            AC_HELP_STRING([--with-gmapdb=DIR],
-                           [default GMAP database directory]),
-            [answer="$withval"],
-            [answer=""])
-if test x"$answer" = x; then
-	ACX_EXPAND(GMAPDB,'${prefix}/share')
-else
-	GMAPDB=$answer
-fi
-AC_SUBST(GMAPDB)
-AC_MSG_RESULT($GMAPDB)
-
 
 # Works in conjunction with AC_PROG_LIBTOOL -- Commented out because no libraries being built
 #AC_MSG_CHECKING(whether to link statically)
@@ -198,6 +182,133 @@ ACX_FUNC_FOPEN_BINARY
 ACX_FUNC_FOPEN_TEXT
 
 
+# Genome directory
+AC_MSG_CHECKING(gmapdb)
+AC_ARG_WITH([gmapdb],
+            AC_HELP_STRING([--with-gmapdb=DIR],
+                           [Default GMAP database directory]),
+            [answer="$withval"],
+            [answer=""])
+if test x"$answer" = x; then
+	ACX_EXPAND(GMAPDB,'${prefix}/share')
+else
+	GMAPDB=$answer
+fi
+AC_SUBST(GMAPDB)
+AC_MSG_RESULT($GMAPDB)
+
+
+# zlib package
+
+AC_MSG_CHECKING(for zlib support)
+AC_ARG_ENABLE([zlib],
+              AC_HELP_STRING([--enable-zlib],
+                             [Enable zlib support (option needed for uncompressing gzip files) (default=yes)]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+   xno)
+   AC_MSG_RESULT(disabled)
+   ZLIB_LIBS=""
+   have_zlib=no
+   ;;
+
+   *)
+   AC_MSG_RESULT(enabled)
+   failed=0;
+   passed=0;
+   AC_CHECK_HEADER(zlib.h,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(z,gzopen,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(z,gzeof,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(z,gzgetc,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(z,gzgets,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(z,gzclose,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_MSG_CHECKING(if zlib package is complete)
+   if test $failed -gt 0
+   then
+      AC_MSG_RESULT(no -- some components failed test)
+      ZLIB_LIBS=""
+      have_zlib=no
+   else
+      AC_MSG_RESULT(working)
+      AC_DEFINE(HAVE_ZLIB,1,[Define to 1 if you have a working zlib library.])
+      ZLIB_LIBS="-lz"
+      have_zlib=yes
+
+      AC_CHECK_LIB(z,gzbuffer,have_gzbuffer=1,have_gzbuffer=0)
+      if test $have_gzbuffer -gt 0
+      then
+        AC_DEFINE(HAVE_ZLIB_GZBUFFER,1,[Define to 1 if your zlib library has a gzbuffer function.])
+      fi
+   fi
+   ;;
+
+esac
+AC_SUBST(ZLIB_LIBS)
+
+
+# Samtools package
+
+AC_MSG_CHECKING(for samtools library)
+AC_ARG_WITH([samtools],
+            AC_HELP_STRING([--with-samtools=DIR],
+                           [Location of samtools header and library files (both in DIR) (optional)]),
+            [answer="$withval"],
+            [answer=""])
+if test x"$answer" = x; then
+  SAMTOOLS_CFLAGS=""
+  SAMTOOLS_LDFLAGS=""
+  SAMTOOLS_LIBS=""
+  AC_MSG_RESULT(disabled)
+  samtools=false
+else
+  if test x$have_zlib = xno; then
+     SAMTOOLS_CFLAGS=""
+     SAMTOOLS_LDFLAGS=""
+     SAMTOOLS_LIBS=""
+     AC_MSG_RESULT(enabled, but zlib not enabled)
+     samtools=false
+  else
+     AC_DEFINE(HAVE_SAMTOOLS,1,[Define to 1 if you have a working Samtools library.])
+     SAMTOOLS_CFLAGS="-I$withval"
+     SAMTOOLS_LDFLAGS="-L$withval"
+     SAMTOOLS_LIBS="-lbam"
+     AC_MSG_RESULT(enabled)
+     samtools=true
+  fi
+fi
+AC_SUBST(SAMTOOLS_CFLAGS)
+AC_SUBST(SAMTOOLS_LDFLAGS)
+AC_SUBST(SAMTOOLS_LIBS)
+AM_CONDITIONAL([SAMTOOLS], [test "x$samtools" = xtrue])
+
+
+# Goby package
+
+AC_MSG_CHECKING(for goby library)
+AC_ARG_WITH([goby],
+            AC_HELP_STRING([--with-goby=DIR],
+                           [Location of Goby header files (in DIR/include) and library files (in DIR/lib) (optional)]),
+            [answer="$withval"],
+            [answer=""])
+if test x"$answer" = x; then
+            GOBY_CFLAGS=""
+            GOBY_LDFLAGS=""
+	    GOBY_LIBS=""
+            AC_MSG_RESULT(disabled)
+else
+            AC_DEFINE(HAVE_GOBY,1,[Define to 1 if you have a working Goby library.])
+            GOBY_CFLAGS="-I$withval/include"
+            GOBY_LDFLAGS="-L$withval/lib"
+	    GOBY_LIBS="-lgoby"
+            AC_MSG_RESULT(enabled)
+fi
+AC_SUBST(GOBY_CFLAGS)
+AC_SUBST(GOBY_LDFLAGS)
+AC_SUBST(GOBY_LIBS)
+
+
+
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([util/Makefile])
@@ -205,10 +316,16 @@ AC_CONFIG_FILES([util/gmap_compress.pl])
 AC_CONFIG_FILES([util/gmap_uncompress.pl])
 AC_CONFIG_FILES([util/gmap_process.pl])
 AC_CONFIG_FILES([util/gmap_setup.pl])
+AC_CONFIG_FILES([util/gmap_build.pl])
 AC_CONFIG_FILES([util/gmap_update.pl])
 AC_CONFIG_FILES([util/gmap_reassemble.pl])
 AC_CONFIG_FILES([util/md_coords.pl])
 AC_CONFIG_FILES([util/fa_coords.pl])
+AC_CONFIG_FILES([util/psl_splicesites.pl])
+AC_CONFIG_FILES([util/psl_splices.pl])
+AC_CONFIG_FILES([util/dbsnp_iit.pl])
+AC_CONFIG_FILES([util/sam_merge.pl])
+AC_CONFIG_FILES([util/sam_restore.pl])
 AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/align.test],[chmod +x tests/align.test])
 AC_CONFIG_FILES([tests/coords1.test],[chmod +x tests/coords1.test])

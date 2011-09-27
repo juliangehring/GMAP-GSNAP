@@ -1,4 +1,4 @@
-/* $Id: iitdef.h,v 1.20 2009-08-29 00:36:12 twu Exp $ */
+/* $Id: iitdef.h 30359 2010-10-14 16:00:36Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -17,18 +17,18 @@
 #include "types.h"
 
 
-#ifdef HAVE_64_BIT
-#define IIT_LATEST_VERSION 4
-#define IIT_8BYTE_VERSION 4
-#define IIT_4BYTE_VERSION 3
-#else
-#define IIT_LATEST_VERSION 3
-#endif
+#define IIT_LATEST_VERSION 5
+
 
 /* version 1 starts with nintervals */
 /* version 2 starts with 0, then version number.  Also adds sign to each interval.  */
 /* version 3 allows for multiple divs */
 /* version 4 has label and annot pointers being 8-byte long unsigned ints */
+
+/* version 5 has two extra fields indicating whether label pointers are
+   4- or 8-bytes and whether annot pointers are 4- or 8-bytes.  Also
+   stores rest of header line with annotation, so NULL => print '\n',
+   otherwise print annotation. */
 
 
 typedef enum {NO_SORT, ALPHA_SORT, CHROM_SORT} Sorttype_T;
@@ -46,6 +46,9 @@ struct FNode_T {
 struct T {
   char *name;			/* Name of IIT (optional) */
   int version;			
+  bool label_pointers_8p;
+  bool annot_pointers_8p;
+
   int fd;
   Access_T access;		/* access type */
 

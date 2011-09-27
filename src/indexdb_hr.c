@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c,v 1.37 2010-07-10 01:34:52 twu Exp $";
+static char rcsid[] = "$Id: indexdb_hr.c 36132 2011-03-06 20:27:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -554,8 +554,24 @@ static void
 positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
   int i;
   Genomicpos_T value;
-  char buffer[4];
+  unsigned char buffer[4];
 
+#ifdef WORDS_BIGENDIAN
+  /* Need to keep in bigendian format */
+  for (i = 0; i < n; i++) {
+    read(positions_fd,buffer,4);
+
+    value = (buffer[0] & 0xff);
+    value <<= 8;
+    value |= (buffer[1] & 0xff);
+    value <<= 8;
+    value |= (buffer[2] & 0xff);
+    value <<= 8;
+    value |= (buffer[3] & 0xff);
+
+    values[i] = value;
+  }
+#else
   for (i = 0; i < n; i++) {
     read(positions_fd,buffer,4);
 
@@ -569,6 +585,7 @@ positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
 
     values[i] = value;
   }
+#endif
 
   return;
 }
@@ -577,6 +594,9 @@ static Genomicpos_T *
 point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   Genomicpos_T *positions;
   Positionsptr_T ptr0, end0;
+#ifdef DEBUG
+  int i;
+#endif
 
   switch (this->offsets_access) {
   case ALLOCATED:
@@ -595,6 +615,7 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
     break;
 
   case FILEIO:
+    fprintf(stderr,"Not expecting offsets to be FILEIO\n");
     abort();
   }
 
@@ -621,6 +642,15 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
     }
   }
       
+#ifdef WORDS_BIGENDIAN
+  debug(
+	printf("%d entries:",*nentries);
+	for (i = 0; i < *nentries; i++) {
+	  printf(" %u",Bigendian_convert_uint(positions[i]));
+	}
+	printf("\n");
+	);
+#else
   debug(
 	printf("%d entries:",*nentries);
 	for (i = 0; i < *nentries; i++) {
@@ -628,6 +658,7 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
 	}
 	printf("\n");
 	);
+#endif
   
   return positions;
 }
@@ -697,6 +728,7 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
     break;
 
   case FILEIO:
+    fprintf(stderr,"Not expecting offsets to be FILEIO\n");
     abort();
   }
 
@@ -772,6 +804,9 @@ Indexdb_count_right_subst_2 (T this, Storedoligomer_T oligo) {
 #ifdef ALLOW_DUPLICATES
   int i;
 #endif
+#ifdef DEBUG
+  int i;
+#endif
 
   debug(printf("count_right_subst_2: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
 
@@ -805,6 +840,9 @@ Indexdb_count_right_subst_1 (T this, Storedoligomer_T oligo) {
   int nentries;
   Storedoligomer_T base;
 #ifdef ALLOW_DUPLICATES
+  int i;
+#endif
+#ifdef DEBUG
   int i;
 #endif
 

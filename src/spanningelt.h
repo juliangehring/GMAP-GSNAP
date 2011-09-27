@@ -1,4 +1,4 @@
-/* $Id: spanningelt.h,v 1.5 2009-05-06 22:11:50 twu Exp $ */
+/* $Id: spanningelt.h 27892 2010-08-13 22:23:30Z twu $ */
 #ifndef SPANNINGELT_INCLUDED
 #define SPANNINGELT_INCLUDED
 #include "bool.h"

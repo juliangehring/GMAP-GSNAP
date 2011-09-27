@@ -1,7 +1,9 @@
-/* $Id: genome.h,v 1.37 2010-07-19 20:27:03 twu Exp $ */
+/* $Id: genome.h 32363 2010-12-04 14:31:55Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
+
 #include "bool.h"
+#include "access.h"
 #include "types.h"
 #include "genomicpos.h"
 #include "sequence.h"
@@ -20,7 +22,7 @@ Genome_blocks (T this);
 extern Genomicpos_T
 Genome_totallength (T this);
 extern T
-Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_p, bool batchp);
+Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_p, Access_mode_T access);
 extern void
 Genome_uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
 			Genomicpos_T endpos, const char defaultchars[],
@@ -30,6 +32,8 @@ Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left,
 		    IIT_T chromosome_iit);
 extern void
 Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1);
+extern void
+Genome_fill_buffer_simple_alt (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1);
 extern void
 Genome_fill_buffer_nucleotides (T this, Genomicpos_T left, Genomicpos_T length, unsigned char *gbuffer);
 extern char
@@ -45,6 +49,9 @@ Genome_get_segment_snp (T this, Genomicpos_T left, Genomicpos_T length, IIT_T ch
 			bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen);
 extern int
 Genome_next_char (T this);
+extern int
+Genome_ntcounts (int *na, int *nc, int *ng, int *nt,
+		 T this, Genomicpos_T left, Genomicpos_T length);
 extern Sequence_T
 Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit, 
 		     Genomicpos_T refL, Genomicpos_T reflen,

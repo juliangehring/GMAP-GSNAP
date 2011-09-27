@@ -1,4 +1,4 @@
-/* $Id: indexdb_hr.h,v 1.14 2009-05-23 03:09:55 twu Exp $ */
+/* $Id: indexdb_hr.h 27892 2010-08-13 22:23:30Z twu $ */
 #ifndef INDEXDB_HR_INCLUDED
 #define INDEXDB_HR_INCLUDED
 #include "bool.h"

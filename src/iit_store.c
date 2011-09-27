@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c,v 1.37 2010-05-28 19:17:01 twu Exp $";
+static char rcsid[] = "$Id: iit_store.c 36087 2011-03-04 20:33:40Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -178,26 +178,6 @@ concatenate_lines (List_T lines, int content_size) {
 }
 
 
-static int
-string_compare (const void *x, const void *y) {
-  char *a = (char *) x;
-  char *b = (char *) y;
-
-  return strcmp(a,b);
-}
-
-/* This is the X31 hash function */
-static unsigned int
-string_hash (const void *x) {
-  unsigned int h = 0U;
-  const char *p;
-  
-  for (p = x; *p != '\0'; p++) {
-    h = (h << 5) - h + *p;
-  }
-  return h;
-}
-
 
 /* Note that isnumber is a function in ctype.h on some systems */
 static bool
@@ -266,7 +246,7 @@ isrange (unsigned int *start, unsigned int *end, char *string) {
 /* Other variants: >A 1..10 red, or >A 1..10 */
 static char *
 scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelist, Tableint_T div_seenp, Tableint_T typetable, 
-		 char **label, unsigned int *start, unsigned int *end, int *type,
+		 char **label, unsigned int *start, unsigned int *end, int *type, char **restofheader,
 		 char *header) {
   char *divstring, *coords, *copy, Buffer[1024], query[1024], tag[1024], *typestring, *p;
 
@@ -320,16 +300,37 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
     exit(9);
   }
 
-  if (sscanf(header,">%s %s %s\n",Buffer,query,tag) < 3) {
+  if (sscanf(header,">%s %s %s",Buffer,query,tag) < 3) {
     *type = 0;
-  } else if ((*type = Tableint_get(typetable,(void *) tag)) == 0) {
-    /* Store types as 1-based */
-    *type = Tableint_length(typetable) + 1;
-    typestring = (char *) CALLOC(strlen(tag)+1,sizeof(char));
-    strcpy(typestring,tag);
-    Tableint_put(typetable,typestring,*type);
-    *typelist = List_push(*typelist,typestring);
-    /* debug(printf("Entering new type %s.\n",typestring)); */
+    *restofheader = (char *) NULL;
+  } else {
+    if ((*type = Tableint_get(typetable,(void *) tag)) == 0) {
+      /* Store types as 1-based */
+      *type = Tableint_length(typetable) + 1;
+      typestring = (char *) CALLOC(strlen(tag)+1,sizeof(char));
+      strcpy(typestring,tag);
+      Tableint_put(typetable,typestring,*type);
+      *typelist = List_push(*typelist,typestring);
+      /* debug(printf("Entering new type %s.\n",typestring)); */
+    }
+
+    /* Get rest of header */
+    p = header;
+    while (!isspace(*p)) p++;	/* accession */
+    while (isspace(*p)) p++;
+
+    while (!isspace(*p)) p++;	/* coords */
+    while (isspace(*p)) p++;
+
+    while (*p != '\0' && !isspace(*p)) p++;	/* tag */
+    while (*p != '\0' && isspace(*p)) p++;
+
+    if (*p == '\0') {
+      *restofheader = (char *) NULL;
+    } else {
+      *restofheader = (char *) CALLOC(strlen(p)+1,sizeof(char));
+      strcpy(*restofheader,p);
+    }
   }
 
   return divstring;
@@ -440,7 +441,7 @@ parse_fasta (
 #endif
 	     List_T *divlist, List_T *typelist, Table_T intervaltable, Table_T labeltable, Table_T annottable,
 	     FILE *fp, Tableint_T div_seenp, Tableint_T typetable, char firstchar) {
-  char Buffer[LINELENGTH], *divstring, *label, *tempstring;
+  char Buffer[LINELENGTH], *divstring, *label, *restofheader = NULL, *tempstring;
   unsigned int start, end;
   List_T lines, d;
   int labellength, content_size, type, nentries;
@@ -459,8 +460,10 @@ parse_fasta (
   }
   if (old_format_p == true) {
     divstring = scan_header_spaces(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,Buffer);
+    restofheader = (char *) NULL;
   } else {
-    divstring = scan_header_div(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,Buffer);
+    divstring = scan_header_div(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,
+				&restofheader,Buffer);
   }
 #ifdef HAVE_64_BIT
   *label_totallength = labellength;
@@ -470,6 +473,10 @@ parse_fasta (
 
   lines = NULL;
   content_size = 0;
+  if (restofheader != NULL) {
+    lines = List_push(lines,(void *) restofheader);
+    content_size += strlen(restofheader);
+  }
 
   nentries = 1;			/* Because we already processed the first entry above */
   while (fgets(Buffer,LINELENGTH,fp) != NULL) {
@@ -482,10 +489,18 @@ parse_fasta (
 		List_push(Table_get(intervaltable,(void *) divstring),
 			  (void *) Interval_new(start,end,type)));
 
+      lines = List_reverse(lines);
+      if (restofheader == NULL && content_size > 0) {
+	tempstring = (char *) CALLOC(2,sizeof(char));
+	tempstring[0] = '\n';
+	tempstring[1] = '\0';
+	lines = List_push(lines,tempstring);
+	content_size += 1;
+      }
 #ifdef HAVE_64_BIT
       *annot_totallength += content_size;
 #endif
-      lines = List_reverse(lines);
+
       Table_put(annottable,(void *) divstring,
 		List_push(Table_get(annottable,(void *) divstring),
 			  (void *) concatenate_lines(lines,content_size)));
@@ -496,8 +511,10 @@ parse_fasta (
       }
       if (old_format_p == true) {
 	divstring = scan_header_spaces(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,Buffer);
+	restofheader = (char *) NULL;
       } else {
-	divstring = scan_header_div(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,Buffer);
+	divstring = scan_header_div(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,
+				    &restofheader,Buffer);
       }
 #ifdef HAVE_64_BIT
       *label_totallength += labellength;
@@ -507,6 +524,10 @@ parse_fasta (
 
       lines = NULL;
       content_size = 0;
+      if (restofheader != NULL) {
+	lines = List_push(lines,(void *) restofheader);
+	content_size += strlen(restofheader);
+      }
 
     } else {
       tempstring = (char *) CALLOC(strlen(Buffer)+1,sizeof(char));
@@ -521,10 +542,17 @@ parse_fasta (
 	    List_push(Table_get(intervaltable,(void *) divstring),
 		      (void *) Interval_new(start,end,type)));
 
+  lines = List_reverse(lines);
+  if (restofheader == NULL && content_size > 0) {
+    tempstring = (char *) CALLOC(2,sizeof(char));
+    tempstring[0] = '\n';
+    tempstring[1] = '\0';
+    lines = List_push(lines,tempstring);
+    content_size += 1;
+  }
 #ifdef HAVE_64_BIT
   *annot_totallength += content_size;
 #endif
-  lines = List_reverse(lines);
   Table_put(annottable,(void *) divstring,
 	    List_push(Table_get(annottable,(void *) divstring),
 		      (void *) concatenate_lines(lines,content_size)));
@@ -759,6 +787,7 @@ main (int argc, char *argv[]) {
   Table_T intervaltable, labeltable, annottable;
   Chrom_T *chroms = NULL;
   int n_proper_divs = 0, i;
+  bool label_pointers_8p, annot_pointers_8p;
 
 #ifdef HAVE_64_BIT
   UINT8 label_totallength, annot_totallength;
@@ -818,11 +847,11 @@ main (int argc, char *argv[]) {
     }
   }
 
-  div_seenp = Tableint_new(100,string_compare,string_hash);
-  typetable = Tableint_new(100,string_compare,string_hash);
-  intervaltable = Table_new(100,string_compare,string_hash);
-  labeltable = Table_new(100,string_compare,string_hash);
-  annottable = Table_new(100,string_compare,string_hash);
+  div_seenp = Tableint_new(100,Table_string_compare,Table_string_hash);
+  typetable = Tableint_new(100,Table_string_compare,Table_string_hash);
+  intervaltable = Table_new(100,Table_string_compare,Table_string_hash);
+  labeltable = Table_new(100,Table_string_compare,Table_string_hash);
+  annottable = Table_new(100,Table_string_compare,Table_string_hash);
   
   /* The zeroth div is empty */
   divstring = (char *) CALLOC(1,sizeof(char));
@@ -849,14 +878,29 @@ main (int argc, char *argv[]) {
     fclose(fp);
   }
 
+  label_pointers_8p = false;
+  annot_pointers_8p = false;
 #ifdef HAVE_64_BIT
   if (iit_version == 0) {
-    if (label_totallength >= 4294967296LU || annot_totallength >= 4294967296LU) {
-      fprintf(stderr,"Using 8-byte quantities for pointers\n");
-      iit_version = IIT_8BYTE_VERSION;
-    } else {
-      fprintf(stderr,"Using 4-byte quantities for pointers\n");
-      iit_version = IIT_4BYTE_VERSION;
+    if (label_totallength > 4294967295U) {
+      label_pointers_8p = true;
+    }
+    if (annot_totallength > 4294967295U) {
+      annot_pointers_8p = true;
+    }
+    iit_version = IIT_LATEST_VERSION;
+
+  } else if (iit_version == 4) {
+    if (label_totallength > 4294967295U || annot_totallength > 4294967295U) {
+      /* Both pointer types have to match */
+      label_pointers_8p = true;
+      annot_pointers_8p = true;
+    }
+
+  } else if (iit_version <= 3) {
+    if (label_totallength > 4294967295U || annot_totallength > 4294967295U) {
+      fprintf(stderr,"Need 8-byte pointers, which requires you to specify a version of 4 or greater\n");
+      exit(9);
     }
   }
 #else
@@ -896,7 +940,7 @@ main (int argc, char *argv[]) {
       List_free(&divlist);
 
       if (divsort == ALPHA_SORT) {
-	qsort(strings,n_proper_divs,sizeof(char *),string_compare);
+	qsort(strings,n_proper_divs,sizeof(char *),Table_string_compare);
       }
 
       /* The zeroth div is empty */
@@ -949,7 +993,7 @@ main (int argc, char *argv[]) {
   }
 
   IIT_write(iitfile,divlist,typelist,fieldlist,intervaltable,labeltable,annottable,
-	    divsort,iit_version);
+	    divsort,iit_version,label_pointers_8p,annot_pointers_8p);
   FREE(iitfile);
 
 

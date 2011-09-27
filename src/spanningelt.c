@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c,v 1.9 2010-02-23 18:30:21 twu Exp $";
+static char rcsid[] = "$Id: spanningelt.c 36133 2011-03-06 20:28:02Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -680,12 +680,21 @@ Spanningelt_diagonals (int *ndiagonals, T this, int *miss_querypos5, int *miss_q
 	diagterm = this->diagterm;
 
 	last_diagonal = 0U;
+#ifdef WORDS_BIGENDIAN
+	for (i = 0; i < this->npositions; i++) {
+	  if (Bigendian_convert_uint(*p) != last_diagonal) {
+	    *q++ = Bigendian_convert_uint(*p) + diagterm;
+	  }
+	  last_diagonal = Bigendian_convert_uint(*p++);
+	}
+#else
 	for (i = 0; i < this->npositions; i++) {
 	  if (*p != last_diagonal) {
 	    *q++ = *p + diagterm;
 	  }
 	  last_diagonal = *p++;
 	}
+#endif
 
 	/* Should be no change in candidates_score or pruning_score */
 	*ndiagonals = this->intersection_ndiagonals = (q - this->intersection_diagonals);

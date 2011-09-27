@@ -1,4 +1,4 @@
-/* $Id: chrnum.h,v 1.15 2008-04-15 19:24:07 twu Exp $ */
+/* $Id: chrnum.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef CHRNUM_INCLUDED
 #define CHRNUM_INCLUDED
 #include "bool.h"

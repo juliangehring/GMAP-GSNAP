@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h,v 1.4 2008-12-24 19:35:31 twu Exp $ */
+/* $Id: indexdbdef.h 36299 2011-03-09 05:26:28Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 
@@ -12,7 +12,6 @@
    bits or 4 bytes */
 typedef UINT4 Positionsptr_T;
 
-#define INFINITY -1
 #define BADVAL (Genomicpos_T) -1
 
 #define T Indexdb_T

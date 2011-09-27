@@ -1,4 +1,4 @@
-/* $Id$ */
+/* $Id: indexdb_dibase.h 31011 2010-10-28 16:42:01Z twu $ */
 #ifndef INDEXDB_DIBASE_INCLUDED
 #define INDEXDB_DIBASE_INCLUDED
 #include <stdio.h>

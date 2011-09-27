@@ -1,4 +1,4 @@
-/* $Id: comp.h,v 1.2 2007-04-23 16:06:46 twu Exp $ */
+/* $Id: comp.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef COMP_INCLUDED
 #define COMP_INCLUDED
 

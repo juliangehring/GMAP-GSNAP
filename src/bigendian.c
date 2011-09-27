@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bigendian.c,v 1.13 2010-01-12 22:49:24 twu Exp $";
+static char rcsid[] = "$Id: bigendian.c 36131 2011-03-06 20:26:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,12 +26,12 @@ Bigendian_convert_int (int littleendian) {
 int
 Bigendian_convert_int (int littleendian) {
   int bigendian;
-  char byte1, byte2, byte3;
+  unsigned char byte1, byte2, byte3;
 
   bigendian = littleendian & 0xff;
-  byte1 = (char) ((littleendian >>= 8) & 0xff);
-  byte2 = (char) ((littleendian >>= 8) & 0xff);
-  byte3 = (char) ((littleendian >>= 8) & 0xff);
+  byte1 = (unsigned char) ((littleendian >>= 8) & 0xff);
+  byte2 = (unsigned char) ((littleendian >>= 8) & 0xff);
+  byte3 = (unsigned char) ((littleendian >>= 8) & 0xff);
 
   /* bigendian = byte0; */
   bigendian <<= 8;
@@ -49,13 +49,13 @@ Bigendian_convert_int (int littleendian) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fwrite_int (int value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
   buf[3] = value & 0xff;
   buf[2] = (value >>= 8) & 0xff;
   buf[1] = (value >>= 8) & 0xff;
   buf[0] = (value >>= 8) & 0xff;
-  if (fwrite(buf,sizeof(char),4,fp) == 0) {
+  if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -65,13 +65,13 @@ Bigendian_fwrite_int (int value, FILE *fp) {
 #else
 size_t
 Bigendian_fwrite_int (int value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
-  buf[0] = (char) (value & 0xff);
-  buf[1] = (char) ((value >>= 8) & 0xff);
-  buf[2] = (char) ((value >>= 8) & 0xff);
-  buf[3] = (char) ((value >>= 8) & 0xff);
-  if (fwrite(buf,sizeof(char),4,fp) == 0) {
+  buf[0] = (unsigned char) (value & 0xff);
+  buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[3] = (unsigned char) ((value >>= 8) & 0xff);
+  if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -83,7 +83,7 @@ Bigendian_fwrite_int (int value, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fwrite_ints (int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   int value, i;
 
   for (i = 0; i < n; i++) {
@@ -92,7 +92,7 @@ Bigendian_fwrite_ints (int *array, int n, FILE *fp) {
     buf[2] = (value >>= 8) & 0xff;
     buf[1] = (value >>= 8) & 0xff;
     buf[0] = (value >>= 8) & 0xff;
-    if (fwrite(buf,sizeof(char),4,fp) == 0) {
+    if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
       /* Should set error indicator for stream and set errno */
       return 0;
     }
@@ -102,16 +102,16 @@ Bigendian_fwrite_ints (int *array, int n, FILE *fp) {
 #else
 size_t
 Bigendian_fwrite_ints (int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   int value, i;
 
   for (i = 0; i < n; i++) {
     value = array[i];
-    buf[0] = (char) (value & 0xff);
-    buf[1] = (char) ((value >>= 8) & 0xff);
-    buf[2] = (char) ((value >>= 8) & 0xff);
-    buf[3] = (char) ((value >>= 8) & 0xff);
-    if (fwrite(buf,sizeof(char),4,fp) == 0) {
+    buf[0] = (unsigned char) (value & 0xff);
+    buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+    buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+    buf[3] = (unsigned char) ((value >>= 8) & 0xff);
+    if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
       /* Should set error indicator for stream and set errno */
       return 0;
     }
@@ -123,9 +123,9 @@ Bigendian_fwrite_ints (int *array, int n, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fread_int (int *value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
-  if (fread(buf,sizeof(char),4,fp) < 4) {
+  if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -142,13 +142,15 @@ Bigendian_fread_int (int *value, FILE *fp) {
 #else
 size_t
 Bigendian_fread_int (int *value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
-  if (fread(buf,sizeof(char),4,fp) < 4) {
+  if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
+#if 0
     fprintf(stderr,"Reading %2X %2X %2X %2X, and using last as most sig\n",buf[0],buf[1],buf[2],buf[3]);
+#endif
     *value = (buf[3] & 0xff);
     *value <<= 8;
     *value |= (buf[2] & 0xff);
@@ -164,11 +166,11 @@ Bigendian_fread_int (int *value, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fread_ints (int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   int value, i;
 
   for (i = 0; i < n; i++) {
-    if (fread(buf,sizeof(char),4,fp) < 4) {
+    if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
       /* Should set error indicator for stream and set errno */
       return 0;
     } else {
@@ -187,11 +189,11 @@ Bigendian_fread_ints (int *array, int n, FILE *fp) {
 #else
 size_t
 Bigendian_fread_ints (int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   int value, i;
 
   for (i = 0; i < n; i++) {
-    if (fread(buf,sizeof(char),4,fp) < 4) {
+    if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
       /* Should set error indicator for stream and set errno */
       return 0;
     } else {
@@ -217,12 +219,12 @@ Bigendian_fread_ints (int *array, int n, FILE *fp) {
 unsigned int
 Bigendian_convert_uint (unsigned int littleendian) {
   unsigned int bigendian;
-  char byte1, byte2, byte3;
+  unsigned char byte1, byte2, byte3;
 
   bigendian = littleendian & 0xff;
-  byte1 = (char) ((littleendian >>= 8) & 0xff);
-  byte2 = (char) ((littleendian >>= 8) & 0xff);
-  byte3 = (char) ((littleendian >>= 8) & 0xff);
+  byte1 = (unsigned char) ((littleendian >>= 8) & 0xff);
+  byte2 = (unsigned char) ((littleendian >>= 8) & 0xff);
+  byte3 = (unsigned char) ((littleendian >>= 8) & 0xff);
 
   /* bigendian = byte0; */
   bigendian <<= 8;
@@ -239,13 +241,13 @@ Bigendian_convert_uint (unsigned int littleendian) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fwrite_uint (unsigned int value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
   buf[3] = value & 0xff;
   buf[2] = (value >>= 8) & 0xff;
   buf[1] = (value >>= 8) & 0xff;
   buf[0] = (value >>= 8) & 0xff;
-  if (fwrite(buf,sizeof(char),4,fp) == 0) {
+  if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -255,13 +257,13 @@ Bigendian_fwrite_uint (unsigned int value, FILE *fp) {
 #else
 size_t
 Bigendian_fwrite_uint (unsigned int value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
-  buf[0] = (char) (value & 0xff);
-  buf[1] = (char) ((value >>= 8) & 0xff);
-  buf[2] = (char) ((value >>= 8) & 0xff);
-  buf[3] = (char) ((value >>= 8) & 0xff);
-  if (fwrite(buf,sizeof(char),4,fp) == 0) {
+  buf[0] = (unsigned char) (value & 0xff);
+  buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[3] = (unsigned char) ((value >>= 8) & 0xff);
+  if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -273,7 +275,7 @@ Bigendian_fwrite_uint (unsigned int value, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 void
 Bigendian_write_uint (unsigned int value, int fd) {
-  char buf[4];
+  unsigned char buf[4];
 
   buf[3] = value & 0xff;
   buf[2] = (value >>= 8) & 0xff;
@@ -285,12 +287,12 @@ Bigendian_write_uint (unsigned int value, int fd) {
 #else
 void
 Bigendian_write_uint (unsigned int value, int fd) {
-  char buf[4];
+  unsigned char buf[4];
 
-  buf[0] = (char) (value & 0xff);
-  buf[1] = (char) ((value >>= 8) & 0xff);
-  buf[2] = (char) ((value >>= 8) & 0xff);
-  buf[3] = (char) ((value >>= 8) & 0xff);
+  buf[0] = (unsigned char) (value & 0xff);
+  buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[3] = (unsigned char) ((value >>= 8) & 0xff);
   write(fd,buf,4);
 }
 #endif
@@ -299,7 +301,7 @@ Bigendian_write_uint (unsigned int value, int fd) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fwrite_uints (unsigned int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   unsigned int value;
   int i;
   
@@ -309,7 +311,7 @@ Bigendian_fwrite_uints (unsigned int *array, int n, FILE *fp) {
     buf[2] = (value >>= 8) & 0xff;
     buf[1] = (value >>= 8) & 0xff;
     buf[0] = (value >>= 8) & 0xff;
-    if (fwrite(buf,sizeof(char),4,fp) == 0) {
+    if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
       /* Should set error indicator for stream and set errno */
       return 0;
     }
@@ -319,17 +321,17 @@ Bigendian_fwrite_uints (unsigned int *array, int n, FILE *fp) {
 #else
 size_t
 Bigendian_fwrite_uints (unsigned int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   unsigned int value;
   int i;
   
   for (i = 0; i < n; i++) {
     value = array[i];
-    buf[0] = (char) (value & 0xff);
-    buf[1] = (char) ((value >>= 8) & 0xff);
-    buf[2] = (char) ((value >>= 8) & 0xff);
-    buf[3] = (char) ((value >>= 8) & 0xff);
-    if (fwrite(buf,sizeof(char),4,fp) == 0) {
+    buf[0] = (unsigned char) (value & 0xff);
+    buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+    buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+    buf[3] = (unsigned char) ((value >>= 8) & 0xff);
+    if (fwrite(buf,sizeof(unsigned char),4,fp) == 0) {
       /* Should set error indicator for stream and set errno */
       return 0;
     }
@@ -342,9 +344,9 @@ Bigendian_fwrite_uints (unsigned int *array, int n, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fread_uint (unsigned int *value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
-  if (fread(buf,sizeof(char),4,fp) < 4) {
+  if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -361,9 +363,9 @@ Bigendian_fread_uint (unsigned int *value, FILE *fp) {
 #else
 size_t
 Bigendian_fread_uint (unsigned int *value, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
 
-  if (fread(buf,sizeof(char),4,fp) < 4) {
+  if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -382,12 +384,12 @@ Bigendian_fread_uint (unsigned int *value, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fread_uints (unsigned int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   unsigned int value;
   int i;
 
   for (i = 0; i < n; i++) {
-    if (fread(buf,sizeof(char),4,fp) < 4) {
+    if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
       /* Should set error indicator for stream and set errno */
       return 0;
     } else {
@@ -406,12 +408,12 @@ Bigendian_fread_uints (unsigned int *array, int n, FILE *fp) {
 #else
 size_t
 Bigendian_fread_uints (unsigned int *array, int n, FILE *fp) {
-  char buf[4];
+  unsigned char buf[4];
   unsigned int value;
   int i;
 
   for (i = 0; i < n; i++) {
-    if (fread(buf,sizeof(char),4,fp) < 4) {
+    if (fread(buf,sizeof(unsigned char),4,fp) < 4) {
       /* Should set error indicator for stream and set errno */
       return 0;
     } else {
@@ -434,7 +436,7 @@ Bigendian_fread_uints (unsigned int *array, int n, FILE *fp) {
 unsigned int
 Bigendian_fileio_read_uint (int fd) {
   unsigned int value = 0U;
-  char buf[4];
+  unsigned char buf[4];
 
   read(fd,buf,4);
   value = (buf[0] & 0xff);
@@ -450,7 +452,7 @@ Bigendian_fileio_read_uint (int fd) {
 unsigned int
 Bigendian_fileio_read_uint (int fd) {
   unsigned int value = 0U;
-  char buf[4];
+  unsigned char buf[4];
 
   read(fd,buf,4);
   value = (buf[3] & 0xff);
@@ -474,7 +476,7 @@ Bigendian_fileio_read_uint (int fd) {
 UINT8
 Bigendian_convert_uint8 (UINT8 littleendian) {
   UINT8 bigendian;
-  char byte1, byte2, byte3, byte4, byte5, byte6, byte7;
+  unsigned char byte1, byte2, byte3, byte4, byte5, byte6, byte7;
 
   bigendian = littleendian & 0xff;
   byte1 = (littleendian >>= 8);
@@ -508,7 +510,7 @@ Bigendian_convert_uint8 (UINT8 littleendian) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fwrite_uint8 (UINT8 value, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
 
   buf[7] = value & 0xff;
   buf[6] = (value >>= 8) & 0xff;
@@ -518,7 +520,7 @@ Bigendian_fwrite_uint8 (UINT8 value, FILE *fp) {
   buf[2] = (value >>= 8) & 0xff;
   buf[1] = (value >>= 8) & 0xff;
   buf[0] = (value >>= 8) & 0xff;
-  if (fwrite(buf,sizeof(char),8,fp) == 0) {
+  if (fwrite(buf,sizeof(unsigned char),8,fp) == 0) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -528,7 +530,7 @@ Bigendian_fwrite_uint8 (UINT8 value, FILE *fp) {
 #else
 size_t
 Bigendian_fwrite_uint8 (UINT8 value, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
 
   buf[0] = value & 0xff;
   buf[1] = (value >>= 8) & 0xff;
@@ -538,7 +540,7 @@ Bigendian_fwrite_uint8 (UINT8 value, FILE *fp) {
   buf[5] = (value >>= 8) & 0xff;
   buf[6] = (value >>= 8) & 0xff;
   buf[7] = (value >>= 8) & 0xff;
-  if (fwrite(buf,sizeof(char),8,fp) == 0) {
+  if (fwrite(buf,sizeof(unsigned char),8,fp) == 0) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -550,7 +552,7 @@ Bigendian_fwrite_uint8 (UINT8 value, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fwrite_uint8s (UINT8 *array, int n, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
   UINT8 value;
   int i;
   
@@ -564,7 +566,7 @@ Bigendian_fwrite_uint8s (UINT8 *array, int n, FILE *fp) {
     buf[2] = (value >>= 8) & 0xff;
     buf[1] = (value >>= 8) & 0xff;
     buf[0] = (value >>= 8) & 0xff;
-    if (fwrite(buf,sizeof(char),8,fp) == 0) {
+    if (fwrite(buf,sizeof(unsigned char),8,fp) == 0) {
       /* Should set error indicator for stream and set errno */
       return 0;
     }
@@ -574,7 +576,7 @@ Bigendian_fwrite_uint8s (UINT8 *array, int n, FILE *fp) {
 #else
 size_t
 Bigendian_fwrite_uint8s (UINT8 *array, int n, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
   UINT8 value;
   int i;
   
@@ -588,7 +590,7 @@ Bigendian_fwrite_uint8s (UINT8 *array, int n, FILE *fp) {
     buf[5] = (value >>= 8) & 0xff;
     buf[6] = (value >>= 8) & 0xff;
     buf[7] = (value >>= 8) & 0xff;
-    if (fwrite(buf,sizeof(char),8,fp) == 0) {
+    if (fwrite(buf,sizeof(unsigned char),8,fp) == 0) {
       /* Should set error indicator for stream and set errno */
       return 0;
     }
@@ -601,9 +603,9 @@ Bigendian_fwrite_uint8s (UINT8 *array, int n, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fread_uint8 (UINT8 *value, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
 
-  if (fread(buf,sizeof(char),8,fp) < 8) {
+  if (fread(buf,sizeof(unsigned char),8,fp) < 8) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -628,9 +630,9 @@ Bigendian_fread_uint8 (UINT8 *value, FILE *fp) {
 #else
 size_t
 Bigendian_fread_uint8 (UINT8 *value, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
 
-  if (fread(buf,sizeof(char),8,fp) < 8) {
+  if (fread(buf,sizeof(unsigned char),8,fp) < 8) {
     /* Should set error indicator for stream and set errno */
     return 0;
   } else {
@@ -658,12 +660,12 @@ Bigendian_fread_uint8 (UINT8 *value, FILE *fp) {
 #ifdef OUTPUT_BIGENDIAN
 size_t
 Bigendian_fread_uint8s (UINT8 *array, int n, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
   UINT8 value;
   int i;
 
   for (i = 0; i < n; i++) {
-    if (fread(buf,sizeof(char),8,fp) < 8) {
+    if (fread(buf,sizeof(unsigned char),8,fp) < 8) {
       /* Should set error indicator for stream and set errno */
       return 0;
     } else {
@@ -691,12 +693,12 @@ Bigendian_fread_uint8s (UINT8 *array, int n, FILE *fp) {
 #else
 size_t
 Bigendian_fread_uint8s (UINT8 *array, int n, FILE *fp) {
-  char buf[8];
+  unsigned char buf[8];
   UINT8 value;
   int i;
 
   for (i = 0; i < n; i++) {
-    if (fread(buf,sizeof(char),8,fp) < 8) {
+    if (fread(buf,sizeof(unsigned char),8,fp) < 8) {
       /* Should set error indicator for stream and set errno */
       return 0;
     } else {
@@ -727,7 +729,7 @@ Bigendian_fread_uint8s (UINT8 *array, int n, FILE *fp) {
 UINT8
 Bigendian_fileio_read_uint8 (int fd) {
   UINT8 value = 0LU;
-  char buf[8];
+  unsigned char buf[8];
 
   read(fd,buf,8);
   value = (buf[0] & 0xff);
@@ -751,7 +753,7 @@ Bigendian_fileio_read_uint8 (int fd) {
 UINT8
 Bigendian_fileio_read_uint8 (int fd) {
   UINT8 value = 0LU;
-  char buf[8];
+  unsigned char buf[8];
 
   read(fd,buf,8);
   value = (buf[7] & 0xff);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: md5.c,v 1.10 2005-07-08 07:58:33 twu Exp $";
+static char rcsid[] = "$Id: md5.c 30358 2010-10-14 15:59:25Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10,7 +10,6 @@ static char rcsid[] = "$Id: md5.c,v 1.10 2005-07-08 07:58:33 twu Exp $";
 #endif
 
 #include "md5.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>		/* For memcpy */
 #include "mem.h"
@@ -276,11 +275,11 @@ MD5_compute (unsigned char *input, int input_len) {
 
 
 void
-MD5_print (unsigned char *digest) {
+MD5_print (FILE *fp, unsigned char *digest) {
   int i;
 
   for (i = 0; i < 16; i++) {
-    printf("%02x", digest[i]);
+    fprintf(fp,"%02x", digest[i]);
   }
   return;
 }

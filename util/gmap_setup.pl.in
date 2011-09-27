@@ -55,6 +55,8 @@ if (!defined($genome_name = $opt_d)) {
   }
 }
 
+$genome_name =~ s/\/$//;	# In case user gives -d argument with trailing slash
+
 if (!defined($outputfile = $opt_o)) {
   $outputfile = "Makefile.$genome_name";
 }
@@ -422,7 +424,7 @@ INSTRUCTIONS2
 sub print_usage {
   print <<TEXT1;
 
-gmap_setup: Sets up a Makefile for creating a genome by use by GMAP.
+gmap_setup: Sets up a Makefile for creating a genome by use by GMAP or GSNAP.
 Part of GMAP package, version $package_version.
 
 Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-C] [-M <.md file>]

@@ -1,4 +1,4 @@
-/* $Id: stage2.h,v 1.68 2010-07-10 19:21:13 twu Exp $ */
+/* $Id: stage2.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "bool.h"

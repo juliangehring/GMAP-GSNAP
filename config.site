@@ -39,6 +39,15 @@
 ## with_gmapdb=/path/to/gmapdb
 
 
+## Optional zlib support (needed only for reading gzip files).  By
+## default, the configure program will try to see if you have a
+## working zlib library and if so, enable the feature.  If you want to
+## disable the feature, specify --disable-zlib or uncomment the line
+## below and change the answer to "disable_zlib".
+##
+## enable_zlib
+
+
 ## The command for the C compiler.  If unspecified, the GNU configure
 ## procedure will search for a suitable compiler, first for gcc and
 ## then for cc.  To override this choice, specify the name of your
@@ -87,3 +96,22 @@
 ## 
 ## PERL=/usr/local/bin/perl
 
+
+## Header and library files for utilities that can parse BAM files
+##    (optional)
+## Requires the user to obtain and compile the samtools library, and also
+##     requires a working zlib library
+## Expects the header files bam.h and bgzf.h and the library file libbam.a
+##    to be in /path/to/samtools
+##
+## with_samtools=/path/to/samtools
+
+
+## Header and library files for support of the external Goby library
+##    from the Campagne lab at Cornell (optional)
+## Requires the user to obtain and compile the libraries from
+##    http://campagnelab.org/software/goby.
+## Expects the header files to be in /path/to/goby/include and
+##    the library files to be in /path/to/goby/lib
+##
+## with_goby=/path/to/goby

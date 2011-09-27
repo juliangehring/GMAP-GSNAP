@@ -5,11 +5,11 @@ EXTRA_DIST = VERSION config.site
 
 CLEANFILES = so_locations
 
+ACLOCAL_AMFLAGS = -I m4
+
 install-data-local:
 	$(mkinstalldirs) $(GMAPDB)
 
 dist-hook:
-	if test -d CVS; then \
-	./cvs2cl.pl; \
-	fi
+#	svn log -v --xml | ./svncl.pl > ChangeLog
 

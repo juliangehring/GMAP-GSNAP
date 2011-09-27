@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c,v 1.242 2010-07-16 20:14:20 twu Exp $";
+static char rcsid[] = "$Id: stage2.c 33407 2011-01-06 21:52:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -126,6 +126,13 @@ static char rcsid[] = "$Id: stage2.c,v 1.242 2010-07-16 20:14:20 twu Exp $";
 #define debug9(x) x
 #else 
 #define debug9(x)
+#endif
+
+/* Grand winner */
+#ifdef DEBUG10
+#define debug10(x) x
+#else 
+#define debug10(x)
 #endif
 
 
@@ -297,6 +304,7 @@ Linkmatrix_2d_free (struct Link_T ***links, int length1) {
 
 
 #ifdef DEBUG1
+#ifdef PMAP
 /* For PMAP, indexsize is in aa */
 static void
 Linkmatrix_print_fwd (struct Link_T **links, unsigned int **mappings, int length1, int *npositions,
@@ -321,7 +329,8 @@ Linkmatrix_print_fwd (struct Link_T **links, unsigned int **mappings, int length
   return;
 }
 
-#ifndef PMAP
+#else
+
 static void
 Linkmatrix_print_both (struct Link_T **links, unsigned int **mappings, int length1, int *npositions,
 		       char *queryseq_ptr, int indexsize) {
@@ -810,7 +819,7 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
   int best_rev_intronnfwd = 0, best_rev_intronnrev = 0, best_rev_intronnunk = 0;
 #endif
   bool adjacentp = false, donep;
-  int prev_querypos, intronpos_lower, intronpos_upper, prevhit;
+  int prev_querypos, prevhit;
   Intlist_T p;
   unsigned int prevposition, gendistance;
   int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt;
@@ -818,6 +827,7 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
   int enough_consecutive;
 
 #ifdef PMAP
+  int intronpos_lower, intronpos_upper;
   indexsize_nt = indexsize*3;
 #else
   indexsize_nt = indexsize;
@@ -1618,6 +1628,25 @@ intmatrix_2d_free (int ***matrix, int length1) {
 }
 
 
+static bool
+zero_score_p (struct Link_T *links, int npositions) {
+  int hit;
+  Link_T currlink;
+
+  for (hit = 0; hit < npositions; hit++) {
+    currlink = &(links[hit]);
+    if (currlink->fwd_score > 0) {
+      return false;
+    }
+#ifndef PMAP
+    if (currlink->rev_score > 0) {
+      return false;
+    }
+#endif
+  }
+  return true;
+}
+
 
 /* For PMAP, indexsize is in aa. */
 static bool
@@ -1923,79 +1952,137 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 
 
   /* Grand winner */
-  if (localp == false) {
-    /* Global */
-    querypos = queryend - indexsize;
-    while (querypos >= 0 && npositions[querypos] <= 0) {
-      querypos--;
-    }
-
-    if (querypos < 0) {
-      result = false;
-    } else {
-      result = true;
-      best_score = -1000000;
-      for (hit = 0; hit < npositions[querypos]; hit++) {
-	currlink = &(links[querypos][hit]);
-	if (currlink->fwd_score > best_score) {
-	  *fwdp = true;
-	  best_score = currlink->fwd_score;
-	  *grand_hit = hit;
-	}
-#ifndef PMAP
-	if (currlink->rev_score > best_score) {
-	  *fwdp = false;
-	  best_score = currlink->rev_score;
-	  *grand_hit = hit;
-	}
-#endif
-      }
-      *grand_querypos = querypos;
-    }
-
+  debug10(printf("Finding grand winner, using local/global method\n"));
+  /* Local/global */
+  querypos = queryend - indexsize;
+  while (querypos >= 0 && (npositions[querypos] <= 0 || 
+			   zero_score_p(links[querypos],npositions[querypos]) == true)) {
+    querypos--;
+  }
+  if (querypos < 0) {
+    result = false;
   } else {
-    /* Local */
-#ifdef PMAP
-    if (grand_fwd_querypos < 0) {
-      result = false;
-    } else {
-      result = true;
-      *fwdp = true;
+    result = true;
+
+    best_score = -1000000;
+    for (hit = 0; hit < npositions[querypos]; hit++) {
+      currlink = &(links[querypos][hit]);
+      if (currlink->fwd_score > best_score) {
+	*grand_querypos = querypos;
+	*grand_hit = hit;
+	*fwdp = true;
+	best_score = currlink->fwd_score;
+      }
+#ifndef PMAP
+      if (currlink->rev_score > best_score) {
+	*grand_querypos = querypos;
+	*grand_hit = hit;
+	*fwdp = false;
+	best_score = currlink->rev_score;
+      }
+#endif
+    }
+    
+    if (grand_fwd_score > best_score) {
+      best_score = grand_fwd_score;
       *grand_querypos = grand_fwd_querypos;
       *grand_hit = grand_fwd_hit;
-      debug9(printf("==> Found best score %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
+      *fwdp = true;
     }
-#else
-    if (grand_fwd_querypos < 0 && grand_rev_querypos < 0) {
-      result = false;
-    } else {
-      result = true;
-      debug9(printf("==> Found best score (fwd) %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
-      debug9(printf("==> Found best score (rev) %d at %d,%d\n",grand_rev_score,grand_rev_querypos,grand_rev_hit));
-      if (grand_fwd_score >= grand_rev_score) {
-	debug9(printf("Fwd wins\n"));
-	*fwdp = true;
-	*grand_querypos = grand_fwd_querypos;
-	*grand_hit = grand_fwd_hit;
-      } else {
-	debug9(printf("Rev wins\n"));
-	*fwdp = false;
-	*grand_querypos = grand_rev_querypos;
-	*grand_hit = grand_rev_hit;
-      }
-    }
-#endif
-
-#ifdef PMAP
-    if (grand_fwd_score > 3*querylength) {
-      abort();
-    }
-#else
-    if (grand_fwd_score > querylength) {
-      abort();
+    
+#ifndef PMAP
+    if (grand_rev_score > best_score) {
+      best_score = grand_rev_score;
+      *grand_querypos = grand_rev_querypos;
+      *grand_hit = grand_rev_hit;
+      *fwdp = false;
     }
 #endif
   }
+
+
+#if 0
+  /* Global */
+  querypos = queryend - indexsize;
+  while (querypos >= 0 && npositions[querypos] <= 0) {
+    querypos--;
+  }
+
+  if (querypos < 0) {
+    result = false;
+  } else {
+    result = true;
+    best_score = -1000000;
+    for (hit = 0; hit < npositions[querypos]; hit++) {
+      currlink = &(links[querypos][hit]);
+      if (currlink->fwd_score > best_score) {
+	*fwdp = true;
+	best_score = currlink->fwd_score;
+	*grand_hit = hit;
+	debug10(printf("==> Found best score (fwd) %d at %d,%d\n",best_score,querypos,hit));
+      }
+#ifndef PMAP
+      if (currlink->rev_score > best_score) {
+	*fwdp = false;
+	best_score = currlink->rev_score;
+	*grand_hit = hit;
+	debug10(printf("==> Found best score (rev) %d at %d,%d\n",best_score,querypos,hit));
+      }
+#endif
+    }
+    *grand_querypos = querypos;
+  }
+#endif
+
+
+#if 0
+  /* Local method.  This is a bad use of localp; misses short exons at 3' end. */
+  debug10(printf("Finding grand winner, using local method\n"));
+#ifdef PMAP
+  if (grand_fwd_querypos < 0) {
+    result = false;
+  } else {
+    result = true;
+    *fwdp = true;
+    *grand_querypos = grand_fwd_querypos;
+    *grand_hit = grand_fwd_hit;
+    debug10(printf("==> Found best score %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
+  }
+#else
+  if (grand_fwd_querypos < 0 && grand_rev_querypos < 0) {
+    result = false;
+  } else {
+    result = true;
+    debug10(printf("==> Found best score (fwd) %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
+    debug10(printf("==> Found best score (rev) %d at %d,%d\n",grand_rev_score,grand_rev_querypos,grand_rev_hit));
+    if (grand_fwd_score >= grand_rev_score) {
+      debug10(printf("Fwd wins\n"));
+      *fwdp = true;
+      *grand_querypos = grand_fwd_querypos;
+      *grand_hit = grand_fwd_hit;
+    } else {
+      debug10(printf("Rev wins\n"));
+      *fwdp = false;
+      *grand_querypos = grand_rev_querypos;
+      *grand_hit = grand_rev_hit;
+    }
+  }
+
+#endif
+
+#ifdef PMAP
+  if (grand_fwd_score > 3*querylength) {
+    abort();
+  }
+#else
+  if (grand_fwd_score > querylength) {
+    abort();
+  }
+#endif
+
+
+#endif	/* Local method */
+
 
   debug9(FREE(oligo));
 
@@ -2309,23 +2396,18 @@ Stage2_scan (int *stage2_source,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp) {
   int ncovered;
   int source;
-  int indexsize, indexsize_nt;
+  int indexsize;
   Oligoindex_T oligoindex;
-  List_T path = NULL, pairs;
   unsigned int **mappings;
   bool *coveredp, oned_matrix_p;
-  int nfwdintrons, nrevintrons, nunkintrons;
-  int cdna_direction = 0;
-  int *npositions, totalpositions, start_querypos, end_querypos;
+  int *npositions, totalpositions;
   double pct_coverage;
   int maxnconsecutive;
   /* double diag_runtime; */
-  List_T diagonals, p;
+  List_T diagonals;
 #ifndef USE_DIAGPOOL
+  List_p;
   Diag_T diag;
-#endif
-#ifdef DEBUG
-  int nunique;
 #endif
 
   if (debug_graphic_p == true) {
@@ -2404,8 +2486,9 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
   double pct_coverage;
   int maxnconsecutive;
   /* double diag_runtime; */
-  List_T diagonals, p;
+  List_T diagonals;
 #ifndef USE_DIAGPOOL
+  List_T p;
   Diag_T diag;
 #endif
 #ifdef DEBUG

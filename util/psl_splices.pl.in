@@ -1,0 +1,140 @@
+#! /usr/bin/perl
+
+
+use Getopt::Std;
+undef $opt_C;			# If provided, will keep only canonical introns.  Requires -d flag.
+undef $opt_R;			# If provided, will report only non-canonical introns to stdout.  Requires -d flag.
+undef $opt_2;			# If provided, will print dinucleotides at introns.  Requires -d flag.
+undef $opt_D;			# Genome directory
+undef $opt_d;			# Genome index
+
+undef $opt_n;			# Use this default count as a label
+
+$opt_s = 0;	     # starting column (UCSC track can start in column 0 or 1)
+getopts("D:d:CR2s:n:");
+
+if (defined($opt_d)) {
+    if (!defined($opt_C) && !defined($opt_R) && !defined($opt_2)) {
+	print STDERR "-d flag useful only with -C, -R, or -2 flags.  Ignoring -d flag\n";
+	undef $opt_d;
+    } elsif (defined($opt_D)) {
+	$GET_GENOME = "get-genome -D $opt_D -d $opt_d";
+    } else {
+	$GET_GENOME = "get-genome -d $opt_d";
+    }
+} else {
+    if (defined($opt_C)) {
+	print STDERR "-C flag requires you to specify -d flag.  Ignoring -C flag\n";
+	undef $opt_C;
+    }
+    if (defined($opt_R)) {
+	print STDERR "-R flag requires you to specify -d flag.  Ignoring -R flag\n";
+	undef $opt_R;
+    }
+    if (defined($opt_2)) {
+	print STDERR "-2 flag requires you to specify -d flag.  Ignoring -2 flag\n";
+	undef $opt_2;
+    }
+}
+
+
+while (defined($line = <>)) {
+    chop $line;
+    @fields = split /\t/,$line;
+
+    $acc = $fields[$opt_s + 0];
+    $chr = $fields[$opt_s + 1];
+    #$chr =~ s/chr//;
+    #$chr =~ s/_random/U/;
+
+    $strand = $fields[$opt_s + 2];
+    @starts = split ",",$fields[$opt_s + 8];
+    @ends = split ",",$fields[$opt_s + 9];
+
+    $nexons = $#starts + 1;
+    if ($nexons != $fields[$opt_s + 7]) {
+	print STDERR "Reported number of exons $fields[$opt_s + 7] != observed $nexons: Skipping $line\n";
+
+    } else {
+	$nintrons = $nexons - 1;
+	shift @starts;
+	pop @ends;
+
+	if ($strand eq "+") {
+	    for ($i = 0; $i < $nintrons; $i++) {
+		if (!defined($opt_d)) {
+		    if (defined($opt_n)) {
+			printf ">%d %s:%u..%u %s.intron%d/%d\n",$opt_n,$chr,$ends[$i],$starts[$i]+1,$acc,$i+1,$nintrons;
+		    } else {
+			printf ">%s.intron%d/%d %s:%u..%u\n",$acc,$i+1,$nintrons,$chr,$ends[$i],$starts[$i]+1;
+		    }
+		} else {
+		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ends[$i]+1,$ends[$i]+2;
+		    $donor_dinucl = `$command | tail -1`;
+		    chop $donor_dinucl;
+
+		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$starts[$i]-1,$starts[$i];
+		    $acceptor_dinucl = `$command | tail -1`;
+		    chop $acceptor_dinucl;
+
+		    if (defined($opt_C) && ($donor_dinucl ne "GT" && $donor_dinucl ne "GC" || $acceptor_dinucl ne "AG")) {
+			printf STDERR "Skipping non-canonical splice $donor_nucl-$acceptor_nucl for %s.intron%d/%d on plus strand\n",$acc,$i+1,$nintrons;
+		    } elsif (defined($opt_R)) {
+			if (($donor_dinucl ne "GT" && $donor_dinucl ne "GC") || $acceptor_dinucl ne "AG") {
+			    printf ">%s.intron%d/%d %s:%u..%u %s-%s\n",$acc,$i+1,$nintrons,$chr,$ends[$i],$starts[$i]+1,$donor_dinucl,$acceptor_dinucl;
+			}
+		    } else {
+			printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nintrons,$chr,$ends[$i],$starts[$i]+1;
+			if (defined($opt_2)) {
+			    print " $donor_dinucl-$acceptor_dinucl";
+			}
+			print "\n";
+		    }
+		}
+	    }
+
+	} elsif ($strand eq "-") {
+	    @starts = reverse @starts;
+	    @ends = reverse @ends;
+	    for ($i = 0; $i < $nintrons; $i++) {
+		if (!defined($opt_d)) {
+		    if (defined($opt_n)) {
+			printf ">%d %s:%u..%u %s.intron%d/%d\n",$opt_n,$chr,$starts[$i]+1,$ends[$i],$acc,$i+1,$nintrons;
+		    } else {
+			printf ">%s.intron%d/%d %s:%u..%u\n",$acc,$i+1,$nintrons,$chr,$starts[$i]+1,$ends[$i];
+		    }
+
+		} else {
+		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$starts[$i],$starts[$i]-1;
+		    $donor_dinucl = `$command | tail -1`;
+		    chop $donor_dinucl;
+
+		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ends[$i]+2,$ends[$i]+1;
+		    $acceptor_dinucl = `$command | tail -1`;
+		    chop $acceptor_dinucl;
+
+		    if (defined($opt_C) && ($donor_dinucl ne "GT" && $donor_dinucl ne "GC") || $acceptor_dinucl ne "AG") {
+			printf STDERR "Skipping non-canonical splice $donor_nucl-$acceptor_nucl for %s.intron%d/%d on minus strand\n",$acc,$i+1,$nintrons;
+		    } elsif (defined($opt_R)) {
+			if (($donor_dinucl ne "GT" && $donor_dinucl ne "GC") || $acceptor_dinucl ne "AG") {
+			    printf ">%s.intron%d/%d %s:%u..%u %s-%s\n",$acc,$i+1,$nintrons,$chr,$starts[$i]+1,$ends[$i],$donor_dinucl,$acceptor_dinucl;
+			}
+		    } else {
+			printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nintrons,$chr,$starts[$i]+1,$ends[$i];
+			if (defined($opt_2)) {
+			    print " $donor_dinucl-$acceptor_dinucl";
+			}
+			print "\n";
+		    }
+		}
+	    }
+
+	} else {
+	    print STDERR "Strand is neither + nor -: Skipping $line\n";
+	}
+    }
+
+}
+
+exit;
+

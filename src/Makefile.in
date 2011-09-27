@@ -64,7 +64,8 @@ am__objects_1 = cmetindex-except.$(OBJEXT) cmetindex-assert.$(OBJEXT) \
 	cmetindex-mem.$(OBJEXT) cmetindex-littleendian.$(OBJEXT) \
 	cmetindex-bigendian.$(OBJEXT) cmetindex-genomicpos.$(OBJEXT) \
 	cmetindex-stopwatch.$(OBJEXT) cmetindex-access.$(OBJEXT) \
-	cmetindex-cmet.$(OBJEXT) cmetindex-getopt.$(OBJEXT) \
+	cmetindex-cmet.$(OBJEXT) cmetindex-list.$(OBJEXT) \
+	cmetindex-datadir.$(OBJEXT) cmetindex-getopt.$(OBJEXT) \
 	cmetindex-getopt1.$(OBJEXT) cmetindex-cmetindex.$(OBJEXT)
 dist_cmetindex_OBJECTS = $(am__objects_1)
 cmetindex_OBJECTS = $(dist_cmetindex_OBJECTS)
@@ -107,7 +108,7 @@ am__objects_3 = get_genome-except.$(OBJEXT) \
 	get_genome-getopt1.$(OBJEXT) get_genome-get-genome.$(OBJEXT)
 dist_get_genome_OBJECTS = $(am__objects_3)
 get_genome_OBJECTS = $(dist_get_genome_OBJECTS)
-get_genome_DEPENDENCIES = $(am__DEPENDENCIES_1)
+get_genome_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 get_genome_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(get_genome_CFLAGS) \
 	$(CFLAGS) $(get_genome_LDFLAGS) $(LDFLAGS) -o $@
@@ -123,24 +124,26 @@ am__objects_4 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-indexdb.$(OBJEXT) gmap-indexdb_hr.$(OBJEXT) \
 	gmap-oligo.$(OBJEXT) gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
 	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
-	gmap-chrsubset.$(OBJEXT) gmap-gregion.$(OBJEXT) \
-	gmap-match.$(OBJEXT) gmap-matchpool.$(OBJEXT) \
-	gmap-diagnostic.$(OBJEXT) gmap-stage1.$(OBJEXT) \
-	gmap-diag.$(OBJEXT) gmap-diagpool.$(OBJEXT) \
-	gmap-orderstat.$(OBJEXT) gmap-oligoindex.$(OBJEXT) \
-	gmap-intron.$(OBJEXT) gmap-maxent.$(OBJEXT) \
+	gmap-chrsubset.$(OBJEXT) gmap-uinttable.$(OBJEXT) \
+	gmap-gregion.$(OBJEXT) gmap-match.$(OBJEXT) \
+	gmap-matchpool.$(OBJEXT) gmap-diagnostic.$(OBJEXT) \
+	gmap-stage1.$(OBJEXT) gmap-diag.$(OBJEXT) \
+	gmap-diagpool.$(OBJEXT) gmap-orderstat.$(OBJEXT) \
+	gmap-oligoindex.$(OBJEXT) gmap-intron.$(OBJEXT) \
+	gmap-maxent.$(OBJEXT) gmap-maxent_hr.$(OBJEXT) \
 	gmap-pair.$(OBJEXT) gmap-pairpool.$(OBJEXT) \
 	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
 	gmap-boyer-moore.$(OBJEXT) gmap-dynprog.$(OBJEXT) \
 	gmap-translation.$(OBJEXT) gmap-pbinom.$(OBJEXT) \
 	gmap-changepoint.$(OBJEXT) gmap-stage3.$(OBJEXT) \
-	gmap-request.$(OBJEXT) gmap-reqpost.$(OBJEXT) \
-	gmap-result.$(OBJEXT) gmap-blackboard.$(OBJEXT) \
-	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
-	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
+	gmap-chimera.$(OBJEXT) gmap-request.$(OBJEXT) \
+	gmap-result.$(OBJEXT) gmap-inbuffer.$(OBJEXT) \
+	gmap-outbuffer.$(OBJEXT) gmap-datadir.$(OBJEXT) \
+	gmap-getopt.$(OBJEXT) gmap-getopt1.$(OBJEXT) \
+	gmap-gmap.$(OBJEXT)
 dist_gmap_OBJECTS = $(am__objects_4)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
-gmap_DEPENDENCIES = $(am__DEPENDENCIES_1)
+gmap_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 gmap_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(gmap_CFLAGS) $(CFLAGS) $(gmap_LDFLAGS) \
 	$(LDFLAGS) -o $@
@@ -174,17 +177,20 @@ am__objects_6 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
 	gsnap-indexdb.$(OBJEXT) gsnap-indexdb_hr.$(OBJEXT) \
 	gsnap-oligo.$(OBJEXT) gsnap-chrom.$(OBJEXT) \
 	gsnap-segmentpos.$(OBJEXT) gsnap-chrnum.$(OBJEXT) \
-	gsnap-maxent.$(OBJEXT) gsnap-sam.$(OBJEXT) \
+	gsnap-maxent_hr.$(OBJEXT) gsnap-samprint.$(OBJEXT) \
+	gsnap-mapq.$(OBJEXT) gsnap-shortread.$(OBJEXT) \
 	gsnap-substring.$(OBJEXT) gsnap-stage3hr.$(OBJEXT) \
-	gsnap-spanningelt.$(OBJEXT) gsnap-cmet.$(OBJEXT) \
+	gsnap-goby.$(OBJEXT) gsnap-spanningelt.$(OBJEXT) \
+	gsnap-cmet.$(OBJEXT) gsnap-splicetrie.$(OBJEXT) \
 	gsnap-stage1hr.$(OBJEXT) gsnap-request.$(OBJEXT) \
-	gsnap-reqpost.$(OBJEXT) gsnap-resulthr.$(OBJEXT) \
-	gsnap-blackboard.$(OBJEXT) gsnap-datadir.$(OBJEXT) \
+	gsnap-resulthr.$(OBJEXT) gsnap-inbuffer.$(OBJEXT) \
+	gsnap-outbuffer.$(OBJEXT) gsnap-datadir.$(OBJEXT) \
 	gsnap-getopt.$(OBJEXT) gsnap-getopt1.$(OBJEXT) \
 	gsnap-gsnap.$(OBJEXT)
 dist_gsnap_OBJECTS = $(am__objects_6)
 gsnap_OBJECTS = $(dist_gsnap_OBJECTS)
-gsnap_DEPENDENCIES = $(am__DEPENDENCIES_1)
+gsnap_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1)
 gsnap_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(gsnap_CFLAGS) $(CFLAGS) $(gsnap_LDFLAGS) \
 	$(LDFLAGS) -o $@
@@ -197,12 +203,13 @@ am__objects_7 = gsnap_tally-except.$(OBJEXT) \
 	gsnap_tally-access.$(OBJEXT) gsnap_tally-iit-read.$(OBJEXT) \
 	gsnap_tally-chrom.$(OBJEXT) gsnap_tally-genomicpos.$(OBJEXT) \
 	gsnap_tally-md5.$(OBJEXT) gsnap_tally-sequence.$(OBJEXT) \
-	gsnap_tally-genome.$(OBJEXT) gsnap_tally-datadir.$(OBJEXT) \
-	gsnap_tally-getopt.$(OBJEXT) gsnap_tally-getopt1.$(OBJEXT) \
+	gsnap_tally-genome.$(OBJEXT) gsnap_tally-gsnapread.$(OBJEXT) \
+	gsnap_tally-datadir.$(OBJEXT) gsnap_tally-getopt.$(OBJEXT) \
+	gsnap_tally-getopt1.$(OBJEXT) \
 	gsnap_tally-gsnap_tally.$(OBJEXT)
 dist_gsnap_tally_OBJECTS = $(am__objects_7)
 gsnap_tally_OBJECTS = $(dist_gsnap_tally_OBJECTS)
-gsnap_tally_DEPENDENCIES = $(am__DEPENDENCIES_1)
+gsnap_tally_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 gsnap_tally_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(gsnap_tally_CFLAGS) \
 	$(CFLAGS) $(gsnap_tally_LDFLAGS) $(LDFLAGS) -o $@
@@ -263,7 +270,7 @@ am__objects_11 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
 	snpindex-snpindex.$(OBJEXT)
 dist_snpindex_OBJECTS = $(am__objects_11)
 snpindex_OBJECTS = $(dist_snpindex_OBJECTS)
-snpindex_DEPENDENCIES = $(am__DEPENDENCIES_1)
+snpindex_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 snpindex_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(snpindex_CFLAGS) $(CFLAGS) \
 	$(snpindex_LDFLAGS) $(LDFLAGS) -o $@
@@ -319,6 +326,9 @@ EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
 GMAPDB = @GMAPDB@
+GOBY_CFLAGS = @GOBY_CFLAGS@
+GOBY_LDFLAGS = @GOBY_LDFLAGS@
+GOBY_LIBS = @GOBY_LIBS@
 GREP = @GREP@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
@@ -353,11 +363,15 @@ PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@
 RANLIB = @RANLIB@
+SAMTOOLS_CFLAGS = @SAMTOOLS_CFLAGS@
+SAMTOOLS_LDFLAGS = @SAMTOOLS_LDFLAGS@
+SAMTOOLS_LIBS = @SAMTOOLS_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+ZLIB_LIBS = @ZLIB_LIBS@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -426,31 +440,29 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  gbuffer.c gbuffer.h genome.c genome.h indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h chrsubset.c chrsubset.h gregion.c gregion.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h uinttable.c uinttable.h gregion.c gregion.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
  diagdef.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h \
- scores.h intron.c intron.h maxent.c maxent.h pairdef.h pair.c pair.h \
+ scores.h intron.c intron.h maxent.c maxent.h maxent_hr.c maxent_hr.h samflags.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h stage3.c stage3.h \
- request.c request.h reqpost.c reqpost.h \
- result.c result.h blackboard.c blackboard.h \
+ chimera.c chimera.h \
+ request.c request.h result.c result.h \
+ inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
  datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
 
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
-
-# In front of stage3
-GMAP_FILES_BETA = chimera.c chimera.h 
 gmap_CC = $(PTHREAD_CC)
 gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-gmap_LDADD = $(PTHREAD_LIBS)
+gmap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
 dist_gmap_SOURCES = $(GMAP_FILES)
 GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -465,19 +477,22 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  oligo.c oligo.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h \
- maxent.c maxent.h sam.c sam.h substring.c substring.h stage3hr.c stage3hr.h \
- spanningelt.c spanningelt.h cmet.c cmet.h stage1hr.c stage1hr.h \
- request.c request.h reqpost.c reqpost.h \
- resulthr.c resulthr.h blackboard.c blackboard.h \
+ maxent_hr.c maxent_hr.h samflags.h samprint.c samprint.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
+ goby.c goby.h \
+ spanningelt.c spanningelt.h cmet.c cmet.h \
+ splicetrie.c splicetrie.h stage1hr.c stage1hr.h \
+ request.c request.h resulthr.c resulthr.h \
+ inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
  datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gsnap.c
 
 
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 gsnap_CC = $(PTHREAD_CC)
-gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DGSNAP=1
-gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-gsnap_LDADD = $(PTHREAD_LIBS)
+gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DGSNAP=1
+gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS) $(GOBY_LDFLAGS)
+gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(GOBY_LIBS)
 dist_gsnap_SOURCES = $(GSNAP_FILES)
 GMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -512,7 +527,7 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
 snpindex_CC = $(PTHREAD_CC)
 snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" 
 snpindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-snpindex_LDADD = $(PTHREAD_LIBS)
+snpindex_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
 dist_snpindex_SOURCES = $(SNPINDEX_FILES)
 CMETINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -520,10 +535,11 @@ CMETINDEX_FILES = fopen.h bool.h types.h \
  genomicpos.c genomicpos.h \
  stopwatch.c stopwatch.h access.c access.h \
  indexdbdef.h indexdb.h cmet.c cmet.h \
+ list.c list.h listdef.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h cmetindex.c
 
 cmetindex_CC = $(PTHREAD_CC)
-cmetindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+cmetindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 cmetindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 cmetindex_LDADD = $(PTHREAD_LIBS)
 dist_cmetindex_SOURCES = $(CMETINDEX_FILES)
@@ -559,7 +575,7 @@ GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
 get_genome_CC = $(PTHREAD_CC)
 get_genome_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-get_genome_LDADD = $(PTHREAD_LIBS)
+get_genome_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
 dist_get_genome_SOURCES = $(GET_GENOME_FILES)
 IIT_STORE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -606,12 +622,13 @@ GSNAP_TALLY_FILES = fopen.h bool.h types.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  complement.h chrom.c chrom.h genomicpos.c genomicpos.h \
  md5.c md5.h complement.h sequence.c sequence.h genome.c genome.h \
+ gsnapread.c gsnapread.h \
  datadir.h datadir.c \
  getopt.c getopt1.c getopt.h gsnap_tally.c
 
 gsnap_tally_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 gsnap_tally_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-gsnap_tally_LDADD = $(PTHREAD_LIBS)
+gsnap_tally_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
 dist_gsnap_tally_SOURCES = $(GSNAP_TALLY_FILES)
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -737,10 +754,12 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-cmet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-cmetindex.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-datadir.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-genomicpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-getopt.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-getopt1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-littleendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-mem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-stopwatch.Po@am__quote@
@@ -790,10 +809,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-bigendian.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-blackboard.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-block.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-boyer-moore.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-changepoint.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chimera.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrsubset.Po@am__quote@
@@ -812,6 +831,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-gmap.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-gregion.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-iit-read.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-inbuffer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-indexdb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-indexdb_hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-interval.Po@am__quote@
@@ -822,16 +842,17 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-match.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-matchpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-maxent.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-maxent_hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-oligo.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-oligoindex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-orderstat.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-outbuffer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-pair.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-pairpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-pbinom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-reader.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-reqpost.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-request.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-result.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-segmentpos.Po@am__quote@
@@ -843,6 +864,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-stopwatch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-translation.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-uintlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-uinttable.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-bigendian.Po@am__quote@
@@ -868,7 +890,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-bigendian.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-blackboard.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-cmet.Po@am__quote@
@@ -881,26 +902,31 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-genomicpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-getopt.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-getopt1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-goby.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-gsnap.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-iit-read.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-inbuffer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-indexdb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-indexdb_hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-interval.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-intlist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-littleendian.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-maxent.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-mapq.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-maxent_hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-mem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-oligo.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-outbuffer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-reader.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-reqpost.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-request.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-resulthr.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-sam.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-samprint.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-segmentpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-sequence.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-shortread.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-spanningelt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-splicetrie.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-stage1hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-stage3hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-stopwatch.Po@am__quote@
@@ -917,6 +943,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-getopt.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-getopt1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-gsnap_tally.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-gsnapread.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-iit-read.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-interval.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-intlist.Po@am__quote@
@@ -1146,6 +1173,34 @@ cmetindex-cmet.obj: cmet.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='cmetindex-cmet.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+cmetindex-list.o: list.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-list.o -MD -MP -MF $(DEPDIR)/cmetindex-list.Tpo -c -o cmetindex-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-list.Tpo $(DEPDIR)/cmetindex-list.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='cmetindex-list.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
+
+cmetindex-list.obj: list.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-list.obj -MD -MP -MF $(DEPDIR)/cmetindex-list.Tpo -c -o cmetindex-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-list.Tpo $(DEPDIR)/cmetindex-list.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='cmetindex-list.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
+
+cmetindex-datadir.o: datadir.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-datadir.o -MD -MP -MF $(DEPDIR)/cmetindex-datadir.Tpo -c -o cmetindex-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-datadir.Tpo $(DEPDIR)/cmetindex-datadir.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='cmetindex-datadir.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+cmetindex-datadir.obj: datadir.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-datadir.obj -MD -MP -MF $(DEPDIR)/cmetindex-datadir.Tpo -c -o cmetindex-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-datadir.Tpo $(DEPDIR)/cmetindex-datadir.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='cmetindex-datadir.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
 
 cmetindex-getopt.o: getopt.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-getopt.o -MD -MP -MF $(DEPDIR)/cmetindex-getopt.Tpo -c -o cmetindex-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
@@ -2169,6 +2224,20 @@ gmap-chrsubset.obj: chrsubset.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
 
+gmap-uinttable.o: uinttable.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-uinttable.o -MD -MP -MF $(DEPDIR)/gmap-uinttable.Tpo -c -o gmap-uinttable.o `test -f 'uinttable.c' || echo '$(srcdir)/'`uinttable.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-uinttable.Tpo $(DEPDIR)/gmap-uinttable.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uinttable.c' object='gmap-uinttable.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-uinttable.o `test -f 'uinttable.c' || echo '$(srcdir)/'`uinttable.c
+
+gmap-uinttable.obj: uinttable.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-uinttable.obj -MD -MP -MF $(DEPDIR)/gmap-uinttable.Tpo -c -o gmap-uinttable.obj `if test -f 'uinttable.c'; then $(CYGPATH_W) 'uinttable.c'; else $(CYGPATH_W) '$(srcdir)/uinttable.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-uinttable.Tpo $(DEPDIR)/gmap-uinttable.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uinttable.c' object='gmap-uinttable.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-uinttable.obj `if test -f 'uinttable.c'; then $(CYGPATH_W) 'uinttable.c'; else $(CYGPATH_W) '$(srcdir)/uinttable.c'; fi`
+
 gmap-gregion.o: gregion.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-gregion.o -MD -MP -MF $(DEPDIR)/gmap-gregion.Tpo -c -o gmap-gregion.o `test -f 'gregion.c' || echo '$(srcdir)/'`gregion.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-gregion.Tpo $(DEPDIR)/gmap-gregion.Po
@@ -2323,6 +2392,20 @@ gmap-maxent.obj: maxent.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
 
+gmap-maxent_hr.o: maxent_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent_hr.o -MD -MP -MF $(DEPDIR)/gmap-maxent_hr.Tpo -c -o gmap-maxent_hr.o `test -f 'maxent_hr.c' || echo '$(srcdir)/'`maxent_hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-maxent_hr.Tpo $(DEPDIR)/gmap-maxent_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent_hr.c' object='gmap-maxent_hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent_hr.o `test -f 'maxent_hr.c' || echo '$(srcdir)/'`maxent_hr.c
+
+gmap-maxent_hr.obj: maxent_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent_hr.obj -MD -MP -MF $(DEPDIR)/gmap-maxent_hr.Tpo -c -o gmap-maxent_hr.obj `if test -f 'maxent_hr.c'; then $(CYGPATH_W) 'maxent_hr.c'; else $(CYGPATH_W) '$(srcdir)/maxent_hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-maxent_hr.Tpo $(DEPDIR)/gmap-maxent_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent_hr.c' object='gmap-maxent_hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent_hr.obj `if test -f 'maxent_hr.c'; then $(CYGPATH_W) 'maxent_hr.c'; else $(CYGPATH_W) '$(srcdir)/maxent_hr.c'; fi`
+
 gmap-pair.o: pair.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-pair.o -MD -MP -MF $(DEPDIR)/gmap-pair.Tpo -c -o gmap-pair.o `test -f 'pair.c' || echo '$(srcdir)/'`pair.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-pair.Tpo $(DEPDIR)/gmap-pair.Po
@@ -2463,6 +2546,20 @@ gmap-stage3.obj: stage3.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-stage3.obj `if test -f 'stage3.c'; then $(CYGPATH_W) 'stage3.c'; else $(CYGPATH_W) '$(srcdir)/stage3.c'; fi`
 
+gmap-chimera.o: chimera.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.o -MD -MP -MF $(DEPDIR)/gmap-chimera.Tpo -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-chimera.Tpo $(DEPDIR)/gmap-chimera.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
+
+gmap-chimera.obj: chimera.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.obj -MD -MP -MF $(DEPDIR)/gmap-chimera.Tpo -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-chimera.Tpo $(DEPDIR)/gmap-chimera.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
+
 gmap-request.o: request.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-request.o -MD -MP -MF $(DEPDIR)/gmap-request.Tpo -c -o gmap-request.o `test -f 'request.c' || echo '$(srcdir)/'`request.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-request.Tpo $(DEPDIR)/gmap-request.Po
@@ -2476,20 +2573,6 @@ gmap-request.obj: request.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='request.c' object='gmap-request.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-request.obj `if test -f 'request.c'; then $(CYGPATH_W) 'request.c'; else $(CYGPATH_W) '$(srcdir)/request.c'; fi`
-
-gmap-reqpost.o: reqpost.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-reqpost.o -MD -MP -MF $(DEPDIR)/gmap-reqpost.Tpo -c -o gmap-reqpost.o `test -f 'reqpost.c' || echo '$(srcdir)/'`reqpost.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-reqpost.Tpo $(DEPDIR)/gmap-reqpost.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='reqpost.c' object='gmap-reqpost.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-reqpost.o `test -f 'reqpost.c' || echo '$(srcdir)/'`reqpost.c
-
-gmap-reqpost.obj: reqpost.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-reqpost.obj -MD -MP -MF $(DEPDIR)/gmap-reqpost.Tpo -c -o gmap-reqpost.obj `if test -f 'reqpost.c'; then $(CYGPATH_W) 'reqpost.c'; else $(CYGPATH_W) '$(srcdir)/reqpost.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-reqpost.Tpo $(DEPDIR)/gmap-reqpost.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='reqpost.c' object='gmap-reqpost.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-reqpost.obj `if test -f 'reqpost.c'; then $(CYGPATH_W) 'reqpost.c'; else $(CYGPATH_W) '$(srcdir)/reqpost.c'; fi`
 
 gmap-result.o: result.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-result.o -MD -MP -MF $(DEPDIR)/gmap-result.Tpo -c -o gmap-result.o `test -f 'result.c' || echo '$(srcdir)/'`result.c
@@ -2505,19 +2588,33 @@ gmap-result.obj: result.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-result.obj `if test -f 'result.c'; then $(CYGPATH_W) 'result.c'; else $(CYGPATH_W) '$(srcdir)/result.c'; fi`
 
-gmap-blackboard.o: blackboard.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-blackboard.o -MD -MP -MF $(DEPDIR)/gmap-blackboard.Tpo -c -o gmap-blackboard.o `test -f 'blackboard.c' || echo '$(srcdir)/'`blackboard.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-blackboard.Tpo $(DEPDIR)/gmap-blackboard.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='blackboard.c' object='gmap-blackboard.o' libtool=no @AMDEPBACKSLASH@
+gmap-inbuffer.o: inbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-inbuffer.o -MD -MP -MF $(DEPDIR)/gmap-inbuffer.Tpo -c -o gmap-inbuffer.o `test -f 'inbuffer.c' || echo '$(srcdir)/'`inbuffer.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-inbuffer.Tpo $(DEPDIR)/gmap-inbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inbuffer.c' object='gmap-inbuffer.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-blackboard.o `test -f 'blackboard.c' || echo '$(srcdir)/'`blackboard.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-inbuffer.o `test -f 'inbuffer.c' || echo '$(srcdir)/'`inbuffer.c
 
-gmap-blackboard.obj: blackboard.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-blackboard.obj -MD -MP -MF $(DEPDIR)/gmap-blackboard.Tpo -c -o gmap-blackboard.obj `if test -f 'blackboard.c'; then $(CYGPATH_W) 'blackboard.c'; else $(CYGPATH_W) '$(srcdir)/blackboard.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-blackboard.Tpo $(DEPDIR)/gmap-blackboard.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='blackboard.c' object='gmap-blackboard.obj' libtool=no @AMDEPBACKSLASH@
+gmap-inbuffer.obj: inbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-inbuffer.obj -MD -MP -MF $(DEPDIR)/gmap-inbuffer.Tpo -c -o gmap-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-inbuffer.Tpo $(DEPDIR)/gmap-inbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inbuffer.c' object='gmap-inbuffer.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-blackboard.obj `if test -f 'blackboard.c'; then $(CYGPATH_W) 'blackboard.c'; else $(CYGPATH_W) '$(srcdir)/blackboard.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
+
+gmap-outbuffer.o: outbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-outbuffer.o -MD -MP -MF $(DEPDIR)/gmap-outbuffer.Tpo -c -o gmap-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-outbuffer.Tpo $(DEPDIR)/gmap-outbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='outbuffer.c' object='gmap-outbuffer.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
+
+gmap-outbuffer.obj: outbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-outbuffer.obj -MD -MP -MF $(DEPDIR)/gmap-outbuffer.Tpo -c -o gmap-outbuffer.obj `if test -f 'outbuffer.c'; then $(CYGPATH_W) 'outbuffer.c'; else $(CYGPATH_W) '$(srcdir)/outbuffer.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-outbuffer.Tpo $(DEPDIR)/gmap-outbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='outbuffer.c' object='gmap-outbuffer.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-outbuffer.obj `if test -f 'outbuffer.c'; then $(CYGPATH_W) 'outbuffer.c'; else $(CYGPATH_W) '$(srcdir)/outbuffer.c'; fi`
 
 gmap-datadir.o: datadir.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-datadir.o -MD -MP -MF $(DEPDIR)/gmap-datadir.Tpo -c -o gmap-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
@@ -3247,33 +3344,61 @@ gsnap-chrnum.obj: chrnum.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`
 
-gsnap-maxent.o: maxent.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-maxent.o -MD -MP -MF $(DEPDIR)/gsnap-maxent.Tpo -c -o gsnap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-maxent.Tpo $(DEPDIR)/gsnap-maxent.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gsnap-maxent.o' libtool=no @AMDEPBACKSLASH@
+gsnap-maxent_hr.o: maxent_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-maxent_hr.o -MD -MP -MF $(DEPDIR)/gsnap-maxent_hr.Tpo -c -o gsnap-maxent_hr.o `test -f 'maxent_hr.c' || echo '$(srcdir)/'`maxent_hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-maxent_hr.Tpo $(DEPDIR)/gsnap-maxent_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent_hr.c' object='gsnap-maxent_hr.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-maxent_hr.o `test -f 'maxent_hr.c' || echo '$(srcdir)/'`maxent_hr.c
 
-gsnap-maxent.obj: maxent.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-maxent.obj -MD -MP -MF $(DEPDIR)/gsnap-maxent.Tpo -c -o gsnap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-maxent.Tpo $(DEPDIR)/gsnap-maxent.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gsnap-maxent.obj' libtool=no @AMDEPBACKSLASH@
+gsnap-maxent_hr.obj: maxent_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-maxent_hr.obj -MD -MP -MF $(DEPDIR)/gsnap-maxent_hr.Tpo -c -o gsnap-maxent_hr.obj `if test -f 'maxent_hr.c'; then $(CYGPATH_W) 'maxent_hr.c'; else $(CYGPATH_W) '$(srcdir)/maxent_hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-maxent_hr.Tpo $(DEPDIR)/gsnap-maxent_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent_hr.c' object='gsnap-maxent_hr.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-maxent_hr.obj `if test -f 'maxent_hr.c'; then $(CYGPATH_W) 'maxent_hr.c'; else $(CYGPATH_W) '$(srcdir)/maxent_hr.c'; fi`
 
-gsnap-sam.o: sam.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-sam.o -MD -MP -MF $(DEPDIR)/gsnap-sam.Tpo -c -o gsnap-sam.o `test -f 'sam.c' || echo '$(srcdir)/'`sam.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-sam.Tpo $(DEPDIR)/gsnap-sam.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sam.c' object='gsnap-sam.o' libtool=no @AMDEPBACKSLASH@
+gsnap-samprint.o: samprint.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-samprint.o -MD -MP -MF $(DEPDIR)/gsnap-samprint.Tpo -c -o gsnap-samprint.o `test -f 'samprint.c' || echo '$(srcdir)/'`samprint.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-samprint.Tpo $(DEPDIR)/gsnap-samprint.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samprint.c' object='gsnap-samprint.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-sam.o `test -f 'sam.c' || echo '$(srcdir)/'`sam.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-samprint.o `test -f 'samprint.c' || echo '$(srcdir)/'`samprint.c
 
-gsnap-sam.obj: sam.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-sam.obj -MD -MP -MF $(DEPDIR)/gsnap-sam.Tpo -c -o gsnap-sam.obj `if test -f 'sam.c'; then $(CYGPATH_W) 'sam.c'; else $(CYGPATH_W) '$(srcdir)/sam.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-sam.Tpo $(DEPDIR)/gsnap-sam.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sam.c' object='gsnap-sam.obj' libtool=no @AMDEPBACKSLASH@
+gsnap-samprint.obj: samprint.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-samprint.obj -MD -MP -MF $(DEPDIR)/gsnap-samprint.Tpo -c -o gsnap-samprint.obj `if test -f 'samprint.c'; then $(CYGPATH_W) 'samprint.c'; else $(CYGPATH_W) '$(srcdir)/samprint.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-samprint.Tpo $(DEPDIR)/gsnap-samprint.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samprint.c' object='gsnap-samprint.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-sam.obj `if test -f 'sam.c'; then $(CYGPATH_W) 'sam.c'; else $(CYGPATH_W) '$(srcdir)/sam.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-samprint.obj `if test -f 'samprint.c'; then $(CYGPATH_W) 'samprint.c'; else $(CYGPATH_W) '$(srcdir)/samprint.c'; fi`
+
+gsnap-mapq.o: mapq.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-mapq.o -MD -MP -MF $(DEPDIR)/gsnap-mapq.Tpo -c -o gsnap-mapq.o `test -f 'mapq.c' || echo '$(srcdir)/'`mapq.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-mapq.Tpo $(DEPDIR)/gsnap-mapq.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mapq.c' object='gsnap-mapq.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-mapq.o `test -f 'mapq.c' || echo '$(srcdir)/'`mapq.c
+
+gsnap-mapq.obj: mapq.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-mapq.obj -MD -MP -MF $(DEPDIR)/gsnap-mapq.Tpo -c -o gsnap-mapq.obj `if test -f 'mapq.c'; then $(CYGPATH_W) 'mapq.c'; else $(CYGPATH_W) '$(srcdir)/mapq.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-mapq.Tpo $(DEPDIR)/gsnap-mapq.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mapq.c' object='gsnap-mapq.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-mapq.obj `if test -f 'mapq.c'; then $(CYGPATH_W) 'mapq.c'; else $(CYGPATH_W) '$(srcdir)/mapq.c'; fi`
+
+gsnap-shortread.o: shortread.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-shortread.o -MD -MP -MF $(DEPDIR)/gsnap-shortread.Tpo -c -o gsnap-shortread.o `test -f 'shortread.c' || echo '$(srcdir)/'`shortread.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-shortread.Tpo $(DEPDIR)/gsnap-shortread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='shortread.c' object='gsnap-shortread.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-shortread.o `test -f 'shortread.c' || echo '$(srcdir)/'`shortread.c
+
+gsnap-shortread.obj: shortread.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-shortread.obj -MD -MP -MF $(DEPDIR)/gsnap-shortread.Tpo -c -o gsnap-shortread.obj `if test -f 'shortread.c'; then $(CYGPATH_W) 'shortread.c'; else $(CYGPATH_W) '$(srcdir)/shortread.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-shortread.Tpo $(DEPDIR)/gsnap-shortread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='shortread.c' object='gsnap-shortread.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-shortread.obj `if test -f 'shortread.c'; then $(CYGPATH_W) 'shortread.c'; else $(CYGPATH_W) '$(srcdir)/shortread.c'; fi`
 
 gsnap-substring.o: substring.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-substring.o -MD -MP -MF $(DEPDIR)/gsnap-substring.Tpo -c -o gsnap-substring.o `test -f 'substring.c' || echo '$(srcdir)/'`substring.c
@@ -3303,6 +3428,20 @@ gsnap-stage3hr.obj: stage3hr.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-stage3hr.obj `if test -f 'stage3hr.c'; then $(CYGPATH_W) 'stage3hr.c'; else $(CYGPATH_W) '$(srcdir)/stage3hr.c'; fi`
 
+gsnap-goby.o: goby.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-goby.o -MD -MP -MF $(DEPDIR)/gsnap-goby.Tpo -c -o gsnap-goby.o `test -f 'goby.c' || echo '$(srcdir)/'`goby.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-goby.Tpo $(DEPDIR)/gsnap-goby.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='goby.c' object='gsnap-goby.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-goby.o `test -f 'goby.c' || echo '$(srcdir)/'`goby.c
+
+gsnap-goby.obj: goby.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-goby.obj -MD -MP -MF $(DEPDIR)/gsnap-goby.Tpo -c -o gsnap-goby.obj `if test -f 'goby.c'; then $(CYGPATH_W) 'goby.c'; else $(CYGPATH_W) '$(srcdir)/goby.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-goby.Tpo $(DEPDIR)/gsnap-goby.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='goby.c' object='gsnap-goby.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-goby.obj `if test -f 'goby.c'; then $(CYGPATH_W) 'goby.c'; else $(CYGPATH_W) '$(srcdir)/goby.c'; fi`
+
 gsnap-spanningelt.o: spanningelt.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-spanningelt.o -MD -MP -MF $(DEPDIR)/gsnap-spanningelt.Tpo -c -o gsnap-spanningelt.o `test -f 'spanningelt.c' || echo '$(srcdir)/'`spanningelt.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-spanningelt.Tpo $(DEPDIR)/gsnap-spanningelt.Po
@@ -3330,6 +3469,20 @@ gsnap-cmet.obj: cmet.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gsnap-cmet.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+gsnap-splicetrie.o: splicetrie.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-splicetrie.o -MD -MP -MF $(DEPDIR)/gsnap-splicetrie.Tpo -c -o gsnap-splicetrie.o `test -f 'splicetrie.c' || echo '$(srcdir)/'`splicetrie.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-splicetrie.Tpo $(DEPDIR)/gsnap-splicetrie.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='splicetrie.c' object='gsnap-splicetrie.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-splicetrie.o `test -f 'splicetrie.c' || echo '$(srcdir)/'`splicetrie.c
+
+gsnap-splicetrie.obj: splicetrie.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-splicetrie.obj -MD -MP -MF $(DEPDIR)/gsnap-splicetrie.Tpo -c -o gsnap-splicetrie.obj `if test -f 'splicetrie.c'; then $(CYGPATH_W) 'splicetrie.c'; else $(CYGPATH_W) '$(srcdir)/splicetrie.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-splicetrie.Tpo $(DEPDIR)/gsnap-splicetrie.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='splicetrie.c' object='gsnap-splicetrie.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-splicetrie.obj `if test -f 'splicetrie.c'; then $(CYGPATH_W) 'splicetrie.c'; else $(CYGPATH_W) '$(srcdir)/splicetrie.c'; fi`
 
 gsnap-stage1hr.o: stage1hr.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-stage1hr.o -MD -MP -MF $(DEPDIR)/gsnap-stage1hr.Tpo -c -o gsnap-stage1hr.o `test -f 'stage1hr.c' || echo '$(srcdir)/'`stage1hr.c
@@ -3359,20 +3512,6 @@ gsnap-request.obj: request.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-request.obj `if test -f 'request.c'; then $(CYGPATH_W) 'request.c'; else $(CYGPATH_W) '$(srcdir)/request.c'; fi`
 
-gsnap-reqpost.o: reqpost.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-reqpost.o -MD -MP -MF $(DEPDIR)/gsnap-reqpost.Tpo -c -o gsnap-reqpost.o `test -f 'reqpost.c' || echo '$(srcdir)/'`reqpost.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-reqpost.Tpo $(DEPDIR)/gsnap-reqpost.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='reqpost.c' object='gsnap-reqpost.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-reqpost.o `test -f 'reqpost.c' || echo '$(srcdir)/'`reqpost.c
-
-gsnap-reqpost.obj: reqpost.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-reqpost.obj -MD -MP -MF $(DEPDIR)/gsnap-reqpost.Tpo -c -o gsnap-reqpost.obj `if test -f 'reqpost.c'; then $(CYGPATH_W) 'reqpost.c'; else $(CYGPATH_W) '$(srcdir)/reqpost.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-reqpost.Tpo $(DEPDIR)/gsnap-reqpost.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='reqpost.c' object='gsnap-reqpost.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-reqpost.obj `if test -f 'reqpost.c'; then $(CYGPATH_W) 'reqpost.c'; else $(CYGPATH_W) '$(srcdir)/reqpost.c'; fi`
-
 gsnap-resulthr.o: resulthr.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-resulthr.o -MD -MP -MF $(DEPDIR)/gsnap-resulthr.Tpo -c -o gsnap-resulthr.o `test -f 'resulthr.c' || echo '$(srcdir)/'`resulthr.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-resulthr.Tpo $(DEPDIR)/gsnap-resulthr.Po
@@ -3387,19 +3526,33 @@ gsnap-resulthr.obj: resulthr.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-resulthr.obj `if test -f 'resulthr.c'; then $(CYGPATH_W) 'resulthr.c'; else $(CYGPATH_W) '$(srcdir)/resulthr.c'; fi`
 
-gsnap-blackboard.o: blackboard.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-blackboard.o -MD -MP -MF $(DEPDIR)/gsnap-blackboard.Tpo -c -o gsnap-blackboard.o `test -f 'blackboard.c' || echo '$(srcdir)/'`blackboard.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-blackboard.Tpo $(DEPDIR)/gsnap-blackboard.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='blackboard.c' object='gsnap-blackboard.o' libtool=no @AMDEPBACKSLASH@
+gsnap-inbuffer.o: inbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-inbuffer.o -MD -MP -MF $(DEPDIR)/gsnap-inbuffer.Tpo -c -o gsnap-inbuffer.o `test -f 'inbuffer.c' || echo '$(srcdir)/'`inbuffer.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-inbuffer.Tpo $(DEPDIR)/gsnap-inbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inbuffer.c' object='gsnap-inbuffer.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-blackboard.o `test -f 'blackboard.c' || echo '$(srcdir)/'`blackboard.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-inbuffer.o `test -f 'inbuffer.c' || echo '$(srcdir)/'`inbuffer.c
 
-gsnap-blackboard.obj: blackboard.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-blackboard.obj -MD -MP -MF $(DEPDIR)/gsnap-blackboard.Tpo -c -o gsnap-blackboard.obj `if test -f 'blackboard.c'; then $(CYGPATH_W) 'blackboard.c'; else $(CYGPATH_W) '$(srcdir)/blackboard.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-blackboard.Tpo $(DEPDIR)/gsnap-blackboard.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='blackboard.c' object='gsnap-blackboard.obj' libtool=no @AMDEPBACKSLASH@
+gsnap-inbuffer.obj: inbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-inbuffer.obj -MD -MP -MF $(DEPDIR)/gsnap-inbuffer.Tpo -c -o gsnap-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-inbuffer.Tpo $(DEPDIR)/gsnap-inbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inbuffer.c' object='gsnap-inbuffer.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-blackboard.obj `if test -f 'blackboard.c'; then $(CYGPATH_W) 'blackboard.c'; else $(CYGPATH_W) '$(srcdir)/blackboard.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
+
+gsnap-outbuffer.o: outbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-outbuffer.o -MD -MP -MF $(DEPDIR)/gsnap-outbuffer.Tpo -c -o gsnap-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-outbuffer.Tpo $(DEPDIR)/gsnap-outbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='outbuffer.c' object='gsnap-outbuffer.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
+
+gsnap-outbuffer.obj: outbuffer.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-outbuffer.obj -MD -MP -MF $(DEPDIR)/gsnap-outbuffer.Tpo -c -o gsnap-outbuffer.obj `if test -f 'outbuffer.c'; then $(CYGPATH_W) 'outbuffer.c'; else $(CYGPATH_W) '$(srcdir)/outbuffer.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-outbuffer.Tpo $(DEPDIR)/gsnap-outbuffer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='outbuffer.c' object='gsnap-outbuffer.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-outbuffer.obj `if test -f 'outbuffer.c'; then $(CYGPATH_W) 'outbuffer.c'; else $(CYGPATH_W) '$(srcdir)/outbuffer.c'; fi`
 
 gsnap-datadir.o: datadir.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-datadir.o -MD -MP -MF $(DEPDIR)/gsnap-datadir.Tpo -c -o gsnap-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
@@ -3694,6 +3847,20 @@ gsnap_tally-genome.obj: genome.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='gsnap_tally-genome.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
+
+gsnap_tally-gsnapread.o: gsnapread.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-gsnapread.o -MD -MP -MF $(DEPDIR)/gsnap_tally-gsnapread.Tpo -c -o gsnap_tally-gsnapread.o `test -f 'gsnapread.c' || echo '$(srcdir)/'`gsnapread.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-gsnapread.Tpo $(DEPDIR)/gsnap_tally-gsnapread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnapread.c' object='gsnap_tally-gsnapread.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-gsnapread.o `test -f 'gsnapread.c' || echo '$(srcdir)/'`gsnapread.c
+
+gsnap_tally-gsnapread.obj: gsnapread.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-gsnapread.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-gsnapread.Tpo -c -o gsnap_tally-gsnapread.obj `if test -f 'gsnapread.c'; then $(CYGPATH_W) 'gsnapread.c'; else $(CYGPATH_W) '$(srcdir)/gsnapread.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-gsnapread.Tpo $(DEPDIR)/gsnap_tally-gsnapread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnapread.c' object='gsnap_tally-gsnapread.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-gsnapread.obj `if test -f 'gsnapread.c'; then $(CYGPATH_W) 'gsnapread.c'; else $(CYGPATH_W) '$(srcdir)/gsnapread.c'; fi`
 
 gsnap_tally-datadir.o: datadir.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-datadir.o -MD -MP -MF $(DEPDIR)/gsnap_tally-datadir.Tpo -c -o gsnap_tally-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c

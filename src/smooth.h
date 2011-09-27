@@ -1,4 +1,4 @@
-/* $Id: smooth.h,v 1.14 2008-09-04 20:32:13 twu Exp $ */
+/* $Id: smooth.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef SMOOTH_INCLUDED
 #define SMOOTH_INCLUDED
 #include "list.h"

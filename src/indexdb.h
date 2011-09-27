@@ -1,7 +1,8 @@
-/* $Id: indexdb.h,v 1.52 2009-08-14 15:05:19 twu Exp $ */
+/* $Id: indexdb.h 32363 2010-12-04 14:31:55Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
+#include "access.h"
 #include "types.h"
 #include "genomicpos.h"
 #include "bool.h"
@@ -79,7 +80,7 @@ extern double
 Indexdb_mean_size (T this, bool cmetp);
 extern T
 Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
-		    int required_interval, bool batch_offsets_p, bool batch_positions_p);
+		    int required_interval, Access_mode_T offsets_access, Access_mode_T positions_access);
 extern T
 Indexdb_new_segment (char *genomicseg, int index1interval
 #ifdef PMAP

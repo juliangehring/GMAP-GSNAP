@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c,v 1.28 2010-02-03 01:57:10 twu Exp $";
+static char rcsid[] = "$Id: datadir.c 35035 2011-02-11 18:12:43Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -55,18 +55,20 @@ read_config_file (FILE *fp, char *tag) {
   return NULL;
 }
 
+
 static FILE *
 find_homedir_config () {
   FILE *fp = NULL;
   struct passwd *p;
   char *user, *configfile;
 
-  if ((user = getenv("USER")) != NULL &&
-      (p = getpwnam(user)) != NULL) {
-    configfile = (char *) CALLOC(strlen(p->pw_dir)+strlen("/")+strlen(".gmaprc")+1,sizeof(char));
-    sprintf(configfile,"%s/.gmaprc",p->pw_dir);
-    fp = FOPEN_READ_TEXT(configfile);
-    FREE(configfile);
+  if ((user = getenv("USER")) != NULL) {
+    if ((p = getpwnam(user)) != NULL) {
+      configfile = (char *) CALLOC(strlen(p->pw_dir)+strlen("/")+strlen(".gmaprc")+1,sizeof(char));
+      sprintf(configfile,"%s/.gmaprc",p->pw_dir);
+      fp = FOPEN_READ_TEXT(configfile);
+      FREE(configfile);
+    }
   }
   return fp;
 }
@@ -82,7 +84,7 @@ find_fileroot (char *genomesubdir, char *genomedir, char *dbroot) {
   if ((dp = opendir(genomesubdir)) == NULL) {
     /* Problem found.  Try to diagnose */
     if ((dp = opendir(genomedir)) == NULL) {
-      fprintf(stderr,"Unable to find default directory %s.  Either recompile GMAP\n",genomedir);
+      fprintf(stderr,"Unable to find default directory %s.  Either recompile the GMAP package\n",genomedir);
       fprintf(stderr,"to have the correct default directory (seen by doing gmap --version),\n");
       fprintf(stderr,"or add the -D flag to gmap to specify the genome directory.\n");
       exit(9);
@@ -219,7 +221,7 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
       fprintf(stderr,"Error: Can't open genome files in %s or %s.\n",genomedir,genomesubdir);
       fprintf(stderr,"       Please specify directory using -D flag, GMAPDB environment variable,\n");
       fprintf(stderr,"       or a configuration file .gmaprc with the line GMAPDB=<directory>;\n");
-      fprintf(stderr,"       or have GMAP recompiled using the --with-gmapdb flag to configure.\n");
+      fprintf(stderr,"       or recompile the GMAP package using the --with-gmapdb flag to configure.\n");
       Datadir_avail_gmap_databases(stderr,user_genomedir);
       exit(9);
     }

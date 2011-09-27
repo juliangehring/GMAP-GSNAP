@@ -1,4 +1,4 @@
-/* $Id: oligoindex.h,v 1.61 2010-07-16 22:19:58 twu Exp $ */
+/* $Id: oligoindex.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"

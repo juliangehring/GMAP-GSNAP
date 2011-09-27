@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.23 2010-07-26 23:59:57 twu Exp $";
+static char rcsid[] = "$Id: mem.c 36360 2011-03-10 17:02:50Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -84,6 +84,7 @@ find (const void *ptr) {
 
 
 
+/* Prints out memory usage */
 /* #define DEBUG 1 */
 #ifdef DEBUG
 #define debug(x) x
@@ -91,6 +92,9 @@ find (const void *ptr) {
 #define debug(x)
 #endif
 
+
+/* Stops program when leak is detected */
+/* LEAKCHECK needs to be defined in mem.h */
 #ifdef LEAKCHECK
 static bool leak_check_p = false;
 static int nalloc = 0;
@@ -100,7 +104,8 @@ const Except_T Mem_Leak = { "Memory Leak" };
 
 void
 Mem_leak_check_start (const char *file, int line) {
-  debug(printf("Starting leak check\n"));
+  debug(printf("Starting leak check at %s:%d\n",file,line));
+  leak_check_p = true;
   nalloc = 0;
   total_alloc = 0U;
   return;
@@ -109,11 +114,13 @@ Mem_leak_check_start (const char *file, int line) {
 void
 Mem_leak_check_end (const char *file, int line) {
   if (nalloc != 0) {
-    fprintf(stderr,"Leak check gives %d\n",nalloc);
+    fprintf(stderr,"Leak check at %s:%d gives %d\n",file,line,nalloc);
     Except_raise(&Mem_Leak, file, line);
   } else {
-    debug(printf("Total nalloc = %u\n",total_alloc));
+    debug(printf("Ending leak check at %s:%d.  Total nalloc = %u\n",file,line,total_alloc));
+    printf("Ending leak check at %s:%d.  Total nalloc = %u\n",file,line,total_alloc);
   }
+  leak_check_p = false;
   return;
 }
 
@@ -320,7 +327,9 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 
 void 
 Mem_free (void *ptr, const char *file, int line) {
+#ifdef MEMUSAGE
   struct descriptor *bp;
+#endif
 
 #ifdef TRAP
   if (ptr == trap_location) {

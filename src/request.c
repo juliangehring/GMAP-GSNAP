@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: request.c,v 1.19 2008-01-08 01:43:38 twu Exp $";
+static char rcsid[] = "$Id: request.c 34433 2011-01-28 21:51:40Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10,11 +10,10 @@ static char rcsid[] = "$Id: request.c,v 1.19 2008-01-08 01:43:38 twu Exp $";
 struct T {
   int id;
 #ifdef GSNAP
-  Sequence_T queryseq1;
-  Sequence_T queryseq2;
+  Shortread_T queryseq1;
+  Shortread_T queryseq2;
 #else
   Sequence_T queryseq;
-  Sequence_T usersegment;
 #endif  
 };
 
@@ -26,18 +25,18 @@ Request_id (T this) {
 
 #ifdef GSNAP
 
-Sequence_T
+Shortread_T
 Request_queryseq1 (T this) {
   return this->queryseq1;
 }
 
-Sequence_T
+Shortread_T
 Request_queryseq2 (T this) {
   return this->queryseq2;
 }
 
 T
-Request_new (int id, Sequence_T queryseq1, Sequence_T queryseq2) {
+Request_new (int id, Shortread_T queryseq1, Shortread_T queryseq2) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
@@ -49,9 +48,9 @@ Request_new (int id, Sequence_T queryseq1, Sequence_T queryseq2) {
 void
 Request_free (T *old) {
   if (*old) {
-    Sequence_free(&(*old)->queryseq1);
+    Shortread_free(&(*old)->queryseq1);
     if ((*old)->queryseq2) {
-      Sequence_free(&(*old)->queryseq2);
+      Shortread_free(&(*old)->queryseq2);
     }
     FREE(*old);
   }
@@ -65,18 +64,12 @@ Request_queryseq (T this) {
   return this->queryseq;
 }
 
-Sequence_T
-Request_usersegment (T this) {
-  return this->usersegment;
-}
-
 T
-Request_new (int id, Sequence_T queryseq, Sequence_T usersegment) {
+Request_new (int id, Sequence_T queryseq) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
   new->queryseq = queryseq;
-  new->usersegment = usersegment;
   return new;
 }
 

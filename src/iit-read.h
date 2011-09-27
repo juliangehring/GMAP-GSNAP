@@ -1,4 +1,4 @@
-/* $Id: iit-read.h,v 1.69 2010-07-27 01:10:41 twu Exp $ */
+/* $Id: iit-read.h 33519 2011-01-10 22:13:42Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -69,7 +69,7 @@ IIT_fieldstring (T this, int fieldint);
 extern char *
 IIT_label (T this, int index, bool *allocp);
 extern char *
-IIT_annotation (T this, int index, bool *allocp);
+IIT_annotation (char **restofheader, T this, int index, bool *alloc_header_p);
 extern char
 IIT_annotation_firstchar (T this, int index);
 extern unsigned int
@@ -82,17 +82,19 @@ IIT_fieldint (T this, char *fieldstring);
 extern void
 IIT_debug (char *filename);
 extern void
+IIT_dump_divstrings (FILE *fp, T this);
+extern void
 IIT_dump_typestrings (FILE *fp, T this);
 extern void
 IIT_dump_fieldstrings (FILE *fp, T this);
 extern void
 IIT_dump_labels (FILE *fp, T this);
 extern void
-IIT_dump (T this, bool annotationonlyp);
+IIT_dump (T this, bool annotationonlyp, bool sortp);
 extern void
 IIT_dump_simple (T this);
 extern void
-IIT_dump_sam (T this);
+IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name);
 extern void
 IIT_dump_version1 (T this, T chromosome_iit, bool directionalp);
 extern void
@@ -146,6 +148,9 @@ IIT_get_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsig
 extern int *
 IIT_get_typed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y, int type, bool sortp);
 extern int *
+IIT_get_typed_signed (int *ntypematches, T this, char *divstring, unsigned int x, unsigned int y,
+		      int type, int sign, bool sortp);
+extern int *
 IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y, 
 				 int type, int sign, bool sortp);
 extern int *
@@ -153,6 +158,8 @@ IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, unsigned int
 			int *types, int ntypes, bool sortp);
 extern int
 IIT_get_exact (T this, char *divstring, unsigned int x, unsigned int y, int type);
+extern bool
+IIT_exact_p (T this, char *divstring, unsigned int x, unsigned int y, int type);
 extern int *
 IIT_get_exact_multiple (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, int type);
 extern int *
@@ -167,8 +174,8 @@ extern char *
 IIT_string_from_position (unsigned int *chrpos, unsigned int position, 
 			  T chromosome_iit);
 extern void
-IIT_print_header (T this, int *matches, int nmatches, bool map_bothstrands_p,
-		  char *chr, bool reversep, bool relativep, unsigned int left);
+IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
+		  char *chr, bool reversep, bool relativep, unsigned int left, bool print_comment_p);
 
 
 #undef T

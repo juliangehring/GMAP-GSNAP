@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.122 2010-02-03 02:14:40 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c 30937 2010-10-26 22:14:09Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -460,7 +460,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
   IIT_write(iitfile,divlist,chrtypelist,/*fieldlist*/(List_T) NULL,
 	    intervaltable,labeltable,annottable,/*divsort*/NO_SORT,
-	    /*version, use 1 for backward compatibility*/1);
+	    /*version, use 1 for backward compatibility*/1,
+	    /*label_pointers_8p*/false,/*annot_pointers_8p*/false);
   FREE(iitfile);
 
   List_free(&divlist);
@@ -644,7 +645,8 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
 #endif
   IIT_write(iitfile,divlist,contigtypelist,/*fieldlist*/(List_T) NULL,
 	    intervaltable,labeltable,annottable,/*divsort*/NO_SORT,
-	    /*version, use 1 for backward compatibility*/1);
+	    /*version, use 1 for backward compatibility*/1,
+	    /*label_pointers_8p*/false,/*annot_pointers_8p*/false);
   FREE(iitfile);
 
   List_free(&divlist);

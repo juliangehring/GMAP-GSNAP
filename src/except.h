@@ -1,4 +1,4 @@
-/* $Id: except.h,v 1.8 2006-10-12 16:30:03 twu Exp $ */
+/* $Id: except.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef EXCEPT_INCLUDED
 #define EXCEPT_INCLUDED
 #include <setjmp.h>

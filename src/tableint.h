@@ -1,4 +1,4 @@
-/* $Id: tableint.h,v 1.5 2007-09-28 22:47:16 twu Exp $ */
+/* $Id: tableint.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef TABLEINT_INCLUDED
 #define TABLEINT_INCLUDED
 

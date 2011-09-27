@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.38 2010-04-17 00:31:19 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c 30359 2010-10-14 16:00:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -22,7 +22,6 @@ static char rcsid[] = "$Id: iit-write.c,v 1.38 2010-04-17 00:31:19 twu Exp $";
 #include <stdlib.h>
 #include <string.h>		/* For strlen and strcmp */
 #include "assert.h"
-#include "bool.h"
 #include "mem.h"
 #include "fopen.h"
 #include "interval.h"
@@ -372,6 +371,8 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  * File format:
  *   0: sizeof(int)  [in version >= 2]
  *   version: sizeof(int)  [in version >= 2]
+ *   label_pointer_size: sizeof(int) [in version >= 5]
+ *   annot_pointer_size: sizeof(int) [in version >= 5]
  *
  *   total_nintervals: sizeof(int)  [so maximum is 2 billion]
  *   ntypes: sizeof(int)
@@ -403,10 +404,10 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  *   fields: nfields*(variable length strings, including '\0')  [in version >= 2]
  *
  *   labelorder: total_nintervals*sizeof(int);
- *   labelpointers: (total_nintervals+1)*sizeof(unsigned int)  [changes to long unsigned int in v4]
+ *   labelpointers: (total_nintervals+1)*sizeof(unsigned int)  [changes to long unsigned int in v4 or if label_pointer_size = 8 in v5]
  *   labels: total_nintervals*(variable length strings, including '\0')
  *
- *   annotpointers: (total_nintervals+1)*sizeof(unsigned int)  [changes to long unsigned int in v4]
+ *   annotpointers: (total_nintervals+1)*sizeof(unsigned int)  [changes to long unsigned int in v4 or if annot_pointer_size = 8 in v5]
  *   annotations: total_nintervals*(variable length strings, including '\0')
  *
  *   Note: labels and annotations are organized by division, so we can
@@ -530,8 +531,9 @@ Node_store (int *fnodei, struct FNode_T *fnodes, Node_T node) {
 static void
 IIT_output_div_header (FILE *fp, int total_nintervals, int ntypes, int nfields, int ndivs, 
 		       int *nintervals, int *nnodes, int *cum_nintervals, int *cum_nnodes, 
-		       List_T divlist, Sorttype_T divsort, int version) {
-  int new_format_indicator = 0;
+		       List_T divlist, Sorttype_T divsort, int version,
+		       bool label_pointers_8p, bool annot_pointers_8p) {
+  int new_format_indicator = 0, label_pointer_size, annot_pointer_size;
   int divno;
   unsigned int pointer = 0U;
   List_T p;
@@ -540,6 +542,21 @@ IIT_output_div_header (FILE *fp, int total_nintervals, int ntypes, int nfields, 
   if (version >= 2) {
     FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
     FWRITE_INT(version,fp);
+  }
+
+  if (version >= 5) {
+    if (label_pointers_8p == false) {
+      label_pointer_size = 4;
+    } else {
+      label_pointer_size = 8;
+    }
+    if (annot_pointers_8p == false) {
+      annot_pointer_size = 4;
+    } else {
+      annot_pointer_size = 8;
+    }
+    FWRITE_INT(label_pointer_size,fp);
+    FWRITE_INT(annot_pointer_size,fp);
   }
 
   FWRITE_INT(total_nintervals,fp);
@@ -644,7 +661,8 @@ IIT_output_one_div (FILE *fp, Node_T root, struct Interval_T *intervals, int *al
 static void
 IIT_output_div_footer (FILE *fp, int ndivs, List_T divlist, List_T typelist, List_T fieldlist,
 		       Table_T intervaltable, Table_T labeltable, Table_T annottable, 
-		       int *cum_nintervals, int total_nintervals, int version) {
+		       int *cum_nintervals, int total_nintervals, int version,
+		       bool label_pointers_8p, bool annot_pointers_8p) {
   List_T intervallist, labellist, annotlist, d, p;
   Interval_T interval;
 #ifdef HAVE_64_BIT
@@ -655,8 +673,8 @@ IIT_output_div_footer (FILE *fp, int ndivs, List_T divlist, List_T typelist, Lis
   char *divstring, *typestring, *fieldstring, *label, *annot;
 
 #ifndef HAVE_64_BIT
-  if (version >= 4) {
-    fprintf(stderr,"Machine is not 64-bit, so cannot write version 4 files.  Try writing version 3 instead.\n");
+  if (label_pointers_8p == true || annot_pointers_8p == true) {
+    fprintf(stderr,"Machine is not 64-bit, so cannot write 8-byte pointers.\n");
     exit(9);
   }
 #endif
@@ -715,11 +733,10 @@ IIT_output_div_footer (FILE *fp, int ndivs, List_T divlist, List_T typelist, Lis
   labelorder = get_labelorder(divlist,labeltable,cum_nintervals,total_nintervals);
   FWRITE_INTS(labelorder,total_nintervals,fp);
   FREE(labelorder);
-  FREE(cum_nintervals);
 
   /* Write label pointers */
 #ifdef HAVE_64_BIT
-  if (version >= 4) {
+  if (label_pointers_8p == true) {
     pointer8 = 0LU;
     FWRITE_UINT8(pointer8,fp);
   } else {
@@ -730,13 +747,14 @@ IIT_output_div_footer (FILE *fp, int ndivs, List_T divlist, List_T typelist, Lis
   pointer = 0U;
   FWRITE_UINT(pointer,fp);
 #endif
+
   for (d = divlist; d != NULL; d = List_next(d)) {
     divstring = (char *) List_head(d);
     labellist = (List_T) Table_get(labeltable,(void *) divstring);
     for (p = labellist; p != NULL; p = List_next(p)) {
       label = (char *) List_head(p);
-#ifdef HAVE_64_BIT      
-      if (version >= 4) {
+#ifdef HAVE_64_BIT
+      if (label_pointers_8p == true) {
 	pointer8 += (UINT8) strlen(label)+1LU;	/* Add count for '\0' */
 	FWRITE_UINT8(pointer8,fp);
       } else {
@@ -762,7 +780,7 @@ IIT_output_div_footer (FILE *fp, int ndivs, List_T divlist, List_T typelist, Lis
 
   /* Write annot pointers */
 #ifdef HAVE_64_BIT
-  if (version >= 4) {
+  if (annot_pointers_8p == true) {
     pointer8 = 0LU;
     FWRITE_UINT8(pointer8,fp);
   } else {
@@ -773,13 +791,14 @@ IIT_output_div_footer (FILE *fp, int ndivs, List_T divlist, List_T typelist, Lis
   pointer = 0U;
   FWRITE_UINT(pointer,fp);
 #endif
+
   for (d = divlist; d != NULL; d = List_next(d)) {
     divstring = (char *) List_head(d);
     annotlist = (List_T) Table_get(annottable,(void *) divstring);
     for (p = annotlist; p != NULL; p = List_next(p)) {
       annot = (char *) List_head(p);
 #ifdef HAVE_64_BIT
-      if (version >= 4) {
+      if (annot_pointers_8p == true) {
 	pointer8 += (UINT8) strlen(annot)+1LU;	/* Add count for '\0' */
 	FWRITE_UINT8(pointer8,fp);
       } else {
@@ -821,6 +840,8 @@ compute_flanking (T this) {
   return;
 }
 
+
+/* Used only by iit_update.c */
 void
 IIT_output_direct (char *iitfile, T this, int version) {
   FILE *fp;
@@ -901,7 +922,7 @@ IIT_output_direct (char *iitfile, T this, int version) {
 
   /* Write labels directly */
 #ifdef HAVE_64_BIT
-  if (version >= 4) {
+  if (this->label_pointers_8p == true) {
     FWRITE_UINT8S(this->labelpointers,this->nintervals+1,fp);
   } else {
     FWRITE_UINTS(this->labelpointers,this->nintervals+1,fp);
@@ -918,7 +939,7 @@ IIT_output_direct (char *iitfile, T this, int version) {
 
   /* Write annotations directly */
 #ifdef HAVE_64_BIT
-  if (version >= 4) {
+  if (this->annot_pointers_8p == true) {
     FWRITE_UINT8S(this->annotpointers,this->nintervals+1,fp);
   } else {
     FWRITE_UINTS(this->annotpointers,this->nintervals+1,fp);
@@ -943,7 +964,8 @@ IIT_output_direct (char *iitfile, T this, int version) {
 /* If annotlist is NULL, X's are written */
 void
 IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Table_T intervaltable,
-	   Table_T labeltable, Table_T annottable, Sorttype_T divsort, int version) {
+	   Table_T labeltable, Table_T annottable, Sorttype_T divsort, int version,
+	   bool label_pointers_8p, bool annot_pointers_8p) {
   Node_T root;
   FILE *fp;
   List_T intervallist, d;
@@ -986,7 +1008,8 @@ IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Tab
 
     fprintf(stderr,"Writing IIT file header information...");
     IIT_output_div_header(fp,total_nintervals,List_length(typelist),List_length(fieldlist),
-			  ndivs,nintervals,nnodes,cum_nintervals,cum_nnodes,divlist,divsort,version);
+			  ndivs,nintervals,nnodes,cum_nintervals,cum_nnodes,divlist,divsort,version,
+			  label_pointers_8p,annot_pointers_8p);
     fprintf(stderr,"done\n");
 
     for (d = divlist, divno = 0; d != NULL; d = List_next(d), divno++) {
@@ -1014,8 +1037,10 @@ IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Tab
 
     fprintf(stderr,"Writing IIT file footer information...");
     IIT_output_div_footer(fp,ndivs,divlist,typelist,fieldlist,intervaltable,
-			  labeltable,annottable,cum_nintervals,total_nintervals,version);
+			  labeltable,annottable,cum_nintervals,total_nintervals,version,
+			  label_pointers_8p,annot_pointers_8p);
     fprintf(stderr,"done\n");
+    FREE(cum_nintervals);
 
     fclose(fp);
     return;

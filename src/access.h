@@ -1,4 +1,4 @@
-/* $Id: access.h,v 1.9 2008-05-09 16:33:28 twu Exp $ */
+/* $Id: access.h 32363 2010-12-04 14:31:55Z twu $ */
 #ifndef ACCESS_INCLUDED
 #define ACCESS_INCLUDED
 
@@ -16,6 +16,7 @@
 #include "bool.h"
 
 /* ALLOCATED implies bigendian conversion already done */
+typedef enum {USE_ALLOCATE, USE_MMAP_ONLY, USE_MMAP_PRELOAD, USE_FILEIO} Access_mode_T;
 typedef enum {ALLOCATED, MMAPPED, FILEIO} Access_T;
 #define MAX32BIT 4294967295U	/* 2^32 - 1 */
 

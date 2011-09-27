@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: interval.c,v 1.18 2010-02-03 18:08:28 twu Exp $";
+static char rcsid[] = "$Id: interval.c 35469 2011-02-21 16:59:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -72,6 +72,12 @@ Interval_low (T this) {
 unsigned int
 Interval_high (T this) {
   return this->high;
+}
+
+void
+Interval_store_length (T this, unsigned int length) {
+  this->high = this->low - 1 + length;
+  return;
 }
 
 int
@@ -205,6 +211,31 @@ Interval_cmp (const void *a, const void *b) {
     debug(printf("-1\n"));
     return -1;
   } else if (x->high > y->high) {
+    debug(printf("+1\n"));
+    return +1;
+  } else if (x->type < y->type) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->type > y->type) {
+    debug(printf("-1\n"));
+    return +1;
+  } else {
+    debug(printf("0\n"));
+    return 0;
+  }
+}
+
+
+int
+Interval_cmp_low (const void *a, const void *b) {
+  T x = * (T *) a;
+  T y = * (T *) b;
+
+  debug(printf("Comparing %u..%u with %u..%u => ",x->low,x->high,y->low,y->high));
+  if (x->low < y->low) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->low > y->low) {
     debug(printf("+1\n"));
     return +1;
   } else if (x->type < y->type) {

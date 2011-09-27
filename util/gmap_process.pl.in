@@ -6,7 +6,8 @@ use warnings;
 use IO::File;
 use Getopt::Std;
 undef($opt_c);			# coord file
-getopts("c:");
+undef($opt_g);			# gunzip each file
+getopts("c:g");
 
 if (!defined($coord_file = $opt_c)) {
   if (-e "coords.txt") {
@@ -93,7 +94,11 @@ sub process_fasta {
   my $printp = 0;
 
   foreach $arg (@ {$argv}) {
-      $FP = new IO::File($arg) or die "Cannot open file $arg";
+      if (defined($opt_g)) {
+	  $FP = new IO::File("gunzip -c $arg |") or die "Cannot open file $arg";
+      } else {
+	  $FP = new IO::File($arg) or die "Cannot open file $arg";
+      }
 
       while (defined($line = <$FP>)) {
 	  chomp $line;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c,v 1.19 2010-07-10 15:42:56 twu Exp $";
+static char rcsid[] = "$Id: diag.c 30932 2010-10-26 22:03:14Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -275,12 +275,14 @@ Diag_print_segments (List_T diagonals, char *queryseq_ptr, char *genomicseg_ptr)
   T *array;
   int i;
 
-  array = (T *) List_to_array(diagonals,NULL);
-  qsort(array,List_length(diagonals),sizeof(T),Diag_compare_querystart);
-  for (i = 0; i < List_length(diagonals); i++) {
-    print_segment(array[i],queryseq_ptr,genomicseg_ptr);
+  if (List_length(diagonals) > 0) {
+    array = (T *) List_to_array(diagonals,NULL);
+    qsort(array,List_length(diagonals),sizeof(T),Diag_compare_querystart);
+    for (i = 0; i < List_length(diagonals); i++) {
+      print_segment(array[i],queryseq_ptr,genomicseg_ptr);
+    }
+    FREE(array);
   }
-  FREE(array);
   return;
 }
 
@@ -485,14 +487,20 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
     }
 
     if (List_length(gooddiagonals) == 0) {
-      array = (T *) List_to_array(diagonals,NULL);
-      array = compute_dominance(&nunique,array,ndiagonals,indexsize);
-
+      if (List_length(diagonals) == 0) {
+	array = (T *) NULL;
+      } else {
+	array = (T *) List_to_array(diagonals,NULL);
+	array = compute_dominance(&nunique,array,ndiagonals,indexsize);
+      }
     } else {
-      ndiagonals = List_length(gooddiagonals);
-      array = (T *) List_to_array(gooddiagonals,NULL);
-      array = compute_dominance(&nunique,array,ndiagonals,indexsize);
-      List_free(&gooddiagonals);
+      if ((ndiagonals = List_length(gooddiagonals)) == 0) {
+	array = (T *) NULL;
+      } else {
+	array = (T *) List_to_array(gooddiagonals,NULL);
+	array = compute_dominance(&nunique,array,ndiagonals,indexsize);
+	List_free(&gooddiagonals);
+      }
     }
 
     qsort(array,nunique,sizeof(T),Diag_compare_diagonal);

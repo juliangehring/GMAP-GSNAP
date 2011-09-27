@@ -1,6 +1,7 @@
-/* $Id: translation.h,v 1.23 2007-04-23 16:10:23 twu Exp $ */
+/* $Id: translation.h 33519 2011-01-10 22:13:42Z twu $ */
 #ifndef TRANSLATION_INCLUDED
 #define TRANSLATION_INCLUDED
+#include <stdio.h>
 #include "bool.h"
 #include "pair.h"
 
@@ -20,7 +21,7 @@ extern void
 Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, int *translation_length,
 			 int *relaastart, int *relaaend,
 			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp,
-			 bool strictp);
+			 int cds_startpos, int querylength, bool strictp);
 #endif
 
 extern void
@@ -30,8 +31,8 @@ Translation_via_reference (int *relaastart, int *relaaend,
 			   bool fixshiftp);
 
 extern void
-Translation_compare (struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
-		     int cdna_direction, int relaastart, int relaaend, int maxmutations);
+Translation_print_comparison (FILE *fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
+			      int cdna_direction, int relaastart, int relaaend, int maxmutations);
 
 #undef T
 #endif

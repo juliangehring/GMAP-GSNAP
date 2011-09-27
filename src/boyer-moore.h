@@ -1,4 +1,4 @@
-/* $Id: boyer-moore.h,v 1.3 2010-07-21 17:13:39 twu Exp $ */
+/* $Id: boyer-moore.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef BOYER_MOORE_INCLUDED
 #define BOYER_MOORE_INCLUDED
 #include "intlist.h"

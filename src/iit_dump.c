@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_dump.c,v 1.15 2009-01-21 21:22:33 twu Exp $";
+static char rcsid[] = "$Id: iit_dump.c 29071 2010-09-22 18:45:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,7 +8,10 @@ static char rcsid[] = "$Id: iit_dump.c,v 1.15 2009-01-21 21:22:33 twu Exp $";
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For getopt */
 #endif
+#include <ctype.h>		/* For isdigit */
+
 #include "bool.h"
+#include "mem.h"
 #include "iit-read.h"
 #include "list.h"
 #include "getopt.h"
@@ -18,15 +21,19 @@ static char rcsid[] = "$Id: iit_dump.c,v 1.15 2009-01-21 21:22:33 twu Exp $";
  ************************************************************************/
 
 static bool debugp = false;
+static bool sortp = false;
 static bool tagsp = false;
 static bool countsp = false;
+static bool integratep = false;
 static bool annotationonlyp = false;
 
 static struct option long_options[] = {
   /* Input options */
   {"debug", no_argument, 0, '9'}, /* debugp */
+  {"sort", no_argument, 0, 'S'},	/* sortp */
   {"tags", no_argument, 0, 'T'}, /* tagsp */
   {"counts", no_argument, 0, 'C'}, /* countsp */
+  {"integrate", no_argument, 0, 'I'}, /* integratep */
   {"annotonly", no_argument, 0, 'A'},	/* annotationonlyp */
 
   /* Help options */
@@ -52,8 +59,10 @@ print_program_usage () {
 Usage: iit_dump [OPTIONS...] iitfile\n\
 \n\
 Options\n\
+  -S, --sort              Sort results by coordinates\n\
   -T, --tags              Show tags present in iit file\n\
   -C, --counts            Show counts for every boundary in iit file\n\
+  -I, --integrate         Print intervals as integral output\n\
   -9, --debug             Provide debugging information\n\
   -A, --annotonly         Dump annotation lines only (no headers)\n\
 \n\
@@ -86,22 +95,114 @@ show_types (IIT_T iit) {
 }
 */
 
+
+/* Note that isnumber is a function in ctype.h on some systems */
+static bool
+isnumberp (long int *result, char *string) {
+  char *p = string;
+
+  *result = 0U;
+  if (*p == '\0') {
+    /* Empty string */
+    return false;
+  } else {
+    while (*p != '\0') {
+      if (*p == ',') {
+	/* Skip commas */
+      } else if (!isdigit((int) *p)) {
+	return false;
+      } else {
+	*result = (*result) * 10 + (*p - '0');
+      }
+      p++;
+    }
+    return true;
+  }
+}
+
+
+static void
+print_runlengths (IIT_T iit, char *divstring) {
+  long int *cum, level, n;
+  unsigned int divlength, low, high, lastpos, pos;
+  int index, *matches;
+  int nmatches, i;
+  char *label;
+  bool allocp;
+
+  divlength = IIT_divlength(iit,divstring);
+  cum = (long int *) CALLOC(divlength+1,sizeof(long int));
+
+  matches = IIT_get(&nmatches,iit,divstring,/*x*/0,/*y*/-1U,/*sortp*/false);
+  for (i = 0; i < nmatches; i++) {
+    index = matches[i];
+    label = IIT_label(iit,index,&allocp);
+    if (isnumberp(&n,label) == false) {
+      n = 1;
+    }
+    if (allocp == true) {
+      FREE(label);
+    }
+    IIT_interval_bounds(&low,&high,iit,index);
+    cum[low] += n;
+    cum[high+1] -= n;
+    
+  }
+  FREE(matches);
+
+  /* Print runlengths */
+  lastpos = 1U;
+  level = 0;
+  for (pos = 1; pos <= divlength; pos++) {
+    if (cum[pos] != 0) {
+      /* printf("cum at pos %u is %d\n",pos,cum[pos]); */
+      if (divstring[0] == '\0') {
+	printf(">%ld %u..%u\n",level,lastpos,pos-1);
+      } else {
+	printf(">%ld %s:%u..%u\n",level,divstring,lastpos,pos-1);
+      }
+      level += cum[pos];
+      lastpos = pos;
+    }
+  }
+
+  /* Should print the final level of zero */
+  if (level != 0) {
+    fprintf(stderr,"Ended with a non-zero level\n");
+    abort();
+  }
+
+  if (divstring[0] == '\0') {
+    printf(">%ld %u..%u\n",level,lastpos,pos-1);
+  } else {
+    printf(">%ld %s:%u..%u\n",level,divstring,lastpos,pos-1);
+  }
+
+  FREE(cum);
+
+  return;
+}
+
 int
 main (int argc, char *argv[]) {
   char *iitfile;
   IIT_T iit;
   int type;
+  int divno;
+  char *divstring;
   
   int opt;
   extern int optind;
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"9TCA",long_options,&long_option_index)) != -1) {
+  while ((opt = getopt_long(argc,argv,"9STCIA",long_options,&long_option_index)) != -1) {
     switch (opt) {
     case '9': debugp = true; break;
+    case 'S': sortp = true; break;
     case 'T': tagsp = true; break;
     case 'C': countsp = true; break;
+    case 'I': integratep = true; break;
     case 'A': annotationonlyp = true; break;
 
     case 'V': print_program_version(); exit(0);
@@ -133,8 +234,14 @@ main (int argc, char *argv[]) {
     IIT_dump_counts(iit,/*alphabetizep*/true);
 #endif
 
+  } else if (integratep == true) {
+    for (divno = 1; divno < IIT_ndivs(iit); divno++) {
+      divstring = IIT_divstring(iit,divno);
+      print_runlengths(iit,divstring);
+    }
+
   } else {
-    IIT_dump(iit,annotationonlyp);
+    IIT_dump(iit,annotationonlyp,sortp);
   }
 
   IIT_free(&iit);

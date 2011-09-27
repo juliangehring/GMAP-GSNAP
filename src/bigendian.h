@@ -1,4 +1,4 @@
-/* $Id: bigendian.h,v 1.10 2010-01-12 22:48:33 twu Exp $ */
+/* $Id: bigendian.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef BIGENDIAN_INCLUDED
 #define BIGENDIAN_INCLUDED
 #ifdef HAVE_CONFIG_H

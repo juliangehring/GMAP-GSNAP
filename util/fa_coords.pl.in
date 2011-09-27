@@ -10,10 +10,12 @@ $opt_l = 1000000;		# Don't report contigs smaller than this length
 undef($opt_o);			# Output file
 undef($opt_C);			# Try to parse chromosomal information
 undef($opt_E);			# Interpret argument as a command
+undef($opt_g);			# gunzip each file first
+undef($opt_O);			# order chromosomes
 use Getopt::Std;
-getopts("o:CE");
+getopts("o:CEgO");
 
-# Usage: fa_coords [-o <output>] [-C] [-E] <fastafiles or command>
+# Usage: fa_coords [-o <output>] [-C] [-E] [-g] <fastafiles or command>
 
 if (!defined($outfile = $opt_o)) {
     $outfile = "coords.txt";
@@ -42,7 +44,13 @@ if ($#{$output} < 0) {
     print $OUT "# The strain column has information copied from NCBI md files, but is not otherwise used by gmap_setup\n";
     print $OUT "# To exclude a contig, place a '#' sign at the beginning of the line\n";
     print $OUT "#contig" . "\t" . "gmap_coordinates" . "\t" . "strain\n";
-    foreach $string (@ {$output}) {
+
+    if (defined($opt_O)) {
+	@sorted = sort by_numeric_alpha (@ {$output});
+    } else {
+	@sorted = @ {$output};
+    }
+    foreach $string (@sorted) {
 	print $OUT $string;
     }
     close($OUT);
@@ -138,6 +146,9 @@ sub parse_fa_files {
 	if (defined($opt_E)) {
 	    printf STDOUT "Executing command $arg\n";
 	    $FP = new IO::File("$arg |") or die "Can't execute $arg";
+	} elsif (defined($opt_g)) {
+	    printf STDOUT "Opening gzipped file $arg\n";
+	    $FP = new IO::File("gunzip -c $arg |") or die "Can't execute $arg";
 	} else {
 	    printf STDOUT "Opening file $arg\n";
 	    $FP = new IO::File("$arg") or die "Can't open file $arg";
@@ -373,4 +384,38 @@ sub parse_fa_files {
 }
 
 
+sub by_numeric_alpha {
+    ($numeric_a, $alpha_a) = $a =~ /(\d+)(\S*)/;
+    ($numeric_b, $alpha_b) = $b =~ /(\d+)(\S*)/;
+    if ($alpha_a !~ /\S/) {
+	undef $alpha_a;
+    }
+    if ($alpha_b !~ /\S/) {
+	undef $alpha_b;
+    }
+
+    if (defined($numeric_a) && !defined($numeric_b)) {
+	return -1;
+    } elsif (defined($numeric_b) && !defined($numeric_a)) {
+	return +1;
+    } elsif (defined($numeric_a) && defined($numeric_b)) {
+	if ($numeric_a < $numeric_b) {
+	    return -1;
+	} elsif ($numeric_b < $numeric_a) {
+	    return +1;
+	} else {
+	    if (!defined($alpha_a) && defined($alpha_b)) {
+		return -1;
+	    } elsif (!defined($alpha_b) && defined($alpha_a)) {
+		return +1;
+	    } elsif (defined($alpha_a) && defined($alpha_b)) {
+		return $alpha_a cmp $alpha_b;
+	    } else {
+		return 0;
+	    }
+	}
+    } else {
+	return $a cmp $b;
+    }
+}
 

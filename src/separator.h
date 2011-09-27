@@ -1,4 +1,4 @@
-/* $Id: separator.h,v 1.5 2008-12-17 22:11:14 twu Exp $ */
+/* $Id: separator.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef SEPARATOR_INCLUDED
 #define SEPARATOR_INCLUDED
 

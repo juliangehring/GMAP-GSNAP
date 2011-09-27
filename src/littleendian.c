@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: littleendian.c,v 1.1 2010-01-12 22:51:55 twu Exp $";
+static char rcsid[] = "$Id: littleendian.c 36131 2011-03-06 20:26:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,12 +8,12 @@ static char rcsid[] = "$Id: littleendian.c,v 1.1 2010-01-12 22:51:55 twu Exp $";
 
 void
 Littleendian_write_uint (unsigned int value, int fd) {
-  char buf[4];
+  unsigned char buf[4];
 
-  buf[0] = (char) (value & 0xff);
-  buf[1] = (char) ((value >>= 8) & 0xff);
-  buf[2] = (char) ((value >>= 8) & 0xff);
-  buf[3] = (char) ((value >>= 8) & 0xff);
+  buf[0] = (unsigned char) (value & 0xff);
+  buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[3] = (unsigned char) ((value >>= 8) & 0xff);
   write(fd,buf,4);
 }
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.100 2010-07-22 00:11:06 twu Exp $";
+static char rcsid[] = "$Id: sequence.c 36002 2011-03-03 00:46:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,16 @@ static char rcsid[] = "$Id: sequence.c,v 1.100 2010-07-22 00:11:06 twu Exp $";
 #include <string.h>
 #include <strings.h>		/* For rindex */
 #include <ctype.h>		/* For iscntrl and isspace */
+
+#undef HAVE_ZLIB
+
+#ifdef HAVE_ZLIB
+#include <zlib.h>
+#define GZBUFFER_SIZE 131072
+#endif
+
+
+#include "assert.h"
 #include "mem.h"
 #include "complement.h"
 #include "intlist.h"
@@ -35,14 +45,6 @@ static char rcsid[] = "$Id: sequence.c,v 1.100 2010-07-22 00:11:06 twu Exp $";
 #else
 #define debug1(x)
 #endif
-
-/* Dynamic programming */
-#ifdef DEBUG2
-#define debug2(x) x
-#else
-#define debug2(x)
-#endif
-
 
 
 
@@ -68,15 +70,6 @@ struct T {
   char *contents_alloc;		/* Allocation */
   int fulllength;		/* Full length (not including chopped sequence) */
 
-#ifdef GSNAP
-  char *contents_uc;		/* Original sequence, ends with '\0' */
-  char *contents_uc_alloc;	/* Allocation */
-  char *chop;
-  int choplength;
-  char *quality;		/* For Illumina short reads read via FASTQ */
-  char *quality_alloc;		/* Allocation */
-#endif
-
   int trimstart;		/* Start of trim */
   int trimend;			/* End of trim */
 #ifdef PMAP
@@ -85,7 +78,19 @@ struct T {
   int subseq_offset;		/* Used only for subsequences */
   int skiplength;		/* Used only for sequences longer than MAXSEQLEN */
   /* bool free_contents_p; */
+
+#ifndef PMAP
+  char *quality;		/* For Illumina short reads read via extended FASTA */
+  char *quality_alloc;		/* Allocation */
+#endif
+
+  bool firstp;			/* First end indicated by '>', second end by '<' in extended FASTA file */
 };
+
+bool
+Sequence_firstp (T this) {
+  return this->firstp;
+}
 
 char *
 Sequence_accession (T this) {
@@ -97,30 +102,10 @@ Sequence_fullpointer (T this) {
   return this->contents;
 }
 
-#ifdef GSNAP
-char *
-Sequence_fullpointer_uc (T this) {
-  return this->contents_uc;
-}
-#endif
-
 char *
 Sequence_trimpointer (T this) {
   return &(this->contents[this->trimstart]);
 }
-
-#ifdef GSNAP
-int
-Sequence_choplength (T this) {
-  return this->choplength;
-}
-
-char *
-Sequence_quality (T this) {
-  return this->quality;
-}
-#endif
-
 
 int
 Sequence_ntlength (T this) {
@@ -187,13 +172,13 @@ Sequence_free (T *old) {
       FREE((*old)->acc);
     }
 
-    FREE((*old)->contents_alloc);
-
-#ifdef GSNAP
-    FREE((*old)->chop);
-    FREE((*old)->quality_alloc);
-    FREE((*old)->contents_uc_alloc);
+#ifndef PMAP
+    if ((*old)->quality_alloc != NULL) {
+      FREE((*old)->quality_alloc);
+    }
 #endif
+
+    FREE((*old)->contents_alloc);
 
     FREE(*old);
   }
@@ -215,22 +200,17 @@ Sequence_convert_to_nucleotides (T this) {
     new->contents[i] = '?';
   }
 
-#ifdef GSNAP
-  new->contents_uc = new->contents_uc_alloc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
-  new->quality = new->quality_alloc = (char *) NULL;
-#endif
-
   new->trimstart = 0;
   new->trimend = new->fulllength_given;
   /* new->free_contents_p = true; */
   new->subseq_offset = 0;
   new->skiplength = this->skiplength;
+  new->firstp = this->firstp;
 
   return new;
 }
 #endif
+
 
 #if 0
 int
@@ -282,7 +262,7 @@ static int Initc = '\0';
 */
 
 
-/* Returns '>' if FASTA file, first sequence char if not */
+/* Returns '@', '>', or '<' if FASTA file, first sequence char if not */
 int
 Sequence_input_init (FILE *fp) {
   int c;
@@ -308,6 +288,36 @@ Sequence_input_init (FILE *fp) {
   debug(printf("Returning initial character %c\n",c));
   return c;
 }
+
+#ifdef HAVE_ZLIB
+/* Returns '@', '>', or '<' if FASTA file, first sequence char if not */
+int
+Sequence_input_init_gzip (gzFile fp) {
+  int c;
+  bool okayp = false;
+
+  Header[0] = '\0';
+  Sequence[0] = '\0';
+  Firsthalf = &(Sequence1[0]);
+  Secondhalf = &(Sequence2[0]);
+
+  while (okayp == false && (c = gzgetc(fp)) != EOF) {
+    debug(printf("Read character %c\n",c));
+    if (iscntrl(c)) {
+#ifdef DASH
+    } else if (c == DASH) {
+#endif
+    } else if (isspace(c)) {
+    } else {
+      okayp = true;
+    }
+  }
+
+  debug(printf("Returning initial character %c\n",c));
+  return c;
+}
+#endif
+
 
 static void
 blank_header (T this) {
@@ -362,64 +372,6 @@ input_header (FILE *fp, T this) {
   return this->acc;
 } 
 
-#ifdef GSNAP
-/* Deletes "/1" or "/2" endings */
-static void
-strip_illumina_acc_ending (char *acc) {
-  char *p;
-
-  p = acc;
-  while (*p != '\0') {
-    p++;
-  }
-
-  /* Delete "/1" or "/2" endings */
-  if (p[-2] == '/' && (p[-1] == '1' || p[-1] == '2')) {
-    p -= 2;
-    *p = '\0';
-  }
-
-  return;
-}
-
-static char *
-input_header_fastq (FILE *fp, T this) {
-  char *p;
-  size_t length;
-
-  if (feof(fp)) {
-    return NULL;
-  } else if (fgets(&(Header[0]),HEADERLEN,fp) == NULL) {
-    /* File must terminate after > */
-    return NULL;
-  }
-
-  if ((p = rindex(&(Header[0]),'\n')) != NULL) {
-    *p = '\0';
-  } else {
-    /* Eliminate rest of header from input */
-    while (fgets(&(Discard[0]),DISCARDLEN,fp) != NULL &&
-	   rindex(&(Discard[0]),'\n') == NULL) ;
-  }
-
-  p = &(Header[0]);
-  while (*p != '\0' && !isspace((int) *p)) {
-    p++;
-  }
-
-  *p = '\0';
-
-  length = (p - &(Header[0]))/sizeof(char);
-  this->acc = (char *) CALLOC(length+1,sizeof(char));
-  strcpy(this->acc,Header);
-  this->restofheader = (char *) CALLOC(1,sizeof(char));
-  this->restofheader[0] = '\0';
-
-  return this->acc;
-} 
-#endif
-
-#ifdef GSNAP
 static bool
 skip_header (FILE *fp) {
 
@@ -438,7 +390,6 @@ skip_header (FILE *fp) {
 
   return true;
 } 
-#endif
 
 #ifdef DEBUG
 static void
@@ -506,13 +457,14 @@ find_bad_char (char *line) {
 
 
 static int
-read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
+read_first_half (int *nextchar, bool *eolnp, FILE *fp, bool possible_fasta_header_p) {
   int remainder, strlenp;
   char *ptr, *p = NULL;
   int c;
+  bool init_char_p = true;
 
   ptr = &(Firsthalf[0]);
-  if (*nextchar != '>') {
+  if (possible_fasta_header_p == false || (*nextchar != '@' && *nextchar != '>' && *nextchar != '<' && *nextchar != '+')) {
     *ptr++ = (char) *nextchar;
   }
   remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
@@ -533,8 +485,8 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 
     } else if (*eolnp == true) {
       /* Peek at character after eoln */
-      if ((c = fgetc(fp)) == EOF || c == '>') {
-	debug(printf("c == EOF or >.  Returning true\n"));
+      if ((c = fgetc(fp)) == EOF || (init_char_p == false && (c == '@' || c == '>' || c == '<' || c == '+'))) {
+	debug(printf("c == EOF or > or < or +.   Returning true\n"));
 	*nextchar = c;
 	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else if (iscntrl(c)) {
@@ -594,6 +546,7 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
     }
 
     debug(print_contents(&(Firsthalf[0]),HALFLEN+1));
+    init_char_p = false;
   }
 }
 
@@ -605,6 +558,7 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
   char *ptr;
   char *p = NULL;
   int c;
+  bool init_char_p = true;
   
   ptr = &(Secondhalf[0]);
   remainder = (&(Secondhalf[HALFLEN+2]) - ptr)/sizeof(char);
@@ -625,8 +579,8 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 
     } else if (eolnp == true) {
       /* Peek at character after eoln */
-      if ((c = fgetc(fp)) == EOF || c == '>') {
-	debug(printf("c == EOF or >.  Returning\n"));
+      if ((c = fgetc(fp)) == EOF || (init_char_p == false && (c == '@' || c == '>' || c == '<' || c == '+'))) {
+	debug(printf("c == EOF or > or < or +.  Returning\n"));
 	*nextchar = c;
 	break;
       } else if (iscntrl(c)) {
@@ -683,6 +637,7 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
     }
 
     debug(print_contents(&(Secondhalf[0]),HALFLEN+3));
+    init_char_p = false;
   }
 
   terminator = (ptr - &(Secondhalf[0]))/sizeof(char);
@@ -719,69 +674,10 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 }
 
 
-#ifdef GSNAP
-static int
-input_oneline (int *nextchar, FILE *fp, bool possible_fasta_header_p) {
-  int remainder, strlenp;
-  char *ptr, *p = NULL;
-
-  debug(printf("Entering input_oneline with nextchar = %c\n",*nextchar));
-
-  ptr = &(Firsthalf[0]);
-  remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
-  if (*nextchar == EOF || (possible_fasta_header_p == true && *nextchar == '>')) {
-    debug(printf("Returning 0\n"));
-    return 0;
-  } else {
-    *ptr++ = (char) *nextchar;
-    if ((p = fgets(ptr,remainder+1,fp)) == NULL) {
-      /* NULL if file ends with a blank line */
-      printf("Blank line. read %s.\n",ptr);
-    } else {
-      debug(printf("Read %s.\n",ptr));
-      while ((p = find_bad_char(ptr)) != NULL) {
-	/* Handle PC line feed ^M */
-	ptr = p++;
-	strlenp = strlen(p);
-	memmove(ptr,p,strlenp);
-	ptr[strlenp] = '\0';
-	debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
-      }
-
-      if ((p = index(ptr,'\n')) != NULL) {
-	*p = '\0';
-	debug(printf("Now string is %s.\n",ptr));
-      } else if (feof(fp)) {
-	/* No line feed, but end of file.  Handle below. */
-	debug(printf("End of file seen\n"));
-      } else {
-	/* No line feed, but not end of file */
-	fprintf(stderr,"Line %s is too long for allocated buffer size of %d.  Aborting.\n",&(Firsthalf[0]),HALFLEN);
-	exit(9);
-      }
-    }
-    ptr += strlen(ptr);
-
-    /* Peek at character after eoln */
-    if (feof(fp)) {
-      *nextchar = EOF;
-    } else {
-      while ((*nextchar = fgetc(fp)) != EOF && (*nextchar == '\n' || isspace(*nextchar))) {
-      }
-    }
-
-    debug(printf("Returning %ld\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
-    return (ptr - &(Firsthalf[0]))/sizeof(char);
-  }
-}
-#endif
-
-
-
 /* Returns sequence length */
 static int
 input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, int *length2a,
-		char **pointer2b, int *length2b, int *skiplength, FILE *fp) {
+		char **pointer2b, int *length2b, int *skiplength, FILE *fp, bool possible_fasta_header_p) {
   bool eolnp = true;
 
   *pointer1 = &(Firsthalf[0]);
@@ -790,7 +686,8 @@ input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, 
   *pointer2b = (char *) NULL;
   *length2b = 0;
 
-  if ((*length1 = read_first_half(&(*nextchar),&eolnp,fp)) == 0) {
+  /* printf("Beginning input_sequence with nextchar = %c\n",*nextchar); */
+  if ((*length1 = read_first_half(&(*nextchar),&eolnp,fp,possible_fasta_header_p)) == 0) {
     *pointer1 = (char *) NULL;
     *skiplength = 0;
   } else if (*length1 < HALFLEN) {
@@ -808,6 +705,7 @@ input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, 
   return (*length1) + (*length2a) + (*length2b);
 }
 
+
 /* Used only by extern procedures (outside of this file).  Internal
    procedures have their own specialized creators. */
 T
@@ -817,13 +715,6 @@ Sequence_genomic_new (char *contents, int length) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->contents = contents;
-
-#ifdef GSNAP
-  new->contents_uc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
-  new->quality = new->quality_alloc = (char *) NULL;
-#endif
 
   new->trimstart = 0;
   new->trimend = new->fulllength = length;
@@ -835,14 +726,19 @@ Sequence_genomic_new (char *contents, int length) {
      its own buffer */
   /* new->free_contents_p = false; */
   new->contents_alloc = (char *) NULL;
-#ifdef GSNAP
-  new->contents_uc_alloc = (char *) NULL;
+  /* new->contents_uc_alloc = (char *) NULL; -- only for GSNAP */
+
+#ifndef PMAP
+  new->quality = new->quality_alloc = (char *) NULL;
 #endif
 
   new->subseq_offset = 0;
   new->skiplength = 0;
+  new->firstp = true;
+
   return new;
 }
+
 
 static char complCode[128] = COMPLEMENT_LC;
 
@@ -858,6 +754,24 @@ make_complement (char *sequence, unsigned int length) {
   complement[length] = '\0';
   return complement;
 }
+
+static char *
+make_reverse (char *sequence, unsigned int length) {
+  char *reverse;
+  int i, j;
+
+  if (sequence == NULL) {
+    return (char *) NULL;
+  } else {
+    reverse = (char *) CALLOC(length+1,sizeof(char));
+    for (i = length-1, j = 0; i >= 0; i--, j++) {
+      reverse[j] = sequence[i];
+    }
+    reverse[length] = '\0';
+    return reverse;
+  }
+}
+
 
 #if 0
 static char *
@@ -888,24 +802,6 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
   return;
 }
 
-#ifdef GSNAP
-static char *
-make_reverse (char *sequence, unsigned int length) {
-  char *reverse;
-  int i, j;
-
-  if (sequence == NULL) {
-    return (char *) NULL;
-  } else {
-    reverse = (char *) CALLOC(length+1,sizeof(char));
-    for (i = length-1, j = 0; i >= 0; i--, j++) {
-      reverse[j] = sequence[i];
-    }
-    reverse[length] = '\0';
-    return reverse;
-  }
-}
-#endif
 
 
 /************************************************************************
@@ -945,13 +841,6 @@ Sequence_subsequence (T this, int start, int end) {
     new->restofheader = (char *) NULL;
     new->contents = &(this->contents[start]); 
 
-#ifdef GSNAP
-    new->contents_uc = (char *) NULL;
-    new->chop = (char *) NULL;
-    new->choplength = 0;
-    new->quality = new->quality_alloc = (char *) NULL;
-#endif
-
     new->fulllength = end - start;
 #ifdef PMAP
     new->fulllength_given = new->fulllength;
@@ -965,12 +854,22 @@ Sequence_subsequence (T this, int start, int end) {
 
     /* new->free_contents_p = false; */
     new->contents_alloc = (char *) NULL;
-#ifdef GSNAP
-    new->contents_uc_alloc = (char *) NULL;
+    /* new->contents_uc_alloc = (char *) NULL; -- only for GSNAP */
+
+#ifndef PMAP
+    if (this->quality == NULL) {
+      new->quality = (char *) NULL;
+    } else {
+      new->quality = &(this->quality[start]);
+    }
+    new->quality_alloc = (char *) NULL;
 #endif
 
     new->subseq_offset = start;
     new->skiplength = this->skiplength;
+
+    new->firstp = this->firstp;
+
     return new;
   }
 }
@@ -984,10 +883,7 @@ Sequence_revcomp (T this) {
   new->restofheader = (char *) NULL;
   new->contents = new->contents_alloc = make_complement(this->contents,this->fulllength);
 
-#ifdef GSNAP
-  new->contents_uc = new->contents_uc_alloc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
+#ifndef PMAP
   new->quality = new->quality_alloc = make_reverse(this->quality,this->fulllength);
 #endif
 
@@ -1000,8 +896,10 @@ Sequence_revcomp (T this) {
   /* new->free_contents_p = true; */
   new->subseq_offset = 0;	/* Not sure if this is right */
   new->skiplength = this->skiplength;
+  new->firstp = this->firstp;
   return new;
 }
+
 
 static char *
 make_uppercase (char *sequence, unsigned int length) {
@@ -1021,23 +919,6 @@ make_uppercase (char *sequence, unsigned int length) {
   return uppercase;
 }
 
-#if 0
-static void
-make_uppercase_inplace (char *sequence, unsigned int length) {
-#ifdef PMAP
-  char uppercaseCode[128] = UPPERCASE_STD;
-#else
-  char uppercaseCode[128] = UPPERCASE_U2T;
-#endif
-  int i;
-
-  for (i = 0; i < length; i++) {
-    sequence[i] = uppercaseCode[(int) sequence[i]];
-  }
-  return;
-}
-#endif
-
 
 T
 Sequence_uppercase (T this) {
@@ -1047,11 +928,13 @@ Sequence_uppercase (T this) {
   new->restofheader = (char *) NULL;
   new->contents = new->contents_alloc = make_uppercase(this->contents,this->fulllength);
 
-#ifdef GSNAP
-  new->contents_uc = new->contents_uc_alloc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
-  new->quality = new->quality_alloc = (char *) NULL;
+#ifndef PMAP
+  if (this->quality_alloc == NULL) {
+    new->quality = new->quality_alloc = (char *) NULL;
+  } else {
+    new->quality = new->quality_alloc =(char *) CALLOC(this->fulllength+1,sizeof(char));
+    strcpy(new->quality,this->quality);
+  }
 #endif
 
   new->fulllength = this->fulllength;
@@ -1063,8 +946,10 @@ Sequence_uppercase (T this) {
   /* new->free_contents_p = true; */
   new->subseq_offset = this->subseq_offset;
   new->skiplength = this->skiplength;
+  new->firstp = this->firstp;
   return new;
 }
+
 
 T
 Sequence_alias (T this) {
@@ -1074,11 +959,9 @@ Sequence_alias (T this) {
   new->restofheader = (char *) NULL;
   new->contents = this->contents;
 
-#ifdef GSNAP
-  new->contents_uc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
-  new->quality = new->quality_alloc = (char *) NULL;
+#ifndef PMAP
+  new->quality = this->quality;
+  new->quality_alloc = (char *) NULL;
 #endif
 
   new->fulllength = this->fulllength;
@@ -1090,11 +973,11 @@ Sequence_alias (T this) {
 
   /* new->free_contents_p = false; */
   new->contents_alloc = (char *) NULL;
-#ifdef GSNAP
-  new->contents_uc_alloc = (char *) NULL;
-#endif
+  /* new->contents_uc_alloc = (char *) NULL; -- only for GSNAP */
+
 
   new->subseq_offset = this->subseq_offset;
+  new->firstp = this->firstp;
   return new;
 }
 
@@ -1107,10 +990,11 @@ Sequence_endstream () {
 }
 */
 
+
 T
 Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   T new;
-  int fulllength, skiplength;
+  int fulllength, skiplength, quality_length;
   char *pointer1, *pointer2a, *pointer2b;
   int length1, length2a, length2b;
 #ifdef PMAP
@@ -1122,23 +1006,35 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
     return NULL;
   }
 
-  new = (T) MALLOC(sizeof(*new));
-
   if (*nextchar == '\0') {
     if ((*nextchar = Sequence_input_init(input)) == EOF) {
       *nextchar = EOF;
       return NULL;
     }
   }
-  if (*nextchar != '>') {
+
+  new = (T) MALLOC(sizeof(*new));
+
+  if (*nextchar != '@' && *nextchar != '>' && *nextchar != '<') {
+    new->firstp = true;		/* by default */
     blank_header(new);
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
     *nextchar = EOF;
+    FREE(new);
     return NULL;
-  } 
+  } else if (*nextchar == '@') {
+    new->firstp = true;		/* by default */
+  } else if (*nextchar == '>') {
+    new->firstp = true;
+  } else if (*nextchar == '<') {
+    new->firstp = false;
+  } else {
+    abort();
+  }
+
   if ((fulllength = input_sequence(&(*nextchar),&pointer1,&length1,&pointer2a,&length2a,
-				   &pointer2b,&length2b,&skiplength,input)) == 0) {
+				   &pointer2b,&length2b,&skiplength,input,/*possible_fasta_header_p*/true)) == 0) {
     /* File ends during header.  Continue with a sequence of length 0. */
     /* fprintf(stderr,"File ends after header\n"); */
   }
@@ -1191,13 +1087,6 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
     }
   }
 
-#ifdef GSNAP
-  new->contents_uc = new->contents_uc_alloc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
-  new->quality = new->quality_alloc = (char *) NULL;
-#endif
-
 #ifdef PMAP
   if (lastchar != '*') {
     new->contents[fulllength-1] = '*';
@@ -1206,49 +1095,37 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   /* new->free_contents_p = true; */
   new->subseq_offset = 0;
 
-  debug(printf("Final query sequence is:\n"));
-  debug(Sequence_print(new,/*uppercasep*/false,/*wraplength*/60,/*trimmedp*/false));
-  return new;
-}
-
-
-#if 0
-static bool
-Sequence_skip (int *nextchar, FILE *input, bool maponlyp) {
-  int skiplength;
-  char *pointer1, *pointer2a, *pointer2b;
-  int length1, length2a, length2b;
-#ifdef PMAP
-  char lastchar = '*';
-#endif
-
-  if (feof(input)) {
-    *nextchar = EOF;
-    return false;
-  }
-
-  if (*nextchar == '\0') {
-    if ((*nextchar = Sequence_input_init(input)) == EOF) {
-      *nextchar = EOF;
-      return false;
+#ifndef PMAP
+  /* Quality string */
+  new->quality = new->quality_alloc = (char *) NULL;
+  if (*nextchar == '+') {
+    skip_header(input);
+    *nextchar = fgetc(input);
+    quality_length = input_sequence(&(*nextchar),&pointer1,&length1,&pointer2a,&length2a,
+				    &pointer2b,&length2b,&skiplength,input,/*possible_fasta_header_p*/false);
+    if (quality_length != fulllength) {
+      fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
+	      quality_length,fulllength,new->acc);
+      exit(9);
+    } else {
+      new->quality = new->quality_alloc = (char *) CALLOC(fulllength+1,sizeof(char));
+      if (length1 > 0) {
+	strncpy(new->quality,pointer1,length1);
+	if (length2a > 0) {
+	  strncpy(&(new->quality[length1]),pointer2a,length2a);
+	}
+	if (length2b > 0) {
+	  strncpy(&(new->quality[length1+length2a]),pointer2b,length2b);
+	}
+      }
     }
   }
-  if (*nextchar != '>') {
-    /* Header is blank */
-  } else if (skip_header(input) == false) {
-    /* File ends after >.  Don't process. */
-    *nextchar = EOF;
-    return false;
-  } 
-  if (input_sequence(&(*nextchar),&pointer1,&length1,&pointer2a,&length2a,
-		     &pointer2b,&length2b,&skiplength,input) == 0) {
-    /* File ends during header.  Continue with a sequence of length 0. */
-    /* fprintf(stderr,"File ends after header\n"); */
-  }
-
-  return true;
-}
 #endif
+
+  debug(printf("Final query sequence is:\n"));
+  debug(Sequence_print(stdout,new,/*uppercasep*/false,/*wraplength*/60,/*trimmedp*/false));
+  return new;
+}
 
 
 T
@@ -1265,869 +1142,33 @@ Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles
 	*nextchar = EOF;
 	return NULL;
       } else {
-	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
+	if (*input != NULL) {
+	  fclose(*input);
+	}
+	while (*nfiles > 0 && (*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
 	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
+	  (*files)++;
+	  (*nfiles)--;
 	}
-	(*files)++;
-	(*nfiles)--;
-	*nextchar = '\0';
-      }
-    }
-    if (*input != NULL) {
-      if ((queryseq = Sequence_read(&(*nextchar),*input,maponlyp)) != NULL) {
-	return queryseq;
-      }
-    }
-  }
-}
-
-#if 0
-static bool
-Sequence_skip_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp) {
-
-  while (1) {
-    if (*input == NULL || feof(*input)) {
-      if (*nfiles == 0) {
-	*nextchar = EOF;
-	return false;
-      } else {
-	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
-	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
-	}
-	(*files)++;
-	(*nfiles)--;
-	*nextchar = '\0';
-      }
-    }
-    if (*input != NULL) {
-      return Sequence_skip(&(*nextchar),*input,maponlyp);
-    }
-  }
-}
-#endif
-
-
-#ifdef GSNAP
-
-/************************************************************************
- *   Dynamic programming for paired-end short reads
- ************************************************************************/
-
-typedef char Direction_T;
-#define VERT 4
-#define HORIZ 2
-#define DIAG 1
-#define STOP 0
-
-static int **matrix_ptrs;
-static int *matrix_space;
-static Direction_T **directions_ptrs;
-static Direction_T *directions_space;
-static int **jump_ptrs;
-static int *jump_space;
-
-
-#define MATCH 1
-#define MISMATCH -3
-#define END_OPEN -14
-#define OPEN -10
-#define EXTEND -3
-
-static int **pairdistance_array;
-static int *jump_penalty_array;
-
-static void
-pairdistance_init () {
-  int j, ptr;
-  int c, c1, c2;
-
-  pairdistance_array = (int **) CALLOC(128,sizeof(int *));
-  pairdistance_array[0] = (int *) CALLOC(128*128,sizeof(int));
-  ptr = 0;
-  for (j = 1; j < 128; j++) {
-    ptr += 128;
-    pairdistance_array[j] = &(pairdistance_array[0][ptr]);
-  }
-
-  for (c1 = 'A'; c1 <= 'Z'; c1++) {
-    for (c2 = 'A'; c2 < 'Z'; c2++) {
-      pairdistance_array[c1][c2] = MISMATCH;
-    }
-  }
-
-  for (c = 'A'; c < 'Z'; c++) {
-    pairdistance_array[c][c] = MATCH;
-  }
-
-  return;
-}
-
-static void
-jump_penalty_init (int maxlength) {
-  int length, penalty;
-
-  jump_penalty_array = (int *) CALLOC(maxlength+1,sizeof(int));
-
-  penalty = OPEN;
-  for (length = 0; length <= maxlength; length++) {
-    jump_penalty_array[length] = penalty;
-    penalty += EXTEND;
-  }
-
-  return;
-}
-
-
-
-void
-Sequence_dynprog_init (int maxlength) {
-
-#ifdef LEAKCHECK
-  Mem_leak_check_deactivate(__FILE__,__LINE__);
-#endif
-
-  matrix_ptrs = (int **) CALLOC(maxlength+1,sizeof(int *));
-  matrix_space = (int *) CALLOC((maxlength+1)*(maxlength+1),sizeof(int));
-  directions_ptrs = (Direction_T **) CALLOC(maxlength+1,sizeof(Direction_T *));
-  directions_space = (Direction_T *) CALLOC((maxlength+1)*(maxlength+1),sizeof(Direction_T));
-  jump_ptrs = (int **) CALLOC(maxlength+1,sizeof(int *));
-  jump_space = (int *) CALLOC((maxlength+1)*(maxlength+1),sizeof(int));
-
-  pairdistance_init();
-  jump_penalty_init(maxlength);
-
-#ifdef LEAKCHECK
-  Mem_leak_check_activate(__FILE__,__LINE__);
-#endif
-
-  return;
-}
-
-void
-Sequence_dynprog_term () {
-  FREE(jump_penalty_array);
-  FREE(pairdistance_array[0]);
-  FREE(pairdistance_array);
-
-  FREE(matrix_ptrs);
-  FREE(matrix_space);
-  FREE(directions_ptrs);
-  FREE(directions_space);
-  FREE(jump_ptrs);
-  FREE(jump_space);
-  return;
-}
-
-
-/* Makes a matrix of dimensions 0..length1 x 0..length2 inclusive */
-static int **
-Matrix_alloc (int length1, int length2, int **ptrs, int *space) {
-  int **matrix, i;
-
-  if (length1 < 0 || length2 < 0) {
-    fprintf(stderr,"lengths are negative: %d %d\n",length1,length2);
-    abort();
-  }
-
-  matrix = ptrs;
-  matrix[0] = space;
-  for (i = 1; i <= length1; i++) {
-    matrix[i] = &(matrix[i-1][length2 + 1]);
-  }
-
-  /* Clear memory only around the band, but doesn't work with Gotoh P1
-     and Q1 matrices */
-  /*
-  for (r = 0; r <= length1; r++) {
-    if ((clo = r - lband - 1) >= 0) {
-      matrix[r][clo] = 0;
-    }
-    if ((chigh = r + rband + 1) <= length2) {
-      matrix[r][chigh] = 0;
-    }
-  }
-  */
-  memset((void *) space,0,(length1+1)*(length2+1)*sizeof(int));
-
-  return matrix;
-}
-
-
-#ifdef DEBUG2
-static void
-Matrix_print (int **matrix, int length1, int length2, char *sequence1, char *sequence2,
-	      bool revp) {
-  int i, j;
-
-  printf("  ");
-  for (j = 0; j <= length2; ++j) {
-    if (j == 0) {
-      printf("    ");
-    } else {
-      printf("  %c ",revp ? sequence2[-j+1] : sequence2[j-1]);
-    }
-  }
-  printf("\n");
-
-  for (i = 0; i <= length1; ++i) {
-    if (i == 0) {
-      printf("  ");
-    } else {
-      printf("%c ",revp ? sequence1[-i+1] : sequence1[i-1]);
-    }
-    for (j = 0; j <= length2; ++j) {
-      printf("%3d ",matrix[i][j]);
-    }
-    printf("\n");
-  }
-  printf("\n");
-
-  return;
-}
-#endif
-
-
-/* Makes a matrix of dimensions 0..length1 x 0..length2 inclusive */
-static Direction_T **
-Directions_alloc (int length1, int length2, Direction_T **ptrs, Direction_T *space) {
-  Direction_T **directions;
-  int i;
-
-  directions = ptrs;
-  directions[0] = space;
-  for (i = 1; i <= length1; i++) {
-    directions[i] = &(directions[i-1][length2 + 1]);
-  }
-
-  /* Clear memory only around the band, but may not work with Gotoh
-     method */
-  /*
-    for (r = 0; r <= length1; r++) {
-    if ((clo = r - lband - 1) >= 0) {
-    directions[r][clo] = STOP;
-    }
-    if ((chigh = r + rband + 1) <= length2) {
-    directions[r][chigh] = STOP;
-    }
-    }
-  */
-  memset((void *) space,0,(length1+1)*(length2+1)*sizeof(Direction_T));
-
-  return directions;
-}
-
-
-#ifdef DEBUG2
-static void
-Directions_print (Direction_T **directions, int **jump, int length1, int length2, 
-		  char *sequence1, char *sequence2, bool revp) {
-  int i, j;
-  char buffer[4];
-
-  printf("  ");
-  for (j = 0; j <= length2; ++j) {
-    if (j == 0) {
-      printf("    ");
-    } else {
-      printf("  %c ",revp ? sequence2[-j+1] : sequence2[j-1]);
-    }
-  }
-  printf("\n");
-
-  for (i = 0; i <= length1; ++i) {
-    if (i == 0) {
-      printf("  ");
-    } else {
-      printf("%c ",revp ? sequence1[-i+1] : sequence1[i-1]);
-    }
-    for (j = 0; j <= length2; ++j) {
-      if (directions[i][j] == DIAG) {
-	sprintf(buffer,"D%d",jump[i][j]);
-      } else if (directions[i][j] == HORIZ) {
-	sprintf(buffer,"H%d",jump[i][j]);
-      } else if (directions[i][j] == VERT) {
-	sprintf(buffer,"V%d",jump[i][j]);
-      } else {
-	sprintf(buffer,"S%d",0);
-      }
-      printf("%3s ",buffer);
-    }
-    printf("\n");
-  }
-  printf("\n");
-  return;
-}
-#endif
-
-
-static int **
-compute_scores_lookup (Direction_T ***directions, int ***jump, char *sequence1, char *sequence2, 
-		       int length1, int length2) {
-  int **matrix;
-  int r, c, r1, c1;
-  int bestscore, score, bestjump, j;
-  Direction_T bestdir;
-
-  matrix = Matrix_alloc(length1,length2,matrix_ptrs,matrix_space);
-  *directions = Directions_alloc(length1,length2,directions_ptrs,directions_space);
-  *jump = Matrix_alloc(length1,length2,jump_ptrs,jump_space);
-
-  matrix[0][0] = 0;
-  (*directions)[0][0] = STOP;
-  (*jump)[0][0] = 0;
-
-  /* Row 0 initialization */
-  for (c = 1; c <= length2; c++) {
-    matrix[0][c] = END_OPEN;
-    (*directions)[0][c] = HORIZ;
-    (*jump)[0][c] = c;
-  }
-
-  /* Column 0 initialization */
-  for (r = 1; r <= length1; r++) {
-    matrix[r][0] = END_OPEN;
-    (*directions)[r][0] = VERT;
-    (*jump)[r][0] = r;
-  }
-
-  for (r = 1; r <= length1; r++) {
-    /* na1 = sequence1[r-1]; */
-
-    for (c = 1; c <= length2; c++) {
-      /* na2 = sequence2[c-1]; */
-
-      /* Diagonal case */
-      bestscore = matrix[r-1][c-1] + pairdistance_array[sequence1[r-1]][sequence2[c-1]];
-      bestdir = DIAG;
-      bestjump = 1;
-      
-      /* Horizontal case */
-      for (c1 = c-1, j = 1; c1 >= 1; c1--, j++) {
-	if ((*directions)[r][c1] == DIAG) {
-	  score = matrix[r][c1] + jump_penalty_array[j];
-	  if (score > bestscore) {
-	    bestscore = score;
-	    bestdir = HORIZ;
-	    bestjump = j;
-	  }
-	}
-      }
-
-      /* Vertical case */
-      for (r1 = r-1, j = 1; r1 >= 1; r1--, j++) {
-	if ((*directions)[r1][c] == DIAG) {
-	  score = matrix[r1][c] + jump_penalty_array[j];
-	  if (score > bestscore) {
-	    bestscore = score;
-	    bestdir = VERT;
-	    bestjump = j;
-	  }
-	}
-      }
-
-      /*
-	debug(printf("At %d,%d, scoreV = %d, scoreH = %d, scoreD = %d\n",
-	r,c,scoreV,scoreH,scoreD));
-      */
-      
-      /* Update */
-      matrix[r][c] = bestscore;
-      (*directions)[r][c] = bestdir;
-      (*jump)[r][c] = bestjump;
-    }
-  }
-
-  /* Final cell */
-  bestscore = matrix[length1-1][length2-1] + pairdistance_array[sequence1[length1-1]][sequence2[length2-1]];
-  bestdir = DIAG;
-  bestjump = 1;
-
-  for (c = 1; c < length2; c++) {
-    if ((score = matrix[length1][c] + END_OPEN) > bestscore) {
-      bestscore = score;
-      bestdir = HORIZ;
-      bestjump = length2 - c;
-    }
-  }
-
-  for (r = 1; r < length1; r++) {
-    if ((score = matrix[r][length2] + END_OPEN) > bestscore) {
-      bestscore = score;
-      bestdir = VERT;
-      bestjump = length1 - r;
-    }
-  }
-
-  /* Update */
-  matrix[length1][length2] = bestscore;
-  (*directions)[length1][length2] = bestdir;
-  (*jump)[length1][length2] = bestjump;
-
-  /*
-  debug2(Matrix_print(P0,length1,length2));
-  debug2(Matrix_print(P1,length1,length2));
-  debug2(Matrix_print(Q0,length1,length2));
-  debug2(Matrix_print(Q1,length1,length2));
-  */
-  debug2(Matrix_print(matrix,length1,length2,sequence1,sequence2,/*revp*/false));
-  debug2(Directions_print(*directions,*jump,length1,length2,
-			  sequence1,sequence2,/*revp*/false));
-
-  return matrix;
-}
-
-
-static void
-traceback (int *chop1, int *chop2, Direction_T **directions, int **jump, int length1, int length2) {
-  int lastjump;
-  int r, c;
-  Direction_T lastdir;
-
-  if (directions[length1][length2] != VERT) {
-    *chop1 = *chop2 = 0;
-  } else {
-    *chop1 = jump[length1][length2];
-
-    r = length1;
-    c = length2;
-    while (directions[r][c] != STOP) {
-      if ((lastdir = directions[r][c]) == DIAG) {
-	lastjump = 1;
-	r--; c--;
-	
-      } else if (lastdir == HORIZ) {
-	lastjump = jump[r][c];
-	c -= lastjump;
-	
-      } else if (directions[r][c] == VERT) {
-	lastjump = jump[r][c];
-	r -= lastjump;
-	
-      } else {
-	abort();
-      }
-    }
-
-    if (lastdir != HORIZ) {
-      *chop1 = *chop2 = 0;
-    } else {
-      *chop2 = lastjump;
-    }
-  }
-
-  return;
-}
-
-
-
-/* Modeled after Dynprog_single_gap */
-void
-Sequence_chop_primers (T queryseq1, T queryseq2) {
-  int finalscore;
-  int **matrix, **jump;
-  Direction_T **directions;
-  int chop1, chop2;
-
-  matrix = compute_scores_lookup(&directions,&jump,queryseq1->contents_uc,queryseq2->contents_uc,
-				 queryseq1->fulllength,queryseq2->fulllength);
-  finalscore = matrix[queryseq1->fulllength][queryseq2->fulllength];
-
-  if (finalscore <= 0) {
-    chop1 = chop2 = 0;
-  } else {
-    traceback(&chop1,&chop2,directions,jump,queryseq1->fulllength,queryseq2->fulllength);
-    if (chop1 > 0) {
-      queryseq1->chop = (char *) CALLOC(chop1+1,sizeof(char));
-      strncpy(queryseq1->chop,&(queryseq1->contents[queryseq1->fulllength - chop1]),chop1);
-      queryseq1->choplength = chop1;
-
-      queryseq1->contents[queryseq1->fulllength - chop1] = '\0';
-      queryseq1->contents_uc[queryseq1->fulllength - chop1] = '\0';
-      if (queryseq1->quality != NULL) {
-	queryseq1->quality[queryseq1->fulllength - chop1] = '\0';
-      }
-
-      queryseq1->fulllength -= chop1;
-    }
-    if (chop2 > 0) {
-      queryseq2->chop = (char *) CALLOC(chop2+1,sizeof(char));
-      strncpy(queryseq2->chop,queryseq2->contents,chop2);
-      queryseq2->choplength = chop2;
-
-      queryseq2->contents = &(queryseq2->contents[chop2]);
-      queryseq2->contents_uc = &(queryseq2->contents_uc[chop2]);
-      if (queryseq2->quality != NULL) {
-	queryseq2->quality = &(queryseq2->quality[chop2]);
-      }
-
-      queryseq2->fulllength -= chop2;
-    }
-  }
-
-  debug2(printf("finalscore = %d, chop1 = %d, chop2 = %d\n",finalscore,chop1,chop2));
-
-  return;
-}
-
-#endif
-
-
-/************************************************************************
- *   Short reads
- ************************************************************************/
-
-#ifdef GSNAP
-T
-Sequence_read_multifile_shortreads (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles,
-				    bool circularp) {
-  T queryseq1, temp;
-  int fulllength;
-
-#ifdef LEAKCHECK
-  Mem_leak_check_start(__FILE__,__LINE__);
-#endif
-
-  while (1) {
-    if (*input == NULL || feof(*input)) {
-      if (*nfiles == 0) {
-	*nextchar = EOF;
-	return (T) NULL;
-      } else {
-	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
-	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
-	}
-	(*files)++;
-	(*nfiles)--;
-	*nextchar = '\0';
-      }
-    }
-    if (*input != NULL) {
-      if (*nextchar == '\0') {
-	if ((*nextchar = Sequence_input_init(*input)) == EOF) {
+	if (*input == NULL) {
 	  *nextchar = EOF;
 	  return NULL;
-	}
-      }
-
-      queryseq1 = (T) MALLOC(sizeof(*queryseq1));
-      (*queryseq2) = (T) NULL;
-      debug(printf("** Getting header\n"));
-      if (input_header(*input,queryseq1) == NULL) {
-	/* fprintf(stderr,"No header\n"); */
-	/* File ends after >.  Don't process. */
-	*nextchar = EOF;
-      } else {
-	queryseq1->chop = (char *) NULL;
-	queryseq1->choplength = 0;
-	queryseq1->quality = queryseq1->quality_alloc = (char *) NULL;
-	if ((*nextchar = fgetc(*input)) == '\n') {
-	  queryseq1->contents = (char *) NULL;
-	  queryseq1->fulllength = 0;
-	  /* queryseq1->free_contents_p = false; */
-	  queryseq1->contents_alloc = (char *) NULL;
-	  queryseq1->contents_uc_alloc = (char *) NULL;
-	  while (*nextchar != EOF && ((*nextchar = fgetc(*input)) != '>')) {
-	  }
-	} else if ((queryseq1->fulllength = input_oneline(&(*nextchar),*input,/*possible_fasta_header_p*/true)) == 0) {
-	  /* fprintf(stderr,"length is zero\n"); */
-	  /* No sequence1.  Don't process. */
-	  /* *nextchar = EOF; */
-	  queryseq1->contents = (char *) NULL;
-	  /* queryseq1->free_contents_p = false; */
-	  queryseq1->contents_alloc = (char *) NULL;
-	  queryseq1->contents_uc_alloc = (char *) NULL;
 	} else {
-	  queryseq1->contents = queryseq1->contents_alloc = (char *) CALLOC(queryseq1->fulllength+1,sizeof(char));
-	  strncpy(queryseq1->contents,&(Firsthalf[0]),queryseq1->fulllength);
-	  queryseq1->contents_uc = queryseq1->contents_uc_alloc = make_uppercase(queryseq1->contents,queryseq1->fulllength);
-	  /* queryseq1->free_contents_p = true; */
-	  if ((fulllength = input_oneline(&(*nextchar),*input,/*possible_fasta_header_p*/true)) > 0) {
-	    (*queryseq2) = (T) MALLOC(sizeof(*(*queryseq2)));
-	    (*queryseq2)->acc = (char *) NULL;
-	    (*queryseq2)->restofheader = (char *) NULL;
-	    (*queryseq2)->fulllength = fulllength;
-	    (*queryseq2)->contents = (*queryseq2)->contents_alloc = make_complement(&(Firsthalf[0]),fulllength);
-	    (*queryseq2)->contents_uc = (*queryseq2)->contents_uc_alloc = make_uppercase((*queryseq2)->contents,fulllength);
-	    (*queryseq2)->chop = (char *) NULL;
-	    (*queryseq2)->choplength = 0;
-	    (*queryseq2)->quality = (*queryseq2)->quality_alloc = (char *) NULL;
-	    /* (*queryseq2)->free_contents_p = true; */
-	    if (circularp == true) {
-	      /* Circular-end read.  Swap queryseq1 and queryseq2. */
-	      temp = queryseq1;
-	      queryseq1 = *queryseq2;
-	      *queryseq2 = temp;
-	    }
-	  }
+	  (*files)++;
+	  (*nfiles)--;
+	  *nextchar = '\0';
 	}
-	debug(printf("Returning queryseq with contents %s\n",queryseq1->contents));
-	return queryseq1;
       }
+    }
+    if ((queryseq = Sequence_read(&(*nextchar),*input,maponlyp)) != NULL) {
+      return queryseq;
     }
   }
 }
-#endif
-
-#ifdef GSNAP
-/* Does not do reverse complement */
-T
-Sequence_read_multifile_shortreads_simple (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles) {
-  T queryseq1;
-  int fulllength;
-
-  while (1) {
-    if (*input == NULL || feof(*input)) {
-      if (*nfiles == 0) {
-	*nextchar = EOF;
-	return (T) NULL;
-      } else {
-	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
-	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
-	}
-	(*files)++;
-	(*nfiles)--;
-	*nextchar = '\0';
-      }
-    }
-    if (*input != NULL) {
-      if (*nextchar == '\0') {
-	if ((*nextchar = Sequence_input_init(*input)) == EOF) {
-	  *nextchar = EOF;
-	  return NULL;
-	}
-      }
-
-      queryseq1 = (T) MALLOC(sizeof(*queryseq1));
-      (*queryseq2) = (T) NULL;
-      debug(printf("** Getting header\n"));
-      if (input_header(*input,queryseq1) == NULL) {
-	/* fprintf(stderr,"No header\n"); */
-	/* File ends after >.  Don't process. */
-	*nextchar = EOF;
-      } else {
-	queryseq1->chop = (char *) NULL;
-	queryseq1->choplength = 0;
-	queryseq1->quality = queryseq1->quality_alloc = (char *) NULL;
-
-	if ((*nextchar = fgetc(*input)) == '\n') {
-	  queryseq1->contents = (char *) NULL;
-	  queryseq1->fulllength = 0;
-	  /* queryseq1->free_contents_p = false; */
-	  queryseq1->contents_alloc = (char *) NULL;
-	  queryseq1->contents_uc_alloc = (char *) NULL;
-	  while (*nextchar != EOF && ((*nextchar = fgetc(*input)) != '>')) {
-	  }
-	} else if ((queryseq1->fulllength = input_oneline(&(*nextchar),*input,/*possible_fasta_header_p*/true)) == 0) {
-	  /* fprintf(stderr,"length is zero\n"); */
-	  /* No sequence1.  Don't process. */
-	  /* *nextchar = EOF; */
-	  queryseq1->contents = (char *) NULL;
-	  /* queryseq1->free_contents_p = false; */
-	  queryseq1->contents_alloc = (char *) NULL;
-	  queryseq1->contents_uc_alloc = (char *) NULL;
-	} else {
-	  queryseq1->contents = queryseq1->contents_alloc = (char *) CALLOC(queryseq1->fulllength+1,sizeof(char));
-	  strncpy(queryseq1->contents,&(Firsthalf[0]),queryseq1->fulllength);
-	  queryseq1->contents_uc = queryseq1->contents_uc_alloc = make_uppercase(queryseq1->contents,queryseq1->fulllength);
-	  /* queryseq1->free_contents_p = true; */
-	  if ((fulllength = input_oneline(&(*nextchar),*input,/*possible_fasta_header_p*/true)) > 0) {
-	    (*queryseq2) = (T) MALLOC(sizeof(*(*queryseq2)));
-	    (*queryseq2)->acc = (char *) NULL;
-	    (*queryseq2)->restofheader = (char *) NULL;
-	    (*queryseq2)->fulllength = fulllength;
-	    (*queryseq2)->contents = (*queryseq2)->contents_alloc = (char *) CALLOC((*queryseq2)->fulllength+1,sizeof(char));
-	    strncpy((*queryseq2)->contents,&(Firsthalf[0]),(*queryseq2)->fulllength);
-	    (*queryseq2)->contents_uc = (*queryseq2)->contents_uc_alloc = make_uppercase((*queryseq2)->contents,(*queryseq2)->fulllength);
-	    (*queryseq2)->chop = (char *) NULL;
-	    (*queryseq2)->choplength = 0;
-	    (*queryseq2)->quality = (*queryseq2)->quality_alloc = (char *) NULL;
-	    /* (*queryseq2)->free_contents_p = true; */
-	  }
-	}
-	debug(printf("Returning queryseq with contents %s\n",queryseq1->contents));
-	return queryseq1;
-      }
-    }
-  }
-}
-#endif
 
 
-#ifdef GSNAP
-T
-Sequence_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE *input1, FILE *input2,
-				bool circularp) {
-  T queryseq1, temp;
-  int nextchar2;
-  int qualitylength;
-
-#ifdef LEAKCHECK
-  Mem_leak_check_start(__FILE__,__LINE__);
-#endif
-
-  while (1) {
-    if (input1 == NULL || feof(input1)) {
-      *nextchar = EOF;
-      return (T) NULL;
-    }
-
-    queryseq1 = (T) MALLOC(sizeof(*queryseq1));
-    debug(printf("** Getting header\n"));
-    if (input_header_fastq(input1,queryseq1) == NULL) {
-      /* fprintf(stderr,"No header\n"); */
-      /* File ends after >.  Don't process. */
-      *nextchar = EOF;
-    } else {
-      *nextchar = fgetc(input1);
-      if ((queryseq1->fulllength = input_oneline(&(*nextchar),input1,/*possible_fasta_header_p*/true)) == 0) {
-	/* fprintf(stderr,"length is zero\n"); */
-	/* No sequence1.  Don't process. */
-	/* *nextchar = EOF; */
-	queryseq1->contents = (char *) NULL;
-	/* queryseq1->free_contents_p = false; */
-	queryseq1->contents_alloc = (char *) NULL;
-	queryseq1->contents_uc_alloc = (char *) NULL;
-
-      } else {
-	queryseq1->contents = queryseq1->contents_alloc = (char *) CALLOC(queryseq1->fulllength+1,sizeof(char));
-	strncpy(queryseq1->contents,&(Firsthalf[0]),queryseq1->fulllength);
-	queryseq1->contents_uc = queryseq1->contents_uc_alloc = make_uppercase(queryseq1->contents,queryseq1->fulllength);
-	/* queryseq1->free_contents_p = true; */
-      }
-
-      queryseq1->chop = (char *) NULL;
-      queryseq1->choplength = 0;
-
-      if (*nextchar != '+') {
-	queryseq1->quality = queryseq1->quality_alloc = (char *) NULL;
-      } else {
-	skip_header(input1);
-	*nextchar = fgetc(input1);
-	qualitylength = input_oneline(&(*nextchar),input1,/*possible_fasta_header_p*/false);
-	if (qualitylength != queryseq1->fulllength) {
-	  fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
-		  qualitylength,queryseq1->fulllength,queryseq1->acc);
-	  abort();
-	} else {
-	  queryseq1->quality = queryseq1->quality_alloc = (char *) CALLOC(qualitylength+1,sizeof(char));
-	  strncpy(queryseq1->quality,&(Firsthalf[0]),qualitylength);
-	}
-      }
-    }
-
-    if (input2 == NULL) {
-      *queryseq2 = (T) NULL;
-    } else {
-      *queryseq2 = (T) MALLOC(sizeof(*(*queryseq2)));
-      if (input_header_fastq(input2,*queryseq2) == NULL) {
-	/* fprintf(stderr,"No header\n"); */
-	/* File ends after >.  Don't process. */
-	nextchar2 = EOF;
-      } else {
-	strip_illumina_acc_ending(queryseq1->acc);
-	strip_illumina_acc_ending((*queryseq2)->acc);
-
-	if (strcmp(queryseq1->acc,(*queryseq2)->acc)) {
-	  fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,(*queryseq2)->acc);
-	  exit(9);
-	}
-	nextchar2 = fgetc(input2);
-	if (((*queryseq2)->fulllength = input_oneline(&nextchar2,input2,/*possible_fasta_header_p*/true)) == 0) {
-	  /* fprintf(stderr,"length is zero\n"); */
-	  /* No sequence1.  Don't process. */
-	  /* *nextchar = EOF; */
-	  (*queryseq2)->contents = (char *) NULL;
-	  /* (*queryseq2)->free_contents_p = false; */
-	  (*queryseq2)->contents_alloc = (char *) NULL;
-	  (*queryseq2)->contents_uc_alloc = (char *) NULL;
-
-	} else {
-	  (*queryseq2)->contents = (*queryseq2)->contents_alloc = make_complement(&(Firsthalf[0]),(*queryseq2)->fulllength);
-	  (*queryseq2)->contents_uc = (*queryseq2)->contents_uc_alloc = make_uppercase((*queryseq2)->contents,(*queryseq2)->fulllength);
-	  /* (*queryseq2)->free_contents_p = true; */
-	  if (circularp == true) {
-	    /* Circular-end read.  Swap queryseq1 and queryseq2. */
-	    temp = queryseq1;
-	    queryseq1 = *queryseq2;
-	    *queryseq2 = temp;
-	  }
-	}
-
-	(*queryseq2)->chop = (char *) NULL;
-	(*queryseq2)->choplength = 0;
-
-	if (nextchar2 != '+') {
-	  (*queryseq2)->quality = (*queryseq2)->quality_alloc = (char *) NULL;
-	} else {
-	  skip_header(input2);
-	  nextchar2 = fgetc(input2);
-	  qualitylength = input_oneline(&nextchar2,input2,/*possible_fasta_header_p*/false);
-	  if (qualitylength != (*queryseq2)->fulllength) {
-	    fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
-		    qualitylength,(*queryseq2)->fulllength,(*queryseq2)->acc);
-	    abort();
-	  } else {
-	    (*queryseq2)->quality = (*queryseq2)->quality_alloc = make_reverse(&(Firsthalf[0]),qualitylength);
-	  }
-	}
-      }
-    }
-
-    return queryseq1;
-  }
-}
-#endif
-
-
-
-
-#if 0
-static bool
-Sequence_skip_multifile_shortreads (int *nextchar, FILE **input, char ***files, int *nfiles) {
-
-  while (1) {
-    if (*input == NULL || feof(*input)) {
-      if (*nfiles == 0) {
-	*nextchar = EOF;
-	return false;
-      } else {
-	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
-	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
-	}
-	(*files)++;
-	(*nfiles)--;
-	*nextchar = '\0';
-      }
-    }
-    if (*input != NULL) {
-      if (*nextchar == '\0') {
-	if ((*nextchar = Sequence_input_init(*input)) == EOF) {
-	  *nextchar = EOF;
-	  return false;
-	}
-      }
-
-      if (skip_header(*input) == false) {
-	/* fprintf(stderr,"No header\n"); */
-	/* File ends after >.  Don't process. */
-	*nextchar = EOF;
-      } else {
-	*nextchar = fgetc(*input);
-	if (input_oneline(&(*nextchar),*input,/*possible_fasta_header_p*/true) == 0) {
-	  /* fprintf(stderr,"length is zero\n"); */
-	  /* No sequence1.  Don't process. */
-	  *nextchar = EOF;
-	} else {
-	  /* queryseq2, if present */
-	  input_oneline(&(*nextchar),*input,/*possible_fasta_header_p*/true);
-	  return true;
-	}
-      }
-    }
-  }
-}
-#endif
-
+/* This is intended for user genomicseg, which will start with
+   standard FASTA ">" */
 T
 Sequence_read_unlimited (FILE *input) {
   T new;
@@ -2140,26 +1181,39 @@ Sequence_read_unlimited (FILE *input) {
     return NULL;
   }
 
-  new = (T) MALLOC(sizeof(*new));
-
   if (Initc == '\0') {
     if ((Initc = Sequence_input_init(input)) == EOF) {
       return NULL;
     }
   }
-  if (Initc != '>') {
+
+  new = (T) MALLOC(sizeof(*new));
+
+  if (Initc != '>' /* && Initc != '<' */) {
+    new->firstp = true;		/* by default */
     blank_header(new);
-    Sequence[startpos++] = Initc;
+    Sequence[startpos++] = (char) Initc;
     maxseqlen--;
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
-     return NULL;
-  } 
+    FREE(new);
+    return NULL;
+  } else if (Initc == '>') {
+    new->firstp = true;
+#if 0
+  } else if (Initc == '<') {
+    new->firstp = false;
+#endif
+  } else {
+    abort();
+  }
+
+
   /* Don't touch Sequence[0], because subsequent calls to
      Sequence_read depend on it being '\0'. */
   eolnp = true;
   while (fgets(&(Sequence[startpos]),maxseqlen,input) != NULL &&
-	 (eolnp == false || Sequence[1] != '>')) {
+	 (eolnp == false || (Sequence[1] != '>' /* && Sequence[1] != '<' */))) {
     for (p = &(Sequence[1]); *p != '\n' && *p != '\0'; p++) {
       if (!iscntrl((int) *p)
 #ifdef DASH
@@ -2180,13 +1234,6 @@ Sequence_read_unlimited (FILE *input) {
   intlist = Intlist_reverse(intlist);
   new->contents = new->contents_alloc = Intlist_to_char_array(&length,intlist);
 
-#ifdef GSNAP
-  new->contents_uc = new->contents_uc_alloc = (char *) NULL;
-  new->chop = (char *) NULL;
-  new->choplength = 0;
-  new->quality = new->quality_alloc = (char *) NULL;
-#endif
-
   Intlist_free(&intlist);
 
   if (length == 0) {
@@ -2197,6 +1244,11 @@ Sequence_read_unlimited (FILE *input) {
     new->fulllength_given = length;
 #endif
     new->trimstart = 0;
+
+#ifndef PMAP
+    /* user genomic segment should not have quality */
+    new->quality = new->quality_alloc = (char *) NULL;
+#endif
 
     /* new->free_contents_p = true; */
     new->subseq_offset = 0;
@@ -2210,47 +1262,58 @@ Sequence_read_unlimited (FILE *input) {
 }
 
 void
-Sequence_print_digest (T this) {
+Sequence_print_digest (FILE *fp, T this) {
   unsigned char *digest;
 
   digest = MD5_compute((unsigned char *) this->contents,this->fulllength);
-  MD5_print(digest);
+  MD5_print(fp,digest);
   FREE(digest);
   return;
 }
 
 /* Calling procedure needs to print the initial ">", if desired */
 void
-Sequence_print_header (T this, bool checksump) {
+Sequence_print_header (FILE *fp, T this, bool checksump) {
 
 #if 0
 #ifdef PMAP
-  printf("%s (%d aa) %s",this->acc,this->fulllength_given+this->skiplength,this->restofheader);
+  fprintf(fp,"%s (%d aa) %s",this->acc,this->fulllength_given+this->skiplength,this->restofheader);
 #else
-  printf("%s (%d bp) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
+  fprintf(fp,"%s (%d bp) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
 #endif
+
 #else
-  printf("%s %s",this->acc,this->restofheader);
-#endif
-  if (checksump == true) {
-    printf(" md5:");
-    Sequence_print_digest(this);
+  if (this->restofheader == NULL || this->restofheader[0] == '\0') {
+    fprintf(fp,"%s",this->acc);
+  } else {
+    fprintf(fp,"%s %s",this->acc,this->restofheader);
   }
-  printf("\n");
+#endif
+
+  if (checksump == true) {
+    fprintf(fp," md5:");
+    Sequence_print_digest(fp,this);
+  }
+  fprintf(fp,"\n");
   return;
 }
 
 void
 Sequence_print_header_revcomp (T this) {
-  printf(">%s %s",this->acc,this->restofheader);
+  if (this->restofheader == NULL || this->restofheader[0] == '\0') {
+    printf(">%s",this->acc);
+  } else {
+    printf(">%s %s",this->acc,this->restofheader);
+  }
   printf(" REVCOMP");
   printf("\n");
   return;
 }
 
 
+
 void
-Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
+Sequence_print (FILE *fp, T this, bool uppercasep, int wraplength, bool trimmedp) {
   int i = 0, pos, start, end;
   char uppercaseCode[128] = UPPERCASE_STD;
 
@@ -2264,14 +1327,60 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
 
   if (uppercasep == true) {
     for (pos = start; pos < end; pos++, i++) {
-      printf("%c",uppercaseCode[(int) this->contents[i]]);
+      putc(uppercaseCode[(int) this->contents[i]],fp);
+      if ((i+1) % wraplength == 0) {
+	putc('\n',fp);
+      }
+    }
+  } else {
+    for (pos = start; pos < end; pos++, i++) {
+      putc(this->contents[i],fp);
+      if ((i+1) % wraplength == 0) {
+	putc('\n',fp);
+      }
+    }
+  }
+  if (i % wraplength != 0) {
+    putc('\n',fp);
+  }
+  return;
+}
+
+
+void
+Sequence_print_alt (T ref, T alt, T snp, bool uppercasep, int wraplength) {
+  int i = 0, pos, start, end;
+  char uppercaseCode[128] = UPPERCASE_STD;
+
+  start = 0;
+  end = alt->fulllength;
+
+  if (uppercasep == true) {
+    for (pos = start; pos < end; pos++, i++) {
+      if (snp->contents[i] == ' ') {
+	/* Not a SNP, so print reference */
+	printf("%c",uppercaseCode[(int) ref->contents[i]]);
+      } else if (uppercaseCode[(int) alt->contents[i]] == uppercaseCode[(int) ref->contents[i]]) {
+	/* Wildcard SNP */
+	printf("N");
+      } else {
+	printf("%c",uppercaseCode[(int) alt->contents[i]]);
+      }
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }
     }
   } else {
     for (pos = start; pos < end; pos++, i++) {
-      printf("%c",this->contents[i]);
+      if (snp->contents[i] == ' ') {
+	/* Not a SNP, so print reference */
+	printf("%c",ref->contents[i]);
+      } else if (uppercaseCode[(int) alt->contents[i]] == uppercaseCode[(int) ref->contents[i]]) {
+	/* Wildcard SNP */
+	printf("N");
+      } else {
+	printf("%c",alt->contents[i]);
+      }
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }
@@ -2283,12 +1392,13 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
   return;
 }
 
+
 void
-Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
+Sequence_print_two (T ref, T alt, bool uppercasep, int wraplength) {
   int i = 0, pos, pos2, startpos, end;
   char uppercaseCode[128] = UPPERCASE_STD;
 
-  end = this->fulllength;
+  end = ref->fulllength;
 
   pos = 0;
   i = 0;
@@ -2296,12 +1406,17 @@ Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
     printf("ref\t");
     startpos = pos;
     while (pos < end) {
-      printf("%c",uppercaseCode[(int) this->contents[pos]]);
+      printf("%c",uppercaseCode[(int) ref->contents[pos]]);
       if (++i % wraplength == 0) {
 	printf("\n");
 	printf("alt\t");
 	for (pos2 = startpos, i = 0; i < wraplength; pos2++, i++) {
-	  printf("%c",uppercaseCode[(int) alt->contents[pos2]]);
+	  if (uppercaseCode[(int) alt->contents[pos2]] == uppercaseCode[(int) ref->contents[pos2]]) {
+	    /* Wildcard SNP */
+	    printf("N");
+	  } else {
+	    printf("%c",uppercaseCode[(int) alt->contents[pos2]]);
+	  }
 	}
 	printf("\n\n");
 	if (pos+1 < end) {
@@ -2315,7 +1430,12 @@ Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
       printf("\n");
       printf("alt\t");
       for (pos2 = startpos; pos2 < end; pos2++) {
-	printf("%c",uppercaseCode[(int) alt->contents[pos2]]);
+	if (uppercaseCode[(int) alt->contents[pos2]] == uppercaseCode[(int) ref->contents[pos2]]) {
+	  /* Wildcard SNP */
+	  printf("N");
+	} else {
+	  printf("%c",uppercaseCode[(int) alt->contents[pos2]]);
+	}
       }
       printf("\n\n");
     }
@@ -2324,12 +1444,17 @@ Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
     printf("ref\t");
     startpos = pos;
     while (pos < end) {
-      printf("%c",this->contents[pos]);
+      printf("%c",ref->contents[pos]);
       if (++i % wraplength == 0) {
 	printf("\n");
 	printf("alt\t");
 	for (pos2 = startpos, i = 0; i < wraplength; pos2++, i++) {
-	  printf("%c",alt->contents[pos2]);
+	  if (uppercaseCode[(int) alt->contents[pos2]] == uppercaseCode[(int) ref->contents[pos2]]) {
+	    /* Wildcard SNP */
+	    printf("N");
+	  } else {
+	    printf("%c",alt->contents[pos2]);
+	  }
 	}
 	printf("\n\n");
 	if (pos+1 < end) {
@@ -2343,7 +1468,12 @@ Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
       printf("\n");
       printf("alt\t");
       for (pos2 = startpos; pos2 < end; pos2++) {
-	printf("%c",alt->contents[pos2]);
+	if (uppercaseCode[(int) alt->contents[pos2]] == uppercaseCode[(int) ref->contents[pos2]]) {
+	  /* Wildcard SNP */
+	  printf("N");
+	} else {
+	  printf("%c",alt->contents[pos2]);
+	}
       }
       printf("\n\n");
     }
@@ -2352,50 +1482,6 @@ Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
   return;
 }
 
-
-
-#ifdef GSNAP
-void
-Sequence_print_chop_symbols (FILE *fp, T this) {
-  int i;
-
-  for (i = 0; i < this->choplength; i++) {
-    fprintf(fp,"*");
-  }
-  return;
-}
-
-
-void
-Sequence_print_oneline (FILE *fp, T this) {
-  int i = 0;
-
-  if (this->fulllength == 0 || isspace(this->contents[0])) {
-    fprintf(fp,"(null)");
-  } else {
-    for (i = 0; i < this->fulllength; i++) {
-      fprintf(fp,"%c",this->contents[i]);
-    }
-    for (i = 0; i < this->choplength; i++) {
-      fprintf(fp,"%c",this->chop[i]);
-    }
-  }
-  return;
-}
-
-void
-Sequence_print_oneline_revcomp (FILE *fp, T this) {
-  int i = 0;
-
-  for (i = this->fulllength-1; i >= 0; --i) {
-    fprintf(fp,"%c",complCode[(int) this->contents[i]]);
-  }
-  for (i = this->choplength-1; i >= 0; --i) {
-    fprintf(fp,"%c",complCode[(int) this->chop[i]]);
-  }
-
-  return;
-}
 
 void
 Sequence_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high) {
@@ -2415,24 +1501,34 @@ void
 Sequence_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high) {
   int i;
 
-  for (i = this->fulllength - 1 - hardclip_low; i >= hardclip_high; --i) {
+  for (i = this->fulllength - 1 - hardclip_high; i >= hardclip_low; --i) {
     fprintf(fp,"%c",complCode[(int) this->contents[i]]);
   }
 
   return;
 }
 
+
+#ifndef PMAP
 void
 Sequence_print_quality (FILE *fp, T this, int hardclip_low, int hardclip_high,
 			int shift) {
   int i;
+  int c;
 
   if (this->quality == NULL) {
-    printf("*");
+    fprintf(fp,"*");
   } else {
     for (i = hardclip_low; i < this->fulllength - hardclip_high; i++) {
-      fprintf(fp,"%c",this->quality[i] + shift);
+      if ((c = this->quality[i] + shift) <= 32) {
+	fprintf(stderr,"Warning: With a quality-print-shift of %d, QC score %c becomes non-printable.  May need to specify --quality-protocol or --quality-print-shift\n",
+		shift,this->quality[i]);
+	abort();
+      } else {
+	fprintf(fp,"%c",c);
+      }
     }
+
   }
   return;
 }
@@ -2441,38 +1537,28 @@ void
 Sequence_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high,
 				int shift) {
   int i;
+  int c;
 
   if (this->quality == NULL) {
-    printf("*");
+    fprintf(fp,"*");
   } else {
-    for (i = this->fulllength - 1 - hardclip_low; i >= hardclip_high; --i) {
-      fprintf(fp,"%c",this->quality[i] + shift);
+    for (i = this->fulllength - 1 - hardclip_high; i >= hardclip_low; --i) {
+      if ((c = this->quality[i] + shift) <= 32) {
+	fprintf(stderr,"Warning: With a quality-print-shift of %d, QC score %c becomes non-printable.  May need to specify --quality-protocol or --quality-print-shift\n",
+		shift,this->quality[i]);
+	abort();
+      } else {
+	fprintf(fp,"%c",c);
+      }
     }
   }
 
   return;
 }
-
-void
-Sequence_print_oneline_uc (FILE *fp, T this) {
-  int i = 0;
-
-  for (i = 0; i < this->fulllength; i++) {
-    fprintf(fp,"%c",this->contents_uc[i]);
-  }
-  return;
-}
-
-void
-Sequence_print_oneline_revcomp_uc (FILE *fp, T this) {
-  int i = 0;
-
-  for (i = this->fulllength-1; i >= 0; --i) {
-    fprintf(fp,"%c",complCode[(int) this->contents_uc[i]]);
-  }
-  return;
-}
 #endif
+
+
+
 
 void
 Sequence_print_raw (T this) {
@@ -2495,18 +1581,21 @@ Sequence_substring (T usersegment, unsigned int left, unsigned int length,
     fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
 	    gbufferlen,length);
     abort();
-  }
+    return NULL;
 
-  memcpy(gbuffer1,&(usersegment->contents[left]),length*sizeof(char));
-  gbuffer1[length] = '\0';
-
-  if (revcomp == true) {
-    make_complement_buffered(gbuffer2,gbuffer1,length);
-    debug(fprintf(stderr,"Got sequence at %u with length %u, revcomp\n",left,length));
-    return Sequence_genomic_new(gbuffer2,length);
   } else {
-    debug(fprintf(stderr,"Got sequence at %u with length %u, forward\n",left,length));
-    return Sequence_genomic_new(gbuffer1,length);
+    memcpy(gbuffer1,&(usersegment->contents[left]),length*sizeof(char));
+    gbuffer1[length] = '\0';
+
+    if (revcomp == true) {
+      make_complement_buffered(gbuffer2,gbuffer1,length);
+      debug(fprintf(stderr,"Got sequence at %u with length %u, revcomp\n",left,length));
+      return Sequence_genomic_new(gbuffer2,length);
+    } else {
+      debug(fprintf(stderr,"Got sequence at %u with length %u, forward\n",left,length));
+      return Sequence_genomic_new(gbuffer1,length);
+    }
   }
 }
+
 

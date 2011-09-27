@@ -1,4 +1,4 @@
-/* $Id: datadir.h,v 1.13 2010-02-26 23:09:30 twu Exp $ */
+/* $Id: datadir.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef DATADIR_INCLUDED
 #define DATADIR_INCLUDED
 #include <stdio.h>

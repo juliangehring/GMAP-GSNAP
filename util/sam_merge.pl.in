@@ -1,0 +1,229 @@
+#! @PERL@
+
+use warnings;
+use IO::File;
+
+# Assumes that $ARGV[0] file contains a subset of output lines as $ARGV[1]
+
+$GMAP_FP = new IO::File($ARGV[0]) or die "Cannot open $ARGV[0]";
+$ORIG_FP = new IO::File($ARGV[1]) or die "Cannot open $ARGV[1]";
+
+while (defined($gmap_line = <$GMAP_FP>) && $gmap_line =~ /^\@/) { }
+if (defined($gmap_line)) {
+    ($gmap_acc) = $gmap_line =~ /(\S+)/;
+} else {
+    undef $gmap_acc;
+}
+
+while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+if (defined($orig_line)) {
+    ($orig_acc) = $orig_line =~ /(\S+)/;
+} else {
+    undef $orig_acc;
+}
+
+
+while (defined($gmap_acc)) {
+    # Print all other orig lines
+    while (defined($orig_acc) && $orig_acc ne $gmap_acc) {
+	($chr) = $orig_line =~ /^\S+\t\d+\t(\S+)/;
+	print $orig_line;
+	while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+	if (defined($orig_line)) {
+	    ($orig_acc) = $orig_line =~ /(\S+)/;
+	} else {
+	    undef $orig_acc;
+	}
+    }
+
+    # Get orig lines for this gmap entry
+    @lines_first = ();
+    @lines_second = ();
+    while (defined($orig_acc) && $orig_acc eq $gmap_acc) {
+	($flags,$chr) = $orig_line =~ /^\S+\t(\d+)\t(\S+)/;
+	if ($flags & 128) {
+	    push @lines_second,$orig_line;
+	} else {
+	    push @lines_first,$orig_line;
+	}
+	while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+	if (defined($orig_line)) {
+	    ($orig_acc) = $orig_line =~ /(\S+)/;
+	} else {
+	    undef $orig_acc;
+	}
+    }
+    
+    # Get gmap lines for this entry
+    $last_gmap_acc = $gmap_acc;
+    while (defined($gmap_acc) && $gmap_acc eq $last_gmap_acc) {
+	# Don't print non-alignment results, so we don't confuse next step, filtering for concordant pairs
+	($flags,$chr) = $gmap_line =~ /^\S+\t(\d+)\t(\S+)/;
+	if ($chr ne "*") {  # Prune nomappings from first file; keep those from second file
+	    if ($flags & 128) {
+		push @lines_second,$gmap_line;
+	    } else {
+		push @lines_first,$gmap_line;
+	    }
+	}
+	while (defined($gmap_line = <$GMAP_FP>) && $gmap_line =~ /^\@/) { }
+	if (defined($gmap_line)) {
+	    ($gmap_acc) = $gmap_line =~ /(\S+)/;
+	} else {
+	    undef $gmap_acc;
+	}
+    }
+
+    # print STDERR "Handling first end\n";
+    print_unique(\@lines_first);
+
+    # print STDERR "Handling second end\n";
+    print_unique(\@lines_second);
+}
+
+while (defined($orig_acc)) {
+    ($chr) = $orig_line =~ /^\S+\t\d+\t(\S+)/;
+    print $orig_line;
+    while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+    if (defined($orig_line)) {
+	($orig_acc) = $orig_line =~ /(\S+)/;
+    } else {
+	undef $orig_acc;
+    }
+}
+
+exit;
+
+
+sub get_positions {
+    my ($chrpos_low, $cigar) = @_;
+    my @positions = ();
+    my $nmatches = 0;
+    my $position;
+    my ($i, $n);
+
+    if ($cigar ne "*") {
+	$position = $chrpos_low;
+	while ($cigar =~ /\S/) {
+	($n,$type,$tail) = $cigar =~ /(\d+)(\D)(.*)/;
+	       if ($type eq "M") {
+		   for ($i = 0; $i < $n; $i++) {
+		       push @positions,$position;
+		       $position++;
+		   }
+		   $nmatches += $n;
+	       } elsif ($type eq "D") {
+		   for ($i = 0; $i < $n; $i++) {
+		       push @positions,$position;
+		       $position++;
+		   }
+
+	       } elsif ($type eq "H") {
+		   # No effect on position
+
+	       } elsif ($type eq "I") {
+		   for ($i = 0; $i < $n; $i++) {
+		       push @positions,$position;
+		       # Don't advance position, so it gets called as extra
+		   }
+		   $nmatches += $n;
+	       } elsif ($type eq "N") {
+		   # push @gapstarts,$position;
+		   $position += $n;
+		   # push @gapends,$position+1;
+	       } elsif ($type eq "S") {
+		   $position += $n;
+	       } else {
+		   die "type $type, cigar $cigar";
+	       }
+
+	       $cigar = $tail;
+	    }
+    }
+
+    return (\@positions, $nmatches);
+}
+
+
+sub overlap_p {
+    my ($chr1, $positionsi, $chr2, $positionsj) = @_;
+    my $i = 0;
+    my $j = 0;;
+
+    if ($chr1 eq $chr2) {
+	while ($i <= $#{$positionsi} && $j <= $#{$positionsj}) {
+	    if ($ {$positionsi}[$i] < $ {$positionsj}[$j]) {
+		$i++;
+	    } elsif ($ {$positionsj}[$j] < $ {$positionsi}[$i]) {
+		$j++;
+	    } else {
+		return 1;
+	    }
+	}
+    }
+    return 0;
+}
+
+
+
+
+sub print_unique {
+    my ($lines) = @_;
+    my $i;
+    my $j;
+
+    # print STDERR "Entered print_unique with the lines:\n" . join("",@ {$lines}) . "\n";
+
+    $i = 0;
+    foreach $line (@ {$lines}) {
+	$eliminate[$i] = 0;
+	$i++;
+    }
+    
+    $i = 0;
+    foreach $line (@ {$lines}) {
+	@fields = split /\t/,$line;
+	$chr[$i] = $fields[2];
+	$chrpos_low = $fields[3];
+	$mapq[$i] = $fields[4];	# GMAP puts 255 here
+	$cigar = $fields[5];
+	($positions[$i],$nmatches[$i]) = get_positions($chrpos_low,$cigar);
+	$i++;
+    }
+	
+    for ($i = 0; $i < $#{$lines}; $i++) {
+	for ($j = $i + 1; $j <= $#{$lines}; $j++) {
+	    if (overlap_p($chr[$i],$positions[$i],$chr[$j],$positions[$j]) == 1) {
+		if ($nmatches[$i] > $nmatches[$j]) {
+		    # print STDERR "Elimination of $j by $i because of nmatches\n";
+		    $eliminate[$j] = 1;
+		} elsif ($nmatches[$j] > $nmatches[$i]) {
+		    # print STDERR "Elimination of $i by $j because of nmatches\n";
+		    $eliminate[$i] = 1;
+		} elsif ($mapq[$i] == 255 && $mapq[$j] != 255) {
+		    # print STDERR "Elimination of $i by $j because of mapq\n";
+		    $eliminate[$i] = 1;
+		} elsif ($mapq[$j] == 255 && $mapq[$i] != 255) {
+		    # print STDERR "Elimination of $j by $i because of mapq\n";
+		    $eliminate[$j] = 1;
+		} else {
+		    # Eliminate second one
+		    # print STDERR "Elimination of $j by $i because of identity\n";
+		    $eliminate[$j] = 1;
+		}
+	    }
+	}
+    }
+
+    $i = 0;
+    foreach $line (@ {$lines}) {
+	if ($eliminate[$i] == 0) {
+	    print $line;
+	}
+	$i++;
+    }
+
+    return;
+}
+
+

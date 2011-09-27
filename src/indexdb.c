@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: indexdb.c 36132 2011-03-06 20:27:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -188,7 +188,7 @@ Indexdb_mean_size (T this, bool cmetp) {
 
 T
 Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
-		    int required_interval, bool batch_offsets_p, bool batch_positions_p) {
+		    int required_interval, Access_mode_T offsets_access, Access_mode_T positions_access) {
   T new = (T) MALLOC(sizeof(*new));
   char *filename, *pattern, interval_char, interval_string[2], best_interval_char, *p;
   char *offsets_suffix, *positions_suffix;
@@ -273,12 +273,24 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
 
 
 #ifdef PMAP
-#ifndef HAVE_MMAP
-  new->offsets = (Positionsptr_T *) NULL;
-  new->offsets_fd = Access_fileio(filename);
-  new->offsets_access = FILEIO;
-#else
-  if (batch_offsets_p == true) {
+  if (offsets_access == USE_ALLOCATE) {
+    if (snps_root) {
+      fprintf(stderr,"Allocating memory for %s%c (%s) offsets db...",idx_filesuffix,best_interval_char,snps_root);
+    } else {
+      fprintf(stderr,"Allocating memory for %s%c offsets db...",idx_filesuffix,best_interval_char);
+    }
+    new->offsets = (Positionsptr_T *) Access_allocated(&new->offsets_len,&seconds,
+						       filename,sizeof(Positionsptr_T));
+    if (new->offsets == NULL) {
+      fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"done (%lu bytes, %.2f sec)\n",new->offsets_len,seconds);
+      new->offsets_access = ALLOCATED;
+    }
+
+#ifdef HAVE_MMAP
+  } else if (offsets_access == USE_MMAP_PRELOAD) {
     if (snps_root) {
       fprintf(stderr,"Pre-loading %s%c (%s) offsets db...",idx_filesuffix,best_interval_char,snps_root);
     } else {
@@ -294,40 +306,70 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
 	      new->offsets_len,npages,seconds);
       new->offsets_access = MMAPPED;
     }
-  } else {
+
+  } else if (offsets_access == USE_MMAP_ONLY) {
     new->offsets = (Positionsptr_T *) Access_mmap(&new->offsets_fd,&new->offsets_len,
 						  filename,sizeof(Positionsptr_T),/*randomp*/false);
     if (new->offsets == NULL) {
+      fprintf(stderr,"Insufficient memory for mmap (will use disk file instead, but program may not run)\n");
       new->offsets_access = FILEIO;
     } else {
       new->offsets_access = MMAPPED;
     }
+#endif
+
+  } else if (offsets_access == USE_FILEIO) {
+    new->offsets_access = FILEIO;
+
+  } else {
+    fprintf(stderr,"Don't recognize offsets_access type %d\n",offsets_access);
+    abort();
   }
 
 #ifdef HAVE_PTHREAD
+  /* Only for PMAP */
   if (new->offsets_access == FILEIO) {
     pthread_mutex_init(&new->offsets_read_mutex,NULL);
   }
 #endif
 
-#endif
 
-#else  /* PMAP */
+#else  /* not PMAP */
 
-#ifndef HAVE_MMAP
-  new->offsets = (Positionsptr_T *) Access_allocated(&len,&seconds,filename,sizeof(Positionsptr_T));
-  new->offsets_access = ALLOCATED;
-#else
-  if (batch_offsets_p == true) {
+  if (offsets_access == USE_ALLOCATE) {
+    if (snps_root) {
+      fprintf(stderr,"Allocating memory for %s%c (%s) offsets db...",idx_filesuffix,best_interval_char,snps_root);
+    } else {
+      fprintf(stderr,"Allocating memory for %s%c offsets db...",idx_filesuffix,best_interval_char);
+    }
+    new->offsets = (Positionsptr_T *) Access_allocated(&len,&seconds,filename,sizeof(Positionsptr_T));
+    if (new->offsets == NULL) {
+      fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"done (%lu bytes, %.2f sec)\n",(long unsigned int) len,seconds);
+      new->offsets_access = ALLOCATED;
+    }
+
+#ifdef HAVE_MMAP
+  } else if (offsets_access == USE_MMAP_PRELOAD) {
     if (snps_root) {
       fprintf(stderr,"Pre-reading %s%c (%s) offsets db...",idx_filesuffix,best_interval_char,snps_root);
     } else {
       fprintf(stderr,"Pre-reading %s%c offsets db...",idx_filesuffix,best_interval_char);
     }
-    new->offsets = (Positionsptr_T *) Access_allocated(&len,&seconds,filename,sizeof(Positionsptr_T));
-    fprintf(stderr,"done (%u bytes, %.2f sec)\n",(unsigned int) len,seconds);
-    new->offsets_access = ALLOCATED;
-  } else {
+    new->offsets = (Positionsptr_T *) Access_mmap_and_preload(&new->offsets_fd,&new->offsets_len,&npages,&seconds,
+							      filename,sizeof(Positionsptr_T));
+    if (new->offsets == NULL) {
+      fprintf(stderr,"insufficient memory (will use disk file instead, but program may not run)\n");
+      new->offsets_access = FILEIO;
+    } else {
+      fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
+	      (long unsigned int) len,npages,seconds);
+      new->offsets_access = MMAPPED;
+    }
+
+  } else if (offsets_access == USE_MMAP_ONLY) {
     new->offsets = (Positionsptr_T *) Access_mmap(&new->offsets_fd,&new->offsets_len,
 						  filename,sizeof(Positionsptr_T),/*randomp*/false);
     if (new->offsets == NULL) {
@@ -337,10 +379,17 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
     } else {
       new->offsets_access = MMAPPED;
     }
-  }
 #endif
 
-#endif
+  } else if (offsets_access == USE_FILEIO) {
+    new->offsets_access = FILEIO;
+
+  } else {
+    fprintf(stderr,"Don't recognize offsets_access type %d\n",offsets_access);
+    abort();
+  }
+
+#endif	/* PMAP */
 
   FREE(filename);
 
@@ -358,12 +407,25 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
 			     /*for interval_char*/1+strlen(positions_suffix)+1,sizeof(char));
   sprintf(filename,"%s/%s.%s%c%s",genomesubdir,fileroot,idx_filesuffix,best_interval_char,positions_suffix);
 
-#ifndef HAVE_MMAP
-  new->positions = (Genomicpos_T *) NULL;
-  new->positions_fd = Access_fileio(filename);
-  new->positions_access = FILEIO;
-#else
-  if (batch_positions_p == true) {
+
+  if (positions_access == USE_ALLOCATE) {
+    if (snps_root) {
+      fprintf(stderr,"Allocating memory for %s%c (%s) positions db...",idx_filesuffix,best_interval_char,snps_root);
+    } else {
+      fprintf(stderr,"Allocating memory for %s%c positions db...",idx_filesuffix,best_interval_char);
+    }
+    new->positions = (Genomicpos_T *) Access_allocated(&new->positions_len,&seconds,
+						       filename,sizeof(Genomicpos_T));
+    if (new->positions == NULL) {
+      fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"done (%lu bytes, %.2f sec)\n",(long unsigned int) new->positions_len,seconds);
+      new->positions_access = ALLOCATED;
+    }
+
+#ifdef HAVE_MMAP
+  } else if (positions_access == USE_MMAP_PRELOAD) {
     if (snps_root) {
       fprintf(stderr,"Pre-loading %s%c (%s) positions db...",idx_filesuffix,best_interval_char,snps_root);
     } else {
@@ -379,16 +441,24 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
 	      (long unsigned int) new->positions_len,npages,seconds);
       new->positions_access = MMAPPED;
     }
-  } else {
+
+  } else if (positions_access == USE_MMAP_ONLY) {
     new->positions = (Genomicpos_T *) Access_mmap(&new->positions_fd,&new->positions_len,
 						  filename,sizeof(Genomicpos_T),/*randomp*/true);
     if (new->positions == NULL) {
+      fprintf(stderr,"Insufficient memory for mmap (will use disk file instead, but program will be slow)\n");
       new->positions_access = FILEIO;
     } else {
       new->positions_access = MMAPPED;
     }
-  }
 #endif
+
+  } else if (positions_access == USE_FILEIO) {
+    new->positions_access = FILEIO;
+  } else {
+    fprintf(stderr,"Don't recognize positions_access %d\n",positions_access);
+    abort();
+  }
 
 #ifdef HAVE_PTHREAD
   if (new->positions_access == FILEIO) {
@@ -590,8 +660,24 @@ static void
 positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
   int i;
   Genomicpos_T value;
-  char buffer[4];
+  unsigned char buffer[4];
 
+#ifdef WORDS_BIGENDIAN
+  /* Need to keep in bigendian format */
+  for (i = 0; i < n; i++) {
+    read(positions_fd,buffer,4);
+
+    value = (buffer[0] & 0xff);
+    value <<= 8;
+    value |= (buffer[1] & 0xff);
+    value <<= 8;
+    value |= (buffer[2] & 0xff);
+    value <<= 8;
+    value |= (buffer[3] & 0xff);
+
+    values[i] = value;
+  }
+#else
   for (i = 0; i < n; i++) {
     read(positions_fd,buffer,4);
 
@@ -605,6 +691,7 @@ positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
 
     values[i] = value;
   }
+#endif
 
   return;
 }
@@ -907,7 +994,7 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
     break;
 
   case FILEIO:
-    fprintf(stderr,"Sorry, cannot run GMAP with insufficient memory for offsets file.\n");
+    fprintf(stderr,"Sorry, cannot run GSNAP with insufficient memory for offsets file.\n");
     abort();
   }
 

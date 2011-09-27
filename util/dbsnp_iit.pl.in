@@ -1,0 +1,134 @@
+#! @PERL@
+
+use warnings;
+use IO::File;
+use Getopt::Std;
+
+undef($opt_c);			# desired_chr
+$opt_w = 1;                     # item weight: 1 (more confident), 2, or 3 (less); allow $opt_w and lower
+undef($opt_e);			# exceptions file
+getopts("c:e:w:");
+
+
+if (defined($exceptions_file = $opt_e)) {
+    if ($exceptions_file =~ /\.gz$/) {
+	$FP = new IO::File("gunzip -c $exceptions_file |") or die "Cannot gunzip file $exceptions_file";
+    } else {
+	$FP = new IO::File($exceptions_file) or die "Cannot read file $exceptions_file";
+    }
+    while (defined($line = <$FP>)) {
+	chop $line;
+	@fields = split /\t/,$line;
+	$exception_type = $fields[5];
+
+	if (!defined($allowp{$exception_type})) {
+	    # Exclude this SNP (implicitly)
+	    $rsid = $fields[4];
+	    if (!defined($excludep{$rsid})) {
+		$nexclude_implicit{$exception_type} += 1;
+		$excludep{$rsid} = 1;
+	    }
+	    
+	} elsif ($allowp{$exception_type} == 0) {
+	    # Exclude this SNP (explicitly)
+	    $rsid = $fields[4];
+	    if (!defined($excludep{$rsid})) {
+		$nexclude_explicit{$exception_type} += 1;
+		$excludep{$rsid} = 1;
+	    }
+
+	} else {
+	    # Allow this SNP
+	    $nallow_explicit{$exception_type} += 1;
+	}
+    }
+    close($FP);
+
+    print STDERR "Exceptions to be allowed:\n";
+    foreach $exception_type (sort {$a cmp $b} keys %nallow_explicit) {
+	print STDERR "  $exception_type: $nallow_explicit{$exception_type}\n";
+    }
+    print STDERR "\n";
+
+    print STDERR "Exceptions to be excluded (explicitly listed in program):\n";
+    foreach $exception_type (sort {$a cmp $b} (keys %nexclude_explicit)) {
+	print STDERR "  $exception_type: $nexclude_explicit{$exception_type}\n";
+    }
+    print STDERR "\n";
+
+    print STDERR "Exceptions excluded implicitly (not listed in program):\n";
+    foreach $exception_type (sort {$a cmp $b} (keys %nexclude_implicit)) {
+	print STDERR "  $exception_type: $nexclude_implicit{$exception_type}\n";
+    }
+    print STDERR "\n";
+}
+
+
+while (defined($line = <>)) {
+    chop $line;
+    @fields = split /\t/,$line;
+    $item_class = $fields[11];
+    if ($item_class eq "single") {
+	$chr = $fields[1];
+	if (!defined($opt_c) || $chr eq $opt_c) {
+	    $item_weight = $fields[17];
+	    if ($item_weight <= $opt_w) {
+		$rsid = $fields[4];
+		if (!defined($excludep{$rsid})) {
+		    if ($fields[9] =~ /^(.)\/(.)$/) {
+			# single base => single base
+			$alleleA = $1;
+			$alleleB = $2;
+			if (!defined($acgt{$alleleA}) || !defined($acgt{$alleleB})) {
+			    print STDERR "$rsid has alleles $fields[9] with non-ACGT character\n";
+			} else {
+			    if (($snp_strand = $fields[6]) eq "-") {
+				$alleleA = $revcomp{$alleleA};
+				$alleleB = $revcomp{$alleleB};
+			    }
+			    if ($alleleA le $alleleB) {
+				$snp_type = $alleleA . $alleleB;
+			    } else {
+				$snp_type = $alleleB . $alleleA;
+			    }
+			    $chrpos = $fields[2] + 1;	# because dbsnp file is 0-based
+			    print ">$rsid $chr:$chrpos $snp_type $snp_strand\n";
+			}
+		    }
+		}
+	    }
+	}
+    }
+}
+    
+exit;
+
+
+BEGIN {
+    %acgt = ("A" => 1, "C" => 1, "G" => 1, "T" => 1);
+
+    %revcomp = ("A" => "T", "C" => "G", "G" => "C", "T" => "A");
+
+    # To allow an exception type, it must be listed below and have a value of 1
+    %allowp = (
+	"RefAlleleMismatch" => 0, # The reference allele from dbSNP does not match the UCSC reference allele.
+	"RefAlleleRevComp" => 0,  # The reference allele from dbSNP matches the reverse complement of the UCSC reference allele.
+	"DuplicateObserved" => 0, # There are other rsIds at this position with identical variation.
+	"MixedObserved" => 0, #	There are other rsIds at this position with different variation.
+	"FlankMismatchGenomeLonger" => 0, # NCBI's alignment of the flanking sequences had at least one mismatch or gap.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"FlankMismatchGenomeEqual" => 0, # NCBI's alignment of the flanking sequences had at least one mismatch or gap.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"FlankMismatchGenomeShorter" => 0, # NCBI's alignment of the flanking sequences had at least one mismatch or gap.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"NamedDeletionZeroSpan" => 0, # A deletion (from the genome) was observed but the annotation spans 0 bases.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"NamedInsertionNonzeroSpan" => 0, # An insertion (into the genome) was observed but the annotation spans more than 0 bases.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"SingleClassLongerSpan" => 0, # All observed alleles are single-base, but the annotation spans more than 1 base.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"SingleClassZeroSpan" => 0, # All observed alleles are single-base, but the annotation spans 0 bases.  (UCSC's re-alignment of flanking sequences to the genome may be informative -- see below.)
+	"SingleClassTriAllelic" => 0, # This single-base substitution is tri-allelic.
+	"SingleClassQuadAllelic" => 0, # This single-base substitution is quad-allelic.
+	"ObservedWrongFormat" => 0, # Observed allele(s) from dbSNP have unexpected format for the given class.
+	"ObservedTooLong" => 0, # Observed allele not given (length too long).
+	"ObservedContainsIupac" => 0, # Observed allele(s) from dbSNP contain IUPAC ambiguous bases.
+	"ObservedMismatch" => 0, # UCSC reference allele does not match any observed allele from dbSNP.
+	"MultipleAlignments" => 0, # This variant aligns in more than one location.
+	);
+}
+

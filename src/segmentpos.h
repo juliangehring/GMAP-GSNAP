@@ -1,4 +1,4 @@
-/* $Id: segmentpos.h,v 1.27 2005-07-08 07:58:34 twu Exp $ */
+/* $Id: segmentpos.h 33519 2011-01-10 22:13:42Z twu $ */
 #ifndef SEGMENTPOS_INCLUDED
 #define SEGMENTPOS_INCLUDED
 #include <stdio.h>
@@ -33,9 +33,9 @@ extern int
 Segmentpos_compare (const void *x, const void *y);
 
 extern void
-Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
+Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
 			     Genomicpos_T position2, bool referencealignp, 
-			     char *align_strain, bool zerobasedp);
+			     char *align_strain);
 
 #undef T
 #endif

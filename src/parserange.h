@@ -24,5 +24,9 @@ Parserange_universal (bool *revcomp, Genomicpos_T *genomicstart, Genomicpos_T *g
 		      char *query, char *genomesubdir, char *fileroot);
 #endif
 
+extern bool
+Parserange_simple (char **div, bool *revcomp, Genomicpos_T *chrstart, Genomicpos_T *chrend,
+		   char *query);
+
 #endif
 

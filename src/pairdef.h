@@ -1,4 +1,4 @@
-/* $Id: pairdef.h,v 1.15 2010-07-10 01:38:26 twu Exp $ */
+/* $Id: pairdef.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"

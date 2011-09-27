@@ -1,4 +1,4 @@
-/* $Id: stage1.h,v 1.73 2009-08-04 20:37:34 twu Exp $ */
+/* $Id: stage1.h 31984 2010-11-22 21:54:33Z twu $ */
 #ifndef STAGE1_INCLUDED
 #define STAGE1_INCLUDED
 #include "bool.h"
@@ -29,7 +29,7 @@ Stage1_compute (bool *samplingp, Sequence_T queryuc,
 #else
 		Indexdb_T indexdb,
 #endif
-		int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
+		int indexdb_size_threshold, IIT_T chromosome_iit, int nchrs, Chrsubset_T chrsubset,
 		Matchpool_T matchpool, int maxintronlen_bound, int maxtotallen_bound,
 		int stuttercycles, int stutterhits, bool subsequencep, Genome_T genome,
 		Genomicpos_T genome_totallength, Diagnostic_T diagnostic, Stopwatch_T stopwatch);

@@ -1,4 +1,4 @@
-/* $Id: diagdef.h,v 1.6 2008-09-15 17:43:57 twu Exp $ */
+/* $Id: diagdef.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef DIAGDEF_INCLUDED
 #define DIAGDEF_INCLUDED
 #include "bool.h"

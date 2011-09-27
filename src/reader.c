@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reader.c,v 1.21 2010-02-26 23:10:41 twu Exp $";
+static char rcsid[] = "$Id: reader.c 27450 2010-08-05 19:02:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

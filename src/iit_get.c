@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c,v 1.54 2010-04-02 17:20:13 twu Exp $";
+static char rcsid[] = "$Id: iit_get.c 31440 2010-11-10 19:52:35Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -113,8 +113,7 @@ Options for specific IIT formats\n\
   -R, --runlength         Report runlength IIT file in tally format\n\
   -T, --tally             Report tally IIT file in tally format\n\
   -Z, --zeroes            Include zeroes in tally format\n\
-  -M, --mean              Mean value of tally format\n\
-  -N, --total             Overall total of tally format\n\
+  -N, --stats             Statistics (count, npositions, mean) of tally format\n\
 \n\
   -V, --version           Show version\n\
   -?, --help              Show this help message\n\
@@ -183,12 +182,15 @@ print_spaces (int n) {
 static void
 print_interval_centered (char *divstring, unsigned int coordstart, int index, IIT_T iit, int fieldint) {
   Interval_T interval;
-  char *label, *annotation, centerchar;
+  char *label, *annotation, *restofheader, centerchar;
   bool allocp;
   int annotlength, left, centerpos;
 
   if (fieldint < 0) {
-    annotation = IIT_annotation(iit,index,&allocp);
+    annotation = IIT_annotation(&restofheader,iit,index,&allocp);
+    if (allocp == true) {
+      FREE(restofheader);
+    }
   } else {
     annotation = IIT_fieldvalue(iit,index,fieldint);
     allocp = true;
@@ -208,7 +210,7 @@ print_interval_centered (char *divstring, unsigned int coordstart, int index, II
   centerchar = annotation[centerpos];
 
   if (centeruc == true && islower(centerchar)) {
-    if (allocp == true) {
+    if (fieldint >= 0 && allocp == true) {
       FREE(annotation);
     }
   } else {
@@ -223,7 +225,7 @@ print_interval_centered (char *divstring, unsigned int coordstart, int index, II
       print_forward(annotation,centerpos+1,annotlength-1);
     }
     print_spaces(centerlength+left-annotlength);
-    if (allocp == true) {
+    if (fieldint >= 0 && allocp == true) {
       FREE(annotation);
     }
   
@@ -307,12 +309,12 @@ static void
 print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coordstart, unsigned int coordend,
 		      int indexi, IIT_T iit, bool zeroesp) {
   Interval_T interval;
-  char *annotation, *ptr, *nextptr;
+  char *annotation, *restofheader, *ptr, *nextptr;
   bool allocp;
   long int total = 0;
   unsigned int chrpos, intervalend;
 
-  annotation = IIT_annotation(iit,indexi,&allocp);
+  annotation = IIT_annotation(&restofheader,iit,indexi,&allocp);
 
   interval = IIT_interval(iit,indexi);
   chrpos = Interval_low(interval);
@@ -360,7 +362,7 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
   *lastcoord = chrpos;
 
   if (allocp == true) {
-    FREE(annotation);
+    FREE(restofheader);
   }
   
   return;
@@ -419,11 +421,11 @@ static void
 compute_totals_tally (long int *total, unsigned int *n, unsigned int coordstart, unsigned int coordend,
 		      int indexi, IIT_T iit) {
   Interval_T interval;
-  char *annotation, *ptr;
+  char *annotation, *restofheader, *ptr;
   bool allocp;
   unsigned int chrpos, intervalend;
 
-  annotation = IIT_annotation(iit,indexi,&allocp);
+  annotation = IIT_annotation(&restofheader,iit,indexi,&allocp);
 
   interval = IIT_interval(iit,indexi);
   chrpos = Interval_low(interval);
@@ -450,7 +452,7 @@ compute_totals_tally (long int *total, unsigned int *n, unsigned int coordstart,
   }
 
   if (allocp == true) {
-    FREE(annotation);
+    FREE(restofheader);
   }
   
   return;
@@ -463,12 +465,12 @@ compute_logtotal_tally (long int *total, int *n, unsigned int coordstart, unsign
 			int indexi, IIT_T iit) {
   double logtotal = 0.0;
   Interval_T interval;
-  char *annotation, *ptr;
+  char *annotation, *restofheader, *ptr;
   bool allocp;
   unsigned int chrpos, intervalend;
   long int count;
 
-  annotation = IIT_annotation(iit,indexi,&allocp);
+  annotation = IIT_annotation(&restofheader,iit,indexi,&allocp);
 
   interval = IIT_interval(iit,indexi);
   chrpos = Interval_low(interval);
@@ -499,7 +501,7 @@ compute_logtotal_tally (long int *total, int *n, unsigned int coordstart, unsign
   }
 
   if (allocp == true) {
-    FREE(annotation);
+    FREE(restofheader);
   }
   
   return logtotal;
@@ -512,7 +514,7 @@ static void
 print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstart, unsigned int coordend, 
 		int index, IIT_T iit, int ndivs, int fieldint) {
   Interval_T interval;
-  char *label, *annotation;
+  char *label, *annotation, *restofheader;
   bool allocp;
 
   if (centerp == true) {
@@ -552,23 +554,24 @@ print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstar
     if (Interval_type(interval) > 0) {
       printf(" %s",IIT_typestring(iit,Interval_type(interval)));
     }
-    printf("\n");
+    if (IIT_version(iit) < 5) {
+      printf("\n");
+    }
   }
+
   if (fieldint < 0) {
-    annotation = IIT_annotation(iit,index,&allocp);
+    annotation = IIT_annotation(&restofheader,iit,index,&allocp);
+    printf("%s\n",restofheader);
+    printf("%s",annotation);
+    if (allocp == true) {
+      FREE(restofheader);
+    }
   } else {
     annotation = IIT_fieldvalue(iit,index,fieldint);
-    allocp = true;
-  }
-  if (strlen(annotation) == 0) {
-  } else if (annotation[strlen(annotation)-1] == '\n') {
     printf("%s",annotation);
-  } else {
-    printf("%s\n",annotation);
-  }
-  if (allocp == true) {
     FREE(annotation);
   }
+
   return;
 }
 
@@ -736,7 +739,8 @@ main (int argc, char *argv[]) {
     filename = argv[1];
   }
 
-  if (argc == 2 && statsp == true) {
+  if (statsp == true & argc == 2) {
+    /* Want total over entire IIT */
     if ((iit = IIT_read(filename,NULL,true,/*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/true,
 			/*labels_read_p*/false)) == NULL) {
       if (Access_file_exists_p(filename) == false) {
@@ -753,11 +757,10 @@ main (int argc, char *argv[]) {
       debug(printf("index = %d\n",matches[i]));
       compute_totals_tally(&total,&n,/*coordstart*/0,/*coordend*/-1U,i,iit);
     }
-    printf("counts:%ld positions:%u mean:%.3f\n",total,n,(double) total/(double) n);
+    printf("counts:%ld non-zero-positions:%u mean-over-nonzero:%.3f\n",total,n,(double) total/(double) n);
       
     IIT_free(&iit);
     return 0;
-
 
   } else if (argc == 2) {
 
@@ -875,7 +878,8 @@ main (int argc, char *argv[]) {
 	debug(printf("index = %d\n",matches[i]));
 	compute_totals_tally(&total,&n,coordstart,coordend,matches[i],iit);
       }
-      printf("counts:%ld positions:%u mean:%.3f\n",total,n,(double)total/(double) n);
+      n = coordend - coordstart + 1;
+      printf("counts:%ld width:%u mean:%.3f\n",total,n,(double)total/(double) n);
 
 #if 0
     } else if (geomeanp == true) {

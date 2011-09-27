@@ -35,10 +35,13 @@ host_triplet = @host@
 target_triplet = @target@
 subdir = util
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(srcdir)/fa_coords.pl.in $(srcdir)/gmap_compress.pl.in \
+	$(srcdir)/dbsnp_iit.pl.in $(srcdir)/fa_coords.pl.in \
+	$(srcdir)/gmap_build.pl.in $(srcdir)/gmap_compress.pl.in \
 	$(srcdir)/gmap_process.pl.in $(srcdir)/gmap_reassemble.pl.in \
 	$(srcdir)/gmap_setup.pl.in $(srcdir)/gmap_uncompress.pl.in \
-	$(srcdir)/gmap_update.pl.in $(srcdir)/md_coords.pl.in
+	$(srcdir)/gmap_update.pl.in $(srcdir)/md_coords.pl.in \
+	$(srcdir)/psl_splices.pl.in $(srcdir)/psl_splicesites.pl.in \
+	$(srcdir)/sam_merge.pl.in $(srcdir)/sam_restore.pl.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/pagesize.m4 \
@@ -56,8 +59,10 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
 CONFIG_CLEAN_FILES = gmap_compress.pl gmap_uncompress.pl \
-	gmap_process.pl gmap_setup.pl gmap_update.pl \
-	gmap_reassemble.pl md_coords.pl fa_coords.pl
+	gmap_process.pl gmap_setup.pl gmap_build.pl gmap_update.pl \
+	gmap_reassemble.pl md_coords.pl fa_coords.pl \
+	psl_splicesites.pl psl_splices.pl dbsnp_iit.pl sam_merge.pl \
+	sam_restore.pl
 am__installdirs = "$(DESTDIR)$(bindir)"
 binSCRIPT_INSTALL = $(INSTALL_SCRIPT)
 SCRIPTS = $(bin_SCRIPTS)
@@ -89,6 +94,9 @@ EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
 GMAPDB = @GMAPDB@
+GOBY_CFLAGS = @GOBY_CFLAGS@
+GOBY_LDFLAGS = @GOBY_LDFLAGS@
+GOBY_LIBS = @GOBY_LIBS@
 GREP = @GREP@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
@@ -123,11 +131,15 @@ PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@
 RANLIB = @RANLIB@
+SAMTOOLS_CFLAGS = @SAMTOOLS_CFLAGS@
+SAMTOOLS_LDFLAGS = @SAMTOOLS_LDFLAGS@
+SAMTOOLS_LIBS = @SAMTOOLS_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+ZLIB_LIBS = @ZLIB_LIBS@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -185,10 +197,10 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-@FULLDIST_FALSE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
-@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
-@FULLDIST_FALSE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
-@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
+@FULLDIST_FALSE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+@FULLDIST_FALSE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
 all: all-am
 
 .SUFFIXES:
@@ -229,6 +241,8 @@ gmap_process.pl: $(top_builddir)/config.status $(srcdir)/gmap_process.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_setup.pl: $(top_builddir)/config.status $(srcdir)/gmap_setup.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+gmap_build.pl: $(top_builddir)/config.status $(srcdir)/gmap_build.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_update.pl: $(top_builddir)/config.status $(srcdir)/gmap_update.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_reassemble.pl: $(top_builddir)/config.status $(srcdir)/gmap_reassemble.pl.in
@@ -236,6 +250,16 @@ gmap_reassemble.pl: $(top_builddir)/config.status $(srcdir)/gmap_reassemble.pl.i
 md_coords.pl: $(top_builddir)/config.status $(srcdir)/md_coords.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 fa_coords.pl: $(top_builddir)/config.status $(srcdir)/fa_coords.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+psl_splicesites.pl: $(top_builddir)/config.status $(srcdir)/psl_splicesites.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+psl_splices.pl: $(top_builddir)/config.status $(srcdir)/psl_splices.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+dbsnp_iit.pl: $(top_builddir)/config.status $(srcdir)/dbsnp_iit.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+sam_merge.pl: $(top_builddir)/config.status $(srcdir)/sam_merge.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+sam_restore.pl: $(top_builddir)/config.status $(srcdir)/sam_restore.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-binSCRIPTS: $(bin_SCRIPTS)
 	@$(NORMAL_INSTALL)
@@ -412,6 +436,10 @@ gmap_setup: gmap_setup.pl
 	cp gmap_setup.pl gmap_setup
 	chmod +x gmap_setup
 
+gmap_build: gmap_build.pl
+	cp gmap_build.pl gmap_build
+	chmod +x gmap_build
+
 gmap_update: gmap_update.pl
 	cp gmap_update.pl gmap_update
 	chmod +x gmap_update
@@ -427,6 +455,26 @@ md_coords: md_coords.pl
 fa_coords: fa_coords.pl
 	cp fa_coords.pl fa_coords
 	chmod +x fa_coords
+
+psl_splicesites: psl_splicesites.pl
+	cp psl_splicesites.pl psl_splicesites
+	chmod +x psl_splicesites
+
+psl_splices: psl_splices.pl
+	cp psl_splices.pl psl_splices
+	chmod +x psl_splices
+
+dbsnp_iit: dbsnp_iit.pl
+	cp dbsnp_iit.pl dbsnp_iit
+	chmod +x dbsnp_iit
+
+sam_merge: sam_merge.pl
+	cp sam_merge.pl sam_merge
+	chmod +x sam_merge
+
+sam_restore: sam_restore.pl
+	cp sam_restore.pl sam_restore
+	chmod +x sam_restore
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:

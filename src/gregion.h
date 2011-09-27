@@ -1,4 +1,4 @@
-/* $Id: gregion.h,v 1.8 2010-07-10 01:28:53 twu Exp $ */
+/* $Id: gregion.h 32520 2010-12-07 17:16:10Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
@@ -83,9 +83,6 @@ Gregion_new_from_matches (Match_T match5, Match_T match3, IIT_T chromosome_iit,
 extern List_T
 Gregion_filter_unique (List_T gregionlist);
 
-extern List_T
-Gregion_filter_support (List_T gregionlist, int boundary, double pct_max, int diff_max);
-
 extern double
 Gregion_best_weight (List_T gregionlist);
 
@@ -100,6 +97,9 @@ Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int qu
 
 extern int
 Gregion_cmp (const void *a, const void *b);
+
+extern List_T
+Gregion_filter_clean (List_T gregionlist, int nchrs);
 
 #undef T
 #endif

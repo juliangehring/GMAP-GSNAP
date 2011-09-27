@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c,v 1.75 2009-03-10 16:21:30 twu Exp $";
+static char rcsid[] = "$Id: translation.c 33526 2011-01-10 22:41:21Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -56,18 +56,20 @@ static char uppercaseCode[128] = UPPERCASE_U2T;
 
 #define T Translation_T
 struct T {
+  int querypos;
   char aa;
   Frame_T frame;
 };
 
 
 static struct T *
-Translation_array_new (int translationlen) {
+Translation_array_new (struct Pair_T *pairs, int translationlen) {
   struct T *new;
   int i;
 
   new = (struct T *) CALLOC(translationlen,sizeof(struct T));
   for (i = 0; i < translationlen; i++) {
+    new[i].querypos = pairs[i].querypos;
     new[i].aa = ' ';
     new[i].frame = NOFRAME;
   }
@@ -85,7 +87,7 @@ Translation_dump (struct Pair_T *pairs, struct T *translation, int translationle
     } else {
       printf("       ");
     }
-    printf("%d: %d %d ",i,pairs[i].querypos,pairs[i].aapos);
+    printf("%d: querypos %d %d ",i,pairs[i].querypos,pairs[i].aapos);
     switch (translation[i].frame) {
     case NOFRAME: printf("%c %c %c",' ',' ',' '); break;
     case FRAME0: printf("%c %c %c",translation[i].aa,' ',' '); break;
@@ -183,6 +185,7 @@ Translation_get_codon (char a, char b, char c) {
 }
 
 
+#ifndef PMAP
 static void
 find_bounds_forward (int *translation_frame, int *translation_starti, 
 		     int *translation_endi, int *translation_length,
@@ -338,7 +341,9 @@ find_bounds_forward (int *translation_frame, int *translation_starti,
 
   return;
 }
+#endif
 
+#ifndef PMAP
 static void
 find_bounds_backward (int *translation_frame, int *translation_starti,
 		      int *translation_endi, int *translation_length,
@@ -487,6 +492,155 @@ find_bounds_backward (int *translation_frame, int *translation_starti,
 
   return;
 }
+#endif
+
+
+#ifndef PMAP
+static void
+find_bounds_forward_fromstart (int *translation_frame, int *translation_starti, 
+			       int *translation_endi, int *translation_length,
+			       bool *endstopp, struct T *translation, int translationlen,
+			       int cds_startpos) {
+  int frame_fromstart, phase_fromstart;
+  int beststart0, bestend0;
+  int bestorf0 = 0, orf0 = 0;
+  int start0 = 0;
+  bool endstop0p = false;
+  char codon;
+  int i;
+
+  phase_fromstart = (cds_startpos - 1) % 3;
+  if (translation[0].querypos % 3 == phase_fromstart) {
+    frame_fromstart = translation[0].frame;
+  } else if (translation[1].querypos % 3 == phase_fromstart) {
+    frame_fromstart = translation[1].frame;
+  } else if (translation[2].querypos % 3 == phase_fromstart) {
+    frame_fromstart = translation[2].frame;
+  } else {
+    fprintf(stderr,"Something wrong with Translation_T object\n");
+    abort();
+  }
+
+  for (i = 0; i < translationlen && endstop0p == false; i++) {
+    if (translation[i].querypos >= cds_startpos - 1 &&
+	translation[i].frame == frame_fromstart &&
+	(codon = translation[i].aa) != ' ') {
+      debug(printf("%d %c\n",i,translation[i].aa));
+      if (orf0 == 0) {
+	start0 = i;
+      }
+      if (codon == '*') {
+	orf0++;
+	if (orf0 > bestorf0) {
+	  debug(printf("Frame 0: Best orf is %d\n",orf0));
+	  bestorf0 = orf0;
+	  beststart0 = start0;
+	  bestend0 = i;
+	  endstop0p = true;
+	}
+
+      } else {
+	debug(printf("Incrementing orf0\n"));
+	orf0++;
+      }
+    }
+  }
+  
+  /* Handle last segments */
+  if (orf0 > bestorf0) {
+    debug(printf("Frame 0: Best orf is %d\n",orf0));
+    bestorf0 = orf0;
+    beststart0 = start0;
+    bestend0 = translationlen-1;
+    endstop0p = false;
+  }
+
+  /* Find overall best */
+  *translation_length = bestorf0;
+  *endstopp = endstop0p;
+
+  debug(printf("Assigning frame %d\n",frame_fromstart));
+  *translation_frame = frame_fromstart;
+  *translation_starti = beststart0;
+  *translation_endi = bestend0;
+
+  return;
+}
+#endif
+
+
+#ifndef PMAP
+static void
+find_bounds_backward_fromstart (int *translation_frame, int *translation_starti,
+				int *translation_endi, int *translation_length,
+				bool *endstopp, struct T *translation, int translationlen,
+				int cds_startpos, int querylength) {
+  int frame_fromstart, phase_fromstart;
+  int beststart0, bestend0;
+  int bestorf0 = 0, orf0 = 0;
+  int start0 = translationlen-1;
+  bool endstop0p = false;
+  char codon;
+  int i;
+
+  phase_fromstart = (translationlen - cds_startpos) % 3;
+  if (translation[translationlen-1].querypos % 3 == phase_fromstart) {
+    frame_fromstart = translation[translationlen-1].frame;
+  } else if (translation[translationlen-2].querypos % 3 == phase_fromstart) {
+    frame_fromstart = translation[translationlen-2].frame;
+  } else if (translation[translationlen-3].querypos % 3 == phase_fromstart) {
+    frame_fromstart = translation[translationlen-3].frame;
+  } else {
+    fprintf(stderr,"Something wrong with Translation_T object\n");
+    abort();
+  }
+    
+  for (i = translationlen-1; i >= 0 && endstop0p == false; --i) {
+    if (translation[i].querypos >= cds_startpos - 1 &&
+	translation[i].frame == frame_fromstart &&
+	(codon = translation[i].aa) != ' ') {
+      debug(printf("%d %c\n",i,translation[i].aa));
+      if (orf0 == 0) {
+	start0 = i;
+      }
+      if (codon == '*') {
+	orf0++;
+	if (orf0 > bestorf0) {
+	  debug(printf("Frame 0: Best orf is %d\n",orf0));
+	  bestorf0 = orf0;
+	  bestend0 = i;
+	  beststart0 = start0;
+	  endstop0p = true;
+	}
+      } else {
+	debug(printf("Incrementing orf0\n"));
+	orf0++;
+      }
+    }
+  }
+  
+  /* Handle last segments */
+  if (orf0 > bestorf0) {
+    debug(printf("Frame 0: Best orf is %d\n",orf0));
+    bestorf0 = orf0;
+    bestend0 = 0;
+    beststart0 = start0;
+    endstop0p = false;
+  }
+
+  /* Find overall best */
+  *translation_length = bestorf0;
+  *endstopp = endstop0p;
+
+  debug(printf("Assigning frame %d\n",frame_fromstart));
+  *translation_frame = frame_fromstart;
+  *translation_starti = beststart0;
+  *translation_endi = bestend0;
+
+  return;
+}
+#endif
+
 
 
 #ifdef PMAP
@@ -541,7 +695,7 @@ translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
   int i, gpos = 0;
   char codon, nt2 = 'X', nt1 = 'X', nt0 = 'X';
 
-  translation = Translation_array_new(npairs);
+  translation = Translation_array_new(pairs,npairs);
 
   /* Go backward so we put aa at beginning of codon */
   ptr = &(pairs[npairs]);
@@ -554,7 +708,7 @@ translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
     } else {
       nt2 = nt1;
       nt1 = nt0;
-      nt0 = revcompp ? complCode[pair->genome] : uppercaseCode[pair->genome];
+      nt0 = revcompp ? complCode[(int) pair->genome] : uppercaseCode[(int) pair->genome];
 
       codon = Translation_get_codon(nt0,nt1,nt2);
       if (gpos < 2 && codon == 'X') {
@@ -581,7 +735,7 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
   int i, gpos = 0;
   char codon, nt2 = 'X', nt1 = 'X', nt0 = 'X';
 
-  translation = Translation_array_new(npairs);
+  translation = Translation_array_new(pairs,npairs);
 
   /* Go forwards so we put aa at beginning of codon */
   ptr = pairs;
@@ -594,7 +748,7 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
     } else {
       nt2 = nt1;
       nt1 = nt0;
-      nt0 = revcompp ? complCode[pair->genome] : uppercaseCode[pair->genome];
+      nt0 = revcompp ? complCode[(int) pair->genome] : uppercaseCode[(int) pair->genome];
 
       codon = Translation_get_codon(nt0,nt1,nt2);
       if (gpos < 2 && codon == 'X') {
@@ -618,6 +772,7 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
 /************************************************************************/
 
 
+#ifndef PMAP
 static int
 count_cdna_forward_strict (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ncdna = 0, j;
@@ -636,6 +791,7 @@ count_cdna_forward_strict (int *nexti, struct Pair_T *pairs, int npairs, int sta
   *nexti = j;
   return ncdna;
 }
+#endif
 
 
 static int
@@ -678,6 +834,7 @@ count_cdna_forward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int start
   return 1;			/* any answer that is not mod 0 */
 }
 
+#ifndef PMAP
 static int
 count_cdna_backward_strict (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
   int ncdna = 0, j;
@@ -696,6 +853,7 @@ count_cdna_backward_strict (int *nexti, struct Pair_T *pairs, int npairs, int st
   *nexti = j;
   return ncdna;
 }
+#endif
 
 static int
 count_cdna_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
@@ -813,7 +971,7 @@ get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, boo
     if (pairs[j].cdna != ' ') {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = revcompp ? complCode[pairs[j].cdna] : uppercaseCode[pairs[j].cdna];
+      nt2 = revcompp ? complCode[(int) pairs[j].cdna] : uppercaseCode[(int) pairs[j].cdna];
       j0 = j1;
       j1 = j2;
       j2 = j;
@@ -849,7 +1007,7 @@ get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, bo
     if (pairs[j].cdna != ' ') {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = revcompp ? complCode[pairs[j].cdna] : uppercaseCode[pairs[j].cdna];
+      nt2 = revcompp ? complCode[(int) pairs[j].cdna] : uppercaseCode[(int) pairs[j].cdna];
       j0 = j1;
       j1 = j2;
       j2 = j;
@@ -887,7 +1045,7 @@ get_codon_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti) {
     if (pairs[j].gapp == false && pairs[j].genome != ' ') {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = uppercaseCode[pairs[j].genome];
+      nt2 = uppercaseCode[(int) pairs[j].genome];
       j0 = j1;
       j1 = j2;
       j2 = j;
@@ -1029,6 +1187,7 @@ terminate_genomic (struct Pair_T *pairs, int npairs, int starti) {
 
 
 
+#ifndef PMAP
 static void
 mark_cdna_forward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
   struct Pair_T *pair;
@@ -1060,6 +1219,7 @@ mark_cdna_forward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int s
 
   return;
 }  
+#endif
 
 static void
 mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
@@ -1110,6 +1270,7 @@ mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, 
   return;
 }  
 
+#ifndef PMAP
 static void
 mark_cdna_backward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
   struct Pair_T *pair;
@@ -1141,6 +1302,7 @@ mark_cdna_backward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int 
 
   return;
 }  
+#endif
 
 static void
 mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
@@ -1196,7 +1358,7 @@ mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int starti,
 static void
 mark_genomic_strict (struct Pair_T *pairs, int npairs, int starti, int endi) {
   struct Pair_T *pair;
-  int i, nexti, nexti_alt, ngenomic, codon = ' ';
+  int i, nexti, ngenomic, codon = ' ';
 
   debug2(printf("mark_genomic_strict called with pairs #%d %d\n",starti,endi));
 
@@ -1318,7 +1480,7 @@ void
 Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, int *translation_length,
 			 int *relaastart, int *relaaend,
 			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp,
-			 bool strictp) {
+			 int cds_startpos, int querylength, bool strictp) {
   char lastaa;
   struct T *translation;
   bool endstopp;
@@ -1337,26 +1499,38 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 
   if (backwardp == false) {
     translation = translate_pairs_forward(pairs,npairs,revcompp);
-    find_bounds_forward(&translation_frame,&translation_starti,
-			&translation_endi,&(*translation_length),&endstopp,
-			translation,npairs,fulllengthp);
-    if (fulllengthp == true && *translation_length == 0) {
-      /* fprintf(stderr,"No full length gene found.  Assuming partial length.\n"); */
+    if (cds_startpos > 0) {
+      find_bounds_forward_fromstart(&translation_frame,&translation_starti,
+				    &translation_endi,&(*translation_length),&endstopp,
+				    translation,npairs,cds_startpos);
+    } else {
       find_bounds_forward(&translation_frame,&translation_starti,
 			  &translation_endi,&(*translation_length),&endstopp,
-			  translation,npairs,/*fulllengthp*/false);
+			  translation,npairs,fulllengthp);
+      if (fulllengthp == true && *translation_length == 0) {
+	/* fprintf(stderr,"No full length gene found.  Assuming partial length.\n"); */
+	find_bounds_forward(&translation_frame,&translation_starti,
+			    &translation_endi,&(*translation_length),&endstopp,
+			    translation,npairs,/*fulllengthp*/false);
+      }
     }
 
   } else {
     translation = translate_pairs_backward(pairs,npairs,revcompp);
-    find_bounds_backward(&translation_frame,&translation_starti,
-			 &translation_endi,&(*translation_length),&endstopp,
-			 translation,npairs,fulllengthp);
-    if (fulllengthp == true && *translation_length == 0) {
-      /* fprintf(stderr,"No full length gene found.  Assuming partial length.\n"); */
+    if (cds_startpos > 0) {
+      find_bounds_backward_fromstart(&translation_frame,&translation_starti,
+				     &translation_endi,&(*translation_length),&endstopp,
+				     translation,npairs,cds_startpos,querylength);
+    } else {
       find_bounds_backward(&translation_frame,&translation_starti,
 			   &translation_endi,&(*translation_length),&endstopp,
-			   translation,npairs,/*fulllengthp*/false);
+			   translation,npairs,fulllengthp);
+      if (fulllengthp == true && *translation_length == 0) {
+	/* fprintf(stderr,"No full length gene found.  Assuming partial length.\n"); */
+	find_bounds_backward(&translation_frame,&translation_starti,
+			     &translation_endi,&(*translation_length),&endstopp,
+			     translation,npairs,/*fulllengthp*/false);
+      }
     }
   }
   /* debug(printf("ref:\n")); */
@@ -1475,12 +1649,15 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
     
     /* Take care of cDNA side */
     
-    debug(printf("Translation start = pair #%d (querypos %d)\n",translation_starti,*translation_leftpos));
-    debug(printf("Translation end = pair #%d (querypos %d)\n",translation_endi,*translation_rightpos));
-    
     *relaastart = pairs[translation_starti].aapos;
     *relaaend = pairs[translation_endi].aapos;
 
+    debug(printf("Translation start = pair #%d (querypos %d, aa #%d)\n",
+		 translation_starti,*translation_leftpos,*relaastart));
+    debug(printf("Translation end = pair #%d (querypos %d, aa#%d)\n",
+		 translation_endi,*translation_rightpos,*relaaend));
+    debug(printf("Translation length = %d aa\n",*translation_length));
+    
     if (strictp == true) {
       if (revcompp == false) {
 	mark_cdna_forward_strict(pairs,npairs,revcompp,translation_starti,translation_endi);
@@ -1755,6 +1932,7 @@ Translation_via_reference (int *relaastart, int *relaaend,
   return;
 }
 
+#ifndef PMAP
 static char
 lookup_aa (int aapos, struct Pair_T *refpairs, int nrefpairs) {
   int i;
@@ -1766,7 +1944,7 @@ lookup_aa (int aapos, struct Pair_T *refpairs, int nrefpairs) {
   }
   return 'X';
 }
-
+#endif
 
 static int
 next_aapos_fwd (struct Pair_T *pairs, int i, int npairs, int aapos) {
@@ -1821,7 +1999,7 @@ fill_aa_fwd (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = start; this <= end && i1 < MAXMUT && k1 < MAXMUT; this++) {
     if (this->gapp == false) {
       if (this->genome != ' ') {
-	nt_genomicseg[i1++] = uppercaseCode[this->genome];
+	nt_genomicseg[i1++] = uppercaseCode[(int) this->genome];
       } else {
 	*netchars += 1;
       }
@@ -1834,7 +2012,7 @@ fill_aa_fwd (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = start; this <= end && i2 < MAXMUT && k2 < MAXMUT; this++) {
     if (this->gapp == false) {
       if (this->cdna != ' ') {
-	nt_queryseq[i2++] = uppercaseCode[this->cdna];
+	nt_queryseq[i2++] = uppercaseCode[(int) this->cdna];
       } else {
 	*netchars -= 1;
       }
@@ -1868,7 +2046,7 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = end; this >= start && i1 < MAXMUT && k1 < MAXMUT; --this) {
     if (this->gapp == false) {
       if (this->genome != ' ') {
-	nt_genomicseg[i1++] = uppercaseCode[this->genome];
+	nt_genomicseg[i1++] = uppercaseCode[(int) this->genome];
       } else {
 	*netchars += 1;
       }
@@ -1881,7 +2059,7 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
   for (this = end; this >= start && i2 < MAXMUT && k2 < MAXMUT; --this) {
     if (this->gapp == false) {
       if (this->cdna != ' ') {
-	nt_queryseq[i2++] = uppercaseCode[this->cdna];
+	nt_queryseq[i2++] = uppercaseCode[(int) this->cdna];
       } else {
 	*netchars -= 1;
       }
@@ -1907,7 +2085,7 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
 
 
 static void
-print_mutation (bool *printp, int aapos, int strlen_g, int strlen_c, int refquerypos,
+print_mutation (FILE *fp, bool *printp, int aapos, int strlen_g, int strlen_c, int refquerypos,
 		char *aa_genomicseg, char *aa_queryseq, char *nt_genomicseg, char *nt_queryseq) {
   bool print_refquerypos_p = true;
 #if 0
@@ -1915,24 +2093,24 @@ print_mutation (bool *printp, int aapos, int strlen_g, int strlen_c, int refquer
 #endif
 
   if (strlen_g > strlen_c) {
-    if (*printp == true) printf(", "); else *printp = true;
+    if (*printp == true) fprintf(fp,", "); else *printp = true;
     if (aa_genomicseg[0] == aa_queryseq[0]) {
-      printf("del%s%d%s ",&(aa_genomicseg[1]),aapos+1,&(aa_queryseq[1]));
+      fprintf(fp,"del%s%d%s ",&(aa_genomicseg[1]),aapos+1,&(aa_queryseq[1]));
       refquerypos += 3;
     } else {
-      printf("del%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
+      fprintf(fp,"del%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
     }
   } else if (strlen_g < strlen_c) {
-    if (*printp == true) printf(", "); else *printp = true;
+    if (*printp == true) fprintf(fp,", "); else *printp = true;
     if (strlen_c - strlen_g > 4) {
-      printf("ins%d+%daa ",aapos,strlen_c-strlen_g);
+      fprintf(fp,"ins%d+%daa ",aapos,strlen_c-strlen_g);
 #if 0
       print_nt_p = false;
 #endif
     } else if (aa_genomicseg[0] == aa_queryseq[0]) {
-      printf("ins%s%d%s ",&(aa_genomicseg[1]),aapos,&(aa_queryseq[1]));
+      fprintf(fp,"ins%s%d%s ",&(aa_genomicseg[1]),aapos,&(aa_queryseq[1]));
     } else {
-      printf("ins%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
+      fprintf(fp,"ins%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
     }
   } else if (aa_genomicseg[0] == 'X' || aa_queryseq[0] == 'X') {
 #if 0
@@ -1940,19 +2118,19 @@ print_mutation (bool *printp, int aapos, int strlen_g, int strlen_c, int refquer
 #endif
     print_refquerypos_p = false;
   } else {
-    if (*printp == true) printf(", "); else *printp = true;
-    printf("%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
+    if (*printp == true) fprintf(fp,", "); else *printp = true;
+    fprintf(fp,"%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
   }
 #if 0
   if (print_nt_p == true) {
-    printf("(%s>%s) ",nt_genomicseg,nt_queryseq);
+    fprintf(fp,"(%s>%s) ",nt_genomicseg,nt_queryseq);
   }
 #endif
   if (print_refquerypos_p == true) {
 #ifdef PMAP
-    printf("[%d]",refquerypos+2);
+    fprintf(fp,"[%d]",refquerypos+2);
 #else    
-    printf("[%d]",refquerypos);
+    fprintf(fp,"[%d]",refquerypos);
 #endif
   }
   
@@ -1960,25 +2138,25 @@ print_mutation (bool *printp, int aapos, int strlen_g, int strlen_c, int refquer
 }
 
 static void
-print_large_deletion (bool *printp, int lastaapos, int nextaapos, int refquerypos) {
+print_large_deletion (FILE *fp, bool *printp, int lastaapos, int nextaapos, int refquerypos) {
 
-  if (*printp == true) printf(", "); else *printp = true;
-  printf("del%d-%daa ",lastaapos+1,nextaapos-lastaapos-1);
-  printf("[%d]",refquerypos+3);
+  if (*printp == true) fprintf(fp,", "); else *printp = true;
+  fprintf(fp,"del%d-%daa ",lastaapos+1,nextaapos-lastaapos-1);
+  fprintf(fp,"[%d]",refquerypos+3);
   
   return;
 }
 
 
 void
-Translation_compare (struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
-		     int cdna_direction, int relaastart, int relaaend, int maxmutations) {
+Translation_print_comparison (FILE *fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
+			      int cdna_direction, int relaastart, int relaaend, int maxmutations) {
   int i, j;
   int aapos, strlen_g, strlen_c, netchars;
   bool printp = false;
   char nt_genomicseg[MAXMUT], aa_genomicseg[MAXMUT], nt_queryseq[MAXMUT], aa_queryseq[MAXMUT];
 
-  printf("    Amino acid changes: ");
+  fprintf(fp,"    Amino acid changes: ");
 
   if (relaastart < relaaend) {
     if ((aapos = pairs[i=0].aapos) == 0) {
@@ -1993,11 +2171,11 @@ Translation_compare (struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, 
 		    &(pairs[i]),&(pairs[j-1]));
 	if (strcmp(aa_genomicseg,aa_queryseq) && strcmp(nt_genomicseg,nt_queryseq)) {
 	  if (netchars % 3 == 0 || netchars > 12 || netchars < -12) {
-	    print_mutation(&printp,aapos,strlen_g,strlen_c,pairs[i].refquerypos,
+	    print_mutation(fp,&printp,aapos,strlen_g,strlen_c,pairs[i].refquerypos,
 			   aa_genomicseg,aa_queryseq,nt_genomicseg,nt_queryseq);
 	  }
 	} else if (j < npairs && pairs[j].aapos - aapos > 4) {
-	  print_large_deletion(&printp,aapos,pairs[j].aapos,pairs[i].refquerypos);
+	  print_large_deletion(fp,&printp,aapos,pairs[j].aapos,pairs[i].refquerypos);
 	}
       }
       i = j;
@@ -2016,18 +2194,18 @@ Translation_compare (struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, 
 		    &(pairs[i]),&(pairs[j+1]));
 	if (strcmp(aa_genomicseg,aa_queryseq) && strcmp(nt_genomicseg,nt_queryseq)) {
 	  if (netchars % 3 == 0 || netchars > 12 || netchars < -12) {
-	    print_mutation(&printp,aapos,strlen_g,strlen_c,pairs[i].refquerypos,
+	    print_mutation(fp,&printp,aapos,strlen_g,strlen_c,pairs[i].refquerypos,
 			   aa_genomicseg,aa_queryseq,nt_genomicseg,nt_queryseq);
 	  }
 	} else if (j >= 0 && pairs[j].aapos - aapos > 4) {
-	  print_large_deletion(&printp,aapos,pairs[j].aapos,pairs[i].refquerypos);
+	  print_large_deletion(fp,&printp,aapos,pairs[j].aapos,pairs[i].refquerypos);
 	}
       }
       i = j;
     }
   }
 
-  printf("\n");
+  fprintf(fp,"\n");
 
   return;
 }

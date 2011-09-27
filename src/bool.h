@@ -1,4 +1,4 @@
-/* $Id: bool.h,v 1.3 2006-09-01 18:36:34 twu Exp $ */
+/* $Id: bool.h 27450 2010-08-05 19:02:48Z twu $ */
 #ifndef BOOL_INCLUDED
 #define BOOL_INCLUDED
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: tableint.c,v 1.6 2010-02-03 18:18:48 twu Exp $";
+static char rcsid[] = "$Id: tableint.c 27450 2010-08-05 19:02:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,8 +40,8 @@ hashatom (const void *key) {
 
 T 
 Tableint_new (int hint,
-	   int (*cmp)(const void *x, const void *y),
-	   unsigned int hash(const void *key)) {
+	      int (*cmp)(const void *x, const void *y),
+	      unsigned int hash(const void *key)) {
   T table;
   int i;
   static int primes[] = { 509, 509, 1021, 2053, 4093,

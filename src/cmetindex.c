@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: cmetindex.c,v 1.3 2009-05-18 01:32:38 twu Exp $";
+static char rcsid[] = "$Id: cmetindex.c 37290 2011-03-29 01:28:47Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -56,6 +56,8 @@ static char rcsid[] = "$Id: cmetindex.c,v 1.3 2009-05-18 01:32:38 twu Exp $";
 #include "genomicpos.h"
 #include "indexdb.h"		/* For Storedoligomer_T */
 #include "indexdbdef.h"		/* For Positionsptr_T */
+#include "datadir.h"
+#include "getopt.h"
 
 
 #ifdef DEBUG
@@ -65,10 +67,42 @@ static char rcsid[] = "$Id: cmetindex.c,v 1.3 2009-05-18 01:32:38 twu Exp $";
 #endif
 
 
-static char *sourcedir = ".";
-static char *destdir = ".";
-static char *fileroot = NULL;
+static char *user_sourcedir = NULL;
+static char *user_destdir = NULL;
+static char *dbroot = NULL;
+static char *dbversion = NULL;
+
 static char *snps_root = NULL;
+
+
+static struct option long_options[] = {
+  /* Input options */
+  {"sourcedir", required_argument, 0, 'F'},	/* user_sourcedir */
+  {"destdir", required_argument, 0, 'D'},	/* user_destdir */
+  {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"usesnps", required_argument, 0, 'v'}, /* snps_root */
+
+  /* Help options */
+  {"version", no_argument, 0, 0}, /* print_program_version */
+  {"help", no_argument, 0, 0}, /* print_program_usage */
+  {0, 0, 0, 0}
+};
+
+
+static void
+print_program_version () {
+  fprintf(stdout,"\n");
+  fprintf(stdout,"CMETINDEX: Builds GMAP index files for methylated genomes\n");
+  fprintf(stdout,"Part of GMAP package, version %s\n",PACKAGE_VERSION);
+  fprintf(stdout,"Default gmap directory: %s\n",GMAPDB);
+  fprintf(stdout,"Thomas D. Wu, Genentech, Inc.\n");
+  fprintf(stdout,"Contact: twu@gene.com\n");
+  fprintf(stdout,"\n");
+  return;
+}
+
+static void
+print_program_usage ();
 
 
 static int
@@ -172,7 +206,11 @@ compute_offsets_ct (Positionsptr_T *oldoffsets, int oligospace) {
 	  nt2 = shortoligo_nt(reduced,INDEX1PART);
 	  printf("For oligo %s, updating sizes for %s from %d",nt1,nt2,sizes[reduced]);
 	  );
+#ifdef WORDS_BIGENDIAN
+    sizes[reduced] += (Bigendian_convert_uint(oldoffsets[i+1]) - Bigendian_convert_uint(oldoffsets[i]));
+#else
     sizes[reduced] += (oldoffsets[i+1] - oldoffsets[i]);
+#endif
     debug(
 	  printf(" to %d\n",sizes[reduced]);
 	  FREE(nt2);
@@ -210,7 +248,11 @@ compute_offsets_ga (Positionsptr_T *oldoffsets, int oligospace) {
 	  nt2 = shortoligo_nt(reduced,INDEX1PART);
 	  printf("For oligo %s, updating sizes for %s from %d",nt1,nt2,sizes[reduced]);
 	  );
+#ifdef WORDS_BIGENDIAN
+    sizes[reduced] += (Bigendian_convert_uint(oldoffsets[i+1]) - Bigendian_convert_uint(oldoffsets[i]));
+#else
     sizes[reduced] += (oldoffsets[i+1] - oldoffsets[i]);
+#endif
     debug(
 	  printf(" to %d\n",sizes[reduced]);
 	  FREE(nt2);
@@ -269,6 +311,18 @@ compute_positions_ct (FILE *offsets_fp, FILE *positions_fp, Positionsptr_T *offs
       fprintf(stderr,".");
     }
     reduced = Cmet_reduce_ct(i);
+#ifdef WORDS_BIGENDIAN
+    for (j = Bigendian_convert_uint(oldoffsets[i]); j < Bigendian_convert_uint(oldoffsets[i+1]); j++) {
+      debug(nt1 = shortoligo_nt(i,INDEX1PART);
+	    nt2 = shortoligo_nt(reduced,INDEX1PART);
+	    printf("Oligo %s => %s: copying position %u to location %u\n",
+		   nt1,nt2,oldpositions[j],pointers[i]);
+	    FREE(nt2);
+	    FREE(nt1);
+	    );
+      positions[pointers[reduced]++] = Bigendian_convert_uint(oldpositions[j]);
+    }
+#else
     for (j = oldoffsets[i]; j < oldoffsets[i+1]; j++) {
       debug(nt1 = shortoligo_nt(i,INDEX1PART);
 	    nt2 = shortoligo_nt(reduced,INDEX1PART);
@@ -279,6 +333,7 @@ compute_positions_ct (FILE *offsets_fp, FILE *positions_fp, Positionsptr_T *offs
 	    );
       positions[pointers[reduced]++] = oldpositions[j];
     }
+#endif
   }
   fprintf(stderr,"\n");
 
@@ -365,6 +420,18 @@ compute_positions_ga (FILE *offsets_fp, FILE *positions_fp, Positionsptr_T *offs
     }
 
     reduced = Cmet_reduce_ga(i);
+#ifdef WORDS_BIGENDIAN
+    for (j = Bigendian_convert_uint(oldoffsets[i]); j < Bigendian_convert_uint(oldoffsets[i+1]); j++) {
+      debug(nt1 = shortoligo_nt(i,INDEX1PART);
+	    nt2 = shortoligo_nt(reduced,INDEX1PART);
+	    printf("Oligo %s => %s: copying position %u to location %u\n",
+		   nt1,nt2,oldpositions[j],pointers[i]);
+	    FREE(nt2);
+	    FREE(nt1);
+	    );
+      positions[pointers[reduced]++] = Bigendian_convert_uint(oldpositions[j]);
+    }
+#else
     for (j = oldoffsets[i]; j < oldoffsets[i+1]; j++) {
       debug(nt1 = shortoligo_nt(i,INDEX1PART);
 	    nt2 = shortoligo_nt(reduced,INDEX1PART);
@@ -375,6 +442,7 @@ compute_positions_ga (FILE *offsets_fp, FILE *positions_fp, Positionsptr_T *offs
 	    );
       positions[pointers[reduced]++] = oldpositions[j];
     }
+#endif
   }
   fprintf(stderr,"\n");
 
@@ -428,50 +496,74 @@ compute_positions_ga (FILE *offsets_fp, FILE *positions_fp, Positionsptr_T *offs
 /* Note: Depends on having gmapindex sampled on mod 3 bounds */
 int
 main (int argc, char *argv[]) {
+  char *genomesubdir = NULL, *sourcedir = NULL, *destdir = NULL, *filename, *fileroot;
   FILE *input;
   Positionsptr_T *offsets_ct, *offsets_ga, *ref_offsets, totalcounts;
   Genomicpos_T *positions, *ref_positions, nblocks;
   int oligospace, i;
 
-  char *filename;
   FILE *offsets_fp, *positions_fp, *ref_offsets_fp, *ref_positions_fp;
   int ref_offsets_fd, ref_positions_fd;
   size_t ref_offsets_len, ref_positions_len;
 
-  int c;
+  int opt, len, c;
   extern int optind;
   extern char *optarg;
+  int long_option_index = 0;
+  const char *long_name;
 
-  while ((c = getopt(argc,argv,"F:D:d:V:")) != -1) {
-    switch (c) {
-    case 'F': sourcedir = optarg; break;
-    case 'D': destdir = optarg; break;
-    case 'd': fileroot = optarg; break;
-    case 'V': snps_root = optarg; break;
+  while ((opt = getopt_long(argc,argv,"F:D:d:v:",
+			    long_options,&long_option_index)) != -1) {
+    switch (opt) {
+    case 0: 
+      long_name = long_options[long_option_index].name;
+      if (!strcmp(long_name,"version")) {
+	print_program_version();
+	exit(0);
+      } else if (!strcmp(long_name,"help")) {
+	print_program_usage();
+	exit(0);
+      } else {
+	/* Shouldn't reach here */
+	fprintf(stderr,"Don't recognize option %s.  For usage, run 'cmetindex --help'",long_name);
+	exit(9);
+      }
+      break;
+
+    case 'F': user_sourcedir = optarg; break;
+    case 'D': user_destdir = optarg; break;
+    case 'd': dbroot = optarg; break;
+    case 'v': snps_root = optarg; break;
+    default: fprintf(stderr,"Do not recognize flag %c\n",opt); exit(9);
     }
   }
   argc -= (optind - 1);
   argv += (optind - 1);
 
-  if (fileroot == NULL) {
+  if (dbroot == NULL) {
     fprintf(stderr,"Missing name of genome database.  Must specify with -d flag.\n");
     fprintf(stderr,"Usage: cmetindex -d <genome>\n");
     exit(9);
+  } else {
+    sourcedir = Datadir_find_genomesubdir(&fileroot,&dbversion,user_sourcedir,dbroot);
+    fprintf(stderr,"Reading source files from %s\n",sourcedir);
   }
+
 
   oligospace = power(4,INDEX1PART);
 
   /* Read offsets */
-  if (snps_root) {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen(IDX_FILESUFFIX)+strlen(fileroot)+
-			       strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
-			       strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",OFFSETS_FILESUFFIX,snps_root);
-  } else {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen(IDX_FILESUFFIX)+strlen(fileroot)+
+  if (snps_root == NULL) {
+    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
 			       strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
 			       strlen(OFFSETS_FILESUFFIX)+1,sizeof(char));
     sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",OFFSETS_FILESUFFIX);
+
+  } else {
+    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+			       strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
+			       strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",OFFSETS_FILESUFFIX,snps_root);
   }
   if ((ref_offsets_fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s\n",filename);
@@ -482,16 +574,16 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Read positions */
-  if (snps_root) {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-			       strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
-			       strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",POSITIONS_FILESUFFIX,snps_root);
-  } else {
+  if (snps_root == NULL) {
     filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
 			       strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
 			       strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
     sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",POSITIONS_FILESUFFIX);
+  } else {
+    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+			       strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
+			       strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",POSITIONS_FILESUFFIX,snps_root);
   }
   if ((ref_positions_fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s\n",filename);
@@ -502,17 +594,24 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
 
-  /* Open CT files */
-  if (snps_root) {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-			       strlen(".")+strlen("metct")+strlen("3")+
-			       strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,"metct","3",OFFSETS_FILESUFFIX,snps_root);
+  /* Open CT output files */
+  if (user_destdir == NULL) {
+    destdir = sourcedir;
   } else {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+    destdir = user_destdir;
+  }
+  fprintf(stderr,"Reading cmet index files to %s\n",destdir);
+
+  if (snps_root == NULL) {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".")+strlen("metct")+strlen("3")+
 			       strlen(OFFSETS_FILESUFFIX)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,"metct","3",OFFSETS_FILESUFFIX);
+    sprintf(filename,"%s/%s.%s%s%s",destdir,fileroot,"metct","3",OFFSETS_FILESUFFIX);
+  } else {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".")+strlen("metct")+strlen("3")+
+			       strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s%s%s.%s",destdir,fileroot,"metct","3",OFFSETS_FILESUFFIX,snps_root);
   }
   if ((offsets_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
@@ -520,16 +619,16 @@ main (int argc, char *argv[]) {
   }
   FREE(filename);
 
-  if (snps_root) {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-			       strlen(".")+strlen("metct")+strlen("3")+
-			       strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,"metct","3",POSITIONS_FILESUFFIX,snps_root);
-  } else {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  if (snps_root == NULL) {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".")+strlen("metct")+strlen("3")+
 			       strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,"metct","3",POSITIONS_FILESUFFIX);
+    sprintf(filename,"%s/%s.%s%s%s",destdir,fileroot,"metct","3",POSITIONS_FILESUFFIX);
+  } else {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".")+strlen("metct")+strlen("3")+
+			       strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s%s%s.%s",destdir,fileroot,"metct","3",POSITIONS_FILESUFFIX,snps_root);
   }
   if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
@@ -546,17 +645,17 @@ main (int argc, char *argv[]) {
 
 
 
-  /* Open GA files */
-  if (snps_root) {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-			       strlen(".")+strlen("metga")+strlen("3")+
-			       strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,"metga","3",OFFSETS_FILESUFFIX,snps_root);
-  } else {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  /* Open GA output files */
+  if (snps_root == NULL) {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".")+strlen("metga")+strlen("3")+
 			       strlen(OFFSETS_FILESUFFIX)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,"metga","3",OFFSETS_FILESUFFIX);
+    sprintf(filename,"%s/%s.%s%s%s",destdir,fileroot,"metga","3",OFFSETS_FILESUFFIX);
+  } else {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".")+strlen("metga")+strlen("3")+
+			       strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s%s%s.%s",destdir,fileroot,"metga","3",OFFSETS_FILESUFFIX,snps_root);
   }
   if ((offsets_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
@@ -564,16 +663,16 @@ main (int argc, char *argv[]) {
   }
   FREE(filename);
 
-  if (snps_root) {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-			       strlen(".")+strlen("metga")+strlen("3")+
-			       strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,"metga","3",POSITIONS_FILESUFFIX,snps_root);
-  } else {
-    filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  if (snps_root == NULL) {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".")+strlen("metga")+strlen("3")+
 			       strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
-    sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,"metga","3",POSITIONS_FILESUFFIX);
+    sprintf(filename,"%s/%s.%s%s%s",destdir,fileroot,"metga","3",POSITIONS_FILESUFFIX);
+  } else {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".")+strlen("metga")+strlen("3")+
+			       strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s%s%s.%s",destdir,fileroot,"metga","3",POSITIONS_FILESUFFIX,snps_root);
   }
   if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
@@ -598,3 +697,30 @@ main (int argc, char *argv[]) {
 
   return 0;
 }
+
+
+
+static void
+print_program_usage () {
+  fprintf(stdout,"\
+Usage: cmetindex [OPTIONS...] -d <genome>\n\
+\n\
+");
+
+  /* Input options */
+  fprintf(stdout,"Options (must include -d)\n");
+  fprintf(stdout,"\
+  -F, --sourcedir=directory      Directory where to read cmet index files (default is\n\
+                                   GMAP genome directory specified at compile time)\n\
+  -D, --destdir=directory        Directory where to write cmet index files (default is\n\
+                                   GMAP genome directory specified at compile time)\n\
+  -d, --db=STRING                Genome database\n\
+  -v, --use-snps=STRING          Use database containing known SNPs (in <STRING>.iit, built\n\
+                                   previously using snpindex) for tolerance to SNPs\n\
+\n\
+  --version                      Show version\n\
+  --help                         Show this help message\n\
+");
+  return;
+}
+

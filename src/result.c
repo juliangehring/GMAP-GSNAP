@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c,v 1.57 2010-07-10 14:51:40 twu Exp $";
+static char rcsid[] = "$Id: result.c 34369 2011-01-28 17:28:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,10 +9,16 @@ static char rcsid[] = "$Id: result.c,v 1.57 2010-07-10 14:51:40 twu Exp $";
 #include "diag.h"
 
 
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
+
 #define T Result_T
 struct T {
   int id;
-  int worker_id;
 
   Chimera_T chimera;		/* NULL indicates not a chimera */
   List_T gregionlist;		/* For debugging of stage 1 */
@@ -27,12 +33,6 @@ struct T {
 int
 Result_id (T this) {
   return this->id;
-}
-
-
-int
-Result_worker_id (T this) {
-  return this->worker_id;
 }
 
 
@@ -73,12 +73,11 @@ Result_failuretype (T this) {
 
 
 T
-Result_new (int id, int worker_id, Chimera_T chimera, Stage3_T *array,
+Result_new (int id, Chimera_T chimera, Stage3_T *array,
 	    int npaths, Diagnostic_T diagnostic, Failure_T failuretype) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
-  new->worker_id = worker_id;
   new->chimera = chimera;
   new->gregionlist = (List_T) NULL;
   new->diagonals = (List_T) NULL;
@@ -91,12 +90,11 @@ Result_new (int id, int worker_id, Chimera_T chimera, Stage3_T *array,
 }
 
 T
-Result_new_stage1debug (int id, int worker_id, List_T gregionlist,
+Result_new_stage1debug (int id, List_T gregionlist,
 			Diagnostic_T diagnostic, Failure_T failuretype) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
-  new->worker_id = worker_id;
   new->chimera = (Chimera_T) NULL;
   new->gregionlist = gregionlist;
   new->diagonals = (List_T) NULL;
@@ -109,12 +107,11 @@ Result_new_stage1debug (int id, int worker_id, List_T gregionlist,
 }
 
 T
-Result_new_diag_debug (int id, int worker_id, List_T diagonals,
+Result_new_diag_debug (int id, List_T diagonals,
 		       Diagnostic_T diagnostic, Failure_T failuretype) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
-  new->worker_id = worker_id;
   new->chimera = (Chimera_T) NULL;
   new->gregionlist = (List_T) NULL;
   new->diagonals = diagonals;
@@ -126,23 +123,9 @@ Result_new_diag_debug (int id, int worker_id, List_T diagonals,
   return new;
 }
 
-T
-Result_blank (int id, int worker_id) {
-  T new = (T) MALLOC(sizeof(*new));
-
-  new->id = id;
-  new->worker_id = worker_id;
-  new->chimera = NULL;
-  new->array = NULL;
-
-  return new;
-}
-
 void
 Result_free (T *old) {
-#ifdef BETATEST
   Chimera_T chimera;
-#endif
   Stage3_T stage3;
   int i;
   List_T p;
@@ -152,11 +135,38 @@ Result_free (T *old) {
 #endif
 
   if (*old) {
-#ifdef BETATEST    
     if ((chimera = (*old)->chimera) != NULL) {
       Chimera_free(&chimera);
+
+      stage3 = (*old)->array[0];
+      debug(printf("Freeing 0 stage3 %p and pairarray %p\n",
+		   stage3,Stage3_pairarray(stage3)));
+      Stage3_free(&stage3,/*free_pairarray_p*/true);
+
+      stage3 = (*old)->array[1];
+      debug(printf("Freeing 1 stage3 %p, but not pairarray %p\n",
+		   stage3,Stage3_pairarray(stage3)));
+      Stage3_free(&stage3,/*free_pairarray_p*/false);
+      
+      for (i = 2; i < (*old)->npaths; i++) {
+	stage3 = (*old)->array[i];
+	debug(printf("Freeing %d stage3 %p and pairarray %p\n",
+		     i,stage3,Stage3_pairarray(stage3)));
+	Stage3_free(&stage3,/*free_pairarray_p*/true);
+      }
+
+      FREE((*old)->array);
+
+    } else {
+      if ((*old)->array) {
+	for (i = 0; i < (*old)->npaths; i++) {
+	  stage3 = (*old)->array[i];
+	  Stage3_free(&stage3,/*free_pairarray_p*/true);
+	}
+	FREE((*old)->array);
+      }
     }
-#endif
+
     if ((*old)->diagnostic != NULL) {
       Diagnostic_free(&(*old)->diagnostic);
     }
@@ -179,16 +189,9 @@ Result_free (T *old) {
     }
 #endif
 
-    if ((*old)->array) {
-      for (i = 0; i < (*old)->npaths; i++) {
-	stage3 = (*old)->array[i];
-	Stage3_free(&stage3);
-      }
-      FREE((*old)->array);
-    }
-
     FREE(*old);
   }
+
   return;
 }
 

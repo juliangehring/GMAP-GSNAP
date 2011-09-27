@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c,v 1.21 2010-07-16 22:19:24 twu Exp $";
+static char rcsid[] = "$Id: list.c 30992 2010-10-27 22:23:34Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -105,13 +105,21 @@ List_to_array (T list, void *end) {
   void **array;
   int i, n = List_length(list);
 
-  array = (void **) CALLOC((n+1),sizeof(*array));
-  for (i = 0; i < n; i++) {
-    array[i] = list->first;
-    list = list->rest;
+#if 0
+  if (n == 0) {
+    return (void *) NULL;
+  } else {
+#endif
+    array = (void **) CALLOC((n+1),sizeof(*array));
+    for (i = 0; i < n; i++) {
+      array[i] = list->first;
+      list = list->rest;
+    }
+    array[i] = end;
+    return array;
+#if 0
   }
-  array[i] = end;
-  return array;
+#endif
 }
 
 void **
@@ -229,9 +237,6 @@ List_transfer_one (T dest, T *source) {
 
 T
 List_push_existing (T dest, T source) {
-  T next;
-
-  next = source->rest;
   source->rest = dest;
   return source;
 }

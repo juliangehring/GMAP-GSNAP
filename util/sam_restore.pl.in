@@ -1,0 +1,66 @@
+#! @PERL@
+
+use warnings;
+use IO::File;
+
+# Assumes that $ARGV[0] file contains a subset of output lines as $ARGV[1]
+# Restores lines from $ARGV[1]
+
+$GMAP_FP = new IO::File($ARGV[0]) or die "Cannot open $ARGV[0]";
+$ORIG_FP = new IO::File($ARGV[1]) or die "Cannot open $ARGV[1]";
+
+while (defined($gmap_line = <$GMAP_FP>) && $gmap_line =~ /^\@/) { }
+if (defined($gmap_line)) {
+    ($gmap_acc) = $gmap_line =~ /(\S+)/;
+} else {
+    undef $gmap_acc;
+}
+
+while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+if (defined($orig_line)) {
+    ($orig_acc) = $orig_line =~ /(\S+)/;
+} else {
+    undef $orig_acc;
+}
+
+
+while (defined($gmap_acc)) {
+
+    # Restore orig lines for this gmap entry
+    # print STDERR "Restoring orig lines for gmap entry $gmap_acc\n";
+    while (defined($orig_acc) && $orig_acc ne $gmap_acc) {
+	# print $orig_line -- discard
+	while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+	if (defined($orig_line)) {
+	    ($orig_acc) = $orig_line =~ /(\S+)/;
+	} else {
+	    undef $orig_acc;
+	}
+    }
+
+    while (defined($orig_acc) && $orig_acc eq $gmap_acc) {
+	print $orig_line;
+	while (defined($orig_line = <$ORIG_FP>) && $orig_line =~ /^\@/) { }
+	if (defined($orig_line)) {
+	    ($orig_acc) = $orig_line =~ /(\S+)/;
+	} else {
+	    undef $orig_acc;
+	}
+    }
+    
+    # Discard all gmap lines for this entry
+    $last_gmap_acc = $gmap_acc;
+    while (defined($gmap_acc) && $gmap_acc eq $last_gmap_acc) {
+	# print $gmap_line; -- don't print
+	while (defined($gmap_line = <$GMAP_FP>) && $gmap_line =~ /^\@/) { }
+	if (defined($gmap_line)) {
+	    ($gmap_acc) = $gmap_line =~ /(\S+)/;
+	} else {
+	    undef $gmap_acc;
+	}
+    }
+}
+
+exit;
+
+

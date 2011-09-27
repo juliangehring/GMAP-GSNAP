@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stopwatch.c,v 1.10 2006-10-04 19:24:58 twu Exp $";
+static char rcsid[] = "$Id: stopwatch.c 27450 2010-08-05 19:02:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

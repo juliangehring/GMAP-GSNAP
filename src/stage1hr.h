@@ -1,19 +1,21 @@
-/* $Id: stage1hr.h,v 1.62 2010-07-27 00:01:18 twu Exp $ */
+/* $Id: stage1hr.h 36302 2011-03-09 05:29:24Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
+#include "types.h"
 #include "genomicpos.h"
 #include "indexdb.h"
-#include "sequence.h"
+#include "shortread.h"
 #include "list.h"
 #include "iit-read.h"
 #include "genome.h"
+#include "splicetrie.h"
+#include "stage3hr.h"
 
 
-#define MAX_QUERYLENGTH 200
+#define MAX_QUERYLENGTH 500
 
 typedef enum {MASK_NONE, MASK_FREQUENT, MASK_REPETITIVE, MASK_GREEDY_FREQUENT, MASK_GREEDY_REPETITIVE} Masktype_T;
-typedef enum {DONOR, ANTIDONOR, ACCEPTOR, ANTIACCEPTOR} Splicetype_T;
 
 
 typedef struct Floors_T *Floors_T;
@@ -31,40 +33,45 @@ extern void
 Stage1_free (T *old, int querylength);
 
 
-extern Genomicpos_T *
-Stage1_retrieve_splicesites (Splicetype_T **splicetypes, int *nsplicesites,
-			     IIT_T splicesites_iit, int *splicesites_divint_crosstable,
-			     int donor_typeint, int acceptor_typeint, IIT_T chromosome_iit);
-extern List_T
-Stage1_single_read (Sequence_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
-		    int indexdb_size_threshold, IIT_T geneprob_iit, IIT_T chromosome_iit, Genome_T genome,
+extern Stage3_T *
+Stage1_single_read (int *npaths, Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
+		    int indexdb_size_threshold, IIT_T chromosome_iit, Genome_T genome,
 		    Genome_T genomealt, Floors_T *floors_array,
-		    bool knownsplicingp, bool novelsplicingp, bool canonicalp, int trim_maxlength,
+		    bool knownsplicingp, bool novelsplicingp, bool canonicalp,
 		    int maxpaths, int maxchimerapaths, double usermax_level_float, int subopt_levels,
-		    Masktype_T masktype, int indel_penalty, int max_middle_insertions, int max_middle_deletions,
+		    Masktype_T masktype, int terminal_penalty, int max_terminal_length,
+		    int indel_penalty, int max_middle_insertions, int max_middle_deletions,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    Genomicpos_T shortsplicedist,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_localsplicing_end_matches,
-		    int min_distantsplicing_end_matches, double min_distantsplicing_identity,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    IIT_T splicesites_iit, int *splicesites_divint_crosstable,
-		    int donor_typeint, int acceptor_typeint, bool dibasep, bool cmetp);
-extern List_T
-Stage1_paired_read (List_T *singlehits5, List_T *singlehits3,
-		    Sequence_T queryseq5, Sequence_T queryseq3,
+		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
+		    bool find_novel_doublesplices_p, Genomicpos_T *splicesites, Splicetype_T *splicetypes,
+		    Genomicpos_T *splicedists, UINT4 *splicefrags_ref, UINT4 *splicefrags_alt, int nsplicesites,
+		    int *nsplicepartners_skip,
+		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs, int *nsplicepartners_obs,
+		    unsigned int *trieoffsets_max, unsigned int *triecontents_max, int *nsplicepartners_max,
+		    List_T *splicestrings, bool dibasep, bool cmetp);
+
+extern Stage3pair_T *
+Stage1_paired_read (int *npaths, bool *concordantp, Stage3_T **stage3array5, int *nhits5, Stage3_T **stage3array3, int *nhits3,
+		    Shortread_T queryseq5, Shortread_T queryseq3,
 		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
-		    IIT_T geneprob_iit, IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt, Floors_T *floors_array,
-		    bool knownsplicingp, bool novelsplicingp, bool canonicalp, int trim_maxlength,
+		    IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt, Floors_T *floors_array,
+		    bool knownsplicingp, bool novelsplicingp, bool canonicalp,
 		    int maxpaths, int maxchimerapaths, double usermax_level_float, int subopt_levels, 
-		    Masktype_T masktype, int indel_penalty, int max_middle_insertions, int max_middle_deletions,
+		    Masktype_T masktype, int terminal_penalty, int max_terminal_length,
+		    int indel_penalty, int max_middle_insertions, int max_middle_deletions,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    Genomicpos_T shortsplicedist,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_localsplicing_end_matches,
-		    int min_distantsplicing_end_matches, double min_distantsplicing_identity,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    IIT_T splicesites_iit, int *splicesites_divint_crosstable,
-		    int donor_typeint, int acceptor_typeint,
-		    bool dibasep, bool cmetp, int pairmax, int expected_pairlength);
+		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
+		    bool find_novel_doublesplices_p, Genomicpos_T *splicesites, Splicetype_T *splicetypes,
+		    Genomicpos_T *splicedists, UINT4 *splicefrags_ref, UINT4 *splicefrags_alt, int nsplicesites,
+		    int *nsplicepartners_skip,
+		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs, int *nsplicepartners_obs,
+		    unsigned int *trieoffsets_max, unsigned int *triecontents_max, int *nsplicepartners_max,
+		    List_T *splicestrings, Genomicpos_T pairmax, Genomicpos_T expected_pairlength,
+		    Genomicpos_T pairlength_deviation, bool dibasep, bool cmetp);
 
 #undef T
 #endif

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: parserange.c,v 1.2 2010-02-03 18:13:49 twu Exp $";
+static char rcsid[] = "$Id: parserange.c 32284 2010-12-02 17:39:21Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -147,10 +147,21 @@ translate_chromosomepos_universal (unsigned int *genomicstart, unsigned int *gen
 				   IIT_T chromosome_iit) {
   int rc = 1, index;
   Interval_T interval;
+#ifdef DEBUG
+  bool allocp;
+#endif
   
   if ((index = IIT_find_linear(chromosome_iit,chromosome)) >= 0) {
+    debug(printf("chromosome %s => index %d\n",chromosome,index));
     interval = IIT_interval(chromosome_iit,index);
+    debug(printf("  => label %s with interval low %u\n",
+		 IIT_label(chromosome_iit,index,&allocp),Interval_low(interval)));
     *genomicstart = Interval_low(interval)+left;
+    if (*genomicstart < Interval_low(interval)) {
+      fprintf(stderr,"%u + %u = %u (exceeds a 32-bit unsigned int)\n",
+	      Interval_low(interval),left,*genomicstart);
+      exit(9);
+    }
     if (length == 0) {
       *genomiclength = Interval_length(interval)-left;
     } else {
@@ -296,7 +307,7 @@ Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coor
     } else if (isrange(&left,&length,&(*revcomp),coords)) {
       debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		   coords,left,length,*revcomp));
-      *coordstart = left;
+      *coordstart = left + 1;	/* Because isrange is 0-based */
       *coordend = left + length;
       return true;
     } else {
@@ -316,7 +327,7 @@ Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coor
       return true;
     } else if (isrange(&left,&length,&(*revcomp),query)) {
       debug(printf("range\n"));
-      *coordstart = left;
+      *coordstart = left + 1;	/* Because isrange is 0-based */
       *coordend = left + length;
       return true;
     } else {
@@ -489,4 +500,56 @@ Parserange_universal (char **div, bool *revcomp,
   }
 }
 
+
+
+bool
+Parserange_simple (char **div, bool *revcomp, Genomicpos_T *chrstart, Genomicpos_T *chrend,
+		   char *query) {
+  char *coords;
+  Genomicpos_T result, left, length;
+  
+  *revcomp = false;
+  if (index(query,':')) {
+    /* Segment must be a genome, chromosome, or contig */
+    debug(printf("Parsed query %s into ",query));
+    *div = strtok(query,":");
+    if ((*div)[0] == '+') {
+      *revcomp = false;
+      *div = &((*div)[1]);
+    } else if ((*div)[0] == '_') {
+      *revcomp = true;
+      *div = &((*div)[1]);
+    }
+    coords = strtok(NULL,":");
+    debug(printf("segment %s and coords %s\n",*div,coords));
+
+    debug(printf("Interpreting segment %s as a chromosome\n",*div));
+    if (coords == NULL) {
+      fprintf(stderr,"Need region after ':'\n");
+      return false;
+    } else if (isnumberp(&result,coords)) {
+      debug(printf("  and coords %s as a number\n",coords));
+      left = result - 1;	/* Make 0-based */
+      length = 1;
+    } else if (isrange(&left,&length,&(*revcomp),coords)) {
+      debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
+		   coords,left,length,*revcomp));
+    } else {
+      fprintf(stderr,"Coordinates after ':' is neither a number nor a range\n");
+      debug(printf("  but coords %s is neither a number nor a range\n",coords));
+      return false;
+    }
+
+    /* Compute chromosomal coordinates */
+    *chrstart = left;
+    *chrend = *chrstart + length;
+    *chrstart += 1U;		/* Make 1-based */
+
+    return true;
+
+  } else {
+    fprintf(stderr,"Region %s does not contain ':'\n",query);
+    return false;
+  }
+}
 

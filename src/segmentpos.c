@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c,v 1.61 2008-04-15 20:00:49 twu Exp $";
+static char rcsid[] = "$Id: segmentpos.c 33519 2011-01-10 22:13:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,9 +17,9 @@ static char rcsid[] = "$Id: segmentpos.c,v 1.61 2008-04-15 20:00:49 twu Exp $";
 #define debug(x)
 #endif
 
+#define ONEBASEDP 1		/* 1-based coordinates.  Also defined in pair.c */
 
 #define MAXACCESSIONS 10
-
 
 #define T Segmentpos_T
 struct T {
@@ -174,9 +174,9 @@ contig_print_p (IIT_T contig_iit, int contig_straintype, bool referencealignp,
 
 
 void
-Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
+Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
 			     Genomicpos_T position2, bool referencealignp, 
-                             char *align_strain, bool zerobasedp) {
+                             char *align_strain) {
   Genomicpos_T contig_start, contig_length;
   int relstart, relend;		/* Need to be signed int, not long or unsigned long */
   int index, contig_straintype, i = 0;
@@ -185,7 +185,7 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
   Interval_T interval;
   bool printreferencep, printaltp, firstprintp = false, allocp;
 
-  printf("    Accessions: ");
+  fprintf(fp,"    Accessions: ");
 
   indices = IIT_get(&nindices,contig_iit,/*divstring*/NULL,position1,position2,/*sortp*/false);
   if (referencealignp == true) {
@@ -218,8 +218,8 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 	relend = contig_length;
       }
 
-      comma1 = Genomicpos_commafmt((Genomicpos_T) (relstart + !zerobasedp));
-      comma2 = Genomicpos_commafmt((Genomicpos_T) (relend + !zerobasedp));
+      comma1 = Genomicpos_commafmt((Genomicpos_T) (relstart + ONEBASEDP));
+      comma2 = Genomicpos_commafmt((Genomicpos_T) (relend + ONEBASEDP));
       
       if (firstprintp == true) {
 	printf("; ");
@@ -239,15 +239,15 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
       }
 
       label = IIT_label(contig_iit,index,&allocp);
-      printf("%s",label);
+      fprintf(fp,"%s",label);
       if (allocp == true) {
 	FREE(label);
       }
 
       if (referencealignp == false && contig_straintype == 0) {
-	printf("[reference strain]");
+	fprintf(fp,"[reference strain]");
       }
-      printf(":%s%s%s (out of %u bp)",comma1,SEPARATOR,comma2,contig_length);
+      fprintf(fp,":%s%s%s (out of %u bp)",comma1,SEPARATOR,comma2,contig_length);
 
       FREE(comma2);
       FREE(comma1);
@@ -256,7 +256,7 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
     }
     j++;
   }
-  printf("\n");
+  fprintf(fp,"\n");
 
   if (indices != NULL) {
     FREE(indices);

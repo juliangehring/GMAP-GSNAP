@@ -1,25 +1,35 @@
-static char rcsid[] = "$Id: gregion.c,v 1.12 2010-07-10 01:28:53 twu Exp $";
+static char rcsid[] = "$Id: gregion.c 32520 2010-12-07 17:16:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "gregion.h"
 #include <stdlib.h>
+#include "assert.h"
 #include "mem.h"
 #include "indexdb.h"		/* For SUFFICIENT_SUPPORT */
 #include "interval.h"
 #include "chrnum.h"
 #include "listdef.h"
+#include "uinttable.h"
 
 
 #define EXTRA_SHORTEND  30000
 #define EXTRA_LONGEND   100000
 
+#define USE_CLEAN 1
 
 #ifdef DEBUG
 #define debug(x) x
 #else
 #define debug(x)
+#endif
+
+/* filter_clean */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
 #endif
 
 /* Sufficient support */
@@ -44,7 +54,13 @@ struct T {
   bool extendedp;
 
   Chrnum_T chrnum;
-  Genomicpos_T chrpos;
+
+  Genomicpos_T chrstart;
+  Genomicpos_T chrend;
+
+  Genomicpos_T extentstart;
+  Genomicpos_T extentend;
+
   Genomicpos_T chroffset;	/* This is for chr, not the segment */
   Genomicpos_T chrlength;	/* This is for chr, not the segment */
   int querystart;		/* Used only for maponly mode */
@@ -60,6 +76,21 @@ struct T {
 
   int ncovered;
   int source;			/* Oligoindex source in stage 2 */
+
+  /* For cleaning */
+  
+
+  int total_up;
+  int total_down;
+  Genomicpos_T bestprev_ceiling;
+  Genomicpos_T bestprev_floor;
+  int score_ceiling;
+  int score_floor;
+
+#ifdef USE_CLEAN
+  bool bounded_low_p;
+  bool bounded_high_p;
+#endif
 };
 
 
@@ -67,9 +98,18 @@ struct T {
 void
 Gregion_print (T this) {
 
-  printf(" %d..%d  %u..%u  #%d:%u..%u  length:%u  weight:%.2f  support:%d",
-	 this->querystart,this->queryend,this->genomicstart,this->genomicend,this->chrnum,this->chrpos,
-	 this->chrpos+this->genomiclength,this->genomiclength,this->weight,this->support);
+#if 0
+  /* Off for debugging */
+  printf(" %d..%d ",this->querystart,this->queryend);
+#endif
+  printf("%u %u %u %u %u..%u  #%d:%u..%u  length:%u  weight:%.2f  support:%d",
+	 this->extentstart,this->extentend,this->chrstart,this->chrend,
+	 this->genomicstart,this->genomicend,this->chrnum,this->chrstart,
+	 this->chrend,this->genomiclength,this->weight,this->support);
+#ifdef USE_CLEAN
+  printf("  bounded_low:%d, bounded_high:%d",this->bounded_low_p,this->bounded_high_p);
+#endif
+
   printf("\n");
 
   return;
@@ -120,7 +160,7 @@ Gregion_chr (T this, IIT_T chromosome_iit) {
 
 Genomicpos_T
 Gregion_chrpos (T this) {
-  return this->chrpos;
+  return this->chrstart;
 }
 
 Genomicpos_T
@@ -196,17 +236,24 @@ Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
     new->chroffset = Interval_low(IIT_interval(chromosome_iit,new->chrnum));
     new->chrlength = Interval_high(IIT_interval(chromosome_iit,new->chrnum)) - new->chroffset;
   }
-  new->chrpos = genomicstart - new->chroffset;
   
+  assert(genomicstart < genomicend);
   new->genomicstart = genomicstart;
   new->genomicend = genomicend;
-  if (genomicend < genomicstart) {
-    fprintf(stderr,"genomicend %u < genomicstart %u\n",genomicend,genomicstart);
-    abort();
-  } else {
-    new->genomiclength = genomicend - genomicstart;
-  }
+  new->genomiclength = genomicend - genomicstart;
+
+  new->chrstart = genomicstart - new->chroffset;
+  new->chrend = new->chrstart + new->genomiclength;
+
   new->plusp = plusp;
+
+  if (plusp == true) {
+    new->extentstart = new->chrstart - querystart;
+    new->extentend = new->chrend + (querylength - queryend);
+  } else {
+    new->extentstart = new->chrstart - (querylength - queryend);
+    new->extentend = new->chrend + querystart;
+  }
 
   new->extension5 = 0U;
   new->extension3 = 0U;
@@ -243,6 +290,18 @@ Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
 
   new->weight = 0.0;
   new->support = queryend - querystart + matchsize;
+
+  new->total_up = 0;
+  new->total_down = 0;
+  new->bestprev_ceiling = 0;
+  new->bestprev_floor = (unsigned int) -1;
+  new->score_ceiling = 0;
+  new->score_floor = 0;
+
+#ifdef USE_CLEAN
+  new->bounded_low_p = false;
+  new->bounded_high_p = false;
+#endif
 
   return new;
 }
@@ -323,7 +382,7 @@ gregion_overlap_p (T x, T y) {
   if (x->plusp != y->plusp) {
     return false;			/* Different strands */
 
-  } else if (y->genomicstart > x->genomicend || x->genomicstart > y->genomicend) {
+  } else if (y->extentstart > x->extentend || x->extentstart > y->extentend) {
     return false;		/* No overlap */
 
   } else {
@@ -412,6 +471,8 @@ Gregion_filter_unique (List_T gregionlist) {
 }
 
 
+#if 0
+/* Not used anymore */
 List_T
 Gregion_filter_support (List_T gregionlist, int boundary, double pct_max, int diff_max) {
   List_T good = NULL, p;
@@ -455,6 +516,7 @@ Gregion_filter_support (List_T gregionlist, int boundary, double pct_max, int di
   List_free(&gregionlist);
   return List_reverse(good);
 }
+#endif
 
 
 double
@@ -474,240 +536,6 @@ Gregion_best_weight (List_T gregionlist) {
 }
 
 
-
-#if 0
-
-/* Not intended for qsort.  Returns 0 when not comparable. */
-static int
-gregion_dominate (const void *a, const void *b) {
-  T x = * (T *) a;
-  T y = * (T *) b;
-
-  if (x->plusp != y->plusp) {
-    return 0;			/* Different strands */
-
-  } else if (y->genomicstart > x->genomicend || x->genomicstart > y->genomicend) {
-    return 0;			/* No overlap */
-
-  } else if (x->genomicstart < y->genomicstart) {
-    if (x->genomicend < y->genomicend) {
-      return 0;			/* Crossing */
-    } else {
-      return -1;
-    }
-
-  } else if (y->genomicstart < x->genomicstart) {
-    if (y->genomicend < x->genomicend) {
-      return 0;			/* Crossing */
-    } else {
-      return 1;
-    }
-
-  } else {
-    /* equal genomicstart */
-    if (x->genomicend < y->genomicend) {
-      return 1;
-    } else if (y->genomicend < x->genomicend) {
-      return -1;
-
-    } else if (y->querystart > x->queryend || x->querystart > y->queryend) {
-      return 0;			/* Equal */
-    } else if (x->querystart < y->querystart) {
-      if (x->queryend < y->queryend) {
-	return 0;
-      } else {
-	return -1;
-      }
-    } else if (y->querystart < x->querystart) {
-      if (y->queryend < x->queryend) {
-	return 0;
-      } else {
-	return 1;
-      }
-    } else {
-      return 0;
-    }
-  }
-}
-
-static bool
-gregion_equal (const void *a, const void *b) {
-  T x = * (T *) a;
-  T y = * (T *) b;
-  
-  if (x->plusp != y->plusp) {
-    return false;		/* Different strands */
-
-  } else if (y->genomicstart != x->genomicstart) {
-    return false;
-  } else if (y->genomicend != x->genomicend) {
-    return false;
-  } else {
-    return true;
-  }
-}
-
-List_T
-Gregion_filter_unique_old (List_T gregionlist) {
-  List_T unique = NULL, p, q;
-  T x, y, gregion;
-  int n, i, j, cmp;
-  bool *eliminate;
-
-  n = List_length(gregionlist);
-  if (n == 0) {
-    return NULL;
-  }
-
-  debug(
-	for (p = gregionlist, i = 0; p != NULL; p = p->rest, i++) {
-	  gregion = (T) p->first;
-	  printf("  Initial %d: %d..%d %u-%u (plusp = %d), %d*%d points\n",
-		 i,gregion->querystart,gregion->queryend,gregion->genomicstart,gregion->genomicend,gregion->plusp,
-		 gregion->points5,gregion->points3);
-	}
-	);
-
-  eliminate = (bool *) CALLOC(n,sizeof(bool));
-
-  /* Not necessary if false is zero */
-  /*
-  for (i = 0; i < n; i++) {
-    eliminate[i] = false;
-  }
-  */
-
-  /* Check for subsumption */
-  for (p = gregionlist, i = 0; p != NULL; p = p->rest, i++) {
-    x = (T) p->first;
-    for (q = p->rest, j = i+1; q != NULL; q = q->rest, j++) {
-      y = q->first;
-      if ((cmp = gregion_dominate(&x,&y)) == -1) {
-	debug(printf("  Gregion %d..%d %u-%u (plusp = %d), %d*%d points eliminates %d..%d %u-%u (plusp = %d), %d*%d points\n",
-		     x->querystart,x->queryend,x->genomicstart,x->genomicend,x->plusp,x->points5,x->points3,
-		     y->querystart,y->queryend,y->genomicstart,y->genomicend,y->plusp,y->points5,y->points3));
-	eliminate[j] = true;
-	if (x->querypositions[y->querystart] == false) {
-	  x->querypositions[y->querystart] = true;
-	  x->points5 += 1;
-	}
-	if (x->querypositions[y->queryend] == false) {
-	  x->querypositions[y->queryend] = true;
-	  x->points3 += 1;
-	}
-      } else if (cmp == 1) {
-	debug(printf("  Gregion %d..%d %u-%u (plusp = %d), %d*%d points eliminates %d..%d %u-%u (plusp = %d), %d*%d points\n",
-		     y->querystart,y->queryend,y->genomicstart,y->genomicend,y->plusp,y->points5,y->points3,
-		     x->querystart,x->queryend,x->genomicstart,x->genomicend,x->plusp,x->points5,x->points3));
-	eliminate[i] = true;
-	if (y->querypositions[x->querystart] == false) {
-	  y->querypositions[x->querystart] = true;
-	  y->points5 += 1;
-	}
-	if (y->querypositions[x->queryend] == false) {
-	  y->querypositions[x->queryend] = true;
-	  y->points3 += 1;
-	}
-      } else if (gregion_equal(&x,&y) == true) {
-	/* Eliminate second occurrence */
-	debug(printf("  Gregion %d..%d %u-%u (plusp = %d), %d*%d points eliminates %d..%d %u-%u (plusp = %d), %d*%d points\n",
-		     x->querystart,x->queryend,x->genomicstart,x->genomicend,x->plusp,x->points5,x->points3,
-		     y->querystart,y->queryend,y->genomicstart,y->genomicend,y->plusp,y->points5,y->points3));
-	eliminate[j] = true;
-	if (x->querypositions[y->querystart] == false) {
-	  x->querypositions[y->querystart] = true;
-	  x->points5 += 1;
-	}
-	if (x->querypositions[y->queryend] == false) {
-	  x->querypositions[y->queryend] = true;
-	  x->points3 += 1;
-	}
-      }
-    }
-  }
-    
-  for (p = gregionlist, i = 0; p != NULL; p = p->rest, i++) {
-    if (eliminate[i] == false) {
-      debug(gregion = p->first);
-      debug(printf("  Keeping %u-%u (plusp = %d)\n",
-		   gregion->genomicstart,gregion->genomicend,gregion->plusp));
-      unique = List_push(unique,(void *) p->first);
-    } else {
-      gregion = (T) p->first;
-      debug(printf("  Eliminating %u-%u (plusp = %d)\n",
-		   gregion->genomicstart,gregion->genomicend,gregion->plusp));
-      /*
-      if (gregion->match5 != NULL) {
-	Match_decr_npairings(gregion->match5);
-	Match_decr_npairings(gregion->match3);
-      }
-      */
-      Gregion_free(&gregion);
-    }
-  }
-
-  FREE(eliminate);
-  List_free(&gregionlist);
-
-  debug(
-	for (p = unique, i = 0; p != NULL; p = p->rest, i++) {
-	  gregion = (T) p->first;
-	  printf("  Final %d: %u-%u (plusp = %d)\n",
-		 i,gregion->genomicstart,gregion->genomicend,gregion->plusp);
-	}
-	);
-
-  return unique;
-}
-
-
-
-List_T
-Gregion_filter_by_evidence (List_T gregionlist) {
-  List_T goodlist = NULL, p;
-  T gregion;
-  int threshold_evidence, bestevidence = 0, evidence;
-
-  for (p = gregionlist; p != NULL; p = List_next(p)) {
-    gregion = (T) List_head(p);
-    if (gregion->match5 != NULL) {
-      evidence = Match_npairings(gregion->match5) * Match_npairings(gregion->match3);
-      if (evidence > bestevidence) {
-	bestevidence = evidence;
-      }
-    }
-  }
-
-  threshold_evidence = bestevidence / 2;
-
-  for (p = gregionlist; p != NULL; p = p->rest) {
-    gregion = (T) List_head(p);
-    if (gregion->match5 == NULL) {
-      goodlist = List_push(goodlist,(void *) p->first);
-    } else {
-      evidence = Match_npairings(gregion->match5) * Match_npairings(gregion->match3);
-#if 0
-      if (evidence > threshold_evidence) {
-#else
-	if (Match_npairings(gregion->match5) > 2 && Match_npairings(gregion->match3) > 2) {
-#endif
-	goodlist = List_push(goodlist,(void *) p->first);
-      } else {
-	fprintf(stderr,"  Eliminating %u-%u (plusp = %d)\n",
-		gregion->genomicstart,gregion->genomicend,gregion->plusp);
-	debug(printf("  Eliminating %u-%u (plusp = %d)\n",
-		     gregion->genomicstart,gregion->genomicend,gregion->plusp));
-	Gregion_free(&gregion);
-      }
-    }
-  }
-
-  List_free(&gregionlist);
-  return goodlist;
-}
-#endif
-
-
 bool
 Gregion_sufficient_support (T this) {
   return this->sufficient_support_p;
@@ -716,7 +544,7 @@ Gregion_sufficient_support (T this) {
 
 void
 Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength) {
-  Genomicpos_T chrend, left, right;
+  Genomicpos_T left, right;
 
   debug(printf("Entering Gregion_extend with extension5 %u and extension3 %u\n",extension5,extension3));
   debug(printf("  genomicstart %u, genomiclength %u\n",this->genomicstart,this->genomiclength));
@@ -742,22 +570,22 @@ Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int qu
     }
   }
 
-  chrend = this->chrpos + this->genomiclength;
-
-  if (this->chrpos < left) {
+  if (this->chrstart < left) {
     /* At beginning of chromosome */
-    this->genomicstart -= this->chrpos;
-    this->chrpos = 0U;
+    this->genomicstart -= this->chrstart;
+    this->chrstart = 0U;
   } else {
     this->genomicstart -= left;
-    this->chrpos -= left;
+    this->chrstart -= left;
   }
 
-  if (chrend + right >= this->chrlength) {
+  if (this->chrend + right >= this->chrlength) {
     /* At end of chromosome */
     this->genomicend = this->chroffset + this->chrlength;
+    this->chrend = this->chrlength;
   } else {
     this->genomicend += right;
+    this->chrend += right;
   }
 
   this->genomiclength = this->genomicend - this->genomicstart + 1U;
@@ -802,3 +630,698 @@ Gregion_cmp (const void *a, const void *b) {
     return 0;
   }
 }
+
+
+/************************************************************************
+ *  Filtering, based on spliceclean
+ ************************************************************************/
+
+#ifdef USE_CLEAN
+
+#define MAXLOOKBACK 60
+
+static void
+compute_total_up (List_T gregions) {
+  long int total_up;
+  List_T p;
+  Gregion_T gregion;
+
+  total_up = 0;
+  for (p = gregions; p != NULL; p = List_next(p)) {
+    gregion = (Gregion_T) List_head(p);
+    total_up += 1;
+    gregion->total_up = total_up;
+  }
+
+  return;
+}
+
+static void
+compute_total_down (List_T gregions) {
+  long int total_down;
+  List_T p;
+  Gregion_T gregion;
+
+  total_down = 0;
+  for (p = gregions; p != NULL; p = List_next(p)) {
+    gregion = (Gregion_T) List_head(p);
+    total_down += 1;
+    gregion->total_down = total_down;
+  }
+
+  return;
+}
+
+
+static int
+Gregion_low_descending_cmp (const void *a, const void *b) {
+  Gregion_T x = * (Gregion_T *) a;
+  Gregion_T y = * (Gregion_T *) b;
+
+  if (x->extentstart > y->extentstart) {
+    return -1;
+  } else if (y->extentstart > x->extentstart) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+static int
+Gregion_high_ascending_cmp (const void *a, const void *b) {
+  Gregion_T x = * (Gregion_T *) a;
+  Gregion_T y = * (Gregion_T *) b;
+
+  if (x->extentend < y->extentend) {
+    return -1;
+  } else if (y->extentend < x->extentend) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+static List_T
+Gregion_sort_low_descending (List_T gregions) {
+  List_T sorted = NULL;
+  Gregion_T *array;
+  int n, i;
+
+  if ((n = List_length(gregions)) == 0) {
+    return (List_T) NULL;
+  } else {
+    array = (Gregion_T *) List_to_array(gregions,NULL);
+    qsort(array,n,sizeof(Gregion_T),Gregion_low_descending_cmp);
+    
+    for (i = n-1; i >= 0; i--) {
+      sorted = List_push(sorted,array[i]);
+    }
+    FREE(array);
+    return sorted;
+  }
+}
+
+
+
+static List_T
+Gregion_sort_high_ascending (List_T gregions) {
+  List_T sorted = NULL;
+  Gregion_T *array;
+  int n, i;
+
+  if ((n = List_length(gregions)) == 0) {
+    return (List_T) NULL;
+  } else {
+    array = (Gregion_T *) List_to_array(gregions,NULL);
+    qsort(array,n,sizeof(Gregion_T),Gregion_high_ascending_cmp);
+    
+    for (i = n-1; i >= 0; i--) {
+      sorted = List_push(sorted,array[i]);
+    }
+    FREE(array);
+    return sorted;
+  }
+}
+
+
+
+typedef struct Base_T *Base_T;
+struct Base_T {
+  Genomicpos_T prevpos;
+  Genomicpos_T minextent;
+  Genomicpos_T maxextent;
+  List_T gregions;
+
+  bool usedp;
+};
+
+static void
+Base_free (Base_T *old) {
+  if ((*old)->gregions != NULL) {
+    List_free(&(*old)->gregions);
+  }
+  FREE(*old);
+  return;
+}
+
+
+static Base_T
+Base_new () {
+  Base_T new = (Base_T) MALLOC(sizeof(*new));
+
+  new->minextent = -1U;
+  new->maxextent = -1U;
+  new->gregions = (List_T) NULL;
+  new->usedp = false;
+
+  return new;
+}
+
+
+
+/* Assumes gregions are arranged low to high */
+static Gregion_T
+apply_ceiling (List_T gregions, Genomicpos_T ceiling) {
+  List_T p;
+  Gregion_T prevgregion = NULL, gregion;
+
+  for (p = gregions; p != NULL; p = List_next(p)) {
+    gregion = (Gregion_T) List_head(p);
+    if (gregion->extentend > ceiling) {
+      return prevgregion;
+    }
+    prevgregion = gregion;
+  }
+
+  return prevgregion;
+}
+
+/* Assumes gregions are arranged high to low */
+static Gregion_T
+apply_floor (List_T gregions, Genomicpos_T floor) {
+  List_T p;
+  Gregion_T prevgregion = NULL, gregion;
+
+  for (p = gregions; p != NULL; p = List_next(p)) {
+    gregion = (Gregion_T) List_head(p);
+    if (gregion->extentstart < floor) {
+      return prevgregion;
+    }
+    prevgregion = gregion;
+  }
+
+  return prevgregion;
+}
+
+
+static Genomicpos_T
+compute_ceilings (Uinttable_T low_basetable) {
+  Genomicpos_T ceiling, bestprevpos, prevpos;
+  long int bestscore, score;
+  int nlookback;
+  Genomicpos_T *keys;
+  Base_T base, prevbase;
+  Gregion_T gregion, prevgregion;
+#ifdef DEBUG2
+  Gregion_T bestprevgregion;
+#endif
+  List_T p;
+  int n, i;
+  
+  n = Uinttable_length(low_basetable);
+  keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  debug2(printf("low_basetable has %d entries\n",n));
+  
+  prevpos = 0U;
+  for (i = 0; i < n; i++) {
+    base = (Base_T) Uinttable_get(low_basetable,keys[i]);
+    base->gregions = Gregion_sort_high_ascending(base->gregions);
+    compute_total_up(base->gregions);
+
+    base->prevpos = prevpos;
+    prevpos = keys[i];
+  }
+
+  /* Initialize minbaselow */
+  base = (Base_T) Uinttable_get(low_basetable,keys[0]);
+  for (p = base->gregions; p != NULL; p = List_next(p)) {
+    gregion = (Gregion_T) List_head(p);
+    gregion->score_ceiling = gregion->total_up;
+    gregion->bestprev_ceiling = 0U;
+  }
+
+  for (i = 1; i < n; i++) {
+    base = (Base_T) Uinttable_get(low_basetable,keys[i]);
+    
+    debug2(printf("At base %u, have %d gregions\n",keys[i],List_length(base->gregions)));
+
+    for (p = base->gregions; p != NULL; p = List_next(p)) {
+      gregion = (Gregion_T) List_head(p);
+
+      bestscore = 0;
+      bestprevpos = keys[0];
+      debug2(bestprevgregion = NULL);
+
+      prevpos = base->prevpos;
+      nlookback = 0;
+
+      ceiling = gregion->extentend;
+      debug2(printf("  Gregion %u",gregion->extentend));
+      while (prevpos >= keys[0] && nlookback < MAXLOOKBACK) {
+	prevbase = (Base_T) Uinttable_get(low_basetable,prevpos);
+	if ((prevgregion = apply_ceiling(prevbase->gregions,ceiling)) != NULL) {
+	  debug2(printf(" ... prev:%u score:%d+%d = %d",
+			prevpos,prevgregion->score_ceiling,gregion->total_up,
+			prevgregion->score_ceiling+gregion->total_up));
+
+	  if ((score = prevgregion->score_ceiling + gregion->total_up) > bestscore) {
+	    debug2(printf("*"));
+	    bestscore = score;
+	    bestprevpos = prevpos;
+#ifdef DEBUG2
+	    bestprevgregion = prevgregion;
+#endif
+	  }
+	}
+
+	prevpos = prevbase->prevpos;
+	nlookback++;
+      }
+      debug2(printf("\n"));
+
+      gregion->score_ceiling = bestscore;
+      gregion->bestprev_ceiling = bestprevpos;
+
+#ifdef DEBUG2
+      if (bestprevgregion == NULL) {
+	printf(" no prevgregion, bestprev is %u, score is %d\n",
+	       bestprevpos,gregion->score_ceiling);
+      } else {
+	printf(" bestprev is pos %u, gregion %u, score is %d\n",
+	       bestprevpos,bestprevgregion->extentend,gregion->score_ceiling);
+      }
+#endif
+    }
+  }
+
+  /* Get best overall gregion */
+  bestscore = 0;
+  bestprevpos = 0U;
+
+  for (i = 0; i < n; i++) {
+    base = (Base_T) Uinttable_get(low_basetable,keys[i]);
+    for (p = base->gregions; p != NULL; p = List_next(p)) {
+      gregion = (Gregion_T) List_head(p);
+      
+      if (gregion->score_ceiling > bestscore) {
+	bestscore = gregion->score_ceiling;
+	bestprevpos = keys[i];
+      }
+    }
+  }
+
+  FREE(keys);
+  return bestprevpos;
+}
+
+
+
+static Genomicpos_T
+compute_floors (Uinttable_T high_basetable) {
+  Genomicpos_T floor, bestprevpos, prevpos;
+  long int bestscore, score;
+  int nlookback;
+  Genomicpos_T *keys;
+  Base_T base, prevbase;
+  Gregion_T gregion, prevgregion;
+#ifdef DEBUG2
+  Gregion_T bestprevgregion;
+#endif
+  List_T p;
+  int n, i;
+
+  n = Uinttable_length(high_basetable);
+  keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  debug2(printf("high_basetable has %d entries\n",n));
+
+  prevpos = (unsigned int) -1U;
+  for (i = n-1; i >= 0; --i) {
+    base = (Base_T) Uinttable_get(high_basetable,keys[i]);
+    base->gregions = Gregion_sort_low_descending(base->gregions);
+    compute_total_down(base->gregions);
+
+    base->prevpos = prevpos;
+    prevpos = keys[i];
+  }
+
+  /* Initialize maxbasehigh */
+  base = (Base_T) Uinttable_get(high_basetable,keys[n-1]);
+  for (p = base->gregions; p != NULL; p = List_next(p)) {
+    gregion = (Gregion_T) List_head(p);
+    gregion->score_floor = gregion->total_down;
+    gregion->bestprev_floor = (unsigned int) -1U;
+  }
+
+  for (i = n-2; i >= 0; --i) {
+    base = (Base_T) Uinttable_get(high_basetable,keys[i]);
+
+    debug2(printf("At base %u, have %d gregions\n",keys[i],List_length(base->gregions)));
+    for (p = base->gregions; p != NULL; p = List_next(p)) {
+      gregion = (Gregion_T) List_head(p);
+      
+      bestscore = 0;
+      bestprevpos = keys[n-1];
+      debug2(bestprevgregion = NULL);
+
+      prevpos = base->prevpos;
+      nlookback = 0;
+
+      floor = gregion->extentstart /*+1*/;
+      debug2(printf("  Gregion %u",gregion->extentstart));
+      while (prevpos <= keys[n-1] && nlookback < MAXLOOKBACK) {
+	prevbase = (Base_T) Uinttable_get(high_basetable,prevpos);
+	if ((prevgregion = apply_floor(prevbase->gregions,floor)) != NULL) {
+	  debug2(printf(" ... prev:%u, score:%d+%d = %d",
+			prevpos,prevgregion->score_floor,gregion->total_down,
+			prevgregion->score_floor+gregion->total_down));
+
+	  if ((score = prevgregion->score_floor + gregion->total_down) > bestscore) {
+	    debug2(printf("*"));
+	    bestscore = score;
+	    bestprevpos = prevpos;
+#ifdef DEBUG2
+	    bestprevgregion = prevgregion;
+#endif
+	  }
+	}
+
+	prevpos = prevbase->prevpos;
+	nlookback++;
+      }
+      debug2(printf("\n"));
+
+      gregion->score_floor = bestscore;
+      gregion->bestprev_floor = bestprevpos;
+
+#ifdef DEBUG2
+      if (bestprevgregion == NULL) {
+	printf(" no prevgregion, bestprev is %u, score is %d\n",
+	       bestprevpos,gregion->score_floor);
+      } else {
+	printf(" bestprev is pos %u, gregion %u, score is %d\n",
+	       bestprevpos,bestprevgregion->extentstart,gregion->score_floor);
+      }
+#endif
+    }
+  }
+
+  /* Get best overall gregion */
+  bestscore = 0;
+  bestprevpos = (unsigned int) -1U;
+
+  for (i = n-1; i >= 0; --i) {
+    base = (Base_T) Uinttable_get(high_basetable,keys[i]);
+    for (p = base->gregions; p != NULL; p = List_next(p)) {
+      gregion = (Gregion_T) List_head(p);
+      
+      if (gregion->score_floor > bestscore) {
+	bestscore = gregion->score_floor;
+	bestprevpos = keys[i];
+      }
+    }
+  }
+
+  FREE(keys);
+  return bestprevpos;
+}
+
+
+static void
+traceback_ceilings (Uinttable_T low_basetable, Genomicpos_T prevpos) {
+  Genomicpos_T ceiling;
+  Gregion_T end_gregion;
+  Base_T base, prevbase;
+  Genomicpos_T *keys;
+  int n, i;
+  
+  n = Uinttable_length(low_basetable);
+  keys = Uinttable_keys(low_basetable,/*sortp*/true);
+
+  ceiling = (unsigned int) -1U;
+
+  i = n-1;
+  while (prevpos > keys[0]) {
+    debug2(printf("traceback from endpos %u, back to %u\n",keys[i],prevpos));
+    while (/*startpos*/keys[i] > prevpos) {
+      base = (Base_T) Uinttable_get(low_basetable,/*startpos*/keys[i]);
+      base->maxextent = ceiling;
+      debug2(printf("At low %u, maxextent is %u\n",/*startpos*/keys[i],ceiling));
+      i--;
+    }
+
+    prevbase = (Base_T) Uinttable_get(low_basetable,prevpos);
+    if ((end_gregion = apply_ceiling(prevbase->gregions,ceiling)) == NULL) {
+      prevpos = keys[0];	/* Ends loop */
+    } else {
+      ceiling = end_gregion->extentend /*-1*/;
+      prevpos = end_gregion->bestprev_ceiling;
+    }
+  }
+
+  debug2(printf("End of loop\n"));
+  while (i >= 0) {
+    base = (Base_T) Uinttable_get(low_basetable,keys[i]);
+    base->maxextent = ceiling;
+    debug2(printf("At low %u, maxextent is %u\n",keys[i],ceiling));
+    i--;
+  }
+
+  FREE(keys);
+
+  return;
+}
+
+
+static void
+traceback_floors (Uinttable_T high_basetable, Genomicpos_T prevpos) {
+  Genomicpos_T floor;
+  Gregion_T start_gregion;
+  Base_T base, prevbase;
+  Genomicpos_T *keys;
+  int n, i;
+
+  n = Uinttable_length(high_basetable);
+  keys = Uinttable_keys(high_basetable,/*sortp*/true);
+
+  floor = 0U;
+
+  i = 0;
+  while (prevpos < keys[n-1]) {
+    debug2(printf("traceback from startpos %u, forward to %u\n",keys[i],prevpos));
+    while (/*endpos*/keys[i] < prevpos) {
+      base = (Base_T) Uinttable_get(high_basetable,/*endpos*/keys[i]);
+      base->minextent = floor;
+      debug2(printf("At high %u, minextent is %u\n",/*endpos*/keys[i],floor));
+      i++;
+    }
+
+    prevbase = (Base_T) Uinttable_get(high_basetable,prevpos);
+    if ((start_gregion = apply_floor(prevbase->gregions,floor)) == NULL) {
+      prevpos = keys[n-1];	/* Ends loop */
+    } else {
+      floor = start_gregion->extentstart /*+1*/;
+      prevpos = start_gregion->bestprev_floor;
+    }
+  }
+
+  debug2(printf("End of loop\n"));
+  while (i < n) {
+    base = (Base_T) Uinttable_get(high_basetable,keys[i]);
+    base->minextent = floor;
+    debug2(printf("At high %u, minextent is %u\n",/*endpos*/keys[i],floor));
+    i++;
+  }
+
+  FREE(keys);
+
+  return;
+}
+
+
+static void
+bound_gregions (Uinttable_T low_basetable, Uinttable_T high_basetable) {
+  Genomicpos_T minextent, maxextent;
+  Base_T base_low, base_high;
+  Gregion_T gregion;
+  List_T p;
+  Genomicpos_T *keys;
+  int n, i;
+
+  n = Uinttable_length(low_basetable);
+  keys = Uinttable_keys(low_basetable,/*sortp*/true);
+
+  for (i = 0; i < n; i++) {
+    base_low = (Base_T) Uinttable_get(low_basetable,keys[i]);
+    maxextent = base_low->maxextent;
+    for (p = base_low->gregions; p != NULL; p = List_next(p)) {
+      gregion = (Gregion_T) List_head(p);
+      base_high = (Base_T) Uinttable_get(high_basetable,gregion->extentend);
+      minextent = base_high->minextent;
+      if (gregion->extentstart < minextent || gregion->extentend > maxextent) {
+	debug2(printf("Not bounded low: #%d:%u..%u\n",gregion->chrnum,gregion->extentstart,gregion->extentend));
+	gregion->bounded_low_p = false;
+      } else {
+	debug2(printf("Bounded low: #%d:%u..%u\n",gregion->chrnum,gregion->extentstart,gregion->extentend));
+	gregion->bounded_low_p = true;
+      }
+    }
+  }
+
+  FREE(keys);
+
+
+  n = Uinttable_length(high_basetable);
+  keys = Uinttable_keys(high_basetable,/*sortp*/true);
+
+  for (i = n-1; i >= 0; i--) {
+    base_high = (Base_T) Uinttable_get(high_basetable,keys[i]);
+    minextent = base_high->minextent;
+    for (p = base_high->gregions; p != NULL; p = List_next(p)) {
+      gregion = (Gregion_T) List_head(p);
+      base_low = (Base_T) Uinttable_get(low_basetable,gregion->extentstart);
+      maxextent = base_low->maxextent;
+      if (gregion->extentstart < minextent || gregion->extentend > maxextent) {
+	debug2(printf("Not bounded high: #%d:%u..%u\n",gregion->chrnum,gregion->extentstart,gregion->extentend));
+	gregion->bounded_high_p = false;
+      } else {
+	debug2(printf("Bounded high: #%d:%u..%u\n",gregion->chrnum,gregion->extentstart,gregion->extentend));
+	gregion->bounded_high_p = true;
+      }
+    }
+  }
+
+  FREE(keys);
+
+  return;
+}
+
+
+
+
+List_T
+Gregion_filter_clean (List_T gregionlist, int nchrs) {
+  Uinttable_T *low_basetables, *high_basetables, basetable;
+  Base_T base;
+  Genomicpos_T prevpos;
+  Chrnum_T chrnum;
+
+  List_T unique = NULL, p;
+  T x, y, gregion, *array;
+  int n, i, j;
+  bool *eliminate;
+#ifdef DEBUG
+  List_T q;
+#endif
+
+  n = List_length(gregionlist);
+  if (n == 0) {
+    return NULL;
+  }
+
+  debug(
+	for (p = gregionlist, i = 0; p != NULL; p = p->rest, i++) {
+	  gregion = (T) p->first;
+	  printf("  Initial %d: %d..%d %u-%u (plusp = %d)\n",
+		 i,gregion->querystart,gregion->queryend,gregion->extentstart,gregion->extentend,gregion->plusp);
+	}
+	);
+
+  low_basetables = (Uinttable_T *) CALLOC(nchrs+1,sizeof(Uinttable_T));
+  high_basetables = (Uinttable_T *) CALLOC(nchrs+1,sizeof(Uinttable_T));
+
+  for (p = gregionlist; p != NULL; p = List_next(p)) {
+    gregion = (T) List_head(p);
+
+    if (low_basetables[gregion->chrnum] == NULL) {
+      low_basetables[gregion->chrnum] = Uinttable_new(n);
+      high_basetables[gregion->chrnum] = Uinttable_new(n);
+    }
+    
+    basetable = low_basetables[gregion->chrnum];
+    if ((base = (Base_T) Uinttable_get(basetable,gregion->extentstart)) == NULL) {
+      base = Base_new();
+      Uinttable_put(basetable,gregion->extentstart,(void *) base);
+    }
+    base->gregions = List_push(base->gregions,(void *) gregion);
+
+    basetable = high_basetables[gregion->chrnum];
+    if ((base = (Base_T) Uinttable_get(basetable,gregion->extentend)) == NULL) {
+      base = Base_new();
+      Uinttable_put(basetable,gregion->extentend,(void *) base);
+    }
+    base->gregions = List_push(base->gregions,(void *) gregion);
+  }
+
+  for (chrnum = 0; chrnum <= nchrs; chrnum++) {
+    if ((basetable = low_basetables[chrnum]) != NULL) {
+      debug2(printf("Processing gregions for chrnum %d\n",chrnum));
+      prevpos = compute_ceilings(basetable);
+      traceback_ceilings(basetable,prevpos);
+  
+      basetable = high_basetables[chrnum];
+      prevpos = compute_floors(basetable);
+      traceback_floors(basetable,prevpos);
+
+      bound_gregions(low_basetables[chrnum],high_basetables[chrnum]);
+    }
+  }
+  
+  /* Todo: Free each table */
+
+  FREE(high_basetables);
+  FREE(low_basetables);
+
+#if 0
+
+
+
+  eliminate = (bool *) CALLOC(n,sizeof(bool));
+
+  /* Not necessary if false is zero */
+  /*
+  for (i = 0; i < n; i++) {
+    eliminate[i] = false;
+  }
+  */
+
+  array = (T *) List_to_array(gregionlist,NULL);
+  List_free(&gregionlist);
+  qsort(array,n,sizeof(T),weight_cmp);
+
+  for (i = 0; i < n; i++) {
+    x = array[i];
+    for (j = i+1; j < n; j++) {
+      y = array[j];
+      if (gregion_overlap_p(x,y) == true) {
+	eliminate[j] = true;
+      }
+    }
+  }
+
+  for (i = n-1; i >= 0; i--) {
+    gregion = array[i];
+    if (eliminate[i] == false) {
+      debug(printf("  Keeping %u-%u (plusp = %d)\n",
+		   gregion->extentstart,gregion->extentend,gregion->plusp));
+      unique = List_push(unique,(void *) gregion);
+    } else {
+      debug(printf("  Eliminating %u-%u (plusp = %d)\n",
+		   gregion->extentstart,gregion->extentend,gregion->plusp));
+      /*
+      if (gregion->match5 != NULL) {
+	Match_decr_npairings(gregion->match5);
+	Match_decr_npairings(gregion->match3);
+      }
+      */
+      Gregion_free(&gregion);
+    }
+  }
+
+  FREE(eliminate);
+  FREE(array);
+
+  debug(
+	for (p = unique, i = 0; p != NULL; p = p->rest, i++) {
+	  gregion = (T) p->first;
+	  printf("  Final %d: %u-%u (plusp = %d)\n",
+		 i,gregion->extentstart,gregion->extentend,gregion->plusp);
+	}
+	);
+
+#endif
+
+  return unique;
+}
+
+#endif
+

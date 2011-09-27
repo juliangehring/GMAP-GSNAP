@@ -1,8 +1,12 @@
-/* $Id: sequence.h,v 1.53 2010-07-22 00:11:06 twu Exp $ */
+/* $Id: sequence.h 35633 2011-02-23 20:13:56Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
 #include "bool.h"
+
+#ifdef HAVE_ZLIB
+#include <zlib.h>
+#endif
 
 #ifdef PMAP
 #define MAXSEQLEN 300000
@@ -14,22 +18,24 @@
 #define T Sequence_T
 typedef struct T *T;
 
+extern bool
+Sequence_firstp (T this);
+
+extern char *
+Sequence_accession (T this);
+
 extern int
 Sequence_input_init (FILE *fp);
+
+#ifdef HAVE_ZLIB
+extern int
+Sequence_input_init_gzip (gzFile fp);
+#endif
 
 extern char *
 Sequence_fullpointer (T this);
 extern char *
 Sequence_trimpointer (T this);
-
-#ifdef GSNAP
-extern char *
-Sequence_fullpointer_uc (T this);
-extern int
-Sequence_choplength (T this);
-extern char *
-Sequence_quality (T this);
-#endif
 
 extern int
 Sequence_ntlength (T this);
@@ -59,22 +65,6 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp);
 extern T
 Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp);
 
-#ifdef GSNAP
-extern void
-Sequence_dynprog_init (int maxlength);
-extern void
-Sequence_dynprog_term ();
-extern void
-Sequence_chop_primers (T queryseq1, T queryseq2);
-extern T
-Sequence_read_multifile_shortreads (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles,
-				    bool circularp);
-extern T
-Sequence_read_multifile_shortreads_simple (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles);
-extern T
-Sequence_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE *input1, FILE *input2,
-				bool circularp);
-#endif
 
 extern T
 Sequence_read_unlimited (FILE *input);
@@ -96,43 +86,40 @@ Sequence_alias (T this);
 
 
 extern void
-Sequence_print_digest (T this);
+Sequence_print_digest (FILE *fp, T this);
 extern void
-Sequence_print_header (T this, bool checksump);
+Sequence_print_header (FILE *fp, T this, bool checksump);
 extern void
 Sequence_print_header_revcomp (T this);
-extern void
-Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp);
-extern void
-Sequence_print_two (T this, T alt, bool uppercasep, int wraplength);
 
-#ifdef GSNAP
 extern void
-Sequence_print_chop_symbols (FILE *fp, T this);
+Sequence_print (FILE *fp, T this, bool uppercasep, int wraplength, bool trimmedp);
+extern void
+Sequence_print_alt (T ref, T alt, T snp, bool uppercasep, int wraplength);
+extern void
+Sequence_print_two (T ref, T alt, bool uppercasep, int wraplength);
+
 extern void
 Sequence_print_oneline (FILE *fp, T this);
 extern void
 Sequence_print_oneline_revcomp (FILE *fp, T this);
+
 extern void
 Sequence_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high);
 extern void
 Sequence_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high);
+
+#ifndef PMAP
 extern void
 Sequence_print_quality (FILE *fp, T this, int hardclip_low, int hardclip_high,
 			int shift);
 extern void
 Sequence_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high,
 				int shift);
-extern void
-Sequence_print_oneline_uc (FILE *fp, T this);
-extern void
-Sequence_print_oneline_revcomp_uc (FILE *fp, T this);
 #endif
 
 extern void
 Sequence_print_raw (T this);
-extern char *
-Sequence_accession (T this);
 
 extern T
 Sequence_substring (T usersegment, unsigned int left, unsigned int length, 

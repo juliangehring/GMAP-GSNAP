@@ -1,0 +1,5 @@
+#! @SHELL@
+
+../src/iit_get iittest 20000 > iit_get.out
+diff iit_get.out ${srcdir}/iit_get.out.ok
+

@@ -1,0 +1,236 @@
+
+Availability
+============
+
+The source code for this package is available from
+http://www.gene.com/share/gmap.  License terms are provided in the
+COPYING file.
+
+
+Building and installing GMAP
+============================
+
+Prerequisites: a Unix system, a C compiler, and Perl
+
+Step 1: Set your site-specific variables by editing the file
+config.site.  In particular, you must set appropriate values for
+"prefix" and "with_gmapdb", as explained in that file.
+
+Step 2: Build, test, and install the programs, by running the
+following GNU commands
+
+    ./configure
+    make
+    make check
+    make install
+
+
+Downloading a GMAP database
+===========================
+
+You can use the program gmap_setup to build your own database (as
+described below), but you can started quickly by downloading a
+pre-built GMAP database from the same place you obtained the GMAP
+program (see above for URL).  
+
+Place the database in the GMAPDB directory you specified in the
+config.site file when you built the gmap program.  You should include
+a subdirectory for each GMAP database; for example, if you downloaded
+a database called NHGD_R35, your directory structure should look like
+this
+
+    /path/to/gmapdb/NHGD_R35/
+    /path/to/gmapdb/NHGD_R35/NHGD_R35.chromosome
+    /path/to/gmapdb/NHGD_R35/NHGD_R35.chromosome.iit
+    ...
+    /path/to/gmapdb/NHGD_R35/NHGD_R35.version
+
+
+Building a GMAP database
+========================
+
+The program gmap_setup can build and install a GMAP database from a
+set of FASTA files containing either entire chromosomes or contigs
+that represent pieces of chromosomes.  This program requires that the
+sequences in the FASTA file have a mapping onto chromosomal
+coordinates.  This mapping is in a file typically called coords.txt,
+with one line per sequence in the following format
+
+<contig_name>	<chromosomal_mapping>	<optional_strain>
+
+where the chromosomal_mapping is in the form
+<chr_name>:<start>..<end>.  Here are some examples:
+
+NT_077911.1	1:217281..257582
+NT_091704.1	22U:1..166566
+
+If you want the contig to be inserted as its reverse complement, then
+list the coordinates in the reverse direction (starting with the
+higher number), like this:
+
+NT_039199.1	1:61563373..61273712
+
+
+Two utility programs, fa_coords and md_coords, are included for
+generating coords.txt from either the FASTA files themselves or from
+the seq_contig.md file included in NCBI genome releases.  If the FASTA
+files are used, each header line must have some indication of at least
+the chromosome, in one of these forms
+
+    /chr=1:217281..257582
+    /chr=1
+    chr1:217281..257582
+    chr1
+
+If only the chromosome is specified, without coordinates, the program
+will concatenate the contigs to create a chromosome.
+
+In summary, then, here are the steps for building a GMAP DB file:
+
+1.  Create coords.txt, by running either
+
+    a.  md_coords seq_contig.md
+    b.  fa_coords <fasta_file>...
+
+2.  Run gmap_setup -d <db_name> <fasta_file>...
+
+The notation <fasta_file>... indicates that multiple files can be
+listed.  The files can be in any order, and the contigs can be in any
+order within these files.  The program will assemble the contigs and
+chromosomes into their appropriate order.
+
+
+Running GMAP
+============
+
+To see the full set of options, type "gmap --help".  The following are
+some common examples of usage.  For each of the examples, we assume
+that you have installed a genome database called NHGD_R35 in your GMAPDB
+directory.  (If your database is located elsewhere, you can specify
+the -D flag to gmap or set the environment variable GMAPDB to point to
+that directory.)
+
+* Mapping only: To map one or more cDNAs in a FASTA file onto a
+  genome, run GMAP as follows:
+
+    gmap -d NHGD_R35 <cdna_file>
+
+* Mapping and alignment: If you want to map and align the cDNAs, add
+  the -A flag:
+
+    gmap -d NHGD_R35 -A <cdna_file>
+
+* Alignment only: To align one or more cDNAs in a FASTA file onto a
+  given genomic segment (also in a FASTA file), use the -g flag
+  instead of the -d flag:
+
+    gmap -g <genome_file> -A <cdna_file>
+
+* Batch mode: If you have a large number of cDNAs to run, and you have
+  sufficient RAM (about 2 gigabytes for the human genome) to run in
+  batch mode, add the -B flag, with the number of worker threads
+  specified with the -t flag:
+
+    gmap -d NHGD_R35 -BA -t <nthreads> <cdna_file>
+
+* Compressed output: If you want to store the alignment results in a
+  compressed format, use the -Z flag.  You can uncompress the results
+  by using the gmap_uncompress.pl program:
+
+    gmap -d NHGD_R35 -Z <cdna_file> > x
+    cat x | gmap_uncompress
+
+
+Defining chromosome subsets (for advanced use only)
+===================================================
+
+GMAP has the ability to restrict its search of the genome to a subset
+of the available chromosomes.  A user may specify a chromosomal subset
+with the "-c" flag to GMAP.  The available chromosome subsets are
+listed in the chrsubset file in the GMAP database.  In our running
+example, this would be the file
+
+    /path/to/gmapdb/NHGD_R35/NHGD_R35.chrsubset
+
+The gmap_setup process automatically creates a file by this name, and
+pre-defines some basic subsets in that file, namely the subset "all"
+(which stands for all chromosomes) and a subset for each individual
+chromosome.
+
+However, you may edit this file manually to define your own chromosome
+subsets, using a FASTA-like syntax.  Chromosome subsets can be defined
+either by listing the chromosomes to be included (i.e., starting the
+line with a plus '+' sign), or by listing those to be excluded (i.e.,
+starting the line with a minus '-' sign).  For example, if you wish to
+exclude chromosomes that contain unmapped contigs (such as "22U"), you
+can add the following lines to the chrsubset file:
+
+    >vanilla
+    -1U,2U,3U,4U,5U,6U,7U,8U,9U,10U,12U,13U,15U,16U,17U,18U,19U,22U,XU
+
+Equivalently, this subset could have been defined inclusively:
+
+    >vanilla
+    +1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,MT,X,Y
+
+The user may then restrict his search to these chromosomes by
+providing the "-c vanilla" flag to GMAP.  If the user does not specify
+any chromosome subset, then the default subset is used.  The default
+subset is the first one in the chrsubset file.
+
+The user also has the option, with the "-C" flag to GMAP, of
+specifying a chrsubset file other than the one in the GMAPDB
+directory.
+
+
+Building map files (for advanced use only)
+==========================================
+
+This package includes an implementation of interval index trees
+(IITs), which permits efficient lookup of interval information.  The
+gmap program also allows you (with its -m flag) to look up pre-mapped
+annotation information that overlaps your query cDNA sequence.  These
+interval index trees (or map files) are built using the iit_store
+program included in this package.  To build a map file, do the
+following:
+
+Step 1: Put your map information for a given genome (e.g. NHGD_R35)
+into a FASTA file with the following format:
+   
+    >label start end optional_tag
+    optional_annotation (which may be multiple lines)
+
+For example, the label may be an EST accession, with the start and end
+numbers representing their position in the genome database, and the
+tag indicating whether the EST aligns to the forward or reverse strand.
+
+The start and end values must be in universal coordinates, which are
+the coordinates when chromosomes are concatenated.  The GMAP program
+provides these coordinates in its alignments.  In addition, the
+get-genome program can translate chromosomal coordinates to universal
+coordinates with its -C flag:
+
+    get-genome -d NHGD_R35 -C 22:10000..11000
+
+
+Step 2: Run iit_store on this FASTA file, and put the file into the
+maps subdirectory of the corresponding genome directory.  The file
+should end with ".iit"; if you don't specify this to the -o flag, the
+program will add ".iit" to the filename.
+
+    iit_store -o myannot myannot.fa
+
+Now you can retrieve this information with iit_get
+
+    iit_get myannot.iit start [optional_end [optional_tag]]
+
+You can also retrieve this information with gmap, if you store the map
+file in the appropriate genome database, like this
+
+    mv myannot.iit /path/to/genome/directory/NHGD_R35/NHGD_R35.maps/
+
+Then you can retrieve map information for a given cDNA sequence by
+specifying the desired map file with the -m flag:
+
+   gmap -d NHGD_R35 -m myannot <cdna_file>
+

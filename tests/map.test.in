@@ -1,0 +1,4 @@
+#! @SHELL@
+
+../src/gmap -D . -d chr17test ${srcdir}/ss.her2 > map.test.out
+diff map.test.out ${srcdir}/map.test.ok

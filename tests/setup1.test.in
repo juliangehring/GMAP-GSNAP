@@ -1,0 +1,18 @@
+#! @SHELL@
+
+cp ../util/gmap_setup.pl gmap_setup
+chmod +x gmap_setup	
+./gmap_setup -B ../src -D . -d chr17test -c coords.txt ${srcdir}/ss.chr17test
+if diff chr17test.genomecomp ${srcdir}/setup.genomecomp.ok; then
+    :
+else
+    echo "Difference found between chr17test.genomecomp and setup.genomecomp.ok" >& 2
+    exit 1
+fi
+if diff chr17test.idxpositions ${srcdir}/setup.idxpositions.ok; then
+    :
+else
+    echo "Difference found between chr17test.idxpositions and setup.idxpositions.ok" >& 2
+    exit 1
+fi
+

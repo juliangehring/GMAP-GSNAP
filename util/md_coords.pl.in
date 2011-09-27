@@ -1,0 +1,823 @@
+#! @PERL@ -w
+# $Id: md_coords.pl.in,v 1.4 2005/03/11 17:58:29 twu Exp $
+
+#$package_version = "@PACKAGE_VERSION@";
+
+use IO::File;
+undef($opt_9);			# debug mode
+undef($opt_U);			# if 1, include unmapped contigs, else ignore
+undef($opt_A);			# if 1, use alternate strains
+undef($opt_s);			# Reference strain
+undef($opt_c);			# Columns
+undef($opt_o);			# Output file
+use Getopt::Std;
+getopts("9U:A:s:c:o:");
+
+# Usage: md_coords [-U] <mdfile>
+
+$mdfile = $ARGV[0];
+if (!defined($outfile = $opt_o)) {
+  $outfile = "coords.txt";
+}
+
+$flags = "";
+$flags .= "-o $outfile";
+
+$OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
+
+if (defined($opt_c)) {
+  ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = split ",",$opt_c;
+} else {
+  ($ncols,$examples) = show_lines($mdfile);
+  ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = grok_columns($ncols,$examples,$mdfile);
+}
+$flags .= " -c $contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol";
+
+if (!defined($refstrain = $opt_s)) {
+  $refstrain = find_reference_strain($mdfile,$straincol);
+}
+$separate_chromosome = check_strains($mdfile,$chrcol,$chrstartcol,$chrendcol,
+				     $straincol,$refstrain);
+
+
+if (!defined($opt_U)) {
+  print STDOUT <<UNMAPPED;
+
+NCBI genomes may have unmapped contigs that lack a definite genomic location.
+They may be completely unmapped, or mapped to an unknown place on some chromosome.
+If you include these contigs, GMAP can localize your cDNA to an unmapped contig,
+if it aligns there best.  Do you want to include unmapped contigs (y or n)?
+
+UNMAPPED
+  $opt_U = input_yn("y");
+}
+
+if ($opt_U == 1) {
+  $incl_unmapped_p = 1;
+} else {
+  $incl_unmapped_p = 0;
+}
+$flags .= " -U $incl_unmapped_p";
+
+if (!defined($opt_A)) {
+  print STDOUT <<ALTERNATEP;
+
+Include alternate strains, besides reference strain (y or n)?
+
+ALTERNATEP
+  $opt_A = input_yn("y");
+}
+
+if ($opt_A == 1) {
+  $altstrainp = 1;
+} else {
+  $altstrainp = 0;
+}
+$flags .= " -A $altstrainp";
+
+parse_md_file($OUT,$mdfile,$contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol,
+	      $altstrainp,$refstrain,$incl_unmapped_p,$separate_chromosome);
+close($OUT);
+
+print STDOUT "\n";
+print STDOUT "============================================================\n";
+print STDOUT "Contig mapping information has been written to file $outfile\n";
+print STDOUT "For future reference, some of this setup process can be specified\n";
+print STDOUT "on the command-line, as follows:\n\n";
+print STDOUT "    md_coords $flags $mdfile\n";
+print STDOUT "============================================================\n";
+print STDOUT "\n";
+
+exit;
+
+
+
+sub extract_chr {
+  my ($chrfield) = @_;
+
+  if ($chrfield =~ /(\S+)\|/) {
+    $chr = $1 . "U";
+    $mappedp = 0;
+  } else {
+    $chr = $chrfield;
+    $mappedp = 1;
+  }
+
+  return ($chr, $mappedp);
+}
+
+
+sub parse_md_file {
+  my ($OUT, $mdfile, $contigcol, $chrcol, $chrstartcol, $chrendcol, $dircol, $straincol,
+      $altstrainp, $refstrain, $incl_unmapped_p, $separate_chromosome) = @_;
+  my ($FP, $line, $dir, $strain);
+
+  $FP = new IO::File("$mdfile") or die "Can't open file $mdfile";
+  while (defined($line = <$FP>)) {
+    if ($line =~ /^\#/) {
+      # Skip
+    } else {
+      chop $line;
+      @fields = split /\s+/,$line;
+      if (!defined($contig = $fields[$contigcol-1])) {
+	die "Can't parse contig in $line";
+      }
+
+      $dir = $fields[$dircol-1];
+      if (!defined($dir)) {
+	print STDERR "No direction for contig $contig.  Treating as forward.\n";
+	$dir = "+";
+      }
+
+      $strain = $fields[$straincol-1];
+      if (!defined($strain)) {
+	print STDERR "No strain in line $line.  Treating as reference strain.\n";
+	$strain = $refstrain;
+      }
+
+      if (defined($newchr = $ {$separate_chromosome}{$strain})) {
+	$chr = $newchr;
+      } else {
+	($chr,$mappedp) = extract_chr($fields[$chrcol-1]);
+      }
+
+      if ($mappedp == 0) {
+	$seglength = $fields[$chrendcol-1]-$fields[$chrstartcol-1]+1;
+	if (!defined($chrend{$chr})) {
+	  $chrend{$chr} = 0;
+	}
+	$chrstart = $chrend{$chr} + 1;
+	$chrend = $chrend{$chr} + $seglength;
+	$chrend{$chr} = $chrend;
+
+      } else {
+	$chrstart = $fields[$chrstartcol-1];
+	$chrend = $fields[$chrendcol-1];
+      }	
+      if ($dir eq "+") {
+	$chrinfo = "$chr:$chrstart..$chrend";
+      } elsif ($dir eq "-") {
+	$chrinfo = "$chr:$chrend..$chrstart";
+      } else {
+	die "Cannot understand direction $dir for contig $contig";
+      }
+
+      if (!defined($chr)) {
+	# Skip
+      } elsif ($chrend == $chrstart) {
+	# Skip
+      } elsif ($mappedp == 0 && $incl_unmapped_p == 0) {
+	# Skip
+      } elsif (!defined($strain)) {
+	# Shouldn't get here
+	print $OUT "$contig\t$chrinfo{$contig}\t\n";
+      } elsif ($strain ne $refstrain && $altstrainp == 0) {
+	# Skip
+      } elsif ($strain eq $refstrain) {
+	print $OUT "$contig\t$chrinfo\t\n";
+      } elsif (defined($newchr)) {
+	print $OUT "$contig\t$chrinfo\t\n";
+      } else {
+	print $OUT "$contig\t$chrinfo\t$strain\n";
+      }
+    }
+  }
+
+  close($FP);
+
+  return;
+}
+
+
+
+sub show_lines {
+  my ($mdfile) = @_;
+  my @lines = ();
+  my @examples = ();
+  my $ncols = 0;
+
+  $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
+  while (defined($line = <$FP>)) {
+    if ($line =~ /^\#/) {
+      # Skip
+    } else {
+      chop $line;
+      push @lines,$line;
+      @fields = split /\s+/,$line;
+      if ($#fields+1 > $ncols) {
+	$ncols = $#fields+1;
+      }
+    }
+  }
+
+  close($FP);
+
+  for ($i = 0; $i < $ncols; $i++) {
+    $maxwidth[$i] = 0;
+  }
+
+  for ($i = 0; $i < 3; $i++) {
+    $line = $lines[$i];
+    push @examples,$line;
+    @fields = split /\s+/,$line;
+    for ($j = 0; $j < $#fields; $j++) {
+      if (length($fields[$j]) > $maxwidth[$j]) {
+	$maxwidth[$j] = length($fields[$j]);
+      }
+    }
+  }
+  for ($i = $#lines-3; $i <= $#lines; $i++) {
+    $line = $lines[$i];
+    push @examples,$lines[$i];
+    @fields = split /\s+/,$line;
+    for ($j = 0; $j < $#fields; $j++) {
+      if (length($fields[$j]) > $maxwidth[$j]) {
+	$maxwidth[$j] = length($fields[$j]);
+      }
+    }
+  }
+
+  print STDOUT "Here are the first and last few lines of $mdfile:\n\n";
+  for ($j = 0; $j < $ncols; $j++) {
+    if ($j > 0) {
+      print STDOUT " | ";
+    }
+    $string = sprintf("%d",$j+1);
+    printf STDOUT ("%*s",$maxwidth[$j],$string);
+  }
+  print "\n";
+
+  for ($j = 0; $j < $ncols; $j++) {
+    if ($j > 0) {
+      print STDOUT "---";
+    }
+    for ($k = 0; $k < $maxwidth[$j]; $k++) {
+      print STDOUT "-";
+    }
+  }
+  print "\n";
+
+  foreach $line (@examples) {
+    @fields = split /\s+/,$line;
+    for ($j = 0; $j < $ncols; $j++) {
+      if ($j > 0) {
+	print STDOUT " | ";
+      }
+      printf STDOUT ("%*s",$maxwidth[$j],$fields[$j]);
+    }
+    print "\n";
+  }
+
+  return ($ncols, \@examples);
+}
+
+
+sub n_numeric_fields {
+  my ($fields) = @_;
+  my ($field);
+  my $nnumeric = 0;
+
+  foreach $field (@ {$fields}) {
+    if ($field =~ /^\d+$/) {
+      $nnumeric++;
+    }
+  }
+  return $nnumeric;
+}
+
+sub duplicate_numbers_p {
+  my ($fields) = @_;
+  my ($field);
+  my %seenp;
+
+  foreach $field (@ {$fields}) {
+    if ($field =~ /^\d+$/) {
+      if (defined($seenp{$field})) {
+	return 1;
+      } else {
+	$seenp{$field} = 1;
+      }
+    }
+  }
+  return 0;
+}
+
+
+sub guess_columns {
+  my ($mdfile, $ncols) = @_;
+  my ($FP, $line, $col, $contigcol, $maxcol, $field);
+  my $contig_ambiguous_p = 0;
+  my $nlines = 0;
+  my @fields;
+  my @numericp = ();
+  my @alphanumericp = ();
+  my @maxvalue = ();
+  my @maxlength = ();
+  my @valuecount = ();
+
+  $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
+  while (defined($line = <$FP>)) {
+    if ($line !~ /^\#/) {
+      chop $line;
+      @fields = split /\s+/,$line;
+      $duplicateline = duplicate_numbers_p(\@fields);
+      $nnumeric = n_numeric_fields(\@fields);
+      for ($col = 0; $col <= $#fields; $col++) {
+	$field = $fields[$col];
+	$field =~ s/\|.+//; # For fields like 1|NT_123456
+	if (!defined($numericp[$col])) {
+	  $numericp[$col] = $alphanumericp[$col] = $plusminuscol[$col] = 0;
+	}
+
+	if ($field =~ /^\d+$/) {
+	  $numericp[$col] = 1;
+	  if ($nnumeric >= 2 && $duplicateline == 0) {
+	    if (!defined($maxvalue[$col])) {
+	      $maxvalue[$col] = $field;
+	    } elsif ($field > $maxvalue[$col]) {
+	      $maxvalue[$col] = $field;
+	    }
+	  }
+	} elsif ($field =~ /^[+-]$/) {
+	  $plusminuscol[$col] = 1;
+
+	} else {
+	  $alphanumericp[$col] = 1;
+	  if (!defined($nvalues[$col])) {
+	    $nvalues[$col] = 0;
+	  }
+
+	  if (!defined($ {$valuecount[$col]}{$field})) {
+	    $nvalues[$col] += 1;
+	    $ {$valuecount[$col]}{$field} = 0;
+	  }
+	  $ {$valuecount[$col]}{$field} += 1;
+	}
+
+	if (!defined($maxlength[$col])) {
+	  $maxlength[$col] = length($field);
+	} elsif (length($field) > $maxlength[$col]) {
+	  $maxlength[$col] = length($field);
+	}
+	
+	if ($field =~ /^N[A-Z]_\d/) {
+	  if (!defined($contigcol)) {
+	    $contigcol = $col;
+	  } elsif ($col != $contigcol) {
+	    $contig_ambiguous_p = 1;
+	  }
+	}
+      }
+      $nlines++;
+    }
+  }
+  close($FP);
+
+  if ($contig_ambiguous_p == 1) {
+    undef $contigcol;
+  }
+
+  # Find chromosomal end (column with highest numeric value)
+  $maxcol = -1;
+  $maxvalue = 0;
+  for ($col = 0; $col < $ncols; $col++) {
+    if ($numericp[$col] == 1 && $alphanumericp[$col] == 0) {
+      if ($maxvalue[$col] > $maxvalue) {
+	$maxvalue = $maxvalue[$col];
+	$maxcol = $col;
+      }
+    }
+  }
+  if (defined($opt_9)) {
+    print STDERR "Column with maximum numeric value ($maxvalue) is $maxcol\n";
+  }
+  $chrendcol = $maxcol;
+
+  # Find chromosomal start (column with second highest numeric value)
+  $secondcol = -1;
+  $secondvalue = 0;
+  for ($col = 0; $col < $ncols; $col++) {
+    if ($col != $maxcol && $numericp[$col] == 1 && $alphanumericp[$col] == 0) {
+      if ($maxvalue[$col] > $secondvalue) {
+	$secondvalue = $maxvalue[$col];
+	$secondcol = $col;
+      }
+    }
+  }
+  if (defined($opt_9)) {
+    print STDERR "Column with second highest numeric value ($secondvalue) is $secondcol\n";
+  }
+  $chrstartcol = $secondcol;
+
+  # Find chromosome (before start column)
+  if ($chrstartcol > 0 && $chrstartcol != $chrendcol - 1) {
+    if (defined($opt_9)) {
+      print STDERR "Undefining columns because $chrstartcol and $chrendcol don't make sense\n";
+    }
+    undef $chrcol;
+    undef $chrstartcol;
+    undef $chrendcol;
+  } else {
+    $chrcol = $chrstartcol - 1;
+
+    # Find strain (column with most distinct values, but not 1 value per line)
+    $maxnvaluescol = -1;
+    $maxnvalues = 1;
+    for ($col = 0; $col < $ncols; $col++) {
+      if ((!defined($contigcol) || $col != $contigcol) && 
+	  $alphanumericp[$col] == 1 && $numericp[$col] == 0) {
+	if ($nvalues[$col] < 0.5*$nlines) {
+	  if ($nvalues[$col] > $maxnvalues) {
+	    $maxnvalues = $nvalues[$col];
+	    $maxnvaluescol = $col;
+	  }
+	}
+      }
+    }
+    $straincol = $maxnvaluescol;
+  }
+
+  for ($col = 0; $col < $ncols; $col++) {
+    if ($plusminuscol[$col] == 1) {
+      $dircol = $col;
+    }
+  }
+
+  # Make columns 1-based
+  if (defined($contigcol)) {
+    $contigcol++;
+  }
+  if (defined($chrcol)) {
+    $chrcol++;
+  }
+  if (defined($chrstartcol)) {
+    $chrstartcol++;
+  }
+  if (defined($chrendcol)) {
+    $chrendcol++;
+  }
+  if (defined($dircol)) {
+    $dircol++;
+  }
+  if (defined($straincol)) {
+    $straincol++;
+  }
+
+  return ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol);
+}
+
+
+sub grok_columns {
+  my ($ncols, $examples, $mdfile) = @_;
+  my @fields;
+
+  ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = guess_columns($mdfile,$ncols);
+
+  $donep = 0;
+  while ($donep == 0) {
+    printf STDOUT "Which column has the contig name (usually starting with NT_)?\n";
+    $contigcol = input_numeric(1,$ncols,$contigcol);
+    @results = ();
+    foreach $example (@ {$examples}) {
+      @fields = split /\s+/,$example;
+      push @results,$fields[$contigcol-1];
+    }
+    #printf STDOUT "Contig names are: " . join(",",@results) . "\n";
+    #print STDOUT "Is this correct (y or n)?\n";
+    #$donep = input_yn("y");
+    $donep = 1;
+  }
+
+  $donep = 0;
+  while ($donep == 0) {
+    printf STDOUT "Which column has the chromosome name (e.g., 1, 22, X, Y|NT_099038)?\n";
+    $chrcol = input_numeric(1,$ncols,$chrcol);
+    @results = ();
+    foreach $example (@ {$examples}) {
+      @fields = split /\s+/,$example;
+      ($chr,$mappedp) = extract_chr($fields[$chrcol-1]);
+      push @results,$chr;
+    }
+    #printf STDOUT "Chromosome names are: " . join(",",@results) . "\n";
+    #print STDOUT "Is this correct (y or n)?\n";
+    #$donep = input_yn("y");
+    $donep = 1;
+  }
+
+  $donep = 0;
+  while ($donep == 0) {
+    printf STDOUT "Which column has the chromosomal start position?\n";
+    $chrstartcol = input_numeric(1,$ncols,$chrstartcol);
+    @results = ();
+    foreach $example (@ {$examples}) {
+      @fields = split /\s+/,$example;
+      push @results,$fields[$chrstartcol-1];
+    }
+    #printf STDOUT "Chromosomal start positions are: " . join(",",@results) . "\n";
+    #print STDOUT "Is this correct (y or n)?\n";
+    #$donep = input_yn("y");
+    $donep = 1;
+  }
+
+  $donep = 0;
+  while ($donep == 0) {
+    printf STDOUT "Which column has the chromosomal end position?\n";
+    $chrendcol = input_numeric(1,$ncols,$chrendcol);
+    @results = ();
+    foreach $example (@ {$examples}) {
+      @fields = split /\s+/,$example;
+      push @results,$fields[$chrendcol-1];
+    }
+    #printf STDOUT "Chromosomal end positions are: " . join(",",@results) . "\n";
+    #print STDOUT "Is this correct (y or n)?\n";
+    #$donep = input_yn("y");
+    $donep = 1;
+  }
+
+  $donep = 0;
+  while ($donep == 0) {
+    printf STDOUT "Which column has the contig direction (+ or -)?\n";
+    $dircol = input_numeric(1,$ncols,$dircol);
+    @results = ();
+    foreach $example (@ {$examples}) {
+      @fields = split /\s+/,$example;
+      push @results,$fields[$dircol-1];
+    }
+    #printf STDOUT "Chromosomal end positions are: " . join(",",@results) . "\n";
+    #print STDOUT "Is this correct (y or n)?\n";
+    #$donep = input_yn("y");
+    $donep = 1;
+  }
+
+  $donep = 0;
+  while ($donep == 0) {
+    printf STDOUT "Which column has the strain information?\n";
+    $straincol = input_numeric(1,$ncols,$straincol);
+    @results = ();
+    foreach $example (@ {$examples}) {
+      @fields = split /\s+/,$example;
+      push @results,$fields[$straincol-1];
+    }
+    #printf STDOUT "Strains are: " . join(",",@results) . "\n";
+    #print STDOUT "Is this correct (y or n)?\n";
+    #$donep = input_yn("y");
+    $donep = 1;
+  }
+
+  return ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol);
+}
+
+
+sub find_reference_strain {
+  my ($mdfile, $straincol) = @_;
+
+  $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
+  while (defined($line = <$FP>)) {
+    chop $line;
+    @fields = split /\s+/,$line;
+    $strain = $fields[$straincol-1];
+
+    if (!defined($straincount{$strain})) {
+      $straincount{$strain} = 0;
+    }
+    $straincount{$strain} += 1;
+  }
+  close($FP);
+
+  @strains = keys %straincount;
+
+  # Find reference strain (value with highest count)
+  $refstrain = "";
+  $refstraincount = 0;
+  foreach $strain (@strains) {
+    if ($straincount{$strain} > $refstraincount) {
+      $refstraincount = $straincount{$strain};
+      $refstrain = $strain;
+    }
+  }
+
+  while (1) {
+    printf STDOUT ("Strain with the most lines is %s.  Is this the reference strain?\n",$refstrain);
+    $input = input_yn("y");
+    if ($input == 1) {
+      return $refstrain;
+    } else {
+      print STDOUT "Which strain is the reference (choose from below)?\n";
+      $refstrain = input_choices(\@strains);
+    }
+  }
+}
+
+
+sub check_strains {
+  my ($mdfile, $chrcol, $chrstartcol, $chrendcol, $straincol, $refstrain) = @_;
+
+  $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
+  while (defined($line = <$FP>)) {
+    if ($line =~ /^\#/) {
+      # Skip
+    } else {
+      chop $line;
+      @fields = split /\s+/,$line;
+      ($chr,$mappedp) = extract_chr($fields[$chrcol-1]);
+      $seglength = $fields[$chrendcol-1]-$fields[$chrstartcol-1]+1;
+      $existingchrp{$chr} = 1;
+
+      $strain = $fields[$straincol-1];
+      if (!defined($strain) || $strain eq $refstrain) {
+	$referencelength{$chr} += $seglength;
+      } else {
+	if (!defined($seenstrainp{$strain})) {
+	  push @altstrains,$strain;
+	  $seenstrainp{$strain} = 1;
+	  % {$seenchrp{$strain}} = ();
+	  $nchr{$strain} = 0;
+	}
+	if (!defined($ {$seenchrp{$strain}}{$chr})) {
+	  $nchr{$strain} += 1;
+	  $lastchr{$strain} = $chr;
+	  $ {$seenchrp{$strain}}{$chr} = 1;
+	}
+	$altlength{$strain . "_" . $chr} += $seglength;
+      }
+    }
+  }
+  close($FP);
+
+  foreach $strain (@altstrains) {
+    if ($nchr{$strain} == 1) {
+      $chr = $lastchr{$strain};
+      print STDOUT "Strain $strain is only on one chromosome: $chr\n";
+      if (!defined($referencelength{$chr}) || $referencelength{$chr} == 0) {
+	print STDOUT "This chromosome does not exist on the reference strain\n";
+	print STDOUT "Add this chromosome to the reference strain (y or n)?\n";
+	$default = "y";
+      } else {
+	$coverage = $altlength{$strain . "_" . $chr}/$referencelength{$chr};
+	printf STDOUT ("This chromosome covers %.1f%% of the reference strain\n",100.0*$coverage);
+	print STDOUT "Add this chromosome to the reference strain under a different name (y or n)?\n";
+	if ($coverage > 0.30) {
+	  $default = "y";
+	} else {
+	  $default = "n";
+	}
+      }
+      if (input_yn($default) == 1) {
+	$donep = 0;
+	while ($donep == 0) {
+	  print STDOUT "Name for this chromosome?\n";
+	  $newchr = input_nonempty();
+	  if (defined($existingchrp{$newchr})) {
+	    print STDOUT "That chromosome name is already taken.  Try again\n";
+	  } else {
+	    $donep = 1;
+	    $existingchrp{$newchr} = 1;
+	    $separate_chromosome{$strain} = $newchr;
+	  }
+	}
+      }
+    }
+  }
+
+  return \%separate_chromosome;
+}
+
+
+########################################################################
+
+
+sub input_any {
+  while (1) {
+    print STDOUT "Response> ";
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    if ($input =~ /\s/) {
+      print STDOUT "No spaces are allowed.  Please try again.\n";
+    } else {
+      return $input;
+    }
+  }
+}
+
+
+
+sub input_nonempty {
+  while (1) {
+    print STDOUT "Response> ";
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    if ($input =~ /\s/) {
+      print STDOUT "No spaces are allowed.  Please try again.\n";
+    } elsif ($input =~ /\S/) {
+      return $input;
+    }
+  }
+}
+
+
+sub input_yn {
+  my ($default) = @_;
+
+  while (1) {
+    if (defined($default)) {
+      print STDOUT "Response [$default]> ";
+    } else {
+      print STDOUT "Response> ";
+    }
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    if ($input !~ /\S/) {
+      $input = $default;
+    }
+
+    if ($input =~ /^[Yy]/) {
+      return 1;
+    } elsif ($input =~ /^[Nn]/) {
+      return 0;
+    }
+  }
+}
+
+sub input_numeric {
+  my ($min, $max, $default) = @_;
+
+  while (1) {
+    if (defined($default)) {
+      print STDOUT "Response [$default]> ";
+    } else {
+      print STDOUT "Response> ";
+    }
+
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    if ($input !~ /\S/) {
+      $input = $default;
+    }
+    if ($input =~ /^\d+$/ && $input >= $min && $input <= $max) {
+      return $input;
+    } else {
+      print STDOUT "Expecting a number between $min and $max.  Please try again.\n";
+    }
+  }
+}
+
+sub input_letter {
+  my ($min, $max) = @_;
+
+  while (1) {
+    print STDOUT "Response> ";
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    if ($input =~ /^[a-zA-Z]$/ && $input ge $min && $input le $max) {
+      return $input;
+    } else {
+      print STDOUT "Expecting a letter between $min and $max.  Please try again.\n";
+    }
+  }
+}
+
+sub input_choices {
+  my ($choices) = @_;
+
+  while (1) {
+    print STDOUT "Choices: \n";
+    foreach $choice (@ {$choices}) {
+      print STDOUT "  " . $choice . "\n";
+    }
+    print STDOUT "\n";
+    print STDOUT "Response> ";
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    foreach $choice (@ {$choices}) {
+      if ($input eq $choice) {
+	return $input;
+      }
+    }
+    print STDOUT "Your input doesn't match any of the choices.  Please try again.\n";
+  }
+}
+

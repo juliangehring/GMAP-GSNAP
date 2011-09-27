@@ -1,0 +1,82 @@
+#! /bin/sh
+
+### This file is part of GMAP.  It allows you to provide values for
+### the configuration process.  To set variables, uncomment the
+### VAR=DEFAULT lines and set DEFAULT according to your needs.
+
+########################################################################
+### Configuration options
+########################################################################
+
+## The directory where the binary files will go (without the "/bin" at
+## the end).  For example, if you want the gmap program to be
+## installed as /usr/local/bin/gmap, the prefix is "/usr/local".  The
+## directory must be an absolute path, so "." and "~" are not allowed.
+##
+## If you want to install in this build directory for testing purposes,
+## specify prefix=`pwd` (with two backward quotes).
+##
+## prefix=/usr/local
+
+
+## The directory where the GMAP genome database files go.  Each genome
+## must be set up (with the gmap_setup program) before gmap can map and
+## align against that genome.  Each genome will get its own
+## subdirectory in this directory.
+##
+## Note: at run time, the user may choose to override this directory
+## by (1) providing a -D flag to gmap, (2) setting the GMAPDB
+## environment variable, or (3) creating a configuration file .gmaprc
+## with the line GMAPDB=<directory>.
+##
+## Make sure there is adequate disk space in this directory; for
+## example, the human genome will need about 3 gigabytes.
+##
+## with_gmapdb=/path/to/gmapdb
+
+
+## The command for the C compiler.  If unspecified, the GNU configure
+## procedure will search for a suitable compiler, first for gcc and
+## then for cc.  To override this choice, specify the name of your
+## preferred C compiler here, for example, 'c89'.  
+## CC=/usr/bin/cc
+
+
+## Debugging and optimization options for the C compiler.  Use this to
+## specify CFLAGS for the version of the C compiler specified above.
+## If unspecified, defaults to '-g -O2' for gcc, and '-g' in all other
+## cases.  
+## CFLAGS='-g -O2'
+
+
+## Search directory for header files ('-IDIR') and any other
+## miscellaneous options for the C preprocessor and compiler.
+## CPPFLAGS=-I/usr/local/include
+
+
+## Path ('-L') and any other miscellaneous options for the linker.
+## '-L' options set here will be prepended to LD_LIBRARY_PATH (or its
+## system equivalent) at run time.
+## LDFLAGS='-L/usr/local/lib -rpath /usr/local/lib'
+
+
+## Special flags (in addition to CFLAGS and LIBS) that may be needed
+## for pthreads The configure program will attempt to determine these
+## automatically, but will also try any flags you supply here.
+## PTHREAD_CFLAGS=
+## PTHREAD_LIBS=
+
+
+## Make name.  Set this if you want to use a make by another name.
+## For example, if your GNU make is called 'gmake', use 'MAKE=gmake'.
+## MAKE=/usr/bin/make
+
+
+## Location of Perl.  Some of the utility programs require Perl
+## with working versions of IO::File and Getopt::Std.  The configure
+## program will attempt to find a working version of Perl in your
+## PATH, but you may need to or wish to specify a particular version
+## of perl here, by providing its full path
+## 
+## PERL=/usr/local/bin/perl
+

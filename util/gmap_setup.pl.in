@@ -1,0 +1,302 @@
+#! @PERL@ -w
+# $Id: gmap_setup.pl.in,v 1.16 2005/03/11 17:58:29 twu Exp $
+
+$gmapdb = "@GMAPDB@";
+$GMAPINDEX = "@BINDIR@/gmapindex";
+#$package_version = "@PACKAGE_VERSION@";
+
+use IO::File;
+use Getopt::Std;
+
+# Usage: gmap_setup [-D <path>] -d <db> [-c <coord_file>] [-I] <fasta_files>
+
+undef($opt_9);			# debug
+undef($opt_B);			# bindir (needed for "make check")
+undef($opt_D);			# destination directory
+undef($opt_d);			# genome name
+undef($opt_c);			# coordinates file for contigs
+undef($opt_s);			# name for reference strain
+undef($opt_W);			# writefilep (for debugging)
+undef($opt_I);			# install flag (1 for install, 0 for local)
+getopts("9B:D:d:c:s:WI");
+
+#print STDOUT <<TEXT1;
+#
+#    gmap_setup: Sets up a genome for use by GMAP.
+#    Part of GMAP package, version $package_version.
+#    Written by Thomas D. Wu and Colin K. Watanabe, Genentech, Inc.
+#    Please send comments or bug reports to twu\@gene.com.
+#
+#TEXT1
+
+
+if (defined($opt_B)) {
+  $GMAPINDEX = $opt_B . "/gmapindex";
+}
+
+if (!defined($coord_file = $opt_c)) {
+  if (-e "coords.txt") {
+    $coord_file = "coords.txt";
+  } else {
+    die "Must specify coordinate file (created by md_coords or fa_coords) with -c flag."
+  }
+}
+if (!defined($genome_name = $opt_d)) {
+  die "Must specify genome database name with -d flag.";
+} elsif ($opt_d =~ /(\S+)\/(\S+)/) {
+  $genome_name = $2;
+  if (defined($opt_D)) {
+    $opt_D = $opt_D . "/" . $1;
+  } else {
+    $opt_D = $1;
+  }
+}
+
+if (defined($opt_D)) {
+  $genomesubdir = $opt_D;
+} else {
+  $genomesubdir = $gmapdb . "/" . $genome_name;
+}
+
+if (defined($opt_s)) {
+  $refstrain = $opt_s;
+} else {
+  $refstrain = "Reference";
+}
+$fastafiles = join(" ",@ARGV);
+
+$startwatch = localtime time;
+
+########################################################################
+#   Read coord_file
+########################################################################
+
+$FP = new IO::File($coord_file) or die "Cannot open coord file $coord_file";
+while (defined($line = <$FP>)) {
+  chop $line;
+  @fields = split /\s+/,$line;
+  $contig = $fields[0];
+  $coords{$contig} = $fields[1];
+  if (!defined($strain{$contig} = $fields[2])) {
+    $strain{$contig} = "";
+  }
+}
+close($FP);
+
+########################################################################
+
+if (defined($opt_9)) {
+  $OUT = new IO::File(">&STDOUT");
+  $IN = new IO::File("cat $fastafiles |");
+  process_fasta($IN,$OUT);
+  exit;
+}
+
+########################################################################
+
+print STDOUT "Making contig files...\n";
+$command = "| $GMAPINDEX -d $genome_name -s $refstrain -A";
+$OUT = new IO::File($command);
+$IN = new IO::File("cat $fastafiles |");
+
+process_fasta($IN,$OUT);
+
+close($IN);
+close($OUT);
+
+########################################################################
+
+print STDOUT "Making genome file...\n";
+$command = "| $GMAPINDEX -d $genome_name -G";
+if (defined($opt_W)) {
+  $command .= " -W";
+}
+$OUT = new IO::File($command);
+$IN = new IO::File("cat $fastafiles |");
+
+process_fasta($IN,$OUT);
+
+close($IN);
+close($OUT);
+
+print STDOUT "Making index offsets file...\n";
+system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -O");
+
+print STDOUT "Making index positions file...\n";
+if (defined($opt_W)) {
+  system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -P -W");
+} else {
+  system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -P");
+}
+
+print STDOUT "Making chrsubset file...\n";
+@chromosomes = ();
+$IN = new IO::File("$genome_name.chromosome") or die "Can't read $genome_name.chromosome";
+while (defined($line = <$IN>)) {
+  ($chr) = $line =~ /(\S+)/;
+  push @chromosomes,$chr;
+}
+close($IN);
+$OUT = new IO::File(">$genome_name.chrsubset") or die "Can't write to $genome_name.chrsubset";
+print $OUT ">all\n";
+print $OUT "\n";
+foreach $chr (@chromosomes) {
+  print $OUT ">chr$chr\n";
+  print $OUT "+$chr\n";
+}
+close($OUT);
+
+print STDOUT "Making version file...\n";
+$FP = new IO::File(">$genome_name.version") or die "Can't write to $genome_name.version";
+print $FP "$genome_name\n";
+close($FP);
+
+$stopwatch = localtime time;
+
+print STDOUT "Computation started at $startwatch\n";
+print STDOUT "Computation ended at $stopwatch\n";
+
+if (defined($opt_I)) {
+  print STDOUT "Installing files...\n";
+  if (!-e $genomesubdir) {
+    system("mkdir $genomesubdir");
+  }
+  system("mv -f $genome_name.* $genomesubdir");
+  system("chmod 644 $genomesubdir/$genome_name.*");
+
+  print STDOUT "============================================================\n";
+  print STDOUT "Genome db files have been installed to $genomesubdir\n";
+  print STDOUT "You may now align your cDNAs by running gmap using the flag\n\n";
+  print STDOUT "    -d $genome_name\n\n";
+  print STDOUT "============================================================\n";
+} else {
+  print STDOUT "============================================================\n";
+  print STDOUT "Genome db files have been written in this directory\n";
+  if ($genomesubdir ne ".") {
+    print STDOUT "To install them for use by gmap, do the following\n";
+    if (!-e $genomesubdir) {
+      print STDOUT "    mkdir $genomesubdir\n";
+    }
+    print STDOUT "    mv -f $genome_name.* $genomesubdir\n";
+    print STDOUT "    chmod 644 $genomesubdir/$genome_name.*\n";
+  }
+  print STDOUT "============================================================\n";
+}
+
+exit;
+
+
+sub process_fasta {
+  my ($IN, $OUT) = @_;
+
+  my $printp = 0;
+  my $revcompp = 0;
+  my $revsequence = "";
+
+  while (defined($line = <$IN>)) {
+    if ($line !~ /\S/) {
+      # Skip blank lines
+    } elsif ($line =~ /^>(\S+)/) {
+      $contig = find_contig_name($1,\%coords);
+      if (!defined($coords{$contig})) {
+	print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
+	$printp = 0;
+      } else {
+	($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;
+	if ($chrpos2 >= $chrpos1) {
+	  $revcompp = 0;
+	  $coords = $coords{$contig};
+	} else {
+	  $revcompp = 1;
+	  # Send coords reversed to gmapindex to indicate contig is revcomp,
+	  # even though sequence is changed here to be forward
+	  #$coords = "$chr:$chrpos2..$chrpos1";
+	  $coords = $coords{$contig};
+	}
+
+	if ($revsequence ne "") {
+	  print_segmented($OUT,revcomp($revsequence));
+	  $revsequence = "";
+	}
+
+	printf $OUT (">%s\t%s\t%s\n",$contig,$coords,$strain{$contig});
+	$printp = 1;
+      }
+    } elsif ($printp == 1) {
+      if ($revcompp == 0) {
+	print $OUT $line;
+      } else {
+	chop $line;
+	$revsequence .= $line;
+      }
+    }
+  }
+  return;
+}
+
+sub find_contig_name {
+  my ($contiginfo, $coords) = @_;
+
+  if ($contiginfo !~ /\|/) {
+    return $contiginfo;
+  } else {
+    @parts = split /\|/,$contiginfo;
+    foreach $part (@parts) {
+      if (defined($ {$coords}{$part})) {
+	return $part;
+      }
+    }
+  }
+  return $contiginfo;
+}
+
+
+sub input_yn {
+  my ($default) = @_;
+
+  while (1) {
+    if (defined($default)) {
+      print STDOUT "Response [$default]> ";
+    } else {
+      print STDOUT "Response> ";
+    }
+    $input = <STDIN>;
+    chop $input;
+
+    $input =~ s/^\s+//;
+    $input =~ s/\s+$//;
+
+    if ($input !~ /\S/) {
+      $input = $default;
+    }
+
+    if ($input =~ /^[Yy]/) {
+      return 1;
+    } elsif ($input =~ /^[Nn]/) {
+      return 0;
+    }
+  }
+}
+
+
+sub revcomp {
+  my ($seq) = @_;
+
+  $seq =~ tr/ACGTacgt/TGCAtgca/;
+  return join('',reverse(split '',$seq));
+}
+
+sub print_segmented {
+  my ($FP, $seq) = @_;
+
+  $length = length($seq);
+  for ($i = 0; $i < $length - 60; $i += 60) {
+    $segment = substr($seq,$i,60);
+    print $FP $segment . "\n";
+  }
+  $segment = substr($seq,$i,$length-$i);
+  if ($segment =~ /\S/) {
+    print $FP $segment . "\n";
+  }
+  return;
+}

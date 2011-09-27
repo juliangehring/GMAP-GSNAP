@@ -1,0 +1,85 @@
+#! @PERL@ -w
+# $Id: fa_coords.pl.in,v 1.3 2005/03/11 17:57:19 twu Exp $
+
+#$package_version = "@PACKAGE_VERSION@";
+
+use IO::File;
+undef($opt_o);			# Output file
+use Getopt::Std;
+getopts("o:");
+
+# Usage: fa_coords [-o <output>] <fastafiles>
+
+@fastafiles = @ARGV;
+if (!defined($outfile = $opt_o)) {
+  $outfile = "coords.txt";
+}
+
+$flags = "";
+$flags .= "-o $outfile";
+
+$OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
+parse_fa_files($OUT,\@fastafiles);
+close($OUT);
+
+print STDOUT "\n";
+print STDOUT "============================================================\n";
+print STDOUT "Contig mapping information has been written to file $outfile\n";
+print STDOUT "using the command:\n";
+print STDOUT "    fa_coords $flags " . join(" ",@fastafiles) . "\n";
+print STDOUT "============================================================\n";
+print STDOUT "\n";
+
+exit;
+
+
+
+sub parse_fa_files {
+  my ($OUT, $fastafiles) = @_;
+  my ($FP, $line, $strain);
+  my $seglength = 0;
+
+  foreach $file (@ {$fastafiles}) {
+    $FP = new IO::File("$file") or die "Can't open file $file";
+    while (defined($line = <$FP>)) {
+      chop $line;
+      if ($line !~ /\S/) {
+	# Skip blank lines
+      } elsif ($line !~ /^>/) {
+	$seglength += length($line);
+      } else {
+	if ($seglength > 0) {
+	  printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+1,$chrpos{$chr}+$seglength);
+	  $chrpos{$chr} += $seglength;
+	}
+	$seglength = 0;
+	($contig) = $line =~ /^>(\S+)/;
+	if ($line =~ /\/chr=(\S+):(\d+)\D+\d+/) {
+	  $chr = $1;
+	  $chrpos{$chr} = $2;
+	} elsif ($line =~ /\/chr=(\S+)/) {
+	  $chr = $1;
+	} elsif ($line =~ /chr(\S+):(\d+)\D+\d+/) {
+	  $chr = $1;
+	  $chrpos{$chr} = $2;
+	} elsif ($line =~ /chr(\S+)/) {
+	  $chr = $1;
+	} else {
+	  die "Can't find chromosome in $line";
+	}
+	if (!defined($chrpos{$chr})) {
+	  $chrpos{$chr} = 0;
+	}
+      }
+    }
+    if ($seglength > 0) {
+      printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+1,$chrpos{$chr}+$seglength);
+    }
+    close($FP);
+  }
+
+  return;
+}
+
+
+

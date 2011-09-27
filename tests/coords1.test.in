@@ -1,0 +1,7 @@
+#! @SHELL@
+
+cp ../util/fa_coords.pl fa_coords
+chmod +x fa_coords
+./fa_coords -o coords.txt ${srcdir}/ss.chr17test
+diff coords.txt ${srcdir}/coords1.test.ok
+

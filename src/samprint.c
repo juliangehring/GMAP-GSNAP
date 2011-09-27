@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 37254 2011-03-28 16:34:08Z twu $";
+static char rcsid[] = "$Id: samprint.c 47131 2011-09-13 20:50:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,21 +11,27 @@ static char rcsid[] = "$Id: samprint.c 37254 2011-03-28 16:34:08Z twu $";
 #include "mem.h"
 #include "complement.h"
 #include "stage3hr.h"
-#include "stage1hr.h"		/* for MAX_QUERYLENGTH */
+#include "assert.h"
 
 
 #define SANGER_ILLUMINA_DIFF 31
 
 /* BAM appears to truncate the H information on the ends of a cigar */
 /* Also, this provides the information needed for getting term information */
-/* #define HARDCLIP_ON_TERMINAL 1 */
-
 
 
 #ifdef DEBUG
 #define debug(x) x
 #else
 #define debug(x)
+#endif
+
+
+/* print_cigar */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
 #endif
 
 
@@ -37,8 +43,16 @@ static char rcsid[] = "$Id: samprint.c 37254 2011-03-28 16:34:08Z twu $";
 #endif
 
 
+/* overlap */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
+#endif
+
+
 unsigned int
-SAM_compute_flag (Substring_T substring, Stage3_T mate, Resulttype_T resulttype,
+SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,
 		  bool first_read_p, int pathnum, int npaths, int npaths_mate,
 		  bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
@@ -48,13 +62,13 @@ SAM_compute_flag (Substring_T substring, Stage3_T mate, Resulttype_T resulttype,
   if (npaths == 0) {
     debug(printf("npaths = 0, so QUERY_UNMAPPED %d\n",QUERY_UNMAPPED));
     flag |= QUERY_UNMAPPED;
-  } else if (Substring_plusp(substring) == invertp) {
+  } else if (plusp == invertp) {
     debug(printf("plusp %d and invertp %d, so QUERY_MINUSP %d\n",
-		 Substring_plusp(substring),invertp,QUERY_MINUSP));
+		 plusp,invertp,QUERY_MINUSP));
     flag |= QUERY_MINUSP;
   }
 
-  if (resulttype == SINGLEEND_NOMAPPING || resulttype == SINGLEEND_UNIQ || resulttype == SINGLEEND_MULT) {
+  if (resulttype == SINGLEEND_NOMAPPING || resulttype == SINGLEEND_UNIQ || resulttype == SINGLEEND_TRANSLOC || resulttype == SINGLEEND_MULT) {
     /* No first or second read or mate */
   } else {
     debug(printf("PAIRED_READ %d\n",PAIRED_READ));
@@ -73,14 +87,21 @@ SAM_compute_flag (Substring_T substring, Stage3_T mate, Resulttype_T resulttype,
     } else if (mate == NULL) {
       /* Unpaired; no mate.  Not clear if should be MATE_UNMAPPED. */
 
-    } else if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
+    } else if (npaths == 0) {
+      /* Need to check npaths == 0 in case clipping of overlaps results in a nomapping */
+      if (Stage3end_plusp(mate) == invert_mate_p) {
+	debug(printf("MATE_MINUSP %d\n",MATE_MINUSP));
+	flag |= MATE_MINUSP;
+      }
+
+    } else if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
       /* Can distinguish concordant mappings by presence of insert length */
       debug(printf("PAIRED_MAPPING %d\n",PAIRED_MAPPING));
       flag |= PAIRED_MAPPING;
-      if (Stage3_chrnum(mate) == 0) {
+      if (Stage3end_chrnum(mate) == 0) {
 	/* Splice without a direction */
 
-      } else if (Stage3_plusp(mate) == invert_mate_p) {
+      } else if (Stage3end_plusp(mate) == invert_mate_p) {
 	debug(printf("MATE_MINUSP %d\n",MATE_MINUSP));
 	flag |= MATE_MINUSP;
       }
@@ -90,18 +111,18 @@ SAM_compute_flag (Substring_T substring, Stage3_T mate, Resulttype_T resulttype,
 	 However, we are no longer counting UNPAIRED_UNIQ as a "paired" mapping. */
       debug(printf("PAIRED_MAPPING %d\n",PAIRED_MAPPING));
       flag |= PAIRED_MAPPING;
-      if (Stage3_chrnum(mate) == 0) {
+      if (Stage3end_chrnum(mate) == 0) {
 	/* Splice without a direction */
 
-      } else if (Stage3_plusp(mate) == invert_mate_p) {
+      } else if (Stage3end_plusp(mate) == invert_mate_p) {
 	debug(printf("MATE_MINUSP %d\n",MATE_MINUSP));
 	flag |= MATE_MINUSP;
       }
 
     } else {
-      if (Stage3_chrnum(mate) == 0) {
+      if (Stage3end_chrnum(mate) == 0) {
 	/* Splice without a direction */
-      } else if (Stage3_plusp(mate) == invert_mate_p) {
+      } else if (Stage3end_plusp(mate) == invert_mate_p) {
 	debug(printf("MATE_MINUSP %d\n",MATE_MINUSP));
 	flag |= MATE_MINUSP;
       }
@@ -117,32 +138,144 @@ SAM_compute_flag (Substring_T substring, Stage3_T mate, Resulttype_T resulttype,
 }
 
 
-static Genomicpos_T
-print_chromosomal_pos (FILE *fp, Stage3_T this, Stage3_T mate, IIT_T chromosome_iit, bool matep) {
-  Substring_T substring;
+Genomicpos_T
+SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
+		    Substring_T substring_low, int querylength) {
   Genomicpos_T chrpos;
-  Chrnum_T chrnum;
-  char *chr;
-  bool allocp;
+  Substring_T substring;
+  int querystart, queryend;
+  bool plusp;
 
   if (this == NULL) {
-    fprintf(fp,"\t*\t0");
     return 0U;
 
-  } else if (matep == true && mate != NULL && Stage3_chrnum(mate) > 0 && 
-	     Stage3_chrnum(this) == Stage3_chrnum(mate)) {
-    fprintf(fp,"\t=");
+  } else if (Stage3end_hittype(this) == GMAP) {
+    chrpos = Pair_genomicpos_low(&(*hardclip_low),&(*hardclip_high),
+				 Stage3end_pairarray(this),Stage3end_npairs(this),
+				 querylength,/*watsonp*/Stage3end_plusp(this));
 
-  } else if ((chrnum = Stage3_chrnum(this)) == 0) {
-    /* Interchromosomal splice */
-    if (matep == true) {
-      /* No way to express two chromosomes for mate */
-      fprintf(fp,"\t*\t0");
-      return 0U;
+  } else {
+    if (substring_low != NULL) {
+      plusp = Substring_plusp(substring_low);
     } else {
-      fprintf(stderr,"Trying to print interchrosomal splice in one line\n");
-      abort();
+      plusp = Stage3end_plusp(this);
     }
+
+    if (plusp == true) {
+      /* Add 1 to report in 1-based coordinates */
+      if (*hardclip_low > Substring_querystart(substring_low)) {
+	substring = (Substring_T) NULL;
+	while (*hardclip_low < querylength && substring == NULL) {
+	  substring = Stage3end_substring_containing(this,*hardclip_low);
+	  (*hardclip_low)++;
+	}
+	(*hardclip_low)--;
+
+	chrpos = Substring_alignstart_trim(substring) - Substring_chroffset(substring) + 1U;
+	querystart = Substring_querystart(substring);
+	queryend = Substring_queryend(Stage3end_substring_high(this));
+
+#if 0
+	fprintf(stderr,"case 1, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
+		*hardclip_low,*hardclip_high,querystart,queryend);
+#endif
+
+	if (*hardclip_low >= queryend || querylength - *hardclip_high < querystart) {
+	  /* fprintf(stderr,"Returning 0\n"); */
+	  return 0U;
+	}
+#if 0
+	fprintf(stderr,"Adding to chrpos %u: hardclip_low %d - querystart %d\n",
+		chrpos,*hardclip_low,querystart);
+#endif
+
+	chrpos += (*hardclip_low) - querystart;
+
+      } else {
+	querystart = Substring_querystart(substring_low);
+	queryend = Substring_queryend(Stage3end_substring_high(this));
+
+#if 0
+	fprintf(stderr,"case 2, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
+		*hardclip_low,*hardclip_high,querystart,queryend);
+#endif
+
+	if (*hardclip_low >= queryend || querylength - *hardclip_high < querystart) {
+	  /* fprintf(stderr,"Returning 0\n"); */
+	  return 0U;
+	}
+
+	chrpos = Substring_alignstart_trim(substring_low) - Substring_chroffset(substring_low) + 1U;
+      }
+
+    } else {
+      /* Add 1 to report in 1-based coordinates */
+      if (querylength - *hardclip_high < Substring_queryend(substring_low)) {
+	substring = (Substring_T) NULL;
+	while (*hardclip_high < querylength && substring == NULL) {
+	  substring = Stage3end_substring_containing(this,querylength - 1 - (*hardclip_high));
+	  (*hardclip_high)++;
+	}
+	(*hardclip_high)--;
+
+	chrpos = Substring_alignend_trim(substring) - Substring_chroffset(substring) + 1U;
+	queryend = Substring_queryend(substring);
+	querystart = Substring_querystart(Stage3end_substring_high(this));
+
+#if 0
+	fprintf(stderr,"case 3, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
+		*hardclip_low,*hardclip_high,querystart,queryend);
+#endif
+
+	if (*hardclip_low >= queryend || querylength - *hardclip_high < querystart) {
+	  /* fprintf(stderr,"Returning 0\n"); */
+	  return 0U;
+	}
+
+#if 0
+	fprintf(stderr,"Adding to chrpos %u: queryend %d - (querylength %d - hardclip_high %d)\n",
+		chrpos,queryend,querylength,*hardclip_high);
+#endif
+
+	chrpos += queryend - (querylength - (*hardclip_high));
+      } else {
+	querystart = Substring_querystart(Stage3end_substring_high(this));
+	queryend = Substring_queryend(substring_low);
+
+#if 0
+	fprintf(stderr,"case 4, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
+		*hardclip_low,*hardclip_high,querystart,queryend);
+#endif
+
+	if (*hardclip_low >= queryend || querylength - *hardclip_high < querystart) {
+	  /* fprintf(stderr,"Returning 0\n"); */
+	  return 0U;
+	}
+
+	chrpos = Substring_alignend_trim(substring_low) - Substring_chroffset(substring_low) + 1U;
+      }
+    }
+  }
+    
+  return chrpos;
+}
+
+
+static void
+print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Genomicpos_T chrpos,
+		       IIT_T chromosome_iit) {
+  bool allocp;
+  char *chr;
+
+  if (chrpos == 0U) {
+    /* No mapping */
+    fprintf(fp,"\t*\t0");
+    return;
+
+  } else if (chrnum == 0) {
+    /* Interchromosomal splice */
+    fprintf(stderr,"Trying to print interchrosomal splice in one line\n");
+    abort();
 
   } else {
     chr = IIT_label(chromosome_iit,chrnum,&allocp);
@@ -150,85 +283,60 @@ print_chromosomal_pos (FILE *fp, Stage3_T this, Stage3_T mate, IIT_T chromosome_
     if (allocp == true) {
       FREE(chr);
     }
-  }
 
-#if 0
-  hittype = Stage3_hittype(this);
-  if (hittype == SPLICE) {
-    if (Stage3_distance(this) > 0U) {
-      sensep = (Stage3_sensedir(this) == SENSE_FORWARD);
-      if (sensep == Stage3_plusp(this)) {
-	substring = /* donor */ Stage3_substring1(this);
-      } else {
-	substring = /* acceptor */ Stage3_substring2(this);
-      }
-    } else if (/*acceptor*/Stage3_substring2(this) == NULL) {
-      substring = Stage3_substring1(this);
-    } else if (/*donor*/Stage3_substring1(this) == NULL) {
-      substring = Stage3_substring2(this);
-    } else {
-      /* Distant splicing.  Should not have reached here.  Should print each end separately. */
-      fprintf(stderr,"Distant splicing of %u.  Should not have reached here\n",Stage3_distance(this));
-      fprintf(stderr,"Genomicstart is %u, Genomicend is %u\n",Stage3_genomicstart(this),Stage3_genomicend(this));
-      abort();
-    }
-  } else if (Stage3_substring2(this) == NULL) {
-    substring = Stage3_substring1(this);
-  } else {
-    if (Stage3_plusp(this) == true) {
-      if (Substring_alignstart_trim(Stage3_substring1(this)) < Substring_alignstart_trim(Stage3_substring2(this))) {
-	substring = Stage3_substring1(this);
-      } else {
-	substring = Stage3_substring2(this);
-      }
-    } else {
-      if (Substring_alignend_trim(Stage3_substring1(this)) < Substring_alignend_trim(Stage3_substring2(this))) {
-	substring = Stage3_substring1(this);
-      } else {
-	substring = Stage3_substring2(this);
-      }
-    }
+    /* chrpos already in 1-based coordinates */
+    fprintf(fp,"\t%u",chrpos /*+1U*/);
+    return;
   }
-#else
-  substring = Stage3_substring_low(this);
-#endif
-
-  if (Stage3_plusp(this) == true) {
-    chrpos = Substring_alignstart_trim(substring) - Substring_chroffset(substring);
-  } else {
-    chrpos = Substring_alignend_trim(substring) - Substring_chroffset(substring);
-  }
-  /* Add 1 to report in 1-based coordinates */
-  fprintf(fp,"\t%u",chrpos+1U);
-
-  return chrpos;
 }
 
-
-static Genomicpos_T
-print_substring_pos (FILE *fp, Substring_T substring, IIT_T chromosome_iit) {
-  Genomicpos_T chrpos;
-  char *chr;
+static void
+print_mate_chromosomal_pos (FILE *fp, Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum,
+			    Genomicpos_T mate_chrpos, Chrnum_T anchor_chrnum, Genomicpos_T anchor_chrpos,
+			    IIT_T chromosome_iit) {
   bool allocp;
+  char *chr;
 
-  chr = IIT_label(chromosome_iit,Substring_chrnum(substring),&allocp);
-  fprintf(fp,"\t%s",chr);
-  if (allocp == true) {
-    FREE(chr);
-  }
+  if (mate_chrpos == 0U) {
+    /* No mapping */
+    fprintf(fp,"\t*\t0");
+    return;
 
-  if (Substring_plusp(substring) == true) {
-    chrpos = Substring_alignstart_trim(substring) - Substring_chroffset(substring);
-    /* Add 1 to report in 1-based coordinates */
-    fprintf(fp,"\t%u",chrpos+1U);
+  } else if (mate_chrnum == 0) {
+    /* Interchromosomal splice.  Choose effective chrnum. */
+    if (anchor_chrpos > 0U && anchor_chrnum > 0 && mate_effective_chrnum == anchor_chrnum) {
+      fprintf(fp,"\t=");
+    } else {
+      chr = IIT_label(chromosome_iit,mate_effective_chrnum,&allocp);
+      fprintf(fp,"\t%s",chr);
+      if (allocp == true) {
+	FREE(chr);
+      }
+    }
+    
+    /* chrpos already in 1-based coordinates */
+    fprintf(fp,"\t%u",mate_chrpos /*+1U*/);
+    return;
+
   } else {
-    chrpos = Substring_alignend_trim(substring) - Substring_chroffset(substring);
-    /* Add 1 to report in 1-based coordinates */
-    fprintf(fp,"\t%u",chrpos+1U);
+    if (anchor_chrpos > 0U && anchor_chrnum > 0 && mate_chrnum == anchor_chrnum) {
+      fprintf(fp,"\t=");
+    } else {
+      chr = IIT_label(chromosome_iit,mate_chrnum,&allocp);
+      fprintf(fp,"\t%s",chr);
+      if (allocp == true) {
+	FREE(chr);
+      }
+    }
+    
+    /* chrpos already in 1-based coordinates */
+    fprintf(fp,"\t%u",mate_chrpos /*+1U*/);
+    return;
   }
-
-  return chrpos;
 }
+
+
+
 
 
 static char complCode[128] = COMPLEMENT_LC;
@@ -248,19 +356,18 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 
 
 void
-SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3_T mate, char *acc,
-		     IIT_T chromosome_iit, Resulttype_T resulttype, bool translocationp,
-		     bool first_read_p, int npaths_mate, Shortread_T queryseq_mate,
-		     int quality_shift, char *sam_read_group_id, bool invertp,
-		     bool invert_mate_p) {
+SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc,
+		     IIT_T chromosome_iit, Resulttype_T resulttype, bool first_read_p,
+		     int npaths_mate, Genomicpos_T mate_chrpos,
+		     int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag;
-  char *barcode;
+
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
   
   /* 2. FLAG */
-  flag = SAM_compute_flag(/*substring*/NULL,mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(/*plusp (NA)*/true,mate,resulttype,first_read_p,
 			  /*pathnum*/0,/*npaths*/0,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
@@ -279,7 +386,9 @@ SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3_T mate, char *acc,
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  print_chromosomal_pos(fp,mate,/*other*/NULL,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     /*anchor_chrnum*/0,/*anchor_chrpos*/0U,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
   fprintf(fp,"\t0");
@@ -291,12 +400,12 @@ SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3_T mate, char *acc,
     Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
     fprintf(fp,"\t");
     Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-			   quality_shift,/*show_chopped_p*/false);
+			    quality_shift,/*show_chopped_p*/false);
   } else {
     Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
     fprintf(fp,"\t");
     Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-				   quality_shift,/*show_chopped_p*/false);
+				    quality_shift,/*show_chopped_p*/false);
   }
 
   /* 12. TAGS: RG */
@@ -306,47 +415,194 @@ SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3_T mate, char *acc,
   }
   
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
 
   fprintf(fp,"\n");
   return;
 }
 
 
-static int
-print_md_string (FILE *fp, int matchlength, char *genomicfwd, int querylength,
-		 int hardclip_low, int hardclip_high, bool lastp) {
-  int i;
-
-#if 0
-  if (genomicfwd == NULL) {
-    printf("Entering md_string with matchlength %d\n",matchlength);
-  } else {
-    printf("Entering md_string with matchlength %d, querylength %d, hardclip_low %d, hardclip_high %d: %s\n",
-	   matchlength,querylength,hardclip_low,hardclip_high,genomicfwd);
-  }
-#endif
-
-  for (i = hardclip_low; i < querylength - hardclip_high; i++) {
-    if (isupper(genomicfwd[i])) {
-      matchlength++;
+static void
+print_cigar (FILE *fp, char type, int stringlength, int querypos, int querylength,
+	     int hardclip_low, int hardclip_high, bool plusp, int lastp) {
+  int matchlength = 0;
+  int startpos, endpos;
+  int cliplength = 0;
+  
+  if (plusp == true) {
+    debug1(printf("\nEntering print_cigar with stringlength %d, querypos %d, querylength %d, hardclip_low %d, hardclip_high %d, plus\n",
+		  stringlength,querypos,querylength,hardclip_low,hardclip_high));
+    if (hardclip_low >= querypos) {
+      startpos = hardclip_low;
+      cliplength = hardclip_low;
     } else {
-      if (matchlength > 0 || i == hardclip_low) {
-	fprintf(fp,"%d",matchlength);
-      }
-      fprintf(fp,"%c",toupper(genomicfwd[i]));
-      matchlength = 0;
+      startpos = querypos;
+    }
+
+    if (querylength - hardclip_high < querypos + stringlength) {
+      endpos = querylength - hardclip_high;
+    } else {
+      endpos = querypos + stringlength;
+    }
+
+  } else {
+    debug1(printf("\nEntering print_cigar with stringlength %d, querypos %d, querylength %d, hardclip_low %d, hardclip_high %d, minus\n",
+		  stringlength,querypos,querylength,hardclip_low,hardclip_high));
+
+    querypos = querylength - querypos - stringlength;
+    debug1(printf("  Revising querypos to be %d\n",querypos));
+
+    if (hardclip_high >= querypos) {
+      startpos = hardclip_high;
+      cliplength = hardclip_high;
+    } else {
+      startpos = querypos;
+    }
+
+    if (querylength - hardclip_low < querypos + stringlength) {
+      endpos = querylength - hardclip_low;
+    } else {
+      endpos = querypos + stringlength;
     }
   }
+
+  debug1(printf("  startpos %d, endpos %d, cliplength %d\n",startpos,endpos,cliplength));
+
+  if (endpos > startpos) {
+    matchlength = endpos - startpos;
+    if (matchlength > 0) {
+      if (cliplength > 0) {
+	fprintf(fp,"%dH",cliplength);
+      }
+      fprintf(fp,"%d%c",matchlength,type);
+    }
+  }
+
+
+  if (lastp == true) {
+    cliplength = querypos + stringlength - endpos;
+    if (cliplength > 0) {
+      fprintf(fp,"%dH",cliplength);
+    }
+  }
+
+  return;
+}
+
+
+static int
+print_md_string (int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, int stringlength,
+		 int querypos, int querylength, int hardclip_low, int hardclip_high,
+		 bool plusp, bool lastp) {
+  int starti, endi, i;
+  bool hardclip_end_p = false;
+
+  if (plusp == true) {
+    debug2(printf("\nEntering md_string with matchlength %d, querypos %d, querylength %d, hardclip_low %d, hardclip_high %d, plus: %s\n",
+		  matchlength,querypos,querylength,hardclip_low,hardclip_high,genomicfwd));
+    if (hardclip_low == 0) {
+      starti = 0;
+      hardclip_end_p = true;
+    } else if (hardclip_low > querypos) {
+      /* startpos = hardclip_low; */
+      starti = hardclip_low - querypos;
+      hardclip_end_p = true;
+      debug2(printf("  Setting starti %d = hardclip_low %d - querypos %d\n",
+		    starti,hardclip_low,querypos));
+    } else {
+      /* startpos = querypos; */
+      starti = 0;
+    }
+
+    if (querylength - hardclip_high < querypos + stringlength) {
+      /* endpos = querylength - hardclip_high; */
+      endi = (querylength - hardclip_high) - querypos;
+      debug2(printf("  Setting endi %d = (querylength %d - hardclip_high %d) - querypos %d\n",
+		    endi,querylength,hardclip_high,querypos));
+    } else {
+      /* endpos = querypos + stringlength; */
+      endi = stringlength;
+    }
+
+    debug2(printf("  Counting matches from %d to %d\n",starti,endi));
+
+    if (genomicfwd == NULL) {
+      if (endi > starti) {
+	matchlength += (endi - starti);
+      }
+    } else {
+      for (i = starti; i < endi; i++) {
+	if (isupper(genomicfwd[i])) {
+	  matchlength++;
+	} else {
+	  if (matchlength > 0 || hardclip_end_p == true) {
+	    fprintf(fp,"%d",matchlength);
+	    hardclip_end_p = false;
+	  }
+	  fprintf(fp,"%c",toupper(genomicfwd[i]));
+	  (*nmismatches) += 1;
+	  matchlength = 0;
+	}
+      }
+    }
+
+  } else {
+    debug2(printf("\nEntering md_string with matchlength %d, querypos %d, querylength %d, hardclip_low %d, hardclip_high %d, minus: %s\n",
+		  matchlength,querypos,querylength,hardclip_low,hardclip_high,genomicfwd));
+    querypos = querylength - querypos - stringlength;
+    debug2(printf("  Revising querypos to be %d\n",querypos));
+
+    if (hardclip_high == 0) {
+      starti = 0;
+      hardclip_end_p = true;
+    } else if (hardclip_high > querypos) {
+      /* startpos = hardclip_high; */
+      starti = hardclip_high - querypos;
+      hardclip_end_p = true;
+      debug2(printf("  Setting starti %d = hardclip_high %d - querypos %d\n",
+		    starti,hardclip_high,querypos));
+    } else {
+      /* startpos = querypos; */
+      starti = 0;
+    }
+
+    if (querylength - hardclip_low < querypos + stringlength) {
+      /* endpos = querylength - hardclip_low; */
+      endi = (querylength - hardclip_low) - querypos;
+      debug2(printf("  Setting endi %d = (querylength %d - hardclip_low %d) - querypos %d\n",
+		    endi,querylength,hardclip_low,querypos));
+    } else {
+      /* endpos = querypos + stringlength; */
+      endi = stringlength;
+    }
+
+    debug2(printf("  Counting matches from %d to %d\n",starti,endi));
+
+    if (genomicfwd == NULL) {
+      if (endi > starti) {
+	matchlength += (endi - starti);
+      }
+    } else {
+      for (i = starti; i < endi; i++) {
+	if (isupper(genomicfwd[i])) {
+	  matchlength++;
+	} else {
+	  if (matchlength > 0 || hardclip_end_p == true) {
+	    fprintf(fp,"%d",matchlength);
+	    hardclip_end_p = false;
+	  }
+	  fprintf(fp,"%c",toupper(genomicfwd[i]));
+	  (*nmismatches) += 1;
+	  matchlength = 0;
+	}
+      }
+    }
+  }
+
+  debug2(printf("  Ending with matchlength %d\n",matchlength));
 
   if (lastp == false) {
     return matchlength;
@@ -360,106 +616,92 @@ print_md_string (FILE *fp, int matchlength, char *genomicfwd, int querylength,
 
 
 static void
-print_single (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int npaths,
+print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
 	      int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-	      Resulttype_T resulttype, bool translocationp, bool first_read_p,
-	      int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
+	      Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+	      Resulttype_T resulttype, bool first_read_p,
+	      int npaths_mate, int quality_shift,
 	      char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
   Substring_T substring;
-  int querylength, substring_start, substring_length;
-  int hardclip_low = 0, hardclip_high = 0;
+  int nmismatches = 0, querylength, substring_start, substring_length;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
   char *genomicfwd, *genomicdir;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  bool plusp;
+
 
   querylength = Shortread_fulllength(queryseq);
-  substring = Stage3_substring1(this);
+  plusp = Stage3end_plusp(this);
+  substring = Stage3end_substring1(this);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0;
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
+
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(substring,mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(Stage3end_plusp(this),mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  chrpos = print_chromosomal_pos(fp,this,mate,chromosome_iit,/*matep*/false);
+  print_chromosomal_pos(fp,Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
 
   /* 6. CIGAR */
   fprintf(fp,"\t");
-  if (Stage3_plusp(this) == true) {
-    if (Substring_querystart(substring) > 0) {
-#ifdef HARDCLIP_ON_TERMINAL
-      if (Substring_left_endtype(substring) == TERM) {
-	hardclip_low = Substring_querystart(substring);
-	fprintf(fp,"%dH",hardclip_low);
-      } else {
-	fprintf(fp,"%dS",Substring_querystart(substring));
-      }
-#else
-      fprintf(fp,"%dS",Substring_querystart(substring));
-#endif
-    }
-  } else {
-    if (Substring_queryend(substring) < querylength) {
-#ifdef HARDCLIP_ON_TERMINAL
-      if (Substring_right_endtype(substring) == TERM) {
-	hardclip_low = querylength - Substring_queryend(substring);
-	fprintf(fp,"%dH",hardclip_low);
-      } else {
-	fprintf(fp,"%dS",querylength - Substring_queryend(substring));
-      }
-#else
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring));
-#endif
-    }
-  }
 
-  fprintf(fp,"%dM",Substring_match_length(substring));
+  if (plusp == true) {
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring),
+		/*querypos*/Substring_querystart(substring),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring),
+		/*querypos*/Substring_queryend(substring),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
-  if (Stage3_plusp(this) == true) {
-    if (Substring_queryend(substring) < querylength) {
-#ifdef HARDCLIP_ON_TERMINAL
-      if (Substring_right_endtype(substring) == TERM) {
-	hardclip_high = querylength - Substring_queryend(substring);
-	fprintf(fp,"%dH",hardclip_high);
-      } else {
-	fprintf(fp,"%dS",querylength - Substring_queryend(substring));
-      }
-#else
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring));
-#endif
-    }
   } else {
-    if (Substring_querystart(substring) > 0) {
-#ifdef HARDCLIP_ON_TERMINAL
-      if (Substring_left_endtype(substring) == TERM) {
-	hardclip_high = Substring_querystart(substring);
-	fprintf(fp,"%dH",hardclip_high);
-      } else {
-	fprintf(fp,"%dS",Substring_querystart(substring));
-      }
-#else
-      fprintf(fp,"%dS",Substring_querystart(substring));
-#endif
-    }
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring),
+		/*querypos*/Substring_queryend(substring),querylength,hardclip_low,hardclip_high,
+		/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring),
+		/*querypos*/Substring_querystart(substring),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring),
+		/*querypos*/0,querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
   }
 
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,this,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(this) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -472,24 +714,29 @@ print_single (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, in
     fprintf(fp,"\t%d",pairedlength);
   } else if (chrpos < mate_chrpos) {
     fprintf(fp,"\t%d",pairedlength);
+  } else if (chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
+    fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
   }
 #endif
 
 
-
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (Stage3_plusp(this) == true) {
+  if (plusp == true) {
     Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,quality_shift,/*show_chopped_p*/false);
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
+			    quality_shift,/*show_chopped_p*/false);
   } else {
-    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_high,hardclip_low);
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality_revcomp(fp,queryseq,hardclip_high,hardclip_low,quality_shift,/*show_chopped_p*/false);
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
+				    quality_shift,/*show_chopped_p*/false);
   }
 
   /* 12. TAGS: RG */
@@ -499,51 +746,54 @@ print_single (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, in
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Stage3_nmismatches_refdiff(this));
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
 
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
-
-#ifdef MD_INCLUDES_SOFTCLIP
-  substring_start = 0;
-  substring_length = querylength;
-#else
   substring_start = Substring_querystart(substring);
   substring_length = Substring_match_length(substring);
-#endif
 
   fprintf(fp,"MD:Z:");  
   if ((genomicdir = Substring_genomic_refdiff(substring)) == NULL) {
-    fprintf(fp,"%d",querylength);
+    if (plusp == true) {
+      print_md_string(&nmismatches,fp,/*matchlength*/0,/*genomicfwd*/NULL,substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
+    } else {
+      print_md_string(&nmismatches,fp,/*matchlength*/0,/*genomicfwd*/NULL,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    }
 
-  } else if (Stage3_plusp(this) == true) {
-    print_md_string(fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
-		    hardclip_low,hardclip_high,/*lastp*/true);
+  } else if (plusp == true) {
+    print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
+		    /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/true);
 
   } else {
     genomicfwd = (char *) CALLOC(querylength+1,sizeof(char));
     make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-    print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		    hardclip_low,hardclip_high,/*lastp*/true);
+    print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		    /*querypos*/substring_start,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
   
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Stage3end_nmismatches_refdiff(this)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
-
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
 
   fprintf(fp,"\n");
   return;
@@ -551,35 +801,52 @@ print_single (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, in
 
 
 static void
-print_insertion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int npaths,
+print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
 		 int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		 int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		 char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+		 Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
   Substring_T substring1, substring2;
-  int querylength;
+  int nmismatches = 0, querylength;
   char *genomicfwd, *genomicdir;
-  int substring1_start, substring2_start, substring1_length, substring2_length, nindels, matchlength;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  int substring1_start, substring2_start, substring1_length, substring2_length, matchlength, nindels;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
+  bool plusp;
 
   querylength = Shortread_fulllength(queryseq);
+  plusp = Stage3end_plusp(this);
 
-  substring1 = Stage3_substring1(this);
-  substring2 = Stage3_substring2(this);
+  substring1 = Stage3end_substring1(this);
+  substring2 = Stage3end_substring2(this);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0;
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
+
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(substring1,mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  chrpos = print_chromosomal_pos(fp,this,mate,chromosome_iit,/*matep*/false);
+  print_chromosomal_pos(fp,Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
@@ -587,38 +854,52 @@ print_insertion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum,
   /* 6. CIGAR */
   fprintf(fp,"\t");
 
-  nindels = Stage3_nindels(this);
-  if (Stage3_plusp(this) == true) {
-    if (Substring_querystart(substring1) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring1));
-    }
-    fprintf(fp,"%dM",Substring_match_length(substring1));
-    fprintf(fp,"%dI",nindels);
-    fprintf(fp,"%dM",Substring_match_length(substring2));
-    if (Substring_queryend(substring2) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring2));
-    }
+  nindels = Stage3end_nindels(this);
+  if (plusp == true) {
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'I',nindels,
+		/*querypos*/Substring_queryend(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		/*querypos*/Substring_queryend(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
   } else {
-    if (Substring_queryend(substring2) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring2));
-    }
-    fprintf(fp,"%dM",Substring_match_length(substring2));
-    fprintf(fp,"%dI",nindels);
-    fprintf(fp,"%dM",Substring_match_length(substring1));
-    if (Substring_querystart(substring1) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring1));
-    }
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		/*querypos*/Substring_queryend(substring2),querylength,hardclip_low,hardclip_high,
+		/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'I',nindels,
+		/*querypos*/Substring_queryend(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		/*querypos*/0,querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
   }
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,this,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(this) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -631,6 +912,10 @@ print_insertion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum,
     fprintf(fp,"\t%d",pairedlength);
   } else if (chrpos < mate_chrpos) {
     fprintf(fp,"\t%d",pairedlength);
+  } else if (chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
+    fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
   }
@@ -639,16 +924,16 @@ print_insertion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum,
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (Stage3_plusp(this) == true) {
-    Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+  if (plusp == true) {
+    Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-			   quality_shift,/*show_chopped_p*/false);
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
+			    quality_shift,/*show_chopped_p*/false);
   } else {
-    Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-				   quality_shift,/*show_chopped_p*/false);
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
+				    quality_shift,/*show_chopped_p*/false);
   }
 
   /* 12. TAGS: RG */
@@ -658,64 +943,71 @@ print_insertion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum,
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Stage3_nmismatches_refdiff(this));
-  
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
+
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
 
-
-#ifdef MD_INCLUDES_SOFTCLIP
-  substring1_start = Substring_querystart_orig(substring1);
-  substring1_length = Substring_match_length_orig(substring1);
-  substring2_start = Substring_querystart_orig(substring2);
-  substring2_length = Substring_match_length_orig(substring2);
-#else
   substring1_start = Substring_querystart(substring1);
   substring1_length = Substring_match_length(substring1);
   substring2_start = Substring_querystart(substring2);
   substring2_length = Substring_match_length(substring2);
+
+  if (plusp == true) {
+    genomicfwd = Substring_genomic_refdiff(substring1);
+    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+				  /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
+				  /*plusp*/true,/*lastp*/false);
+
+#if 0
+    /* If MD string is supposed to include insertion, then uncomment this */
+    matchlength += nindels;
 #endif
 
-  if (Stage3_plusp(this) == true) {
-    genomicfwd = Substring_genomic_refdiff(substring1);
-    matchlength = print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
-				  /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
     genomicfwd = Substring_genomic_refdiff(substring2);
-    print_md_string(fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
+		    /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/true);
   } else {
     genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring2);
     make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-    matchlength = print_md_string(fp,/*matchlength*/0,genomicfwd,substring2_length,
-				  /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring2_length,
+				  /*querypos*/substring2_start,querylength,
+				  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     FREE(genomicfwd);
+
+#if 0
+    /* If MD string is supposed to include insertion, then uncomment this */
+    matchlength += nindels;
+#endif
 
     genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring1);
     make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-    print_md_string(fp,matchlength,genomicfwd,substring1_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,matchlength,genomicfwd,substring1_length,
+		    /*querypos*/substring1_start,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
+
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Stage3end_nmismatches_refdiff(this)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+  
 
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
-
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
 
   fprintf(fp,"\n");
   return;
@@ -723,35 +1015,52 @@ print_insertion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum,
 
 
 static void
-print_deletion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int npaths,
+print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
 		int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
   Substring_T substring1, substring2;
-  int querylength;
+  int nmismatches = 0, querylength;
   char *genomicfwd, *genomicdir;
   int substring1_start, substring2_start, substring1_length, substring2_length, nindels;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
+  bool plusp;
 
   querylength = Shortread_fulllength(queryseq);
+  plusp = Stage3end_plusp(this);
 
-  substring1 = Stage3_substring1(this);
-  substring2 = Stage3_substring2(this);
+  substring1 = Stage3end_substring1(this);
+  substring2 = Stage3end_substring2(this);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0;
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
+
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(substring1,mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  chrpos = print_chromosomal_pos(fp,this,mate,chromosome_iit,/*matep*/false);
+  print_chromosomal_pos(fp,Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
@@ -759,38 +1068,52 @@ print_deletion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, 
   /* 6. CIGAR */
   fprintf(fp,"\t");
 
-  nindels = Stage3_nindels(this); /* nindels is positive */
-  if (Stage3_plusp(this) == true) {
-    if (Substring_querystart(substring1) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring1));
+  nindels = Stage3end_nindels(this); /* nindels is positive */
+  if (plusp == true) {
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    if (hardclip_low < Substring_querystart(substring2)) {
+      fprintf(fp,"%dD",nindels);
     }
-    fprintf(fp,"%dM",Substring_match_length(substring1));
-    fprintf(fp,"%dD",nindels);
-    fprintf(fp,"%dM",Substring_match_length(substring2));
-    if (Substring_queryend(substring2) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring2));
-    }
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		/*querypos*/Substring_queryend(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
   } else {
-    if (Substring_queryend(substring2) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring2));
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		/*querypos*/Substring_queryend(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    if (querylength - hardclip_high > Substring_queryend(substring1)) {
+      fprintf(fp,"%dD",nindels);
     }
-    fprintf(fp,"%dM",Substring_match_length(substring2));
-    fprintf(fp,"%dD",nindels);
-    fprintf(fp,"%dM",Substring_match_length(substring1));
-    if (Substring_querystart(substring1) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring1));
-    }
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		/*querypos*/0,querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
   }
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,this,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(this) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -803,6 +1126,10 @@ print_deletion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, 
     fprintf(fp,"\t%d",pairedlength);
   } else if (chrpos < mate_chrpos) {
     fprintf(fp,"\t%d",pairedlength);
+  } else if (chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
+    fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
   }
@@ -812,16 +1139,16 @@ print_deletion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, 
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (Stage3_plusp(this) == true) {
-    Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+  if (plusp == true) {
+    Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-			   quality_shift,/*show_chopped_p*/false);
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
+			    quality_shift,/*show_chopped_p*/false);
   } else {
-    Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-				   quality_shift,/*show_chopped_p*/false);
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
+				    quality_shift,/*show_chopped_p*/false);
   }
 
   /* 12. TAGS: RG */
@@ -831,73 +1158,74 @@ print_deletion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, 
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Stage3_nmismatches_refdiff(this));
-  
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
+
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
 
-#ifdef MD_INCLUDES_SOFTCLIP
-  substring1_start = Substring_querystart_orig(substring1);
-  substring1_length = Substring_match_length_orig(substring1); /* match_length + querystart */
-  substring2_start = Substring_querystart_orig(substring2);
-  substring2_length = Substring_match_length_orig(substring2); /* querylength - queryend + match_length */
-#else
   substring1_start = Substring_querystart(substring1);
   substring1_length = Substring_match_length(substring1);
   substring2_start = Substring_querystart(substring2);
   substring2_length = Substring_match_length(substring2);
-#endif
 
-  if (Stage3_plusp(this) == true) {
+  if (plusp == true) {
     genomicfwd = Substring_genomic_refdiff(substring1);
-    print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+		    /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/true);
 
-    /* Deletion string: Potential problem if followed by a mismatch, but can be resolved by looking at CIGAR string */
-    fprintf(fp,"^%s",Stage3_deletion_string(this));
+    if (hardclip_low < substring2_start) {
+      /* Deletion string: Potential problem if followed by a mismatch, but can be resolved by looking at CIGAR string */
+      fprintf(fp,"^%s",Stage3end_deletion_string(this));
+    }
 
     genomicfwd = Substring_genomic_refdiff(substring2);
-    print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring2_start]),substring2_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring2_start]),substring2_length,
+		    /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/true);
   } else {
     genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring2);
     make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-    print_md_string(fp,/*matchlength*/0,genomicfwd,substring2_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring2_length,
+		    /*querypos*/substring2_start,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
 
-    /* Deletion string: Potential problem if followed by a mismatch, but can be resolved by looking at CIGAR string */
-    genomicfwd = (char *) CALLOC(nindels+1,sizeof(char));
-    make_complement_buffered(genomicfwd,Stage3_deletion_string(this),nindels);
-    fprintf(fp,"^%s",genomicfwd);
-    FREE(genomicfwd);
+    if (querylength - hardclip_high > substring1_start + substring1_length) {
+      /* Deletion string: Potential problem if followed by a mismatch, but can be resolved by looking at CIGAR string */
+      genomicfwd = (char *) CALLOC(nindels+1,sizeof(char));
+      make_complement_buffered(genomicfwd,Stage3end_deletion_string(this),nindels);
+      fprintf(fp,"^%s",genomicfwd);
+      FREE(genomicfwd);
+    }
 
     genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring1);
     make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-    print_md_string(fp,/*matchlength*/0,genomicfwd,substring1_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
+		    /*querypos*/substring1_start,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
+
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Stage3end_nmismatches_refdiff(this)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+
 
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
-
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
 
   fprintf(fp,"\n");
   return;
@@ -905,40 +1233,103 @@ print_deletion (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, 
 
 
 static void
-print_halfdonor (FILE *fp, Substring_T donor, Stage3_T this, Stage3_T mate,
+halfdonor_dinucleotide (char *donor1, char *donor2, Substring_T donor) {
+  bool sensep;
+  char *genomic;
+  int substring_start, substring_length;
+
+  sensep = Substring_chimera_sensep(donor);
+
+  substring_start = Substring_querystart(donor);
+  genomic = Substring_genomic_refdiff(donor);
+
+  if (sensep == true) {
+    substring_length = Substring_match_length(donor);
+    *donor1 = toupper(genomic[substring_start+substring_length]);
+    *donor2 = toupper(genomic[substring_start+substring_length+1]);
+
+  } else {			/* sensep == false */
+    *donor2 = toupper(complCode[(int) genomic[substring_start-2]]);
+    *donor1 = toupper(complCode[(int) genomic[substring_start-1]]);
+  }
+
+  return;
+}
+
+static void
+halfacceptor_dinucleotide (char *acceptor2, char *acceptor1, Substring_T acceptor) {
+  bool sensep;
+  char *genomic;
+  int substring_start, substring_length;
+
+  sensep = Substring_chimera_sensep(acceptor);
+
+  substring_start = Substring_querystart(acceptor);
+  genomic = Substring_genomic_refdiff(acceptor);
+
+  if (sensep == true) {
+    *acceptor2 = toupper(genomic[substring_start-2]);
+    *acceptor1 = toupper(genomic[substring_start-1]);
+
+  } else {			/* sensep == false */
+    substring_length = Substring_match_length(acceptor);
+    *acceptor1 = toupper(complCode[(int) genomic[substring_start+substring_length]]);
+    *acceptor2 = toupper(complCode[(int) genomic[substring_start+substring_length+1]]);
+  }
+
+  return;
+}
+
+
+
+static void
+print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate,
 		 char *acc, int pathnum, int npaths,
 		 int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		 int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		 char *sam_read_group_id, bool invertp, bool invert_mate_p,
-		 bool use_hardclip_p) {
+		 Genomicpos_T concordant_chrpos, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
+		 int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
+		 bool use_hardclip_p, bool print_xt_p, char donor1, char donor2, char acceptor2, char acceptor1,
+		 double donor_prob, double acceptor_prob) {
   unsigned int flag = 0U;
-  int querylength;
-  int clip_low = 0, clip_high = 0;
+  int nmismatches = 0, querylength;
   bool sensep;
   char *genomicfwd, *genomicdir;
   int substring_start, substring_length;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
+  int transloc_hardclip_low, transloc_hardclip_high;
+  bool plusp;
 
   querylength = Shortread_fulllength(queryseq);
+  plusp = Substring_plusp(donor);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0;
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
+
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(donor,mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-#if 0
-  print_chromosomal_pos(fp,this,mate,chromosome_iit,/*matep*/false);
-#else
-  /* Need to do this, because print_chromosomal_pos cannot handle translocations */
-  chrpos = print_substring_pos(fp,donor,chromosome_iit);
-#endif
+  print_chromosomal_pos(fp,Substring_chrnum(donor),chrpos,chromosome_iit);
+  
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
@@ -947,66 +1338,104 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3_T this, Stage3_T mate,
   fprintf(fp,"\t");
   sensep = Substring_chimera_sensep(donor);
 
-  if (sensep == Substring_plusp(donor)) {
-    if (Substring_plusp(donor) == true) {
-      /* sensep true */
-      if (Substring_querystart(donor) > 0) {
-	fprintf(fp,"%dS",Substring_querystart(donor));
+  if (use_hardclip_p == true) {
+    if (sensep == plusp) {
+      if (plusp == true) {
+	/* sensep true */
+	transloc_hardclip_low = 0;
+	transloc_hardclip_high = querylength - Substring_queryend(donor);
+
+      } else {
+	/* sensep false */
+	transloc_hardclip_low = Substring_querystart(donor);
+	transloc_hardclip_high = 0;
       }
-    } else {
-      /* sensep false */
-      if (Substring_queryend(donor) < querylength) {
-	fprintf(fp,"%dS",querylength - Substring_queryend(donor));
+
+    } else { /* sensep != Substring_plusp(donor) */
+      if (plusp == true) {
+	transloc_hardclip_low = Substring_querystart(donor);
+	transloc_hardclip_high = 0;
+
+      } else {
+	transloc_hardclip_low = 0;
+	transloc_hardclip_high = querylength - Substring_queryend(donor);
       }
-    }
-    fprintf(fp,"%dM",Substring_match_length(donor));
-    if (sensep == true) {
-      clip_high = querylength - Substring_chimera_pos(donor);
-    } else {
-      clip_high = Substring_chimera_pos(donor);
-    }
-    if (use_hardclip_p == true) {
-      fprintf(fp,"%dH",clip_high); /* intron */
-    } else {
-      fprintf(fp,"%dS",clip_high); /* intron */
     }
 
+    if (transloc_hardclip_low > hardclip_low) {
+      hardclip_low = transloc_hardclip_low;
+    }
+    if (transloc_hardclip_high > hardclip_high) {
+      hardclip_high = transloc_hardclip_high;
+    }
+  }
+
+
+  if (sensep == plusp) {
+    if (plusp == true) {
+      /* sensep true */
+      assert(Substring_chimera_pos(donor) == Substring_queryend(donor));
+      print_cigar(fp,/*type*/'S',Substring_querystart(donor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		  /*querypos*/Substring_querystart(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
+		  /*querypos*/Substring_queryend(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+
+    } else {
+      /* sensep false */
+      assert(Substring_chimera_pos(donor) == Substring_querystart(donor));
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(donor),
+		  /*querypos*/Substring_queryend(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		  /*querypos*/Substring_querystart(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
+		  /*querypos*/0,querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    }
 
   } else { /* sensep != Substring_plusp(donor) */
-    if (sensep == true) {
-      clip_low = querylength - Substring_chimera_pos(donor);
-    } else {
-      clip_low = Substring_chimera_pos(donor);
-    }
-    if (use_hardclip_p == true) {
-      fprintf(fp,"%dH",clip_low); /* intron */
-    } else {
-      fprintf(fp,"%dS",clip_low); /* intron */
-    }
+    if (plusp == true) {
+      assert(Substring_chimera_pos(donor) == Substring_querystart(donor));
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		  /*querypos*/Substring_querystart(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(donor),
+		  /*querypos*/Substring_queryend(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
-
-    fprintf(fp,"%dM",Substring_match_length(donor));
-    if (Substring_plusp(donor) == true) {
-      /* sensep false */
-      if (Substring_queryend(donor) < querylength) {
-	fprintf(fp,"%dS",querylength - Substring_queryend(donor));
-      }
     } else {
-      /* sensep true */
-      if (Substring_querystart(donor) > 0) {
-	fprintf(fp,"%dS",Substring_querystart(donor));
-      }
+      assert(Substring_chimera_pos(donor) == Substring_queryend(donor));
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
+		  /*querypos*/Substring_queryend(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		  /*querypos*/Substring_querystart(donor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',Substring_querystart(donor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/true);
     }
   }
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,this,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(this) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -1017,7 +1446,11 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3_T this, Stage3_T mate,
 #else
   if (mate_chrpos == 0) {
     fprintf(fp,"\t%d",pairedlength);
-  } else if (chrpos < mate_chrpos) {
+  } else if (concordant_chrpos < mate_chrpos) {
+    fprintf(fp,"\t%d",pairedlength);
+  } else if (concordant_chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
     fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
@@ -1028,30 +1461,16 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3_T this, Stage3_T mate,
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (use_hardclip_p == true) {
-    if (Substring_plusp(donor) == true) {
-      Shortread_print_chopped(fp,queryseq,clip_low,clip_high);
-      fprintf(fp,"\t");
-      Shortread_print_quality(fp,queryseq,clip_low,clip_high,
-			      quality_shift,/*show_chopped_p*/false);
-    } else {
-      Shortread_print_chopped_revcomp(fp,queryseq,clip_low,clip_high);
-      fprintf(fp,"\t");
-      Shortread_print_quality_revcomp(fp,queryseq,clip_low,clip_high,
-				      quality_shift,/*show_chopped_p*/false);
-    }
+  if (plusp == true) {
+    Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
+    fprintf(fp,"\t");
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
+			    quality_shift,/*show_chopped_p*/false);
   } else {
-    if (Substring_plusp(donor) == true) {
-      Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
-      fprintf(fp,"\t");
-      Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-			      quality_shift,/*show_chopped_p*/false);
-    } else {
-      Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
-      fprintf(fp,"\t");
-      Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-				      quality_shift,/*show_chopped_p*/false);
-    }
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
+    fprintf(fp,"\t");
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
+				    quality_shift,/*show_chopped_p*/false);
   }
 
 
@@ -1062,85 +1481,91 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3_T this, Stage3_T mate,
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Substring_nmismatches_refdiff(donor));
-  
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
+
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
 
-#ifdef MD_INCLUDES_SOFTCLIP
-  substring_start = Substring_querystart_orig(donor);
-  substring_length = Substring_match_length_orig(donor);
-#else
   substring_start = Substring_querystart(donor);
   substring_length = Substring_match_length(donor);
-#endif
 
   if (use_hardclip_p == false) {
     genomicdir = Substring_genomic_refdiff(donor);
-    if (Substring_plusp(donor) == true) {
-      print_md_string(fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    if (plusp == true) {
+      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(querylength+1,sizeof(char));
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
 
   } else if (sensep == true) {
-    if (Substring_plusp(donor) == true) {
+    if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(donor);
-      print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(donor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
 
   } else {			/* sensep == false */
-    if (Substring_plusp(donor) == true) {
+    if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(donor);
-      print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(donor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
   }
 
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Substring_nmismatches_refdiff(donor)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+  
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
 
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
-
   /* 12. TAGS: XS */
   fprintf(fp,"\t");
-  if (sensep == Substring_plusp(donor)) {
+  if (sensep == plusp) {
     fprintf(fp,"XS:A:+");
   } else {
     fprintf(fp,"XS:A:-");
+  }
+
+  /* 12. TAGS: XT */
+  if (print_xt_p == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XT:Z:%c%c-%c%c,%.2f,%.2f",donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
   }
 
   fprintf(fp,"\n");
@@ -1149,40 +1574,53 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3_T this, Stage3_T mate,
 
 
 static void
-print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3_T this, Stage3_T mate,
+print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_T mate,
 		    char *acc, int pathnum, int npaths,
 		    int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		    Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		    int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		    char *sam_read_group_id, bool invertp, bool invert_mate_p,
-		    bool use_hardclip_p) {
+		    Genomicpos_T concordant_chrpos, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
+		    int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		    int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
+		    bool use_hardclip_p, bool print_xt_p, char donor1, char donor2, char acceptor2, char acceptor1,
+		    double donor_prob, double acceptor_prob) {
   unsigned int flag = 0U;
-  int querylength;
-  int clip_low = 0, clip_high = 0;
+  int nmismatches = 0, querylength;
   bool sensep;
   char *genomicfwd, *genomicdir;
   int substring_start, substring_length;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
+  int transloc_hardclip_low, transloc_hardclip_high;
+  bool plusp;
 
   querylength = Shortread_fulllength(queryseq);
+  plusp = Substring_plusp(acceptor);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0;
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
+
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(acceptor,mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-#if 0
-  print_chromosomal_pos(fp,this,mate,chromosome_iit,/*matep*/false);
-#else
-  /* Need to do this, because print_chromosomal_pos cannot handle translocations */
-  chrpos = print_substring_pos(fp,acceptor,chromosome_iit);
-#endif
+  print_chromosomal_pos(fp,Substring_chrnum(acceptor),chrpos,chromosome_iit);
+
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
@@ -1191,67 +1629,104 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3_T this, Stage3_T mate
   fprintf(fp,"\t");
   sensep = Substring_chimera_sensep(acceptor);
 
-  if (sensep != Substring_plusp(acceptor)) {
-    if (Substring_plusp(acceptor) == true) {
-      /* sensep false */
-      if (Substring_querystart(acceptor) > 0) {
-	fprintf(fp,"%dS",Substring_querystart(acceptor));
+  if (use_hardclip_p == true) {
+    if (sensep != plusp) {
+      if (plusp == true) {
+	/* sensep false */
+	transloc_hardclip_low = 0;
+	transloc_hardclip_high = querylength - Substring_queryend(acceptor);
+
+      } else {
+	/* sensep true */
+	transloc_hardclip_low = Substring_querystart(acceptor);
+	transloc_hardclip_high = 0;
       }
+
+    } else { /*  sensep == Substring_plusp(acceptor) */
+      if (plusp == true) {
+	transloc_hardclip_low = Substring_querystart(acceptor);
+	transloc_hardclip_high = 0;
+
+      } else {
+	transloc_hardclip_low = 0;
+	transloc_hardclip_high = querylength - Substring_queryend(acceptor);
+      }
+    }
+
+    if (transloc_hardclip_low > hardclip_low) {
+      hardclip_low = transloc_hardclip_low;
+    }
+    if (transloc_hardclip_high > hardclip_high) {
+      hardclip_high = transloc_hardclip_high;
+    }
+  }
+
+  if (sensep != plusp) {
+    if (plusp == true) {
+      /* sensep false */
+      assert(Substring_chimera_pos(acceptor) == Substring_queryend(acceptor));
+      print_cigar(fp,/*type*/'S',Substring_querystart(acceptor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		  /*querypos*/Substring_querystart(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
+		  /*querypos*/Substring_queryend(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+
     } else {
       /* sensep true */
-      if (Substring_queryend(acceptor) < querylength) {
-	fprintf(fp,"%dS",querylength - Substring_queryend(acceptor));
-      }
+      assert(Substring_chimera_pos(acceptor) == Substring_querystart(acceptor));
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(acceptor),
+		  /*querypos*/Substring_queryend(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		  /*querypos*/Substring_querystart(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/true);
     }
-    fprintf(fp,"%dM",Substring_match_length(acceptor));
-
-    if (sensep == true) {
-      clip_high = Substring_chimera_pos(acceptor);
-    } else {
-      clip_high = querylength - Substring_chimera_pos(acceptor);
-    }
-    if (use_hardclip_p == true) {
-      fprintf(fp,"%dH",clip_high);  /* intron */
-    } else {
-      fprintf(fp,"%dS",clip_high);  /* intron */
-    }
-
 
   } else { /*  sensep == Substring_plusp(acceptor) */
-    if (sensep == true) {
-      clip_low = Substring_chimera_pos(acceptor);
-    } else {
-      clip_low = querylength - Substring_chimera_pos(acceptor);
-    }
-    if (use_hardclip_p == true) {
-      fprintf(fp,"%dH",clip_low);  /* intron */
-    } else {
-      fprintf(fp,"%dS",clip_low);  /* intron */
-    }
+    if (plusp == true) {
+      assert(Substring_chimera_pos(acceptor) == Substring_querystart(acceptor));
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		  /*querypos*/Substring_querystart(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(acceptor),
+		  /*querypos*/Substring_queryend(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
-    fprintf(fp,"%dM",Substring_match_length(acceptor));
-    if (Substring_plusp(acceptor) == true) {
-      /* sensep true */
-      if (Substring_queryend(acceptor) < querylength) {
-	fprintf(fp,"%dS",querylength - Substring_queryend(acceptor));
-      }
     } else {
-      /* sensep false */
-      if (Substring_querystart(acceptor) > 0) {
-	fprintf(fp,"%dS",Substring_querystart(acceptor));
-      }
+      assert(Substring_chimera_pos(acceptor) == Substring_queryend(acceptor));
+      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
+		  /*querypos*/Substring_queryend(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		  /*querypos*/Substring_querystart(acceptor),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',Substring_querystart(acceptor),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/true);
     }
   }
 
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,this,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(this) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -1262,7 +1737,11 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3_T this, Stage3_T mate
 #else
   if (mate_chrpos == 0) {
     fprintf(fp,"\t%d",pairedlength);
-  } else if (chrpos < mate_chrpos) {
+  } else if (concordant_chrpos < mate_chrpos) {
+    fprintf(fp,"\t%d",pairedlength);
+  } else if (concordant_chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
     fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
@@ -1273,30 +1752,16 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3_T this, Stage3_T mate
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (use_hardclip_p == true) {
-    if (Substring_plusp(acceptor) == true) {
-      Shortread_print_chopped(fp,queryseq,clip_low,clip_high);
-      fprintf(fp,"\t");
-      Shortread_print_quality(fp,queryseq,clip_low,clip_high,
-			      quality_shift,/*show_chopped_p*/false);
-    } else {
-      Shortread_print_chopped_revcomp(fp,queryseq,clip_low,clip_high);
-      fprintf(fp,"\t");
-      Shortread_print_quality_revcomp(fp,queryseq,clip_low,clip_high,
-				      quality_shift,/*show_chopped_p*/false);
-    }
+  if (plusp == true) {
+    Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
+    fprintf(fp,"\t");
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
+			    quality_shift,/*show_chopped_p*/false);
   } else {
-    if (Substring_plusp(acceptor) == true) {
-      Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
-      fprintf(fp,"\t");
-      Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-			      quality_shift,/*show_chopped_p*/false);
-    } else {
-      Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
-      fprintf(fp,"\t");
-      Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
-				      quality_shift,/*show_chopped_p*/false);
-    }
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
+    fprintf(fp,"\t");
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
+				    quality_shift,/*show_chopped_p*/false);
   }
 
 
@@ -1307,86 +1772,91 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3_T this, Stage3_T mate
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Substring_nmismatches_refdiff(acceptor));
-  
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
+
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
 
-#ifdef MD_INCLUDES_SOFTCLIP
-  substring_start = Substring_querystart_orig(acceptor);
-  substring_length = Substring_match_length_orig(acceptor);
-#else
   substring_start = Substring_querystart(acceptor);
   substring_length = Substring_match_length(acceptor);
-#endif
-
 
   if (use_hardclip_p == false) {
     genomicdir = Substring_genomic_refdiff(acceptor);
-    if (Substring_plusp(acceptor) == true) {
-      print_md_string(fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    if (plusp == true) {
+      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(querylength+1,sizeof(char));
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
 
   } else if (sensep == false) {
-    if (Substring_plusp(acceptor) == true) {
+    if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(acceptor);
-      print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(acceptor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
 
   } else {			/* sensep true */
-    if (Substring_plusp(acceptor) == true) {
+    if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(acceptor);
-      print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(acceptor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(fp,/*matchlength*/0,genomicfwd,substring_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+		      /*querypos*/substring_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
   }
 
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Substring_nmismatches_refdiff(acceptor)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+  
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
 
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
-
   /* 12. TAGS: XS */
   fprintf(fp,"\t");
-  if (sensep == Substring_plusp(acceptor)) {
+  if (sensep == plusp) {
     fprintf(fp,"XS:A:+");
   } else {
     fprintf(fp,"XS:A:-");
+  }
+
+  /* 12. TAGS: XT */
+  if (print_xt_p == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XT:Z:%c%c-%c%c,%.2f,%.2f",donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
   }
 
   fprintf(fp,"\n");
@@ -1396,82 +1866,115 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3_T this, Stage3_T mate
 
 
 static void
-print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pathnum, int npaths,
+print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
 		   int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		   Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		   int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		   char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+		   Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		   Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		   int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
   Substring_T substring1, substring2;
-  int querylength;
+  int nmismatches = 0, querylength;
   bool sensep;
   char *genomicfwd, *genomicdir;
   int substring1_start, substring2_start, substring1_length, substring2_length, matchlength;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
+  bool plusp;
 
   querylength = Shortread_fulllength(queryseq);
+  plusp = Stage3end_plusp(this);
 
-  sensep = (Stage3_sensedir(chimera) == SENSE_FORWARD);
+  sensep = (Stage3end_sensedir(this) == SENSE_FORWARD);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0;
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
 
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(Stage3_substring1(chimera),mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  chrpos = print_chromosomal_pos(fp,chimera,mate,chromosome_iit,/*matep*/false);
+  print_chromosomal_pos(fp,Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
 
   /* 6. CIGAR */
   fprintf(fp,"\t");
-  if (sensep == Stage3_plusp(chimera)) {
-    substring1 = /* donor */ Stage3_substringD(chimera);
-    substring2 = /* acceptor */ Stage3_substringA(chimera);
+  if (sensep == plusp) {
+    substring1 = /* donor */ Stage3end_substring_donor(this);
+    substring2 = /* acceptor */ Stage3end_substring_acceptor(this);
   } else {
-    substring1 = /* acceptor */ Stage3_substringA(chimera);
-    substring2 = /* donor */ Stage3_substringD(chimera);
+    substring1 = /* acceptor */ Stage3end_substring_acceptor(this);
+    substring2 = /* donor */ Stage3end_substring_donor(this);
   }
-  if (Stage3_plusp(chimera) == true) {
-    if (Substring_querystart(substring1) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring1));
+  if (plusp == true) {
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    if (hardclip_low < Substring_queryend(substring1) && querylength - hardclip_high > Substring_querystart(substring2)) {
+      debug1(printf("\nhardclip_low %d < queryend(substring1) %d && querylength %d - hardclip_high %d > querystart(substring2) %d\n",
+		    hardclip_low,Substring_queryend(substring1),querylength,hardclip_high,Substring_querystart(substring2)));
+      fprintf(fp,"%uN",Stage3end_distance(this));
     }
-  } else {
-    if (Substring_queryend(substring1) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring1));
-    }
-  }
-    
-  fprintf(fp,"%dM",Substring_match_length(substring1));
-  fprintf(fp,"%uN",Stage3_distance(chimera));
-  fprintf(fp,"%dM",Substring_match_length(substring2));
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		/*querypos*/Substring_queryend(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
-  if (Stage3_plusp(chimera) == true) {
-    if (Substring_queryend(substring2) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring2));
-    }
   } else {
-    if (Substring_querystart(substring2) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring2));
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring1),
+		/*querypos*/Substring_queryend(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    if (hardclip_low < Substring_queryend(substring2) && querylength - hardclip_high > Substring_querystart(substring1)) {
+      debug1(printf("\nhardclip_low %d < queryend(substring2) %d && querylength %d - hardclip_high %d > querystart(substring1) %d\n",
+		    hardclip_low,Substring_queryend(substring2),querylength,hardclip_high,Substring_querystart(substring1)));
+      fprintf(fp,"%uN",Stage3end_distance(this));
     }
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring2),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/false,/*lastp*/true);
   }
 
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,chimera,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(this),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(chimera) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -1484,6 +1987,10 @@ print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pat
     fprintf(fp,"\t%d",pairedlength);
   } else if (chrpos < mate_chrpos) {
     fprintf(fp,"\t%d",pairedlength);
+  } else if (chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
+    fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
   }
@@ -1492,15 +1999,15 @@ print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pat
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (Stage3_plusp(chimera) == true) {
-    Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+  if (plusp == true) {
+    Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
 			   quality_shift,/*show_chopped_p*/false);
   } else {
-    Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
 				   quality_shift,/*show_chopped_p*/false);
   } 
 
@@ -1511,38 +2018,26 @@ print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pat
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Stage3_nmismatches_refdiff(chimera));
-  
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
+
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
 
 
-#ifdef MD_INCLUDES_SOFTCLIP
-  /* These lengths include part that is trimmed */
-  substring1_start = Substring_querystart_orig(substring1);
-  substring1_length = Substring_match_length_orig(substring1);
-  substring2_start = Substring_querystart_orig(substring2);
-  substring2_length = Substring_match_length_orig(substring2);
-#else
   substring1_start = Substring_querystart(substring1);
   substring1_length = Substring_match_length(substring1);
   substring2_start = Substring_querystart(substring2);
   substring2_length = Substring_match_length(substring2);
-#endif
 
-  if (Stage3_plusp(chimera) == true) {
+  if (plusp == true) {
     genomicfwd = Substring_genomic_refdiff(substring1);
-    debug2(printf("genomicfwd: %s  start %d\n",genomicfwd,substring1_start));
-    matchlength = print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
-				  /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+				  /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
+				  /*plusp*/true,/*lastp*/false);
     
 #if 0
     /* Intron: Gets skipped in MD string */
@@ -1550,17 +2045,17 @@ print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pat
 #endif
 
     genomicfwd = Substring_genomic_refdiff(substring2);
-    debug2(printf("genomicfwd: %s  start %d\n",genomicfwd,substring2_start));
-    print_md_string(fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
+		    /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/true);
 
   } else {
     genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring1);
-    debug2(printf("genomicdir: %s  start %d\n",genomicfwd,substring1_start));
     make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-    matchlength = print_md_string(fp,/*matchlength*/0,genomicfwd,substring1_length,
-				  /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
+				  /*querypos*/substring1_start,querylength,
+				  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     FREE(genomicfwd);
 
 #if 0
@@ -1570,26 +2065,29 @@ print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pat
 
     genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring2);
-    debug2(printf("genomicdir: %s  start %d\n",genomicfwd,substring1_start));
     make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-    print_md_string(fp,matchlength,genomicfwd,substring2_length,
-		    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+    print_md_string(&nmismatches,fp,matchlength,genomicfwd,substring2_length,
+		    /*querypos*/substring2_start,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
 
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Stage3end_nmismatches_refdiff(this)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+  
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
 
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
-
   /* 12. TAGS: XS */
   fprintf(fp,"\t");
-  if (sensep == Stage3_plusp(chimera)) {
+  if (sensep == plusp) {
     fprintf(fp,"XS:A:+");
   } else {
     fprintf(fp,"XS:A:-");
@@ -1601,116 +2099,166 @@ print_localsplice (FILE *fp, Stage3_T chimera, Stage3_T mate, char *acc, int pat
 
 
 static void
-print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pathnum, int npaths,
+print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, int pathnum, int npaths,
 		 int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		 int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		 char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+		 Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
   /* substring1 is low coordinate on genome, substring2 is high */
   Substring_T substring1, substring2, substringM;
   Genomicpos_T distance1, distance2;
-  int querylength;
+  int nmismatches = 0, querylength;
   bool sensep;
   char *genomicfwd, *genomicdir;
   int substring1_start, substring2_start, substringM_start,
     substring1_length, substring2_length, substringM_length, matchlength;
-  char *barcode;
-  Genomicpos_T chrpos, mate_chrpos;
+  int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
+  bool plusp;
 
   querylength = Shortread_fulllength(queryseq);
+  plusp = Stage3end_plusp(shortexon);
 
-  sensep = (Stage3_sensedir(shortexon) == SENSE_FORWARD);
+  sensep = (Stage3end_sensedir(shortexon) == SENSE_FORWARD);
+
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+    mate_hardclip_low = hardclip3;
+    mate_hardclip_high = 0; 
+    /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+ } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+    mate_hardclip_low = 0;
+    mate_hardclip_high = hardclip5;
+    /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
+  }
 
 
   /* 1. QNAME */
   fprintf(fp,"%s",acc);
 
   /* 2. FLAG */
-  flag = SAM_compute_flag(Stage3_substring1(shortexon),mate,resulttype,first_read_p,
+  flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
 			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  chrpos = print_chromosomal_pos(fp,shortexon,mate,chromosome_iit,/*matep*/false);
+  print_chromosomal_pos(fp,Stage3end_chrnum(shortexon),chrpos,chromosome_iit);
+
 
   /* 5. MAPQ: Mapping quality */
   fprintf(fp,"\t%d",mapq_score);
 
   /* 6. CIGAR */
   fprintf(fp,"\t");
-  substringM = Stage3_substring1(shortexon);
+  substringM = Stage3end_substring1(shortexon);
 
-  if (sensep == Stage3_plusp(shortexon)) {
-    substring1 = /* donor */ Stage3_substringD(shortexon);
-    distance1 = Stage3_shortexon_acceptor_distance(shortexon);
-    distance2 = Stage3_shortexon_donor_distance(shortexon);
-    substring2 = /* acceptor */ Stage3_substringA(shortexon);
+  if (sensep == plusp) {
+    substring1 = /* donor */ Stage3end_substringD(shortexon);
+    distance1 = Stage3end_shortexon_acceptor_distance(shortexon);
+    distance2 = Stage3end_shortexon_donor_distance(shortexon);
+    substring2 = /* acceptor */ Stage3end_substringA(shortexon);
   } else {
-    substring1 = /* acceptor */ Stage3_substringA(shortexon);
-    distance1 = Stage3_shortexon_donor_distance(shortexon);
-    distance2 = Stage3_shortexon_acceptor_distance(shortexon);
-    substring2 = /* donor */ Stage3_substringD(shortexon);
+    substring1 = /* acceptor */ Stage3end_substringA(shortexon);
+    distance1 = Stage3end_shortexon_donor_distance(shortexon);
+    distance2 = Stage3end_shortexon_acceptor_distance(shortexon);
+    substring2 = /* donor */ Stage3end_substringD(shortexon);
   }
 
   if (substring1 == NULL) {
-    if (Stage3_plusp(shortexon) == true) {
-      fprintf(fp,"%dS",Substring_querystart(substringM));
+    if (plusp == true) {
+      print_cigar(fp,/*type*/'S',Substring_querystart(substringM),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
     } else {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substringM));
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substringM),
+		  /*querypos*/Substring_queryend(substringM),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     }
 
-  } else if (Stage3_plusp(shortexon) == true) {
-    if (Substring_querystart(substring1) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring1));
+  } else if (plusp == true) {
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    if (hardclip_low < Substring_queryend(substring1) && querylength - hardclip_high > Substring_querystart(substringM)) {
+      debug1(printf("\nhardclip_low %d < queryend(substring1) %d && querylength %d - hardclip_high %d > querystart(substringM) %d\n",
+		    hardclip_low,Substring_queryend(substring1),querylength,hardclip_high,Substring_querystart(substringM)));
+      fprintf(fp,"%uN",distance1);
     }
-    fprintf(fp,"%dM",Substring_match_length(substring1));
-    fprintf(fp,"%uN",distance1);
 
   } else {
-    if (Substring_queryend(substring1) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring1));
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring1),
+		/*querypos*/Substring_queryend(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		/*querypos*/Substring_querystart(substring1),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    if (hardclip_low < Substring_queryend(substringM) && querylength - hardclip_high > Substring_querystart(substring1)) {
+      debug1(printf("\nhardclip_low %d < queryend(substringM) %d && querylength %d - hardclip_high %d > querystart(substring1) %d\n",
+		    hardclip_low,Substring_queryend(substringM),querylength,hardclip_high,Substring_querystart(substring1)));
+      fprintf(fp,"%uN",distance1);
     }
-    fprintf(fp,"%dM",Substring_match_length(substring1));
-    fprintf(fp,"%uN",distance1);
-
   }
-    
-  fprintf(fp,"%dM",Substring_match_length(substringM));
 
-
+  print_cigar(fp,/*type*/'M',Substring_match_length(substringM),
+		/*querypos*/Substring_querystart(substringM),querylength,
+		hardclip_low,hardclip_high,plusp,/*lastp*/false);
 
   if (substring2 == NULL) {
-    if (Stage3_plusp(shortexon) == true) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substringM));
+    if (plusp == true) {
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substringM),
+		  /*querypos*/Substring_queryend(substringM),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
     } else {
-      fprintf(fp,"%dS",Substring_querystart(substringM));
+      print_cigar(fp,/*type*/'S',Substring_querystart(substringM),
+		  /*querypos*/0,querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     }
 
-  } else if (Stage3_plusp(shortexon) == true) {
-    fprintf(fp,"%uN",distance2);
-    fprintf(fp,"%dM",Substring_match_length(substring2));
-    if (Substring_queryend(substring2) < querylength) {
-      fprintf(fp,"%dS",querylength - Substring_queryend(substring2));
+  } else if (plusp == true) {
+    if (hardclip_low < Substring_queryend(substringM) && querylength - hardclip_high > Substring_querystart(substring2)) {
+      debug1(printf("\nhardclip_low %d < queryend(substringM) %d && querylength %d - hardclip_high %d > querystart(substring2) %d\n",
+		    hardclip_low,Substring_queryend(substringM),querylength,hardclip_high,Substring_querystart(substring2)));
+      fprintf(fp,"%uN",distance2);
     }
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		/*querypos*/Substring_queryend(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+
   } else {
-    fprintf(fp,"%uN",distance2);
-    fprintf(fp,"%dM",Substring_match_length(substring2));
-    if (Substring_querystart(substring2) > 0) {
-      fprintf(fp,"%dS",Substring_querystart(substring2));
+    if (hardclip_low < Substring_queryend(substring2) && querylength - hardclip_high > Substring_querystart(substringM)) {
+      debug1(printf("\nhardclip_low %d < queryend(substring2) %d && querylength %d - hardclip_high %d > querystart(substringM) %d\n",
+		    hardclip_low,Substring_queryend(substring2),querylength,hardclip_high,Substring_querystart(substringM)));
+      fprintf(fp,"%uN",distance2);
     }
+    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		/*querypos*/Substring_querystart(substring2),querylength,
+		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    print_cigar(fp,/*type*/'S',Substring_querystart(substring2),
+		/*querypos*/0,querylength,hardclip_low,hardclip_high,
+		/*plusp*/false,/*lastp*/true);
   }
 
 
   /* 7. MRNM: Mate chr */
   /* 8. MPOS: Mate chrpos */
-  mate_chrpos = print_chromosomal_pos(fp,mate,shortexon,chromosome_iit,/*matep*/true);
+  print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
+			     Stage3end_chrnum(shortexon),chrpos,chromosome_iit);
+
 
   /* 9. ISIZE: Insert size */
 #ifdef PAIRED_ZERO_ISIZE
-  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_MULT) {
-    if (Stage3_plusp(shortexon) == invertp) {
+  if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC || resulttype == CONCORDANT_MULT) {
+    if (plusp == invertp) {
       fprintf(fp,"\t%d",-pairedlength);
     } else {
       fprintf(fp,"\t%d",pairedlength);
@@ -1723,6 +2271,10 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
     fprintf(fp,"\t%d",pairedlength);
   } else if (chrpos < mate_chrpos) {
     fprintf(fp,"\t%d",pairedlength);
+  } else if (chrpos > mate_chrpos) {
+    fprintf(fp,"\t%d",-pairedlength);
+  } else if (first_read_p == true) {
+    fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
   }
@@ -1732,15 +2284,15 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
   /* 10. SEQ: queryseq and 11. QUAL: quality scores */
   /* Queryseq has already been inverted, so just measure plusp relative to its current state */
   fprintf(fp,"\t");
-  if (Stage3_plusp(shortexon) == true) {
-    Shortread_print_chopped(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+  if (plusp == true) {
+    Shortread_print_chopped(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
+    Shortread_print_quality(fp,queryseq,hardclip_low,hardclip_high,
 			   quality_shift,/*show_chopped_p*/false);
   } else {
-    Shortread_print_chopped_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0);
+    Shortread_print_chopped_revcomp(fp,queryseq,hardclip_low,hardclip_high);
     fprintf(fp,"\t");
-    Shortread_print_quality_revcomp(fp,queryseq,/*hardclip_low*/0,/*hardclip_high*/0,
+    Shortread_print_quality_revcomp(fp,queryseq,hardclip_low,hardclip_high,
 				   quality_shift,/*show_chopped_p*/false);
   } 
 
@@ -1751,75 +2303,40 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
   }
 
   /* 12. TAGS: XB */
-  if ((barcode = Shortread_barcode(queryseq)) != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XB:Z:%s",barcode);
-  }
+  Shortread_print_barcode(fp,queryseq);
 
-  /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",Stage3_nmismatches_refdiff(shortexon));
-  
+  /* 12. TAGS: XP */
+  Shortread_print_chop(fp,queryseq,invertp);
+
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
 
-#ifdef MD_INCLUDES_SOFTCLIP
-  substringM_start = Substring_querystart_orig(substringM);
-  substringM_length = Substring_match_length_orig(substringM);
-#else
   substringM_start = Substring_querystart(substringM);
   substringM_length = Substring_match_length(substringM);
-#endif
 
   if (substring1 == NULL) {
     substring1_length = 0;
-#ifdef MD_INCLUDES_SOFTCLIP
-    if (Stage3_plusp(shortexon) == true) {
-      substringM_start = 0;
-      substringM_length += Substring_querystart(substringM);
-    } else {
-      substringM_length += querylength - Substring_queryend(substringM);
-    }
-#endif
   } else {
-#ifdef MD_INCLUDES_SOFTCLIP
-    substring1_start = Substring_querystart_orig(substring1);
-    substring1_length = Substring_match_length_orig(substring1);
-#else
     substring1_start = Substring_querystart(substring1);
     substring1_length = Substring_match_length(substring1);
-#endif
   }
   if (substring2 == NULL) {
     substring2_length = 0;
-#ifdef MD_INCLUDES_SOFTCLIP
-    if (Stage3_plusp(shortexon) == true) {
-      substringM_length += querylength - Substring_queryend(substringM);
-    } else {
-      substringM_start = 0;
-      substringM_length += Substring_querystart(substringM);
-    }
-#endif
   } else {
-#ifdef MD_INCLUDES_SOFTCLIP
-    substring2_start = Substring_querystart_orig(substring2);
-    substring2_length = Substring_match_length_orig(substring2);
-#else
     substring2_start = Substring_querystart(substring2);
     substring2_length = Substring_match_length(substring2);
-#endif
   }
 
-  if (Stage3_plusp(shortexon) == true) {
+  if (plusp == true) {
 
     if (substring1 == NULL) {
       matchlength = 0;
     } else {
       genomicfwd = Substring_genomic_refdiff(substring1);
-      debug2(printf("genomicfwd: %s  start %d\n",genomicfwd,substring1_start));
-      matchlength = print_md_string(fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
-				    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+      matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+				    /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
+				    /*plusp*/true,/*lastp*/false);
     }
 
 #if 0
@@ -1828,9 +2345,9 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
 #endif
 
     genomicfwd = Substring_genomic_refdiff(substringM);
-    debug2(printf("genomicfwd: %s  start %d\n",genomicfwd,substringM_start));
-    matchlength = print_md_string(fp,matchlength,&(genomicfwd[substringM_start]),substringM_length,
-				  /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+    matchlength = print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substringM_start]),substringM_length,
+				  /*querypos*/substringM_start,querylength,hardclip_low,hardclip_high,
+				  /*plusp*/true,/*lastp*/false);
 
 #if 0
     /* Intron 2: Gets skipped in MD string */
@@ -1838,13 +2355,15 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
 #endif
 
     if (substring2 == NULL) {
-      print_md_string(fp,matchlength,/*genomicfwd*/NULL,/*substring2_length*/0,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      /* Equivalent: if (matchlength > 0) fprintf(fp,"%d",matchlength); */
+      print_md_string(&nmismatches,fp,matchlength,/*genomicfwd*/NULL,/*substring2_length*/0,
+		      /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = Substring_genomic_refdiff(substring2);
-      debug2(printf("genomicfwd: %s  start %d\n",genomicfwd,substring2_start));
-      print_md_string(fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
+		      /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/true,/*lastp*/true);
     }
 
   } else {
@@ -1854,10 +2373,10 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
     } else {
       genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(substring1);
-      debug2(printf("substring1 genomicdir: %s  start %d length %d\n",genomicdir,substring1_start,substring1_length));
       make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-      matchlength = print_md_string(fp,/*matchlength*/0,genomicfwd,substring1_length,
-				    /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+      matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
+				    /*querypos*/substring1_start,querylength,
+				    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
       FREE(genomicfwd);
     }
 
@@ -1868,10 +2387,10 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
 
     genomicfwd = (char *) CALLOC(substringM_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substringM);
-    debug2(printf("substringM genomicdir: %s  start %d length %d\n",genomicdir,substringM_start,substringM_length));
     make_complement_buffered(genomicfwd,&(genomicdir[substringM_start]),substringM_length);
-    matchlength = print_md_string(fp,matchlength,genomicfwd,substringM_length,
-				  /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/false);
+    matchlength = print_md_string(&nmismatches,fp,matchlength,genomicfwd,substringM_length,
+				  /*querypos*/substringM_start,querylength,
+				  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     FREE(genomicfwd);
 
 #if 0
@@ -1880,32 +2399,37 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
 #endif
 
     if (substring2 == NULL) {
-      print_md_string(fp,matchlength,/*genomicfwd*/0,/*substring2_length*/0,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      /* Equivalent: if (matchlength > 0) fprintf(fp,"%d",matchlength); */
+      print_md_string(&nmismatches,fp,matchlength,/*genomicfwd*/0,/*substring2_length*/0,
+		      /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		      /*plusp*/false,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(substring2);
-      debug2(printf("substring2 genomicdir: %s  start %d length %d\n",genomicdir,substring2_start,substring2_length));
       make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-      print_md_string(fp,matchlength,genomicfwd,substring2_length,
-		      /*hardclip_low*/0,/*hardclip_high*/0,/*lastp*/true);
+      print_md_string(&nmismatches,fp,matchlength,genomicfwd,substring2_length,
+		      /*querypos*/substring2_start,querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
   }
 
+  /* 12. TAGS: NH */
+  fprintf(fp,"\t");
+  fprintf(fp,"NH:i:%d",npaths);
+
+  /* 12. TAGS: NM */
+  fprintf(fp,"\t");
+  /* fprintf(fp,"NM:i:%d",Stage3end_nmismatches_refdiff(shortexon)); */
+  fprintf(fp,"NM:i:%d",nmismatches);
+  
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
   fprintf(fp,"SM:i:%d",mapq_score);
 
-  /* 12. TAGS: XT string (translocation) */
-  if (translocationp == true) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:i:1");
-  }
-
   /* 12. TAGS: XS */
   fprintf(fp,"\t");
-  if (sensep == Stage3_plusp(shortexon)) {
+  if (sensep == plusp) {
     fprintf(fp,"XS:A:+");
   } else {
     fprintf(fp,"XS:A:-");
@@ -1919,33 +2443,84 @@ print_shortexon (FILE *fp, Stage3_T shortexon, Stage3_T mate, char *acc, int pat
 
 /* Distant splicing, including scramble, inversion, translocation */
 static void
-print_exon_exon (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int npaths,
+print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
 		 int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Resulttype_T resulttype, bool translocationp, bool first_read_p,
-		 int npaths_mate, Shortread_T queryseq_mate, int quality_shift,
-		 char *sam_read_group_id, bool invertp, bool invert_mate_p) {
-  if (Stage3_sensedir(this) == SENSE_FORWARD) {
-    print_halfdonor(fp,Stage3_substring1(this),this,mate,acc,pathnum,npaths,
+		 Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+  Genomicpos_T donor_chrpos, acceptor_chrpos, concordant_chrpos;
+  Substring_T donor, acceptor;
+  int hardclip_low, hardclip_high;
+  char donor1, donor2, acceptor2, acceptor1;
+  double donor_prob, acceptor_prob;
+
+  donor = Stage3end_substring_donor(this);
+  acceptor = Stage3end_substring_acceptor(this);
+
+#if 0
+  if (first_read_p == true) {
+    hardclip_low = 0;
+    hardclip_high = hardclip5;
+  } else {
+    hardclip_low = hardclip3;
+    hardclip_high = 0;
+  }
+#else
+  hardclip_low = hardclip_high = 0;
+#endif
+
+  donor_chrpos = SAM_compute_chrpos(&hardclip_low,&hardclip_high,this,/*substring_low*/donor,
+				    Shortread_fulllength(queryseq));
+  acceptor_chrpos = SAM_compute_chrpos(&hardclip_low,&hardclip_high,this,/*substring_low*/acceptor,
+				       Shortread_fulllength(queryseq));
+  if (Stage3end_substring_low(this) == donor) {
+    concordant_chrpos = donor_chrpos;
+  } else if (Stage3end_substring_low(this) == acceptor) {
+    concordant_chrpos = acceptor_chrpos;
+  } else {
+    fprintf(stderr,"Stage3end_substring_low %p is neither donor %p or acceptor %p\n",
+	    Stage3end_substring_low(this),donor,acceptor);
+  }
+
+  halfdonor_dinucleotide(&donor1,&donor2,donor);
+  halfacceptor_dinucleotide(&acceptor2,&acceptor1,acceptor);
+  donor_prob = Substring_chimera_prob(donor);
+  acceptor_prob = Substring_chimera_prob(acceptor);
+
+  if (Stage3end_sensedir(this) == SENSE_FORWARD) {
+    print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
 		    mapq_score,chromosome_iit,queryseq,pairedlength,
-		    resulttype,translocationp,first_read_p,
-		    npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
-		    invertp,invert_mate_p,/*use_hardclip_p*/true);
-    print_halfacceptor(fp,Stage3_substring2(this),this,mate,acc,pathnum,npaths,
+		    concordant_chrpos,donor_chrpos,mate_chrpos,
+		    hardclip5,hardclip3,resulttype,first_read_p,
+		    npaths_mate,quality_shift,sam_read_group_id,
+		    invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		    donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+
+    print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
 		       mapq_score,chromosome_iit,queryseq,pairedlength,
-		       resulttype,translocationp,first_read_p,
-		       npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
-		       invertp,invert_mate_p,/*use_hardclip_p*/true);
-  } else if (Stage3_sensedir(this) == SENSE_ANTI) {
-    print_halfacceptor(fp,Stage3_substring2(this),this,mate,acc,pathnum,npaths,
+		       concordant_chrpos,acceptor_chrpos,mate_chrpos,
+		       hardclip5,hardclip3,resulttype,first_read_p,
+		       npaths_mate,quality_shift,sam_read_group_id,
+		       invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		       donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+
+  } else if (Stage3end_sensedir(this) == SENSE_ANTI) {
+    print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
 		       mapq_score,chromosome_iit,queryseq,pairedlength,
-		       resulttype,translocationp,first_read_p,
-		       npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
-		       invertp,invert_mate_p,/*use_hardclip_p*/true);
-    print_halfdonor(fp,Stage3_substring1(this),this,mate,acc,pathnum,npaths,
+		       concordant_chrpos,acceptor_chrpos,mate_chrpos,
+		       hardclip5,hardclip3,resulttype,first_read_p,
+		       npaths_mate,quality_shift,sam_read_group_id,
+		       invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		       donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+
+    print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
 		    mapq_score,chromosome_iit,queryseq,pairedlength,
-		    resulttype,translocationp,first_read_p,
-		    npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
-		    invertp,invert_mate_p,/*use_hardclip_p*/true);
+		    concordant_chrpos,donor_chrpos,mate_chrpos,
+		    hardclip5,hardclip3,resulttype,first_read_p,
+		    npaths_mate,quality_shift,sam_read_group_id,
+		    invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		    donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+
   } else {
     abort();
   }
@@ -1956,68 +2531,82 @@ print_exon_exon (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum,
 
 
 void
-SAM_print (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int npaths,
+SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
 	   int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq,
-	   Shortread_T queryseq_mate, int pairedlength, Resulttype_T resulttype,
-	   bool translocationp, bool first_read_p, int npaths_mate, int quality_shift,
-	   char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+	   Shortread_T queryseq_mate, int pairedlength, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
+	   int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p,
+	   int npaths_mate, int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   Hittype_T hittype;
   Substring_T donor, acceptor;
   bool sensep, normalp;
+  unsigned int flag;
+  int ignore = 0;
 
-  hittype = Stage3_hittype(this);
-  if (hittype == EXACT || hittype == SUB || hittype == TERMINAL) {
+
+  hittype = Stage3end_hittype(this);
+  if (chrpos == 0U) {
+    SAM_print_nomapping(fp,queryseq,mate,acc,chromosome_iit,resulttype,first_read_p,
+			npaths_mate,mate_chrpos,quality_shift,
+			sam_read_group_id,invertp,invert_mate_p);
+
+  } else if (hittype == EXACT || hittype == SUB || hittype == TERMINAL) {
     print_single(fp,this,mate,acc,pathnum,npaths,
 		 mapq_score,chromosome_iit,queryseq,pairedlength,
-		 resulttype,translocationp,first_read_p,
-		 npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+		 chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		 npaths_mate,quality_shift,sam_read_group_id,
 		 invertp,invert_mate_p);
 
   } else if (hittype == INSERTION) {
     print_insertion(fp,this,mate,acc,pathnum,npaths,
 		    mapq_score,chromosome_iit,queryseq,pairedlength,
-		    resulttype,translocationp,first_read_p,
-		    npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+		    chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		    npaths_mate,quality_shift,sam_read_group_id,
 		    invertp,invert_mate_p);
 
   } else if (hittype == DELETION) {
     print_deletion(fp,this,mate,acc,pathnum,npaths,
 		   mapq_score,chromosome_iit,queryseq,pairedlength,
-		   resulttype,translocationp,first_read_p,
-		   npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+		   chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p);
 
   } else if (hittype == HALFSPLICE_DONOR) {
-    print_halfdonor(fp,Stage3_substring1(this),this,mate,acc,pathnum,npaths,
+    print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc,pathnum,npaths,
 		    mapq_score,chromosome_iit,queryseq,pairedlength,
-		    resulttype,translocationp,first_read_p,
-		    npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
-		    invertp,invert_mate_p,/*use_hardclip_p*/false);
+		    /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
+		    hardclip5,hardclip3,resulttype,first_read_p,
+		    npaths_mate,quality_shift,sam_read_group_id,
+		    invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+		    /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
+		    /*donor_prob*/0.0,/*acceptor_prob*/0.0);
 
   } else if (hittype == HALFSPLICE_ACCEPTOR) {
-    print_halfacceptor(fp,Stage3_substring1(this),this,mate,acc,pathnum,npaths,
+    print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc,pathnum,npaths,
 		       mapq_score,chromosome_iit,queryseq,pairedlength,
-		       resulttype,translocationp,first_read_p,
-		       npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
-		       invertp,invert_mate_p,/*use_hardclip_p*/false);
+		       /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
+		       hardclip5,hardclip3,resulttype,first_read_p,
+		       npaths_mate,quality_shift,sam_read_group_id,
+		       invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+		       /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
+		       /*donor_prob*/0.0,/*acceptor_prob*/0.0);
 
-  } else if (hittype == SPLICE) {
+  } else if (hittype == SPLICE || hittype == DISTANT_SPLICE) {
     /* Follows print_splice_distance() in substring.c */
-    donor = Stage3_substring1(this);
-    acceptor = Stage3_substring2(this);
+    donor = Stage3end_substring_donor(this);
+    acceptor = Stage3end_substring_acceptor(this);
 
     if (donor == NULL || acceptor == NULL) {
       abort();
-    } else if (Stage3_distance(this) == 0U) {
+    } else if (hittype == DISTANT_SPLICE /* Stage3end_chrnum(this) == 0 || Stage3end_distance(this) == 0U */) {
       /* translocation */
       print_exon_exon(fp,this,mate,acc,pathnum,npaths,
 		      mapq_score,chromosome_iit,queryseq,pairedlength,
-		      resulttype,translocationp,first_read_p,
-		      npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+		      mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p);
     } else {
       normalp = true;
-      sensep = (Stage3_sensedir(this) == SENSE_FORWARD);
+      sensep = (Stage3end_sensedir(this) == SENSE_FORWARD);
 
       if (Substring_plusp(donor) != Substring_plusp(acceptor)) {
 	/* inversion */
@@ -2050,24 +2639,56 @@ SAM_print (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int n
       if (normalp == true) {
 	print_localsplice(fp,this,mate,acc,pathnum,npaths,
 			  mapq_score,chromosome_iit,queryseq,pairedlength,
-			  resulttype,translocationp,first_read_p,
-			  npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+			  chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+			  npaths_mate,quality_shift,sam_read_group_id,
 			  invertp,invert_mate_p);
       } else {
 	print_exon_exon(fp,this,mate,acc,pathnum,npaths,
 			mapq_score,chromosome_iit,queryseq,pairedlength,
-			resulttype,translocationp,first_read_p,
-			npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+			mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+			npaths_mate,quality_shift,sam_read_group_id,
 			invertp,invert_mate_p);
       }
     }
-
+      
   } else if (hittype == ONE_THIRD_SHORTEXON || hittype == TWO_THIRDS_SHORTEXON || hittype == SHORTEXON) {
     print_shortexon(fp,this,mate,acc,pathnum,npaths,
 		    mapq_score,chromosome_iit,queryseq,pairedlength,
-		    resulttype,translocationp,first_read_p,
-		    npaths_mate,queryseq_mate,quality_shift,sam_read_group_id,
+		    chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		    npaths_mate,quality_shift,sam_read_group_id,
 		    invertp,invert_mate_p);
+
+  } else if (hittype == GMAP) {
+    /* Note: sam_paired_p must be true because we are calling GMAP only on halfmapping uniq */
+
+    if (first_read_p == true) {
+      chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,this,
+				  /*substring_low*/NULL,Shortread_fulllength(queryseq));
+      mate_chrpos = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,mate,
+				       Stage3end_substring_low(mate),
+				       Shortread_fulllength(queryseq_mate));
+    } else {
+      chrpos = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,this,
+				  /*substring_low*/NULL,Shortread_fulllength(queryseq));
+      mate_chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,mate,
+				       Stage3end_substring_low(mate),
+				       Shortread_fulllength(queryseq_mate));
+    }
+    assert(ignore == 0);
+
+    flag = SAM_compute_flag(Stage3end_plusp(this),mate,resulttype,first_read_p,
+			    pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+
+    Pair_print_sam(fp,Stage3end_pairarray(this),Stage3end_npairs(this),
+		   acc,Stage3end_chrnum(this),chromosome_iit,
+		   /*usersegment*/(Sequence_T) NULL,
+		   Shortread_fullpointer(queryseq),Shortread_quality_string(queryseq),
+		   hardclip5,hardclip3,Shortread_fulllength(queryseq),
+		   Stage3end_plusp(this),Stage3end_cdna_direction(this),
+		   /*chimera_part*/0,/*chimera*/NULL,quality_shift,first_read_p,npaths,flag,
+		   /*pair_mapq_score*/mapq_score,/*end_mapq_score*/mapq_score,
+		   chrpos,mate_chrpos,pairedlength,/*cigar_noncanonical_splices_p*/true,
+		   sam_read_group_id);
   } else {
     abort();
   }
@@ -2078,20 +2699,24 @@ SAM_print (FILE *fp, Stage3_T this, Stage3_T mate, char *acc, int pathnum, int n
 
 
 void
-SAM_print_paired (Result_T result, Resulttype_T resulttype, bool translocationp,
+SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  int maxpaths, bool quiet_if_excessive_p,
 		  bool invert_first_p, bool invert_second_p,
 		  bool nofailsp, bool failsonlyp, bool fails_as_input_p,
-		  bool fastq_format_p, int quality_shift, char *sam_read_group_id,
+		  bool fastq_format_p, bool clip_overlap_p, int quality_shift, char *sam_read_group_id,
 		  FILE *fp_nomapping_1, FILE *fp_nomapping_2,
-		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_mult,
-		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_mult,
+		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_transloc, FILE *fp_unpaired_mult,
+		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_transloc, FILE *fp_halfmapping_mult,
 		  FILE *fp_paired_uniq_inv, FILE *fp_paired_uniq_scr, FILE *fp_paired_uniq_long,
-		  FILE *fp_paired_mult, FILE *fp_concordant_uniq, FILE *fp_concordant_mult) {
+		  FILE *fp_paired_mult, FILE *fp_concordant_uniq, FILE *fp_concordant_transloc,
+		  FILE *fp_concordant_mult) {
   Stage3pair_T *stage3pairarray, stage3pair;
-  Stage3_T *stage3array1, *stage3array2, stage3, mate;
+  Stage3end_T *stage3array1, *stage3array2, stage3, mate, hit5, hit3;
+  Genomicpos_T chrpos5, chrpos3;
+  int overlap;
   int npaths, npaths1, npaths2, pathnum;
+  int hardclip5 = 0, hardclip3 = 0, ignore = 0;
   char *acc;
   Pairtype_T pairtype;
   FILE *fp;
@@ -2113,80 +2738,116 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype, bool translocationp,
       }
 
     } else {
-      SAM_print_nomapping(fp_nomapping_1,queryseq1,/*mate*/(Stage3_T) NULL,
-			  acc,chromosome_iit,resulttype,translocationp,
+      SAM_print_nomapping(fp_nomapping_1,queryseq1,/*mate*/(Stage3end_T) NULL,
+			  acc,chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*npaths_mate*/0,
-			  /*queryseq_mate*/queryseq2,quality_shift,sam_read_group_id,
-			  invert_first_p,invert_second_p);
-      SAM_print_nomapping(fp_nomapping_1,queryseq2,/*mate*/(Stage3_T) NULL,
-			  acc,chromosome_iit,resulttype,translocationp,
+			  /*mate_chrpos*/0U,quality_shift,
+			  sam_read_group_id,invert_first_p,invert_second_p);
+      SAM_print_nomapping(fp_nomapping_1,queryseq2,/*mate*/(Stage3end_T) NULL,
+			  acc,chromosome_iit,resulttype,
 			  /*first_read_p*/false,/*npaths_mate*/0,
-			  /*queryseq_mate*/queryseq1,quality_shift,sam_read_group_id,
-			  invert_second_p,invert_first_p);
+			  /*mate_chrpos*/0U,quality_shift,
+			  sam_read_group_id,invert_second_p,invert_first_p);
     }
 
   } else {
     if (failsonlyp == true) {
       /* Unwanted success: skip */
 
-    } else if (resulttype == CONCORDANT_UNIQ) {
+    } else if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC) {
+      if (resulttype == CONCORDANT_UNIQ) {
+	fp = fp_concordant_uniq;
+      } else {
+	fp = fp_concordant_transloc;
+      }
+
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
       /* Stage3pair_eval(stage3pairarray,npaths,maxpaths,queryseq1,queryseq2); */
 
       stage3pair = stage3pairarray[0];
+      hardclip5 = hardclip3 = 0;
+      if (clip_overlap_p == true && (overlap = Stage3pair_overlap(stage3pair)) > 0) {
+	debug3(printf("overlap = %d\n",overlap));
+	hardclip5 = overlap/2;
+	hardclip3 = overlap - hardclip5;
+      }
+
+      hit5 = Stage3pair_hit5(stage3pair);
+      hit3 = Stage3pair_hit3(stage3pair);
+      chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+				   Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+      chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+				   Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+
+      /* Note: it is possible that hard clipping can changed a concordant_uniq to an unpaired_uniq,
+	 or a concordant_transloc to an unpaired_transloc */
 
       /* print first end */
-      SAM_print(fp_concordant_uniq,Stage3pair_hit5(stage3pair),/*mate*/Stage3pair_hit3(stage3pair),acc,
-		/*pathnum*/1,/*npaths*/1,Stage3pair_mapq_score(stage3pair),
-		chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		/*first_read_p*/true,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		invert_first_p,invert_second_p);
+      SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
+		Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
+		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
       /* print second end */
-      SAM_print(fp_concordant_uniq,Stage3pair_hit3(stage3pair),/*mate*/Stage3pair_hit5(stage3pair),acc,
-		/*pathnum*/1,/*npaths*/1,Stage3pair_mapq_score(stage3pair),
-		chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		/*first_read_p*/false,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		invert_second_p,invert_first_p);
+      SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
+		Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
+		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
     
     } else if (resulttype == CONCORDANT_MULT) {
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths) {
 	/* Print as nomapping, but send to fp_concordant_mult */
-	SAM_print_nomapping(fp_concordant_mult,queryseq1,/*mate*/(Stage3_T) NULL,
-			    acc,chromosome_iit,resulttype,translocationp,
+	SAM_print_nomapping(fp_concordant_mult,queryseq1,/*mate*/(Stage3end_T) NULL,
+			    acc,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths,
-			    /*queryseq_mate*/queryseq2,quality_shift,sam_read_group_id,
-			    invert_first_p,invert_second_p);
-	SAM_print_nomapping(fp_concordant_mult,queryseq2,/*mate*/(Stage3_T) NULL,
-			    acc,chromosome_iit,resulttype,translocationp,
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_first_p,invert_second_p);
+	SAM_print_nomapping(fp_concordant_mult,queryseq2,/*mate*/(Stage3end_T) NULL,
+			    acc,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths,
-			    /*queryseq_mate*/queryseq1,quality_shift,sam_read_group_id,
-			    invert_second_p,invert_first_p);
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_second_p,invert_first_p);
 
       } else {
 	/* Stage3pair_eval(stage3pairarray,npaths,maxpaths,queryseq1,queryseq2); */
 	for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+
 	  stage3pair = stage3pairarray[pathnum-1];
+	  hardclip5 = hardclip3 = 0;
+	  if (clip_overlap_p == true && (overlap = Stage3pair_overlap(stage3pair)) > 0) {
+	    debug3(printf("overlap = %d\n",overlap));
+	    hardclip5 = overlap/2;
+	    hardclip3 = overlap - hardclip5;
+	  }
+
+	  hit5 = Stage3pair_hit5(stage3pair);
+	  hit3 = Stage3pair_hit3(stage3pair);
+	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+				       Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+				       Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
 
 	  /* print first end */
-	  SAM_print(fp_concordant_mult,Stage3pair_hit5(stage3pair),/*mate*/Stage3pair_hit3(stage3pair),acc,
-		    pathnum,npaths,Stage3pair_mapq_score(stage3pair),
-		    chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		    Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		    /*first_read_p*/true,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		    invert_first_p,invert_second_p);
+	  SAM_print(fp_concordant_mult,hit5,/*mate*/hit3,acc,pathnum,npaths,
+		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
+		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		    hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
 	  /* print second end */
-	  SAM_print(fp_concordant_mult,Stage3pair_hit3(stage3pair),/*mate*/Stage3pair_hit5(stage3pair),acc,
-		    pathnum,npaths,Stage3pair_mapq_score(stage3pair),
-		    chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		    Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		    /*first_read_p*/false,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		    invert_second_p,invert_first_p);
+	  SAM_print(fp_concordant_mult,hit3,/*mate*/hit5,acc,pathnum,npaths,
+		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
+		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		    hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 	}
       }
 
@@ -2206,160 +2867,233 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype, bool translocationp,
 	abort();
       }
 
+      if (clip_overlap_p == true) {
+	overlap = Stage3pair_overlap(stage3pair);
+      }
+      hardclip5 = hardclip3 = 0;
+
+      hit5 = Stage3pair_hit5(stage3pair);
+      hit3 = Stage3pair_hit3(stage3pair);
+      chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+				   Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+      chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+				   Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+
       /* print first end */
-      SAM_print(fp,Stage3pair_hit5(stage3pair),/*mate*/Stage3pair_hit3(stage3pair),acc,
-		/*pathnum*/1,/*npaths*/1,Stage3pair_mapq_score(stage3pair),
-		chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		/*first_read_p*/true,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		invert_first_p,invert_second_p);
+      SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
+		Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
+		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
       /* print second end */
-      SAM_print(fp,Stage3pair_hit3(stage3pair),/*mate*/Stage3pair_hit5(stage3pair),acc,
-		/*pathnum*/1,/*npaths*/1,Stage3pair_mapq_score(stage3pair),
-		chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		/*first_read_p*/false,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		invert_second_p,invert_first_p);
+      SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
+		Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
+		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 
     } else if (resulttype == PAIRED_MULT) {
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths) {
 	/* Print as nomapping, but send to fp_concordant_mult */
-	SAM_print_nomapping(fp_paired_mult,queryseq1,/*mate*/(Stage3_T) NULL,
-			    acc,chromosome_iit,resulttype,translocationp,
+	SAM_print_nomapping(fp_paired_mult,queryseq1,/*mate*/(Stage3end_T) NULL,
+			    acc,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths,
-			    /*queryseq_mate*/queryseq2,quality_shift,sam_read_group_id,
-			    invert_first_p,invert_second_p);
-	SAM_print_nomapping(fp_paired_mult,queryseq2,/*mate*/(Stage3_T) NULL,
-			    acc,chromosome_iit,resulttype,translocationp,
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_first_p,invert_second_p);
+	SAM_print_nomapping(fp_paired_mult,queryseq2,/*mate*/(Stage3end_T) NULL,
+			    acc,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths,
-			    /*queryseq_mate*/queryseq1,quality_shift,sam_read_group_id,
-			    invert_second_p,invert_first_p);
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_second_p,invert_first_p);
 
       } else {
 	/* Stage3pair_eval(stage3pairarray,npaths,maxpaths,queryseq1,queryseq2); */
 	for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+
 	  stage3pair = stage3pairarray[pathnum-1];
+	  if (clip_overlap_p == true) {
+	    overlap = Stage3pair_overlap(stage3pair);
+	  }
+	  hardclip5 = hardclip3 = 0;
+
+	  hit5 = Stage3pair_hit5(stage3pair);
+	  hit3 = Stage3pair_hit3(stage3pair);
+	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+				       Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+				       Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
 
 	  /* print first end */
-	  SAM_print(fp_paired_mult,Stage3pair_hit5(stage3pair),/*mate*/Stage3pair_hit3(stage3pair),acc,
-		    pathnum,npaths,Stage3pair_mapq_score(stage3pair),
-		    chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		    Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		    /*first_read_p*/true,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		    invert_first_p,invert_second_p);
+	  SAM_print(fp_paired_mult,hit5,/*mate*/hit3,acc,pathnum,npaths,
+		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
+		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		    hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
 	  /* print second end */
-	  SAM_print(fp_paired_mult,Stage3pair_hit3(stage3pair),/*mate*/Stage3pair_hit5(stage3pair),acc,
-		    pathnum,npaths,Stage3pair_mapq_score(stage3pair),
-		    chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		    Stage3pair_pairlength(stage3pair),resulttype,translocationp,
-		    /*first_read_p*/false,/*npaths_mate*/npaths,quality_shift,sam_read_group_id,
-		    invert_second_p,invert_first_p);
+	  SAM_print(fp_paired_mult,hit3,/*mate*/hit5,acc,pathnum,npaths,
+		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
+		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
+		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		    hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 	}
       }
 
-    } else if (resulttype == UNPAIRED_UNIQ) {
-      /* Should print mate information in this situation */
-      stage3array1 = (Stage3_T *) Result_array(&npaths1,result);
-      stage3array2 = (Stage3_T *) Result_array2(&npaths2,result);
+    } else if (resulttype == UNPAIRED_UNIQ || resulttype == UNPAIRED_TRANSLOC) {
+      if (resulttype == UNPAIRED_UNIQ) {
+	fp = fp_unpaired_uniq;
+      } else {
+	fp = fp_unpaired_transloc;
+      }
+
+      /* Even though they are not related, we should print mate information in this situation */
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,result);
+
+      hardclip5 = hardclip3 = 0;
+
+      hit5 = stage3array1[0];
+      hit3 = stage3array2[0];
+      chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+				   Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+      chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+				   Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
 
       /* print first end */
-      /* Stage3_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
-      SAM_print(fp_unpaired_uniq,stage3array1[0],/*mate*/stage3array2[0],acc,
-		/*pathnum*/1,/*npaths*/1,Stage3_mapq_score(stage3array1[0]),
-		chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		/*pairedlength*/0U,resulttype,translocationp,
-		/*first_read_p*/true,/*npaths_mate*/1,quality_shift,sam_read_group_id,
-		invert_first_p,invert_second_p);
+      /* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
+      SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
+		Stage3end_mapq_score(stage3array1[0]),chromosome_iit,
+		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
+		/*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
+		/*npaths_mate*/1,quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
       /* print second end */
-      /* Stage3_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
-      SAM_print(fp_unpaired_uniq,stage3array2[0],/*mate*/stage3array1[0],acc,
-		/*pathnum*/1,/*npaths*/1,Stage3_mapq_score(stage3array2[0]),
-		chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		/*pairedlength*/0U,resulttype,translocationp,
-		/*first_read_p*/false,/*npaths_mate*/1,quality_shift,sam_read_group_id,
-		invert_second_p,invert_first_p);
+      /* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
+      SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
+		Stage3end_mapq_score(stage3array2[0]),chromosome_iit,
+		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
+		/*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
+		/*npaths_mate*/1,quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 
     } else if (resulttype == UNPAIRED_MULT) {
-      stage3array1 = (Stage3_T *) Result_array(&npaths1,result);
-      stage3array2 = (Stage3_T *) Result_array2(&npaths2,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,result);
 
 #if 0
       /* Do eval and sorting first */
       if (npaths1 == 1) {
-	/* Stage3_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
+	/* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
       } else if (quiet_if_excessive_p && npaths1 > maxpaths) {
 	/* Don't sort */
       } else {
-	/* Stage3_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
+	/* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
       }
 #endif
 
 #if 0
       if (npaths2 == 1) {
-	/* Stage3_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
+	/* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
       } else if (quiet_if_excessive_p && npaths2 > maxpaths) {
 	/* Don't sort */
       } else {
-	/* Stage3_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
+	/* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
       }
 #endif
 
       /* print first end results */
-      mate = (npaths2 == 0) ? (Stage3_T) NULL : stage3array2[0];
+      mate = (npaths2 == 0) ? (Stage3end_T) NULL : stage3array2[0];
+      if (mate == NULL) {
+	chrpos3 = 0;
+      } else {
+	hardclip3 = 0;
+	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,mate,
+				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq2));
+      }
 
       if (npaths1 == 1) {
 	stage3 = stage3array1[0];
-	SAM_print(fp_unpaired_mult,stage3,mate,acc,/*pathnum*/1,npaths1,Stage3_mapq_score(stage3),
+	hardclip5 = 0;
+	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
+				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+
+	SAM_print(fp_unpaired_mult,stage3,mate,acc,/*pathnum*/1,npaths1,Stage3end_mapq_score(stage3),
 		  chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		  /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/true,
+		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		  /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		  invert_first_p,invert_second_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths) {
 	SAM_print_nomapping(fp_unpaired_mult,queryseq1,mate,acc,chromosome_iit,
-			    resulttype,translocationp,/*first_read_p*/true,
-			    /*npaths_mate*/npaths2,/*queryseq_mate*/queryseq2,
+			    resulttype,/*first_read_p*/true,/*npaths_mate*/npaths2,
+			    /*mate_chrpos*/chrpos3,
 			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
       } else {
 	for (pathnum = 1; pathnum <= npaths1 && pathnum <= maxpaths; pathnum++) {
 	  stage3 = stage3array1[pathnum-1];
-	  SAM_print(fp_unpaired_mult,stage3,mate,acc,pathnum,npaths1,Stage3_mapq_score(stage3),
+	  hardclip5 = 0;
+	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
+				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+
+	  SAM_print(fp_unpaired_mult,stage3,mate,acc,pathnum,npaths1,Stage3end_mapq_score(stage3),
 		    chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		    /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/true,
+		    /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		    /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		    invert_first_p,invert_second_p);
 	}
       }
 			  
       /* print second end results */
-      mate = (npaths1 == 0) ? (Stage3_T) NULL : stage3array1[0];
+      mate = (npaths1 == 0) ? (Stage3end_T) NULL : stage3array1[0];
+      if (mate == NULL) {
+	chrpos5 = 0U;
+      } else {
+	hardclip5 = 0;
+	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,mate,
+				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq1));
+      }
 
       if (npaths2 == 1) {
 	stage3 = stage3array2[0];
-	SAM_print(fp_unpaired_mult,stage3,mate,acc,/*pathnum*/1,npaths2,Stage3_mapq_score(stage3),
+	hardclip3 = 0;
+	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
+				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
+
+	SAM_print(fp_unpaired_mult,stage3,mate,acc,/*pathnum*/1,npaths2,Stage3end_mapq_score(stage3),
 		  chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		  /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/false,
+		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		  /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		  invert_second_p,invert_first_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths) {
 	SAM_print_nomapping(fp_unpaired_mult,queryseq2,mate,acc,chromosome_iit,
-			    resulttype,translocationp,/*first_read_p*/false,
-			    /*npaths_mate*/npaths1,/*queryseq_mate*/queryseq1,
+			    resulttype,/*first_read_p*/false,/*npaths_mate*/npaths1,
+			    /*mate_chrpos*/chrpos5,
 			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 
       } else {
 	for (pathnum = 1; pathnum <= npaths2 && pathnum <= maxpaths; pathnum++) {
 	  stage3 = stage3array2[pathnum-1];
-	  SAM_print(fp_unpaired_mult,stage3,mate,acc,pathnum,npaths2,Stage3_mapq_score(stage3),
+	  hardclip3 = 0;
+	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
+				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
+
+	  SAM_print(fp_unpaired_mult,stage3,mate,acc,pathnum,npaths2,Stage3end_mapq_score(stage3),
 		    chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		    /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/false,
+		    /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		    /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		    invert_second_p,invert_first_p);
 	}
@@ -2368,25 +3102,27 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype, bool translocationp,
     } else {
       if (resulttype == HALFMAPPING_UNIQ) {
 	fp = fp_halfmapping_uniq;
+      } else if (resulttype == HALFMAPPING_TRANSLOC) {
+	fp = fp_halfmapping_transloc;
       } else if (resulttype == HALFMAPPING_MULT) {
 	fp = fp_halfmapping_mult;
       } else {
 	abort();
       }
 
-      stage3array1 = (Stage3_T *) Result_array(&npaths1,result);
-      stage3array2 = (Stage3_T *) Result_array2(&npaths2,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,result);
 
 #if 0
       /* Do eval and sorting first */
       if (npaths1 == 0) {
 	/* Nothing to sort */
       } else if (npaths1 == 1) {
-	/* Stage3_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
+	/* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
       } else if (quiet_if_excessive_p && npaths1 > maxpaths) {
 	/* Don't sort */
       } else {
-	/* Stage3_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
+	/* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
       }
 #endif
 
@@ -2394,88 +3130,122 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype, bool translocationp,
       if (npaths2 == 0) {
 	/* Nothing to sort */
       } else if (npaths2 == 1) {
-	/* Stage3_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
+	/* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
       } else if (quiet_if_excessive_p && npaths2 > maxpaths) {
 	/* Don't sort */
       } else {
-	/* Stage3_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
+	/* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
       }
 #endif
 
 
       /* print first end results */
-      mate = (npaths2 == 0) ? (Stage3_T) NULL : stage3array2[0];
+      mate = (npaths2 == 0) ? (Stage3end_T) NULL : stage3array2[0];
+      if (mate == NULL) {
+	chrpos3 = 0U;
+      } else {
+	hardclip3 = 0;
+	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,mate,
+				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq2));
+      }
 
       if (npaths1 == 0) {
 	/* mate should be non-NULL here */
-	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,resulttype,translocationp,
+	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths2,
-			    /*queryseq_mate*/queryseq2,quality_shift,sam_read_group_id,
-			    invert_first_p,invert_second_p);
+			    /*mate_chrpos*/chrpos3,
+			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
       } else if (npaths1 == 1) {
 	/* mate should be NULL here */
 
 	stage3 = stage3array1[0];
-	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths1,Stage3_mapq_score(stage3),
+	hardclip5 = 0;
+	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
+				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+
+	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths1,Stage3end_mapq_score(stage3),
 		  chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		  /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/true,
+		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		  /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		  invert_first_p,invert_second_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths) {
 	/* mate should be NULL here */
-	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,resulttype,translocationp,
+	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths2,
-			    /*queryseq_mate*/queryseq2,quality_shift,sam_read_group_id,
-			    invert_first_p,invert_second_p);
+			    /*mate_chrpos*/chrpos3,
+			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
 
       } else {
 	/* mate should be NULL here */
 	for (pathnum = 1; pathnum <= npaths1 && pathnum <= maxpaths; pathnum++) {
 	  stage3 = stage3array1[pathnum-1];
-	  SAM_print(fp,stage3,mate,acc,pathnum,npaths1,Stage3_mapq_score(stage3),
+	  hardclip5 = 0;
+	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
+				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+
+	  SAM_print(fp,stage3,mate,acc,pathnum,npaths1,Stage3end_mapq_score(stage3),
 		    chromosome_iit,/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
-		    /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/true,
+		    /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
+		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		    /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		    invert_first_p,invert_second_p);
 	}
       }
 			  
       /* print second end results */
-      mate = (npaths1 == 0) ? (Stage3_T) NULL : stage3array1[0];
+      mate = (npaths1 == 0) ? (Stage3end_T) NULL : stage3array1[0];
+      if (mate == NULL) {
+	chrpos5 = 0U;
+      } else {
+	hardclip5 = 0;
+	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,mate,
+				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq1));
+      }
 
       if (npaths2 == 0) {
 	/* mate should be non-NULL here */
-	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,resulttype,translocationp,
+	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths1,
-			    /*queryseq_mate*/queryseq1,quality_shift,sam_read_group_id,
-			    invert_second_p,invert_first_p);
+			    /*mate_chrpos*/chrpos5,
+			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 
       } else if (npaths2 == 1) {
 	/* mate should be NULL here */
 
 	stage3 = stage3array2[0];
-	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths2,Stage3_mapq_score(stage3),
+	hardclip3 = 0;
+	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
+				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
+
+	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths2,Stage3end_mapq_score(stage3),
 		  chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		  /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/false,
+		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		  /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		  invert_second_p,invert_first_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths) {
 	/* mate should be NULL here */
-	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,resulttype,translocationp,
+	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths1,
-			    /*queryseq_mate*/queryseq1,quality_shift,sam_read_group_id,
-			    invert_second_p,invert_first_p);
+			    /*mate_chrpos*/chrpos5,
+			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
 
       } else {
 	/* mate should be NULL here */
 	for (pathnum = 1; pathnum <= npaths2 && pathnum <= maxpaths; pathnum++) {
 	  stage3 = stage3array2[pathnum-1];
-	  SAM_print(fp,stage3,mate,acc,pathnum,npaths2,Stage3_mapq_score(stage3),
+	  hardclip3 = 0;
+	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
+				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
+
+	  SAM_print(fp,stage3,mate,acc,pathnum,npaths2,Stage3end_mapq_score(stage3),
 		    chromosome_iit,/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
-		    /*pairedlength*/0U,resulttype,translocationp,/*first_read_p*/false,
+		    /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
+		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		    /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		    invert_second_p,invert_first_p);
 	}

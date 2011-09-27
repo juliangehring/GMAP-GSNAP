@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c 34369 2011-01-28 17:28:03Z twu $";
+static char rcsid[] = "$Id: result.c 40330 2011-05-30 17:40:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -75,7 +75,7 @@ Result_failuretype (T this) {
 T
 Result_new (int id, Chimera_T chimera, Stage3_T *array,
 	    int npaths, Diagnostic_T diagnostic, Failure_T failuretype) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
   new->chimera = chimera;
@@ -92,7 +92,7 @@ Result_new (int id, Chimera_T chimera, Stage3_T *array,
 T
 Result_new_stage1debug (int id, List_T gregionlist,
 			Diagnostic_T diagnostic, Failure_T failuretype) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
   new->chimera = (Chimera_T) NULL;
@@ -109,7 +109,7 @@ Result_new_stage1debug (int id, List_T gregionlist,
 T
 Result_new_diag_debug (int id, List_T diagonals,
 		       Diagnostic_T diagnostic, Failure_T failuretype) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
   new->chimera = (Chimera_T) NULL;
@@ -155,7 +155,7 @@ Result_free (T *old) {
 	Stage3_free(&stage3,/*free_pairarray_p*/true);
       }
 
-      FREE((*old)->array);
+      FREE_OUT((*old)->array);
 
     } else {
       if ((*old)->array) {
@@ -163,7 +163,7 @@ Result_free (T *old) {
 	  stage3 = (*old)->array[i];
 	  Stage3_free(&stage3,/*free_pairarray_p*/true);
 	}
-	FREE((*old)->array);
+	FREE_OUT((*old)->array);
       }
     }
 
@@ -189,7 +189,7 @@ Result_free (T *old) {
     }
 #endif
 
-    FREE(*old);
+    FREE_OUT(*old);
   }
 
   return;

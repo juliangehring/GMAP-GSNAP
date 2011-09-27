@@ -1,6 +1,7 @@
-/* $Id: compress.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: compress.h 46784 2011-09-07 23:06:49Z twu $ */
 #ifndef COMPRESS_INCLUDED
 #define COMPRESS_INCLUDED
+
 #include <stdio.h>
 #include "bool.h"
 #include "types.h"
@@ -17,7 +18,7 @@ extern void
 Compress_uncompress (FILE *fp, int wraplength);
 extern int
 Compress_update_file (int nbadchars, FILE *fp, char *gbuffer, Genomicpos_T startpos,
-		      Genomicpos_T endpos);
+		      Genomicpos_T endpos, int index1part);
 extern int
 Compress_update_memory (int nbadchars, UINT4 *genomeseq, char *gbuffer, Genomicpos_T startpos,
 			Genomicpos_T endpos);
@@ -28,7 +29,7 @@ Compress_print (T this);
 extern int
 Compress_nblocks (T this);
 extern T
-Compress_new (char *gbuffer, Genomicpos_T length, bool plusp);
+Compress_new (char *gbuffer, int length, bool plusp);
 extern UINT4 *
 Compress_shift (T this, int nshift);
 

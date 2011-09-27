@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 36132 2011-03-06 20:27:30Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 45940 2011-08-29 21:09:29Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,8 @@ static char rcsid[] = "$Id: indexdb_hr.c 36132 2011-03-06 20:27:30Z twu $";
 
 #include "indexdb_hr.h"
 #include "indexdbdef.h"
+#include "genome_hr.h"
+
 
 #ifdef WORDS_BIGENDIAN
 #include "bigendian.h"
@@ -93,9 +95,23 @@ static char rcsid[] = "$Id: indexdb_hr.c 36132 2011-03-06 20:27:30Z twu $";
 
 #define T Indexdb_T
 
+static int index1part;		/* For debugging */
+static unsigned int kmer_mask;	/* Was LOW12MER     0x00FFFFFF */
+#define right_subst  0x00000001
+static unsigned int left_subst; /* Was LEFT_SUBST   0x00100000 */
+static unsigned int top_subst;  /* Was TOP_SUBST    0x00400000 */
 
-/*                 87654321 */
-#define LOW12MER 0x00FFFFFF
+void
+Indexdb_hr_setup (int index1part_in) {
+  index1part = index1part_in;
+  kmer_mask = ~(~0U << 2*index1part);
+
+  top_subst = (1 << 2*(index1part-1));
+  left_subst = (1 << 2*(index1part-2));
+
+  return;
+}
+
 
 
 typedef struct Batch_T *Batch_T;
@@ -590,6 +606,7 @@ positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
   return;
 }
 
+
 static Genomicpos_T *
 point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   Genomicpos_T *positions;
@@ -598,25 +615,30 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   int i;
 #endif
 
-  switch (this->offsets_access) {
-  case ALLOCATED:
-    ptr0 = this->offsets[subst];
-    end0 = this->offsets[subst+1];
-    break;
-
-  case MMAPPED:
+  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    ptr0 = Bigendian_convert_uint(this->offsets[subst]);
-    end0 = Bigendian_convert_uint(this->offsets[subst+1]);
+    if (this->offsets_access == ALLOCATED) {
+      ptr0 = this->offsets[subst];
+      end0 = this->offsets[subst+1];
+    } else {
+      ptr0 = Bigendian_convert_uint(this->offsets[subst]);
+      end0 = Bigendian_convert_uint(this->offsets[subst+1]);
+    }
 #else
     ptr0 = this->offsets[subst];
     end0 = this->offsets[subst+1];
 #endif
-    break;
 
-  case FILEIO:
-    fprintf(stderr,"Not expecting offsets to be FILEIO\n");
-    abort();
+  } else {
+#ifdef WORDS_BIGENDIAN
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    } else {
+      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    }
+#else
+    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+#endif
   }
 
   debug(printf("point_one_shift: %08X %u %u\n",subst,ptr0,end0));
@@ -665,6 +687,8 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
 
 
 
+
+
 /*                87654321 */
 #define RIGHT_A 0x00000000
 #define RIGHT_C 0x00000001
@@ -699,44 +723,46 @@ shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
 }
 #endif
 
-
-/* 12-mer is here:       xxxxxx */
-/*                     87654321 */
-#define RIGHT_SUBST  0x00000001
-#define LEFT_SUBST   0x00100000
-#define TOP_SUBST    0x00400000
-
-
 static int
 count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
   Positionsptr_T ptr0, end0;
 
-  switch (this->offsets_access) {
-  case ALLOCATED:
-    ptr0 = this->offsets[subst];
-    end0 = this->offsets[subst+nadjacent];
-    break;
-
-  case MMAPPED:
+  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    ptr0 = Bigendian_convert_uint(this->offsets[subst]);
-    end0 = Bigendian_convert_uint(this->offsets[subst+nadjacent]);
+    if (this->offsets_access == ALLOCATED) {
+      ptr0 = this->offsets[subst];
+      end0 = this->offsets[subst+nadjacent];
+    } else {
+      ptr0 = Bigendian_convert_uint(this->offsets[subst]);
+      end0 = Bigendian_convert_uint(this->offsets[subst+nadjacent]);
+    }
 #else
     ptr0 = this->offsets[subst];
     end0 = this->offsets[subst+nadjacent];
 #endif
-    break;
 
-  case FILEIO:
-    fprintf(stderr,"Not expecting offsets to be FILEIO\n");
-    abort();
+  } else {
+#ifdef WORDS_BIGENDIAN
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+      end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
+    } else {
+      ptr0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+      end0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
+    }
+#else
+    ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
+#endif
   }
 
   debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
-	       subst,shortoligo_nt(subst,INDEX1PART),end0,ptr0,end0-ptr0));
+	       subst,shortoligo_nt(subst,index1part),end0,ptr0,end0-ptr0));
   return (end0 - ptr0);
 
 }
+
+
 
 /************************************************************************
  *   Counting procedures
@@ -749,19 +775,19 @@ Indexdb_count_left_subst_2 (T this, Storedoligomer_T oligo) {
   Storedoligomer_T base;
   int i;
 
-  debug(printf("count_left_subst_2: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("count_left_subst_2: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
 #ifdef ALLOW_DUPLICATES
   /* Right shift */
   base = (oligo >> 4);
-  for (i = 0; i < 16; i++, base += LEFT_SUBST) {
+  for (i = 0; i < 16; i++, base += left_subst) {
     nentries += count_one_shift(this,base);
   }
 #else
   /* Right shift */
   base = (oligo >> 4);
-  debug(printf("shift right => %06X (%s)\n",base,shortoligo_nt(base,INDEX1PART)));
-  for (i = 0; i < 16; i++, base += LEFT_SUBST) {
+  debug(printf("shift right => %06X (%s)\n",base,shortoligo_nt(base,index1part)));
+  for (i = 0; i < 16; i++, base += left_subst) {
     nentries += count_one_shift(this,base,/*nadjacent*/1);
   }
 #endif
@@ -777,18 +803,18 @@ Indexdb_count_left_subst_1 (T this, Storedoligomer_T oligo) {
   Storedoligomer_T base;
   int i;
 
-  debug(printf("count_left_subst_1: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("count_left_subst_1: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
 #ifdef ALLOW_DUPLICATES
   /* Zero shift. */
   base = (oligo >> 2);
-  for (i = 0; i < 4; i++, base += TOP_SUBST) {
+  for (i = 0; i < 4; i++, base += top_subst) {
     nentries += count_one_shift(this,base);
   }
 #else
   /* Zero shift. */
   base = (oligo >> 2);
-  for (i = 0; i < 4; i++, base += TOP_SUBST) {
+  for (i = 0; i < 4; i++, base += top_subst) {
     nentries += count_one_shift(this,base,/*nadjacent*/1);
   }
 #endif
@@ -808,24 +834,24 @@ Indexdb_count_right_subst_2 (T this, Storedoligomer_T oligo) {
   int i;
 #endif
 
-  debug(printf("count_right_subst_2: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("count_right_subst_2: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
 #ifdef ALLOW_DUPLICATES
   /* Left shift */
-  base = (oligo << 4) & LOW12MER;
+  base = (oligo << 4) & kmer_mask;
   nentries = 0;
-  for (i = 0; i < 16; i++, base += RIGHT_SUBST) {
+  for (i = 0; i < 16; i++, base += right_subst) {
     nentries += count_one_shift(this,base);
   }
 #else
   /* Left shift */
-  base = (oligo << 4) & LOW12MER;
+  base = (oligo << 4) & kmer_mask;
   nentries = count_one_shift(this,base,/*nadjacent*/16);
 
   debug(
 	printf("Details\n");
 	nentries = 0;
-	for (i = 0; i < 16; i++, base += RIGHT_SUBST) {
+	for (i = 0; i < 16; i++, base += right_subst) {
 	  nentries += count_one_shift(this,base,/*nadjacent*/1);
 	}
 	);
@@ -846,24 +872,24 @@ Indexdb_count_right_subst_1 (T this, Storedoligomer_T oligo) {
   int i;
 #endif
 
-  debug(printf("count_right_subst_1: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("count_right_subst_1: oligo = %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
 #ifdef ALLOW_DUPLICATES
   /* Zero shift */
-  base = (oligo << 2) & LOW12MER;
+  base = (oligo << 2) & kmer_mask;
   nentries = 0;
-  for (i = 0; i < 4; i++, base += RIGHT_SUBST) {
+  for (i = 0; i < 4; i++, base += right_subst) {
     nentries += count_one_shift(this,base);
   }
 #else
   /* Zero shift */
-  base = (oligo << 2) & LOW12MER;
+  base = (oligo << 2) & kmer_mask;
   nentries = count_one_shift(this,base,/*nadjacent*/4);
 
   debug(
 	printf("Details\n");
 	nentries = 0;
-	for (i = 0; i < 4; i++, base += RIGHT_SUBST) {
+	for (i = 0; i < 4; i++, base += right_subst) {
 	  nentries += count_one_shift(this,base,/*nadjacent*/1);
 	}
 	);
@@ -992,7 +1018,7 @@ Indexdb_compoundpos_left_subst_2 (T this, Storedoligomer_T oligo) {
   Storedoligomer_T base;
   int i;
 
-  debug(printf("compoundpos_left_subst_2: %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("compoundpos_left_subst_2: %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
   compoundpos->n = 16;
   /* compoundpos->npositions = (int *) CALLOC(16,sizeof(int)); */
@@ -1000,7 +1026,7 @@ Indexdb_compoundpos_left_subst_2 (T this, Storedoligomer_T oligo) {
 
   /* Right shift */
   base = (oligo >> 4);
-  for (i = 0; i < 16; i++, base += LEFT_SUBST) {
+  for (i = 0; i < 16; i++, base += left_subst) {
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
   }
 
@@ -1013,7 +1039,7 @@ Indexdb_compoundpos_left_subst_1 (T this, Storedoligomer_T oligo) {
   Storedoligomer_T base;
   int i;
 
-  debug(printf("compoundpos_left_subst_1: %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("compoundpos_left_subst_1: %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
   compoundpos->n = 4;
   /* compoundpos->npositions = (int *) CALLOC(4,sizeof(int)); */
@@ -1021,7 +1047,7 @@ Indexdb_compoundpos_left_subst_1 (T this, Storedoligomer_T oligo) {
 
   /* Zero shift */
   base = (oligo >> 2);
-  for (i = 0; i < 4; i++, base += TOP_SUBST) {
+  for (i = 0; i < 4; i++, base += top_subst) {
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
   }
 
@@ -1034,15 +1060,15 @@ Indexdb_compoundpos_right_subst_2 (T this, Storedoligomer_T oligo) {
   Storedoligomer_T base;
   int i;
 
-  debug(printf("compoundpos_right_subst_2: %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("compoundpos_right_subst_2: %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
   compoundpos->n = 16;
   /* compoundpos->npositions = (int *) CALLOC(16,sizeof(int)); */
   /* compoundpos->positions = (Genomicpos_T **) CALLOC(16,sizeof(Genomicpos_T *)); */
 
   /* Left shift */
-  base = (oligo << 4) & LOW12MER;
-  for (i = 0; i < 16; i++, base += RIGHT_SUBST) {
+  base = (oligo << 4) & kmer_mask;
+  for (i = 0; i < 16; i++, base += right_subst) {
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
   }
 
@@ -1055,15 +1081,15 @@ Indexdb_compoundpos_right_subst_1 (T this, Storedoligomer_T oligo) {
   Storedoligomer_T base;
   int i;
 
-  debug(printf("compoundpos_right_subst_1: %06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  debug(printf("compoundpos_right_subst_1: %06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
 
   compoundpos->n = 4;
   /* compoundpos->npositions = (int *) CALLOC(4,sizeof(int)); */
   /* compoundpos->positions = (Genomicpos_T **) CALLOC(4,sizeof(Genomicpos_T *)); */
 
   /* Zero shift */
-  base = (oligo << 2) & LOW12MER;
-  for (i = 0; i < 4; i++, base += RIGHT_SUBST) {
+  base = (oligo << 2) & kmer_mask;
+  for (i = 0; i < 4; i++, base += right_subst) {
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
   }
 
@@ -1137,14 +1163,14 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
     if (diagterm < querylength) {
       startbound = querylength - diagterm;
 #ifdef WORDS_BIGENDIAN
-      while (batch->nentries > 0 && Bigendian_convert_uint(*batch->positionptr) < startbound) {
+      while (batch->nentries > 0 && Bigendian_convert_uint(*batch->positionptr) < (unsigned int) startbound) {
 	debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Compoundpos_heap_init)\n",
 		       Bigendian_convert_uint(*batch->positionptr)));
 	++batch->positionptr;
 	--batch->nentries;
       }
 #else
-      while (batch->nentries > 0 && *batch->positionptr < startbound) {
+      while (batch->nentries > 0 && *batch->positionptr < (unsigned int) startbound) {
 	debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Compoundpos_heap_init)\n",
 		       *batch->positionptr));
 	++batch->positionptr;
@@ -1521,14 +1547,15 @@ Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
   }
 }
 
+#if 0
 int
 Indexdb_gsnapbase (T this) {
   if (this->index1interval == 1) {
-    return INDEX1PART;
+    return index1part;
   } else if (this->index1interval == 3) {
-    return INDEX1PART - 2;
+    return index1part - 2;
   } else {
     abort();
   }
 }
-
+#endif

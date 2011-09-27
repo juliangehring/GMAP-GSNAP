@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: oligo.c 45941 2011-08-29 21:09:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,19 +32,324 @@ static char rcsid[] = "$Id: oligo.c 27450 2010-08-05 19:02:48Z twu $";
 #endif
 
 
-#define NREPETITIVE 76
-static Storedoligomer_T repetitive_oligos[NREPETITIVE] =
-{       0,  266305,  532610,  798915, 1065220, 1118481, 1331525, 1597830,
-  1864135, 2130440, 2236962, 2396745, 2663050, 2929355, 3195660, 3355443,
-  3461965, 3728270, 3994575, 4260880, 4473924, 4527185, 4793490, 5059795,
-  5326100, 5592405, 5858710, 6125015, 6391320, 6657625, 6710886, 6923930,
-  7190235, 7456540, 7722845, 7829367, 7989150, 8255455, 8521760, 8788065,
-  8947848, 9054370, 9320675, 9586980, 9853285,10066329,10119590,10385895,
- 10652200,10918505,11184810,11451115,11717420,11983725,12250030,12303291,
- 12516335,12782640,13048945,13315250,13421772,13581555,13847860,14114165,
- 14380470,14540253,14646775,14913080,15179385,15445690,15658734,15711995,
- 15978300,16244605,16510910,16777215,
-};
+#define NREPETITIVE 76		/* same for 12 through 15 */
+static Storedoligomer_T repetitive_oligos_12[NREPETITIVE] =
+  {0, /* AAAAAAAAAAAA */
+   266305, /* AACAACAACAAC */
+   532610, /* AAGAAGAAGAAG */
+   798915, /* AATAATAATAAT */
+   1065220, /* ACAACAACAACA */
+   1118481, /* ACACACACACAC */
+   1331525, /* ACCACCACCACC */
+   1597830, /* ACGACGACGACG */
+   1864135, /* ACTACTACTACT */
+   2130440, /* AGAAGAAGAAGA */
+   2236962, /* AGAGAGAGAGAG */
+   2396745, /* AGCAGCAGCAGC */
+   2663050, /* AGGAGGAGGAGG */
+   2929355, /* AGTAGTAGTAGT */
+   3195660, /* ATAATAATAATA */
+   3355443, /* ATATATATATAT */
+   3461965, /* ATCATCATCATC */
+   3728270, /* ATGATGATGATG */
+   3994575, /* ATTATTATTATT */
+   4260880, /* CAACAACAACAA */
+   4473924, /* CACACACACACA */
+   4527185, /* CACCACCACCAC */
+   4793490, /* CAGCAGCAGCAG */
+   5059795, /* CATCATCATCAT */
+   5326100, /* CCACCACCACCA */
+   5592405, /* CCCCCCCCCCCC */
+   5858710, /* CCGCCGCCGCCG */
+   6125015, /* CCTCCTCCTCCT */
+   6391320, /* CGACGACGACGA */
+   6657625, /* CGCCGCCGCCGC */
+   6710886, /* CGCGCGCGCGCG */
+   6923930, /* CGGCGGCGGCGG */
+   7190235, /* CGTCGTCGTCGT */
+   7456540, /* CTACTACTACTA */
+   7722845, /* CTCCTCCTCCTC */
+   7829367, /* CTCTCTCTCTCT */
+   7989150, /* CTGCTGCTGCTG */
+   8255455, /* CTTCTTCTTCTT */
+   8521760, /* GAAGAAGAAGAA */
+   8788065, /* GACGACGACGAC */
+   8947848, /* GAGAGAGAGAGA */
+   9054370, /* GAGGAGGAGGAG */
+   9320675, /* GATGATGATGAT */
+   9586980, /* GCAGCAGCAGCA */
+   9853285, /* GCCGCCGCCGCC */
+   10066329, /* GCGCGCGCGCGC */
+   10119590, /* GCGGCGGCGGCG */
+   10385895, /* GCTGCTGCTGCT */
+   10652200, /* GGAGGAGGAGGA */
+   10918505, /* GGCGGCGGCGGC */
+   11184810, /* GGGGGGGGGGGG */
+   11451115, /* GGTGGTGGTGGT */
+   11717420, /* GTAGTAGTAGTA */
+   11983725, /* GTCGTCGTCGTC */
+   12250030, /* GTGGTGGTGGTG */
+   12303291, /* GTGTGTGTGTGT */
+   12516335, /* GTTGTTGTTGTT */
+   12782640, /* TAATAATAATAA */
+   13048945, /* TACTACTACTAC */
+   13315250, /* TAGTAGTAGTAG */
+   13421772, /* TATATATATATA */
+   13581555, /* TATTATTATTAT */
+   13847860, /* TCATCATCATCA */
+   14114165, /* TCCTCCTCCTCC */
+   14380470, /* TCGTCGTCGTCG */
+   14540253, /* TCTCTCTCTCTC */
+   14646775, /* TCTTCTTCTTCT */
+   14913080, /* TGATGATGATGA */
+   15179385, /* TGCTGCTGCTGC */
+   15445690, /* TGGTGGTGGTGG */
+   15658734, /* TGTGTGTGTGTG */
+   15711995, /* TGTTGTTGTTGT */
+   15978300, /* TTATTATTATTA */
+   16244605, /* TTCTTCTTCTTC */
+   16510910, /* TTGTTGTTGTTG */
+   16777215, /* TTTTTTTTTTTT */
+  };
+
+static Storedoligomer_T repetitive_oligos_13[NREPETITIVE] =
+  {0, /* AAAAAAAAAAAAA */
+   1065220, /* AACAACAACAACA */
+   2130440, /* AAGAAGAAGAAGA */
+   3195660, /* AATAATAATAATA */
+   4260880, /* ACAACAACAACAA */
+   4473924, /* ACACACACACACA */
+   5326100, /* ACCACCACCACCA */
+   6391320, /* ACGACGACGACGA */
+   7456540, /* ACTACTACTACTA */
+   8521760, /* AGAAGAAGAAGAA */
+   8947848, /* AGAGAGAGAGAGA */
+   9586980, /* AGCAGCAGCAGCA */
+   10652200, /* AGGAGGAGGAGGA */
+   11717420, /* AGTAGTAGTAGTA */
+   12782640, /* ATAATAATAATAA */
+   13421772, /* ATATATATATATA */
+   13847860, /* ATCATCATCATCA */
+   14913080, /* ATGATGATGATGA */
+   15978300, /* ATTATTATTATTA */
+   17043521, /* CAACAACAACAAC */
+   17895697, /* CACACACACACAC */
+   18108741, /* CACCACCACCACC */
+   19173961, /* CAGCAGCAGCAGC */
+   20239181, /* CATCATCATCATC */
+   21304401, /* CCACCACCACCAC */
+   22369621, /* CCCCCCCCCCCCC */
+   23434841, /* CCGCCGCCGCCGC */
+   24500061, /* CCTCCTCCTCCTC */
+   25565281, /* CGACGACGACGAC */
+   26630501, /* CGCCGCCGCCGCC */
+   26843545, /* CGCGCGCGCGCGC */
+   27695721, /* CGGCGGCGGCGGC */
+   28760941, /* CGTCGTCGTCGTC */
+   29826161, /* CTACTACTACTAC */
+   30891381, /* CTCCTCCTCCTCC */
+   31317469, /* CTCTCTCTCTCTC */
+   31956601, /* CTGCTGCTGCTGC */
+   33021821, /* CTTCTTCTTCTTC */
+   34087042, /* GAAGAAGAAGAAG */
+   35152262, /* GACGACGACGACG */
+   35791394, /* GAGAGAGAGAGAG */
+   36217482, /* GAGGAGGAGGAGG */
+   37282702, /* GATGATGATGATG */
+   38347922, /* GCAGCAGCAGCAG */
+   39413142, /* GCCGCCGCCGCCG */
+   40265318, /* GCGCGCGCGCGCG */
+   40478362, /* GCGGCGGCGGCGG */
+   41543582, /* GCTGCTGCTGCTG */
+   42608802, /* GGAGGAGGAGGAG */
+   43674022, /* GGCGGCGGCGGCG */
+   44739242, /* GGGGGGGGGGGGG */
+   45804462, /* GGTGGTGGTGGTG */
+   46869682, /* GTAGTAGTAGTAG */
+   47934902, /* GTCGTCGTCGTCG */
+   49000122, /* GTGGTGGTGGTGG */
+   49213166, /* GTGTGTGTGTGTG */
+   50065342, /* GTTGTTGTTGTTG */
+   51130563, /* TAATAATAATAAT */
+   52195783, /* TACTACTACTACT */
+   53261003, /* TAGTAGTAGTAGT */
+   53687091, /* TATATATATATAT */
+   54326223, /* TATTATTATTATT */
+   55391443, /* TCATCATCATCAT */
+   56456663, /* TCCTCCTCCTCCT */
+   57521883, /* TCGTCGTCGTCGT */
+   58161015, /* TCTCTCTCTCTCT */
+   58587103, /* TCTTCTTCTTCTT */
+   59652323, /* TGATGATGATGAT */
+   60717543, /* TGCTGCTGCTGCT */
+   61782763, /* TGGTGGTGGTGGT */
+   62634939, /* TGTGTGTGTGTGT */
+   62847983, /* TGTTGTTGTTGTT */
+   63913203, /* TTATTATTATTAT */
+   64978423, /* TTCTTCTTCTTCT */
+   66043643, /* TTGTTGTTGTTGT */
+   67108863, /* TTTTTTTTTTTTT */
+  };
+
+
+static Storedoligomer_T repetitive_oligos_14[NREPETITIVE] =
+  {0, /* AAAAAAAAAAAAAA */
+   4260880, /* AACAACAACAACAA */
+   8521760, /* AAGAAGAAGAAGAA */
+   12782640, /* AATAATAATAATAA */
+   17043521, /* ACAACAACAACAAC */
+   17895697, /* ACACACACACACAC */
+   21304401, /* ACCACCACCACCAC */
+   25565281, /* ACGACGACGACGAC */
+   29826161, /* ACTACTACTACTAC */
+   34087042, /* AGAAGAAGAAGAAG */
+   35791394, /* AGAGAGAGAGAGAG */
+   38347922, /* AGCAGCAGCAGCAG */
+   42608802, /* AGGAGGAGGAGGAG */
+   46869682, /* AGTAGTAGTAGTAG */
+   51130563, /* ATAATAATAATAAT */
+   53687091, /* ATATATATATATAT */
+   55391443, /* ATCATCATCATCAT */
+   59652323, /* ATGATGATGATGAT */
+   63913203, /* ATTATTATTATTAT */
+   68174084, /* CAACAACAACAACA */
+   71582788, /* CACACACACACACA */
+   72434964, /* CACCACCACCACCA */
+   76695844, /* CAGCAGCAGCAGCA */
+   80956724, /* CATCATCATCATCA */
+   85217605, /* CCACCACCACCACC */
+   89478485, /* CCCCCCCCCCCCCC */
+   93739365, /* CCGCCGCCGCCGCC */
+   98000245, /* CCTCCTCCTCCTCC */
+   102261126, /* CGACGACGACGACG */
+   106522006, /* CGCCGCCGCCGCCG */
+   107374182, /* CGCGCGCGCGCGCG */
+   110782886, /* CGGCGGCGGCGGCG */
+   115043766, /* CGTCGTCGTCGTCG */
+   119304647, /* CTACTACTACTACT */
+   123565527, /* CTCCTCCTCCTCCT */
+   125269879, /* CTCTCTCTCTCTCT */
+   127826407, /* CTGCTGCTGCTGCT */
+   132087287, /* CTTCTTCTTCTTCT */
+   136348168, /* GAAGAAGAAGAAGA */
+   140609048, /* GACGACGACGACGA */
+   143165576, /* GAGAGAGAGAGAGA */
+   144869928, /* GAGGAGGAGGAGGA */
+   149130808, /* GATGATGATGATGA */
+   153391689, /* GCAGCAGCAGCAGC */
+   157652569, /* GCCGCCGCCGCCGC */
+   161061273, /* GCGCGCGCGCGCGC */
+   161913449, /* GCGGCGGCGGCGGC */
+   166174329, /* GCTGCTGCTGCTGC */
+   170435210, /* GGAGGAGGAGGAGG */
+   174696090, /* GGCGGCGGCGGCGG */
+   178956970, /* GGGGGGGGGGGGGG */
+   183217850, /* GGTGGTGGTGGTGG */
+   187478731, /* GTAGTAGTAGTAGT */
+   191739611, /* GTCGTCGTCGTCGT */
+   196000491, /* GTGGTGGTGGTGGT */
+   196852667, /* GTGTGTGTGTGTGT */
+   200261371, /* GTTGTTGTTGTTGT */
+   204522252, /* TAATAATAATAATA */
+   208783132, /* TACTACTACTACTA */
+   213044012, /* TAGTAGTAGTAGTA */
+   214748364, /* TATATATATATATA */
+   217304892, /* TATTATTATTATTA */
+   221565773, /* TCATCATCATCATC */
+   225826653, /* TCCTCCTCCTCCTC */
+   230087533, /* TCGTCGTCGTCGTC */
+   232644061, /* TCTCTCTCTCTCTC */
+   234348413, /* TCTTCTTCTTCTTC */
+   238609294, /* TGATGATGATGATG */
+   242870174, /* TGCTGCTGCTGCTG */
+   247131054, /* TGGTGGTGGTGGTG */
+   250539758, /* TGTGTGTGTGTGTG */
+   251391934, /* TGTTGTTGTTGTTG */
+   255652815, /* TTATTATTATTATT */
+   259913695, /* TTCTTCTTCTTCTT */
+   264174575, /* TTGTTGTTGTTGTT */
+   268435455, /* TTTTTTTTTTTTTT */
+  };
+
+static Storedoligomer_T repetitive_oligos_15[NREPETITIVE] =
+  {0, /* AAAAAAAAAAAAAAA */
+   17043521, /* AACAACAACAACAAC */
+   34087042, /* AAGAAGAAGAAGAAG */
+   51130563, /* AATAATAATAATAAT */
+   68174084, /* ACAACAACAACAACA */
+   71582788, /* ACACACACACACACA */
+   85217605, /* ACCACCACCACCACC */
+   102261126, /* ACGACGACGACGACG */
+   119304647, /* ACTACTACTACTACT */
+   136348168, /* AGAAGAAGAAGAAGA */
+   143165576, /* AGAGAGAGAGAGAGA */
+   153391689, /* AGCAGCAGCAGCAGC */
+   170435210, /* AGGAGGAGGAGGAGG */
+   187478731, /* AGTAGTAGTAGTAGT */
+   204522252, /* ATAATAATAATAATA */
+   214748364, /* ATATATATATATATA */
+   221565773, /* ATCATCATCATCATC */
+   238609294, /* ATGATGATGATGATG */
+   255652815, /* ATTATTATTATTATT */
+   272696336, /* CAACAACAACAACAA */
+   286331153, /* CACACACACACACAC */
+   289739857, /* CACCACCACCACCAC */
+   306783378, /* CAGCAGCAGCAGCAG */
+   323826899, /* CATCATCATCATCAT */
+   340870420, /* CCACCACCACCACCA */
+   357913941, /* CCCCCCCCCCCCCCC */
+   374957462, /* CCGCCGCCGCCGCCG */
+   392000983, /* CCTCCTCCTCCTCCT */
+   409044504, /* CGACGACGACGACGA */
+   426088025, /* CGCCGCCGCCGCCGC */
+   429496729, /* CGCGCGCGCGCGCGC */
+   443131546, /* CGGCGGCGGCGGCGG */
+   460175067, /* CGTCGTCGTCGTCGT */
+   477218588, /* CTACTACTACTACTA */
+   494262109, /* CTCCTCCTCCTCCTC */
+   501079517, /* CTCTCTCTCTCTCTC */
+   511305630, /* CTGCTGCTGCTGCTG */
+   528349151, /* CTTCTTCTTCTTCTT */
+   545392672, /* GAAGAAGAAGAAGAA */
+   562436193, /* GACGACGACGACGAC */
+   572662306, /* GAGAGAGAGAGAGAG */
+   579479714, /* GAGGAGGAGGAGGAG */
+   596523235, /* GATGATGATGATGAT */
+   613566756, /* GCAGCAGCAGCAGCA */
+   630610277, /* GCCGCCGCCGCCGCC */
+   644245094, /* GCGCGCGCGCGCGCG */
+   647653798, /* GCGGCGGCGGCGGCG */
+   664697319, /* GCTGCTGCTGCTGCT */
+   681740840, /* GGAGGAGGAGGAGGA */
+   698784361, /* GGCGGCGGCGGCGGC */
+   715827882, /* GGGGGGGGGGGGGGG */
+   732871403, /* GGTGGTGGTGGTGGT */
+   749914924, /* GTAGTAGTAGTAGTA */
+   766958445, /* GTCGTCGTCGTCGTC */
+   784001966, /* GTGGTGGTGGTGGTG */
+   787410670, /* GTGTGTGTGTGTGTG */
+   801045487, /* GTTGTTGTTGTTGTT */
+   818089008, /* TAATAATAATAATAA */
+   835132529, /* TACTACTACTACTAC */
+   852176050, /* TAGTAGTAGTAGTAG */
+   858993459, /* TATATATATATATAT */
+   869219571, /* TATTATTATTATTAT */
+   886263092, /* TCATCATCATCATCA */
+   903306613, /* TCCTCCTCCTCCTCC */
+   920350134, /* TCGTCGTCGTCGTCG */
+   930576247, /* TCTCTCTCTCTCTCT */
+   937393655, /* TCTTCTTCTTCTTCT */
+   954437176, /* TGATGATGATGATGA */
+   971480697, /* TGCTGCTGCTGCTGC */
+   988524218, /* TGGTGGTGGTGGTGG */
+   1002159035, /* TGTGTGTGTGTGTGT */
+   1005567739, /* TGTTGTTGTTGTTGT */
+   1022611260, /* TTATTATTATTATTA */
+   1039654781, /* TTCTTCTTCTTCTTC */
+   1056698302, /* TTGTTGTTGTTGTTG */
+   1073741823, /* TTTTTTTTTTTTTTT */
+  };
+
 
 
 #if 0
@@ -596,6 +901,26 @@ static Storedoligomer_T all_repetitive_oligos[ALL_NREPETITIVE] =
 #endif
 
 
+static Storedoligomer_T *repetitive_oligos;
+
+void
+Oligo_setup (int index1part) {
+  if (index1part == 12) {
+    repetitive_oligos = repetitive_oligos_12;
+  } else if (index1part == 13) {
+    repetitive_oligos = repetitive_oligos_13;
+  } else if (index1part == 14) {
+    repetitive_oligos = repetitive_oligos_14;
+  } else if (index1part == 15) {
+    repetitive_oligos = repetitive_oligos_15;
+  } else {
+    fprintf(stderr,"Oligo_setup can handle only values of 12, 13, 14, or 15\n");
+    abort();
+  }
+  return;
+}
+
+
 /*               87654321 */
 #define LEFT_A 0x00000000
 #define LEFT_C 0x40000000
@@ -691,76 +1016,37 @@ oligo_read (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp,
   int c;
 
   *forward = *revcomp = 0U;
-  if (Reader_dibasep(reader) == true) {
-    if (cdnaend == FIVE) {
-      while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
-	switch (c) {
-	case '0': *forward <<= 2; *revcomp >>= 2; break;
-	case '1': *forward <<= 2; *forward |= RIGHT_1; 
-	  *revcomp >>= 2; *revcomp |= LEFT_1;  break;
-	case '2': *forward <<= 2; *forward |= RIGHT_2;
-	  *revcomp >>= 2; *revcomp |= LEFT_2; break;
-	case '3': *forward <<= 2; *forward |= RIGHT_3;
-	  *revcomp >>= 2; *revcomp |= LEFT_3; break;
-	default: *forward = *revcomp = 0U; count = -1; 
-	  /* This counteracts count++ below */
-	}
-	count++;
-	debug(printf("5' Read %c, count = %d, oligo = %06X, %06X\n",
-		     c,count,*forward,*revcomp));
+  if (cdnaend == FIVE) {
+    while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
+      switch (c) {
+      case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
+      case 'C': *forward <<= 2; *forward |= RIGHT_C; 
+	*revcomp >>= 2; *revcomp |= LEFT_G;  break;
+      case 'G': *forward <<= 2; *forward |= RIGHT_G;
+	*revcomp >>= 2; *revcomp |= LEFT_C; break;
+      case 'T': *forward <<= 2; *forward |= RIGHT_T; *revcomp >>= 2; break;
+      default: *forward = *revcomp = 0U; count = -1; 
+	/* This counteracts count++ below */
       }
-    } else {
-      while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
-	switch (c) {
-	case '0': *forward >>= 2; *revcomp <<= 2; break;
-	case '1': *forward >>= 2; *forward |= LEFT_1; 
-	  *revcomp <<= 2; *revcomp |= RIGHT_1;  break;
-	case '2': *forward >>= 2; *forward |= LEFT_2;
-	  *revcomp <<= 2; *revcomp |= RIGHT_2; break;
-	case '3': *forward >>= 2; *forward |= LEFT_3;
-	  *revcomp <<= 2; *revcomp |= RIGHT_3; break;
-	default: *forward = *revcomp = 0U; count = -1; 
-	  /* This counteracts count++ below */
-	}
-	count++;
-	debug(printf("3' Read %c, count = %d, oligo = %06X, %06X\n",
-		     c,count,*forward,*revcomp));
-      }
+      count++;
+      debug(printf("5' Read %c, count = %d, oligo = %06X, %06X\n",
+		   c,count,*forward,*revcomp));
     }
-
   } else {
-    if (cdnaend == FIVE) {
-      while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
-	switch (c) {
-	case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
-	case 'C': *forward <<= 2; *forward |= RIGHT_C; 
-	  *revcomp >>= 2; *revcomp |= LEFT_G;  break;
-	case 'G': *forward <<= 2; *forward |= RIGHT_G;
-	  *revcomp >>= 2; *revcomp |= LEFT_C; break;
-	case 'T': *forward <<= 2; *forward |= RIGHT_T; *revcomp >>= 2; break;
-	default: *forward = *revcomp = 0U; count = -1; 
-	  /* This counteracts count++ below */
-	}
-	count++;
-	debug(printf("5' Read %c, count = %d, oligo = %06X, %06X\n",
-		     c,count,*forward,*revcomp));
+    while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
+      switch (c) {
+      case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
+      case 'C': *forward >>= 2; *forward |= LEFT_C; 
+	*revcomp <<= 2; *revcomp |= RIGHT_G;  break;
+      case 'G': *forward >>= 2; *forward |= LEFT_G;
+	*revcomp <<= 2; *revcomp |= RIGHT_C; break;
+      case 'T': *forward >>= 2; *forward |= LEFT_T; *revcomp <<= 2; break;
+      default: *forward = *revcomp = 0U; count = -1; 
+	/* This counteracts count++ below */
       }
-    } else {
-      while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
-	switch (c) {
-	case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
-	case 'C': *forward >>= 2; *forward |= LEFT_C; 
-	  *revcomp <<= 2; *revcomp |= RIGHT_G;  break;
-	case 'G': *forward >>= 2; *forward |= LEFT_G;
-	  *revcomp <<= 2; *revcomp |= RIGHT_C; break;
-	case 'T': *forward >>= 2; *forward |= LEFT_T; *revcomp <<= 2; break;
-	default: *forward = *revcomp = 0U; count = -1; 
-	  /* This counteracts count++ below */
-	}
-	count++;
-	debug(printf("3' Read %c, count = %d, oligo = %06X, %06X\n",
-		     c,count,*forward,*revcomp));
-      }
+      count++;
+      debug(printf("3' Read %c, count = %d, oligo = %06X, %06X\n",
+		   c,count,*forward,*revcomp));
     }
   }
 
@@ -783,6 +1069,80 @@ oligo_read (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp,
   }
 }
 
+
+#if 0
+static Oligostate_T
+oligo_read_dibase (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp, 
+		   int oligosize, Reader_T reader, cDNAEnd_T cdnaend) {
+  int count = 0;
+  int c;
+
+  *forward = *revcomp = 0U;
+  if (cdnaend == FIVE) {
+    while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
+      switch (c) {
+      case '0': *forward <<= 2; *revcomp >>= 2; break;
+      case '1': *forward <<= 2; *forward |= RIGHT_1; 
+	*revcomp >>= 2; *revcomp |= LEFT_1;  break;
+      case '2': *forward <<= 2; *forward |= RIGHT_2;
+	*revcomp >>= 2; *revcomp |= LEFT_2; break;
+      case '3': *forward <<= 2; *forward |= RIGHT_3;
+	*revcomp >>= 2; *revcomp |= LEFT_3; break;
+      default: *forward = *revcomp = 0U; count = -1; 
+	/* This counteracts count++ below */
+      }
+      count++;
+      debug(printf("5' Read %c, count = %d, oligo = %06X, %06X\n",
+		   c,count,*forward,*revcomp));
+    }
+  } else {
+    while (count < oligosize && (c = Reader_getc(reader,cdnaend)) != '\0') {
+      switch (c) {
+      case '0': *forward >>= 2; *revcomp <<= 2; break;
+      case '1': *forward >>= 2; *forward |= LEFT_1; 
+	*revcomp <<= 2; *revcomp |= RIGHT_1;  break;
+      case '2': *forward >>= 2; *forward |= LEFT_2;
+	*revcomp <<= 2; *revcomp |= RIGHT_2; break;
+      case '3': *forward >>= 2; *forward |= LEFT_3;
+	*revcomp <<= 2; *revcomp |= RIGHT_3; break;
+      default: *forward = *revcomp = 0U; count = -1; 
+	/* This counteracts count++ below */
+      }
+      count++;
+      debug(printf("3' Read %c, count = %d, oligo = %06X, %06X\n",
+		   c,count,*forward,*revcomp));
+    }
+  }
+
+  if (count < oligosize) {
+    *forward = *revcomp = 0U;
+    return DONE;
+  } else {
+    debug(printf("Read: Returning oligo %06X for count = %d and size = %d\n",
+		  *forward,count,oligosize));
+    if (cdnaend == FIVE) {
+      *querypos = Reader_startpos(reader) - oligosize;
+      debug(printf("Setting querypos to be %u - %u = %u\n",
+		   Reader_startpos(reader),oligosize,*querypos));
+    } else {
+      *querypos = Reader_endpos(reader) + 1;
+      debug(printf("Setting querypos to be %u + 1 = %u\n",
+		   Reader_endpos(reader),*querypos));
+    }
+    return VALID;
+  }
+}
+#endif
+
+
+#if 0
+typedef Oligostate_T (*oligo_read_proc_t) (int *, Storedoligomer_T *, Storedoligomer_T *,
+					   int, Reader_T, cDNAEnd_T);
+static oligo_read_proc_t oligo_read;
+#endif
+
+
+
 static Oligostate_T
 oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp, 
 	      int oligosize, Reader_T reader, cDNAEnd_T cdnaend) {
@@ -799,85 +1159,109 @@ oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcom
 	  );
     return DONE;
 
-  } else if (Reader_dibasep(reader) == true) {
-    if (cdnaend == FIVE) {
-      switch (c) {
-      case '0': *forward <<= 2; *revcomp >>= 2; break;
-      case '1': *forward <<= 2; *forward |= RIGHT_1; 
-	*revcomp >>= 2; *revcomp |= LEFT_1; break;
-      case '2': *forward <<= 2; *forward |= RIGHT_2;
-	*revcomp >>= 2; *revcomp |= LEFT_2; break;
-      case '3': *forward <<= 2; *forward |= RIGHT_3;
-	*revcomp >>= 2; *revcomp |= LEFT_3; break;
-      default: *forward = *revcomp = 0U; 
-	*querypos = Reader_startpos(reader) - oligosize;
-	return INVALID;
-      }
-
+  } else if (cdnaend == FIVE) {
+    switch (c) {
+    case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
+    case 'C': *forward <<= 2; *forward |= RIGHT_C; 
+      *revcomp >>= 2; *revcomp |= LEFT_G; break;
+    case 'G': *forward <<= 2; *forward |= RIGHT_G;
+      *revcomp >>= 2; *revcomp |= LEFT_C; break;
+    case 'T': *forward <<= 2; *forward |= RIGHT_T; *revcomp >>= 2; break;
+    default: *forward = *revcomp = 0U; 
       *querypos = Reader_startpos(reader) - oligosize;
-      debug(printf("5' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
-		   c,*forward,*revcomp,*querypos));
-      return VALID;
-
-    } else {
-      switch (c) {
-      case '0': *forward >>= 2; *revcomp <<= 2; break;
-      case '1': *forward >>= 2; *forward |= LEFT_1; 
-	*revcomp <<= 2; *revcomp |= RIGHT_1; break;
-      case '2': *forward >>= 2; *forward |= LEFT_2;
-	*revcomp <<= 2; *revcomp |= RIGHT_2; break;
-      case '3': *forward >>= 2; *forward |= LEFT_3;
-	*revcomp <<= 2; *revcomp |= RIGHT_3; break;
-      default: *forward = *revcomp = 0U; 
-	*querypos = Reader_endpos(reader) + 1;
-	return INVALID;
-      }
-
-      *querypos = Reader_endpos(reader) + 1;
-      debug(printf("3' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
-		   c,*forward,*revcomp,*querypos));
-      return VALID;
+      return INVALID;
     }
+
+    *querypos = Reader_startpos(reader) - oligosize;
+    debug(printf("5' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
+		 c,*forward,*revcomp,*querypos));
+    return VALID;
 
   } else {
-    if (cdnaend == FIVE) {
-      switch (c) {
-      case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
-      case 'C': *forward <<= 2; *forward |= RIGHT_C; 
-	*revcomp >>= 2; *revcomp |= LEFT_G; break;
-      case 'G': *forward <<= 2; *forward |= RIGHT_G;
-	*revcomp >>= 2; *revcomp |= LEFT_C; break;
-      case 'T': *forward <<= 2; *forward |= RIGHT_T; *revcomp >>= 2; break;
-      default: *forward = *revcomp = 0U; 
-	*querypos = Reader_startpos(reader) - oligosize;
-	return INVALID;
-      }
-
-      *querypos = Reader_startpos(reader) - oligosize;
-      debug(printf("5' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
-		   c,*forward,*revcomp,*querypos));
-      return VALID;
-
-    } else {
-      switch (c) {
-      case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
-      case 'C': *forward >>= 2; *forward |= LEFT_C; 
-	*revcomp <<= 2; *revcomp |= RIGHT_G; break;
-      case 'G': *forward >>= 2; *forward |= LEFT_G;
-	*revcomp <<= 2; *revcomp |= RIGHT_C; break;
-      case 'T': *forward >>= 2; *forward |= LEFT_T; *revcomp <<= 2; break;
-      default: *forward = *revcomp = 0U; 
-	*querypos = Reader_endpos(reader) + 1;
-	return INVALID;
-      }
-
+    switch (c) {
+    case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
+    case 'C': *forward >>= 2; *forward |= LEFT_C; 
+      *revcomp <<= 2; *revcomp |= RIGHT_G; break;
+    case 'G': *forward >>= 2; *forward |= LEFT_G;
+      *revcomp <<= 2; *revcomp |= RIGHT_C; break;
+    case 'T': *forward >>= 2; *forward |= LEFT_T; *revcomp <<= 2; break;
+    default: *forward = *revcomp = 0U; 
       *querypos = Reader_endpos(reader) + 1;
-      debug(printf("3' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
-		   c,*forward,*revcomp,*querypos));
-      return VALID;
+      return INVALID;
     }
+
+    *querypos = Reader_endpos(reader) + 1;
+    debug(printf("3' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
+		 c,*forward,*revcomp,*querypos));
+    return VALID;
   }
 }
+
+
+#if 0
+static Oligostate_T
+oligo_revise_dibase (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp, 
+		     int oligosize, Reader_T reader, cDNAEnd_T cdnaend) {
+  char c;
+
+  if ((c = Reader_getc(reader,cdnaend)) == '\0') {
+    *forward = *revcomp = 0U;
+    debug(
+	  if (cdnaend == FIVE) {
+	    printf("5' Revision: read terminating char %c\n",c);
+	  } else {
+	    printf("3' Revision: read terminating char %c\n",c);
+	  }
+	  );
+    return DONE;
+
+  } else if (cdnaend == FIVE) {
+    switch (c) {
+    case '0': *forward <<= 2; *revcomp >>= 2; break;
+    case '1': *forward <<= 2; *forward |= RIGHT_1; 
+      *revcomp >>= 2; *revcomp |= LEFT_1; break;
+    case '2': *forward <<= 2; *forward |= RIGHT_2;
+      *revcomp >>= 2; *revcomp |= LEFT_2; break;
+    case '3': *forward <<= 2; *forward |= RIGHT_3;
+      *revcomp >>= 2; *revcomp |= LEFT_3; break;
+    default: *forward = *revcomp = 0U; 
+      *querypos = Reader_startpos(reader) - oligosize;
+      return INVALID;
+    }
+
+    *querypos = Reader_startpos(reader) - oligosize;
+    debug(printf("5' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
+		 c,*forward,*revcomp,*querypos));
+    return VALID;
+
+  } else {
+    switch (c) {
+    case '0': *forward >>= 2; *revcomp <<= 2; break;
+    case '1': *forward >>= 2; *forward |= LEFT_1; 
+      *revcomp <<= 2; *revcomp |= RIGHT_1; break;
+    case '2': *forward >>= 2; *forward |= LEFT_2;
+      *revcomp <<= 2; *revcomp |= RIGHT_2; break;
+    case '3': *forward >>= 2; *forward |= LEFT_3;
+      *revcomp <<= 2; *revcomp |= RIGHT_3; break;
+    default: *forward = *revcomp = 0U; 
+      *querypos = Reader_endpos(reader) + 1;
+      return INVALID;
+    }
+
+    *querypos = Reader_endpos(reader) + 1;
+    debug(printf("3' Revision: read char %c, oligo = %06X, %06X at querypos %d\n",
+		 c,*forward,*revcomp,*querypos));
+    return VALID;
+  }
+}
+#endif
+
+#if 0
+typedef Oligostate_T (*oligo_revise_proc_t) (int *, Storedoligomer_T *, Storedoligomer_T *,
+					     int, Reader_T, cDNAEnd_T);
+static oligo_revise_proc_t oligo_revise;
+#endif
+
 
 
 Oligostate_T
@@ -922,16 +1306,17 @@ Oligo_skip (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward,
 }
 
 
+#if 0
 /* Procedure used by oligo-count.c.  oligosize here is expected to be > 12.  */
 char *
-Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize) {
+Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize, int index1part) {
   char *nt;
   int i, j;
   Storedoligomer_T lowbits;
 
   nt = (char *) CALLOC(oligosize+1,sizeof(char));
   j = oligosize-1;
-  for (i = 0; i < oligosize - INDEX1PART; i++) {
+  for (i = 0; i < oligosize - index1part; i++) {
     lowbits = oligo2 & LOW_TWO_BITS;
     switch (lowbits) {
     case RIGHT_A: nt[j] = 'A'; break;
@@ -943,7 +1328,7 @@ Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize) {
     j--;
   }
 
-  for (i = 0; i < INDEX1PART; i++) {
+  for (i = 0; i < index1part; i++) {
     lowbits = oligo1 & LOW_TWO_BITS;
     switch (lowbits) {
     case RIGHT_A: nt[j] = 'A'; break;
@@ -957,6 +1342,7 @@ Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize) {
 
   return nt;
 }
+#endif
 
 
 struct Cell_T {
@@ -1013,6 +1399,7 @@ binary_search (int lowi, int highi, Storedoligomer_T *oligos, Genomicpos_T goal)
 }
 
 
+#if 0
 bool
 Oligo_mark_repetitive (bool **repetitivep, Storedoligomer_T *oligos,
 		       int first_querypos, int last_querypos) {
@@ -1057,6 +1444,8 @@ Oligo_mark_repetitive (bool **repetitivep, Storedoligomer_T *oligos,
   FREE(cells);
   return any_repetitive_p;
 }
+#endif
+
 
 bool
 Oligo_repetitive_p (Storedoligomer_T oligo) {
@@ -1069,6 +1458,7 @@ Oligo_repetitive_p (Storedoligomer_T oligo) {
     return false;
   }
 }
+
 
 #if 0
 bool
@@ -1155,3 +1545,5 @@ Oligo_frequent_oligos (int *nfrequent, Indexdb_T indexdb, int size_threshold) {
 }
 
 #endif
+
+

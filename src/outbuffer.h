@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 36834 2011-03-19 01:59:02Z twu $ */
+/* $Id: outbuffer.h 43367 2011-07-21 20:47:54Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -8,6 +8,7 @@
 #include "iit-read.h"
 
 #include "request.h"
+#include "mem.h"		/* To get MEMUSAGE */
 
 #ifdef GSNAP
 #include "goby.h"
@@ -28,22 +29,25 @@ typedef struct T *T;
 #ifdef GSNAP
 
 extern T
-Outbuffer_new (int nread, char *sevenway_root, UINT4 *genome_blocks, IIT_T chromosome_iit,
-	       bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
+Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, IIT_T chromosome_iit,
+	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
+	       char *sam_read_group_library, char *sam_read_group_platform,
 	       Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp, bool fails_as_input_p,
-	       bool fastq_format_p, int maxpaths, bool quiet_if_excessive_p, int quality_shift,
+	       bool fastq_format_p, bool clip_overlap_p, int maxpaths, bool quiet_if_excessive_p, int quality_shift,
 	       bool invert_first_p, bool invert_second_p, Genomicpos_T pairmax);
 
 #else
 
 extern T
-Outbuffer_new (int nread, char *sevenway_root, char *user_genomicseg, Sequence_T usersegment,
+Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root,
+	       bool chimerap, char *user_genomicseg, Sequence_T usersegment,
 	       char *dbversion, Genome_T genome, IIT_T chromosome_iit,
 	       Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
 #ifndef PMAP
 	       bool sam_headers_p, int quality_shift, bool sam_paired_p, bool cigar_noncanonical_splices_p,
 	       char *sam_read_group_id, char *sam_read_group_name,
+	       char *sam_read_group_library, char *sam_read_group_platform,
 #endif
 	       bool nofailsp, bool failsonlyp, bool fails_as_input_p, int maxpaths, bool quiet_if_excessive_p,
 	       bool map_exons_p, bool map_bothstrands_p, bool print_comment_p, int nflanking,
@@ -57,17 +61,21 @@ Outbuffer_new (int nread, char *sevenway_root, char *user_genomicseg, Sequence_T
 extern void
 Outbuffer_free (T *old);
 
-extern int
+extern unsigned int
 Outbuffer_nread (T this);
 
 extern void
-Outbuffer_add_nread (T this, int nread);
+Outbuffer_add_nread (T this, unsigned int nread);
 
 extern void
 Outbuffer_put_result (T this, Result_T result, Request_T request);
 
 extern void
-Outbuffer_print_result (T this, Result_T result, Request_T request);
+Outbuffer_print_result (T this, Result_T result, Request_T request
+#ifdef MEMUSAGE
+			, unsigned int noutput
+#endif
+			);
 
 extern void *
 Outbuffer_thread_anyorder (void *data);

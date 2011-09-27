@@ -1,4 +1,4 @@
-/* $Id: gregion.h 32520 2010-12-07 17:16:10Z twu $ */
+/* $Id: gregion.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
@@ -93,7 +93,8 @@ extern bool
 Gregion_sufficient_support (T this);
 
 extern void
-Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength);
+Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength,
+		int min_extra_end);
 
 extern int
 Gregion_cmp (const void *a, const void *b);

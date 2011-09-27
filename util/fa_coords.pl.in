@@ -11,9 +11,9 @@ undef($opt_o);			# Output file
 undef($opt_C);			# Try to parse chromosomal information
 undef($opt_E);			# Interpret argument as a command
 undef($opt_g);			# gunzip each file first
-undef($opt_O);			# order chromosomes
+#undef($opt_S);			# Do not order chromosomes
 use Getopt::Std;
-getopts("o:CEgO");
+getopts("o:CEg");
 
 # Usage: fa_coords [-o <output>] [-C] [-E] [-g] <fastafiles or command>
 
@@ -45,11 +45,12 @@ if ($#{$output} < 0) {
     print $OUT "# To exclude a contig, place a '#' sign at the beginning of the line\n";
     print $OUT "#contig" . "\t" . "gmap_coordinates" . "\t" . "strain\n";
 
-    if (defined($opt_O)) {
-	@sorted = sort by_numeric_alpha (@ {$output});
-    } else {
-	@sorted = @ {$output};
-    }
+    #if (defined($opt_S)) {
+    #@sorted = @ {$output};
+    #} else {
+    #@sorted = sort by_numeric_alpha (@ {$output});
+    #}
+    @sorted = @ {$output};
     foreach $string (@sorted) {
 	print $OUT $string;
     }
@@ -139,7 +140,8 @@ sub parse_fa_files {
     my $seglength;
     my $chronlyp;
     my $contig = "";
-    my $nwarnings = 0;
+    my $nwarnings_dup = 0;
+    my $nwarnings_colon = 0;
     my $ncontigs = 0;
 
     foreach $arg (@ {$argv}) {
@@ -158,6 +160,7 @@ sub parse_fa_files {
 	$consec_errors = 0;
 	$shortp = 0;
 	while (defined($line = <$FP>)) {
+	    $line =~ s/\r\n/\n/;
 	    chomp $line;
 	    if ($line !~ /\S/) {
 		# Skip blank lines
@@ -172,9 +175,13 @@ sub parse_fa_files {
 		if (defined($seglength{$contig})) {
 		    if ($seglength != $seglength{$contig}) {
 			die "Saw contig $contig already, and second length $seglength is different from first $seglength{$contig}";
-		    } else {
+		    } elsif ($nwarnings_dup < 50) {
 			print STDOUT "Saw contig $contig already.  Ignoring previous occurrence.\n";
+		    } elsif ($nwarnings_dup == 50) {
+			print STDERR "More than 50 warnings.  Will stop printing warnings\n";
 		    }
+		    $nwarnings_dup++;
+
 		} elsif ($seglength > 0) {
 		    $seglength{$contig} = $seglength;
 		    if ($seglength > $opt_l) {
@@ -230,12 +237,12 @@ sub parse_fa_files {
 		if (!defined($opt_C)) {
 		    $chr = $contig;
 		    if ($chr =~ /:/) {
-			if ($nwarnings < 50) {
+			if ($nwarnings_colon < 50) {
 			    print STDERR "Replacing : in $chr with _\n";
-			} elsif ($nwarnings == 50) {
+			} elsif ($nwarnings_colon == 50) {
 			    print STDERR "More than 50 warnings.  Will stop printing warnings\n";
 			}
-			$nwarnings++;
+			$nwarnings_colon++;
 			$chr =~ s/:/_/g;
 		    }
 		    $chronlyp = 1;
@@ -385,14 +392,34 @@ sub parse_fa_files {
 
 
 sub by_numeric_alpha {
-    ($numeric_a, $alpha_a) = $a =~ /(\d+)(\S*)/;
-    ($numeric_b, $alpha_b) = $b =~ /(\d+)(\S*)/;
-    if ($alpha_a !~ /\S/) {
+    my ($numeric_a, $alpha_a, $numeric_b, $alpha_b);
+
+    if ($a =~ /^chr\d/) {
+	($numeric_a, $alpha_a) = $a =~ /chr(\d+)(\S*)/;
+    } elsif ($a =~ /^chr\S/) {
+	($alpha_a) = $a =~ /chr(\d+)(\S*)/;
+    } elsif ($a =~ /^\d/) {
+	($numeric_a, $alpha_a) = $a =~ /(\d+)(\S*)/;
+    } else {
+	$alpha_a = $a;
+    }
+    if (defined($alpha_a) && $alpha_a !~ /\S/) {
 	undef $alpha_a;
     }
-    if ($alpha_b !~ /\S/) {
+
+    if ($b =~ /^chr\d/) {
+	($numeric_b, $alpha_b) = $b =~ /chr(\d+)(\S*)/;
+    } elsif ($b =~ /^chr\S/) {
+	($alpha_b) = $b =~ /chr(\d+)(\S*)/;
+    } elsif ($b =~ /^\d/) {
+	($numeric_b, $alpha_b) = $b =~ /(\d+)(\S*)/;
+    } else {
+	$alpha_b = $b;
+    }
+    if (defined($alpha_b) && $alpha_b !~ /\S/) {
 	undef $alpha_b;
     }
+
 
     if (defined($numeric_a) && !defined($numeric_b)) {
 	return -1;

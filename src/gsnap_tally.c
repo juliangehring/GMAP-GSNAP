@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap_tally.c 35818 2011-02-25 23:39:30Z twu $";
+static char rcsid[] = "$Id: gsnap_tally.c 43665 2011-07-26 20:48:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1218,6 +1218,24 @@ make_complement_buffered (char *complement, char *sequence, int length) {
   complement[length] = '\0';
   return;
 }
+
+static void
+make_complement_inplace (char *sequence, int length) {
+  char temp;
+  int i, j;
+
+  for (i = 0, j = length-1; i < length/2; i++, j--) {
+    temp = complCode[(int) sequence[i]];
+    sequence[i] = complCode[(int) sequence[j]];
+    sequence[j] = temp;
+  }
+  if (i == j) {
+    sequence[i] = complCode[(int) sequence[i]];
+  }
+
+  return;
+}
+
 
 static void
 make_reverse (char *reverse, char *sequence, int length) {

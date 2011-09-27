@@ -1,4 +1,4 @@
-/* $Id: stage2.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: stage2.h 44050 2011-08-01 00:56:56Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "bool.h"
@@ -11,6 +11,8 @@
 #define T Stage2_T
 typedef struct T *T;
 
+extern void
+Stage2_setup (bool splicingp_in);
 extern List_T
 Stage2_path (T this);
 extern int
@@ -32,20 +34,25 @@ extern void
 Stage2_free (T *old);
 
 extern int
-Stage2_scan (int *stage2_source,
-	     char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,
-	     char *genomicseg_ptr, char *genomicuc_ptr, int genomiclength, int genomic_offset,
+Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
+	     char *genomicuc_ptr, int genomiclength,
 	     Oligoindex_T *oligoindices, int noligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp);
 
 extern List_T
 Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,
-		char *genomicseg_ptr, char *genomicuc_ptr, int genomiclength, int genomic_offset,
+
+		char *genomicseg_ptr, char *genomicuc_ptr,
+		Genomicpos_T genomicstart, Genomicpos_T genomicend,
+		Genomicpos_T mappingstart, Genomicpos_T mappingend,
+		bool plusp, int genomiclength, int genomic_offset,
+
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
-		int maxintronlen, bool localp, bool skip_repetitive_p, bool debug_graphic_p,
-		bool diagnosticp, Stopwatch_T stopwatch, bool diag_debug);
+		int maxintronlen, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
+		bool favor_right_p, bool debug_graphic_p, bool diagnosticp,
+		Stopwatch_T stopwatch, bool diag_debug);
 
 #undef T
 #endif

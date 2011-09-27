@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: smooth.c 44154 2011-08-02 20:52:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -193,7 +193,7 @@ short_exon_byprob (int exonlen, int intronlen, int indexsize, double prob_thresh
 }
 
 static bool
-short_exon_bylength (int exonlen, int intronlen, int length_threshold) {
+short_exon_bylength (int exonlen, int length_threshold) {
 
   if (exonlen >= length_threshold) {
     return false;
@@ -239,7 +239,7 @@ zero_net_gap (int *starti, int *startj, int i, int j, int *intronlengths) {
 
 static int *
 find_internal_shorts_by_netgap (bool *deletep, int *exonmatches, int nexons,
-				int *intronlengths, int nintrons) {
+				int *intronlengths) {
   int *exonstatus;
   int starti, startj, i, j;
   int exonlen;
@@ -287,7 +287,7 @@ find_internal_shorts_by_netgap (bool *deletep, int *exonmatches, int nexons,
 
 static int *
 find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int nexons,
-			      int *intronlengths, int nintrons, int stage2_indexsize) {
+			      int *intronlengths, int stage2_indexsize) {
   int *exonstatus;
   int i;
   int exonlen, intronlen;
@@ -319,7 +319,7 @@ find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int
 
 /* For ends, we turn off the indexsize parameter */
 static int *
-trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int nintrons, int stage2_indexsize) {
+trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths) {
   int *exonstatus, i;
   bool shortp;
 
@@ -332,7 +332,7 @@ trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int 
   shortp = true;
   i = 0;
   while (i < nexons - 1 && shortp == true) {
-    if (short_exon_bylength(exonmatches[i],intronlengths[i],SHORTEXONLEN_END) == true &&
+    if (short_exon_bylength(exonmatches[i],SHORTEXONLEN_END) == true &&
 	short_exon_byprob(exonmatches[i],intronlengths[i],/*indexsize*/0,SHORTEXONPROB_END) == true) {
       *deletep = true;
       exonstatus[i] = DELETE;
@@ -345,7 +345,7 @@ trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int 
   shortp = true;
   i = nexons - 1;
   while (i > 0 && shortp == true) {
-    if (short_exon_bylength(exonmatches[i],intronlengths[i-1],SHORTEXONLEN_END) == true &&
+    if (short_exon_bylength(exonmatches[i],SHORTEXONLEN_END) == true &&
 	short_exon_byprob(exonmatches[i],intronlengths[i-1],/*indexsize*/0,SHORTEXONPROB_END) == true) {
       *deletep = true;
       exonstatus[i] = DELETE;
@@ -360,7 +360,11 @@ trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int 
 
 
 static List_T
-delete_and_mark_exons (List_T pairs, Pairpool_T pairpool, int *exonstatus, int *exonmatches, int nexons,
+delete_and_mark_exons (List_T pairs,
+#ifdef WASTE
+		       Pairpool_T pairpool,
+#endif
+		       int *exonstatus, int *exonmatches, int nexons,
 		       bool markp, bool bysizep) {
   List_T newpairs = NULL, pairptr;
   Pair_T pair;
@@ -483,10 +487,14 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool) {
 	  );
 
     debug(printf("\nFind internal shorts\n"));
-    exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths,nintrons);
+    exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths);
     debug(printf("\nRemove internal shorts\n"));
     if (*deletep == true) {
-      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/false);
+      pairs = delete_and_mark_exons(pairs,
+#ifdef WASTE
+				    pairpool,
+#endif
+				    exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/false);
     }
     
     debug(
@@ -528,10 +536,14 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
     intronlengths = get_intronlengths(&nintrons,pairs,/*bysizep*/true);
 
     debug(printf("\nTrim ends\n"));
-    exonstatus = trim_ends(&delete1p,exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
+    exonstatus = trim_ends(&delete1p,exonmatches,nexons,intronlengths);
     if (delete1p == true) {
       *deletep = true;
-      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/true);
+      pairs = delete_and_mark_exons(pairs,
+#ifdef WASTE
+				    pairpool,
+#endif
+				    exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/true);
     }
 
     FREE(exonstatus);
@@ -556,13 +568,17 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
 	  );
 
     debug(printf("\nFind internal shorts\n"));
-    exonstatus = find_internal_shorts_by_size(&(*shortp),&delete2p,exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
+    exonstatus = find_internal_shorts_by_size(&(*shortp),&delete2p,exonmatches,nexons,intronlengths,stage2_indexsize);
     debug(printf("\nRemove internal shorts\n"));
     if (delete2p == true) {
       *deletep = true;
     }
     if (delete2p == true || *shortp == true) {
-      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/true,/*bysizep*/true);
+      pairs = delete_and_mark_exons(pairs,
+#ifdef WASTE
+				    pairpool,
+#endif
+				    exonstatus,exonmatches,nexons,/*markp*/true,/*bysizep*/true);
     }
 
     debug(

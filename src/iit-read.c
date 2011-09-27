@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 33519 2011-01-10 22:13:42Z twu $";
+static char rcsid[] = "$Id: iit-read.c 45993 2011-08-30 01:00:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -870,7 +870,8 @@ IIT_dump_simple (T this) {
 
 /* For chromosome.iit file, which is stored in version 1 */
 void
-IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name) {
+IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name,
+	      char *sam_read_group_library, char *sam_read_group_platform) {
   int index = 0, i;
   Interval_T interval;
   unsigned int startpos;
@@ -899,6 +900,12 @@ IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_na
 
   if (sam_read_group_id != NULL) {
     fprintf(fp,"@RG\tID:%s",sam_read_group_id);
+    if (sam_read_group_platform != NULL) {
+      fprintf(fp,"\tPL:%s",sam_read_group_platform);
+    }
+    if (sam_read_group_library != NULL) {
+      fprintf(fp,"\tLB:%s",sam_read_group_library);
+    }
     fprintf(fp,"\tSM:%s",sam_read_group_name);
     fprintf(fp,"\n");
   }
@@ -1254,7 +1261,7 @@ sort_matches_by_type (T this, int *matches, int nmatches, bool alphabetizep) {
 /* For IIT versions >= 3.  Assumes that matches are all in the same
    div */
 static int *
-sort_matches_by_position (T this, int *matches, int nmatches, char *divstring, int divno) {
+sort_matches_by_position (T this, int *matches, int nmatches) {
   int *sorted, index, i;
   struct Interval_windex_T *intervals;
 
@@ -1279,30 +1286,6 @@ sort_matches_by_position (T this, int *matches, int nmatches, char *divstring, i
 }
 
 
-static int *
-sort_matches_by_position_with_divno (T this, int *matches, int nmatches, int divno) {
-  int *sorted, index, i;
-  struct Interval_windex_T *intervals;
-
-  if (nmatches == 0) {
-    return (int *) NULL;
-  } else {
-    intervals = (struct Interval_windex_T *) CALLOC(nmatches,sizeof(struct Interval_windex_T));
-    for (i = 0; i < nmatches; i++) {
-      index = intervals[i].index = matches[i];
-      intervals[i].interval = &(this->intervals[0][index-1]); /* Ignore divno here, because we have offset index */
-    }
-    qsort(intervals,nmatches,sizeof(struct Interval_windex_T),Interval_windex_cmp);
-
-    sorted = (int *) CALLOC(nmatches,sizeof(int));
-    for (i = 0; i < nmatches; i++) {
-      sorted[i] = intervals[i].index;
-    }
-
-    FREE(intervals);
-    return sorted;
-  }
-}
 
 
 #if 0
@@ -1331,7 +1314,7 @@ IIT_dump_counts (T this, bool alphabetizep) {
 
     for (type = 0; type < this->ntypes; type++) {
       typestring = IIT_typestring(this,type);
-      chroms[type] = Chrom_from_string(typestring);
+      chroms[type] = Chrom_from_string(typestring,/*mitochondrial_string*/NULL,/*order*/0U);
     }
     qsort(chroms,this->ntypes,sizeof(Chrom_T),Chrom_compare);
   }
@@ -1565,8 +1548,8 @@ skip_trees (off_t offset, off_t filesize, FILE *fp, char *filename,
   skipsize += skip_nnodes * sizeof(struct FNode_T);
 
   if ((offset += skipsize) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after skip_trees %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after skip_trees %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
     move_relative(fp,skipsize);
@@ -1592,24 +1575,25 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
 
   } else {
     if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after alphas %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after alphas %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       exit(9);
     } else {
       new->alphas[divno] = (int *) CALLOC(new->nintervals[divno]+1,sizeof(int));
-      if ((items_read = FREAD_INTS(new->alphas[divno],new->nintervals[divno]+1,fp)) != new->nintervals[divno] + 1) {
-	fprintf(stderr,"IIT file %s appears to be truncated.  items_read = %lu\n",filename,items_read);
+      if ((items_read = FREAD_INTS(new->alphas[divno],new->nintervals[divno]+1,fp)) != (unsigned int) new->nintervals[divno] + 1) {
+	fprintf(stderr,"IIT file %s appears to be truncated.  items_read = %lu\n",
+		filename,(unsigned long) items_read);
 	exit(9);
       }
     }
 
     if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after betas %ld, filesize %ld\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after betas %lu, filesize %lu\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       exit(9);
     } else {
       new->betas[divno] = (int *) CALLOC(new->nintervals[divno]+1,sizeof(int));
-      if ((items_read = FREAD_INTS(new->betas[divno],new->nintervals[divno]+1,fp)) != new->nintervals[divno] + 1) {
+      if ((items_read = FREAD_INTS(new->betas[divno],new->nintervals[divno]+1,fp)) != (unsigned int) new->nintervals[divno] + 1) {
 	fprintf(stderr,"IIT file %s appears to be truncated.  items_read = %lu\n",filename,items_read);
 	exit(9);
       }
@@ -1626,12 +1610,12 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
   }
 
   if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after sigmas %ld, filesize %ld\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after sigmas %lu, filesize %lu\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
     new->sigmas[divno] = (int *) CALLOC(new->nintervals[divno]+1,sizeof(int));
-    if ((items_read = FREAD_INTS(new->sigmas[divno],new->nintervals[divno]+1,fp)) != new->nintervals[divno] + 1) {
+    if ((items_read = FREAD_INTS(new->sigmas[divno],new->nintervals[divno]+1,fp)) != (unsigned int) new->nintervals[divno] + 1) {
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       exit(9);
     }
@@ -1647,12 +1631,12 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
   }
 
   if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after omegas %ld, filesize %ld\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after omegas %lu, filesize %lu\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
     new->omegas[divno] = (int *) CALLOC(new->nintervals[divno]+1,sizeof(int));
-    if ((items_read = FREAD_INTS(new->omegas[divno],new->nintervals[divno]+1,fp)) != new->nintervals[divno] + 1) {
+    if ((items_read = FREAD_INTS(new->omegas[divno],new->nintervals[divno]+1,fp)) != (unsigned int) new->nintervals[divno] + 1) {
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       exit(9);
     }
@@ -1696,8 +1680,8 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
     }
 #endif
     if (offset > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nodes %ld, filesize %ld\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nodes %lu, filesize %lu\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       exit(9);
     }
 
@@ -1733,8 +1717,8 @@ skip_intervals (int *skip_nintervals, off_t offset, off_t filesize, FILE *fp, ch
   }
 
   if ((offset += skipsize) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after skip_intervals %ld, filesize %ld\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after skip_intervals %lu, filesize %lu\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
     move_relative(fp,skipsize);
@@ -1788,8 +1772,8 @@ read_intervals (off_t offset, off_t filesize, FILE *fp, char *filename, T new, i
   }
 #endif
   if (offset > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after intervals %ld, filesize %ld\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after intervals %lu, filesize %lu\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   }
 
@@ -1797,7 +1781,7 @@ read_intervals (off_t offset, off_t filesize, FILE *fp, char *filename, T new, i
 }
 
 static void
-read_words (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
+read_words (off_t offset, off_t filesize, FILE *fp, T new) {
   off_t stringlen;
 #ifdef HAVE_64_BIT
   UINT8 length8;
@@ -1917,7 +1901,8 @@ read_words (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
   /* To do this check, we need to get stringlen for annotation similarly to that for labels */
   last_offset = offset + sizeof(char)*stringlen;
   if (last_offset != filesize) {
-    fprintf(stderr,"Problem with last_offset (%ld) not equal to filesize = (%ld)\n",last_offset,filesize);
+    fprintf(stderr,"Problem with last_offset (%lu) not equal to filesize = (%lu)\n",
+	    (unsigned long) last_offset,(unsigned long) filesize);
     exit(9);
   }
 #endif
@@ -1926,7 +1911,7 @@ read_words (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
 }
 
 static void
-read_words_debug (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
+read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
   off_t stringlen;
 #ifdef HAVE_64_BIT
   UINT8 length8;
@@ -2038,7 +2023,8 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, char *filename, T new)
   /* To do this check, we need to get stringlen for annotation similarly to that for labels */
   last_offset = offset + sizeof(char)*stringlen;
   if (last_offset != filesize) {
-    fprintf(stderr,"Problem with last_offset (%ld) not equal to filesize = (%ld)\n",last_offset,filesize);
+    fprintf(stderr,"Problem with last_offset (%lu) not equal to filesize = (%lu)\n",
+	    (unsigned long) last_offset,(unsigned long) filesize);
     exit(9);
   }
 #endif
@@ -2208,7 +2194,7 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
 /* Used if access is FILEIO.  Subsequent accesses by bigendian
    machines to anything but (char *) will still need to convert. */
 static void
-read_annotations (int fd, T new) {
+read_annotations (T new) {
 
   file_move_absolute(new->fd,new->labelorder_offset,sizeof(int),/*n*/0);
   new->labelorder = (int *) CALLOC(new->total_nintervals,sizeof(int));
@@ -2298,8 +2284,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return -1;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     return -1;
   }
 
@@ -2314,8 +2300,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	      version,IIT_LATEST_VERSION);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
 
@@ -2326,8 +2312,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return -1;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-		filename,offset,filesize);
+	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+		filename,(unsigned long) offset,(unsigned long) filesize);
 	return -1;
       }
 
@@ -2335,8 +2321,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return -1;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-		filename,offset,filesize);
+	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+		filename,(unsigned long) offset,(unsigned long) filesize);
 	return -1;
       }
 
@@ -2362,8 +2348,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
   }
@@ -2383,8 +2369,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return -1;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     return -1;
   }
   debug(printf("ntypes: %d\n",ntypes));
@@ -2400,8 +2386,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to have a negative number of fields\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
   }
@@ -2420,8 +2406,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to have a negative number of divs\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
     debug(printf("ndivs: %d\n",ndivs));
@@ -2449,8 +2435,8 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to have a negative value for divsort\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
     debug(printf("divsort: %d\n",divsort));
@@ -2535,7 +2521,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
       sprintf(newfile,"%s.iit",filename);
       if ((fp = FOPEN_READ_BINARY(newfile)) == NULL) {
-	/* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
+	FREE(newfile);
 	return NULL;
       } else {
 	filename = newfile;
@@ -2558,8 +2544,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     return NULL;
   }
 
@@ -2576,8 +2562,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	      new->version,IIT_LATEST_VERSION);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
 
@@ -2593,8 +2579,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return NULL;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-		filename,offset,filesize);
+	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+		filename,(unsigned long) offset,(unsigned long) filesize);
 	return NULL;
       }
 
@@ -2602,8 +2588,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return NULL;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-		filename,offset,filesize);
+	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+		filename,(unsigned long) offset,(unsigned long) filesize);
 	return NULL;
       }
 
@@ -2631,8 +2617,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
   }
@@ -2652,8 +2638,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     return NULL;
   }
   debug(printf("ntypes: %d\n",new->ntypes));
@@ -2669,8 +2655,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative number of fields\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
   }
@@ -2694,8 +2680,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative number of nodes\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nnodes %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nnodes %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
     new->cum_nnodes = (int *) CALLOC(new->ndivs+1,sizeof(int));
@@ -2720,8 +2706,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative number of divs\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
     debug(printf("ndivs: %d\n",new->ndivs));
@@ -2773,8 +2759,8 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative value for divsort\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
     debug(printf("divsort: %d\n",new->divsort));
@@ -2886,14 +2872,14 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     abort();
   }
 
-  read_words(offset,filesize,fp,filename,new);
+  read_words(offset,filesize,fp,new);
   fclose(fp);
 
 #ifndef HAVE_MMAP
   debug1(printf("No mmap available.  Reading annotations\n"));
   new->access = FILEIO;
   new->fd = Access_fileio(filename);
-  read_annotations(new->fd,new);
+  read_annotations(new);
   close(new->fd);
   /* pthread_mutex_init(&new->read_mutex,NULL); */
 #else
@@ -2903,7 +2889,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     debug1(printf("  Failed.  Reading annotations\n"));
     new->access = FILEIO;
     new->fd = Access_fileio(filename);
-    read_annotations(new->fd,new);
+    read_annotations(new);
     close(new->fd);
     /* pthread_mutex_init(&new->read_mutex,NULL); */
   }
@@ -2958,8 +2944,8 @@ IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     return;
   }
 
@@ -2974,8 +2960,8 @@ IIT_debug (char *filename) {
 	      new->version,IIT_LATEST_VERSION);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
 
@@ -2991,8 +2977,8 @@ IIT_debug (char *filename) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-		filename,offset,filesize);
+	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+		filename,(unsigned long) offset,(unsigned long) filesize);
 	return;
       }
 
@@ -3000,8 +2986,8 @@ IIT_debug (char *filename) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-		filename,offset,filesize);
+	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+		filename,(unsigned long) offset,(unsigned long) filesize);
 	return;
       }
 
@@ -3029,8 +3015,8 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
   }
@@ -3055,8 +3041,8 @@ IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %ld, filesize %ld)\n",
-	    filename,offset,filesize);
+    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %lu, filesize %lu)\n",
+	    filename,(unsigned long) offset,(unsigned long) filesize);
     return;
   }
   printf("ntypes: %d\n",new->ntypes);
@@ -3072,8 +3058,8 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative number of fields\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
   }
@@ -3097,8 +3083,8 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative number of nodes\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nnodes %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nnodes %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
     new->cum_nnodes = (int *) CALLOC(new->ndivs+1,sizeof(int));
@@ -3123,8 +3109,8 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative number of divs\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
     printf("ndivs: %d\n",new->ndivs);
@@ -3168,8 +3154,8 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative value for divsort\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %ld, filesize %ld)\n",
-	      filename,offset,filesize);
+      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %lu, filesize %lu)\n",
+	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
     printf("divsort: %d\n",new->divsort);
@@ -3277,14 +3263,14 @@ IIT_debug (char *filename) {
     abort();
   }
 
-  read_words_debug(offset,filesize,fp,filename,new);
+  read_words_debug(offset,filesize,fp,new);
   fclose(fp);
 
 #ifndef HAVE_MMAP
   debug1(printf("No mmap available.  Reading annotations\n"));
   new->access = FILEIO;
   new->fd = Access_fileio(filename);
-  read_annotations(new->fd,new);
+  read_annotations(new);
   close(new->fd);
   /* pthread_mutex_init(&new->read_mutex,NULL); */
 #else
@@ -3294,7 +3280,7 @@ IIT_debug (char *filename) {
     debug1(printf("  Failed.  Reading annotations\n"));
     new->access = FILEIO;
     new->fd = Access_fileio(filename);
-    read_annotations(new->fd,new);
+    read_annotations(new);
     close(new->fd);
     /* pthread_mutex_init(&new->read_mutex,NULL); */
   }
@@ -3624,11 +3610,164 @@ int_compare (const void *a, const void *b) {
   if (x < y) {
     return -1;
   } else if (y < x) {
-    return 1;
+    return +1;
   } else {
     return 0;
   }
 }
+
+
+static int
+uint_compare_ascending (const void *a, const void *b) {
+  unsigned int x = * (unsigned int *) a;
+  unsigned int y = * (unsigned int *) b;
+
+  if (x < y) {
+    return -1;
+  } else if (y < x) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+static int
+uint_compare_descending (const void *a, const void *b) {
+  unsigned int x = * (unsigned int *) a;
+  unsigned int y = * (unsigned int *) b;
+
+  if (x > y) {
+    return -1;
+  } else if (y > x) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+unsigned int *
+IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x) {
+  unsigned int *uniq = NULL, *coords = NULL, prev;
+  int neval, ncoords, i;
+  int match, lambda, min1, max1 = 0;
+  struct Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    *nuniq = 0;
+    return (unsigned int *) NULL;
+  }
+  min1 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_get_highs_for_low with divno %d and query %u\n",divno,x));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  debug(printf("min1=%d max1=%d\n",min1,max1));
+
+  if (max1 < min1) {
+    *nuniq = 0;
+    return (unsigned int *) NULL;
+  } else {
+    neval = (max1 - min1 + 1) + (max1 - min1 + 1);
+    coords = (unsigned int *) CALLOC(neval,sizeof(unsigned int));
+    ncoords = 0;
+
+    for (lambda = min1; lambda <= max1; lambda++) {
+      match = this->sigmas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.low == x) {
+	coords[ncoords++] = interval.high;
+      }
+
+      match = this->omegas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.low == x) {
+	coords[ncoords++] = interval.high;
+      }
+    }
+
+    /* Eliminate duplicates */
+    qsort(coords,ncoords,sizeof(unsigned int),uint_compare_ascending);
+
+    uniq = (unsigned int *) CALLOC(ncoords,sizeof(unsigned int));
+    *nuniq = 0;
+    prev = 0;
+    for (i = 0; i < ncoords; i++) {
+      if (coords[i] != prev) {
+	uniq[(*nuniq)++] = coords[i];
+	prev = coords[i];
+      }
+    }
+
+    FREE(coords);
+    return uniq;
+  }
+}
+
+
+unsigned int *
+IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
+  unsigned int *uniq = NULL, *coords = NULL, prev;
+  int neval, ncoords, i;
+  int match, lambda, min1, max1 = 0;
+  struct Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    *nuniq = 0;
+    return (unsigned int *) NULL;
+  }
+  min1 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_get_lows_for_high with divno %d and query %u\n",divno,x));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  debug(printf("min1=%d max1=%d\n",min1,max1));
+
+  if (max1 < min1) {
+    *nuniq = 0;
+    return (unsigned int *) NULL;
+  } else {
+    neval = (max1 - min1 + 1) + (max1 - min1 + 1);
+    coords = (unsigned int *) CALLOC(neval,sizeof(unsigned int));
+    ncoords = 0;
+
+    for (lambda = min1; lambda <= max1; lambda++) {
+      match = this->sigmas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.high == x) {
+	coords[ncoords++] = interval.low;
+      }
+
+      match = this->omegas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.high == x) {
+	coords[ncoords++] = interval.low;
+      }
+    }
+
+    /* Eliminate duplicates */
+    qsort(coords,ncoords,sizeof(unsigned int),uint_compare_descending);
+
+    uniq = (unsigned int *) CALLOC(ncoords,sizeof(unsigned int));
+    *nuniq = 0;
+    prev = 0;
+    for (i = 0; i < ncoords; i++) {
+      if (coords[i] != prev) {
+	uniq[(*nuniq)++] = coords[i];
+	prev = coords[i];
+      }
+    }
+
+    FREE(coords);
+    return uniq;
+  }
+}
+
 
 
 int *
@@ -3712,11 +3851,121 @@ IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y,
     return sorted;
 #endif
   } else {
-    sorted = sort_matches_by_position(this,matches,*nmatches,divstring,divno);
+    sorted = sort_matches_by_position(this,matches,*nmatches);
     FREE(matches);
     return sorted;
   }
 }
+
+
+bool
+IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y) {
+  int match;
+  int lambda;
+  int min1, max1 = 0, min2, max2 = 0;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    return false;
+  }
+  min1 = min2 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_get_with_divno with divno %d and query %u %u\n",divno,x,y));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  fnode_query_aux(&min2,&max2,this,divno,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  for (lambda = min1; lambda <= max2; lambda++) {
+    match = this->sigmas[divno][lambda];
+    if (Interval_overlap_p(x,y,this->intervals[divno],match) == true) {
+      return true;
+    }
+    match = this->omegas[divno][lambda];
+    if (Interval_overlap_p(x,y,this->intervals[divno],match) == true) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool
+IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign) {
+  int match;
+  int lambda;
+  int min1, max1 = 0, min2, max2 = 0;
+  Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    return false;
+  }
+  min1 = min2 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_exists_typed_with_divno with divno %d and query %u %u\n",divno,x,y));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  fnode_query_aux(&min2,&max2,this,divno,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  for (lambda = min1; lambda <= max2; lambda++) {
+    match = this->sigmas[divno][lambda];
+    interval = &(this->intervals[divno][match - 1]);
+    if (Interval_low(interval) == x && Interval_high(interval) == y &&
+	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      return true;
+    }
+
+    match = this->omegas[divno][lambda];
+    interval = &(this->intervals[divno][match - 1]);
+    if (Interval_low(interval) == x && Interval_high(interval) == y &&
+	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+#if 0
+bool
+IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign) {
+  int match;
+  int lambda;
+  int min1, max1 = 0, min2, max2 = 0;
+  Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    return false;
+  }
+  min1 = min2 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_get_with_divno with divno %d and query %u %u\n",divno,x,y));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  fnode_query_aux(&min2,&max2,this,divno,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  for (lambda = min1; lambda <= max2; lambda++) {
+    match = this->sigmas[divno][lambda];
+    interval = &(this->intervals[divno][match - 1]);
+    if (Interval_overlap_p(x,y,this->intervals[divno],match) == true &&
+	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      return true;
+    }
+    match = this->omegas[divno][lambda];
+    interval = &(this->intervals[divno][match - 1]);
+    if (Interval_overlap_p(x,y,this->intervals[divno],match) == true &&
+	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      return true;
+    }
+  }
+
+  return false;
+}
+#endif
+
+
 
 int *
 IIT_get_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp) {
@@ -3793,11 +4042,13 @@ IIT_get_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned i
     return sorted;
 #endif
   } else {
-    sorted = sort_matches_by_position_with_divno(this,matches,*nmatches,divno);
+    sorted = sort_matches_by_position(this,matches,*nmatches);
     FREE(matches);
     return sorted;
   }
 }
+
+
 
 int *
 IIT_get_signed_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp,
@@ -3882,7 +4133,7 @@ IIT_get_signed_with_divno (int *nmatches, T this, int divno, unsigned int x, uns
     return sorted;
 #endif
   } else {
-    sorted = sort_matches_by_position_with_divno(this,matches,*nmatches,divno);
+    sorted = sort_matches_by_position(this,matches,*nmatches);
     FREE(matches);
     return sorted;
   }
@@ -4376,7 +4627,7 @@ IIT_get_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsig
 #endif
   } else {
     divno = IIT_divint(this,divstring);
-    sorted = sort_matches_by_position(this,typematches,*ntypematches,divstring,divno);
+    sorted = sort_matches_by_position(this,typematches,*ntypematches);
     FREE(typematches);
     return sorted;
   }
@@ -4431,7 +4682,7 @@ IIT_get_typed_with_divno (int *ntypematches, T this, int divno, unsigned int x, 
     return sorted;
 #endif
   } else {
-    sorted = sort_matches_by_position_with_divno(this,typematches,*ntypematches,divno);
+    sorted = sort_matches_by_position(this,typematches,*ntypematches);
     FREE(typematches);
     return sorted;
   }
@@ -4482,7 +4733,7 @@ IIT_get_typed_signed (int *ntypematches, T this, char *divstring, unsigned int x
 #endif
   } else {
     divno = IIT_divint(this,divstring);
-    sorted = sort_matches_by_position(this,typematches,*ntypematches,divstring,divno);
+    sorted = sort_matches_by_position(this,typematches,*ntypematches);
     FREE(typematches);
     return sorted;
   }
@@ -4538,7 +4789,7 @@ IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, unsigned 
     return sorted;
 #endif
   } else {
-    sorted = sort_matches_by_position_with_divno(this,typematches,*ntypematches,divno);
+    sorted = sort_matches_by_position(this,typematches,*ntypematches);
     FREE(typematches);
     return sorted;
   }
@@ -4597,7 +4848,7 @@ IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, unsigned int
 #endif
   } else {
     divno = IIT_divint(this,divstring);
-    sorted = sort_matches_by_position(this,typematches,*ntypematches,divstring,divno);
+    sorted = sort_matches_by_position(this,typematches,*ntypematches);
     FREE(typematches);
     return sorted;
   }
@@ -4691,6 +4942,7 @@ IIT_get_exact_multiple (int *nexactmatches, T this, char *divstring, unsigned in
   }
 
   if (*nexactmatches == 0) {
+    FREE(matches);
     return (int *) NULL;
   } else {
     exactmatches = (int *) CALLOC(*nexactmatches,sizeof(int));
@@ -4727,6 +4979,7 @@ IIT_get_exact_multiple_with_divno (int *nexactmatches, T this, int divno, unsign
   }
 
   if (*nexactmatches == 0) {
+    FREE(matches);
     return (int *) NULL;
   } else {
     exactmatches = (int *) CALLOC(*nexactmatches,sizeof(int));
@@ -4926,6 +5179,124 @@ IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstr
   }
 
   return;
+}
+
+
+Overlap_T
+IIT_gene_overlap (T map_iit, int divno, unsigned int x, unsigned int y, bool favor_multiexon_p) {
+  int *matches, index;
+  int nmatches, i;
+  unsigned int exonstart, exonend;
+  int observed_genestrand;
+  char *annot, *restofheader, *p;
+  bool allocp = false;
+  bool multiexon_p;
+  bool foundp = false;
+
+  matches = IIT_get_with_divno(&nmatches,map_iit,divno,x,y,/*sortp*/false);
+
+  for (i = 0; i < nmatches; i++) {
+    index = matches[i];
+    observed_genestrand = IIT_interval_sign(map_iit,index);
+#if 0
+    if (observed_genestrand > 0 && desired_genestrand < 0) {
+      /* Inconsistent */
+    } else if (observed_genestrand < 0 && desired_genestrand > 0) {
+      /* Inconsistent */
+    } else {
+#endif
+      annot = IIT_annotation(&restofheader,map_iit,index,&allocp);
+
+      /* Skip header */
+      p = annot;
+      while (*p != '\0' && *p != '\n') {
+	p++;
+      }
+      if (*p == '\n') p++;
+
+      if (observed_genestrand > 0) {
+	multiexon_p = false;
+	while (*p != '\0') {
+	  if (sscanf(p,"%u %u",&exonstart,&exonend) != 2) {
+	    fprintf(stderr,"Can't parse exon coordinates in %s\n",p);
+	    abort();
+	  } else {
+	    /* Advance to next exon */
+	    while (*p != '\0' && *p != '\n') p++;
+	    if (*p == '\n') p++;
+	    if (*p != '\0') {
+	      multiexon_p = true;
+	    }
+	    
+	    if (exonend < x) {
+	      /* No overlap */
+	    } else if (exonstart > y) {
+	      /* No overlap */
+	    } else if (favor_multiexon_p == true) {
+	      if (multiexon_p == true) {
+		FREE(matches);
+		if (allocp) FREE(annot);
+		return KNOWN_GENE_MULTIEXON;
+	      } else {
+		/* Keep searching for a multi-exon gene */
+		foundp = true;
+	      }
+	    } else {
+	      FREE(matches);
+	      if (allocp) FREE(annot);
+	      return KNOWN_GENE;
+	    }
+	  }
+
+	}
+
+      } else {
+	multiexon_p = false;
+	while (*p != '\0') {
+	  if (sscanf(p,"%u %u",&exonstart,&exonend) != 2) {
+	    fprintf(stderr,"Can't parse exon coordinates in %s\n",p);
+	    abort();
+	  } else {
+	    /* Advance to next exon */
+	    while (*p != '\0' && *p != '\n') p++;
+	    if (*p == '\n') p++;
+	    if (*p != '\0') {
+	      multiexon_p = true;
+	    }
+
+	    if (exonstart < x) {
+	      /* No overlap */
+	    } else if (exonend > y) {
+	      /* No overlap */
+	    } else if (favor_multiexon_p == true) {
+	      if (multiexon_p == true) {
+		FREE(matches);
+		if (allocp) FREE(annot);
+		return KNOWN_GENE_MULTIEXON;
+	      } else {
+		/* Keep searching for a multi-exon gene */
+		foundp = true;
+	      }
+	    } else {
+	      FREE(matches);
+	      if (allocp) FREE(annot);
+	      return KNOWN_GENE;
+	    }
+	  }
+	}
+      }
+#if 0
+    }
+#endif
+  }
+  
+  FREE(matches);
+  if (allocp) FREE(annot);
+  if (foundp == true) {
+    return KNOWN_GENE;
+  } else {
+    return NO_KNOWN_GENE;
+  }
 }
 
 

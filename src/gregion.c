@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c 32520 2010-12-07 17:16:10Z twu $";
+static char rcsid[] = "$Id: gregion.c 44373 2011-08-05 03:55:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -543,8 +543,10 @@ Gregion_sufficient_support (T this) {
 
 
 void
-Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength) {
+Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength,
+		int min_extra_end) {
   Genomicpos_T left, right;
+  int extra_end;
 
   debug(printf("Entering Gregion_extend with extension5 %u and extension3 %u\n",extension5,extension3));
   debug(printf("  genomicstart %u, genomiclength %u\n",this->genomicstart,this->genomiclength));
@@ -552,21 +554,36 @@ Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int qu
   this->extension3 = extension3;
   this->extendedp = true;
 
+
   if (this->nexons == 1 || Gregion_sufficient_support(this) == true || this->support < 100) {
+    extra_end = EXTRA_SHORTEND;
+#if 0
+    /* Should no longer be necessary for known splicesites */
+    if (extra_end < min_extra_end) {
+      extra_end = min_extra_end;
+    }
+#endif
     if (this->plusp == true) {
-      left = extension5 + querylength + EXTRA_SHORTEND;
-      right = extension3 + querylength + EXTRA_SHORTEND;
+      left = extension5 + querylength + extra_end;
+      right = extension3 + querylength + extra_end;
     } else {
-      left = extension3 + querylength + EXTRA_SHORTEND;
-      right = extension5 + querylength + EXTRA_SHORTEND;
+      left = extension3 + querylength + extra_end;
+      right = extension5 + querylength + extra_end;
     }
   } else {
+    extra_end = EXTRA_LONGEND;
+#if 0
+    /* Should no longer be necessary for known splicesites */
+    if (extra_end < min_extra_end) {
+      extra_end = min_extra_end;
+    }
+#endif
     if (this->plusp == true) {
-      left = extension5 + EXTRA_LONGEND;
-      right = extension3 + EXTRA_LONGEND;
+      left = extension5 + extra_end;
+      right = extension3 + extra_end;
     } else {
-      left = extension3 + EXTRA_LONGEND;
-      right = extension5 + EXTRA_LONGEND;
+      left = extension3 + extra_end;
+      right = extension5 + extra_end;
     }
   }
 
@@ -1196,9 +1213,13 @@ Gregion_filter_clean (List_T gregionlist, int nchrs) {
   Chrnum_T chrnum;
 
   List_T unique = NULL, p;
-  T x, y, gregion, *array;
-  int n, i, j;
+  T gregion;
+  int n;
+#if 0
+  T x, y, *array;
+  int i, j;
   bool *eliminate;
+#endif
 #ifdef DEBUG
   List_T q;
 #endif

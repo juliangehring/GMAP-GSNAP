@@ -34,28 +34,34 @@ exit;
 
 sub read_coords {
   my ($coord_file) = @_;
+  my $universal_coord = 0;
 
   $FP = new IO::File($coord_file) or die "Cannot open coord file $coord_file";
   print STDERR "Reading coordinates from file $coord_file\n";
 
   while (defined($line = <$FP>)) {
     if ($line =~ /^#/) {
-      if ($line =~ /Reference strain:\s*(\S+)/) {
-	$refstrain = $1;
-      }
+	#if ($line =~ /Reference strain:\s*(\S+)/) {
+	#$refstrain = $1;
+	#}
 
     } else {
+      $line =~ s/\r\n/\n/;
       chop $line;
       @fields = split /\s+/,$line;
       $contig = $fields[0];
-      if (!defined($strain{$contig} = $fields[2])) {
-	$strain{$contig} = "";
-      } elsif (defined($refstrain) && $strain{$contig} eq $refstrain) {
-	$strain{$contig} = "";
-      }
+
+      #if (!defined($strain{$contig} = $fields[2])) {
+      #$strain{$contig} = "";
+      #} elsif (defined($refstrain) && $strain{$contig} eq $refstrain) {
+      #$strain{$contig} = "";
+      #}
 
       $coords{$contig} = $fields[1];
+      $universal_coord{$contig} = $universal_coord;
 
+      ($chrstart,$chrend) = $coords{$contig} =~ /\S+:(\d+)\.\.(\d+)/;
+      $universal_coord += $chrend - $chrstart + 1;
     }
   }
   close($FP);
@@ -101,6 +107,7 @@ sub process_fasta {
       }
 
       while (defined($line = <$FP>)) {
+	  $line =~ s/\r\n/\n/;
 	  chomp $line;
 	  if ($line !~ /\S/) {
 	      # Skip blank lines
@@ -117,7 +124,8 @@ sub process_fasta {
 		  # However, gmapindex knows how to handle this
 		  
 		  $processedp{$contig} = 1;
-		  printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
+		  #printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
+		  printf (">%s\t%s\t%u\n",$contig,$coords{$contig},$universal_coord{$contig});
 		  $printp = 1;
 		  
 	      }

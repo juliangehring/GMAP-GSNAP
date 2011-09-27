@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diagpool.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: diagpool.c 40326 2011-05-30 17:27:01Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -77,14 +77,14 @@ Diagpool_free_memory (T this) {
 
   for (p = this->diagchunks; p != NULL; p = List_next(p)) {
     diagptr = (struct Diag_T *) List_head(p);
-    FREE(diagptr);
+    FREE_KEEP(diagptr);
   }
-  List_free(&this->diagchunks);
+  List_free_keep(&this->diagchunks);
   for (p = this->listcellchunks; p != NULL; p = List_next(p)) {
     listcellptr = (struct List_T *) List_head(p);
-    FREE(listcellptr);
+    FREE_KEEP(listcellptr);
   }
-  List_free(&this->listcellchunks);
+  List_free_keep(&this->listcellchunks);
 
   this->ndiags = 0;
   this->diagctr = 0;
@@ -99,17 +99,24 @@ Diagpool_free_memory (T this) {
   return;
 }
 
+void
+Diagpool_report_memory (T this) {
+  printf("Diagpool has %d diagchunks and %d listcellchunks\n",
+	 List_length(this->diagchunks),List_length(this->listcellchunks));
+  return;
+}
 
 static struct Diag_T *
 add_new_diagchunk (T this) {
   struct Diag_T *chunk;
 
-  chunk = (struct Diag_T *) MALLOC(CHUNKSIZE*sizeof(struct Diag_T));
-  this->diagchunks = List_push(this->diagchunks,(void *) chunk);
+  chunk = (struct Diag_T *) MALLOC_KEEP(CHUNKSIZE*sizeof(struct Diag_T));
+  this->diagchunks = List_push_keep(this->diagchunks,(void *) chunk);
   debug1(printf("Adding a new chunk of diags.  Ptr for diag %d is %p\n",
 		this->ndiags,chunk));
 
   this->ndiags += CHUNKSIZE;
+
   return chunk;
 }
 
@@ -117,12 +124,13 @@ static struct List_T *
 add_new_listcellchunk (T this) {
   struct List_T *chunk;
 
-  chunk = (struct List_T *) MALLOC(CHUNKSIZE*sizeof(struct List_T));
-  this->listcellchunks = List_push(this->listcellchunks,(void *) chunk);
+  chunk = (struct List_T *) MALLOC_KEEP(CHUNKSIZE*sizeof(struct List_T));
+  this->listcellchunks = List_push_keep(this->listcellchunks,(void *) chunk);
   debug1(printf("Adding a new chunk of listcells.  Ptr for listcell %d is %p\n",
 	       this->nlistcells,chunk));
 
   this->nlistcells += CHUNKSIZE;
+
   return chunk;
 }
 

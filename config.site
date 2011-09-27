@@ -97,14 +97,10 @@
 ## PERL=/usr/local/bin/perl
 
 
-## Header and library files for utilities that can parse BAM files
-##    (optional)
-## Requires the user to obtain and compile the samtools library, and also
-##     requires a working zlib library
-## Expects the header files bam.h and bgzf.h and the library file libbam.a
-##    to be in /path/to/samtools
+## Maximum read length for GSNAP, defined at compile-time.  If this is
+## not set here, then a default value of 200 will be used
 ##
-## with_samtools=/path/to/samtools
+## MAX_READLENGTH=200
 
 
 ## Header and library files for support of the external Goby library

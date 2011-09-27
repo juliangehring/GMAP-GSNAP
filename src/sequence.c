@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 36002 2011-03-03 00:46:36Z twu $";
+static char rcsid[] = "$Id: sequence.c 47214 2011-09-14 17:08:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -107,6 +107,14 @@ Sequence_trimpointer (T this) {
   return &(this->contents[this->trimstart]);
 }
 
+#ifndef PMAP
+char *
+Sequence_quality_string (T this) {
+  return this->quality;
+}
+#endif
+
+
 int
 Sequence_ntlength (T this) {
 #ifdef PMAP
@@ -166,21 +174,21 @@ void
 Sequence_free (T *old) {
   if (*old) {
     if ((*old)->restofheader != NULL) {
-      FREE((*old)->restofheader);
+      FREE_IN((*old)->restofheader);
     }
     if ((*old)->acc != NULL) {
-      FREE((*old)->acc);
+      FREE_IN((*old)->acc);
     }
 
 #ifndef PMAP
     if ((*old)->quality_alloc != NULL) {
-      FREE((*old)->quality_alloc);
+      FREE_IN((*old)->quality_alloc);
     }
 #endif
 
-    FREE((*old)->contents_alloc);
+    FREE_IN((*old)->contents_alloc);
 
-    FREE(*old);
+    FREE_IN(*old);
   }
   return;
 }
@@ -188,14 +196,14 @@ Sequence_free (T *old) {
 #ifdef PMAP
 T
 Sequence_convert_to_nucleotides (T this) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_IN(sizeof(*new));
   int i;
 
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->fulllength = this->fulllength*3;
   new->fulllength_given = this->fulllength_given*3;
-  new->contents = new->contents_alloc = (char *) CALLOC(new->fulllength+1,sizeof(char));
+  new->contents = new->contents_alloc = (char *) CALLOC_IN(new->fulllength+1,sizeof(char));
   for (i = 0; i < new->fulllength; i++) {
     new->contents[i] = '?';
   }
@@ -321,9 +329,9 @@ Sequence_input_init_gzip (gzFile fp) {
 
 static void
 blank_header (T this) {
-  this->acc = (char *) CALLOC(strlen("NO_HEADER")+1,sizeof(char));
+  this->acc = (char *) CALLOC_IN(strlen("NO_HEADER")+1,sizeof(char));
   strcpy(this->acc,"NO_HEADER");
-  this->restofheader = (char *) CALLOC(1,sizeof(char));
+  this->restofheader = (char *) CALLOC_IN(1,sizeof(char));
   this->restofheader[0] = '\0';
   return;
 }
@@ -340,7 +348,12 @@ input_header (FILE *fp, T this) {
     return NULL;
   }
 
-  if ((p = rindex(&(Header[0]),'\n')) != NULL) {
+  if (Header[0] == '\n') {
+    Header[0] = '\0';
+  } else if ((p = rindex(&(Header[0]),'\n')) != NULL) {
+    if (p[-1] == '\r') {
+      p--;
+    }
     *p = '\0';
   } else {
     /* Eliminate rest of header from input */
@@ -355,17 +368,17 @@ input_header (FILE *fp, T this) {
   if (*p == '\0') {
     /* Accession only */
     length = (p - &(Header[0]))/sizeof(char);
-    this->acc = (char *) CALLOC(length+1,sizeof(char));
+    this->acc = (char *) CALLOC_IN(length+1,sizeof(char));
     strcpy(this->acc,Header);
-    this->restofheader = (char *) CALLOC(1,sizeof(char));
+    this->restofheader = (char *) CALLOC_IN(1,sizeof(char));
     this->restofheader[0] = '\0';
   } else {
     *p = '\0';
     length = (p - &(Header[0]))/sizeof(char);
-    this->acc = (char *) CALLOC(length+1,sizeof(char));
+    this->acc = (char *) CALLOC_IN(length+1,sizeof(char));
     strcpy(this->acc,Header);
     p++;
-    this->restofheader = (char *) CALLOC(strlen(p)+1,sizeof(char));
+    this->restofheader = (char *) CALLOC_IN(strlen(p)+1,sizeof(char));
     strcpy(this->restofheader,p);
   }
 
@@ -415,6 +428,7 @@ print_contents (char *p, int length) {
 #define CONTROLM 13		/* From PC */
 #define SPACE 32
 
+#if 0
 static char *
 find_bad_char (char *line) {
   char *first, *p1, *p2;
@@ -422,13 +436,14 @@ find_bad_char (char *line) {
   char *p3;
 #endif
 
-  p1 = index(line,CONTROLM);
+  /* p1 = index(line,CONTROLM); */
   p2 = index(line,SPACE);
   /* p3 = index(line,DASH); */
 
-  if (p1 == NULL && p2 == NULL /* && p3 == NULL*/) {
+  if (/* p1 == NULL && */ p2 == NULL /* && p3 == NULL*/) {
     return NULL;
   } else {
+#if 0
     if (p1) {
       first = p1;
     }
@@ -452,8 +467,12 @@ find_bad_char (char *line) {
     }
     */
     return first;
+#else
+    return p2;
+#endif
   }
 }
+#endif
 
 
 static int
@@ -523,15 +542,21 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp, bool possible_fasta_heade
 	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else {
 	debug(printf("Read %s.\n",ptr));
-	while ((p = find_bad_char(ptr)) != NULL) {
-	  /* Handle PC line feed ^M */
+	/* Was a call to find_bad_char */
+	while ((p = index(ptr,SPACE)) != NULL) {
 	  ptr = p++;
 	  strlenp = strlen(p);
 	  memmove(ptr,p,strlenp);
 	  ptr[strlenp] = '\0';
-	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	  debug(printf("Found space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
 	}
-	if ((p = index(ptr,'\n')) != NULL) {
+	if (*ptr == '\n') {
+	  *eolnp = true;
+	  debug(printf("line == EOLN.  Continuing\n"));
+	} else if ((p = index(ptr,'\n')) != NULL) {
+	  if (p[-1] == '\r') {
+	    p--;
+	  }
 	  ptr = p;
 	  *eolnp = true;
 	  debug(printf("line == EOLN.  Continuing\n"));
@@ -614,15 +639,21 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 	break;
       } else {
 	debug(printf("Read %s.\n",ptr));
-	while ((p = find_bad_char(ptr)) != NULL) {
-	  /* Handle PC line feed ^M */
+	/* Was a call to find_bad_char */
+	while ((p = index(ptr,SPACE)) != NULL) {
 	  ptr = p++;
 	  strlenp = strlen(p);
 	  memmove(ptr,p,strlenp);
 	  ptr[strlenp] = '\0';
-	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	  debug(printf("Found space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
 	} 
-	if ((p = index(ptr,'\n')) != NULL) {
+	if (*ptr == '\n') {
+	  eolnp = true;
+	  debug(printf("line == EOLN.  Continuing\n"));
+	} else if ((p = index(ptr,'\n')) != NULL) {
+	  if (p[-1] == '\r') {
+	    p--;
+	  }
 	  ptr = p;
 	  eolnp = true;
 	  debug(printf("line == EOLN.  Continuing\n"));
@@ -709,12 +740,12 @@ input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, 
 /* Used only by extern procedures (outside of this file).  Internal
    procedures have their own specialized creators. */
 T
-Sequence_genomic_new (char *contents, int length) {
+Sequence_genomic_new (char *contents, int length, bool copyp) {
   T new = (T) MALLOC(sizeof(*new));
+  char *copy;
 
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
-  new->contents = contents;
 
   new->trimstart = 0;
   new->trimend = new->fulllength = length;
@@ -722,11 +753,17 @@ Sequence_genomic_new (char *contents, int length) {
   new->fulllength_given = length;
 #endif
 
-  /* Called only by Genome_get_segment, which provides
-     its own buffer */
-  /* new->free_contents_p = false; */
-  new->contents_alloc = (char *) NULL;
-  /* new->contents_uc_alloc = (char *) NULL; -- only for GSNAP */
+  if (copyp == true) {
+    copy = (char *) CALLOC(length+1,sizeof(char));
+    strncpy(copy,contents,length);
+    new->contents = copy;
+    new->contents_alloc = copy;
+  } else {
+    /* new->free_contents_p = false; */
+    new->contents = contents;
+    new->contents_alloc = contents;
+    /* new->contents_uc_alloc = (char *) NULL; -- only for GSNAP */
+  }
 
 #ifndef PMAP
   new->quality = new->quality_alloc = (char *) NULL;
@@ -747,7 +784,7 @@ make_complement (char *sequence, unsigned int length) {
   char *complement;
   int i, j;
 
-  complement = (char *) CALLOC(length+1,sizeof(char));
+  complement = (char *) CALLOC_IN(length+1,sizeof(char));
   for (i = length-1, j = 0; i >= 0; i--, j++) {
     complement[j] = complCode[(int) sequence[i]];
   }
@@ -763,7 +800,7 @@ make_reverse (char *sequence, unsigned int length) {
   if (sequence == NULL) {
     return (char *) NULL;
   } else {
-    reverse = (char *) CALLOC(length+1,sizeof(char));
+    reverse = (char *) CALLOC_IN(length+1,sizeof(char));
     for (i = length-1, j = 0; i >= 0; i--, j++) {
       reverse[j] = sequence[i];
     }
@@ -780,7 +817,7 @@ make_complement_uppercase (char *sequence, unsigned int length) {
   char uppercaseCode[128] = UPPERCASE_U2T;
   int i, j;
 
-  complement = (char *) CALLOC(length+1,sizeof(char));
+  complement = (char *) CALLOC_IN(length+1,sizeof(char));
   for (i = length-1, j = 0; i >= 0; i--, j++) {
     complement[j] = uppercaseCode[(int) complCode[(int) sequence[i]]];
   }
@@ -794,7 +831,7 @@ static void
 make_complement_buffered (char *complement, char *sequence, unsigned int length) {
   int i, j;
 
-  /* complement = (char *) CALLOC(length+1,sizeof(char)); */
+  /* complement = (char *) CALLOC_IN(length+1,sizeof(char)); */
   for (i = length-1, j = 0; i >= 0; i--, j++) {
     complement[j] = complCode[(int) sequence[i]];
   }
@@ -802,6 +839,23 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
   return;
 }
 
+
+static void
+make_complement_inplace (char *sequence, unsigned int length) {
+  char temp;
+  unsigned int i, j;
+
+  for (i = 0, j = length-1; i < length/2; i++, j--) {
+    temp = complCode[(int) sequence[i]];
+    sequence[i] = complCode[(int) sequence[j]];
+    sequence[j] = temp;
+  }
+  if (i == j) {
+    sequence[i] = complCode[(int) sequence[i]];
+  }
+
+  return;
+}
 
 
 /************************************************************************
@@ -835,7 +889,7 @@ Sequence_subsequence (T this, int start, int end) {
   if (end <= start) {
     return NULL;
   } else {
-    new = (T) MALLOC(sizeof(*new));
+    new = (T) MALLOC_IN(sizeof(*new));
 
     new->acc = (char *) NULL;
     new->restofheader = (char *) NULL;
@@ -877,7 +931,7 @@ Sequence_subsequence (T this, int start, int end) {
 
 T
 Sequence_revcomp (T this) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_IN(sizeof(*new));
 
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
@@ -909,9 +963,9 @@ make_uppercase (char *sequence, unsigned int length) {
 #else
   char uppercaseCode[128] = UPPERCASE_U2T;
 #endif
-  int i;
+  unsigned int i;
 
-  uppercase = (char *) CALLOC(length+1,sizeof(char));
+  uppercase = (char *) CALLOC_IN(length+1,sizeof(char));
   for (i = 0; i < length; i++) {
     uppercase[i] = uppercaseCode[(int) sequence[i]];
   }
@@ -922,7 +976,7 @@ make_uppercase (char *sequence, unsigned int length) {
 
 T
 Sequence_uppercase (T this) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_IN(sizeof(*new));
 
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
@@ -932,7 +986,7 @@ Sequence_uppercase (T this) {
   if (this->quality_alloc == NULL) {
     new->quality = new->quality_alloc = (char *) NULL;
   } else {
-    new->quality = new->quality_alloc =(char *) CALLOC(this->fulllength+1,sizeof(char));
+    new->quality = new->quality_alloc =(char *) CALLOC_IN(this->fulllength+1,sizeof(char));
     strcpy(new->quality,this->quality);
   }
 #endif
@@ -953,7 +1007,7 @@ Sequence_uppercase (T this) {
 
 T
 Sequence_alias (T this) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_IN(sizeof(*new));
 
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
@@ -994,11 +1048,13 @@ Sequence_endstream () {
 T
 Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   T new;
-  int fulllength, skiplength, quality_length;
+  int fulllength, skiplength;
   char *pointer1, *pointer2a, *pointer2b;
   int length1, length2a, length2b;
 #ifdef PMAP
   char lastchar = '*';
+#else
+  int quality_length;
 #endif
 
   if (feof(input)) {
@@ -1013,7 +1069,7 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
     }
   }
 
-  new = (T) MALLOC(sizeof(*new));
+  new = (T) MALLOC_IN(sizeof(*new));
 
   if (*nextchar != '@' && *nextchar != '>' && *nextchar != '<') {
     new->firstp = true;		/* by default */
@@ -1021,7 +1077,7 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
     *nextchar = EOF;
-    FREE(new);
+    FREE_IN(new);
     return NULL;
   } else if (*nextchar == '@') {
     new->firstp = true;		/* by default */
@@ -1076,7 +1132,7 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   new->trimend = fulllength;
 #endif
 
-  new->contents = new->contents_alloc = (char *) CALLOC(fulllength+1,sizeof(char));
+  new->contents = new->contents_alloc = (char *) CALLOC_IN(fulllength+1,sizeof(char));
   if (length1 > 0) {
     strncpy(new->contents,pointer1,length1);
     if (length2a > 0) {
@@ -1108,7 +1164,7 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
 	      quality_length,fulllength,new->acc);
       exit(9);
     } else {
-      new->quality = new->quality_alloc = (char *) CALLOC(fulllength+1,sizeof(char));
+      new->quality = new->quality_alloc = (char *) CALLOC_IN(fulllength+1,sizeof(char));
       if (length1 > 0) {
 	strncpy(new->quality,pointer1,length1);
 	if (length2a > 0) {
@@ -1132,19 +1188,17 @@ T
 Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp) {
   T queryseq;
 
-#ifdef LEAKCHECK
-  Mem_leak_check_start(__FILE__,__LINE__);
-#endif
-
   while (1) {
     if (*input == NULL || feof(*input)) {
+      if (*input != NULL) {
+	fclose(*input);
+	*input = NULL;
+      }
+
       if (*nfiles == 0) {
 	*nextchar = EOF;
 	return NULL;
       } else {
-	if (*input != NULL) {
-	  fclose(*input);
-	}
 	while (*nfiles > 0 && (*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
 	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
 	  (*files)++;
@@ -1187,7 +1241,7 @@ Sequence_read_unlimited (FILE *input) {
     }
   }
 
-  new = (T) MALLOC(sizeof(*new));
+  new = (T) MALLOC_IN(sizeof(*new));
 
   if (Initc != '>' /* && Initc != '<' */) {
     new->firstp = true;		/* by default */
@@ -1196,7 +1250,7 @@ Sequence_read_unlimited (FILE *input) {
     maxseqlen--;
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
-    FREE(new);
+    FREE_IN(new);
     return NULL;
   } else if (Initc == '>') {
     new->firstp = true;
@@ -1214,7 +1268,7 @@ Sequence_read_unlimited (FILE *input) {
   eolnp = true;
   while (fgets(&(Sequence[startpos]),maxseqlen,input) != NULL &&
 	 (eolnp == false || (Sequence[1] != '>' /* && Sequence[1] != '<' */))) {
-    for (p = &(Sequence[1]); *p != '\n' && *p != '\0'; p++) {
+    for (p = &(Sequence[1]); *p != '\r' && *p != '\n' && *p != '\0'; p++) {
       if (!iscntrl((int) *p)
 #ifdef DASH
 	  && *p != DASH
@@ -1223,7 +1277,7 @@ Sequence_read_unlimited (FILE *input) {
 	intlist = Intlist_push(intlist,(int) *p);
       }
     }
-    if (*p == '\n') {
+    if (*p == '\r' || *p == '\n') {
       eolnp = true;
     } else {
       eolnp = false;
@@ -1275,26 +1329,23 @@ Sequence_print_digest (FILE *fp, T this) {
 void
 Sequence_print_header (FILE *fp, T this, bool checksump) {
 
-#if 0
-#ifdef PMAP
-  fprintf(fp,"%s (%d aa) %s",this->acc,this->fulllength_given+this->skiplength,this->restofheader);
-#else
-  fprintf(fp,"%s (%d bp) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
-#endif
-
-#else
-  if (this->restofheader == NULL || this->restofheader[0] == '\0') {
-    fprintf(fp,"%s",this->acc);
+  if (this->acc == NULL) {
+    fprintf(fp,"NO_HEADER");
   } else {
-    fprintf(fp,"%s %s",this->acc,this->restofheader);
-  }
-#endif
+    if (this->restofheader == NULL || this->restofheader[0] == '\0') {
+      fprintf(fp,"%s",this->acc);
+    } else {
+      fprintf(fp,"%s %s",this->acc,this->restofheader);
+    }
 
-  if (checksump == true) {
-    fprintf(fp," md5:");
-    Sequence_print_digest(fp,this);
+    if (checksump == true) {
+      fprintf(fp," md5:");
+      Sequence_print_digest(fp,this);
+    }
   }
+
   fprintf(fp,"\n");
+
   return;
 }
 
@@ -1484,83 +1535,6 @@ Sequence_print_two (T ref, T alt, bool uppercasep, int wraplength) {
 
 
 void
-Sequence_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high) {
-  int i;
-
-  if (this->fulllength == 0 || isspace(this->contents[0])) {
-    fprintf(fp,"(null)");
-  } else {
-    for (i = hardclip_low; i < this->fulllength - hardclip_high; i++) {
-      fprintf(fp,"%c",this->contents[i]);
-    }
-  }
-  return;
-}
-
-void
-Sequence_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high) {
-  int i;
-
-  for (i = this->fulllength - 1 - hardclip_high; i >= hardclip_low; --i) {
-    fprintf(fp,"%c",complCode[(int) this->contents[i]]);
-  }
-
-  return;
-}
-
-
-#ifndef PMAP
-void
-Sequence_print_quality (FILE *fp, T this, int hardclip_low, int hardclip_high,
-			int shift) {
-  int i;
-  int c;
-
-  if (this->quality == NULL) {
-    fprintf(fp,"*");
-  } else {
-    for (i = hardclip_low; i < this->fulllength - hardclip_high; i++) {
-      if ((c = this->quality[i] + shift) <= 32) {
-	fprintf(stderr,"Warning: With a quality-print-shift of %d, QC score %c becomes non-printable.  May need to specify --quality-protocol or --quality-print-shift\n",
-		shift,this->quality[i]);
-	abort();
-      } else {
-	fprintf(fp,"%c",c);
-      }
-    }
-
-  }
-  return;
-}
-
-void
-Sequence_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high,
-				int shift) {
-  int i;
-  int c;
-
-  if (this->quality == NULL) {
-    fprintf(fp,"*");
-  } else {
-    for (i = this->fulllength - 1 - hardclip_high; i >= hardclip_low; --i) {
-      if ((c = this->quality[i] + shift) <= 32) {
-	fprintf(stderr,"Warning: With a quality-print-shift of %d, QC score %c becomes non-printable.  May need to specify --quality-protocol or --quality-print-shift\n",
-		shift,this->quality[i]);
-	abort();
-      } else {
-	fprintf(fp,"%c",c);
-      }
-    }
-  }
-
-  return;
-}
-#endif
-
-
-
-
-void
 Sequence_print_raw (T this) {
   int i = 0, pos, start, end;
 
@@ -1576,25 +1550,22 @@ Sequence_print_raw (T this) {
 
 T
 Sequence_substring (T usersegment, unsigned int left, unsigned int length, 
-		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
-  if (length > gbufferlen) {
-    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
-	    gbufferlen,length);
-    abort();
-    return NULL;
+		    bool revcomp) {
+  char *gbuffer;
 
+  gbuffer = (char *) CALLOC(length+1,sizeof(char));
+
+  memcpy(gbuffer,&(usersegment->contents[left]),length*sizeof(char));
+  gbuffer[length] = '\0';
+
+  if (revcomp == true) {
+    /* make_complement_buffered(gbuffer2,gbuffer1,length); */
+    make_complement_inplace(gbuffer,length);
+    debug(fprintf(stderr,"Got sequence at %u with length %u, revcomp\n",left,length));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    memcpy(gbuffer1,&(usersegment->contents[left]),length*sizeof(char));
-    gbuffer1[length] = '\0';
-
-    if (revcomp == true) {
-      make_complement_buffered(gbuffer2,gbuffer1,length);
-      debug(fprintf(stderr,"Got sequence at %u with length %u, revcomp\n",left,length));
-      return Sequence_genomic_new(gbuffer2,length);
-    } else {
-      debug(fprintf(stderr,"Got sequence at %u with length %u, forward\n",left,length));
-      return Sequence_genomic_new(gbuffer1,length);
-    }
+    debug(fprintf(stderr,"Got sequence at %u with length %u, forward\n",left,length));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
 }
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: match.c 43665 2011-07-26 20:48:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -172,7 +172,7 @@ Match_free (T *old) {
 
 void
 Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_iit, int stage1size) {
-  char gbuffer1[MAXSTAGE1SIZE+1], gbuffer2[MAXSTAGE1SIZE+1], *genomicseg_ptr;
+  char *genomicseg_ptr;
   Sequence_T genomicseg;
   int querypos;
   Genomicpos_T position;
@@ -182,15 +182,15 @@ Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_i
 
 #ifdef PMAP
   if (this->forwardp == true) {
-    genomicseg = Genome_get_segment(genome,position,3*stage1size,chromosome_iit,/*revcomp*/false,gbuffer1,gbuffer2,3*stage1size);
+    genomicseg = Genome_get_segment(genome,position,3*stage1size,chromosome_iit,/*revcomp*/false);
   } else {
-    genomicseg = Genome_get_segment(genome,position-(3*stage1size-1U),3*stage1size,chromosome_iit,/*revcomp*/true,gbuffer1,gbuffer2,3*stage1size);
+    genomicseg = Genome_get_segment(genome,position-(3*stage1size-1U),3*stage1size,chromosome_iit,/*revcomp*/true);
   }
 #else
   if (this->forwardp == true) {
-    genomicseg = Genome_get_segment(genome,position,stage1size,chromosome_iit,/*revcomp*/false,gbuffer1,gbuffer2,stage1size);
+    genomicseg = Genome_get_segment(genome,position,stage1size,chromosome_iit,/*revcomp*/false);
   } else {
-    genomicseg = Genome_get_segment(genome,position-(stage1size-1U),stage1size,chromosome_iit,/*revcomp*/true,gbuffer1,gbuffer2,stage1size);
+    genomicseg = Genome_get_segment(genome,position-(stage1size-1U),stage1size,chromosome_iit,/*revcomp*/true);
   }
 #endif
   genomicseg_ptr = Sequence_fullpointer(genomicseg);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c 35035 2011-02-11 18:12:43Z twu $";
+static char rcsid[] = "$Id: datadir.c 46646 2011-09-07 03:13:14Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -84,12 +84,12 @@ find_fileroot (char *genomesubdir, char *genomedir, char *dbroot) {
   if ((dp = opendir(genomesubdir)) == NULL) {
     /* Problem found.  Try to diagnose */
     if ((dp = opendir(genomedir)) == NULL) {
-      fprintf(stderr,"Unable to find default directory %s.  Either recompile the GMAP package\n",genomedir);
+      fprintf(stderr,"Unable to find genome directory %s.  Either recompile the GMAP package\n",genomedir);
       fprintf(stderr,"to have the correct default directory (seen by doing gmap --version),\n");
-      fprintf(stderr,"or add the -D flag to gmap to specify the genome directory.\n");
+      fprintf(stderr,"or use the -D flag to gmap to specify the correct genome directory.\n");
       exit(9);
     } else {
-      fprintf(stderr,"Unable to find genome %s in default directory %s.\n",dbroot,genomedir);
+      fprintf(stderr,"Unable to find genome %s in directory %s.\n",dbroot,genomedir);
       fprintf(stderr,"Make sure you have typed the genome correctly, or use the -D flag\n");
       fprintf(stderr,"to specify a directory.  For example, '-D .' specifies this directory.\n");
       exit(9);

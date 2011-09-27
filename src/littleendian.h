@@ -1,4 +1,4 @@
-/* $Id: littleendian.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: littleendian.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef LITTLEENDIAN_INCLUDED
 #define LITTLEENDIAN_INCLUDED
 #ifdef HAVE_CONFIG_H

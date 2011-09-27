@@ -1,9 +1,15 @@
 
 
 if FULLDIST
-bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+              psl_splicesites psl_introns psl_genes \
+              gtf_splicesites gtf_introns gtf_genes \
+              dbsnp_iit sam_merge sam_restore
 else
-bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+              psl_splicesites psl_introns psl_genes \
+              gtf_splicesites gtf_introns gtf_genes \
+              dbsnp_iit
 endif
 
 gmap_compress: gmap_compress.pl
@@ -26,10 +32,6 @@ gmap_build: gmap_build.pl
 	cp gmap_build.pl gmap_build
 	chmod +x gmap_build
 
-gmap_update: gmap_update.pl
-	cp gmap_update.pl gmap_update
-	chmod +x gmap_update
-
 gmap_reassemble: gmap_reassemble.pl
 	cp gmap_reassemble.pl gmap_reassemble
 	chmod +x gmap_reassemble
@@ -46,9 +48,30 @@ psl_splicesites: psl_splicesites.pl
 	cp psl_splicesites.pl psl_splicesites
 	chmod +x psl_splicesites
 
+psl_genes: psl_genes.pl
+	cp psl_genes.pl psl_genes
+	chmod +x psl_genes
+
+psl_introns: psl_introns.pl
+	cp psl_introns.pl psl_introns
+	chmod +x psl_introns
+
 psl_splices: psl_splices.pl
 	cp psl_splices.pl psl_splices
 	chmod +x psl_splices
+
+gtf_splicesites: gtf_splicesites.pl
+	cp gtf_splicesites.pl gtf_splicesites
+	chmod +x gtf_splicesites
+
+gtf_introns: gtf_introns.pl
+	cp gtf_introns.pl gtf_introns
+	chmod +x gtf_introns
+
+gtf_genes: gtf_genes.pl
+	cp gtf_genes.pl gtf_genes
+	chmod +x gtf_genes
+
 
 dbsnp_iit: dbsnp_iit.pl
 	cp dbsnp_iit.pl dbsnp_iit
@@ -64,8 +87,14 @@ sam_restore: sam_restore.pl
 
 
 if FULLDIST
-CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+             psl_splicesites psl_introns psl_genes \
+             gtf_splicesites gtf_introns gtf_genes \
+             dbsnp_iit sam_merge sam_restore
 else
-CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+             psl_splicesites psl_introns psl_genes \
+             gtf_splicesites gtf_introns gtf_genes \
+             dbsnp_iit
 endif
 

@@ -5,15 +5,11 @@ if test -z "$srcdir"; then
 fi
 . ${srcdir}/defs
 
-cp ${top_builddir}/util/fa_coords.pl fa_coords
-chmod +x fa_coords
-cp ${top_builddir}/util/gmap_setup.pl gmap_setup
-chmod +x gmap_setup	
-cp ${top_builddir}/util/gmap_process.pl gmap_process
-chmod +x gmap_process	
-cp ${top_builddir}/src/gmapindex gmapindex
-chmod +x gmapindex
-./gmap_setup -B . -D ./chr17test -d chr17test ${srcdir}/ss.chr17test
+cp ${top_builddir}/util/fa_coords.pl ${top_builddir}/src/fa_coords
+chmod +x ${top_builddir}/src/fa_coords
+cp ${top_builddir}/util/gmap_process.pl ${top_builddir}/src/gmap_process
+chmod +x ${top_builddir}/src/gmap_process	
+${top_builddir}/util/gmap_setup -k 12 -B ${top_builddir}/src -D ./chr17test -d chr17test ${srcdir}/ss.chr17test
 make -f Makefile.chr17test coords
 make -f Makefile.chr17test gmapdb
 make -f Makefile.chr17test install
@@ -24,10 +20,10 @@ else
     echo "Difference found between chr17test.genomecomp and setup.genomecomp.ok" >& 2
     exit 1
 fi
-if diff chr17test/chr17test.ref3positions ${srcdir}/setup.ref3positions.ok; then
+if diff chr17test/chr17test.ref12123positions ${srcdir}/setup.ref12123positions.ok; then
     :
 else
-    echo "Difference found between chr17test.ref3positions and setup.ref3positions.ok" >& 2
+    echo "Difference found between chr17test.ref12123positions and setup.ref12123positions.ok" >& 2
     exit 1
 fi
 

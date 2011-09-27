@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: maxent.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: maxent.c 41212 2011-06-14 17:47:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,10 +11,18 @@ static char rcsid[] = "$Id: maxent.c 27450 2010-08-05 19:02:48Z twu $";
 
 #include "bool.h"
 
+
 #ifdef DEBUG
 #define debug(x) x
 #else
 #define debug(x)
+#endif
+
+/* For revcomp */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
 #endif
 
 
@@ -98998,10 +99006,14 @@ hashseq (char *sequence, int length) {
     case 'C': case 'c': digit = 1; break;
     case 'G': case 'g': digit = 2; break;
     case 'T': case 't': digit = 3; break;
-    default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
+    default: digit = 0;
+      /* fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9); */
     }
+    debug1(printf(" %d",digit));
     sum = sum*4 + digit;
   }
+
+  debug1(printf("\n"));
   return sum;
 }
 
@@ -99024,25 +99036,28 @@ hashseq_nucleotides (unsigned char *nucleotides, int length) {
 }
   
 
-#if 0
 static int
 hashseq_revcomp (char *sequence, int length) {
   int sum = 0;
   int i, digit;
   
-  for (i = length-1; i >= 0; i--) {
+  for (i = length; i > 0; i--) {
     switch (sequence[i]) {
     case 'A': case 'a': digit = 3; break;
     case 'C': case 'c': digit = 2; break;
     case 'G': case 'g': digit = 1; break;
     case 'T': case 't': digit = 0; break;
-    default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
+    default: digit = 3;
+      /* fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9); */
     }
+    debug1(printf(" %d",digit));
     sum = sum*4 + digit;
   }
+
+  debug1(printf("\n"));
   return sum;
 }
-#endif
+
 
 static int
 hashseq_skip (char *sequence, int length1, int skip, int length2) {
@@ -99055,8 +99070,10 @@ hashseq_skip (char *sequence, int length1, int skip, int length2) {
     case 'C': case 'c': digit = 1; break;
     case 'G': case 'g': digit = 2; break;
     case 'T': case 't': digit = 3; break;
-    default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
+    default: digit = 0;
+      /* fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9); */
     }
+    debug1(printf(" %d",digit));
     sum = sum*4 + digit;
   }
   for (j = 0; j < skip; j++, i++) ;
@@ -99066,10 +99083,13 @@ hashseq_skip (char *sequence, int length1, int skip, int length2) {
     case 'C': case 'c': digit = 1; break;
     case 'G': case 'g': digit = 2; break;
     case 'T': case 't': digit = 3; break;
-    default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
+    default: digit = 0;
+      /* fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9); */
     }
+    debug1(printf(" %d",digit));
     sum = sum*4 + digit;
   }
+  debug1(printf("\n"));
 
   return sum;
 }
@@ -99104,36 +99124,42 @@ hashseq_skip_nucleotides (unsigned char *nucleotides, int length1, int skip, int
   return sum;
 }
 
-#if 0
+
 static int
-hashseq_revcomp_skip (char *sequence, int length1, int skip, int length2) {
+hashseq_skip_revcomp (char *sequence, int length1, int skip, int length2) {
   int sum = 0;
   int i, digit;
   
-  for (i = skip+length2-1; i >= skip; i--) {
+  for (i = length1+skip+length2; i > length1+skip; i--) {
     switch (sequence[i]) {
     case 'A': case 'a': digit = 3; break;
     case 'C': case 'c': digit = 2; break;
     case 'G': case 'g': digit = 1; break;
     case 'T': case 't': digit = 0; break;
-    default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
+    default: digit = 3;
+      /* fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9); */
     }
-    sum = sum*4 + digit;
-  }
-  for (i = length1-1; i >= 0; i--) {
-    switch (sequence[i]) {
-    case 'A': case 'a': digit = 3; break;
-    case 'C': case 'c': digit = 2; break;
-    case 'G': case 'g': digit = 1; break;
-    case 'T': case 't': digit = 0; break;
-    default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
-    }
+    debug1(printf(" %d",digit));
     sum = sum*4 + digit;
   }
 
+  for (i = length1; i > 0; i--) {
+    switch (sequence[i]) {
+    case 'A': case 'a': digit = 3; break;
+    case 'C': case 'c': digit = 2; break;
+    case 'G': case 'g': digit = 1; break;
+    case 'T': case 't': digit = 0; break;
+    default: digit = 3;
+      /* fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9); */
+    }
+    debug1(printf(" %d",digit));
+    sum = sum*4 + digit;
+  }
+
+  debug1(printf("\n"));
   return sum;
 }
-#endif
+
 
 
 #define BACKGROUND_A 0.27
@@ -99142,24 +99168,53 @@ hashseq_revcomp_skip (char *sequence, int length1, int skip, int length2) {
 #define BACKGROUND_T 0.27
 
 static double
-score_donor_dinucleotide (char *sequence) {
+score_donor_dinucleotide (char dinucl1, char dinucl2) {
   double score;
 
-  debug(printf("donor dinucleotide %c%c\n",sequence[DONOR_MODEL_LEFT_MARGIN],sequence[DONOR_MODEL_LEFT_MARGIN+1]));
-  switch (sequence[DONOR_MODEL_LEFT_MARGIN]) {
+  debug(printf("donor dinucleotide %c%c  ",dinucl1,dinucl2));
+  switch (dinucl1) {
   case 'A': case 'a': score = 0.0040/BACKGROUND_A; break;
   case 'C': case 'c': score = 0.0032/BACKGROUND_C; break;
   case 'G': case 'g': score = 0.9896/BACKGROUND_G; break;
   case 'T': case 't': score = 0.0032/BACKGROUND_T; break;
-  default: fprintf(stderr,"Can't handle %c\n",sequence[DONOR_MODEL_LEFT_MARGIN]); exit(9);
+  default: score = 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl1); exit(9); */
   }
 
-  switch (sequence[DONOR_MODEL_LEFT_MARGIN + 1]) {
+  switch (dinucl2) {
   case 'A': case 'a': score *= 0.0034/BACKGROUND_A; break;
   case 'C': case 'c': score *= 0.0039/BACKGROUND_C; break;
   case 'G': case 'g': score *= 0.0042/BACKGROUND_G; break;
   case 'T': case 't': score *= 0.9884/BACKGROUND_T; break;
-  default: fprintf(stderr,"Can't handle %c\n",sequence[DONOR_MODEL_LEFT_MARGIN + 1]); exit(9);
+  default: score *= 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl2); exit(9); */
+  }
+
+  return score;
+}
+
+/* Expecting AC */
+static double
+score_donor_dinucleotide_revcomp (char dinucl1, char dinucl2) {
+  double score;
+
+  debug(printf("donor dinucleotide %c%c  ",dinucl1,dinucl2));
+  switch (dinucl2) {
+  case 'T': case 't': score = 0.0040/BACKGROUND_A; break;
+  case 'G': case 'g': score = 0.0032/BACKGROUND_C; break;
+  case 'C': case 'c': score = 0.9896/BACKGROUND_G; break;
+  case 'A': case 'a': score = 0.0032/BACKGROUND_T; break;
+  default: score = 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl2); exit(9); */
+  }
+
+  switch (dinucl1) {
+  case 'T': case 't': score *= 0.0034/BACKGROUND_A; break;
+  case 'G': case 'g': score *= 0.0039/BACKGROUND_C; break;
+  case 'C': case 'c': score *= 0.0042/BACKGROUND_G; break;
+  case 'A': case 'a': score *= 0.9884/BACKGROUND_T; break;
+  default: score *= 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl1); exit(9); */
   }
 
   return score;
@@ -99203,24 +99258,54 @@ score_donor_dinucleotide_nucleotides (unsigned char *nucleotides) {
 
 
 static double
-score_acceptor_dinucleotide (char *sequence) {
+score_acceptor_dinucleotide (char dinucl1, char dinucl2) {
   double score;
 
-  debug(printf("acceptor dinucleotide %c%c\n",sequence[ACCEPTOR_MODEL_LEFT_MARGIN-2],sequence[ACCEPTOR_MODEL_LEFT_MARGIN-1]));
-  switch (sequence[ACCEPTOR_MODEL_LEFT_MARGIN - 2]) {
+  debug(printf("acceptor dinucleotide %c%c  ",dinucl1,dinucl2));
+  switch (dinucl1) {
   case 'A': case 'a': score = 0.9903/BACKGROUND_A; break;
   case 'C': case 'c': score = 0.0032/BACKGROUND_C; break;
   case 'G': case 'g': score = 0.0034/BACKGROUND_G; break;
   case 'T': case 't': score = 0.0030/BACKGROUND_T; break;
-  default: fprintf(stderr,"Can't handle %c\n",sequence[ACCEPTOR_MODEL_LEFT_MARGIN - 2]); exit(9);
+  default: score = 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl1); exit(9); */
   }
 
-  switch (sequence[ACCEPTOR_MODEL_LEFT_MARGIN - 1]) {
+  switch (dinucl2) {
   case 'A': case 'a': score *= 0.0027/BACKGROUND_A; break;
   case 'C': case 'c': score *= 0.0037/BACKGROUND_C; break;
   case 'G': case 'g': score *= 0.9905/BACKGROUND_G; break;
   case 'T': case 't': score *= 0.0030/BACKGROUND_T; break;
-  default: fprintf(stderr,"Can't handle %c\n",sequence[ACCEPTOR_MODEL_LEFT_MARGIN - 1]); exit(9);
+  default: score *= 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl2); exit(9); */
+  }
+  
+  return score;
+}
+
+
+/* Expecting CT */
+static double
+score_acceptor_dinucleotide_revcomp (char dinucl1, char dinucl2) {
+  double score;
+
+  debug(printf("acceptor dinucleotide (revcomp) %c%c  ",dinucl1,dinucl2));
+  switch (dinucl2) {
+  case 'T': case 't': score = 0.9903/BACKGROUND_A; break;
+  case 'G': case 'g': score = 0.0032/BACKGROUND_C; break;
+  case 'C': case 'c': score = 0.0034/BACKGROUND_G; break;
+  case 'A': case 'a': score = 0.0030/BACKGROUND_T; break;
+  default: score = 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl2); exit(9); */
+  }
+
+  switch (dinucl1) {
+  case 'T': case 't': score *= 0.0027/BACKGROUND_A; break;
+  case 'G': case 'g': score *= 0.0037/BACKGROUND_C; break;
+  case 'C': case 'c': score *= 0.9905/BACKGROUND_G; break;
+  case 'A': case 'a': score *= 0.0030/BACKGROUND_T; break;
+  default: score *= 0.0001;
+    /* fprintf(stderr,"Can't handle %c\n",dinucl1); exit(9); */
   }
   
   return score;
@@ -99291,10 +99376,26 @@ Maxent_donor_prob (char *sequence) {
     return 0.0;
   } else {
     maxentscore = me2x3donor[hashseq_skip(&(sequence[0]),3,2,4)];
-    odds = score_donor_dinucleotide(sequence)*maxentscore;
+    odds = score_donor_dinucleotide(sequence[DONOR_MODEL_LEFT_MARGIN],sequence[DONOR_MODEL_LEFT_MARGIN+1])*maxentscore;
     return odds/(1.0 + odds);
   }
 }
+
+/* Expects a 9-mer, 6 bases in intron, 3 bases in exon */
+double
+Maxent_donor_prob_revcomp (char *sequence) {
+  double maxentscore, odds;
+
+  if (sequence_okay(sequence,DONOR_MODEL_RIGHT_MARGIN+DONOR_MODEL_LEFT_MARGIN) == false) {
+    return 0.0;
+  } else {
+    maxentscore = me2x3donor[hashseq_skip_revcomp(&(sequence[0]),4,2,3)];
+    odds = score_donor_dinucleotide_revcomp(sequence[DONOR_MODEL_RIGHT_MARGIN-1],
+					    sequence[DONOR_MODEL_RIGHT_MARGIN])*maxentscore;
+    return odds/(1.0 + odds);
+  }
+}
+
 
 double
 Maxent_donor_prob_nucleotides (unsigned char *nucleotides) {
@@ -99314,7 +99415,7 @@ Maxent_donor_logodds (char *sequence) {
     return 0.0;
   } else {
     maxentscore = me2x3donor[hashseq_skip(&(sequence[0]),3,2,4)];
-    odds = score_donor_dinucleotide(sequence)*maxentscore;
+    odds = score_donor_dinucleotide(sequence[DONOR_MODEL_LEFT_MARGIN],sequence[DONOR_MODEL_LEFT_MARGIN+1])*maxentscore;
     return log(odds);
   }
 }
@@ -99350,10 +99451,39 @@ Maxent_acceptor_prob (char *sequence) {
 
     maxentscore = (score[0] * score[1] * score[2] * score[3] * score[4])/
       (score[5] * score[6] * score[7] * score[8]);
-    odds = score_acceptor_dinucleotide(sequence)*maxentscore;
+    odds = score_acceptor_dinucleotide(sequence[ACCEPTOR_MODEL_LEFT_MARGIN-2],
+				       sequence[ACCEPTOR_MODEL_LEFT_MARGIN-1])*maxentscore;
     return odds/(1.0 + odds);
   }
 }
+
+/* Expects a 23-mer, 3 bases in exon, 20 bases in intron */
+double
+Maxent_acceptor_prob_revcomp (char *sequence) {
+  double score[9];
+  double maxentscore, odds;
+
+  if (sequence_okay(sequence,ACCEPTOR_MODEL_RIGHT_MARGIN+ACCEPTOR_MODEL_LEFT_MARGIN) == false) {
+    return 0.0;
+  } else {
+    score[0] = me2x3acc1[hashseq_revcomp(&(sequence[16]),7)];
+    score[1] = me2x3acc2[hashseq_revcomp(&(sequence[9]),7)];
+    score[2] = me2x3acc3[hashseq_skip_revcomp(&(sequence[0]),3,2,4)];
+    score[3] = me2x3acc4[hashseq_revcomp(&(sequence[12]),7)];
+    score[4] = me2x3acc5[hashseq_revcomp(&(sequence[5]),7)];
+    score[5] = me2x3acc6[hashseq_revcomp(&(sequence[16]),3)];
+    score[6] = me2x3acc7[hashseq_revcomp(&(sequence[12]),4)];
+    score[7] = me2x3acc8[hashseq_revcomp(&(sequence[9]),3)];
+    score[8] = me2x3acc9[hashseq_revcomp(&(sequence[5]),4)];
+
+    maxentscore = (score[0] * score[1] * score[2] * score[3] * score[4])/
+      (score[5] * score[6] * score[7] * score[8]);
+    odds = score_acceptor_dinucleotide_revcomp(sequence[ACCEPTOR_MODEL_RIGHT_MARGIN+1],
+					       sequence[ACCEPTOR_MODEL_RIGHT_MARGIN+2])*maxentscore;
+    return odds/(1.0 + odds);
+  }
+}
+
 
 /* Expects a 23-mer, 20 bases in intron, 3 bases in exon */
 double
@@ -99397,7 +99527,8 @@ Maxent_acceptor_logodds (char *sequence) {
 
     maxentscore = (score[0] * score[1] * score[2] * score[3] * score[4])/
       (score[5] * score[6] * score[7] * score[8]);
-    odds = score_acceptor_dinucleotide(sequence)*maxentscore;
+    odds = score_acceptor_dinucleotide(sequence[ACCEPTOR_MODEL_LEFT_MARGIN-2],
+				       sequence[ACCEPTOR_MODEL_LEFT_MARGIN-1])*maxentscore;
     return log(odds);
   }
 }

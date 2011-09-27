@@ -1,4 +1,4 @@
-/* $Id: shortread.h 36020 2011-03-03 17:06:19Z twu $ */
+/* $Id: shortread.h 47214 2011-09-14 17:08:30Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -12,8 +12,15 @@
 #define T Shortread_T
 typedef struct T *T;
 
+extern void
+Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in);
+
 extern char *
 Shortread_accession (T this);
+extern char *
+Shortread_header (T this);
+extern bool
+Shortread_invertedp (T this);
 
 extern int
 Shortread_input_init (FILE *fp);
@@ -30,6 +37,8 @@ Shortread_trimpointer (T this);
 
 extern char *
 Shortread_fullpointer_uc (T this);
+extern char *
+Shortread_contents_uc (T this);
 
 extern int
 Shortread_barcode_length (T this);
@@ -38,6 +47,7 @@ Shortread_barcode (T this);
 
 extern int
 Shortread_choplength (T this);
+
 extern char *
 Shortread_quality_string (T this);
 
@@ -47,8 +57,12 @@ Shortread_fulllength (T this);
 extern void
 Shortread_free (T *old);
 
-extern void
+extern bool
 Shortread_chop_primers (T queryseq1, T queryseq2);
+extern bool
+Shortread_find_primers (T queryseq1, T queryseq2);
+extern int
+Shortread_find_overlap (T queryseq1, T queryseq2);
 
 extern T
 Shortread_new (char *acc, char *restofheader,
@@ -57,22 +71,20 @@ Shortread_new (char *acc, char *restofheader,
 
 extern T
 Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles,
-				 int barcode_length, bool invert_first_p, bool invert_second_p,
-				 bool pc_linefeeds_p);
+				 int barcode_length, bool invert_first_p, bool invert_second_p);
 extern T
-Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE *input1, FILE *input2,
-				 int barcode_length, bool invert_first_p, bool invert_second_p,
-				 bool pc_linefeeds_p);
+Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FILE **input2,
+				 char ***files, int *nfiles,
+				 int barcode_length, bool invert_first_p, bool invert_second_p);
 
 #ifdef HAVE_ZLIB
 extern T
-Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile input, char ***files, int *nfiles,
-				      int barcode_length, bool invert_first_p, bool invert_second_p,
-				      bool pc_linefeeds_p);
+Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input, char ***files, int *nfiles,
+				      int barcode_length, bool invert_first_p, bool invert_second_p);
 extern T
-Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile gzipped, gzFile gzipped2,
-				      int barcode_length, bool invert_first_p, bool invert_second_p,
-				      bool pc_linefeeds_p);
+Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input1, gzFile *input2,
+				      char ***files, int *nfiles,
+				      int barcode_length, bool invert_first_p, bool invert_second_p);
 #endif
 
 
@@ -100,6 +112,10 @@ Shortread_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high);
 extern void
 Shortread_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high);
 
+extern void
+Shortread_print_barcode (FILE *fp, T this);
+extern void
+Shortread_print_chop (FILE *fp, T this, bool invertp);
 extern void
 Shortread_print_chop_symbols (FILE *fp, T this);
 extern void

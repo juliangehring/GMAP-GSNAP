@@ -1,4 +1,4 @@
-/* $Id: segmentpos.h 33519 2011-01-10 22:13:42Z twu $ */
+/* $Id: segmentpos.h 44063 2011-08-01 18:04:15Z twu $ */
 #ifndef SEGMENTPOS_INCLUDED
 #define SEGMENTPOS_INCLUDED
 #include <stdio.h>
@@ -30,7 +30,11 @@ Segmentpos_free (T *old);
 extern void
 Segmentpos_print (FILE *fp, T this, char *acc, Genomicpos_T offset);
 extern int
-Segmentpos_compare (const void *x, const void *y);
+Segmentpos_compare_alpha (const void *x, const void *y);
+extern int
+Segmentpos_compare_numeric_alpha (const void *x, const void *y);
+extern int
+Segmentpos_compare_chrom (const void *x, const void *y);
 
 extern void
 Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,

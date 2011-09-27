@@ -1,4 +1,4 @@
-/* $Id: types.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: types.h 44854 2011-08-13 06:42:25Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -20,6 +20,11 @@ typedef unsigned long UINT8;
 #define HAVE_64_BIT
 typedef unsigned long long UINT8;
 #endif
+
+/* An offset into the positions file of an IndexDB.  Typically, 3
+   billion divided by sampling interval, requiring a maximum of 32
+   bits or 4 bytes */
+typedef UINT4 Positionsptr_T;
 
 #endif
 

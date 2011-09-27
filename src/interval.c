@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: interval.c 35469 2011-02-21 16:59:57Z twu $";
+static char rcsid[] = "$Id: interval.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -134,6 +134,9 @@ Interval_overlap_p (unsigned int x, unsigned int y, struct T *intervals, int ind
   }
 }
 
+
+
+
 /************************************************************************/
 /* These sorting procedures are accessed only by iit-write.c            */
 /************************************************************************/
@@ -244,6 +247,34 @@ Interval_cmp_low (const void *a, const void *b) {
   } else if (x->type > y->type) {
     debug(printf("-1\n"));
     return +1;
+  } else {
+    debug(printf("0\n"));
+    return 0;
+  }
+}
+
+
+int
+Interval_cmp_high (const void *a, const void *b) {
+  T x = * (T *) a;
+  T y = * (T *) b;
+
+  debug(printf("Comparing %u..%u with %u..%u => ",x->low,x->high,y->low,y->high));
+  if (x->high < y->high) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->high > y->high) {
+    debug(printf("+1\n"));
+    return +1;
+#if 0
+    /* Not needed by Splicetrie_retrieve_via_introns */
+  } else if (x->type < y->type) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->type > y->type) {
+    debug(printf("-1\n"));
+    return +1;
+#endif
   } else {
     debug(printf("0\n"));
     return 0;

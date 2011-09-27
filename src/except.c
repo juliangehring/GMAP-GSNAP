@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: except.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: except.c 47650 2011-09-17 04:45:25Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -85,18 +85,20 @@ Except_Frame_T
 Except_advance_stack () {
 #ifdef HAVE_PTHREAD
   Except_Frame_T stackptr;
-#endif
 
   if (threadedp == false) {
     global_except_stack = global_except_stack->prev;
     return global_except_stack;
   } else {
-#ifdef HAVE_PTHREAD
     stackptr = (Except_Frame_T) pthread_getspecific(global_except_key);
     stackptr = (stackptr)->prev;
     return stackptr;
-#endif
   }
+
+#else
+  global_except_stack = global_except_stack->prev;
+  return global_except_stack;
+#endif
 }
 
 void
@@ -140,7 +142,6 @@ Except_raise (const Except_T *e, const char *file, int line) {
     frameptr->exception = e;
     frameptr->file = file;
     frameptr->line = line;
-    Except_advance_stack();
     if (raisep == true) {
       longjmp(frameptr->env,EXCEPT_RAISED);
     } else {

@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id$
+# $Id: gmap_build.pl.in 45310 2011-08-19 19:00:59Z twu $
 
 use warnings;	
 
@@ -9,14 +9,29 @@ $package_version = "@PACKAGE_VERSION@";
 use Getopt::Std;
 use File::Copy;	
 
-undef($opt_d);			# genome name
+undef($opt_B);	     # binary directory
 undef($opt_D);			# destination directory
-undef($opt_O);			# order chromosomes numeric/alphabetically
+undef($opt_b);			# offsetscomp basesize
+undef($opt_d);			# genome name
+undef($opt_k);			# k-mer size for genomic index (allowed: 12-15)
+undef($opt_S);			# Old flag for turning off sorting
+undef($opt_s);			# Sorting
 undef($opt_g);			# gunzip files
-getopts("B:D:d:O:g");
+$opt_w = 2; # waits (sleeps) this many seconds between steps.  Useful if there is a delay in the filesystem.
+getopts("B:D:b:d:k:s:gw:");
 
-if (defined($opt_B)) {
-    $bindir = $opt_B;
+if (!defined($bindir = $opt_B)) {
+    $bindir = "@BINDIR@";
+}
+
+
+if (!defined($basesize = $opt_b)) {
+    $basesize = 12;
+}
+
+if (!defined($kmersize = $opt_k)) {
+    print STDERR "-k flag not specified, so building with default 15-mers\n";
+    $kmersize = 15;
 }
 
 if (!defined($dbname = $opt_d)) {
@@ -37,16 +52,14 @@ if (!defined($dblocation = $opt_D)) {
     $dblocation = $gmapdb;
 }
 
-if (defined($opt_O)) {
-    if ($opt_O == 0) {
-	$chr_order_flag = "-S";
-    } elsif ($opt_O == 1) {
-	$chr_order_flag = "";
-    } else {
-	die "Don't recognize value $opt_O for -O flag";
-    }
+if (defined($opt_S)) {
+    print STDERR "The flag -S is now deprecated.  Using '-s none' instead.\n";
+    $chr_order_flag = "-s none";
+} elsif (defined($opt_s)) {
+    $chr_order_flag = "-s $opt_s";
 } else {
     # Default is to order genomes
+    print STDERR "Sorting chromosomes in chrom order.  To turn off or sort other ways, use the -s flag.\n";
     $chr_order_flag = "";
 }
 
@@ -78,11 +91,8 @@ exit;
 
 
 sub create_coords {
-    if (defined($bindir)) {
-	system("$bindir/fa_coords $gunzip_flag -o $dbname.coords $genome_fasta");
-    } else {
-	system("fa_coords $gunzip_flag -o $dbname.coords $genome_fasta");
-    }
+    system("$bindir/fa_coords $gunzip_flag -o $dbname.coords $genome_fasta");
+    sleep($opt_w);
     return;
 }
 
@@ -98,25 +108,20 @@ sub create_genome_version {
     open GENOMEVERSIONFILE, ">$dbname.version" or die $!;
     print GENOMEVERSIONFILE "$dbname\n";
     close GENOMEVERSIONFILE or die $!;
+    sleep($opt_w);
     return;
 }
 
 sub make_contig {
     check_coords_exists();
-    if (defined($bindir)) {
-	system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -A");
-    } else {
-	system("gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | gmapindex -d $dbname -A");
-    }
+    system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -A $chr_order_flag");
+    sleep($opt_w);
     return;
 }
 
 sub compress_genome {
-    if (defined($bindir)) {
-	system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -G");
-    } else {
-	system("gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | gmapindex -d $dbname -G");
-    }
+    system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -G");
+    sleep($opt_w);
     return;
 }
 
@@ -124,29 +129,20 @@ sub full_ASCII_genome {
     check_coords_exists();
     make_contig();
 	
-    if (defined($bindir)) {
-	system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -l -G");
-    } else {
-	system("gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | gmapindex -d $dbname -l -G");
-    }
+    system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -l -G");
+    sleep($opt_w);
     return;
 }
 
 sub create_index_offsets {
-    if (defined($bindir)) {
-	system("cat $dbname.genomecomp | $bindir/gmapindex -d $dbname -q 3 -O");
-    } else {
-	system("cat $dbname.genomecomp | gmapindex -d $dbname -q 3 -O");
-    }
+    system("cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -O");
+    sleep($opt_w);
     return;
 }
 
 sub create_index_positions {
-    if (defined($bindir)) {
-	system("cat $dbname.genomecomp | $bindir/gmapindex -d $dbname -q 3 -P");
-    } else {
-	system("cat $dbname.genomecomp | gmapindex -d $dbname -q 3 -P");
-    }
+    system("cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -P");
+    sleep($opt_w);
     return;
 }
 
@@ -158,10 +154,12 @@ sub install_db {
 	"contig", 
 	"contig.iit", 
 	"genomecomp", 
-	"ref3offsets", 
-	"ref3positions",
 	"version");
 	
+    push @suffixes,sprintf "ref%d%d3gammaptrs",$basesize,$kmersize;
+    push @suffixes,sprintf "ref%d%d3offsetscomp",$basesize,$kmersize;
+    push @suffixes,sprintf "ref%d%d3positions",$basesize,$kmersize;
+
     $dblocation = "$dblocation/$dbname";
 	
     print STDERR "Copying files to directory $dblocation\n";
@@ -183,16 +181,22 @@ sub print_usage {
 gmap_build: Builds a gmap database for a genome to be used by GMAP or GSNAP.
 Part of GMAP package, version $package_version.
 
-A simplified alternative to using the program gmap_setup, which constructs a Makefile and then
-requires you to run various make commands.
+A simplified alternative to using the program gmap_setup, which creates a Makefile.
 
 Usage: gmap_build [options...] -d <genomename> <fasta_files>
 
 Options:
-    -d    genome name
-    -D    destination directory for installation (defaults to gmapdb directory specified at configure time)
-    -O    order chromosomes in numeric/alphabetic order (0 = no, 1 = yes (default))
-    -g    files are gzipped, so need to gunzip each file first
+    -d STRING   genome name
+    -D STRING   destination directory for installation (defaults to gmapdb directory specified at configure time)
+    -b INT      basesize for offsetscomp (default 12)
+    -k INT      k-mer value for genomic index (allowed: 12..15, default 15)
+    -s STRING   Sort chromosomes using given method:
+                  none - use chromosomes as found in FASTA file(s)
+                  alpha - sort chromosomes alphabetically (chr10 before chr 1)
+                  numeric-alpha - chr1, chr1U, chr2, chrM, chrU, chrX, chrY
+                  chrom - chr1, chr2, chrM, chrX, chrY, chr1U, chrU
+    -g          files are gzipped, so need to gunzip each file first
+    -w INT      wait (sleep) this many seconds after each step
 
 TEXT1
   return;

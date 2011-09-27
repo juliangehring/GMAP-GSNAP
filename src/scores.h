@@ -1,4 +1,4 @@
-/* $Id: scores.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: scores.h 46279 2011-09-01 17:20:50Z twu $ */
 #ifndef SCORES_INCLUDED
 #define SCORES_INCLUDED
 
@@ -12,6 +12,7 @@
 #define CANONICAL_POINTS 12
 #define DUAL_HALFCANONICAL_POINTS 4
 #define SEMICANONICAL_POINTS 3
+#define NONCANONICAL_POINTS -10
 
 #endif
 

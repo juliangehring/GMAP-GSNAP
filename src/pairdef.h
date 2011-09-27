@@ -1,14 +1,15 @@
-/* $Id: pairdef.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: pairdef.h 44181 2011-08-03 09:19:12Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
+#include "genomicpos.h"
 
 typedef enum {GOOD,BAD} State_T;
 
 #define T Pair_T
 struct T {
   int querypos;
-  int genomepos;
+  Genomicpos_T genomepos;
   int refquerypos;
   int aapos;
 
@@ -34,6 +35,11 @@ struct T {
   State_T state;
   State_T vstate_good;
   State_T vstate_bad;
+
+  bool protectedp;		/* Protected against trimming, because found using splicetrie */
+
+  double donor_prob;		/* Set for an intron gap */
+  double acceptor_prob;
 };
 
 #undef T

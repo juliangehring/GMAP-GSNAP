@@ -1,4 +1,4 @@
-/* $Id: genomicpos.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: genomicpos.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef GENOMICPOS_INCLUDED
 #define GENOMICPOS_INCLUDED
 #include "types.h"

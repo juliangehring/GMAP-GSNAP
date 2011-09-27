@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 35523 2011-02-22 01:44:53Z twu $";
+static char rcsid[] = "$Id: get-genome.c 43665 2011-07-26 20:48:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,6 +21,7 @@ static char rcsid[] = "$Id: get-genome.c 35523 2011-02-22 01:44:53Z twu $";
 #include "datadir.h"
 #include "parserange.h"
 #include "separator.h"
+#include "complement.h"
 #include "getopt.h"
 
 
@@ -62,7 +63,7 @@ static char *user_mapdir = NULL;
 static char *map_iitfile = NULL;
 static bool map_relativep = false;
 static int nflanking = 0;
-
+static bool exonsp = false;
 
 static bool sortp = false;
 
@@ -97,6 +98,7 @@ static struct option long_options[] = {
   {"ranks", no_argument, 0, 'k'}, /* levelsp */
   {"raw", no_argument, 0, 'r'}, /* rawp */
   {"flanking", required_argument, 0, 'u'}, /* nflanking */
+  {"exons", no_argument, 0, 'E'},	   /* exonsp */
 
   /* Dump options */
   {"dump", no_argument, 0, 'A'},	/* dumpallp */
@@ -598,30 +600,8 @@ static void
 print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, Genomicpos_T genomiclength,
 		IIT_T chromosome_iit, bool whole_chromosome_p) {
   char *chromosome1, *chromosome2;
-  char *gbuffer1, *gbuffer2, *gbufferalt1, *gbufferalt2, *gbuffersnp1, *gbuffersnp2;
   Sequence_T genomicseg, genomicseg_alt, genomicseg_snp;
   Genomicpos_T chrpos;
-
-  if (snps_root == NULL || print_snps_mode == 0) {
-    gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-  } else if (print_snps_mode == 2) {
-    gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-  } else if (print_snps_mode == 1) {
-    gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbufferalt1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbufferalt2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-  } else if (print_snps_mode == 3) {
-    gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbufferalt1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbufferalt2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbuffersnp1 = (char *) CALLOC(genomiclength+1,sizeof(char));
-    gbuffersnp2 = (char *) CALLOC(genomiclength+1,sizeof(char));
-  }
-
 
   /* Handle reference strain */
   if (user_typestring != NULL) {
@@ -667,8 +647,7 @@ print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, 
   }
 
   if (snps_root == NULL || print_snps_mode == 0 || print_snps_mode == 2) {
-    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp,
-				    gbuffer1,gbuffer2,genomiclength);
+    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
 	Sequence_print_raw(genomicseg);
@@ -680,12 +659,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, 
 
   } else if (print_snps_mode == 1) {
     /* Handle both reference and alternate versions */
-    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp,
-				    gbuffer1,gbuffer2,genomiclength);
-    genomicseg_alt = Genome_get_segment_alt(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp,
-					    gbufferalt1,gbufferalt2,genomiclength);
-    genomicseg_snp = Genome_get_segment_snp(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp,
-					    gbuffersnp1,gbuffersnp2,genomiclength);
+    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
+    genomicseg_alt = Genome_get_segment_alt(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp);
+    genomicseg_snp = Genome_get_segment_snp(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
 	Sequence_print_raw(genomicseg);
@@ -699,10 +675,8 @@ print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, 
 
   } else {
     /* Handle both reference and alternate versions */
-    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp,
-				    gbuffer1,gbuffer2,genomiclength);
-    genomicseg_snp = Genome_get_segment_snp(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp,
-					    gbuffersnp1,gbuffersnp2,genomiclength);
+    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
+    genomicseg_snp = Genome_get_segment_snp(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
 	Sequence_print_raw(genomicseg);
@@ -810,14 +784,6 @@ print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, 
     IIT_free(&altstrain_iit);
   }
 #endif
-
-  if (snps_root != NULL && print_snps_mode == 3) {
-    FREE(gbufferalt2);
-    FREE(gbufferalt1);
-  }
-
-  FREE(gbuffer2);
-  FREE(gbuffer1);
 
   return;
 }
@@ -980,13 +946,92 @@ get_matches_multiple_typed (int *nmatches, char **divstring, unsigned int *coord
   return matches;
 }
 
+static char complCode[128] = COMPLEMENT_LC;
 
 static void
-print_interval (char *divstring, int index, IIT_T iit, int ndivs, int fieldint) {
+make_complement_buffered (char *complement, char *sequence, Genomicpos_T length) {
+  int i, j;
+
+  for (i = length-1, j = 0; i >= 0; i--, j++) {
+    complement[j] = complCode[(int) sequence[i]];
+  }
+  complement[length] = '\0';
+  return;
+}
+
+static void
+make_complement_inplace (char *sequence, Genomicpos_T length) {
+  char temp;
+  int i, j;
+
+  for (i = 0, j = length-1; i < length/2; i++, j--) {
+    temp = complCode[(int) sequence[i]];
+    sequence[i] = complCode[(int) sequence[j]];
+    sequence[j] = temp;
+  }
+  if (i == j) {
+    sequence[i] = complCode[(int) sequence[i]];
+  }
+
+  return;
+}
+
+
+
+static void
+print_exons (char *annot, Genomicpos_T chroffset, Genome_T genome) {
+  char *p;
+  char *gbuffer, *gbuffer_fwd;
+  Genomicpos_T exonstart, exonend, exonlow, exonhigh, exonlength;
+
+  /* Skip header */
+  p = annot;
+  while (*p != '\0' && *p != '\n') {
+    putchar(*p);
+    p++;
+  }
+  if (*p == '\n') p++;
+  printf("\n");
+
+  while (*p != '\0') {
+    if (sscanf(p,"%u %u",&exonstart,&exonend) != 2) {
+      fprintf(stderr,"Can't parse exon coordinates in %s\n",p);
+      abort();
+    } else {
+      gbuffer = (char *) CALLOC(exonlength+1,sizeof(char));
+      if (exonstart <= exonend) {
+	exonlow = exonstart;
+	exonhigh = exonend;
+	exonlength = exonhigh - exonlow + 1;
+	Genome_fill_buffer_simple(genome,/*left*/chroffset-1U+exonlow,exonlength,gbuffer);
+      } else {
+	exonlow = exonend;
+	exonhigh = exonstart;
+	exonlength = exonhigh - exonlow + 1;
+	Genome_fill_buffer_simple(genome,/*left*/chroffset-1U+exonlow,exonlength,gbuffer);
+	make_complement_inplace(gbuffer,exonlength);
+      }
+      printf("%u %u %s\n",exonstart,exonend,gbuffer);
+      FREE(gbuffer);
+    }
+
+    while (*p != '\0' && *p != '\n') p++;
+    if (*p == '\n') p++;
+  }
+
+  return;
+}
+
+
+static void
+print_interval (char *divstring, int index, IIT_T iit, int ndivs, IIT_T chromosome_iit,
+		Genome_T genome, int fieldint) {
   Interval_T interval;
   char *label, *annotation, *restofheader;
   bool allocp;
   bool annotationonlyp = false, signedp = true;
+  int divno;
+  Genomicpos_T chroffset;
 
   if (annotationonlyp == false) {
     label = IIT_label(iit,index,&allocp);
@@ -1014,16 +1059,30 @@ print_interval (char *divstring, int index, IIT_T iit, int ndivs, int fieldint) 
     if (Interval_type(interval) > 0) {
       printf(" %s",IIT_typestring(iit,Interval_type(interval)));
     }
+#if 0
+    /* Unnecessary because of "\n" after restofheader below */
     if (IIT_version(iit) < 5) {
       printf("\n");
     }
+#endif
 
   }
 
   if (fieldint < 0) {
     annotation = IIT_annotation(&restofheader,iit,index,&allocp);
     printf("%s\n",restofheader);
-    printf("%s",annotation);
+    if (exonsp == false) {
+      printf("%s",annotation);
+    } else {
+      if ((divno = IIT_find_one(chromosome_iit,divstring)) < 0) {
+	fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",divstring);
+	/* exit(9); */
+      } else {
+	interval = IIT_interval(chromosome_iit,divno);
+	chroffset = Interval_low(interval);
+	print_exons(annotation,chroffset,genome);
+      }
+    }
     if (allocp == true) {
       FREE(restofheader);
     }
@@ -1044,7 +1103,7 @@ main (int argc, char *argv[]) {
   char *snpsdir = NULL;
   char *iitfile, *chrsubsetfile;
   FILE *fp;
-  Genome_T genome, genomealt = NULL;
+  Genome_T genome = NULL, genomealt = NULL;
   Genomicpos_T genomicstart, genomiclength;
   Genomicpos_T chroffset, chrlength, chrstart, chrend;
   char *mapdir = NULL, *fileroot = NULL, *p;
@@ -1066,7 +1125,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:Ss:CUl:Gh:V:v:f:M:m:kru:RALIc^?",
+  while ((opt = getopt_long(argc,argv,"D:d:Ss:CUl:Gh:V:v:f:M:m:kru:ERALIc^?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -1092,6 +1151,7 @@ main (int argc, char *argv[]) {
     case 'k': levelsp = true; break;
     case 'r': uncompressedp = true; rawp = true; break;
     case 'u': nflanking = atoi(optarg); break;
+    case 'E': exonsp = true; break;
 
     case 'A': dumpallp = true; break;
     case 'L': dumpchrp = true; break;
@@ -1288,11 +1348,6 @@ main (int argc, char *argv[]) {
 		       /*whole_chromosome_p*/false);
       }
 
-      if (genomealt != NULL) {
-	Genome_free(&genomealt);
-      }
-      Genome_free(&genome);
-
     } else if (!strcmp(map_iitfile,"?")) {
       Datadir_avail_maps(stdout,user_mapdir,genomesubdir,fileroot);
       exit(0);
@@ -1310,6 +1365,23 @@ main (int argc, char *argv[]) {
 	fprintf(stderr,"Either install file %s.iit or specify a full directory path\n",map_iitfile);
 	fprintf(stderr,"using the -M flag to gmap.\n");
 	exit(9);
+      }
+
+      if (exonsp == true) {
+	if (snps_root == NULL || print_snps_mode == 0) {
+	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
+			      /*access*/USE_MMAP_ONLY);
+	} else if (print_snps_mode == 2) {
+	  genome = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
+			      /*access*/USE_MMAP_ONLY);
+	} else if (print_snps_mode == 1 || print_snps_mode == 3) {
+	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
+			      /*access*/USE_MMAP_ONLY);
+#if 0
+	  genomealt = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
+				 /*access*/USE_MMAP_ONLY);
+#endif
+	}
       }
 
       if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
@@ -1332,20 +1404,20 @@ main (int argc, char *argv[]) {
 	ndivs = IIT_ndivs(map_iit);
 	if (nflanking > 0) {
 	  for (i = nleftflanks-1; i >= 0; i--) {
-	    print_interval(divstring,leftflanks[i],map_iit,ndivs,fieldint);
+	    print_interval(divstring,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	  }
 	  printf("====================\n");
 	  FREE(leftflanks);
 	}
 
 	for (i = 0; i < nmatches; i++) {
-	  print_interval(divstring,matches[i],map_iit,ndivs,fieldint);
+	  print_interval(divstring,matches[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	}
 
 	if (nflanking > 0) {
 	  printf("====================\n");
 	  for (i = 0; i < nrightflanks; i++) {
-	    print_interval(divstring,rightflanks[i],map_iit,ndivs,fieldint);
+	    print_interval(divstring,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	  }
 	  FREE(rightflanks);
 	}
@@ -1368,20 +1440,20 @@ main (int argc, char *argv[]) {
 
 	if (nflanking > 0) {
 	  for (i = nleftflanks-1; i >= 0; i--) {
-	    print_interval(/*divstring*/NULL,leftflanks[i],map_iit,ndivs,fieldint);
+	    print_interval(/*divstring*/NULL,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	  }
 	  printf("====================\n");
 	  FREE(leftflanks);
 	}
 
 	for (i = 0; i < nmatches; i++) {
-	  print_interval(/*divstring*/NULL,matches[i],map_iit,ndivs,fieldint);
+	  print_interval(/*divstring*/NULL,matches[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	}
 
 	if (nflanking > 0) {
 	  printf("====================\n");
 	  for (i = 0; i < nrightflanks; i++) {
-	    print_interval(/*divstring*/NULL,rightflanks[i],map_iit,ndivs,fieldint);
+	    print_interval(/*divstring*/NULL,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	  }
 	  FREE(rightflanks);
 	}
@@ -1429,6 +1501,7 @@ main (int argc, char *argv[]) {
 	ndivs = IIT_ndivs(map_iit);
       }
     }
+    FREE(iitfile);
 
     if (snps_root == NULL || print_snps_mode == 0) {
       genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
@@ -1443,13 +1516,20 @@ main (int argc, char *argv[]) {
 			     /*access*/USE_MMAP_ONLY);
     }
 
+    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+			      strlen(".contig.iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
+    contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+			  /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
+    FREE(iitfile);
+
     while (fgets(Buffer,BUFFERLEN,stdin) != NULL) {
       if ((p = rindex(Buffer,'\n')) != NULL) {
 	*p = '\0';
       }
       fprintf(stdout,"# Query: %s\n",Buffer);
-      if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
-			       &chroffset,&chrlength,Buffer,genomesubdir,fileroot) == true) {
+      if (Parserange_universal_iit(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
+				   &chroffset,&chrlength,Buffer,chromosome_iit,contig_iit) == true) {
 	debug(printf("Query %s parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
 		     Buffer,genomicstart,genomiclength,revcomp));
 	divstring = IIT_string_from_position(&coordstart,genomicstart,chromosome_iit);
@@ -1466,23 +1546,23 @@ main (int argc, char *argv[]) {
 	if (map_iit != NULL) {
 	  matches = get_matches(&nmatches,divstring,coordstart,coordend,
 				&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
-				/*typestring*/NULL,&map_iit,/*filename*/iitfile);
+				/*typestring*/NULL,&map_iit,/*filename*/NULL);
 	  if (nflanking > 0) {
 	    for (i = nleftflanks-1; i >= 0; i--) {
-	      print_interval(divstring,leftflanks[i],map_iit,ndivs,fieldint);
+	      print_interval(divstring,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	    }
 	    printf("====================\n");
 	    FREE(leftflanks);
 	  }
 
 	  for (i = 0; i < nmatches; i++) {
-	    print_interval(divstring,matches[i],map_iit,ndivs,fieldint);
+	    print_interval(divstring,matches[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	  }
 
 	  if (nflanking > 0) {
 	    printf("====================\n");
 	    for (i = 0; i < nrightflanks; i++) {
-	      print_interval(divstring,rightflanks[i],map_iit,ndivs,fieldint);
+	      print_interval(divstring,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	    }
 	    FREE(rightflanks);
 	  }
@@ -1508,7 +1588,7 @@ main (int argc, char *argv[]) {
 	  /* Not doing flanking */
 
 	  for (i = 0; i < nmatches; i++) {
-	    print_interval(/*divstring*/NULL,matches[i],map_iit,ndivs,fieldint);
+	    print_interval(/*divstring*/NULL,matches[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	  }
 
 	  /* Not doing flanking */
@@ -1521,18 +1601,20 @@ main (int argc, char *argv[]) {
       fprintf(stdout,"# End\n");
     }
 
+    IIT_free(&contig_iit);
+
     if (map_iitfile != NULL) {
       FREE(iitfile);
       FREE(mapdir);
     }
 
-    if (genomealt != NULL) {
-      Genome_free(&genomealt);
-    }
-    Genome_free(&genome);
-
   }
     
+  if (genomealt != NULL) {
+    Genome_free(&genomealt);
+  }
+  Genome_free(&genome);
+
   IIT_free(&chromosome_iit);
 
   if (map_iitfile != NULL) {

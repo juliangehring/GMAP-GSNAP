@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c 33519 2011-01-10 22:13:42Z twu $";
+static char rcsid[] = "$Id: segmentpos.c 45942 2011-08-29 21:09:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -91,12 +91,46 @@ Segmentpos_print (FILE *fp, T this, char *acc, Genomicpos_T offset) {
 }
 
 int
-Segmentpos_compare (const void *x, const void *y) {
+Segmentpos_compare_alpha (const void *x, const void *y) {
   T a = * (T *) x;
   T b = * (T *) y;
   int cmp;
 
-  if ((cmp = Chrom_cmp(a->chrom,b->chrom)) != 0) {
+  if ((cmp = Chrom_cmp_alpha(a->chrom,b->chrom)) != 0) {
+    return cmp;
+  } else if (a->chrpos1 < b->chrpos1) {
+    return -1;
+  } else if (b->chrpos1 < a->chrpos1) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int
+Segmentpos_compare_numeric_alpha (const void *x, const void *y) {
+  T a = * (T *) x;
+  T b = * (T *) y;
+  int cmp;
+
+  if ((cmp = Chrom_cmp_numeric_alpha(a->chrom,b->chrom)) != 0) {
+    return cmp;
+  } else if (a->chrpos1 < b->chrpos1) {
+    return -1;
+  } else if (b->chrpos1 < a->chrpos1) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int
+Segmentpos_compare_chrom (const void *x, const void *y) {
+  T a = * (T *) x;
+  T b = * (T *) y;
+  int cmp;
+
+  if ((cmp = Chrom_cmp_chrom(a->chrom,b->chrom)) != 0) {
     return cmp;
   } else if (a->chrpos1 < b->chrpos1) {
     return -1;
@@ -214,7 +248,7 @@ Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
 	relstart = 0;
       }
       relend = position2 - contig_start;
-      if (relend > contig_length) {
+      if ((Genomicpos_T) relend > contig_length) {
 	relend = contig_length;
       }
 

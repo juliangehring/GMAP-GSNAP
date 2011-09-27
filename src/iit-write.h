@@ -1,4 +1,4 @@
-/* $Id: iit-write.h 30359 2010-10-14 16:00:36Z twu $ */
+/* $Id: iit-write.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef IIT_WRITE_INCLUDED
 #define IIT_WRITE_INCLUDED
 #include "bool.h"

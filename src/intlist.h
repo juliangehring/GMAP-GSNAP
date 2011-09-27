@@ -1,4 +1,4 @@
-/* $Id: intlist.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: intlist.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
 #include "bool.h"
@@ -48,6 +48,8 @@ extern char *
 Intlist_to_string (T this);
 extern int *
 Intlist_array_ascending_by_key (int *n, T this, T key);
+extern int *
+Intlist_array_dual_ascending_by_key (int *n, int **keyarray, T this, T key);
 extern T
 Intlist_list_ascending_by_key (T this, T key);
 extern T

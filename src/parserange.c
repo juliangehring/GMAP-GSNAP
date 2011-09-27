@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: parserange.c 32284 2010-12-02 17:39:21Z twu $";
+static char rcsid[] = "$Id: parserange.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -241,6 +241,19 @@ convert_to_chrpos (unsigned int *chrpos, char *genomesubdir, char *fileroot, uns
   return chromosome;
 }
 
+/* Assumes position is 0-based */
+static char *
+convert_to_chrpos_iit (unsigned int *chrpos, IIT_T chromosome_iit, unsigned int position) {
+  char *chromosome;
+  
+  /* Subtract 1 to make 0-based */
+  chromosome = IIT_string_from_position(&(*chrpos),position-1U,chromosome_iit);
+  *chrpos += 1U;		/* Bring back to 1-based */
+  IIT_free(&chromosome_iit);
+
+  return chromosome;
+}
+
 
 static char *
 find_div (int *div_strlen, char *string, int sep) {
@@ -279,6 +292,7 @@ Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coor
 		 query,*divstring,coords));
 
     if (IIT_read_divint(filename,*divstring,/*add_iit_p*/true) < 0) {
+      fprintf(stderr,"Chromosome %s not found in IIT file\n",*divstring);
       debug(printf("  but divstring not found, so treat as label\n"));
       FREE(*divstring);		/* free only when returning false */
       return false;
@@ -399,7 +413,7 @@ Parserange_universal (char **div, bool *revcomp,
     /* Get chromosomal information */
     if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
-      exit(9);
+      /* exit(9); */
     } else {
       interval = IIT_interval(chromosome_iit,theindex);
       *chroffset = Interval_low(interval);
@@ -486,17 +500,140 @@ Parserange_universal (char **div, bool *revcomp,
 
     if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
-      exit(9);
+      IIT_free(&chromosome_iit);
+      return false;
+    } else {
+      interval = IIT_interval(chromosome_iit,theindex);
+      *chroffset = Interval_low(interval);
+      *chrlength = Interval_length(interval);
+      IIT_free(&chromosome_iit);
+      return true;
+    }
+  }
+}
+
+
+bool
+Parserange_universal_iit (char **div, bool *revcomp,
+			  Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
+			  Genomicpos_T *chrstart, Genomicpos_T *chrend,
+			  Genomicpos_T *chroffset, Genomicpos_T *chrlength,
+			  char *query, IIT_T chromosome_iit, IIT_T contig_iit) {
+  char *coords;
+  Genomicpos_T result, left, length;
+  Interval_T interval;
+  int theindex;
+  int rc;
+  
+  *revcomp = false;
+  if (index(query,':')) {
+    /* Segment must be a genome, chromosome, or contig */
+    debug(printf("Parsed query %s into ",query));
+    *div = strtok(query,":");
+    if ((*div)[0] == '+') {
+      *revcomp = false;
+      *div = &((*div)[1]);
+    } else if ((*div)[0] == '_') {
+      *revcomp = true;
+      *div = &((*div)[1]);
+    }
+    coords = strtok(NULL,":");
+    debug(printf("segment %s and coords %s\n",*div,coords));
+
+
+    debug(printf("Interpreting segment %s as a chromosome\n",*div));
+    if (coords == NULL) {
+      debug(printf("  entire chromosome\n"));
+      rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left=0,length=0,chromosome_iit);
+    } else if (isnumberp(&result,coords)) {
+      debug(printf("  and coords %s as a number\n",coords));
+      rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,chromosome_iit);
+    } else if (isrange(&left,&length,&(*revcomp),coords)) {
+      debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
+		   coords,left,length,*revcomp));
+      rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left,length,chromosome_iit);
+    } else {
+      debug(printf("  but coords %s is neither a number nor a range\n",coords));
+      rc = -1;
+    }
+
+    /* Compute chromosomal coordinates */
+    *chrstart = left;
+    *chrend = *chrstart + *genomiclength;
+    *chrstart += 1U;		/* Make 1-based */
+
+    /* Get chromosomal information */
+    if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
+      fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
+      /* exit(9); */
     } else {
       interval = IIT_interval(chromosome_iit,theindex);
       *chroffset = Interval_low(interval);
       *chrlength = Interval_length(interval);
     }
 
-    IIT_free(&chromosome_iit);
+    if (rc != 0) {
+      /* Try contig */
+      debug(printf("Interpreting segment %s as a contig\n",*div));
+      if (isnumberp(&result,coords)) {
+	debug(printf("  and coords %s as a number\n",coords));
+	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,contig_iit);
+      } else if (isrange(&left,&length,&(*revcomp),coords)) {
+	debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
+		     coords,left,length,*revcomp));
+	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left,length,contig_iit);
+      } else {
+	debug(printf("  but coords %s is neither a number nor a range\n",coords));
+	rc = -1;
+      }
+    }
 
-    return true;
+    if (rc != 0) {
+      fprintf(stderr,"Can't find coordinates %s:%s\n",*div,coords);
+      return false;
+    } else {
+      return true;
+    }
 
+  } else {
+    /* Query must be a genomic position, genomic range, or contig */
+    *chrstart = *chroffset = *chrlength = 0;
+
+    debug(printf("Parsed query %s as atomic ",query));
+    if (isnumberp(&result,query)) {
+      debug(printf("number\n"));
+      *genomicstart = result-1;
+      *genomiclength = 1;
+
+    } else if (isrange(&left,&length,&(*revcomp),query)) {
+      debug(printf("range\n"));
+      *genomicstart = left;
+      *genomiclength = length;
+
+    } else {
+
+      debug(printf("contig\n"));
+      return false;
+#if 0
+      rc = translate_contig(&(*genomicstart),&(*genomiclength),query,left=0,length=0,contig_iit);
+      IIT_free(&contig_iit);
+#endif
+    }
+
+    *div = convert_to_chrpos_iit(&(*chrstart),chromosome_iit,*genomicstart);
+    *chrend = *chrstart + *genomiclength;
+    *chrstart += 1U;		/* Make 1-based */
+
+    /* Try chromosome first */
+    if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
+      fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
+      return false;
+    } else {
+      interval = IIT_interval(chromosome_iit,theindex);
+      *chroffset = Interval_low(interval);
+      *chrlength = Interval_length(interval);
+      return true;
+    }
   }
 }
 

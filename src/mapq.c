@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mapq.c 35686 2011-02-24 15:11:30Z twu $";
+static char rcsid[] = "$Id: mapq.c 44004 2011-07-31 00:01:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,7 +6,6 @@ static char rcsid[] = "$Id: mapq.c 35686 2011-02-24 15:11:30Z twu $";
 #include "mapq.h"
 #include "bool.h"
 #include "assert.h"
-#include "stage1hr.h"		/* For MAX_QUERYLENGTH */
 #include "genome_hr.h"
 
 #include <stdlib.h>
@@ -14,9 +13,6 @@ static char rcsid[] = "$Id: mapq.c 35686 2011-02-24 15:11:30Z twu $";
 #include <ctype.h>		/* For islower() */
 #include <math.h>
 
-
-#define MAX_QUALITY_SCORE_INPUT 96	/* Was 40 */
-#define MAX_QUALITY_SCORE 40
 
 static int quality_score_adj = 33; /* Default is Sanger */
 
@@ -29,12 +25,13 @@ static int quality_score_adj = 33; /* Default is Sanger */
 
 
 void
-MAPQ_init (int quality_score_adj_input) {
-  quality_score_adj = quality_score_adj_input;
+MAPQ_init (int quality_score_adj_in) {
+  quality_score_adj = quality_score_adj_in;
   return;
 }
 
 
+/* Duplicated in pair.c */
 static double
 mismatch_logprob[MAX_QUALITY_SCORE+1] =
   /* log(1/3*10^(-Q/10)) */
@@ -153,16 +150,15 @@ check_badchar (char c) {
 
 
 double
-MAPQ_loglik (char *query, Compress_T query_compress, UINT4 *genome_blocks, UINT4 *snp_blocks,
-	     Genomicpos_T left, int querystart, int queryend, int querylength,
-	     char *quality_string, bool dibasep, bool cmetp, bool plusp) {
+MAPQ_loglik (Compress_T query_compress, Genomicpos_T left, int querystart, int queryend,
+	     int querylength, char *quality_string, bool plusp) {
   double loglik = 0.0;
   int Q;
   int querypos;
 
-  int nmismatches, ncolordiffs, i;
+  int nmismatches, i;
   int alignlength;
-  int mismatch_positions[MAX_QUERYLENGTH+1];
+  int mismatch_positions[MAX_READLENGTH+1];
 
 
   debug(printf("Computing loglik on %s from %d to %d (querystart = %d)\n",
@@ -181,9 +177,8 @@ MAPQ_loglik (char *query, Compress_T query_compress, UINT4 *genome_blocks, UINT4
   if (plusp == true) {
     debug(printf("Calling Genome_mismatches_left from %d to %d with max_mismatches %d\n",
 		 querystart,queryend,alignlength));
-    nmismatches = Genome_mismatches_left(mismatch_positions,&ncolordiffs,/*max_mismatches*/alignlength,
-					 query,query_compress,genome_blocks,snp_blocks,
-					 left,/*pos5*/querystart,/*pos3*/queryend,dibasep,cmetp,plusp);
+    nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/alignlength,
+					 query_compress,left,/*pos5*/querystart,/*pos3*/queryend,plusp);
     
     debug(printf("%d mismatches:",nmismatches));
     debug(
@@ -217,10 +212,9 @@ MAPQ_loglik (char *query, Compress_T query_compress, UINT4 *genome_blocks, UINT4
 
     debug(printf("Calling Genome_mismatches_left from %d to %d with max_mismatches %d\n",
 		 querylength - queryend,querylength - querystart,alignlength));
-    nmismatches = Genome_mismatches_left(mismatch_positions,&ncolordiffs,/*max_mismatches*/alignlength,
-					 query,query_compress,genome_blocks,snp_blocks,
-					 left,/*pos5*/querylength - queryend,/*pos3*/querylength - querystart,
-					 dibasep,cmetp,plusp);
+    nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/alignlength,
+					 query_compress,left,/*pos5*/querylength - queryend,
+					 /*pos3*/querylength - querystart,plusp);
 
     debug(printf("%d mismatches (adjusted for querylength %d):",nmismatches,querylength));
     debug(

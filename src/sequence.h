@@ -1,4 +1,4 @@
-/* $Id: sequence.h 35633 2011-02-23 20:13:56Z twu $ */
+/* $Id: sequence.h 46069 2011-08-30 20:43:46Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -36,6 +36,8 @@ extern char *
 Sequence_fullpointer (T this);
 extern char *
 Sequence_trimpointer (T this);
+extern char *
+Sequence_quality_string (T this);
 
 extern int
 Sequence_ntlength (T this);
@@ -59,7 +61,7 @@ Sequence_skiplength (T this);
 extern void
 Sequence_free (T *old);
 extern T
-Sequence_genomic_new (char *contents, int length);
+Sequence_genomic_new (char *contents, int length, bool copyp);
 extern T
 Sequence_read (int *nextchar, FILE *input, bool maponlyp);
 extern T
@@ -105,25 +107,11 @@ extern void
 Sequence_print_oneline_revcomp (FILE *fp, T this);
 
 extern void
-Sequence_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high);
-extern void
-Sequence_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high);
-
-#ifndef PMAP
-extern void
-Sequence_print_quality (FILE *fp, T this, int hardclip_low, int hardclip_high,
-			int shift);
-extern void
-Sequence_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high,
-				int shift);
-#endif
-
-extern void
 Sequence_print_raw (T this);
 
 extern T
 Sequence_substring (T usersegment, unsigned int left, unsigned int length, 
-		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen);
+		    bool revcomp);
 
 #undef T
 #endif

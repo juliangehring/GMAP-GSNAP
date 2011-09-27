@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c 33526 2011-01-10 22:41:21Z twu $";
+static char rcsid[] = "$Id: translation.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1684,8 +1684,7 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
    be standardized. */
 static void
 bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, bool watsonp, 
-		     struct Pair_T *refpairs, int nrefpairs, bool refwatsonp,
-		     int genomiclength) {
+		     struct Pair_T *refpairs, int nrefpairs, bool refwatsonp) {
   int i, j, aapos = 0;
   int refquerypos, genomepos, refgenomepos;
 
@@ -1744,7 +1743,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
     while (i < nrefpairs && j >= 0) {
       refquerypos = refpairs[i].querypos;
       refgenomepos = refpairs[i].genomepos;
-      genomepos = (genomiclength - 1) - pairs[j].genomepos;
+      genomepos = pairs[j].genomepos;
       debug(printf("Comparing ref %d (%c) with %d\n",refgenomepos,refpairs[i].aa_e,genomepos));
       if (pairs[j].genome == ' ') {
 	pairs[j].refquerypos = refquerypos;
@@ -1785,7 +1784,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
     j = 0;
     while (i >= 0 && j < npairs) {
       refquerypos = refpairs[i].querypos;
-      refgenomepos = (genomiclength - 1) - refpairs[i].genomepos;
+      refgenomepos = refpairs[i].genomepos;
       genomepos = pairs[j].genomepos;
       debug(printf("Comparing ref %d (%c) with %d\n",refgenomepos,refpairs[i].aa_e,genomepos));
       if (pairs[j].genome == ' ') {
@@ -1827,8 +1826,8 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
     j = npairs-1;
     while (i >= 0 && j >= 0) {
       refquerypos = refpairs[i].querypos;
-      refgenomepos = (genomiclength - 1) - refpairs[i].genomepos;
-      genomepos = (genomiclength - 1) - pairs[j].genomepos;
+      refgenomepos = refpairs[i].genomepos;
+      genomepos = pairs[j].genomepos;
       debug(printf("Comparing ref %d (%c) with %d\n",refgenomepos,refpairs[i].aa_e,genomepos));
       if (pairs[j].genome == ' ') {
 	pairs[j].refquerypos = refquerypos;
@@ -1874,7 +1873,7 @@ bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, boo
 void
 Translation_via_reference (int *relaastart, int *relaaend,
 			   struct Pair_T *pairs, int npairs, bool watsonp, bool backwardp, bool revcompp,
-			   struct Pair_T *refpairs, int nrefpairs, bool refwatsonp, int genomiclength,
+			   struct Pair_T *refpairs, int nrefpairs, bool refwatsonp,
 			   bool fixshiftp) {
   struct T *translation;
   int start, end, i;
@@ -1890,8 +1889,7 @@ Translation_via_reference (int *relaastart, int *relaaend,
   }
 
   debug2(printf("Translation_via_reference called with backwardp = %d\n",backwardp));
-  bound_via_reference(&start,&end,pairs,npairs,watsonp,refpairs,nrefpairs,refwatsonp,
-		      genomiclength);
+  bound_via_reference(&start,&end,pairs,npairs,watsonp,refpairs,nrefpairs,refwatsonp);
 
   if (start < 0 || end < 0) {
     *relaastart = *relaaend = -1;

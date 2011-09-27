@@ -1,4 +1,4 @@
-/* $Id: diagpool.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: diagpool.h 40326 2011-05-30 17:27:01Z twu $ */
 #ifndef DIAGPOOL_INCLUDED
 #define DIAGPOOL_INCLUDED
 #include "diag.h"
@@ -13,6 +13,8 @@ extern void
 Diagpool_free (T *old);
 extern void
 Diagpool_free_memory (T this);
+extern void
+Diagpool_report_memory (T this);
 extern T
 Diagpool_new (void);
 extern void

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 37230 2011-03-26 03:53:33Z twu $";
+static char rcsid[] = "$Id: gmap.c 47129 2011-09-13 20:49:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,10 +32,13 @@ static char rcsid[] = "$Id: gmap.c 37230 2011-03-26 03:53:33Z twu $";
 #include "diagpool.h"
 #include "stopwatch.h"
 #include "genome.h"
-#include "gbuffer.h"
+#include "genome_hr.h"		/* For Genome_hr_setup */
+#include "maxent_hr.h"		/* For Maxent_hr_setup */
 #include "stage1.h"
 #include "gregion.h"
+#include "oligoindex_hr.h"	/* For Oligoindex_hr_setup */
 #include "stage2.h"
+#include "splicetrie.h"
 #include "dynprog.h"
 #include "stage3.h"
 #include "chimera.h"
@@ -66,10 +69,12 @@ static char rcsid[] = "$Id: gmap.c 37230 2011-03-26 03:53:33Z twu $";
 #define CHIMERA_FVALUE 6.634897	/* qnorm(CHIMERA_PVALUE/2)^2 */
 #define CHIMERA_HANDICAP 10	/* points, for minor alignment differences based on different defect rates */
 #ifdef PMAP
-#define CHIMERA_SLOP 7
+#define CHIMERA_SLOP 2
 #else
-#define CHIMERA_SLOP 25
+#define CHIMERA_SLOP 6
 #endif
+
+#define MIN_MATCHES 20
 
 
 #ifdef DEBUG
@@ -85,13 +90,6 @@ static char rcsid[] = "$Id: gmap.c 37230 2011-03-26 03:53:33Z twu $";
 #define debug2(x)
 #endif
 
-/* Chimera parts */
-#ifdef DEBUG3
-#define debug3(x) x
-#else
-#define debug3(x)
-#endif
-
 
 /************************************************************************
  *   Global variables
@@ -104,13 +102,18 @@ static Chrsubset_T chrsubset = NULL;
 static IIT_T contig_iit = NULL;
 static Genome_T genome = NULL;
 static Genome_T genomealt = NULL;
+static UINT4 *genome_blocks = NULL;
+static UINT4 *snp_blocks = NULL;
 
 #ifdef PMAP
 static Indexdb_T indexdb_fwd = NULL;
 static Indexdb_T indexdb_rev = NULL;
+static int index1part_aa = 6;
 #else
 static Indexdb_T indexdb = NULL;
+static int index1part;
 #endif
+static int required_index1part = 0;
 static int indexdb_size_threshold = 0;
 
 static IIT_T altstrain_iit = NULL;
@@ -129,6 +132,7 @@ static int maxpeelback = 12;	/* Needs to be at least indexsize
 				   Also should exceed length of
 				   repeated nucleotides (e.g., a
 				   string of consecutive T's) */
+static int maxpeelback_distalmedial = 24;
 #else
 /* Making minindexsize too small can lead to spurious exons in stage 2 */
 /* FOOBAR */
@@ -141,9 +145,10 @@ static int maxpeelback = 11;	/* Needs to be at least indexsize
 				   Also should exceed length of
 				   repeated nucleotides (e.g., a
 				   string of consecutive T's) */
+static int maxpeelback_distalmedial = 24; /* Needs to be longer to fix bad end exons */
 #endif
 
-static int stuttercycles = 2;
+/* static int stuttercycles = 2; */
 static int stutterhits = 3;
 static int sufflookback = 60;
 static int nsufflookback = 5;
@@ -154,13 +159,16 @@ static int maxoligohits = 400; /* Must be smaller than ALLOC in oligoindex.c */
 static int nullgap = 600;
 static int extramaterial_end = 10;
 static int extramaterial_paired = 8; /* Should be at least indexsize in nt */
-static int extraband_single = 0; /* This is in addition to length2 -
+static int extraband_single = 3; /* This is in addition to length2 -
 				    length1.  If onesidegap is true in
 				    dynprog.c, then this is equivalent
-				    to extraband_single of 0 */
-static int extraband_end = 6; /* This is only on both sides of main diagonal */
+				    to extraband_single of 0.  Needs
+				    to be > 0 to handle default
+				    close_indels_mode. */
+static int extraband_end = 3; /* Was 6.  Shouldn't differ from 0, since onesidegapp is true?
+				 This is only on both sides of main diagonal */
 static int extraband_paired = 7; /* This is in addition to length2 - length1 */
-static int minendexon = 12;
+static int minendexon = 9;
 
 static Stopwatch_T stopwatch = NULL;
 
@@ -174,13 +182,17 @@ static char *user_genomedir = NULL;
 static char *dbroot = NULL;
 static char *dbversion = NULL;
 static char *user_genomicseg = NULL;
+static bool user_pairalign_p = false;
+static char *user_cmdline = NULL;
 static Sequence_T usersegment = NULL;
 static char *user_chrsubsetfile = NULL;
 static int part_modulus = 0;
 static int part_interval = 1;
 
 /* Compute options */
-static Access_mode_T offsets_access = USE_ALLOCATE;
+static int min_matches;
+static Access_mode_T offsetscomp_access = USE_ALLOCATE;
+static bool expand_offsets_p = false;
 
 #ifdef HAVE_MMAP
 static Access_mode_T positions_access = USE_MMAP_PRELOAD;
@@ -190,9 +202,10 @@ static Access_mode_T positions_access = USE_ALLOCATE;
 static Access_mode_T genome_access = USE_ALLOCATE;
 #endif
 
+static int min_intronlength = 9;
 static int maxtotallen_bound = 2400000;
 static int maxintronlen_bound = 1000000;
-static int chimera_margin = -1;
+static int chimera_margin = 40;	/* Useful for finding readthroughs */
 static bool maponlyp = false;
 #ifdef PMAP
 static bool userstage1p = false; /* Apply stage 1 for user-provided genomic segments.  Must be false. */
@@ -217,12 +230,15 @@ static int nworkers = 1;	/* (int) sysconf(_SC_NPROCESSORS_ONLN) */
 static bool prune_poor_p = false;
 static bool prune_repetitive_p = false;
 #endif
-static bool end_microexons_p = false;
 static int canonical_mode = 1;
+static bool use_shifted_canonical_p = false; /* Use this for cross-species */
 static char *user_chrsubsetname = NULL;
+static int close_indels_mode = +1;
+static double microexon_spliceprob = 0.90;
 
 
 /* Output options */
+static unsigned int output_buffer_size = 1000;
 static Printtype_T printtype = SIMPLE;
 static bool exception_raise_p = true;
 static bool debug_graphic_p = false;
@@ -244,6 +260,8 @@ static bool cigar_noncanonical_splices_p = true;
 static bool sam_headers_p = true;
 static char *sam_read_group_id = NULL;
 static char *sam_read_group_name = NULL;
+static char *sam_read_group_library = NULL;
+static char *sam_read_group_platform = NULL;
 #endif
 
 static bool orderedp = false;
@@ -275,52 +293,100 @@ static int invertmode = 0;
 static int ngap = 3;
 static int wraplength = 50;
 
+
+/* Splicing IIT */
+static bool novelsplicingp = true; /* Can be disabled with --nosplicing flag */
+static bool knownsplicingp = false;
+static bool distances_observed_p = false;
+static Genomicpos_T shortsplicedist = 200000;
+static int min_extra_end;		      /* If knownsplicing, then equals shortsplicedist */
+static char *user_splicingdir = (char *) NULL;
+static char *splicing_file = (char *) NULL;
+static IIT_T splicing_iit = NULL;
+static bool amb_closest_p = false;
+
+static int donor_typeint = -1;		/* for splicing_iit */
+static int acceptor_typeint = -1;	/* for splicing_iit */
+
+static int *splicing_divint_crosstable = NULL;
+static Genomicpos_T *splicesites = NULL;
+static Splicetype_T *splicetypes = NULL;
+static Genomicpos_T *splicedists = NULL; /* maximum observed splice distance for given splice site */
+static List_T *splicestrings = NULL;
+static UINT4 *splicefrags_ref = NULL;
+static UINT4 *splicefrags_alt = NULL;
+static int nsplicesites = 0;
+
+/* Splicing via splicesites */
+static int *nsplicepartners_skip = NULL;
+static int *nsplicepartners_obs = NULL;
+static int *nsplicepartners_max = NULL;
+
+static bool splicetrie_precompute_p = true;
+static unsigned int *trieoffsets_obs = NULL;
+static unsigned int *triecontents_obs = NULL;
+static unsigned int *trieoffsets_max = NULL;
+static unsigned int *triecontents_max = NULL;
+
+
 /* Input/output */
 static char *sevenway_root = NULL;
 static Inbuffer_T inbuffer = NULL;
 static Outbuffer_T outbuffer = NULL;
-static int inbuffer_nspaces = 1000;
+static unsigned int inbuffer_nspaces = 1000;
 static unsigned int inbuffer_maxchars = -1U; /* Currently not used by Inbuffer_T */
 
 
 #ifdef PMAP
-/* Used alphabetically: 0135789ABbCcDdEefGgHIiKLlMmNnOoPQRSstuVvwXxYZ */
+/* Used alphabetically: 01235789ABbCcDdEefGgHIiKkLlMmNnOoPQRSstuVvwXxYZ */
 #else
-/* Used alphabetically: 0135789AaBbCcDdEeFfGgHIijKLlMmNnOoPpQRSsTtuVvwXxYZ */
+/* Used alphabetically: 01235789AaBbCcDdEeFfGgHIijKkLlMmNnOoPpQRSsTtuVvwXxYZ */
 #endif
 
 static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'},	/* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"kmer", required_argument, 0, 'k'}, /* required_index1part, index1part */
   {"genomefull", no_argument, 0, 'G'}, /* uncompressedp */
   {"gseg", required_argument, 0, 'g'}, /* user_genomicseg */
+  {"pairalign", no_argument, 0, '2'}, /* user_pairalign_p */
+  {"cmdline", required_argument, 0, 0}, /* user_cmdline */
   {"part", required_argument, 0, 'q'}, /* part_modulus, part_interval */
   {"input-buffer-size", required_argument, 0, 0}, /* inbuffer_nspaces */
 
   /* Compute options */
 #ifdef HAVE_MMAP
-  {"batch", required_argument, 0, 'B'}, /* offsets_access, positions_access, genome_access */
+  {"batch", required_argument, 0, 'B'}, /* offsetscomp_access, positions_access, genome_access */
 #endif
+  {"min-intronlength", required_argument, 0, 0}, /* min_intronlength */
   {"intronlength", required_argument, 0, 'K'}, /* maxintronlen_bound */
   {"totallength", required_argument, 0, 'L'}, /* maxtotallen_bound */
   {"chimera-margin", required_argument, 0, 'x'}, /* chimera_margin */
 #if 0
   {"reference", required_argument, 0, 'w'}, /* referencefile */
+#else
+  {"localsplicedist", required_argument, 0, 'w'}, /* shortsplicedist */
 #endif
 #ifdef HAVE_PTHREAD
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
 #endif
-  {"altstrain", no_argument, 0, 's'},	/* altstrainp */
+  {"splicingdir", required_argument, 0, 0}, /* user_splicingdir */
+  {"nosplicing", no_argument, 0, 0},	    /* novelsplicingp */
+  {"use-splicing", required_argument, 0, 's'}, /* splicing_iit, knownsplicingp (was previously altstrainp) */
   {"chrsubsetfile", required_argument, 0, 'C'}, /* user_chrsubsetfile */
   {"chrsubset", required_argument, 0, 'c'}, /* user_chrsubsetname */
   {"trimendexons", required_argument, 0, 'H'}, /* minendexon */
-  {"canonical", required_argument, 0, 'X'}, /* canonical_mode */
+  {"canonical-mode", required_argument, 0, 0}, /* canonical_mode */
+  {"cross-species", no_argument, 0, 0}, /* use_shifted_canonical_p */
 #ifndef PMAP
   {"prunelevel", required_argument, 0, 'p'}, /* prune_poor_p, prune_repetitive_p */
 #endif
+  {"allow-close-indels", required_argument, 0, 0}, /* close_indels_mode, extraband_single */
+  {"microexon-spliceprob", required_argument, 0, 0}, /* microexon_spliceprob */
 
   /* Output options */
+  {"output-buffer-size", required_argument, 0, 0}, /* output_buffer_size */
   {"summary", no_argument, 0, 'S'}, /* printtype */
   {"align", no_argument, 0, 'A'}, /* printtype */
   {"continuous", no_argument, 0, '3'}, /* printtype */
@@ -344,13 +410,15 @@ static struct option long_options[] = {
   {"noncanonical-splices", required_argument, 0, 0}, /* cigar_noncanonical_splices_p */
   {"read-group-id", required_argument, 0, 0},	/* sam_read_group_id */
   {"read-group-name", required_argument, 0, 0},	/* sam_read_group_name */
+  {"read-group-library", required_argument, 0, 0}, /* sam_read_group_library */
+  {"read-group-platform", required_argument, 0, 0}, /* sam_read_group_platform */
 #endif
 
   {"compress", no_argument, 0, 'Z'}, /* printtype */
   {"ordered", no_argument, 0, 'O'}, /* orderedp */
   {"md5", no_argument, 0, '5'}, /* checksump */
   {"chimera-overlap", required_argument, 0, 'o'}, /* chimera_overlap */
-  {"usesnps", required_argument, 0, 'V'}, /* snp_root */
+  {"use-snps", required_argument, 0, 'V'}, /* snps_root */
 
   /* Map file options */
   {"mapdir", required_argument, 0, 'M'}, /* user_mapdir */
@@ -420,7 +488,7 @@ print_program_version () {
   fprintf(stdout,"no sigaction\n");
 #endif
 #ifdef PMAP
-  fprintf(stdout,"Stage 1 index size: %d aa\n",INDEX1PART_AA);
+  fprintf(stdout,"Stage 1 index size: %d aa\n",index1part_aa);
 #endif
   fprintf(stdout,"Sizes: off_t (%lu), size_t (%lu), unsigned int (%lu), long int (%lu)\n",
 	  sizeof(off_t),sizeof(size_t),sizeof(unsigned int),sizeof(long int));
@@ -428,11 +496,7 @@ print_program_version () {
   genomedir = Datadir_find_genomedir(/*user_genomedir*/NULL);
   fprintf(stdout,"Default gmap directory (environment): %s\n",genomedir);
   FREE(genomedir);
-#ifdef PMAP
   fprintf(stdout,"Thomas D. Wu, Genentech, Inc.\n");
-#else
-  fprintf(stdout,"Thomas D. Wu and Colin K. Watanabe, Genentech, Inc.\n");
-#endif
   fprintf(stdout,"Contact: twu@gene.com\n");
   fprintf(stdout,"\n");
   return;
@@ -526,17 +590,28 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 		   Genomicpos_T genomicstart, Genomicpos_T genomiclength,
 		   Oligoindex_T *oligoindices_major, int noligoindices_major,
 		   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		   Pairpool_T pairpool, Diagpool_T diagpool,
-		   int straintype, char *strain, Genome_T genome,
-		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T chrlength,
-		   bool watsonp, Gbuffer_T gbuffer, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+		   Pairpool_T pairpool, Diagpool_T diagpool, int straintype, char *strain,
+		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
+		   bool watsonp, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		   Stopwatch_T worker_stopwatch) {
   bool do_final_p;
   int stage2_source, stage2_indexsize;
 
   Sequence_T genomicuc;
+  Genomicpos_T genomicend;
   List_T path;
   Stage3_T stage3;
+
+  struct Pair_T *pairarray;
+  List_T pairs;
+  int npairs, cdna_direction, matches, unknowns, mismatches, qopens, qindels, topens, tindels,
+    ncanonical, nsemicanonical, nnoncanonical;
+  int nmatches_pretrim;
+  int sensedir;
+  int ambig_end_length_5, ambig_end_length_3;
+  Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
+  double defect_rate;
+  double stage3_runtime;
 
   if (user_genomicseg == NULL && uncompressedp == false && straintype == 0) {
     genomicuc = Sequence_alias(genomicseg);
@@ -544,15 +619,25 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
     genomicuc = Sequence_uppercase(genomicseg);
   }
 
-  debug(printf("Beginning Stage2_compute\n"));
+  debug(printf("Beginning Stage2_compute with genomiclength %d\n",Sequence_fulllength(genomicseg)));
+  if (genome == NULL) {
+    genomicend = 0U;
+  } else {
+    genomicend = genomicstart + Sequence_fulllength(genomicseg);
+  }
   path = Stage2_compute(&stage2_source,&stage2_indexsize,
 			Sequence_trimpointer(queryseq),Sequence_trimpointer(queryuc),
 			Sequence_trimlength(queryseq),/*query_offset*/0,
+
 			Sequence_fullpointer(genomicseg),Sequence_fullpointer(genomicuc),
-			Sequence_fulllength(genomicseg),/*genomic_offset*/0,
+			genomicstart,genomicend,/*mappingstart*/genomicstart,/*mappingend*/genomicend,
+			/*plusp*/watsonp,/*genomiclength*/Sequence_fulllength(genomicseg),
+			/*genomic_offset*/0,
+
 			oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			pairpool,diagpool,sufflookback,nsufflookback,maxintronlen_bound,
-			/*localp*/true,/*skip_repetitive_p*/true,debug_graphic_p,diagnosticp,
+			/*localp*/true,/*skip_repetitive_p*/true,use_shifted_canonical_p,
+			/*favor_right_p*/false,debug_graphic_p,diagnosticp,
 			worker_stopwatch,diag_debug);
   if (diag_debug == true) {
     stage3list = path;		/* really diagonals */
@@ -570,21 +655,53 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
       do_final_p = true;
     }
 
-    if ((stage3 = Stage3_compute(path,stage2_source,stage2_indexsize,genomicstart,genomiclength,
+    Stopwatch_start(worker_stopwatch);
+    pairarray = Stage3_compute(&pairs,&npairs,&cdna_direction,&sensedir,&matches,
+			       &nmatches_pretrim,&ambig_end_length_5,&ambig_end_length_3,
+			       &ambig_splicetype_5,&ambig_splicetype_3,
+			       &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
+			       &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
+			       path,genomiclength,
 #ifdef PMAP
-				 queryseq,queryntseq,queryntseq,
+			       /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
+			       /*queryseq_ptr*/Sequence_fullpointer(queryntseq),
+			       /*queryuc_ptr*/Sequence_fullpointer(queryntseq),
+			       /*querylength*/Sequence_fulllength(queryntseq),
+			       /*skiplength*/Sequence_skiplength(queryntseq),
+			       /*query_subseq_offset*/Sequence_subseq_offset(queryntseq),
 #else
-				 queryseq,queryuc,
+			       /*queryseq_ptr*/Sequence_fullpointer(queryseq),
+			       /*queryuc_ptr*/Sequence_fullpointer(queryuc),
+			       /*querylength*/Sequence_fulllength(queryseq),
+			       /*skiplength*/Sequence_skiplength(queryseq),
+			       /*query_subseq_offset*/Sequence_subseq_offset(queryseq),
 #endif
-				 genomicseg,genomicuc,straintype,strain,genome,genomealt,chrnum,chroffset,
-				 chrpos,chrlength,watsonp,maxpeelback,nullgap,extramaterial_end,extramaterial_paired,
-				 extraband_single,extraband_end,extraband_paired,end_microexons_p,
-				 minendexon,pairpool,gbuffer,dynprogL,dynprogM,dynprogR,altstrain_iit,ngap,
-				 stage3debug,diagnosticp,checkp,worker_stopwatch,do_final_p,sense_try,sense_filter,
-				 oligoindices_minor,noligoindices_minor,diagpool,
-				 sufflookback,nsufflookback,maxintronlen_bound)) != NULL) {
-
-
+			       /*genomicseg_ptr*/Sequence_fullpointer(genomicseg),
+			       /*genomicuc_ptr*/Sequence_fullpointer(genomicuc),
+			       chrnum,chroffset,chrpos,splicesites,splicetypes,nsplicesites,
+			       trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+			       /*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
+			       genome,/*usersegment_p*/usersegment ? true : false,
+			       watsonp,/*jump_late_p*/watsonp ? false : true,
+			       maxpeelback,maxpeelback_distalmedial,nullgap,
+			       extramaterial_end,extramaterial_paired,
+			       extraband_single,extraband_end,extraband_paired,
+			       minendexon,pairpool,dynprogL,dynprogM,dynprogR,ngap,
+			       stage3debug,diagnosticp,checkp,do_final_p,sense_try,sense_filter,
+			       oligoindices_minor,noligoindices_minor,diagpool,
+			       sufflookback,nsufflookback,maxintronlen_bound,close_indels_mode);
+    stage3_runtime = Stopwatch_stop(worker_stopwatch);
+    if (pairarray == NULL) {
+      /* Skip */
+    } else if (matches < min_matches) {
+      FREE_OUT(pairarray);
+    } else if ((stage3 = Stage3_new(pairarray,pairs,npairs,cdna_direction,genomicstart,genomiclength,
+				    stage2_source,stage2_indexsize,matches,unknowns,mismatches,
+				    qopens,qindels,topens,tindels,ncanonical,nsemicanonical,nnoncanonical,
+				    defect_rate,chrnum,chroffset,chrpos,watsonp,
+				    /*skiplength*/Sequence_skiplength(queryseq),
+				    /*trimlength*/Sequence_trimlength(queryseq),
+				    stage3_runtime,straintype,strain,altstrain_iit)) != NULL) {
       stage3list = List_push(stage3list,stage3);
     }
   }
@@ -594,6 +711,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
   return stage3list;
 }
 
+#if 0
 static List_T
 update_stage3list_maponlyp (List_T stage3list, Gregion_T gregion, Sequence_T queryseq, 
 #ifdef PMAP
@@ -601,7 +719,7 @@ update_stage3list_maponlyp (List_T stage3list, Gregion_T gregion, Sequence_T que
 #endif
 			    Sequence_T queryuc, Pairpool_T pairpool, int straintype, char *strain, Genome_T genome,
 			    Chrnum_T chrnum,  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T chrlength,
-			    bool watsonp, Gbuffer_T gbuffer, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
+			    bool watsonp, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
   Stage3_T stage3;
 
   if ((stage3 = Stage3_direct(gregion,
@@ -611,13 +729,16 @@ update_stage3list_maponlyp (List_T stage3list, Gregion_T gregion, Sequence_T que
 			      queryseq,queryuc,
 #endif
 			      pairpool,genome,chrnum,chroffset,chrpos,watsonp,ngap,
-			      gbuffer,dynprogL,dynprogR,extramaterial_end,extraband_end)) != NULL) {
+			      dynprogL,dynprogR,extramaterial_end,extraband_end)) != NULL) {
     stage3list = List_push(stage3list,stage3);
   }
 
   return stage3list;
 }
+#endif
 
+
+#if 0
 /* This code is duplicated in get-genome.c */
 static int
 index_compare (const void *a, const void *b) {
@@ -648,6 +769,7 @@ index_compare (const void *a, const void *b) {
     }
   }
 }
+#endif
 
 
 static Stage3_T *
@@ -656,7 +778,7 @@ stage3_from_usersegment (int *npaths, bool lowidentityp, Sequence_T queryseq,
 			 Oligoindex_T *oligoindices_major, int noligoindices_major,
 			 Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 			 Pairpool_T pairpool, Diagpool_T diagpool,
-			 Gbuffer_T gbuffer, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+			 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 			 Stopwatch_T worker_stopwatch) {
   List_T stage3list;
   Genomicpos_T chroffset, chrpos, chrlength;
@@ -678,9 +800,8 @@ stage3_from_usersegment (int *npaths, bool lowidentityp, Sequence_T queryseq,
 				 queryuc,usersegment,/*genomicstart*/0U,
 				 /*genomiclength*/Sequence_fulllength(usersegment),
 				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				 pairpool,diagpool,
-				 /*straintype*/0,/*strain*/NULL,/*genome*/NULL,chrnum,chroffset,chrpos,chrlength,
-				 /*watsonp*/true,gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
+				 /*watsonp*/true,dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   revcomp = Sequence_revcomp(usersegment);
 
@@ -691,9 +812,8 @@ stage3_from_usersegment (int *npaths, bool lowidentityp, Sequence_T queryseq,
 				 queryuc,revcomp,/*genomicstart*/0U,
 				 /*genomiclength*/Sequence_fulllength(usersegment),
 				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				 pairpool,diagpool,
-				 /*straintype*/0,/*strain*/NULL,/*genome*/NULL,chrnum,chroffset,chrpos,chrlength,
-				 /*watsonp*/false,gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
+				 /*watsonp*/false,dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   Sequence_free(&revcomp);
 
@@ -717,12 +837,15 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 		      Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		      Pairpool_T pairpool, Diagpool_T diagpool,
 		      Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		      Gbuffer_T gbuffer, Stopwatch_T worker_stopwatch) {
+		      Stopwatch_T worker_stopwatch) {
   Gregion_T gregion, *array;
   char *strain;
   Sequence_T genomicseg, genomicuc;
   int ngregions, ncovered, max_ncovered, stage2_source;
-  int *indexarray, nindices, straintype, i, j;
+  int i;
+#if 0
+  int *indexarray, nindices, straintype, j;
+#endif
   void *item;
 
 #ifdef PMAP
@@ -736,15 +859,11 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 
     for (i = 0; i < ngregions; i++) {
       gregion = array[i];
-      Gbuffer_alloc_contents(gbuffer,Gregion_genomiclength(gregion));
       genomicseg = Genome_get_segment(genome,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
-				      /*chromosome_iit*/NULL,Gregion_revcompp(gregion),
-				      Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
+				      /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
       genomicuc = Sequence_uppercase(genomicseg);
-      ncovered = Stage2_scan(&stage2_source,Sequence_trimpointer(queryseq),Sequence_trimpointer(queryuc),
-			     Sequence_trimlength(queryseq),/*query_offset*/0,
-			     Sequence_fullpointer(genomicseg),Sequence_fullpointer(genomicuc),
-			     Sequence_fulllength(genomicseg),/*genomic_offset*/0,
+      ncovered = Stage2_scan(&stage2_source,Sequence_trimpointer(queryuc),Sequence_trimlength(queryseq),
+			     Sequence_fullpointer(genomicuc),Sequence_fulllength(genomicseg),
 			     oligoindices_major,noligoindices_major,diagpool,
 			     debug_graphic_p,diagnosticp);
       Gregion_set_ncovered(gregion,ncovered,stage2_source);
@@ -782,10 +901,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
       if (usersegment != NULL) {
 	/* chrlength = Sequence_fulllength(usersegment); */
 	strain = NULL;
-	Gbuffer_alloc_contents(gbuffer,Gregion_genomiclength(gregion));
 	genomicseg = Sequence_substring(usersegment,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
-					Gregion_revcompp(gregion),
-					Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
+					Gregion_revcompp(gregion));
 	stage3list = update_stage3list(stage3list,lowidentityp,queryseq,
 #ifdef PMAP
 				       queryntseq,
@@ -793,15 +910,15 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 				       queryuc,genomicseg,Gregion_genomicstart(gregion),
 				       Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
 				       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-				       /*straintype*/0,/*strain*/NULL,/*genome*/NULL,
-				       Gregion_chrnum(gregion),Gregion_chroffset(gregion),
-				       Gregion_chrpos(gregion),Gregion_chrlength(gregion),Gregion_plusp(gregion),
-				       gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				       /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
+				       Gregion_chroffset(gregion),Gregion_chrpos(gregion),Gregion_plusp(gregion),
+				       dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	Sequence_free(&genomicseg);
-	Gbuffer_free_contents(gbuffer);
 
       } else if (maponlyp == true) {
-	Gbuffer_alloc_contents(gbuffer,Gregion_genomiclength(gregion));
+	fprintf(stderr,"maponlyp mode not currently supported\n");
+	exit(9);
+#if 0
 	stage3list = update_stage3list_maponlyp(stage3list,gregion,queryseq,
 #ifdef PMAP
 						queryntseq,
@@ -809,11 +926,10 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 						queryuc,pairpool,/*straintype*/0,/*strain*/NULL,genome,
 						Gregion_chrnum(gregion),Gregion_chroffset(gregion),
 						Gregion_chrpos(gregion),Gregion_chrlength(gregion),Gregion_plusp(gregion),
-						gbuffer,dynprogL,dynprogM,dynprogR);
-	Gbuffer_free_contents(gbuffer);
+						dynprogL,dynprogM,dynprogR);
+#endif
 
       } else {
-	Gbuffer_alloc_contents(gbuffer,Gregion_genomiclength(gregion));
 #if 0
 	if (diagnosticp == true) {
 	  printf("Got sequence at %u with length %u, revcomp %d\n",
@@ -822,12 +938,10 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 #endif
 	if (genomealt != NULL) {
 	  genomicseg = Genome_get_segment_alt(genomealt,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
-					      /*chromosome_iit*/NULL,Gregion_revcompp(gregion),
-					      Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
+					      /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
 	} else {
 	  genomicseg = Genome_get_segment(genome,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
-					  /*chromosome_iit*/NULL,Gregion_revcompp(gregion),
-					  Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
+					  /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
 	}
 	stage3list = update_stage3list(stage3list,lowidentityp,queryseq,
 #ifdef PMAP
@@ -836,12 +950,12 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 				       queryuc,genomicseg,Gregion_genomicstart(gregion),
 				       Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
 				       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-				       /*straintype*/0,/*strain*/NULL,genome,
-				       Gregion_chrnum(gregion),Gregion_chroffset(gregion),
-				       Gregion_chrpos(gregion),Gregion_chrlength(gregion),Gregion_plusp(gregion),
-				       gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				       /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
+				       Gregion_chroffset(gregion),Gregion_chrpos(gregion),Gregion_plusp(gregion),
+				       dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	Sequence_free(&genomicseg);
 
+#if 0
 	/* We rely upon the fact that gbuffer1 still holds the genomic segment.  This code is duplicated in get-genome.c */
 	if (altstrain_iit != NULL) {
 	  indexarray = IIT_get(&nindices,altstrain_iit,/*divstring*/NULL,Gregion_genomicstart(gregion)+1U,
@@ -870,17 +984,16 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 					     queryuc,genomicseg,Gregion_genomicstart(gregion),
 					     Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
 					     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-					     straintype,strain,genome,
-					     Gregion_chrnum(gregion),Gregion_chroffset(gregion),
-					     Gregion_chrpos(gregion),Gregion_chrlength(gregion),Gregion_plusp(gregion),
-					     gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+					     straintype,strain,Gregion_chrnum(gregion),Gregion_chroffset(gregion),
+					     Gregion_chrpos(gregion),Gregion_plusp(gregion),
+					     dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	      Sequence_free(&genomicseg);
 	    }
 	    FREE(indexarray);
 	  }
 	}
+#endif
 
-	Gbuffer_free_contents(gbuffer);
       }
     }
     Gregion_free(&gregion);
@@ -948,8 +1061,11 @@ chimeric_join3_p (Stage3_T to, int effective_start, int effective_end) {
 
 static bool
 chimeric_join_p (Stage3_T from, Stage3_T to) {
-  debug2(printf("from %d..%d -> to %d..%d => ",
-		Stage3_querystart(from),Stage3_queryend(from),Stage3_querystart(to),Stage3_queryend(to)));
+  debug2(printf("from %d..%d (%u..%u) -> to %d..%d (%u..%u) => ",
+		Stage3_querystart(from),Stage3_queryend(from),
+		Stage3_genomicstart(from),Stage3_genomicend(from),
+		Stage3_querystart(to),Stage3_queryend(to),
+		Stage3_genomicstart(to),Stage3_genomicend(to)));
 
   if (Stage3_queryend(from) - Stage3_querystart(to) < CHIMERA_SLOP &&
       Stage3_querystart(to) - Stage3_queryend(from) < CHIMERA_SLOP) {
@@ -994,15 +1110,13 @@ chimera_exists_p (Stage3_T *stage3array, int npaths, Genome_T genome, int queryl
 static List_T
 chimera_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1, 
 			Stage3_T **stage3array_sub2, int *npaths_sub2,
-			List_T stage3list, int five_margin, int three_margin,
-			int effective_start, int effective_end) {
+			List_T stage3list) {
   List_T nonjoinable = NULL, p, q;
   Stage3_T stage3_1, stage3_2, stage3;
   bool *joinable_left, *joinable_right;
   int npaths, i, j, k;
 
-  debug2(printf("chimera_separate_paths called with list length %d, effective region %d..%d\n",
-		List_length(stage3list),effective_start,effective_end));
+  debug2(printf("chimera_separate_paths called with list length %d\n",List_length(stage3list)));
 
   if (stage3list == NULL) {
     *stage3array_sub1 = (Stage3_T *) NULL;
@@ -1076,28 +1190,106 @@ chimera_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
 }
 
 #if 0
-      /* Check to see if we can merge chimeric parts */
-      if (Stage3_mergeable(stage3array[0],stage3array[1],Chimera_cdna_direction(*chimera),
-			   Chimera_donor_prob(*chimera),Chimera_acceptor_prob(*chimera),
-			   pairpool,genome,ngap) == true) {
-	best1 = stage3array[1];
-	Stage3_free(&best1,/*free_pairarray_p*/true);
-	for (j = 2; j < *npaths; j++) {
-	  stage3array[j-1] = stage3array[j];
-	}
-	stage3array[(*npaths)-1] = (Stage3_T) NULL;
-	*npaths -= 1;
-	Chimera_free(&(*chimera));
-      }
 #endif
+
+
+/* Returns a list with only one Stage3_T object */
+static List_T
+merge_left_and_right_readthrough (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
+				  Stage3_T *stage3array_sub2, int npaths_sub2, int bestto,
+				  char comp, Genomicpos_T genomegap, List_T nonjoinable, int chimerapos, int chimeraequivpos,
+				  int queryntlength, Pairpool_T pairpool, Genome_T genome,
+				  int ngap) {
+  List_T newstage3list, p;
+  Stage3_T best0, best1, *array, last, freed0 = NULL, freed1 = NULL;
+  int i, k;
+
+  best0 = stage3array_sub1[bestfrom];
+  best1 = stage3array_sub2[bestto];
+  debug2(printf("bestfrom %d: %p, bestto %d: %p\n",bestfrom,best0,bestto,best1));
+
+  if (Stage3_cdna_direction(best0) != Stage3_cdna_direction(best1) &&
+      Stage3_cdna_direction(best0) != 0 &&
+      Stage3_cdna_direction(best1) != 0) {
+    debug2(printf("cdna_directions are not compatible\n"));
+    if (Stage3_npairs(best0) > Stage3_npairs(best1)) {
+      newstage3list = (List_T) NULL;
+      newstage3list = List_push(newstage3list,(void *) best0);
+      freed1 = best1;
+      Stage3_free(&best1,/*free_pairarray_p*/true);
+    } else {
+      newstage3list = (List_T) NULL;
+      newstage3list = List_push(newstage3list,(void *) best1);
+      freed0 = best0;
+      Stage3_free(&best0,/*free_pairarray_p*/true);
+    }
+  } else {
+    Stage3_merge_readthrough(best0,best1,comp,genomegap,/*minpos1*/0,/*maxpos1*/chimeraequivpos+chimera_overlap,
+			     /*minpos2*/chimerapos+1-chimera_overlap,/*maxpos2*/queryntlength,
+			     pairpool,genome,ngap);
+    debug2(printf("Rearranging paths\n"));
+    newstage3list = (List_T) NULL;
+    newstage3list = List_push(newstage3list,(void *) best0);
+    freed1 = best1;
+    Stage3_free(&best1,/*free_pairarray_p*/false);
+    debug2(printf("Pushing stage3 %p\n",best0));
+  }
+
+  if (npaths_sub1 + npaths_sub2 > 2) {
+    /* Push rest of results, taking care not to have duplicates */
+
+    array = (Stage3_T *) CALLOC(npaths_sub1 + npaths_sub2 - 2,sizeof(Stage3_T));
+    k = 0;
+    for (i = 0; i < npaths_sub1; i++) {
+      if (i != bestfrom) {
+	debug2(printf("array %d is now sub1 %d: %p\n",k,i,stage3array_sub1[i]));
+	array[k++] = stage3array_sub1[i];
+      }
+    }
+    for (i = 0; i < npaths_sub2; i++) {
+      if (i != bestto) {
+	debug2(printf("array %d is now sub2 %d: %p\n",k,i,stage3array_sub2[i]));
+	array[k++] = stage3array_sub2[i];
+      }
+    }
+    qsort(array,npaths_sub1+npaths_sub2-2,sizeof(Stage3_T),Stage3_identity_cmp);
+
+    last = (Stage3_T) NULL;
+    for (i = 0; i < npaths_sub1+npaths_sub2-2; i++) {
+      if (array[i] == last) {
+	/* Skip */
+	debug2(printf("array %d: Skipping stage3 %p, because just pushed, so duplicate\n",i,array[i]));
+      } else if (array[i] == best0 || array[i] == best1) {
+	/* Skip */
+	debug2(printf("array %d: Skipping stage3 %p, because in chimera\n",i,array[i]));
+      } else if (array[i] == freed0 || array[i] == freed1) {
+	/* Skip */
+	debug2(printf("array %d: Skipping stage3 %p, because already freed\n",i,array[i]));
+      } else {
+	debug2(printf("array %d: Pushing stage3 %p\n",i,array[i]));
+	newstage3list = List_push(newstage3list,(void *) array[i]);
+	last = array[i];
+      }
+    }
+
+    FREE(array);
+  }
+
+  for (p = nonjoinable; p != NULL; p = List_next(p)) {
+    debug2(printf("Pushing nonjoinable stage3 %p\n",List_head(p)));
+    newstage3list = List_push(newstage3list,(void *) List_head(p));
+  }
+
+  return List_reverse(newstage3list);
+}
 
 
 /* Returns a list with only two Stage3_T objects */
 static List_T
-merge_left_and_right (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
-		      Stage3_T *stage3array_sub2, int npaths_sub2, int bestto,
-		      List_T nonjoinable, int chimerapos, int chimeraequivpos,
-		      int queryntlength, bool boundp) {
+merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
+			       Stage3_T *stage3array_sub2, int npaths_sub2, int bestto,
+			       List_T nonjoinable, int chimerapos, int chimeraequivpos,
+			       int queryntlength) {
   List_T newstage3list, p;
   Stage3_T best0, best1, *array, last;
   int i, k;
@@ -1112,8 +1304,8 @@ merge_left_and_right (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
   newstage3list = (List_T) NULL;
   newstage3list = List_push(newstage3list,(void *) best0);
   newstage3list = List_push(newstage3list,(void *) best1);
-  /* printf("Pushing stage3 %p\n",best0); */
-  /* printf("Pushing stage3 %p\n",best1); */
+  debug2(printf("Pushing stage3 %p\n",best0));
+  debug2(printf("Pushing stage3 %p\n",best1));
 
   if (npaths_sub1 + npaths_sub2 > 2) {
     /* Push rest of results, taking care not to have duplicates */
@@ -1136,12 +1328,12 @@ merge_left_and_right (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
     for (i = 0; i < npaths_sub1+npaths_sub2-2; i++) {
       if (array[i] == last) {
 	/* Skip */
-	/* printf("Skipping stage3 %p, because just pushed\n",array[i]); */
+	debug2(printf("Skipping stage3 %p, because just pushed\n",array[i]));
       } else if (array[i] == best0 || array[i] == best1) {
 	/* Skip */
-	/* printf("Skipping stage3 %p, because in chimera\n",array[i]); */
+	debug2(printf("Skipping stage3 %p, because in chimera\n",array[i]));
       } else {
-	/* printf("Pushing stage3 %p\n",array[i]); */
+	debug2(printf("Pushing stage3 %p\n",array[i]));
 	newstage3list = List_push(newstage3list,(void *) array[i]);
 	last = array[i];
       }
@@ -1151,7 +1343,7 @@ merge_left_and_right (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
   }
 
   for (p = nonjoinable; p != NULL; p = List_next(p)) {
-    /* printf("Pushing nonjoinable stage3 %p\n",List_head(p)); */
+    debug2(printf("Pushing nonjoinable stage3 %p\n",List_head(p)));
     newstage3list = List_push(newstage3list,(void *) List_head(p));
   }
 
@@ -1160,13 +1352,12 @@ merge_left_and_right (Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
 
 
 static List_T
-check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, int effective_end, Stage3_T nonchimericbest, 
+check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, int effective_end,
 		   Sequence_T queryseq, Sequence_T queryuc, Sequence_T usersegment, 
-		   int maxpeelback, int sufflookback, int nsufflookback, int nullgap,
 		   Oligoindex_T *oligoindices_major, int noligoindices_major,
 		   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		   Matchpool_T matchpool, Pairpool_T pairpool, 
-		   Diagpool_T diagpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR, Gbuffer_T gbuffer) {
+		   Diagpool_T diagpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
   List_T gregions = NULL, nonjoinable = NULL;
   Stage3_T *stage3array_sub1 = NULL, *stage3array_sub2 = NULL;
   Sequence_T querysubseq = NULL, querysubuc = NULL;
@@ -1178,17 +1369,33 @@ check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, i
   int queryntlength;
   bool lowidentityp;
 
+#ifdef DEBUG2
+  List_T p;
+  Stage3_T stage3;
+#endif
+
   int exonexonpos, cdna_direction;
+  char donor1, donor2, acceptor2, acceptor1;
   double donor_prob, acceptor_prob;
+  char comp;
+  Genomicpos_T genomegap;
 
   five_margin = effective_start - Sequence_trim_start(queryseq);
   three_margin = Sequence_trim_end(queryseq) - effective_end;
   debug2(printf("Margins are %d on the 5' end and %d on the 3' end\n",
 		five_margin,three_margin));
 
+#ifdef DEBUG2
+  for (p = stage3list; p != NULL; p = List_next(p)) {
+    stage3 = (Stage3_T) List_head(p);
+    Pair_dump_array(Stage3_pairarray(stage3),Stage3_npairs(stage3),/*zerobasedp*/true);
+    printf("\n");
+  }
+#endif
+
   queryntlength = Sequence_ntlength(queryseq);
   nonjoinable = chimera_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
-				       stage3list,five_margin,three_margin,effective_start,effective_end);
+				       stage3list);
 
   if (npaths_sub1 == 0 && npaths_sub2 == 0) {
     /* Need to compute on margin explicitly */
@@ -1208,23 +1415,22 @@ check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, i
 #else
 				    indexdb,
 #endif
-				    indexdb_size_threshold,chromosome_iit,nchrs,chrsubset,matchpool,
-				    maxintronlen_bound,maxtotallen_bound,stuttercycles,
-				    stutterhits,/*subsequencep*/true,
-				    genome,genome_totallength,diagnostic,/*worker_stopwatch*/NULL);
+				    indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+				    maxintronlen_bound,maxtotallen_bound,min_extra_end,
+				    stutterhits,diagnostic,/*worker_stopwatch*/NULL);
 	  Diagnostic_free(&diagnostic);
 	  debug2(printf("Performing Stage 3 starting with list length %d\n",List_length(stage3list)));
 	  stage3list = stage3_from_gregions(stage3list,gregions,lowidentityp,querysubseq,
 					    querysubuc,usersegment,oligoindices_major,noligoindices_major,
 					    oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-					    dynprogL,dynprogM,dynprogR,gbuffer,/*worker_stopwatch*/NULL);
+					    dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 
 	  /* Above function frees gregions */
 	  Sequence_free(&querysubuc);
 
 	  List_free(&nonjoinable);
 	  nonjoinable = chimera_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
-					       stage3list,five_margin,three_margin,effective_start,effective_end);
+					       stage3list);
 	  debug2(printf("Got %d and %d paths\n",npaths_sub1,npaths_sub2));
 	}
 	Sequence_free(&querysubseq);
@@ -1244,23 +1450,22 @@ check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, i
 #else
 				    indexdb,
 #endif
-				    indexdb_size_threshold,chromosome_iit,nchrs,chrsubset,matchpool,
-				    maxintronlen_bound,maxtotallen_bound,stuttercycles,
-				    stutterhits,/*subsequencep*/true,
-				    genome,genome_totallength,diagnostic,/*worker_stopwatch*/NULL);
+				    indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+				    maxintronlen_bound,maxtotallen_bound,min_extra_end,
+				    stutterhits,diagnostic,/*worker_stopwatch*/NULL);
 	  Diagnostic_free(&diagnostic);
 	  debug2(printf("Performing Stage 3 with list length %d\n",List_length(stage3list)));
 	  stage3list = stage3_from_gregions(stage3list,gregions,lowidentityp,querysubseq,
 					    querysubuc,usersegment,oligoindices_major,noligoindices_major,
 					    oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-					    dynprogL,dynprogM,dynprogR,gbuffer,/*worker_stopwatch*/NULL);
+					    dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 
 	  /* Above function frees gregions */
 	  Sequence_free(&querysubuc);
 
 	  List_free(&nonjoinable);
 	  nonjoinable = chimera_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
-					       stage3list,five_margin,three_margin,effective_start,effective_end);
+					       stage3list);
 	  debug2(printf("Got %d and %d paths\n",npaths_sub1,npaths_sub2));
 	}
 	Sequence_free(&querysubseq);
@@ -1278,40 +1483,48 @@ check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, i
     /*
     chimeric_goodness = Stage3_chimeric_goodness(&matches0,&matches1,
 						 stage3array_sub1[bestfrom],stage3array_sub2[bestto],
-						 chimerapos,queryntlength);
+						 chimerapos);
     */
-    debug2(printf("Chimera_bestpath returns boundary at %d..%d\n",chimerapos,chimeraequivpos));
+    debug2(printf("Chimera_bestpath returns boundary at %d..%d (switch can occur at %d..%d)\n",
+		  chimerapos,chimeraequivpos,chimerapos-1,chimeraequivpos));
 
-    debug3(printf("Merging left and right early\n"));
-    debug3(return merge_left_and_right(stage3array_sub1,npaths_sub1,bestfrom,
-				       stage3array_sub2,npaths_sub2,bestto,chimerapos,chimeraequivpos,
-				       queryntlength,/*boundp*/false));
+    Chimera_find_exonexon(&exonexonpos,&cdna_direction,
+			  &donor1,&donor2,&acceptor2,&acceptor1,&donor_prob,&acceptor_prob,
+			  stage3array_sub1[bestfrom],stage3array_sub2[bestto],
+			  genome,chromosome_iit,chimerapos-1,chimeraequivpos);
+    debug2(printf("Exon-exon boundary found at %d\n",exonexonpos));
+    chimerapos = chimeraequivpos = exonexonpos;
 
-      
 
-    if (Chimera_exonexon_p(&exonexonpos,&cdna_direction,&donor_prob,&acceptor_prob,
-			   stage3array_sub1[bestfrom],stage3array_sub2[bestto],
-			   genome,chromosome_iit,Sequence_fulllength(queryseq)) == true) {
-      debug2(printf("Exon-exon boundary found at %d\n",exonexonpos));
-      chimerapos = chimeraequivpos = exonexonpos;
-    } else {
-      debug2(printf("No exon-exon boundary found\n"));
-      exonexonpos = -1;
-      cdna_direction = 0;
-      donor_prob = 0.0;
-      acceptor_prob = 0.0;
-    }
-
-    if (Stage3_test_bounds(stage3array_sub1[bestfrom],0,chimeraequivpos+chimera_overlap) == true &&
-	Stage3_test_bounds(stage3array_sub2[bestto],chimerapos+1-chimera_overlap,queryntlength) == true) {
-      *chimera = Chimera_new(chimerapos,chimeraequivpos,exonexonpos,cdna_direction,
-			     donor_prob,acceptor_prob);
-      debug2(printf("Merging left and right\n"));
+    /* Check to see if we can merge chimeric parts */
+    if (Stage3_mergeable(&comp,&genomegap,stage3array_sub1[bestfrom],stage3array_sub2[bestto],
+			 exonexonpos,queryntlength,cdna_direction,donor_prob,acceptor_prob) == true) {
+      debug2(printf("Mergeable! -- Merging left and right readthrough\n"));
       List_free(&stage3list);
-      stage3list = merge_left_and_right(stage3array_sub1,npaths_sub1,bestfrom,
-					stage3array_sub2,npaths_sub2,bestto,
-					nonjoinable,chimerapos,chimeraequivpos,
-					queryntlength,/*boundp*/true);
+      stage3list = merge_left_and_right_readthrough(stage3array_sub1,npaths_sub1,bestfrom,
+						    stage3array_sub2,npaths_sub2,bestto,
+						    comp,genomegap,nonjoinable,chimerapos,chimeraequivpos,
+						    queryntlength,pairpool,genome,ngap);
+#if 0
+      best1 = stage3array[1];
+      Stage3_free(&best1,/*free_pairarray_p*/true);
+      for (j = 2; j < *npaths; j++) {
+	stage3array[j-1] = stage3array[j];
+      }
+      stage3array[(*npaths)-1] = (Stage3_T) NULL;
+      *npaths -= 1;
+      Chimera_free(&(*chimera));
+#endif
+    } else if (Stage3_test_bounds(stage3array_sub1[bestfrom],0,chimeraequivpos+chimera_overlap) == true &&
+	       Stage3_test_bounds(stage3array_sub2[bestto],chimerapos+1-chimera_overlap,queryntlength) == true) {
+      *chimera = Chimera_new(chimerapos,chimeraequivpos,exonexonpos,cdna_direction,
+			     donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+      debug2(printf("Merging left and right transloc\n"));
+      List_free(&stage3list);
+      stage3list = merge_left_and_right_transloc(stage3array_sub1,npaths_sub1,bestfrom,
+						 stage3array_sub2,npaths_sub2,bestto,
+						 nonjoinable,chimerapos,chimeraequivpos,
+						 queryntlength);
     }
     FREE(stage3array_sub2);
     FREE(stage3array_sub1);
@@ -1330,7 +1543,7 @@ apply_stage3 (Chimera_T *chimera, List_T gregions, bool lowidentityp, Sequence_T
 	      Sequence_T usersegment, Oligoindex_T *oligoindices_major, int noligoindices_major,
 	      Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 	      Matchpool_T matchpool, Pairpool_T pairpool, 
-	      Diagpool_T diagpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR, Gbuffer_T gbuffer,
+	      Diagpool_T diagpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 	      Stopwatch_T worker_stopwatch) {
   List_T stage3list;
   Stage3_T nonchimericbest;
@@ -1342,7 +1555,7 @@ apply_stage3 (Chimera_T *chimera, List_T gregions, bool lowidentityp, Sequence_T
   stage3list = stage3_from_gregions(/*stage3list*/(List_T) NULL,gregions,lowidentityp,queryseq,queryuc,
 				    usersegment,oligoindices_major,noligoindices_major,
 				    oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-				    dynprogL,dynprogM,dynprogR,gbuffer,worker_stopwatch);
+				    dynprogL,dynprogM,dynprogR,worker_stopwatch);
   debug2(printf("Initial search gives stage3list of length %d\n",List_length(stage3list)));
 
   if (diag_debug == true) {
@@ -1382,12 +1595,10 @@ apply_stage3 (Chimera_T *chimera, List_T gregions, bool lowidentityp, Sequence_T
 
     if (testchimerap == true) {
       debug2(printf("Checking for chimera, starting with list length %d\n",List_length(stage3list)));
-      stage3list = check_for_chimera(&(*chimera),stage3list,effective_start,effective_end,nonchimericbest,
+      stage3list = check_for_chimera(&(*chimera),stage3list,effective_start,effective_end,
 				     queryseq,queryuc,usersegment,
-				     maxpeelback,sufflookback,nsufflookback,nullgap,
 				     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				     matchpool,pairpool,diagpool,
-				     dynprogL,dynprogM,dynprogR,gbuffer);
+				     matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR);
     }
   }
 
@@ -1400,7 +1611,7 @@ static Result_T
 process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, 
 		 Oligoindex_T *oligoindices_major, int noligoindices_major,
 		 Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		 Gbuffer_T gbuffer, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+		 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		 Stopwatch_T worker_stopwatch) {
   Result_T result;
   int jobid;
@@ -1424,17 +1635,17 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 
   if (Sequence_fulllength_given(queryseq) <= 0) {
     result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,0,/*diagnostic*/NULL,
-		      EMPTY_SEQUENCE);
+			EMPTY_SEQUENCE);
       
   } else if (Sequence_fulllength_given(queryseq) < 
 #ifdef PMAP
-	     INDEX1PART_AA
+	     index1part_aa
 #else
-	     INDEX1PART
+	     index1part
 #endif
 	     ) {
     result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,0,/*diagnostic*/NULL,
-		      SHORT_SEQUENCE);
+			SHORT_SEQUENCE);
 
   } else {			/* Sequence_fulllength_given(queryseq) > 0 */
     queryuc = Sequence_uppercase(queryseq);
@@ -1493,8 +1704,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #endif
       stage3array = stage3_from_usersegment(&npaths,/*lowidentityp*/false,queryseq,queryuc,usersegment,
 					    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-					    pairpool,diagpool,gbuffer,
-					    dynprogL,dynprogM,dynprogR,worker_stopwatch);
+					    pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
       result = Result_new(jobid,(Chimera_T) NULL,stage3array,npaths,diagnostic,NO_FAILURE);
 
     } else {		/* Not user segment and not maponly */
@@ -1512,17 +1722,15 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #else
 				indexdb,
 #endif
-				indexdb_size_threshold,chromosome_iit,nchrs,chrsubset,matchpool,
-				maxintronlen_bound,maxtotallen_bound,stuttercycles,stutterhits,
-				/*subsequencep*/false,genome,genome_totallength,diagnostic,
-				worker_stopwatch);
+				indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+				maxintronlen_bound,maxtotallen_bound,min_extra_end,
+				stutterhits,diagnostic,worker_stopwatch);
       if (stage1debug == true) {
 	result = Result_new_stage1debug(jobid,gregions,diagnostic,NO_FAILURE);
       } else {
 	stage3list = apply_stage3(&chimera,gregions,lowidentityp,queryseq,queryuc,usersegment,
 				  oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				  matchpool,pairpool,diagpool,
-				  dynprogL,dynprogM,dynprogR,gbuffer,worker_stopwatch);
+				  matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	if (diag_debug == true) {
 	  result = Result_new_diag_debug(jobid,/*diagonals*/stage3list,diagnostic,NO_FAILURE);
 	} else if (stage3list == NULL) {
@@ -1584,8 +1792,6 @@ single_thread () {
   Oligoindex_T *oligoindices_major, *oligoindices_minor;
   int noligoindices_major, noligoindices_minor;
   Dynprog_T dynprogL, dynprogM, dynprogR;
-  Gbuffer_T gbuffer;		/* Individual space for reading genome sequence,
-				   revcomp, and strain calculations */
   Matchpool_T matchpool;
   Pairpool_T pairpool;
   Diagpool_T diagpool;
@@ -1593,6 +1799,7 @@ single_thread () {
   Request_T request;
   Result_T result;
   Sequence_T queryseq;
+  int noutput = 0;
   int jobid = 0;
 
   oligoindices_major = Oligoindex_new_major(&noligoindices_major);
@@ -1600,15 +1807,10 @@ single_thread () {
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
   dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
   dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  gbuffer = Gbuffer_new();
   matchpool = Matchpool_new();
   pairpool = Pairpool_new();
   diagpool = Diagpool_new();
   worker_stopwatch = diagnosticp == true ? Stopwatch_new() : (Stopwatch_T) NULL;
-
-#ifdef LEAKCHECK
-  Mem_leak_check_activate ();
-#endif
 
   while ((request = Inbuffer_get_request(inbuffer)) != NULL) {
     if (jobid % POOL_FREE_INTERVAL == 0) {
@@ -1620,7 +1822,7 @@ single_thread () {
       result = process_request(request,matchpool,pairpool,diagpool,
   			       oligoindices_major,noligoindices_major,
 			       oligoindices_minor,noligoindices_minor,
-			       gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+			       dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
       queryseq = Request_queryseq(request);
       if (Sequence_accession(queryseq) == NULL) {
@@ -1635,27 +1837,21 @@ single_thread () {
     RERAISE;
     END_TRY;
 
+#ifdef MEMUSAGE
+    Outbuffer_print_result(outbuffer,result,request,noutput+1);
+#else
     Outbuffer_print_result(outbuffer,result,request);
+#endif
     Result_free(&result);
     Request_free(&request);
+    noutput++;
 
-#ifdef LEAKCHECK
-    Pairpool_free_memory(pairpool);
-    Diagpool_free_memory(diagpool);
-    Matchpool_free_memory(matchpool);
-    Mem_leak_check_end(__FILE__,__LINE__);
-#endif
   }
-
-#ifdef LEAKCHECK
-  Mem_leak_check_deactivate ();
-#endif
 
   Stopwatch_free(&worker_stopwatch);
   Diagpool_free(&diagpool);
   Pairpool_free(&pairpool);
   Matchpool_free(&matchpool);
-  Gbuffer_free(&gbuffer);
   Dynprog_free(&dynprogR);
   Dynprog_free(&dynprogM);
   Dynprog_free(&dynprogL);
@@ -1671,8 +1867,6 @@ worker_thread (void *data) {
   Oligoindex_T *oligoindices_major, *oligoindices_minor;
   int noligoindices_major, noligoindices_minor;
   Dynprog_T dynprogL, dynprogM, dynprogR;
-  Gbuffer_T gbuffer;		/* Individual space for reading genome sequence,
-				   revcomp, and strain calculations */
   Matchpool_T matchpool;
   Pairpool_T pairpool;
   Diagpool_T diagpool;
@@ -1688,7 +1882,6 @@ worker_thread (void *data) {
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
   dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
   dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  gbuffer = Gbuffer_new();
   matchpool = Matchpool_new();
   pairpool = Pairpool_new();
   diagpool = Diagpool_new();
@@ -1707,7 +1900,7 @@ worker_thread (void *data) {
       result = process_request(request,matchpool,pairpool,diagpool,
 			       oligoindices_major,noligoindices_major,
 			       oligoindices_minor,noligoindices_minor,
-			       gbuffer,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+			       dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
       queryseq = Request_queryseq(request);
       if (queryseq == NULL) {
@@ -1736,7 +1929,6 @@ worker_thread (void *data) {
   Diagpool_free(&diagpool);
   Pairpool_free(&pairpool);
   Matchpool_free(&matchpool);
-  Gbuffer_free(&gbuffer);
   Dynprog_free(&dynprogR);
   Dynprog_free(&dynprogM);
   Dynprog_free(&dynprogL);
@@ -1760,8 +1952,6 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
   bool poorp, repetitivep;
 #endif
   Dynprog_T dynprogL, dynprogM, dynprogR;
-  Gbuffer_T gbuffer;		/* Individual space for reading genome sequence,
-				   revcomp, and strain calculations */
   Matchpool_T matchpool;
   Pairpool_T pairpool;
   Diagpool_T diagpool;
@@ -1781,7 +1971,6 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
   dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
   dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  gbuffer = Gbuffer_new();
   matchpool = Matchpool_new();
   pairpool = Pairpool_new();
   diagpool = Diagpool_new();
@@ -1810,12 +1999,12 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
 #else
 			    indexdb,
 #endif
-			    indexdb_size_threshold,chromosome_iit,nchrs,chrsubset,matchpool,
-			    maxintronlen_bound,maxtotallen_bound,stuttercycles,stutterhits,/*subsequencep*/false,
-			    genome,genome_totallength,diagnostic,/*stopwatch*/NULL);
+			    indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+			    maxintronlen_bound,maxtotallen_bound,min_extra_end,
+			    stutterhits,diagnostic,/*stopwatch*/NULL);
   stage3list = apply_stage3(&chimera,gregions,lowidentityp,referenceseq,referenceuc,/*usersegment*/NULL,
 			    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			    matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR,gbuffer,stopwatch);
+			    matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR,stopwatch);
   if (stage3list == NULL) {
     npaths = 0;
     stage3array = (Stage3_T *) NULL;
@@ -1842,13 +2031,10 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
     FREE(stage3array);
 
     Stage3_genomicbounds(&genomicstart,&genomiclength,stage3ref);
-    Gbuffer_alloc_contents(gbuffer,genomiclength);
     if (genomealt != NULL) {
-      genomicseg = Genome_get_segment(genomealt,genomicstart,genomiclength,chromosome_iit,/*revcomp*/false,
-				      Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
+      genomicseg = Genome_get_segment(genomealt,genomicstart,genomiclength,chromosome_iit,/*revcomp*/false);
     } else {
-      genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,/*revcomp*/false,
-				      Gbuffer_chars1(gbuffer),Gbuffer_chars2(gbuffer),Gbuffer_gbufferlen(gbuffer));
+      genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,/*revcomp*/false);
     }
 
     while (jobid == 0 || (queryseq = Sequence_read_multifile(&nextchar,&input,&files,&nfiles,maponlyp)) != NULL) {
@@ -1864,9 +2050,9 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
 
       } else if (Sequence_fulllength_given(queryseq) <
 #ifdef PMAP
-		 INDEX1PART_AA
+		 index1part_aa
 #else
-		 INDEX1PART
+		 index1part
 #endif
 		 ) {
 	print_npaths(fp,0,diagnostic,/*usersegment*/NULL,chrsubset,/*chimera*/NULL,SHORT_SEQUENCE);
@@ -1914,7 +2100,7 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
 #endif /* PMAP */
 	  stage3array = stage3_from_usersegment(&npaths,lowidentityp,queryseq,queryuc,genomicseg,
 						oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-						pairpool,diagpool,gbuffer,dynprogL,dynprogM,dynprogR,stopwatch);
+						pairpool,diagpool,dynprogL,dynprogM,dynprogR,stopwatch);
 	  
 	  if (npaths == 0) {
 	    print_npaths(fp,0,diagnostic,/*usersegment*/NULL,chrsubset,/*chimera*/NULL,NO_FAILURE);
@@ -1958,7 +2144,6 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
   Stopwatch_free(&stopwatch);
   Diagpool_free(&diagpool);
   Pairpool_free(&pairpool);
-  Gbuffer_free(&gbuffer);
   Dynprog_free(&dynprogR);
   Dynprog_free(&dynprogM);
   Dynprog_free(&dynprogL);
@@ -2043,22 +2228,119 @@ parse_part (int *part_modulus, int *part_interval, char *string) {
   return;
 }
 
+
+char *
+check_valid_int (char *string) {
+  char *p = string;
+
+  if (*p == '+' || *p == '-') {
+    p++;
+  }
+
+  if (!isdigit(*p)) {
+    fprintf(stderr,"value %s is not a valid int\n",string);
+    exit(9);
+    return NULL;
+  }
+  while (*p != '\0' && isdigit(*p)) {
+    p++;
+  }
+
+  if (*p == 'e') {
+    p++;
+    if (*p == '+') {
+      p++;
+    }
+    if (!isdigit(*p)) {
+      return false;
+    }
+    while (*p != '\0' && isdigit(*p)) {
+      p++;
+    }
+  }
+
+  if (*p == '\0') {
+    return string;
+  } else {
+    fprintf(stderr,"value %s is not a valid int\n",string);
+    exit(9);
+    return NULL;
+  }
+}
+
+
+char *
+check_valid_float (char *string) {
+  char *p = string;
+
+  if (*p == '+' || *p == '-') {
+    p++;
+  }
+
+  while (*p != '\0' && isdigit(*p)) {
+    p++;
+  }
+  if (*p == '\0') {
+    return string;
+  }
+
+  if (*p == '.') {
+    p++;
+  }
+
+  if (!isdigit(*p)) {
+    fprintf(stderr,"value %s is not a valid float\n",string);
+    exit(9);
+    return NULL;
+  }
+  while (*p != '\0' && isdigit(*p)) {
+    p++;
+  }
+
+  if (*p == 'e') {
+    p++;
+    if (*p == '+' || *p == '-') {
+      p++;
+    }
+    if (!isdigit(*p)) {
+      fprintf(stderr,"value %s is not a valid float\n",string);
+      exit(9);
+      return NULL;
+    }
+    while (*p != '\0' && isdigit(*p)) {
+      p++;
+    }
+  }
+
+  if (*p == '\0') {
+    return string;
+  } else {
+    fprintf(stderr,"value %s is not a valid float\n",string);
+    exit(9);
+    return NULL;
+  }
+}
+
+
 int
 main (int argc, char *argv[]) {
   Sequence_T referenceseq = NULL;
-  char *genomesubdir = NULL, *mapdir = NULL, *iitfile = NULL, *fileroot = NULL;
+  char *genomesubdir = NULL, *mapdir = NULL, *iitfile = NULL, *fileroot = NULL, *p;
   FILE *input = NULL;
 
   int user_ngap = -1;
   bool showcontigp = true, multiple_sequences_p = false;
   char **files;
   int nfiles;
-  int nread;
+  unsigned int nread;
   double runtime;
 
 #ifdef HAVE_PTHREAD
   int ret, i;
-  pthread_attr_t thread_attr_detach, thread_attr_join;
+  pthread_attr_t thread_attr_join;
+#ifdef WORKER_DETACH
+  pthread_attr_t thread_attr_detach;
+#endif
 #endif
 
   int opt, len, c;
@@ -2072,11 +2354,20 @@ main (int argc, char *argv[]) {
   struct sigaction signal_action;
 #endif
 
+
+  fprintf(stderr,"GMAP version %s called with args:",PACKAGE_VERSION);
+  argstart = &(argv[-optind]);
+  for (c = 1; c < argc + optind; c++) {
+    fprintf(stderr," %s",argstart[c]);
+  }
+  fprintf(stderr,"\n");
+
+
   while ((opt = getopt_long(argc,argv,
 #ifdef PMAP
-			    "q:D:d:Gg:C:B:K:L:x:1t:sc:H:X:SA03468:9n:f:ZO5o:V:M:m:ebu:E:PQYNI:i:l:",
+			    "q:D:d:k:Gg:2C:B:K:w:L:x:1t:s:c:H:SA03468:9n:f:ZO5o:V:M:m:ebu:E:PQYNI:i:l:",
 #else
-			    "q:D:d:Gg:C:B:K:L:x:1t:sc:H:X:p:SA03468:9n:f:ZO5o:V:M:m:ebu:E:PQFa:Tz:j:YNI:i:l:",
+			    "q:D:d:k:Gg:2C:B:K:w:L:x:1t:s:c:H:p:SA03468:9n:f:ZO5o:V:M:m:ebu:E:PQFa:Tz:j:YNI:i:l:",
 #endif
 			    long_options, &long_option_index)) != -1) {
     switch (opt) {
@@ -2088,8 +2379,60 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"help")) {
 	print_program_usage();
 	exit(0);
+
+      } else if (!strcmp(long_name,"cmdline")) {
+	user_cmdline = optarg; break;
+
+      } else if (!strcmp(long_name,"splicingdir")) {
+	user_splicingdir = optarg;
+
+      } else if (!strcmp(long_name,"nosplicing")) {
+	novelsplicingp = false;
+
+      } else if (!strcmp(long_name,"min-intronlength")) {
+	min_intronlength = atoi(check_valid_int(optarg));
+
+      } else if (!strcmp(long_name,"allow-close-indels")) {
+	if (!strcmp(optarg,"0")) {
+	  /* Disallow */
+	  close_indels_mode = -1;
+	  extraband_single = 0;
+	} else if (!strcmp(optarg,"1")) {
+	  /* Always allow */
+	  close_indels_mode = +1;
+	  extraband_single = 3;
+	} else if (!strcmp(optarg,"2")) {
+	  /* Allow for high-quality alignments */
+	  close_indels_mode = 0;
+	  extraband_single = 3;
+	} else {
+	  fprintf(stderr,"allow-close-indels argument %s not recognized.  Only allow 0, 1, or 2.  Run 'gsnap --help' for more information.\n",optarg);
+	  exit(9);
+	}
+      } else if (!strcmp(long_name,"microexon-spliceprob")) {
+	microexon_spliceprob = atof(check_valid_float(optarg));
+
+      } else if (!strcmp(long_name,"canonical-mode")) {
+	if (!strcmp(optarg,"0")) {
+	  canonical_mode = 0;
+	} else if (!strcmp(optarg,"1")) {
+	  canonical_mode = 1;
+	} else if (!strcmp(optarg,"2")) {
+	  canonical_mode = 2;
+	} else {
+	  fprintf(stderr,"Canonical level %s not recognized.\n",optarg);
+	  fprintf(stderr,"0=low reward for canonical introns, 1=high reward for canonical introns (default)\n");
+	  fprintf(stderr,"2=low reward for high-identity seqs, high reward otherwise\n");
+	  exit(9);
+	}
+
+      } else if (!strcmp(long_name,"cross-species")) {
+	use_shifted_canonical_p = true;
+
       } else if (!strcmp(long_name,"input-buffer-size")) {
-	inbuffer_nspaces = atoi(optarg);
+	inbuffer_nspaces = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"output-buffer-size")) {
+	output_buffer_size = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"print-comment")) {
 	print_comment_p = true;
       } else if (!strcmp(long_name,"failsonly")) {
@@ -2140,6 +2483,10 @@ main (int argc, char *argv[]) {
 	sam_read_group_id = optarg;
       } else if (!strcmp(long_name,"read-group-name")) {
 	sam_read_group_name = optarg;
+      } else if (!strcmp(long_name,"read-group-library")) {
+	sam_read_group_library = optarg;
+      } else if (!strcmp(long_name,"read-group-platform")) {
+	sam_read_group_platform = optarg;
 #endif
       } else {
 	/* Shouldn't reach here */
@@ -2154,43 +2501,78 @@ main (int argc, char *argv[]) {
       dbroot = (char *) CALLOC(strlen(optarg)+1,sizeof(char));
       strcpy(dbroot,optarg);
       break;
+#ifdef PMAP
+    case 'k': index1part_aa = atoi(check_valid_int(optarg));
+      if (index1part_aa == 5) {
+	/* Okay */
+      } else if (index1part_aa == 6) {
+	/* Okay */
+      } else if (index1part_aa == 7) {
+	/* Okay */
+      } else if (index1part_aa == 8) {
+	/* Okay */
+      } else {
+	fprintf(stderr,"The only values allowed for -k are 5, 6, 7, or 8\n");
+	exit(9);
+      }
+      break;
+#else
+    case 'k':
+      required_index1part = atoi(check_valid_int(optarg));
+      if (required_index1part >= 12 && required_index1part <= 15) {
+	/* Okay */
+      } else {
+	fprintf(stderr,"The only values allowed for -k are 12, 13, 14, or 15\n");
+	exit(9);
+      }
+      break;
+#endif
     case 'G': uncompressedp = true; break;
     case 'g': user_genomicseg = optarg; break;
+    case '2': user_pairalign_p = true; break;
     case 'C': user_chrsubsetfile = optarg; break;
 
     case 'B': 
       if (!strcmp(optarg,"0")) {
-	offsets_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
 	positions_access = USE_MMAP_ONLY; /* was batch_positions_p = false */
 	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
       } else if (!strcmp(optarg,"1")) {
-	offsets_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
 	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
 	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
       } else if (!strcmp(optarg,"2")) {
-	offsets_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
 	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
 	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
       } else if (!strcmp(optarg,"3")) {
-	offsets_access = USE_ALLOCATE;
+	offsetscomp_access = USE_ALLOCATE;
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
       } else if (!strcmp(optarg,"4")) {
-	offsets_access = USE_ALLOCATE;
+	offsetscomp_access = USE_ALLOCATE;
+	positions_access = USE_ALLOCATE;
+	genome_access = USE_ALLOCATE;
+      } else if (!strcmp(optarg,"5")) {
+	expand_offsets_p = true;
+	offsetscomp_access = USE_ALLOCATE; /* Doesn't matter */
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_ALLOCATE;
       } else {
-	fprintf(stderr,"Batch mode %s not recognized.  Only allow 0-4.  Run 'gsnap --help' for more information.\n",optarg);
+	fprintf(stderr,"Batch mode %s not recognized.  Only allow 0-5.  Run 'gsnap --help' for more information.\n",optarg);
 	exit(9);
       }
       break;
-    case 'K': maxintronlen_bound = atoi(optarg); break;
-    case 'L': maxtotallen_bound = atoi(optarg); break;
+
+    case 'K': maxintronlen_bound = atoi(check_valid_int(optarg)); break;
+    case 'w': shortsplicedist = strtoul(check_valid_int(optarg),NULL,10); break;
+
+    case 'L': maxtotallen_bound = atoi(check_valid_int(optarg)); break;
     case 'x': 
 #ifdef PMAP
-      chimera_margin = atoi(optarg)/3; 
+      chimera_margin = atoi(check_valid_int(optarg))/3; 
 #else
-      chimera_margin = atoi(optarg); 
+      chimera_margin = atoi(check_valid_int(optarg)); 
 #endif
       if (chimera_margin < CHIMERA_SLOP) {
 	chimera_margin = CHIMERA_SLOP;
@@ -2199,27 +2581,14 @@ main (int argc, char *argv[]) {
     case '1': maponlyp = true; break;
       /* case 'w': referencefile = optarg; break; */
 #ifdef HAVE_PTHREAD
-    case 't': nworkers = atoi(optarg); break;
+    case 't': nworkers = atoi(check_valid_int(optarg)); break;
 #endif
-    case 's': altstrainp = true; break;
+    case 's': splicing_file = optarg; knownsplicingp = true; break;
     case 'c': user_chrsubsetname = optarg; break;
-    case 'H': minendexon = atoi(optarg); break;
-    case 'X': 
-      if (!strcmp(optarg,"0")) {
-	canonical_mode = 0;
-      } else if (!strcmp(optarg,"1")) {
-	canonical_mode = 1;
-      } else if (!strcmp(optarg,"2")) {
-	canonical_mode = 2;
-      } else {
-	fprintf(stderr,"Canonical level %s not recognized.\n",optarg);
-	fprintf(stderr,"0=low reward for canonical introns, 1=high reward for canonical introns (default)\n");
-	fprintf(stderr,"2=low reward for high-identity seqs, high reward otherwise\n");
-	exit(9);
-      }
+    case 'H': minendexon = atoi(check_valid_int(optarg)); break;
 
 #ifndef PMAP
-    case 'p': switch (atoi(optarg)) {
+    case 'p': switch (atoi(check_valid_int(optarg))) {
       case 0: prune_poor_p = false, prune_repetitive_p = false; break;
       case 1: prune_poor_p = true; prune_repetitive_p = false; break;
       case 2: prune_poor_p = false; prune_repetitive_p = true; break;
@@ -2268,7 +2637,7 @@ main (int argc, char *argv[]) {
       }
       break;
     case '9': checkp = true; diagnosticp = true; break;
-    case 'n': maxpaths = atoi(optarg); break;
+    case 'n': maxpaths = atoi(check_valid_int(optarg)); break;
     case 'f':
       if (!strcmp(optarg,"1") || !strcmp(optarg,"psl_nt")) {
 	printtype = PSL_NT;
@@ -2280,6 +2649,8 @@ main (int argc, char *argv[]) {
 	printtype = PSL_NT;
       } else if (!strcmp(optarg,"6") || !strcmp(optarg,"splicesites")) {
 	printtype = SPLICESITES;
+      } else if (!strcmp(optarg,"introns")) {
+	printtype = INTRONS;
       } else if (!strcmp(optarg,"samse")) {
 	printtype = SAM;
 	sam_paired_p = false;
@@ -2307,7 +2678,7 @@ main (int argc, char *argv[]) {
     case 'Z': printtype = COMPRESSED; break;
     case 'O': orderedp = true; break;
     case '5': checksump = true; break;
-    case 'o': chimera_overlap = atoi(optarg); break;
+    case 'o': chimera_overlap = atoi(check_valid_int(optarg)); break;
     case 'V': snps_root = optarg; break;
 
     case 'M': user_mapdir = optarg; break;
@@ -2321,7 +2692,7 @@ main (int argc, char *argv[]) {
 
     case 'e': map_exons_p = true; break;
     case 'b': map_bothstrands_p = true; break;
-    case 'u': nflanking = atoi(optarg); break;
+    case 'u': nflanking = atoi(check_valid_int(optarg)); break;
 
     case 'E': 
       if (!strcmp(optarg,"cdna")) {
@@ -2341,7 +2712,7 @@ main (int argc, char *argv[]) {
     case 'P': printtype = CDNA; break;
     case 'Q': printtype = PROTEIN_GENOMIC; break;
     case 'F': fulllengthp = true; break;
-    case 'a': cds_startpos = atoi(optarg); break;
+    case 'a': cds_startpos = atoi(check_valid_int(optarg)); break;
     case 'T': truncatep = true; fulllengthp = true; break;
     case 'z':
       if (!strcmp(optarg,"sense_force")) {
@@ -2363,13 +2734,14 @@ main (int argc, char *argv[]) {
 	fprintf(stderr,"direction %s not recognized.  Must be sense_force, antisense_force, sense_filter, antisense_filter, or auto\n",optarg);
 	exit(9);
       }
+      break;
 
     case 'j':
       if (user_quality_shift == true) {
 	fprintf(stderr,"Cannot specify both -j (--quality-print-shift) and --quality-protocol\n");
 	exit(9);
       } else {
-	quality_shift = atoi(optarg);
+	quality_shift = atoi(check_valid_int(optarg));
 	user_quality_shift = true;
       }
       break;
@@ -2377,9 +2749,9 @@ main (int argc, char *argv[]) {
 #endif
     case 'Y': strictp = false; break;
     case 'N': nointronlenp = true; break;
-    case 'I': invertmode = atoi(optarg); break;
-    case 'i': user_ngap = atoi(optarg); break;
-    case 'l': wraplength = atoi(optarg); break;
+    case 'I': invertmode = atoi(check_valid_int(optarg)); break;
+    case 'i': user_ngap = atoi(check_valid_int(optarg)); break;
+    case 'l': wraplength = atoi(check_valid_int(optarg)); break;
 
     case '?': fprintf(stderr,"For usage, run 'gmap --help'\n"); exit(9);
     default: exit(9);
@@ -2406,9 +2778,9 @@ main (int argc, char *argv[]) {
   }
 
 
-  if (printtype == SPLICESITES) {
+  if (printtype == SPLICESITES || printtype == INTRONS) {
     if (maxpaths > 1 || (sense_try != +1 && sense_filter != +1)) {
-      fprintf(stderr,"For splicesites output, you should probably add flags '-n 1' and either '-z sense_force' or '-z sense_filter'.\n");
+      fprintf(stderr,"For splicesites or introns output, you should probably add flags '-n 1' and either '-z sense_force' or '-z sense_filter'.\n");
     }
   }
 
@@ -2435,11 +2807,15 @@ main (int argc, char *argv[]) {
 
   /* Handle "?" command-line queries */
 
-  if (user_genomicseg != NULL) {
+  if (user_cmdline != NULL) {
+    nchrs = 1;
+  } else if (user_pairalign_p == true) {
+    nchrs = 1;
+  } else if (user_genomicseg != NULL) {
     /* Ignore -D and -d flags */
     nchrs = 1;
   } else if (dbroot == NULL) {
-    fprintf(stderr,"Need to specify the -d or the -g flag\n");
+    fprintf(stderr,"Need to specify the -d, -g, -2, or --cmdline flag\n");
     print_program_usage();
     exit(9);
   } else if (!strcmp(dbroot,"?")) {
@@ -2487,11 +2863,69 @@ main (int argc, char *argv[]) {
       FREE(mapdir);
       FREE(map_iitfile);
     }
+
+    if (splicing_file != NULL) {
+      if (user_splicingdir == NULL) {
+	if ((splicing_iit = IIT_read(splicing_file,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+				     /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) != NULL) {
+	  fprintf(stderr,"Reading splicing file %s locally...",splicing_file);
+	} else {
+	  iitfile = (char *) CALLOC(strlen(user_splicingdir)+strlen("/")+strlen(splicing_file)+1,sizeof(char));
+	  sprintf(iitfile,"%s/%s",user_splicingdir,splicing_file);
+	  if ((splicing_iit = IIT_read(splicing_file,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+				       /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) != NULL) {
+	    fprintf(stderr,"Reading splicing file %s locally...",splicing_file);
+	    FREE(iitfile);
+	  }
+	}
+      }
+
+      if (splicing_iit == NULL) {
+	mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,dbroot);
+	iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
+				  strlen(splicing_file)+1,sizeof(char));
+	sprintf(iitfile,"%s/%s",mapdir,splicing_file);
+	if ((splicing_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+				     /*divstring*/NULL,/*add_iit_p*/true,/*labels_read_p*/true)) != NULL) {
+	  fprintf(stderr,"Reading splicing file %s...",iitfile);
+	  FREE(iitfile);
+	  FREE(mapdir);
+	} else {
+	  fprintf(stderr,"Splicing file %s.iit not found locally or in %s.  Available files:\n",splicing_file,mapdir);
+	  Datadir_list_directory(stderr,mapdir);
+	  fprintf(stderr,"Either install file %s or specify a full directory path\n",splicing_file);
+	  exit(9);
+	}
+      }
+    }
   }
 
 
   /* Read user segment before rest of sequences, because of shared usage of sequence.c */
-  if (user_genomicseg != NULL) {
+  if (user_cmdline != NULL) {
+    p = user_cmdline;
+    while (*p != '\0' && *p != ',') {
+      p++;
+    }
+    if (*p == '\0') {
+      fprintf(stderr,"--cmdline requires two strings separated by a comma");
+      exit(9);
+    } else {
+      usersegment = Sequence_genomic_new(user_cmdline,(int) (p - user_cmdline),/*copyp*/true);
+      if ((min_matches = Sequence_fulllength(usersegment)/2) > MIN_MATCHES) {
+	min_matches = MIN_MATCHES;
+      }
+      p++;
+    }
+
+  } else if (user_pairalign_p == true) {
+    /* Unfortunately, this procedure reads header of queryseq */
+    usersegment = Sequence_read_unlimited(stdin);
+    if ((min_matches = Sequence_fulllength(usersegment)/2) > MIN_MATCHES) {
+      min_matches = MIN_MATCHES;
+    }
+
+  } else if (user_genomicseg != NULL) {
     if ((input = FOPEN_READ_TEXT(user_genomicseg)) == NULL) {
       fprintf(stderr,"Can't open file %s\n",user_genomicseg);
       exit(9);
@@ -2500,7 +2934,13 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"File %s is empty\n",user_genomicseg);
       exit(9);
     }
+    if ((min_matches = Sequence_fulllength(usersegment)/2) > MIN_MATCHES) {
+      min_matches = MIN_MATCHES;
+    }
     fclose(input);
+
+  } else {
+    min_matches = MIN_MATCHES;
   }
 
   /* Read referencefile before rest of sequences, because of shared usage of sequence.c */
@@ -2523,44 +2963,39 @@ main (int argc, char *argv[]) {
   fprintf(stderr,"For memusage, setting to 0 threads\n");
 #endif
 
-  /* Open input stream and peek at first char */
-  if (argc == 0) {
-    input = stdin;
-    files = (char **) NULL;
-    nfiles = 0;
+  if (user_cmdline != NULL) {
+    inbuffer = Inbuffer_cmdline(p,strlen(p));
+    nread = 1;
   } else {
-    input = NULL;
-    files = argv;
-    nfiles = argc;
+    /* Open input stream and peek at first char */
+    if (user_pairalign_p == true) {
+      input = stdin;
+      files = (char **) NULL;
+      nfiles = 0;
+    } else if (argc == 0) {
+      input = stdin;
+      files = (char **) NULL;
+      nfiles = 0;
+    } else {
+      input = NULL;
+      files = argv;
+      nfiles = argc;
+    }
+
+    /* Read in first batch of sequences */
+    inbuffer = Inbuffer_new(/*nextchar*/'\0',input,files,nfiles,maponlyp,
+			    inbuffer_nspaces,inbuffer_maxchars,part_interval,part_modulus);
+    nread = Inbuffer_fill_init(inbuffer);
   }
-
-
-  fprintf(stderr,"GMAP version %s called with args:",PACKAGE_VERSION);
-  argstart = &(argv[-optind]);
-  for (c = 1; c < argc + optind; c++) {
-    fprintf(stderr," %s",argstart[c]);
-  }
-  fprintf(stderr,"\n");
-
-
-#ifdef LEAKCHECK
-  Mem_leak_check_activate ();
-#endif
-
-  /* Read in first batch of sequences */
-  inbuffer = Inbuffer_new(/*nextchar*/'\0',input,files,nfiles,usersegment,maponlyp,
-			  inbuffer_nspaces,inbuffer_maxchars,part_interval,part_modulus);
-
-  nread = Inbuffer_fill_init(inbuffer);
 
   if (nread > 1) {
     multiple_sequences_p = true;
 #ifdef HAVE_MMAP
-    if (offsets_access != USE_ALLOCATE || genome_access != USE_ALLOCATE) {
+    if (offsetscomp_access != USE_ALLOCATE || genome_access != USE_ALLOCATE) {
       fprintf(stderr,"Note: >1 sequence detected, so index files are being memory mapped.\n");
       fprintf(stderr,"  GMAP can run slowly at first while the computer starts to accumulate\n");
       fprintf(stderr,"  pages from the hard disk into its cache.  To copy index files into RAM\n");
-      fprintf(stderr,"  instead of memory mapping, use -B 3 or -B 4, if you have enough RAM.\n");
+      fprintf(stderr,"  instead of memory mapping, use -B 3, -B 4, or -B 5, if you have enough RAM.\n");
 #ifdef HAVE_PTHREAD
       fprintf(stderr,"  For more speed, also try multiple threads (-t <int>), if you have multiple processors or cores.");
 #endif
@@ -2570,14 +3005,11 @@ main (int argc, char *argv[]) {
   } else {
     /* multiple_sequences_p = false; */
     /* fprintf(stderr,"Note: only 1 sequence detected.  Ignoring batch (-B) command\n"); */
-    offsets_access = USE_MMAP_ONLY;
+    expand_offsets_p = false;
+    offsetscomp_access = USE_MMAP_ONLY;
     positions_access = USE_MMAP_ONLY;
     genome_access = USE_MMAP_ONLY;
   }
-
-#ifdef LEAKCHECK
-  Mem_leak_check_deactivate ();
-#endif
 
 
   /* Prepare genomic data */
@@ -2598,10 +3030,10 @@ main (int argc, char *argv[]) {
     dbversion = (char *) NULL;
     if (userstage1p == true) {
 #ifdef PMAP
-      indexdb_fwd = Indexdb_new_segment(Sequence_fullpointer(usersegment),/*watsonp*/true,index1interval);
-      indexdb_rev = Indexdb_new_segment(Sequence_fullpointer(usersegment),/*watsonp*/false,index1interval);
+      indexdb_fwd = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1part_aa,/*watsonp*/true,index1interval);
+      indexdb_rev = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1part_aa,/*watsonp*/false,index1interval);
 #else
-      indexdb = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1interval);
+      indexdb = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1part,index1interval);
 #endif
     }
     genome_totallength = Sequence_fulllength(usersegment);
@@ -2632,11 +3064,16 @@ main (int argc, char *argv[]) {
     }
   
 #ifdef PMAP
-    indexdb_fwd = Indexdb_new_genome(genomesubdir,fileroot,FWD_FILESUFFIX,/*snps_root*/NULL,
-				     /*required_interval*/0,offsets_access,positions_access);
-    indexdb_rev = Indexdb_new_genome(genomesubdir,fileroot,REV_FILESUFFIX,/*snps_root*/NULL,
-				     /*required_interval*/0,offsets_access,positions_access);
+    indexdb_fwd = Indexdb_new_genome(&index1part_aa,genomesubdir,fileroot,FWD_FILESUFFIX,/*snps_root*/NULL,
+				     required_index1part,/*required_interval*/0,
+				     expand_offsets_p,offsetscomp_access,positions_access);
+    indexdb_rev = Indexdb_new_genome(&index1part_aa,genomesubdir,fileroot,REV_FILESUFFIX,/*snps_root*/NULL,
+				     required_index1part,/*required_interval*/0,
+				     expand_offsets_p,offsetscomp_access,positions_access);
 
+#if 0
+    indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,/*cmetp*/false,index1part_aa));
+#endif
     if (indexdb_fwd == NULL || indexdb_rev == NULL) {
       fprintf(stderr,"Cannot find offsets file %s.%s*offsets or %s.%s*offsets.\n",
 	      fileroot,FWD_FILESUFFIX,fileroot,REV_FILESUFFIX);
@@ -2645,21 +3082,27 @@ main (int argc, char *argv[]) {
       exit(9);
     }      
 #else
-    if ((indexdb = Indexdb_new_genome(genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-				      /*required_interval*/0,offsets_access,positions_access)) == NULL) {
+    if ((indexdb = Indexdb_new_genome(&index1part,genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
+				      required_index1part,/*required_interval*/0,
+				      expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
       /* Try older version */
-      if ((indexdb = Indexdb_new_genome(genomesubdir,fileroot,"id",/*snps_root*/NULL,
-					/*required_interval*/0,offsets_access,positions_access)) == NULL) {
+      if ((indexdb = Indexdb_new_genome(&index1part,genomesubdir,fileroot,"id",/*snps_root*/NULL,
+					/*required_index1part*/12,/*required_interval*/0,
+					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find offsets file %s.%s*offsets or %s.%s*offsets\n",fileroot,IDX_FILESUFFIX,fileroot,"id");
 	exit(9);
       }
     }
-    indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,/*cmetp*/false));
+    indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,/*cmetp*/false,index1part));
     debug(printf("Size threshold is %d\n",indexdb_size_threshold));
 #endif
     genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
-    if (snps_root != NULL) {
+    genome_blocks = Genome_blocks(genome);
+    if (snps_root == NULL) {
+      snp_blocks = (UINT4 *) NULL;
+    } else {
       genomealt = Genome_new(genomesubdir,fileroot,snps_root,uncompressedp,genome_access);
+      snp_blocks = Genome_blocks(genomealt);
     }
 
     if (altstrainp == true) {
@@ -2683,6 +3126,109 @@ main (int argc, char *argv[]) {
     FREE(dbroot);
   }
 
+  if (splicing_file != NULL && genome != NULL) {
+    if (Genome_blocks(genome) == NULL) {
+      fprintf(stderr,"known splicing can be used only with compressed genome\n");
+    } else {
+      /* TODO: Handle case for observed distances */
+      /* min_extra_end no longer used by gregion.c */
+      min_extra_end = shortsplicedist;
+
+      splicing_divint_crosstable = IIT_divint_crosstable(chromosome_iit,splicing_iit);
+      if ((donor_typeint = IIT_typeint(splicing_iit,"donor")) >= 0 && 
+	  (acceptor_typeint = IIT_typeint(splicing_iit,"acceptor")) >= 0) {
+	fprintf(stderr,"found donor and acceptor tags, so treating as splicesites file\n");
+	splicesites = Splicetrie_retrieve_via_splicesites(&distances_observed_p,&splicetypes,&splicedists,
+							  &splicestrings,&splicefrags_ref,&splicefrags_alt,
+							  &nsplicesites,splicing_iit,splicing_divint_crosstable,
+							  donor_typeint,acceptor_typeint,chromosome_iit,
+							  genome,genomealt,shortsplicedist);
+	if (nsplicesites == 0) {
+	  fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
+		  dbroot);
+	  fprintf(stderr,"Chromosomes in the genome: ");
+	  IIT_dump_labels(stderr,chromosome_iit);
+	  fprintf(stderr,"Chromosomes in the splicesites IIT file: ");
+	  IIT_dump_divstrings(stderr,splicing_iit);
+	  exit(9);
+
+	} else {
+	  Splicetrie_npartners(&nsplicepartners_skip,&nsplicepartners_obs,&nsplicepartners_max,splicesites,splicetypes,splicedists,
+			       splicestrings,nsplicesites,chromosome_iit,shortsplicedist,distances_observed_p);
+#if 0
+	  if (multiple_sequences_p == true && splicetrie_precompute_p == true) {
+#endif
+	    Splicetrie_build_via_splicesites(&triecontents_obs,&trieoffsets_obs,&triecontents_max,&trieoffsets_max,
+					     nsplicepartners_skip,nsplicepartners_obs,nsplicepartners_max,splicetypes,
+					     splicestrings,nsplicesites);
+	    FREE(nsplicepartners_max);
+	    FREE(nsplicepartners_obs);
+	    FREE(nsplicepartners_skip);
+	    Splicestring_gc(splicestrings,nsplicesites);
+#if 0
+	  }
+#endif
+	}
+
+      } else {
+	fprintf(stderr,"no donor or acceptor tags found, so treating as introns file\n");
+	splicesites = Splicetrie_retrieve_via_introns(&splicetypes,&splicedists,
+						      &splicestrings,&splicefrags_ref,&splicefrags_alt,
+						      &nsplicesites,splicing_iit,splicing_divint_crosstable,
+						      chromosome_iit,genome,genomealt);
+	if (nsplicesites == 0) {
+	  fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
+		  dbroot);
+	  fprintf(stderr,"Chromosomes in the genome: ");
+	  IIT_dump_labels(stderr,chromosome_iit);
+	  fprintf(stderr,"Chromosomes in the splicesites IIT file: ");
+	  IIT_dump_divstrings(stderr,splicing_iit);
+	  exit(9);
+	} else {
+#if 0
+	  if (multiple_sequences_p == true && splicetrie_precompute_p == true) {
+#endif
+	    Splicetrie_build_via_introns(&triecontents_obs,&trieoffsets_obs,splicesites,splicetypes,
+					 splicestrings,nsplicesites,chromosome_iit,splicing_iit,splicing_divint_crosstable);
+	    triecontents_max = (unsigned int *) NULL;
+	    trieoffsets_max =  (unsigned int *) NULL;
+	    Splicestring_gc(splicestrings,nsplicesites);
+#if 0
+	  }
+#endif
+	}
+      }
+    }
+
+    fprintf(stderr,"done\n");
+  }
+
+
+  if (genome != NULL) {
+    Genome_setup(genome);
+    Genome_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL,
+		    /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/true,/*mode*/STANDARD);
+    Maxent_hr_setup(Genome_blocks(genome));
+#ifndef PMAP
+    Oligoindex_hr_setup(Genome_blocks(genome));
+#endif
+  }
+#ifdef PMAP
+  Indexdb_setup(index1part_aa);
+  Stage1_setup(index1part_aa);
+#else
+  Indexdb_setup(index1part);
+  Stage1_setup(index1part);
+#endif
+  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true);
+  Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+		microexon_spliceprob);
+  Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
+	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+	       min_intronlength);
+  Splicetrie_setup(splicesites,splicefrags_ref,splicefrags_alt,/*snpp*/false,
+		   amb_closest_p);
+
   /* Setup outbuffer */
 #ifndef PMAP
   if (printtype == SAM) {
@@ -2694,13 +3240,15 @@ main (int argc, char *argv[]) {
   }
 #endif
 
-  outbuffer = Outbuffer_new(nread,sevenway_root,user_genomicseg,usersegment,
-			    dbversion,genome,chromosome_iit,
+  outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,
+			    /*chimerap*/chimera_margin > 0 ? true : false,
+			    user_genomicseg,usersegment,dbversion,genome,chromosome_iit,
 			    chrsubset,contig_iit,altstrain_iit,map_iit,
 			    map_divint_crosstable,printtype,checksump,chimera_margin,
 #ifndef PMAP
 			    sam_headers_p,quality_shift,sam_paired_p,cigar_noncanonical_splices_p,
 			    sam_read_group_id,sam_read_group_name,
+			    sam_read_group_library,sam_read_group_platform,
 #endif
 			    nofailsp,failsonlyp,fails_as_input_p,maxpaths,quiet_if_excessive_p,
 			    map_exons_p,map_bothstrands_p,print_comment_p,nflanking,
@@ -2710,10 +3258,6 @@ main (int argc, char *argv[]) {
 
   Inbuffer_set_outbuffer(inbuffer,outbuffer);
 
-
-#ifdef LEAKCHECK
-  nworkers = 0;
-#endif
 
   stopwatch = Stopwatch_new();
   Stopwatch_start(stopwatch);
@@ -2736,11 +3280,13 @@ main (int argc, char *argv[]) {
       single_thread();
 
     } else {
+#ifdef WORKER_DETACH
       pthread_attr_init(&thread_attr_detach);
       if ((ret = pthread_attr_setdetachstate(&thread_attr_detach,PTHREAD_CREATE_DETACHED)) != 0) {
 	fprintf(stderr,"ERROR: pthread_attr_setdetachstate %d\n",ret);
 	exit(1);
       }
+#endif
       pthread_attr_init(&thread_attr_join);
       if ((ret = pthread_attr_setdetachstate(&thread_attr_join,PTHREAD_CREATE_JOINABLE)) != 0) {
 	fprintf(stderr,"ERROR: pthread_attr_setdetachstate %d\n",ret);
@@ -2759,11 +3305,18 @@ main (int argc, char *argv[]) {
 		       (void *) outbuffer);
       }
       for (i = 0; i < nworkers; i++) {
-	pthread_create(&(worker_thread_ids[i]),&thread_attr_detach,worker_thread,
-		       (void *) NULL);
+#ifdef WORKER_DETACH
+	pthread_create(&(worker_thread_ids[i]),&thread_attr_detach,worker_thread,(void *) NULL);
+#else
+	/* Need to have worker threads finish before we call Inbuffer_free() */
+	pthread_create(&(worker_thread_ids[i]),&thread_attr_join,worker_thread,(void *) NULL);
+#endif
       }
     
       pthread_join(output_thread_id,NULL);
+      for (i = 0; i < nworkers; i++) {
+	pthread_join(worker_thread_ids[i],NULL);
+      }
 
       /* Do not delete global_except_key, because worker threads might still need it */
       /* Except_term_pthread(); */
@@ -2779,7 +3332,7 @@ main (int argc, char *argv[]) {
   Stopwatch_free(&stopwatch);
 
   nread = Outbuffer_nread(outbuffer);
-  fprintf(stderr,"Processed %d queries in %.2f seconds (%.2f queries/sec)\n",
+  fprintf(stderr,"Processed %u queries in %.2f seconds (%.2f queries/sec)\n",
 	  nread,runtime,(double) nread/runtime);
 
   Outbuffer_free(&outbuffer);
@@ -2793,6 +3346,31 @@ main (int argc, char *argv[]) {
   Backtranslation_term();
 #endif
   Dynprog_term();
+
+
+  if (nsplicesites > 0) {
+    if (splicetrie_precompute_p == true) {
+      FREE(triecontents_max);
+      FREE(trieoffsets_max);
+      FREE(triecontents_obs);
+      FREE(trieoffsets_obs);
+    } else {
+      FREE(nsplicepartners_max);
+      FREE(nsplicepartners_obs);
+      FREE(nsplicepartners_skip);
+      Splicestring_gc(splicestrings,nsplicesites);
+    }
+    FREE(splicefrags_ref);
+    FREE(splicedists);
+    FREE(splicetypes);
+    FREE(splicesites);
+  }
+
+  if (splicing_iit != NULL) {
+    FREE(splicing_divint_crosstable);
+    IIT_free(&splicing_iit);
+  }
+
 
 #ifdef PMAP
  if (indexdb_rev != NULL) {
@@ -2854,10 +3432,17 @@ Input options (must include -d or -g)\n\
   -D, --dir=directory            Genome directory\n\
   -d, --db=STRING                Genome database.  If argument is '?' (with\n\
                                    the quotes), this command lists available databases.\n\
+  -k, --kmer=INT                 kmer size to use in genome database\n\
+                                   (allowed values: 12-15).  If not specified, the program will\n\
+                                   find the highest available kmer size in the genome database\n\
   -G, --genomefull               Use full genome (all ASCII chars allowed;\n\
                                    built explicitly during setup), not\n\
                                    compressed version\n\
-  -g, --gseg=filename            User-suppled genomic segment\n\
+  -g, --gseg=filename            User-supplied genomic segment\n\
+  -2, --pairalign                Align two sequences in FASTA format via stdin, first one being\n\
+                                   genomic and second one being cDNA\n\
+  --cmdline=STRING,STRING        Align these two sequences provided on the command line,\n\
+                                   first one being genomic and second one being cDNA\n\
   -q, --part=INT/INT             Process only the i-th out of every n sequences\n\
                                    e.g., 0/100 or 99/100 (useful for distributing jobs\n\
                                    to a computer farm).\n\
@@ -2876,15 +3461,24 @@ Input options (must include -d or -g)\n\
                       (default)    2      allocate      mmap & preload  mmap & preload\n\
                                    3      allocate      allocate        mmap & preload\n\
                                    4      allocate      allocate        allocate\n\
-                         Note: For a single sequence, all data structures use mmap\n\
-                         If mmap not available and allocate not chosen, then will use fileio (slow)\n\
+                                   5      expand        allocate        allocate\n\
+                           Note: For a single sequence, all data structures use mmap\n\
+                           If mmap not available and allocate not chosen, then will use fileio (very slow)\n\
 ");
 #endif
     fprintf(stdout,"\
-  -K, --intronlength=INT         Max length for one intron (default 1000000)\n\
+  --nosplicing                   Turns off splicing (useful for aligning genomic sequences\n\
+                                   onto a genome)\n\
+  --min-intronlength=INT         Min length for one internal intron (default 9).  Below this size,\n\
+                                   a genomic gap will be considered a deletion rather than an intron.\n\
+  -K, --intronlength=INT         Max length for one internal intron (default 1000000)\n\
+  -w, --localsplicedist=INT      Max length for known splice sites at ends of sequence\n\
+                                   (default 200000)\n\
   -L, --totallength=INT          Max total intron length (default 2400000)\n\
   -x, --chimera-margin=INT       Amount of unaligned sequence that triggers\n\
-                                   search for a chimera (default off)\n\
+                                   search for the remaining sequence (default 40).\n\
+                                   Enables alignment of chimeric reads, and may help\n\
+                                   with some non-chimeric reads.  To turn off, set to 0.\n\
 ");
 
 #if 0
@@ -2899,17 +3493,31 @@ Input options (must include -d or -g)\n\
 ");
 #endif
     fprintf(stdout,"\
-  -s, --altstrain                Search alternate strains in addition\n\
-  -C, --chrsubsetfile=filename   User-suppled chromosome subset file\n\
+  -C, --chrsubsetfile=filename   User-supplied chromosome subset file\n\
   -c, --chrsubset=string         Chromosome subset to search\n\
   -z, --direction=STRING         cDNA direction (sense_force, antisense_force,\n\
                                    sense_filter, antisense_filter,or auto (default))\n\
   -H, --trimendexons=INT         Trim end exons with fewer than given number of matches\n\
                                    (in nt, default 12)\n\
-  -X, --canonical=INT            Reward for canonical and semi-canonical introns\n\
+  --cross-species                For cross-species alignments, use a more sensitive search\n\
+                                   for canonical splicing\n\
+  --canonical-mode=INT           Reward for canonical and semi-canonical introns\n\
                                    0=low reward, 1=high reward (default), 2=low reward for\n\
                                    high-identity sequences and high reward otherwise\n\
+  --allow-close-indels=INT       Allow an insertion and deletion close to each other\n\
+                                   (0=no, 1=yes (default), 2=only for high-quality alignments)\n\
+  --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
+                                   greater than this value (default 0.90)\n\
 ");
+
+#if 0
+    /* Causes seg faults, so do not advertise */
+    fprintf(stdout,"\
+  -s, --splicing=STRING          Look for splicing involving known sites\n\
+                                   (in <STRING>.iit)\n\
+");
+#endif
+
 #ifndef PMAP
     fprintf(stdout,"\
   -p, --prunelevel               Pruning level: 0=no pruning (default), 1=poor seqs,\n\
@@ -2942,25 +3550,30 @@ Output types\n\
 
 #ifdef PMAP
     fprintf(stdout,"\
-  -f, --format=INT               Format for output (0 or psl_pro = PSL format in protein coords,\n\
-                                   1 or psl_nt = PSL format in nucleotide coords,\n\
-                                   2 or gff3_gene = GFF3 gene format,\n\
-                                   3 or gff3_match_cdna = GFF3 cDNA_match format,\n\
-                                   4 or gff3_match_est = GFF3 EST_match format,\n\
-                                   7 or map_exons = IIT FASTA exon map format,\n\
-                                   8 or map_genes = IIT FASTA map format,\n\
-                                   9 or coords = coords in table format)\n\
+  -f, --format=INT               Other format for output (also note the -A and -S options\n\
+                                   and other options listed under Output types):\n\
+                                   psl_pro (or 0) = PSL format in protein coords,\n\
+                                   psl_nt (or 1) = PSL format in nucleotide coords,\n\
+                                   gff3_gene (or 2) = GFF3 gene format,\n\
+                                   gff3_match_cdna (or 3) = GFF3 cDNA_match format,\n\
+                                   gff3_match_est (or 4) = GFF3 EST_match format,\n\
+                                   map_exons (or 7) = IIT FASTA exon map format,\n\
+                                   map_genes (or 8) = IIT FASTA map format,\n\
+                                   coords (or 9) = coords in table format\n\
 ");
 #else
     fprintf(stdout,"\
-  -f, --format=INT               Format for output (1 or psl = PSL (BLAT) format,\n\
-                                   2 or gff3_gene = GFF3 gene format,\n\
-                                   3 or gff3_match_cdna = GFF3 cDNA_match format,\n\
-                                   4 or gff3_match_est = GFF3 EST_match format,\n\
-                                   6 or splicesites = splicesites output (for GSNAP),\n\
-                                   7 or map_exons = IIT FASTA exon map format,\n\
-                                   8 or map_genes = IIT FASTA map format,\n\
-                                   9 or coords = coords in table format,\n\
+  -f, --format=INT               Other format for output (also note the -A and -S options\n\
+                                   and other options listed under Output types):\n\
+                                   psl (or 1) = PSL (BLAT) format,\n\
+                                   gff3_gene (or 2) = GFF3 gene format,\n\
+                                   gff3_match_cdna (or 3) = GFF3 cDNA_match format,\n\
+                                   gff3_match_est (or 4) = GFF3 EST_match format,\n\
+                                   splicesites (or 6) = splicesites output (for GSNAP splicing file),\n\
+                                   introns = introns output (for GSNAP splicing file),\n\
+                                   map_exons (or 7) = IIT FASTA exon map format,\n\
+                                   map_genes (or 8) = IIT FASTA map format,\n\
+                                   coords (or 9) = coords in table format,\n\
                                    sampe = SAM format (setting paired_read bit in flag),\n\
                                    samse = SAM format (without setting paired_read bit)\n\
 ");
@@ -2986,8 +3599,11 @@ Output options\n\
 ");
 
   fprintf(stdout,"\
-  -split-output=STRING           Basename for multiple-file output, separately for nomapping,\n\
+  --split-output=STRING          Basename for multiple-file output, separately for nomapping,\n\
                                    uniq, mult, (and chimera, if --chimera-margin is selected)\n\
+  --output-buffer-size=INT       Buffer size, in queries, for output thread (default 1000).  When the number\n\
+                                   of results to be printed exceeds this size, the worker threads are halted\n\
+                                   until the backlog is cleared\n\
 ");
 
 
@@ -3015,6 +3631,8 @@ Output options\n\
                                    in CIGAR string as STRING.  Allowed values: N (default), D.\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
+  --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\
+  --read-group-platform=STRING   Value to put into read-group library (RG-PL) field\n\
 ");
   fprintf(stdout,"\n");
 

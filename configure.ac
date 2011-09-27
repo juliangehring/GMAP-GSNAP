@@ -198,6 +198,15 @@ AC_SUBST(GMAPDB)
 AC_MSG_RESULT($GMAPDB)
 
 
+# MAX_READLENGTH
+AC_MSG_CHECKING(MAX_READLENGTH)
+AC_ARG_VAR([MAX_READLENGTH], [Maximum read length for GSNAP (default 200)])
+if test x"$MAX_READLENGTH" = x; then
+        ACX_EXPAND(MAX_READLENGTH,'200')
+fi
+AC_MSG_RESULT($MAX_READLENGTH)
+
+
 # zlib package
 
 AC_MSG_CHECKING(for zlib support)
@@ -317,15 +326,16 @@ AC_CONFIG_FILES([util/gmap_uncompress.pl])
 AC_CONFIG_FILES([util/gmap_process.pl])
 AC_CONFIG_FILES([util/gmap_setup.pl])
 AC_CONFIG_FILES([util/gmap_build.pl])
-AC_CONFIG_FILES([util/gmap_update.pl])
 AC_CONFIG_FILES([util/gmap_reassemble.pl])
 AC_CONFIG_FILES([util/md_coords.pl])
 AC_CONFIG_FILES([util/fa_coords.pl])
 AC_CONFIG_FILES([util/psl_splicesites.pl])
-AC_CONFIG_FILES([util/psl_splices.pl])
+AC_CONFIG_FILES([util/psl_introns.pl])
+AC_CONFIG_FILES([util/psl_genes.pl])
+AC_CONFIG_FILES([util/gtf_splicesites.pl])
+AC_CONFIG_FILES([util/gtf_introns.pl])
+AC_CONFIG_FILES([util/gtf_genes.pl])
 AC_CONFIG_FILES([util/dbsnp_iit.pl])
-AC_CONFIG_FILES([util/sam_merge.pl])
-AC_CONFIG_FILES([util/sam_restore.pl])
 AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/align.test],[chmod +x tests/align.test])
 AC_CONFIG_FILES([tests/coords1.test],[chmod +x tests/coords1.test])

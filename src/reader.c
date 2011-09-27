@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reader.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: reader.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,8 +15,6 @@ static char rcsid[] = "$Id: reader.c 27450 2010-08-05 19:02:48Z twu $";
 
 #define T Reader_T
 struct T {
-  bool dibasep;
-
   int querystart;
   int queryend;
   int querystart_save;
@@ -31,11 +29,6 @@ struct T {
   char *startbound;		/* Saved for reset */
   char *endbound;
 };
-
-bool
-Reader_dibasep (T this) {
-  return this->dibasep;
-}
 
 int
 Reader_querystart (T this) {
@@ -98,10 +91,8 @@ Reader_reset_ends (T this) {
 
 
 T
-Reader_new (char *sequence, int querystart, int queryend, int blocksize, bool dibasep) {
+Reader_new (char *sequence, int querystart, int queryend, int blocksize) {
   T new = (T) MALLOC(sizeof(*new));
-
-  new->dibasep = dibasep;
 
   new->querystart_save = new->querystart = querystart;
   new->queryend_save = new->queryend = queryend;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c 30932 2010-10-26 22:03:14Z twu $";
+static char rcsid[] = "$Id: diag.c 44154 2011-08-02 20:52:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -336,7 +336,7 @@ print_segments_for_R_array (T *array, int n, char *color) {
 
 /* Performs sort internally */
 static T *
-compute_dominance (int *nunique, T *array, int ndiagonals, int indexsize) {
+compute_dominance (int *nunique, T *array, int ndiagonals) {
   int superstart, superend, expected_nconsecutive, threshold;
   int i, j, k;
   T super, sub;
@@ -447,7 +447,7 @@ Diag_range (int *start, int *end, List_T diagonals, int querylength) {
 
 int
 Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T diagonals,
-		     int genomiclength, int querylength, int indexsize, bool debug_graphic_p,
+		     int genomiclength, int querylength, bool debug_graphic_p,
 		     bool diagnosticp, char *queryuc_ptr, char *genomicuc_ptr) {
   int nunique, ndiagonals, diagonal, i, j;
   int querypos, position;
@@ -491,14 +491,14 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 	array = (T *) NULL;
       } else {
 	array = (T *) List_to_array(diagonals,NULL);
-	array = compute_dominance(&nunique,array,ndiagonals,indexsize);
+	array = compute_dominance(&nunique,array,ndiagonals);
       }
     } else {
       if ((ndiagonals = List_length(gooddiagonals)) == 0) {
 	array = (T *) NULL;
       } else {
 	array = (T *) List_to_array(gooddiagonals,NULL);
-	array = compute_dominance(&nunique,array,ndiagonals,indexsize);
+	array = compute_dominance(&nunique,array,ndiagonals);
 	List_free(&gooddiagonals);
       }
     }
@@ -523,6 +523,7 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 
     for (querypos = 0; querypos < activestart; querypos++) {
       minactive[querypos] = 0U;
+      debug1(printf("active end: minactive at querypos %d is %u\n",querypos,minactive[querypos]));
     }
 
     diagonal = array[0]->diagonal;
@@ -603,6 +604,7 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 
     for (querypos = querylength-1; querypos > activeend; --querypos) {
       maxactive[querypos] = genomiclength;
+      debug1(printf("active end: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
     }
 
     diagonal = array[nunique-1]->diagonal;

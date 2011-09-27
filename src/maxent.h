@@ -12,6 +12,8 @@
 extern double
 Maxent_donor_prob (char *sequence);
 extern double
+Maxent_donor_prob_revcomp (char *sequence);
+extern double
 Maxent_donor_prob_nucleotides (unsigned char *nucleotides);
 extern double
 Maxent_donor_logodds (char *sequence);
@@ -20,6 +22,8 @@ Maxent_donor_logodds_nucleotides (unsigned char *nucleotides);
 
 extern double
 Maxent_acceptor_prob (char *sequence);
+extern double
+Maxent_acceptor_prob_revcomp (char *sequence);
 extern double
 Maxent_acceptor_prob_nucleotides (unsigned char *nucleotides);
 extern double

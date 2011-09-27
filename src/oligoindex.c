@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: oligoindex.c 45340 2011-08-19 22:01:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,16 +14,13 @@ static char rcsid[] = "$Id: oligoindex.c 27450 2010-08-05 19:02:48Z twu $";
 #include <stdlib.h>
 #include <string.h>		/* For memcpy and memset */
 #include "bool.h"
+#include "assert.h"
 #include "mem.h"
-#include "types.h"
-#include "genomicpos.h"
 #include "list.h"
 #include "diag.h"
 #include "intlistdef.h"
 #include "orderstat.h"
 
-
-typedef UINT4 Shortoligomer_T;
 
 #ifndef PMAP
 #define STRAIGHT_MASK_2  0x0000000F /* 2-mer: 1111 */
@@ -61,6 +58,23 @@ static int indexsizes_minor[NOLIGOINDICES_MINOR] = {6}; /* In aa */
 static int diag_lookbacks_minor[NOLIGOINDICES_MINOR] = {40};
 static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {10};
 
+#elif defined(GSNAP)
+
+/* Have fewer to enable speedup.  Note: Including 7-mers causes an 8x
+   increase in run-time for score_querypos, and including 6-mers causes a
+   30x increase. */
+#define NOLIGOINDICES_MAJOR 1
+static int indexsizes_major[NOLIGOINDICES_MAJOR] = {8};
+static Shortoligomer_T masks_major[NOLIGOINDICES_MAJOR] = {STRAIGHT_MASK_8};
+static int diag_lookbacks_major[NOLIGOINDICES_MAJOR] = {120};
+static int suffnconsecutives_major[NOLIGOINDICES_MAJOR] = {20};
+
+#define NOLIGOINDICES_MINOR 3
+static int indexsizes_minor[NOLIGOINDICES_MINOR] = {8, 8, 6};
+static Shortoligomer_T masks_minor[NOLIGOINDICES_MINOR] = {STRAIGHT_MASK_8, WOBBLE_MASK_8, STRAIGHT_MASK_6};
+static int diag_lookbacks_minor[NOLIGOINDICES_MINOR] = {120, 60, 30};
+static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {20, 15, 10};
+
 #else
 
 #define NOLIGOINDICES_MAJOR 3
@@ -91,9 +105,6 @@ static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {5};
 #define THETADIFF2 20.0
 #define REPOLIGOCOUNT 8
 
-#define OVERABUNDANCE_CHECK 50
-#define OVERABUNDANCE_PCT 0.97
-#define OVERABUNDANCE_MIN 200
 #define CHANGEPOINT 1		/* Needed for bad sequences like BM926731 */
 
 #ifdef PMAP
@@ -133,6 +144,13 @@ static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {5};
 #define debug3(x)
 #endif
 
+/* dump_positions */
+#ifdef DEBUG9
+#define debug9(x) x
+#else
+#define debug9(x)
+#endif
+
 
 #ifdef PMAP
 /* A short oligomer, representing 3 amino acids, or 9 nt, requiring 18
@@ -143,28 +161,6 @@ static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {5};
 #endif
 
 #define T Oligoindex_T
-struct T {
-
-#ifdef PMAP
-  int indexsize_aa;
-  Shortoligomer_T msb;
-#else
-  int indexsize;
-  Shortoligomer_T mask;
-#endif
-
-  int diag_lookback;
-  int suffnconsecutive;
-
-  bool query_evaluated_p;
-  int oligospace;
-  bool *overabundant;
-  bool *inquery;
-  int *counts;
-  int *relevant_counts;
-  Genomicpos_T **positions;
-  Genomicpos_T **pointers;
-};
 
 
 #ifdef PMAP
@@ -382,7 +378,7 @@ Oligoindex_new_minor (int *noligoindices) {
 /*                      87654321 */
 #define LOW_TWO_BITS  0x00000003
 
-#ifdef DEBUG
+#ifdef DEBUG9
 static char *
 shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
   char *nt;
@@ -1205,6 +1201,7 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
     if (in_counter == indexsize) {
 #ifndef PMAP
       masked = oligo & mask;
+      /* printf("%04X\n",masked); */
 #endif
       if (overabundant[masked] == true) {
 	/* Don't bother */
@@ -1227,7 +1224,7 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
 	      FREE(aa));
 #else
 	debug(nt = shortoligo_nt(masked,indexsize);
-	      printf("At genomicpos %u, oligo %s wasn't seen in querypos\n",sequencepos,nt,counts[masked]);
+	      printf("At genomicpos %u, oligo %s wasn't seen in querypos\n",sequencepos,nt);
 	      FREE(nt));
 #endif
 
@@ -1445,7 +1442,7 @@ store_positions (Genomicpos_T **pointers, bool *overabundant,
 }
 
 
-#ifdef DEBUG
+#ifdef DEBUG9
 static void
 dump_positions (Genomicpos_T **positions, int *counts, int oligospace, int indexsize) {
   int i;
@@ -1538,9 +1535,9 @@ Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
 			      genomicuc_trimptr,genomicuc_trimlength);
 
 #ifdef PMAP
-    debug(dump_positions(this->positions,this->counts,this->oligospace,3*this->indexsize_aa));
+    debug9(dump_positions(this->positions,this->counts,this->oligospace,3*this->indexsize_aa));
 #else
-    debug(dump_positions(this->positions,this->counts,this->oligospace,this->indexsize));
+    debug9(dump_positions(this->positions,this->counts,this->oligospace,this->indexsize));
 #endif
 
     if (nstored != nallocated) {
@@ -1715,18 +1712,26 @@ Oligoindex_get_mappings (List_T diagonals,
   suffnconsecutive = this->suffnconsecutive;
 
 #ifdef PMAP
-  genomicdiag = (struct Genomicdiag_T *) CALLOC(3*querylength+genomiclength,sizeof(struct Genomicdiag_T));
+  genomicdiag = (struct Genomicdiag_T *) CALLOC(3*querylength+genomiclength+1,sizeof(struct Genomicdiag_T));
+#else
+  genomicdiag = (struct Genomicdiag_T *) CALLOC(querylength+genomiclength+1,sizeof(struct Genomicdiag_T));
+#endif
+
+#if 0
+  /* Too time consuming.  Just initialize when we see [diagi] for the first time. */
+#ifdef PMAP
   for (diagi = 0; diagi < 3*querylength+genomiclength; diagi++) {
     genomicdiag[diagi].i = diagi;
     genomicdiag[diagi].querypos = -diag_lookback; /* guarantees first check won't be consecutive */
   }
 #else
-  genomicdiag = (struct Genomicdiag_T *) CALLOC(querylength+genomiclength,sizeof(struct Genomicdiag_T));
   for (diagi = 0; diagi < querylength+genomiclength; diagi++) {
     genomicdiag[diagi].i = diagi;
     genomicdiag[diagi].querypos = -diag_lookback; /* guarantees first check won't be consecutive */
   }
 #endif
+#endif
+
 
   querypos = -indexsize;
   *oned_matrix_p = true;
@@ -1778,6 +1783,15 @@ Oligoindex_get_mappings (List_T diagonals,
 	  for (hit = 0; hit < nhits; hit++) {
 	    diagi = mappings[querypos][hit] + diagi_adjustment;
 	    ptr = &(genomicdiag[diagi]);
+
+	    assert(diagi <= querylength+genomiclength);
+
+	    if (ptr->i == 0) {
+	      /* Initialize */
+	      ptr->i = diagi;
+	      ptr->querypos = -diag_lookback; /* guarantees first check won't be consecutive */
+	    }
+
 	    /* Must use >= here, so querypos 0 - (-diag_lookback) will fail */
 	    if (querypos - ptr->querypos >= diag_lookback) {
 	      debug3(printf("At diagi %d (checking querypos %d to %d), no consecutive\n",diagi,ptr->querypos,querypos));

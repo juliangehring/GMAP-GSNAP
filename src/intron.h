@@ -1,7 +1,10 @@
-/* $Id: intron.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: intron.h 41614 2011-06-22 22:57:46Z twu $ */
 #ifndef INTRON_INCLUDED
 #define INTRON_INCLUDED
 #include "bool.h"
+#include "genomicpos.h"
+#include "iit-read.h"
+#include "chrnum.h"
 
 /* Pieces for logical AND */
 #define LEFT_GT  0x21		/* 100001 */
@@ -26,9 +29,21 @@
 
 
 extern int
-Intron_type (char left1, char left2, char right2, char right1, int cdna_direction);
+Intron_type (char left1, char left2, char right2, char right1, int cdna_direction
+#ifdef INTRON_HELP
+	     , IIT_T splicesites_iit, int *splicesites_divint_crosstable,
+	     int donor_typeint, int acceptor_typeint, Chrnum_T chrnum,
+	     Genomicpos_T leftgenomepos, Genomicpos_T rightgenomepos,
+	     Genomicpos_T chrpos, bool watsonp, int genomiclength
+#endif
+);
 extern char *
 Intron_type_string (int introntype);
+
+extern char *
+Intron_left_dinucl_string (int dinucl);
+extern char *
+Intron_right_dinucl_string (int dinucl);
 
 extern bool
 Intron_canonical_fwd_p (char donor1, char donor2, char acceptor2, char acceptor1);

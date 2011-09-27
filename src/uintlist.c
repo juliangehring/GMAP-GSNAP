@@ -1,10 +1,12 @@
-static char rcsid[] = "$Id: uintlist.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: uintlist.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "uintlist.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "mem.h"
 
 #define T Uintlist_T
@@ -155,4 +157,35 @@ Uintlist_find (T this, unsigned int value) {
     }
   }
   return false;
+}
+
+char *
+Uintlist_to_string (T this) {
+  char *string, Buffer[256];
+  T p;
+  int n, i, strlength;
+
+  if ((n = Uintlist_length(this)) == 0) {
+    string = (char *) CALLOC(1,sizeof(char));
+    string[0] = '\0';
+  } else {
+    strlength = 0;
+    for (i = 0, p = this; i < n-1; i++, p = Uintlist_next(p)) {
+      sprintf(Buffer,"%u,",Uintlist_head(p));
+      strlength += strlen(Buffer);
+    }
+    sprintf(Buffer,"%u",Uintlist_head(p));
+    strlength += strlen(Buffer);
+
+    string = (char *) CALLOC(strlength + 1,sizeof(char));
+    string[0] = '\0';
+    for (i = 0, p = this; i < n-1; i++, p = Uintlist_next(p)) {
+      sprintf(Buffer,"%u,",Uintlist_head(p));
+      strcat(string,Buffer);
+    }
+    sprintf(Buffer,"%u",Uintlist_head(p));
+    strcat(string,Buffer);
+  }
+
+  return string;
 }

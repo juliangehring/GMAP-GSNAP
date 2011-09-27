@@ -1,13 +1,43 @@
-/* $Id: oligoindex.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: oligoindex.h 42512 2011-07-08 20:21:47Z twu $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"
+#include "types.h"
+#include "genomicpos.h"
 #include "list.h"
 #include "intlist.h"
 #include "diagpool.h"
 
+#define OVERABUNDANCE_CHECK 50
+#define OVERABUNDANCE_PCT 0.97
+#define OVERABUNDANCE_MIN 200
+
+typedef UINT4 Shortoligomer_T;
+
 #define T Oligoindex_T
 typedef struct T *T;
+struct T {
+
+#ifdef PMAP
+  int indexsize_aa;
+  Shortoligomer_T msb;
+#else
+  int indexsize;
+  Shortoligomer_T mask;
+#endif
+
+  int diag_lookback;
+  int suffnconsecutive;
+
+  bool query_evaluated_p;
+  int oligospace;
+  bool *overabundant;
+  bool *inquery;
+  int *counts;
+  int *relevant_counts;
+  Genomicpos_T **positions;
+  Genomicpos_T **pointers;
+};
 
 extern int
 Oligoindex_indexsize (T this);

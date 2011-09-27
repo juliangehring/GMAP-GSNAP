@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c 30992 2010-10-27 22:23:34Z twu $";
+static char rcsid[] = "$Id: list.c 40328 2011-05-30 17:33:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,15 @@ static char rcsid[] = "$Id: list.c 30992 2010-10-27 22:23:34Z twu $";
 T
 List_push (T list, void *x) {
   T new = (T) MALLOC(sizeof(*new));
+  
+  new->first = x;
+  new->rest = list;
+  return new;
+}
+
+T
+List_push_keep (T list, void *x) {
+  T new = (T) MALLOC_KEEP(sizeof(*new));
   
   new->first = x;
   new->rest = list;
@@ -65,6 +74,16 @@ List_free (T *list) {
   }
 }
 
+void
+List_free_keep (T *list) {
+  T prev;
+
+  while ((prev = *list) != NULL) {
+    *list = (*list)->rest;
+    FREE_KEEP(prev);
+  }
+}
+
 T
 List_reverse (T list) {
   T head = NULL, next;
@@ -111,6 +130,28 @@ List_to_array (T list, void *end) {
   } else {
 #endif
     array = (void **) CALLOC((n+1),sizeof(*array));
+    for (i = 0; i < n; i++) {
+      array[i] = list->first;
+      list = list->rest;
+    }
+    array[i] = end;
+    return array;
+#if 0
+  }
+#endif
+}
+
+void **
+List_to_array_out (T list, void *end) {
+  void **array;
+  int i, n = List_length(list);
+
+#if 0
+  if (n == 0) {
+    return (void *) NULL;
+  } else {
+#endif
+    array = (void **) CALLOC_OUT((n+1),sizeof(*array));
     for (i = 0; i < n; i++) {
       array[i] = list->first;
       list = list->rest;

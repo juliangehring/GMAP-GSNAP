@@ -1,4 +1,4 @@
-/* $Id: indexdb_hr.h 27892 2010-08-13 22:23:30Z twu $ */
+/* $Id: indexdb_hr.h 41938 2011-06-29 18:53:08Z twu $ */
 #ifndef INDEXDB_HR_INCLUDED
 #define INDEXDB_HR_INCLUDED
 #include "bool.h"
@@ -12,6 +12,8 @@ typedef struct Compoundpos_T *Compoundpos_T;
 
 #define T Indexdb_T
 
+extern void
+Indexdb_hr_setup (int index1part_in);
 extern void
 Compoundpos_init_positions_free (bool positions_fileio_p);
 extern void
@@ -61,9 +63,6 @@ extern int
 Indexdb_count_right_subst_2 (T this, Storedoligomer_T oligo);
 extern int
 Indexdb_count_right_subst_1 (T this, Storedoligomer_T oligo);
-
-extern int
-Indexdb_gsnapbase (T this);
 
 #undef T
 #endif

@@ -2,13 +2,13 @@
 
 EXTRA_DIST = defs ss.chr17test ss.her2 \
              align.test.ok coords1.test.ok \
-             setup.genomecomp.ok setup.ref3positions.ok \
+             setup.genomecomp.ok setup.ref12123positions.ok \
              map.test.ok \
              fa.iittest iittest.iit.ok iit_get.out.ok
 
 CLEANFILES = align.test.out \
-             fa_coords coords.chr17test \
-             gmap_setup gmap_process gmapindex chr17test/chr17test.* Makefile.chr17test \
+             coords.chr17test \
+             gmap_setup gmapindex chr17test/chr17test.* Makefile.chr17test \
              map.test.out \
              iittest.iit iit_get.out iit_dump.out
 
@@ -33,7 +33,7 @@ okay:
 	../src/gmap -D . -d chr17test ss.her2 > map.test.ok
 	mv -f coords.chr17test coords1.test.ok
 	mv -f chr17test.genomecomp setup.genomecomp.ok
-	mv -f chr17test.ref3positions setup.ref3positions.ok
+	mv -f chr17test.ref12123positions setup.ref12123positions.ok
 	../src/iit_store -o iittest fa.iittest
 	../src/iit_get iittest 20000 > iit_get.out.ok
 	mv iittest.iit iittest.iit.ok

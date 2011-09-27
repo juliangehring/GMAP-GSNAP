@@ -1,4 +1,4 @@
-/* $Id: iit-read.h 33519 2011-01-10 22:13:42Z twu $ */
+/* $Id: iit-read.h 44320 2011-08-04 21:14:59Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -10,6 +10,8 @@
 typedef enum {READ_ALL, READ_ONE, READ_NONE} Divread_T;
 /* READ_NONE is useful if we want to obtain an interval by name,
    rather than by coordinate */
+
+typedef enum {NO_KNOWN_GENE, KNOWN_GENE, KNOWN_GENE_MULTIEXON} Overlap_T;
 
 
 #define T IIT_T
@@ -94,7 +96,8 @@ IIT_dump (T this, bool annotationonlyp, bool sortp);
 extern void
 IIT_dump_simple (T this);
 extern void
-IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name);
+IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name,
+	      char *sam_read_group_library, char *sam_read_group_platform);
 extern void
 IIT_dump_version1 (T this, T chromosome_iit, bool directionalp);
 extern void
@@ -122,10 +125,23 @@ IIT_find_linear (T this, char *label);
 extern int
 IIT_find_one (T this, char *label);
 
+unsigned int *
+IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x);
+unsigned int *
+IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x);
+
 extern int *
 IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, bool sortp);
+extern bool
+IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y);
+extern bool
+IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign);
 extern int *
 IIT_get_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp);
+extern int *
+IIT_get_low (int *nmatches, T this, int divno, unsigned int x, bool sortp);
+extern int *
+IIT_get_high (int *nmatches, T this, int divno, unsigned int x, bool sortp);
 extern int *
 IIT_get_signed_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp,
 			   int sign);
@@ -177,6 +193,8 @@ extern void
 IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
 		  char *chr, bool reversep, bool relativep, unsigned int left, bool print_comment_p);
 
+extern Overlap_T
+IIT_gene_overlap (T map_iit, int divno, unsigned int x, unsigned int y, bool favor_multiexon_p);
 
 #undef T
 #endif

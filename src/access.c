@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: access.c 46067 2011-08-30 20:42:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,13 +57,17 @@ Access_file_exists_p (char *filename) {
 
 #ifdef HAVE_STAT64
   if (stat64(filename,&sb) == 0) {
-#else
-  if (stat(filename,&sb) == 0) {
-#endif
     return true;
   } else {
     return false;
   }
+#else
+  if (stat(filename,&sb) == 0) {
+    return true;
+  } else {
+    return false;
+  }
+#endif
 }
 
 
@@ -106,12 +110,48 @@ Access_fileio_rw (char *filename) {
   return fd;
 }
 
-/* Bigendian conversion not needed */
+
+#ifndef WORDS_BIGENDIAN
+static unsigned int
+first_nonzero (int *i, char *filename) {
+  size_t len;
+  FILE *fp;
+  unsigned int value = 0;
+  void *p;
+
+  len = (size_t) Access_filesize(filename);
+
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
+    exit(9);
+  } else {
+    *i = 0;
+    p = (void *) &value;
+    while ((size_t) *i < len && fread(p,sizeof(unsigned int),1,fp) > 0 &&
+	   value == 0) {
+      *i += 1;
+    }
+    if (value == 0) {
+      *i = -1;
+    }
+    fclose(fp);
+    return value;
+  }
+}
+#endif
+
+
+#define FREAD_BATCH 10000000	/* 10 million at a time */
+
+/* Bigendian conversion not needed after this */
 void *
 Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) {
   void *memory;
   FILE *fp;
   Stopwatch_T stopwatch;
+  unsigned int value;
+  void *p;
+  int i;
 
   *len = (size_t) Access_filesize(filename);
 
@@ -123,14 +163,33 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   Stopwatch_start(stopwatch = Stopwatch_new());
   memory = (void *) MALLOC(*len);
   FREAD_UINTS(memory,(*len)/eltsize,fp);
+  fclose(fp);
+
+#ifndef WORDS_BIGENDIAN
+  value = first_nonzero(&i,filename);
+  if (i >= 0 && ((unsigned int *) memory)[i] != value) {
+    fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)...reading file in smaller batches...");
+    fp = FOPEN_READ_BINARY(filename);
+
+    for (i = 0; i < (int) ((*len)/eltsize); i += FREAD_BATCH) {
+      p = (void *) &(((unsigned int *) memory)[i]);
+      fread(p,sizeof(unsigned int),FREAD_BATCH,fp);
+    }
+
+    if (i < (int) (*len)/eltsize) {
+      p = (void *) &(((unsigned int *) memory)[i]);
+      fread(p,sizeof(unsigned int),(*len)/eltsize - i,fp);
+    }
+
+    fclose(fp);
+  }
+#endif
 
   /* Note: the following (old non-batch mode) requires conversion to bigendian later, as needed */
   /* fread(new->offsets,eltsize,sb.st_size/eltsize,fp); */
 
   *seconds = Stopwatch_stop(stopwatch);
   Stopwatch_free(&stopwatch);
-
-  fclose(fp);
 
   return memory;
 }

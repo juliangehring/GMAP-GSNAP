@@ -1,4 +1,4 @@
-/* $Id: diag.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: diag.h 44154 2011-08-02 20:52:17Z twu $ */
 #ifndef DIAG_INCLUDED
 #define DIAG_INCLUDED
 #include "bool.h"
@@ -40,7 +40,7 @@ extern void
 Diag_range (int *start, int *end, List_T diagonals, int querylength);
 extern int
 Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T diagonals,
-		     int genomiclength, int querylength, int indexsize, bool debug_graphic_p,
+		     int genomiclength, int querylength, bool debug_graphic_p,
 		     bool diagnosticp, char *queryuc_ptr, char *genomicuc_ptr);
 
 #undef T

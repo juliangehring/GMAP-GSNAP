@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: request.c 34433 2011-01-28 21:51:40Z twu $";
+static char rcsid[] = "$Id: request.c 40330 2011-05-30 17:40:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -35,9 +35,10 @@ Request_queryseq2 (T this) {
   return this->queryseq2;
 }
 
+
 T
 Request_new (int id, Shortread_T queryseq1, Shortread_T queryseq2) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_IN(sizeof(*new));
 
   new->id = id;
   new->queryseq1 = queryseq1;
@@ -52,7 +53,7 @@ Request_free (T *old) {
     if ((*old)->queryseq2) {
       Shortread_free(&(*old)->queryseq2);
     }
-    FREE(*old);
+    FREE_IN(*old);
   }
   return;
 }
@@ -66,7 +67,7 @@ Request_queryseq (T this) {
 
 T
 Request_new (int id, Sequence_T queryseq) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new = (T) MALLOC_IN(sizeof(*new));
 
   new->id = id;
   new->queryseq = queryseq;
@@ -77,7 +78,7 @@ void
 Request_free (T *old) {
   if (*old) {
     Sequence_free(&(*old)->queryseq);
-    FREE(*old);
+    FREE_IN(*old);
   }
   return;
 }

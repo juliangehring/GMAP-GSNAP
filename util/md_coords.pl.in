@@ -139,6 +139,7 @@ sub parse_md_file {
     if ($line =~ /^\#/) {
       # Skip
     } else {
+      $line =~ s/\r\n/\n/;
       chop $line;
       @fields = split /\t/,$line;
       if (!defined($contig = $fields[$contigcol-1])) {
@@ -248,6 +249,7 @@ sub show_lines {
     if ($line =~ /^\#/) {
       # Skip
     } else {
+      $line =~ s/\r\n/\n/;
       chop $line;
       push @lines,$line;
       @fields = split /\t/,$line;
@@ -393,6 +395,7 @@ sub guess_columns {
   $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
   while (defined($line = <$FP>)) {
     if ($line !~ /^\#/) {
+      $line =~ s/\r\n/\n/;
       chop $line;
       @fields = split /\t/,$line;
       $duplicateline = duplicate_numbers_p(\@fields);
@@ -687,6 +690,7 @@ sub find_reference_strain {
   $FP = new IO::File("$mdfile") or die "Cannot open file $mdfile";
   while (defined($line = <$FP>)) {
     if ($line !~ /^\#/) {
+      $line =~ s/\r\n/\n/;
       chop $line;
       @fields = split /\t/,$line;
       $strain = $fields[$straincol-1];
@@ -841,6 +845,7 @@ sub check_strains {
     if ($line =~ /^\#/) {
       # Skip
     } else {
+      $line =~ s/\r\n/\n/;
       chop $line;
       @fields = split /\t/,$line;
       ($chr,$mappedp) = extract_chr($fields[$chrcol-1]);

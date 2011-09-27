@@ -4,57 +4,99 @@
 #include "bool.h"
 #include "types.h"
 #include "genomicpos.h"
-#include "sequence.h"
-#include "iit-read.h"
-#include "genome.h"
-#include "compress.h"
+#include "list.h"
 #include "intlist.h"
+#include "uintlist.h"
+#include "splicetrie_build.h"	/* For Splicetype_T */
+#include "compress.h"
 
-typedef enum {DONOR, ANTIDONOR, ACCEPTOR, ANTIACCEPTOR} Splicetype_T;
-
-extern void
-Splicestring_gc (List_T *splicestrings, int nsplicesites);
-
-extern Genomicpos_T *
-Splicetrie_retrieve_splicesites (bool *distances_observed_p, Splicetype_T **splicetypes, Genomicpos_T **splicedists,
-				 List_T **splicestrings, UINT4 **splicefrags_ref, UINT4 **splicefrags_alt,
-				 int *nsplicesites, IIT_T splicesites_iit, int *splicesites_divint_crosstable,
-				 int donor_typeint, int acceptor_typeint, IIT_T chromosome_iit,
-				 Genome_T genome, Genome_T genomealt, Genomicpos_T shortsplicedist);
+#include "dynprog.h"
+#include "pairpool.h"
 
 extern void
-Splicetrie_npartners (int **nsplicepartners_skip, int **nsplicepartners_obs, int **nsplicepartners_max,
-		      Genomicpos_T *splicesites, Splicetype_T *splicetypes,
-		      Genomicpos_T *splicedists, List_T *splicestrings, int nsplicesites,
-		      IIT_T chromosome_iit, Genomicpos_T max_distance,
-		      bool distances_observed_p);
+Splicetrie_setup (
+#ifdef GSNAP
+		  UINT4 *splicecomp_in,
+#endif
+		  Genomicpos_T *splicesites_in, UINT4 *splicefrags_ref_in, UINT4 *splicefrags_alt_in,
+		  bool snpp_in, bool amb_closest_p_in);
 
-extern void
-Splicetrie_build (unsigned int **triecontents_obs, unsigned int **trieoffsets_obs,
-		  unsigned int **triecontents_max, unsigned int **trieoffsets_max,
-		  int *nsplicepartners_skip, int *nsplicepartners_obs, int *nsplicepartners_max,
-		  Splicetype_T *splicetypes, List_T *splicestrings, int nsplicesites);
+#ifdef GSNAP
+extern bool
+Splicetrie_splicesite_p (Genomicpos_T left, int pos5, int pos3);
+#endif
 
+extern List_T
+Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triestart,
+		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+
+		       int *finalscore, int *nmatches, int *nmismatches,
+		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
+		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
+
+		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength,
+		       Splicetype_T far_splicetype,
+		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		       int *dynprogindex, Dynprog_T dynprog, 
+		       char *revsequence1, char *revsequenceuc1,
+		       int length1, int length2, int revoffset1, int revoffset2,
+#ifdef PMAP
+		       char *queryaaseq,
+#endif
+		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+		       int extraband_end, double defect_rate);
+
+extern List_T
+Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triestart,
+		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+
+		       int *finalscore, int *nmatches, int *nmismatches,
+		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
+		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
+
+		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
+		       Splicetype_T far_splicetype,
+		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		       int *dynprogindex, Dynprog_T dynprog, 
+		       char *sequence1, char *sequenceuc1,
+		       int length1, int length2, int offset1, int offset2,
+#ifdef PMAP
+		       char *queryaaseq,
+#endif
+		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+		       int extraband_end, double defect_rate);
+
+#ifdef GSNAP
+#ifdef END_KNOWNSPLICING_SHORTCUT
+
+extern Uintlist_T
+Splicetrie_dump_coords_left (int *best_nmismatches, unsigned int *triestart, int pos5, int pos3,
+			     Compress_T query_compress, char *queryptr, bool plusp,
+			     Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high);
+
+extern Uintlist_T
+Splicetrie_dump_coords_right (int *best_nmismatches, unsigned int *triestart, int pos5, int pos3,
+			      Compress_T query_compress, char *queryptr, bool plusp,
+			      Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high);
+#endif
+#endif
+
+#ifdef GSNAP
 extern Intlist_T
 Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
-		      Genomicpos_T origleft, int pos5, int pos3,
-		      Genomicpos_T *splicesites, UINT4 *splicefrags_ref, UINT4 *splicefrags_alt, int *nsplicepartners_skip,
-		      unsigned int *trieoffsets_obs, unsigned int *triecontents_obs, int *nsplicepartners_obs,
-		      unsigned int *trieoffsets_max, unsigned int *triecontents_max, int *nsplicepartners_max,
-		      Splicetype_T *splicetypes, List_T *splicestrings,
-		      Compress_T query_compress, UINT4 *genome_blocks, UINT4 *snp_blocks,
-		      char *query, char *queryptr, int max_mismatches_allowed,
-		      bool dibasep, bool cmetp, bool plusp);
+		      Genomicpos_T origleft, int pos5, int pos3, Genomicpos_T chroffset,
+		      unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
+		      unsigned int *trieoffsets_max, unsigned int *triecontents_max,
+		      Compress_T query_compress, char *queryptr, int querylength,
+		      int max_mismatches_allowed, bool plusp, bool collect_all_p);
 
 extern Intlist_T
 Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
-		       Genomicpos_T origleft, int pos5, int pos3,
-		       Genomicpos_T *splicesites, UINT4 *splicefrags_ref, UINT4 *splicefrags_alt, int *nsplicepartners_skip,
-		       unsigned int *trieoffsets_obs, unsigned int *triecontents_obs, int *nsplicepartners_obs,
-		       unsigned int *trieoffsets_max, unsigned int *triecontents_max, int *nsplicepartners_max,
-		       Splicetype_T *splicetypes, List_T *splicestrings,
-		       Compress_T query_compress, UINT4 *genome_blocks, UINT4 *snp_blocks,
-		       char *query, char *queryptr, int max_mismatches_allowed,
-		       bool dibasep, bool cmetp, bool plusp);
+		       Genomicpos_T origleft, int pos5, int pos3, Genomicpos_T chrhigh,
+		       unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
+		       unsigned int *trieoffsets_max, unsigned int *triecontents_max,
+		       Compress_T query_compress, char *queryptr, int max_mismatches_allowed,
+		       bool plusp, bool collect_all_p);
+#endif
 
 #endif

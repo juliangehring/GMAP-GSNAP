@@ -1,4 +1,4 @@
-/* $Id: translation.h 33519 2011-01-10 22:13:42Z twu $ */
+/* $Id: translation.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef TRANSLATION_INCLUDED
 #define TRANSLATION_INCLUDED
 #include <stdio.h>
@@ -27,8 +27,7 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 extern void
 Translation_via_reference (int *relaastart, int *relaaend,
 			   struct Pair_T *pairs, int npairs, bool watsonp, bool backwardp, bool revcompp,
-			   struct Pair_T *refpairs, int nrefpairs, bool refwatsonp, int genomiclength,
-			   bool fixshiftp);
+			   struct Pair_T *refpairs, int nrefpairs, bool refwatsonp, bool fixshiftp);
 
 extern void
 Translation_print_comparison (FILE *fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,

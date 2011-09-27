@@ -1,4 +1,4 @@
-/* $Id: result.h 34369 2011-01-28 17:28:03Z twu $ */
+/* $Id: result.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef RESULT_INCLUDED
 #define RESULT_INCLUDED
 

@@ -2,6 +2,7 @@
 #define PARSERANGE_INCLUDED
 #include "bool.h"
 #include "genomicpos.h"
+#include "iit-read.h"
 
 extern bool
 Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coordend, bool *revcomp,
@@ -23,6 +24,13 @@ Parserange_universal (bool *revcomp, Genomicpos_T *genomicstart, Genomicpos_T *g
 		      Genomicpos_T *chroffset, Genomicpos_T *chrlength,
 		      char *query, char *genomesubdir, char *fileroot);
 #endif
+
+extern bool
+Parserange_universal_iit (char **div, bool *revcomp,
+			  Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
+			  Genomicpos_T *chrstart, Genomicpos_T *chrend,
+			  Genomicpos_T *chroffset, Genomicpos_T *chrlength,
+			  char *query, IIT_T chromosome_iit, IIT_T contig_iit);
 
 extern bool
 Parserange_simple (char **div, bool *revcomp, Genomicpos_T *chrstart, Genomicpos_T *chrend,

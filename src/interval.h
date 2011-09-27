@@ -1,4 +1,4 @@
-/* $Id: interval.h 35297 2011-02-16 19:26:34Z twu $ */
+/* $Id: interval.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
 #include "bool.h"
@@ -53,6 +53,8 @@ extern int
 Interval_cmp (const void *a, const void *b);
 extern int
 Interval_cmp_low (const void *a, const void *b);
+extern int
+Interval_cmp_high (const void *a, const void *b);
 
 
 struct Interval_windex_T {

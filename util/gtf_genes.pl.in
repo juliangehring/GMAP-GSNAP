@@ -1,0 +1,128 @@
+#! @PERL@
+
+use warnings;
+
+
+$last_transcript_id = "";
+while (defined($line = <>)) {
+    chop $line;
+    @fields = split /\t/,$line;
+
+    if ($fields[2] eq "exon") {
+	@info = ();
+	parse_info($fields[8]);
+	$transcript_id = get_info(\@info,"transcript_id");
+	if ($transcript_id ne $last_transcript_id) {
+	    if ($last_transcript_id =~ /\S/) {
+		if ($strand eq "+") {
+		    printf ">$last_transcript_id $chr:%u..%u\n",$starts[0],$ends[$#ends];
+		} elsif ($strand eq "-") {
+		    printf ">$last_transcript_id $chr:%u..%u\n",$ends[0],$starts[$#starts];
+		} else {
+		    die "strand $strand";
+		}
+		print "$gene_name\n";
+		print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+	    }
+	    @starts = ();
+	    @ends = ();
+	    $gene_name = get_info(\@info,"gene_name");
+	    $last_transcript_id = $transcript_id;
+	    $chr = $fields[0];
+	    $strand = $fields[6];
+	}
+
+	$exon_number = get_info(\@info,"exon_number");
+	$starts[$exon_number-1] = $fields[3];
+	$ends[$exon_number-1] = $fields[4];
+    }
+}
+
+if ($last_transcript_id =~ /\S/) {
+    if ($strand eq "+") {
+	printf ">$last_transcript_id $chr:%u..%u\n",$starts[0],$ends[$#ends];
+    } elsif ($strand eq "-") {
+	printf ">$last_transcript_id $chr:%u..%u\n",$ends[0],$starts[$#starts];
+    } else {
+	die "strand $strand";
+    }
+    print "$gene_name\n";
+    print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+}
+
+if (defined($opt_d)) {
+    close($FP);
+}
+
+exit;
+
+
+sub get_line {
+    my $line;
+
+    if (!defined($opt_d)) {
+	if (!defined($line = <>)) {
+	    return;
+	} else {
+	    return $line;
+	}
+    } else {
+	if ($#lines < 0) {
+	    return;
+	} else {
+	    $line = shift @lines;
+	    return $line;
+	}
+    }
+}
+
+
+sub parse_info {
+    my ($list) = @_;
+
+    if ($list !~ /\S/) {
+	return;
+    } elsif ($list =~ /(\S+) "([^"]+)";?(.*)/) {
+	push @info,"$1 $2";
+	parse_info($3);
+    } elsif ($list =~ /(\S+) (\S+);?(.*)/) {
+	push @info,"$1 $2";
+	parse_info($3);
+    } else {
+	die "Cannot parse $list";
+    }
+}
+
+
+
+sub get_info {
+    my ($info, $desired_key) = @_;
+
+    foreach $item (@ {$info}) {
+	($key,$value) = $item =~ /(\S+) (.+)/;
+	if ($key eq $desired_key) {
+	    return $value;
+	}
+    }
+
+    die "Cannot find $desired_key in ",join("; ",@ {$info});
+}
+
+
+sub print_exons {
+    my ($starts, $ends, $gene_name, $transcript_id, $chr, $strand, $FP) = @_;
+
+    $nexons = $#{$starts} + 1;
+    if ($strand eq "+") {
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ {$starts}[$i],$ {$ends}[$i];
+	}
+    } elsif ($strand eq "-") {
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ {$ends}[$i],$ {$starts}[$i];
+	}
+    }
+    
+    return;
+}
+

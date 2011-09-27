@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c 31440 2010-11-10 19:52:35Z twu $";
+static char rcsid[] = "$Id: iit_get.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -554,9 +554,12 @@ print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstar
     if (Interval_type(interval) > 0) {
       printf(" %s",IIT_typestring(iit,Interval_type(interval)));
     }
+#if 0
+    /* Unnecessary because of "\n" after restofheader below */
     if (IIT_version(iit) < 5) {
       printf("\n");
     }
+#endif
   }
 
   if (fieldint < 0) {
@@ -700,7 +703,6 @@ main (int argc, char *argv[]) {
   unsigned int n;
   IIT_T iit = NULL;
   bool skipp;
-  double logtotal;
   
   int opt;
   extern int optind;
@@ -739,7 +741,7 @@ main (int argc, char *argv[]) {
     filename = argv[1];
   }
 
-  if (statsp == true & argc == 2) {
+  if (statsp == true && argc == 2) {
     /* Want total over entire IIT */
     if ((iit = IIT_read(filename,NULL,true,/*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/true,
 			/*labels_read_p*/false)) == NULL) {

@@ -39,9 +39,10 @@ DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
 	$(srcdir)/gmap_build.pl.in $(srcdir)/gmap_compress.pl.in \
 	$(srcdir)/gmap_process.pl.in $(srcdir)/gmap_reassemble.pl.in \
 	$(srcdir)/gmap_setup.pl.in $(srcdir)/gmap_uncompress.pl.in \
-	$(srcdir)/gmap_update.pl.in $(srcdir)/md_coords.pl.in \
-	$(srcdir)/psl_splices.pl.in $(srcdir)/psl_splicesites.pl.in \
-	$(srcdir)/sam_merge.pl.in $(srcdir)/sam_restore.pl.in
+	$(srcdir)/gtf_genes.pl.in $(srcdir)/gtf_introns.pl.in \
+	$(srcdir)/gtf_splicesites.pl.in $(srcdir)/md_coords.pl.in \
+	$(srcdir)/psl_genes.pl.in $(srcdir)/psl_introns.pl.in \
+	$(srcdir)/psl_splicesites.pl.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/pagesize.m4 \
@@ -59,10 +60,10 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
 CONFIG_CLEAN_FILES = gmap_compress.pl gmap_uncompress.pl \
-	gmap_process.pl gmap_setup.pl gmap_build.pl gmap_update.pl \
-	gmap_reassemble.pl md_coords.pl fa_coords.pl \
-	psl_splicesites.pl psl_splices.pl dbsnp_iit.pl sam_merge.pl \
-	sam_restore.pl
+	gmap_process.pl gmap_setup.pl gmap_build.pl gmap_reassemble.pl \
+	md_coords.pl fa_coords.pl psl_splicesites.pl psl_introns.pl \
+	psl_genes.pl gtf_splicesites.pl gtf_introns.pl gtf_genes.pl \
+	dbsnp_iit.pl
 am__installdirs = "$(DESTDIR)$(bindir)"
 binSCRIPT_INSTALL = $(INSTALL_SCRIPT)
 SCRIPTS = $(bin_SCRIPTS)
@@ -112,6 +113,7 @@ LIPO = @LIPO@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
 MAKEINFO = @MAKEINFO@
+MAX_READLENGTH = @MAX_READLENGTH@
 MKDIR_P = @MKDIR_P@
 NM = @NM@
 NMEDIT = @NMEDIT@
@@ -197,10 +199,26 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-@FULLDIST_FALSE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
-@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
-@FULLDIST_FALSE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
-@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords psl_splicesites psl_splices dbsnp_iit sam_merge sam_restore
+@FULLDIST_FALSE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+@FULLDIST_FALSE@              psl_splicesites psl_introns psl_genes \
+@FULLDIST_FALSE@              gtf_splicesites gtf_introns gtf_genes \
+@FULLDIST_FALSE@              dbsnp_iit
+
+@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+@FULLDIST_TRUE@              psl_splicesites psl_introns psl_genes \
+@FULLDIST_TRUE@              gtf_splicesites gtf_introns gtf_genes \
+@FULLDIST_TRUE@              dbsnp_iit sam_merge sam_restore
+
+@FULLDIST_FALSE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+@FULLDIST_FALSE@             psl_splicesites psl_introns psl_genes \
+@FULLDIST_FALSE@             gtf_splicesites gtf_introns gtf_genes \
+@FULLDIST_FALSE@             dbsnp_iit
+
+@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
+@FULLDIST_TRUE@             psl_splicesites psl_introns psl_genes \
+@FULLDIST_TRUE@             gtf_splicesites gtf_introns gtf_genes \
+@FULLDIST_TRUE@             dbsnp_iit sam_merge sam_restore
+
 all: all-am
 
 .SUFFIXES:
@@ -243,8 +261,6 @@ gmap_setup.pl: $(top_builddir)/config.status $(srcdir)/gmap_setup.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_build.pl: $(top_builddir)/config.status $(srcdir)/gmap_build.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-gmap_update.pl: $(top_builddir)/config.status $(srcdir)/gmap_update.pl.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_reassemble.pl: $(top_builddir)/config.status $(srcdir)/gmap_reassemble.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 md_coords.pl: $(top_builddir)/config.status $(srcdir)/md_coords.pl.in
@@ -253,13 +269,17 @@ fa_coords.pl: $(top_builddir)/config.status $(srcdir)/fa_coords.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 psl_splicesites.pl: $(top_builddir)/config.status $(srcdir)/psl_splicesites.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-psl_splices.pl: $(top_builddir)/config.status $(srcdir)/psl_splices.pl.in
+psl_introns.pl: $(top_builddir)/config.status $(srcdir)/psl_introns.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+psl_genes.pl: $(top_builddir)/config.status $(srcdir)/psl_genes.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+gtf_splicesites.pl: $(top_builddir)/config.status $(srcdir)/gtf_splicesites.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+gtf_introns.pl: $(top_builddir)/config.status $(srcdir)/gtf_introns.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+gtf_genes.pl: $(top_builddir)/config.status $(srcdir)/gtf_genes.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 dbsnp_iit.pl: $(top_builddir)/config.status $(srcdir)/dbsnp_iit.pl.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-sam_merge.pl: $(top_builddir)/config.status $(srcdir)/sam_merge.pl.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-sam_restore.pl: $(top_builddir)/config.status $(srcdir)/sam_restore.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-binSCRIPTS: $(bin_SCRIPTS)
 	@$(NORMAL_INSTALL)
@@ -440,10 +460,6 @@ gmap_build: gmap_build.pl
 	cp gmap_build.pl gmap_build
 	chmod +x gmap_build
 
-gmap_update: gmap_update.pl
-	cp gmap_update.pl gmap_update
-	chmod +x gmap_update
-
 gmap_reassemble: gmap_reassemble.pl
 	cp gmap_reassemble.pl gmap_reassemble
 	chmod +x gmap_reassemble
@@ -460,9 +476,29 @@ psl_splicesites: psl_splicesites.pl
 	cp psl_splicesites.pl psl_splicesites
 	chmod +x psl_splicesites
 
+psl_genes: psl_genes.pl
+	cp psl_genes.pl psl_genes
+	chmod +x psl_genes
+
+psl_introns: psl_introns.pl
+	cp psl_introns.pl psl_introns
+	chmod +x psl_introns
+
 psl_splices: psl_splices.pl
 	cp psl_splices.pl psl_splices
 	chmod +x psl_splices
+
+gtf_splicesites: gtf_splicesites.pl
+	cp gtf_splicesites.pl gtf_splicesites
+	chmod +x gtf_splicesites
+
+gtf_introns: gtf_introns.pl
+	cp gtf_introns.pl gtf_introns
+	chmod +x gtf_introns
+
+gtf_genes: gtf_genes.pl
+	cp gtf_genes.pl gtf_genes
+	chmod +x gtf_genes
 
 dbsnp_iit: dbsnp_iit.pl
 	cp dbsnp_iit.pl dbsnp_iit

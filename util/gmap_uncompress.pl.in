@@ -39,6 +39,7 @@ my $gsequence;
 @intronlengths = ();
 @intronends = ();
 while (defined($line = <>)) {
+  $line =~ s/\r\n/\n/;
   chop $line;
   if ($line =~ /^>/) {
     if ($#coordinates >= 0) {
@@ -586,12 +587,14 @@ sub get_genomic_sequence {
     undef $header;
     undef $fwdsequence;
   } else {
+    $header =~ s/\r\n/\n/;
     chop $header;
     $header =~ s/^>//;
 
     $fwdsequence = "";
     while (defined($line = <$FP>)) {
       if ($line !~ /^[><]/) {
+	$line =~ s/\r\n/\n/;
 	chop $line;
 	$line =~ s/\s//g;
 	$fwdsequence .= uc($line);

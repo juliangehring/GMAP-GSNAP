@@ -10,16 +10,18 @@ $package_version = "@PACKAGE_VERSION@";
 use IO::File;
 use Getopt::Std;
 
-# Usage: gmap_setup -d <db> [-D <destdir>] [-o <Makefile>] [-M <.md file>] [-C] [-W] [-E] [-q interval] [-Q interval] <fasta_files or command>
+# Usage: gmap_setup -d <db> [-D <destdir>] [-k <kmersize>] [-o <Makefile>] [-M <.md file>] [-C] [-W] [-E] [-q interval] <fasta_files or command>
 #
 
 undef($opt_d);			# genome name
 undef($opt_D);			# destination directory
+$opt_b = 12;			# offsetscomp basesize
+$opt_k = 15;			# k-mer size for GMAP genomic index (currently allowed: 12-15)
+$opt_K = 6;			# k-mer size for PMAP genomic index (currently allowed: 5-8)
 undef($opt_o);			# name of output file (default is "Makefile.<genome>")
 
 undef($opt_M);			# use seq_contig.md file (provide as argument)
-undef($opt_O);			# order chromosomes
-undef($opt_S);			# Treat each sequence as a separate chromosome; now the default
+undef($opt_s);			# Chromosome sort order
 undef($opt_C);			# Tries to find a chromosome tag in each FASTA header (also turns ons chromosome sorting)
 
 undef($opt_W);			# write directly to file, not RAM
@@ -28,20 +30,20 @@ undef($opt_E);			# interpret argument as a command
 undef($opt_B);			# bindir (needed for "make check")
 
 $opt_q = 3;			# GMAP interval
-$opt_Q = 6;			# PMAP interval;
+#$opt_Q = 6;			# PMAP interval (not used.  interval determined by $opt_K)
 
 #undef($opt_9);			# debug
 
-getopts("d:D:o:M:SCO:WEB:q:Q:");
+getopts("d:D:b:k:K:q:Q:o:M:s:CWEB:");
 
-if (defined($opt_S)) {
-    print STDERR "The -S flag is no longer available.  It is now the default behavior, so you may\n";
-    print STDERR "  simply call gmap_setup without it.  The other ways to call gmap_setup are with\n";
-    print STDERR "  the -C flag (to try to parse the chromosomal coordinates from each FASTA header)\n";
-    print STDERR "  or with the -M flag (to specify an NCBI .md file that contains chromosomal\n";
-    print STDERR "  coordinates.\n";
-    die;
-}
+#if (defined($opt_S)) {
+#    print STDERR "The -S flag is no longer available.  It is now the default behavior, so you may\n";
+#    print STDERR "  simply call gmap_setup without it.  The other ways to call gmap_setup are with\n";
+#    print STDERR "  the -C flag (to try to parse the chromosomal coordinates from each FASTA header)\n";
+#    print STDERR "  or with the -M flag (to specify an NCBI .md file that contains chromosomal\n";
+#    print STDERR "  coordinates.\n";
+#    die;
+#}
 
 if (!defined($genome_name = $opt_d)) {
   print_usage();
@@ -60,8 +62,13 @@ $genome_name =~ s/\/$//;	# In case user gives -d argument with trailing slash
 if (!defined($outputfile = $opt_o)) {
   $outputfile = "Makefile.$genome_name";
 }
+
+$gmap_basesize = $opt_b;
+
+$gmap_kmersize = $opt_k;
+$pmap_kmersize = $opt_K;
 $gmap_interval = $opt_q;
-$pmap_interval = $opt_Q;
+#$pmap_interval = $opt_Q;
 
 
 $MAKEFILE = new IO::File(">$outputfile") or die "Cannot write to file $outputfile";
@@ -85,14 +92,8 @@ print $MAKEFILE "DESTINATION = $destination\n";
 print $MAKEFILE "\n";
 
 
-if (defined($opt_O)) {
-    if ($opt_O == 0) {
-	print $MAKEFILE "CHR_ORDER_FLAG = -S\n";
-    } elsif ($opt_O == 1) {
-	print $MAKEFILE "CHR_ORDER_FLAG = \n";
-    } else {
-	die "Don't recognize value $opt_O for -O flag";
-    }
+if (defined($opt_s)) {
+    print $MAKEFILE "CHR_ORDER_FLAG = -s $opt_s\n";
 } else {
     print $MAKEFILE "CHR_ORDER_FLAG = \n";
 }
@@ -139,14 +140,13 @@ print $MAKEFILE "\n";
 #print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 #print $MAKEFILE "\n";
 
+# Used only for deleting
 print $MAKEFILE "FILE_ENDINGS = chromosome chromosome.iit chrsubset contig contig.iit \\\n";
 print $MAKEFILE "               genome genomecomp genomealt version \\\n";
 print $MAKEFILE "               ";
-printf $MAKEFILE "id%doffsets id%dpositions ref%doffsets ref%dpositions snp%doffsets snp%dpositions \\\n",
-    $gmap_interval,$gmap_interval,$gmap_interval,$gmap_interval,$gmap_interval,$gmap_interval;
+print $MAKEFILE "id*offsetscomp id*positions ref*gammaptrs ref*offsetscomp ref*positions snp*gammaptrs snp*offsetscomp snp*positions \\\n";
 print $MAKEFILE "               ";
-printf $MAKEFILE "pf*offsets pf*positions pr*offsets pr*positions\n",
-    $pmap_interval,$pmap_interval,$pmap_interval,$pmap_interval;
+print $MAKEFILE "pf*gammaptrs pf*offsetscomp pf*positions pr*gammaptrs pr*offsetscomp pr*positions\n";
 
 print $MAKEFILE "\n";
 
@@ -169,9 +169,12 @@ print $MAKEFILE "\tmkdir -p \$(DESTINATION)/\$(GENOME).maps\n";
 print $MAKEFILE "\tchmod 755 \$(DESTINATION)/\$(GENOME).maps\n";
 print $MAKEFILE "\n";
 
-print $MAKEFILE "gmapdb: checkcoords \$(GENOME).version \$(GENOME).genomecomp \$(GENOME).ref3offsets \$(GENOME).ref3positions gmapmsg\n";
-print $MAKEFILE "gmapdb_lc: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref3offsets_lc \$(GENOME).ref3positions gmapmsg\n";
-print $MAKEFILE "gmapdb_lc_masked: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref3offsets.masked \$(GENOME).ref3positions.masked gmapmsg\n";
+printf $MAKEFILE "gmapdb: checkcoords \$(GENOME).version \$(GENOME).genomecomp \$(GENOME).ref%d%d%doffsetscomp \$(GENOME).ref%d%d%dpositions gmapmsg\n",
+    $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
+printf $MAKEFILE "gmapdb_lc: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp_lc \$(GENOME).ref%d%d%dpositions gmapmsg\n",
+    $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
+printf $MAKEFILE "gmapdb_lc_masked: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp.masked \$(GENOME).ref%d%d%dpositions.masked gmapmsg\n",
+    $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
 
 print $MAKEFILE "pmapdb: pmapindices \$(GENOME).version pmapmsg\n";
 print $MAKEFILE "\n";
@@ -288,24 +291,25 @@ print $MAKEFILE "\n";
 #   GMAP index files, unmasked
 ########################################################################
 
+$k_flag = "-k $gmap_kmersize";
 $q_flag = "-q $gmap_interval";
 
-print $MAKEFILE "\$(GENOME).ref3offsets: \$(GENOME).genomecomp\n";
-print $MAKEFILE "\techo Making index offsets file...\n";
-print $MAKEFILE "\tcat \$(GENOME).genomecomp | \$(GMAPINDEX) -d \$(GENOME) $q_flag -O; \n";
+printf $MAKEFILE "\$(GENOME).ref%d%d%doffsetscomp: \$(GENOME).genomecomp\n",$gmap_basesize,$gmap_kmersize,$gmap_interval;
+print $MAKEFILE "\techo Making index offsetscomp file...\n";
+print $MAKEFILE "\tcat \$(GENOME).genomecomp | \$(GMAPINDEX) -d \$(GENOME) $k_flag $q_flag -O; \n";
 print $MAKEFILE "\n";
 
-print $MAKEFILE "\$(GENOME).ref3offsets_lc: \$(GENOME).genome\n";
-print $MAKEFILE "\techo Making index offsets file...\n";
-print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l $q_flag -O; \n";
+printf $MAKEFILE "\$(GENOME).ref%d%d%doffsetscomp_lc: \$(GENOME).genome\n",$gmap_basesize,$gmap_kmersize,$gmap_interval;
+print $MAKEFILE "\techo Making index offsetscomp file...\n";
+print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l $k_flag $q_flag -O; \n";
 print $MAKEFILE "\n";
 
-print $MAKEFILE "\$(GENOME).ref3positions: \$(GENOME).ref3offsets\n";
+printf $MAKEFILE "\$(GENOME).ref%d%d%dpositions: \$(GENOME).ref%d%d%doffsetscomp\n",$gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
 print $MAKEFILE "\techo Making index positions file...\n";
 print $MAKEFILE "\tif test -s \$(GENOME).genome; then \\\n";
-print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l $q_flag -P \$(WRITEFILE); \\\n";
+print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l $k_flag $q_flag -P \$(WRITEFILE); \\\n";
 print $MAKEFILE "\telse \\\n";
-print $MAKEFILE "\tcat \$(GENOME).genomecomp | \$(GMAPINDEX) -d \$(GENOME) $q_flag -P \$(WRITEFILE); \\\n";
+print $MAKEFILE "\tcat \$(GENOME).genomecomp | \$(GMAPINDEX) -d \$(GENOME) $k_flag $q_flag -P \$(WRITEFILE); \\\n";
 print $MAKEFILE "\tfi\n";
 print $MAKEFILE "\n";
 
@@ -314,14 +318,15 @@ print $MAKEFILE "\n";
 #   GMAP index files, masked
 ########################################################################
 
-print $MAKEFILE "\$(GENOME).ref3offsets.masked: \$(GENOME).genome\n";
-print $MAKEFILE "\techo Making masked index offsets file...\n";
-print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l -m $q_flag -O\n";
+printf $MAKEFILE "\$(GENOME).ref%d%d%doffsetscomp.masked: \$(GENOME).genome\n",$gmap_basesize,$gmap_kmersize,$gmap_interval;
+print $MAKEFILE "\techo Making masked index offsetscomp file...\n";
+print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l -m $k_flag $q_flag -O\n";
 print $MAKEFILE "\n";
 
-print $MAKEFILE "\$(GENOME).ref3positions.masked: \$(GENOME).ref3offsets.masked\n";
+printf $MAKEFILE "\$(GENOME).ref%d%d%dpositions.masked: \$(GENOME).ref%d%d%doffsetscomp.masked\n",
+    $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
 print $MAKEFILE "\techo Making masked index positions file...\n";
-print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l -m $q_flag -P\n";
+print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l -m $k_flag $q_flag -P\n";
 print $MAKEFILE "\n";
 
 
@@ -330,10 +335,11 @@ print $MAKEFILE "\n";
 ########################################################################
 
 # Don't concatenate
-$q_flag = "-q $pmap_interval";
+$k_flag = "-k $pmap_kmersize";
+#$q_flag = "-q $pmap_interval";
 
 print $MAKEFILE "pmapindices:\n";
-print $MAKEFILE "\t\$(PMAPINDEX) -d \$(GENOME) $q_flag\n";
+print $MAKEFILE "\t\$(PMAPINDEX) -d \$(GENOME) $k_flag\n";
 print $MAKEFILE "\n";
 
 ########################################################################
@@ -377,38 +383,16 @@ do
 INSTRUCTIONS1
 
 print $FP "    make -f $outputfile coords\n";
-print $FP "\n";
-print $FP "    make -f $outputfile gmapdb, or\n";
-print $FP "    make -f $outputfile gmapdb_lc, or\n";
-print $FP "    make -f $outputfile gmapdb_lc_masked\n";
-print $FP "\n";
-print $FP "    (edit the .chrsubset file [optional])\n";
-print $FP "\n";
+print $FP "    make -f $outputfile gmapdb\n";
 print $FP "    make -f $outputfile install\n";
 
 print $FP <<INSTRUCTIONS2;
-
-Note that the "make gmapdb" and "make fullascii" commands can take a while
-to index a large genome.
 
 If you need to start over again, do
 
     make -f $outputfile clean  (which preserves Makefile.$genome_name and INSTALL.$genome_name)
  or
     make -f $outputfile cleanall  (which deletes the above files)
-
-The optional "make fullascii" command is intended to represent genomes
-where it is important to show lower-case or non-standard characters
-(anything other than A, C, G, T, N, or X) in the alignment.  This step
-is optional.  For human- or mouse-sized genomes, it requires that your
-computer can address files greater than 2 gigabytes in size.  See the
-README file in the original source tree to see if you really need to
-do this.
-
-The .chrsubset file defines various subsets of the available
-chromosomes, which can then be specified by the user with the "-c"
-flag to GMAP.  For more information about specifying chromosomal
-subsets, see the README file that comes with the GMAP source code.
 
 A copy of these commands has been written to a file called
 INSTALL.$genome_name.
@@ -428,7 +412,7 @@ gmap_setup: Sets up a Makefile for creating a genome by use by GMAP or GSNAP.
 Part of GMAP package, version $package_version.
 
 Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-C] [-M <.md file>]
-       [-E] [-O <int>] [-W] [-q interval] [-Q interval] <fasta_files or command>
+       [-E] [-s sorttype] [-k kmersize] [-b basesize] [-q interval] [-Q interval] [-W] <fasta_files or command>
 
     -d    genome name
     -D    destination directory for installation (defaults to gmapdb directory specified at configure time)
@@ -436,12 +420,14 @@ Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-C] [-M <.md f
     -M    use coordinates from an .md file (e.g., seq_contig.md file from NCBI)
     -C    try to parse chromosomal coordinates from each FASTA header
     -E    interpret argument as a command, instead of a list of FASTA files
-    -O    order chromosomes in numeric/alphabetic order (0 = no, 1 = yes (default))
+    -s    use given sorttype to order chromosomes: none, alpha, numeric-alpha, or chrom (default)
+    -k    kmer size
 
   Advanced flags, not typically used:
-    -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
+    -b    offsetscomp basesize
     -q    GMAP indexing interval (default: 3 nt)
     -Q    PMAP indexing interval (default: 6 aa)
+    -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
 
 These flags are explained below:
 

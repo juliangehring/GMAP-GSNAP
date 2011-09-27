@@ -1,4 +1,4 @@
-/* $Id: samflags.h 35179 2011-02-15 00:28:49Z twu $ */
+/* $Id: samflags.h 44093 2011-08-01 23:14:17Z twu $ */
 #ifndef SAMFLAGS_INCLUDED
 #define SAMFLAGS_INCLUDED
 
@@ -13,6 +13,11 @@
 #define NOT_PRIMARY        0x0100 /* 256 */
 #define BAD_READ_QUALITY   0x0200 /* 512 */
 #define DUPLICATE_READ     0x0400 /* 1024 */
+
+/* 83 = first read, minus strand for paired */
+/* 99 = first read, plus strand for paired */
+/* 147 = second read, minus strand for paired */
+/* 163 = second read, plus strand for paired */
 
 /* For forcing a read to be primary */
 #define SET_PRIMARY        0xFEFF /* do a logical-and (&) with this */

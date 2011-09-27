@@ -1,4 +1,4 @@
-/* $Id: iitdef.h 30359 2010-10-14 16:00:36Z twu $ */
+/* $Id: iitdef.h 44063 2011-08-01 18:04:15Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -31,7 +31,7 @@
    otherwise print annotation. */
 
 
-typedef enum {NO_SORT, ALPHA_SORT, CHROM_SORT} Sorttype_T;
+typedef enum {NO_SORT, ALPHA_SORT, NUMERIC_ALPHA_SORT, CHROM_SORT} Sorttype_T;
 
 typedef struct FNode_T *FNode_T;
 struct FNode_T {

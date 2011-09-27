@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: pairpool.c 44181 2011-08-03 09:19:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -77,14 +77,14 @@ Pairpool_free_memory (T this) {
 
   for (p = this->pairchunks; p != NULL; p = List_next(p)) {
     pairptr = (struct Pair_T *) List_head(p);
-    FREE(pairptr);
+    FREE_KEEP(pairptr);
   }
-  List_free(&this->pairchunks);
+  List_free_keep(&this->pairchunks);
   for (p = this->listcellchunks; p != NULL; p = List_next(p)) {
     listcellptr = (struct List_T *) List_head(p);
-    FREE(listcellptr);
+    FREE_KEEP(listcellptr);
   }
-  List_free(&this->listcellchunks);
+  List_free_keep(&this->listcellchunks);
 
   this->npairs = 0;
   this->pairctr = 0;
@@ -100,16 +100,25 @@ Pairpool_free_memory (T this) {
 }
 
 
+void
+Pairpool_report_memory (T this) {
+  printf("Pairpool has %d pairchunks and %d listcellchunks\n",
+	 List_length(this->pairchunks),List_length(this->listcellchunks));
+  return;
+}
+
+
 static struct Pair_T *
 add_new_pairchunk (T this) {
   struct Pair_T *chunk;
 
-  chunk = (struct Pair_T *) MALLOC(CHUNKSIZE*sizeof(struct Pair_T));
-  this->pairchunks = List_push(this->pairchunks,(void *) chunk);
+  chunk = (struct Pair_T *) MALLOC_KEEP(CHUNKSIZE*sizeof(struct Pair_T));
+  this->pairchunks = List_push_keep(this->pairchunks,(void *) chunk);
   debug1(printf("Adding a new chunk of pairs.  Ptr for pair %d is %p\n",
 		this->npairs,chunk));
 
   this->npairs += CHUNKSIZE;
+
   return chunk;
 }
 
@@ -117,12 +126,13 @@ static struct List_T *
 add_new_listcellchunk (T this) {
   struct List_T *chunk;
 
-  chunk = (struct List_T *) MALLOC(CHUNKSIZE*sizeof(struct List_T));
-  this->listcellchunks = List_push(this->listcellchunks,(void *) chunk);
+  chunk = (struct List_T *) MALLOC_KEEP(CHUNKSIZE*sizeof(struct List_T));
+  this->listcellchunks = List_push_keep(this->listcellchunks,(void *) chunk);
   debug1(printf("Adding a new chunk of listcells.  Ptr for listcell %d is %p\n",
 	       this->nlistcells,chunk));
 
   this->nlistcells += CHUNKSIZE;
+
   return chunk;
 }
 
@@ -196,6 +206,9 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->genomejump = 0;
 
   pair->state = GOOD;
+  pair->protectedp = false;
+  pair->donor_prob = 0.0;
+  pair->acceptor_prob = 0.0;
 
   debug(
 	printf("Creating %p: %d %d %c %c %c\n",
@@ -259,6 +272,9 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
   pair->genomejump = 0;
 
   pair->state = GOOD;
+  pair->protectedp = false;
+  pair->donor_prob = 0.0;
+  pair->acceptor_prob = 0.0;
 
   debug(
 	printf("Creating %p: %d %d %c %c %c\n",
@@ -321,6 +337,9 @@ Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump) {
   pair->genomejump = genomejump;
 
   pair->state = GOOD;
+  pair->protectedp = false;
+  pair->donor_prob = 0.0;
+  pair->acceptor_prob = 0.0;
 
   debug(printf("Creating gap %p, queryjump=%d, genomejump=%d\n",pair,queryjump,genomejump));
 

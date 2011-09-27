@@ -1,4 +1,4 @@
-/* $Id: uintlist.h 27450 2010-08-05 19:02:48Z twu $ */
+/* $Id: uintlist.h 40271 2011-05-28 02:29:18Z twu $ */
 #ifndef UINTLIST_INCLUDED
 #define UINTLIST_INCLUDED
 #include "bool.h"
@@ -34,6 +34,7 @@ extern unsigned int
 Uintlist_index (T this, int index);
 extern bool
 Uintlist_find (T this, unsigned int value);
-
+extern char *
+Uintlist_to_string (T this);
 #undef T
 #endif

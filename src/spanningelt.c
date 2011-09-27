@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c 36133 2011-03-06 20:28:02Z twu $";
+static char rcsid[] = "$Id: spanningelt.c 41999 2011-06-30 17:11:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,7 @@ static char rcsid[] = "$Id: spanningelt.c 36133 2011-03-06 20:28:02Z twu $";
 #include <stdlib.h>
 #include <math.h>		/* For qsort */
 #include "mem.h"
+#include "indexdbdef.h"
 
 #ifdef WORDS_BIGENDIAN
 #include "bigendian.h"
@@ -93,6 +94,7 @@ Spanningelt_print (T this) {
   if (this->compoundpos != NULL) {
     printf("Compound @ %d (diagterm %d): ",this->querypos,this->compoundpos_diagterm);
     Compoundpos_print_sizes(this->compoundpos);
+
   } else {
     printf("Ordinary @ %d (%d positions, diagterm %d)",
 	   this->querypos,this->npositions,this->diagterm);
@@ -122,7 +124,10 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 		 int query_lastpos, int querylength, bool plusp) {
   T new = (T) MALLOC(sizeof(*new));
   int partnerpos, querypos;
+  int index1part = indexdb->index1part;
 
+  debug(printf("Entered Spanningelt_new with querypos1 %d, querypos2 %d, query_lastpos %d, querylength %d\n",
+	       querypos1,querypos2,query_lastpos,querylength));
   new->querylength = querylength;
   new->intersection_diagonals = (Genomicpos_T *) NULL;
   new->intersection_ndiagonals = 0;
@@ -131,6 +136,7 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 
   /* Handle partner */
   if ((new->partnerp = partnerp) == false) {
+    debug(printf("partnerp is false, so querypos = querypos1 %d\n",querypos1));
     new->partner_positions = (Genomicpos_T *) NULL;
     new->partner_npositions = 0;
     new->querypos = querypos = querypos1;
@@ -138,17 +144,19 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
   } else {
     if (querypos1 < 0 || querypos1 > query_lastpos) {
       /* Treat querypos2 as partner */
+      debug(printf("partnerp is true and querypos1 is out of bounds, so querypos = querypos1 %d\n",querypos1));
       new->querypos = querypos = querypos1;
       new->partner_querypos = partnerpos = querypos2;
 
     } else {
       /* Treat querypos1 as partner */
+      debug(printf("partnerp is true and querypos1 is in bounds, so querypos = querypos2 %d\n",querypos2));
       new->querypos = querypos = querypos2;
       new->partner_querypos = partnerpos = querypos1;
     }
     new->partner_positions = 
       Indexdb_read_inplace(&new->partner_npositions,indexdb,stage1_oligos[partnerpos]);
-    new->partner_diagterm = plusp ? querylength - partnerpos : partnerpos + INDEX1PART; /* FORMULA */
+    new->partner_diagterm = plusp ? querylength - partnerpos : partnerpos + index1part; /* FORMULA */
 
     (*stage1_retrievedp)[partnerpos] = true;
     (*stage1_positions)[partnerpos] = new->partner_positions;
@@ -167,7 +175,7 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
     } else {
       new->positions_allocated = (Genomicpos_T *) NULL;
     }
-    new->diagterm = plusp ? querylength - querypos : querypos + INDEX1PART; /* FORMULA */
+    new->diagterm = plusp ? querylength - querypos : querypos + index1part; /* FORMULA */
 
   } else if (plusp) {
     /* Plus compoundpos */
@@ -185,11 +193,11 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
       
     } else if (querypos == query_lastpos + 1) {
       new->compoundpos = Indexdb_compoundpos_right_subst_1(indexdb,stage1_oligos[query_lastpos]);
-      new->compoundpos_diagterm = INDEX1PART-1; /* FORMULA */
+      new->compoundpos_diagterm = index1part-1; /* FORMULA */
       
     } else if (querypos == query_lastpos + 2) {
       new->compoundpos = Indexdb_compoundpos_right_subst_2(indexdb,stage1_oligos[query_lastpos]);
-      new->compoundpos_diagterm = INDEX1PART-2; /* FORMULA */
+      new->compoundpos_diagterm = index1part-2; /* FORMULA */
       
     }
     Compoundpos_heap_init(new->compoundpos,querylength,new->compoundpos_diagterm);
@@ -203,11 +211,11 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 
     if (querypos == -2) {
       new->compoundpos = Indexdb_compoundpos_right_subst_2(indexdb,stage1_oligos[0]);
-      new->compoundpos_diagterm = INDEX1PART-2; /* FORMULA */
+      new->compoundpos_diagterm = index1part-2; /* FORMULA */
 
     } else if (querypos == -1) {
       new->compoundpos = Indexdb_compoundpos_right_subst_1(indexdb,stage1_oligos[0]);
-      new->compoundpos_diagterm = INDEX1PART-1; /* FORMULA */
+      new->compoundpos_diagterm = index1part-1; /* FORMULA */
       
     } else if (querypos == query_lastpos + 1) {
       new->compoundpos = Indexdb_compoundpos_left_subst_1(indexdb,stage1_oligos[query_lastpos]);
@@ -232,13 +240,13 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
   if (plusp) {
     if (partnerp == false) {
       new->miss_querypos5 = querypos;
-      new->miss_querypos3 = querypos + INDEX1PART;
+      new->miss_querypos3 = querypos + index1part;
     } else if (partnerpos < querypos) {
       new->miss_querypos5 = partnerpos;
-      new->miss_querypos3 = querypos + INDEX1PART;
+      new->miss_querypos3 = querypos + index1part;
     } else {
       new->miss_querypos5 = querypos;
-      new->miss_querypos3 = partnerpos + INDEX1PART;
+      new->miss_querypos3 = partnerpos + index1part;
     }
   } else {
     if (partnerp == false) {
@@ -281,16 +289,17 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   int worstpos, partnerpos, leftpos, rightpos, querypos, diff;
   int maxpositions = 0;
   bool first_anchored_p = true;
+  int index1part = indexdb->index1part;
 
   worstpos = first;
-  for (querypos = first; querypos < last; querypos += INDEX1PART) {
+  for (querypos = first; querypos < last; querypos += index1part) {
     if (stage1_npositions[querypos] > maxpositions) {
       maxpositions = stage1_npositions[querypos];
       worstpos = querypos;
     }
   }
 
-  for (querypos = last; querypos > first; querypos -= INDEX1PART) {
+  for (querypos = last; querypos > first; querypos -= index1part) {
     if (stage1_npositions[querypos] > maxpositions) {
       maxpositions = stage1_npositions[querypos];
       worstpos = querypos;
@@ -299,7 +308,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   }
 
   /* Handle middle position first */
-  diff = (last - first) % 12;
+  diff = (last - first) % index1part; /* was 12 */
   if (diff == 0) {
     elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),&(*stage1_positions),
 			  stage1_npositions,indexdb,/*partnerp*/false,/*querypos1*/worstpos,
@@ -323,7 +332,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   *minscore = elt->candidates_score;
 
   /* Add left positions */
-  for (querypos = first; querypos < leftpos; querypos += INDEX1PART) {
+  for (querypos = first; querypos < leftpos; querypos += index1part) {
     elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),&(*stage1_positions),
 			  stage1_npositions,indexdb,/*partnerp*/false,/*querypos1*/querypos,
 			  /*querypos2*/0,query_lastpos,querylength,plusp);
@@ -334,7 +343,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   }
 
   /* Add right positions */
-  for (querypos = last; querypos > rightpos; querypos -= INDEX1PART) {
+  for (querypos = last; querypos > rightpos; querypos -= index1part) {
     elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),&(*stage1_positions),
 			  stage1_npositions,indexdb,/*partnerp*/false,/*querypos1*/querypos,
 			  /*querypos2*/0,query_lastpos,querylength,plusp);

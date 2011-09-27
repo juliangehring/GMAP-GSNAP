@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c 36087 2011-03-04 20:33:40Z twu $";
+static char rcsid[] = "$Id: iit_store.c 44063 2011-08-01 18:04:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -48,7 +48,9 @@ static bool gff3_format_p = false;
 static char *labelid = "ID";
 static bool fieldsp = false;
 static char iit_version = 0;
+
 static Sorttype_T divsort = CHROM_SORT;
+static char *mitochondrial_string = NULL;
 
 
 static struct option long_options[] = {
@@ -95,7 +97,14 @@ Options\n\
   -F, --fields              Annotation consists of separate fields\n\
   -G, --gff                 Parse input file in gff3 format\n\
   -l, --label=STRING        For gff input, the feature attribute to use (default is ID)\n\
-  -s, --sort=STRING         Sorting of divisions: none, alpha, or chrom (default)\n\
+\n\
+  -s, --sort=STRING         Sorting of divisions: none, alpha, numeric-alpha, or chrom (default)\n\
+                numeric-alpha: chr1 chr1_random chr2 chr10 chr10_random chrM chrUn chrX chrY\n\
+                        chrom: chr1 chr2 chr10 chrX chrY chrM chr1_random chr10_random chrUn\n\
+\n\
+                               Note 1: For sorting purposes, any initial 'chr' will be ignored\n\
+                               Note 2: For chrom, X, Y, M, MT (or chrX, chrY, and so on) are special\n\
+\n\
   -v, --iitversion=STRING   Desired iit version for output iit\n\
                             (default = 0, which means latest version)\n\
 \n\
@@ -288,6 +297,7 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
       
   if (coords == NULL) {
     fprintf(stderr,"Error parsing %s.  Expecting coords (as <div>:<number>..<number>)\n",query);
+    fprintf(stderr,"Problematic line was: %s\n",header);
     exit(9);
   } else if (isnumberp(&(*start),coords)) {
     debug(printf("  and coords %s as a number\n",coords));
@@ -296,7 +306,8 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
     debug(printf("  and coords %s as a range starting at %u and ending at %u\n",
 		 coords,*start,*end));
   } else {
-    fprintf(stderr,"Error parsing %s.  Expecting coords (as <div>:<number>..<number>)\n",query);
+    fprintf(stderr,"Error parsing %s:%s.  Expecting coords (as <div>:<number>..<number>)\n",query,coords);
+    fprintf(stderr,"Problematic line was: %s\n",header);
     exit(9);
   }
 
@@ -778,7 +789,7 @@ int getopt (int argc, char *const argv[], const char *optstring);
 
 int 
 main (int argc, char *argv[]) {
-  char *inputfile = NULL, *iitfile, *tempstring, *divstring, *typestring, **strings, *p;
+  char *inputfile = NULL, *iitfile, *tempstring, *divstring, *typestring, *p;
   char firstchar;
   List_T d, l, templist = NULL, divlist = NULL, typelist = NULL, fieldlist = NULL;
   FILE *fp;
@@ -788,6 +799,7 @@ main (int argc, char *argv[]) {
   Chrom_T *chroms = NULL;
   int n_proper_divs = 0, i;
   bool label_pointers_8p, annot_pointers_8p;
+  unsigned int order;
 
 #ifdef HAVE_64_BIT
   UINT8 label_totallength, annot_totallength;
@@ -812,6 +824,8 @@ main (int argc, char *argv[]) {
 	divsort = NO_SORT;
       } else if (!strcmp(optarg,"alpha")) {
 	divsort = ALPHA_SORT;
+      } else if (!strcmp(optarg,"numeric-alpha")) {
+	divsort = NUMERIC_ALPHA_SORT;
       } else if (!strcmp(optarg,"chrom")) {
 	divsort = CHROM_SORT;
       } else {
@@ -925,72 +939,47 @@ main (int argc, char *argv[]) {
     }
   }
 
-  if (divsort == NO_SORT || divsort == ALPHA_SORT) {
-    if ((n_proper_divs = List_length(divlist) - 1) > 0) {
-      strings = (char **) CALLOC(n_proper_divs,sizeof(char *));
-      for (l = divlist, i = 0; l != NULL; l = List_next(l)) {
-	tempstring = List_head(l);
-	if (tempstring[0] == '\0') {
-	  FREE(tempstring);
-	} else {
-	  strings[i++] = (char *) tempstring;
-	}
+  order = 0;
+  if ((n_proper_divs = List_length(divlist) - 1) > 0) {
+    chroms = (Chrom_T *) CALLOC(n_proper_divs,sizeof(Chrom_T));
+    for (l = divlist, i = 0; l != NULL; l = List_next(l)) {
+      tempstring = List_head(l);
+      if (tempstring[0] == '\0') {
+	FREE(tempstring);
+      } else {
+	chroms[i++] = Chrom_from_string(tempstring,mitochondrial_string,order++);
       }
-
-      List_free(&divlist);
-
-      if (divsort == ALPHA_SORT) {
-	qsort(strings,n_proper_divs,sizeof(char *),Table_string_compare);
-      }
-
-      /* The zeroth div is empty */
-      divstring = (char *) CALLOC(1,sizeof(char));
-      divstring[0] = '\0';
-      divlist = List_push(NULL,divstring);
-
-      for (i = 0; i < n_proper_divs; i++) {
-	divlist = List_push(divlist,strings[i]);
-      }
-      divlist = List_reverse(divlist);
-
-      FREE(strings);
-    }
-
-  } else if (divsort == CHROM_SORT) {
-    if ((n_proper_divs = List_length(divlist) - 1) > 0) {
-      chroms = (Chrom_T *) CALLOC(n_proper_divs,sizeof(Chrom_T));
-      for (l = divlist, i = 0; l != NULL; l = List_next(l)) {
-	tempstring = List_head(l);
-	if (tempstring[0] == '\0') {
-	  FREE(tempstring);
-	} else {
-	  chroms[i++] = Chrom_from_string(tempstring);
-	}
-      }
-
-      List_free(&divlist);
-      qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare);
-
-      /* The zeroth div is empty */
-      divstring = (char *) CALLOC(1,sizeof(char));
-      divstring[0] = '\0';
-      divlist = List_push(NULL,divstring);
-
-      for (i = 0; i < n_proper_divs; i++) {
-	divlist = List_push(divlist,Chrom_string(chroms[i]));
-      }
-      divlist = List_reverse(divlist);
-
-#if 0
-      /* Causes invalid reads later on */
-      for (i = 0; i < n_proper_divs; i++) {
-	Chrom_free(&(chroms[i]));
-      }
-#endif
-
-      FREE(chroms);
     }
   }
+
+  List_free(&divlist);
+  switch (divsort) {
+  case NO_SORT: qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare_order); break;
+  case ALPHA_SORT: qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare_alpha); break;
+  case NUMERIC_ALPHA_SORT: qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare_numeric_alpha); break;
+  case CHROM_SORT: qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare_chrom); break;
+  default: fprintf(stderr,"Don't recognize divsort type %d\n",divsort); abort();
+  }
+      
+  /* The zeroth div is empty */
+  divstring = (char *) CALLOC(1,sizeof(char));
+  divstring[0] = '\0';
+  divlist = List_push(NULL,divstring);
+
+  for (i = 0; i < n_proper_divs; i++) {
+    divlist = List_push(divlist,Chrom_string(chroms[i]));
+  }
+  divlist = List_reverse(divlist);
+
+#if 0
+  /* Causes invalid reads later on */
+  for (i = 0; i < n_proper_divs; i++) {
+    Chrom_free(&(chroms[i]));
+  }
+#endif
+
+  FREE(chroms);
+
 
   IIT_write(iitfile,divlist,typelist,fieldlist,intervaltable,labeltable,annottable,
 	    divsort,iit_version,label_pointers_8p,annot_pointers_8p);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: compress.c 46784 2011-09-07 23:06:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -178,7 +178,7 @@ Compress_compress (FILE *fp) {
 	break;
       }
       
-      if (in_counter == 8*sizeof(Genomicpos_T)) {
+      if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	FWRITE_UINT(high,stdout);
 	FWRITE_UINT(low,stdout);
 	FWRITE_UINT(flags,stdout);
@@ -194,7 +194,7 @@ Compress_compress (FILE *fp) {
   }
 
   if (in_counter > 0) {
-    while (in_counter < 8*sizeof(Genomicpos_T)) {
+    while (in_counter < 8 * (int) sizeof(Genomicpos_T)) {
       carry = high & 3U;
       high >>= 2;
       low >>= 2;
@@ -278,10 +278,11 @@ genomecomp_move_absolute (FILE *fp, Genomicpos_T ptr) {
 }
 
 static void
-genomecomp_read_current (UINT4 *high, UINT4 *low, UINT4 *flags, FILE *fp) {
-  char section[12];
+genomecomp_read_current (UINT4 *high, UINT4 *low, UINT4 *flags, FILE *fp,
+			 int index1part) {
+  char section[15];
 
-  if (fread(section,sizeof(char),12,fp) < 12) {
+  if (fread(section,sizeof(char),index1part,fp) < (unsigned int) index1part) {
     *high = 0xFFFFFFFF;
     *low = 0xFFFFFFFF;
     *flags = 0xFFFFFFFF;
@@ -417,12 +418,13 @@ static char non_acgt[4] = {'N','?','?','X'};
 /* if gbuffer is NULL, then we fill with X's */
 int
 Compress_update_file (int nbadchars, FILE *fp, char *gbuffer, Genomicpos_T startpos,
-		      Genomicpos_T endpos) {
+		      Genomicpos_T endpos, int index1part) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
   char Buffer[32];
-  int i, k = 0;
+  unsigned int i;
+  int k = 0;
 
   ptr = startblock = startpos/32U*3;
   endblock = endpos/32U*3;
@@ -432,7 +434,7 @@ Compress_update_file (int nbadchars, FILE *fp, char *gbuffer, Genomicpos_T start
   if (endblock == startblock) {
     /* Special case */
     genomecomp_move_absolute(fp,ptr);
-    genomecomp_read_current(&high,&low,&flags,fp);
+    genomecomp_read_current(&high,&low,&flags,fp,index1part);
 
     for (i = 0; i < 16; i++) {
       Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
@@ -453,7 +455,7 @@ Compress_update_file (int nbadchars, FILE *fp, char *gbuffer, Genomicpos_T start
   } else {
 
     genomecomp_move_absolute(fp,ptr);
-    genomecomp_read_current(&high,&low,&flags,fp);
+    genomecomp_read_current(&high,&low,&flags,fp,index1part);
 
     for (i = 0; i < 16; i++) {
       Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
@@ -482,7 +484,7 @@ Compress_update_file (int nbadchars, FILE *fp, char *gbuffer, Genomicpos_T start
 
     if (enddiscard > 0) {
       genomecomp_move_absolute(fp,ptr);
-      genomecomp_read_current(&high,&low,&flags,fp);
+      genomecomp_read_current(&high,&low,&flags,fp,index1part);
 
       for (i = 0; i < 16; i++) {
 	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
@@ -513,7 +515,8 @@ Compress_update_memory (int nbadchars, UINT4 *genomecomp, char *gbuffer, Genomic
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
   char Buffer[32];
-  int i, k = 0;
+  unsigned int i;
+  int k = 0;
 
   ptr = startblock = startpos/32U*3;
   endblock = endpos/32U*3;
@@ -655,7 +658,7 @@ print_blocks (UINT4 *blocks, int nblocks) {
 
 
 T
-Compress_new (char *gbuffer, Genomicpos_T length, bool plusp) {
+Compress_new (char *gbuffer, int length, bool plusp) {
   T new = (T) MALLOC(sizeof(*new));
   UINT4 low = 0U, high = 0U, flags = 0U, carry;
   Genomicpos_T ptr;
@@ -705,7 +708,7 @@ Compress_new (char *gbuffer, Genomicpos_T length, bool plusp) {
       }
       /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
       
-      if (in_counter == 8*sizeof(Genomicpos_T)) {
+      if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	new->blocks[ptr] = high;
 	new->blocks[ptr+1] = low;
 	new->blocks[ptr+2] = flags;
@@ -744,7 +747,7 @@ Compress_new (char *gbuffer, Genomicpos_T length, bool plusp) {
       }
       /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
       
-      if (in_counter == 8*sizeof(Genomicpos_T)) {
+      if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	new->blocks[ptr] = high;
 	new->blocks[ptr+1] = low;
 	new->blocks[ptr+2] = flags;
@@ -757,7 +760,7 @@ Compress_new (char *gbuffer, Genomicpos_T length, bool plusp) {
   }
 
   if (in_counter > 0) {
-    while (in_counter < 8*sizeof(Genomicpos_T)) {
+    while (in_counter < 8 * (int) sizeof(Genomicpos_T)) {
       carry = high & 3U;
       high >>= 2;
       low >>= 2;
@@ -839,7 +842,7 @@ Compress_dibase_new (char *gbuffer, Genomicpos_T length, bool plusp) {
       }
       /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
       
-      if (in_counter == 8*sizeof(Genomicpos_T)) {
+      if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	new->blocks[ptr] = high;
 	new->blocks[ptr+1] = low;
 	new->blocks[ptr+2] = flags;
@@ -877,7 +880,7 @@ Compress_dibase_new (char *gbuffer, Genomicpos_T length, bool plusp) {
       }
       /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
       
-      if (in_counter == 8*sizeof(Genomicpos_T)) {
+      if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	new->blocks[ptr] = high;
 	new->blocks[ptr+1] = low;
 	new->blocks[ptr+2] = flags;
@@ -890,7 +893,7 @@ Compress_dibase_new (char *gbuffer, Genomicpos_T length, bool plusp) {
   }
 
   if (in_counter > 0) {
-    while (in_counter < 8*sizeof(Genomicpos_T)) {
+    while (in_counter < 8 * (int) sizeof(Genomicpos_T)) {
       carry = high & 3U;
       high >>= 2;
       low >>= 2;
@@ -1030,7 +1033,7 @@ Compress_dibase_array_new (char *gbuffer, Genomicpos_T dibase_length, bool plusp
 
 	/* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
       
-	if (in_counter == 8*sizeof(Genomicpos_T)) {
+	if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	  new->blocks[ptr] = high;
 	  new->blocks[ptr+1] = low;
 	  new->blocks[ptr+2] = flags;
@@ -1110,7 +1113,7 @@ Compress_dibase_array_new (char *gbuffer, Genomicpos_T dibase_length, bool plusp
 
 	/* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
       
-	if (in_counter == 8*sizeof(Genomicpos_T)) {
+	if (in_counter == 8 * (int) sizeof(Genomicpos_T)) {
 	  new->blocks[ptr] = high;
 	  new->blocks[ptr+1] = low;
 	  new->blocks[ptr+2] = flags;
@@ -1125,7 +1128,7 @@ Compress_dibase_array_new (char *gbuffer, Genomicpos_T dibase_length, bool plusp
     }
 
     if (in_counter > 0) {
-      while (in_counter < 8*sizeof(Genomicpos_T)) {
+      while (in_counter < 8 * (int) sizeof(Genomicpos_T)) {
 	carry = high & 3U;
 	high >>= 2;
 	low >>= 2;

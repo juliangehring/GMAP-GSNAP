@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: intlist.c 40271 2011-05-28 02:29:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -279,6 +279,24 @@ cell_ascending (const void *a, const void *b) {
 }
 
 static int
+cell_ascending_dual (const void *a, const void *b) {
+  struct Cell_T *x = (struct Cell_T *) a;
+  struct Cell_T *y = (struct Cell_T *) b;
+
+  if (x->keyvalue < y->keyvalue) {
+    return -1;
+  } else if (y->keyvalue < x->keyvalue) {
+    return +1;
+  } else if (x->elt < y->elt) {
+    return -1;
+  } else if (y->elt < x->elt) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+static int
 cell_descending (const void *a, const void *b) {
   struct Cell_T *x = (struct Cell_T *) a;
   struct Cell_T *y = (struct Cell_T *) b;
@@ -313,6 +331,36 @@ Intlist_array_ascending_by_key (int *n, T this, T key) {
   sorted = (int *) CALLOC(*n,sizeof(int));
   for (i = 0; i < *n; i++) {
     sorted[i] = cells[i].elt;
+  }
+
+  FREE(cells);
+  return sorted;
+}
+
+
+int *
+Intlist_array_dual_ascending_by_key (int *n, int **keyarray, T this, T key) {
+  int *sorted, i;
+  struct Cell_T *cells;
+  T p, q;
+
+  /* find length */
+  for (*n = 0, p = this; p; p = p->rest) {
+    (*n)++;
+  }
+
+  cells = (struct Cell_T *) CALLOC(*n,sizeof(struct Cell_T));
+  for (p = this, q = key, i = 0; p != NULL; p = p->rest, q = q->rest, i++) {
+    cells[i].elt = p->first;
+    cells[i].keyvalue = q->first;
+  }
+  qsort(cells,*n,sizeof(struct Cell_T),cell_ascending_dual);
+
+  sorted = (int *) CALLOC(*n,sizeof(int));
+  *keyarray = (int *) CALLOC(*n,sizeof(int));
+  for (i = 0; i < *n; i++) {
+    sorted[i] = cells[i].elt;
+    (*keyarray)[i] = cells[i].keyvalue;
   }
 
   FREE(cells);

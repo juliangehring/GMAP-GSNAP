@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c 27450 2010-08-05 19:02:48Z twu $";
+static char rcsid[] = "$Id: block.c 41938 2011-06-29 18:53:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,7 +8,6 @@ static char rcsid[] = "$Id: block.c 27450 2010-08-05 19:02:48Z twu $";
 #include <stdio.h>
 #include <stdlib.h>
 #include "mem.h"
-#include "indexdb.h"		/* for INDEX1PART */
 #include "indexdb_hr.h"
 #ifdef PMAP
 #include "oligop.h"
@@ -37,11 +36,12 @@ struct T {
   int querylength;
   int last_querypos;
   Oligostate_T last_state;
+  int oligosize;
 
 #ifdef PMAP
   unsigned int aaindex;
+  unsigned int msb;
 #else
-  int oligosize;
   int leftreadshift;
   Storedoligomer_T forward;
   Storedoligomer_T revcomp;
@@ -131,17 +131,9 @@ Block_restore (T this) {
   /* this->cdnaend = save->cdnaend; -- not necessary */
 
   if (this->cdnaend == FIVE) {
-#ifdef PMAP
-    Reader_reset_start(this->reader,this->last_querypos_save+INDEX1PART_AA);
-#else
     Reader_reset_start(this->reader,this->last_querypos_save+this->oligosize);
-#endif
   } else {
-#ifdef PMAP
     Reader_reset_end(this->reader,this->last_querypos_save-1);
-#else
-    Reader_reset_end(this->reader,this->last_querypos_save-1);
-#endif
   }
 
   this->last_querypos = this->last_querypos_save;
@@ -178,17 +170,21 @@ Block_reset_ends (T this) {
 
 
 T
-Block_new (cDNAEnd_T cdnaend,
-#ifndef PMAP
-	   int oligosize, int leftreadshift,
+Block_new (cDNAEnd_T cdnaend, int oligosize,
+#ifdef PMAP
+	   unsigned int msb,
+#else
+	   int leftreadshift,
 #endif
 	   Reader_T reader, int querylength) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->reader = reader;
   new->cdnaend = cdnaend;
-#ifndef PMAP
   new->oligosize = oligosize;
+#ifdef PMAP
+  new->msb = msb;
+#else
   new->oligomask = ~(~0U << 2*oligosize);
   new->leftreadshift = leftreadshift;
 #endif
@@ -245,7 +241,7 @@ Block_next (T this) {
 
 #ifdef PMAP
     this->last_state = Oligo_next(this->last_state,&this->last_querypos,
-				  &this->aaindex,this->reader,this->cdnaend);
+				  &this->aaindex,this->oligosize,this->msb,this->reader,this->cdnaend);
     debug(printf("Block has aaindex %u at querypos %d\n",
 		 this->aaindex,this->last_querypos));
 #else
@@ -287,7 +283,8 @@ Block_skip (T this, int nskip) {
     init_querypos = this->last_querypos;
 #ifdef PMAP
     this->last_state = Oligo_skip(this->last_state,&this->last_querypos,
-				  &this->aaindex,this->reader,this->cdnaend,nskip);
+				  &this->aaindex,this->oligosize,this->msb,
+				  this->reader,this->cdnaend,nskip);
     debug(printf("Block has aaindex %u at querypos %d\n",
 		 this->aaindex,this->last_querypos));
 #else

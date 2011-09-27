@@ -1,4 +1,4 @@
-/* $Id: matchpair.h,v 1.30 2006/11/28 00:52:21 twu Exp $ */
+/* $Id: matchpair.h,v 1.31 2007/08/13 16:52:48 twu Exp $ */
 #ifndef MATCHPAIR_INCLUDED
 #define MATCHPAIR_INCLUDED
 #include "bool.h"
@@ -69,6 +69,9 @@ extern List_T
 Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size, 
 			 int maxintronlen, int minclustersize, double sizebound, 
 			 int trimstart, int trimend, int trimlength, Boundmethod_T boundmethod);
+extern int
+Matchpair_assign_pathsizes (List_T matchlist, List_T matches5, List_T matches3, int stage1size, 
+			    int maxintronlen, int trimstart, int trimend, int trimlength);
 extern List_T
 Matchpair_salvage_hits (List_T matches5, List_T matches3, int stage1size, int trimstart, int trimend, int trimlength);
 

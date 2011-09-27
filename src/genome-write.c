@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c,v 1.15 2006/11/30 17:15:43 twu Exp $";
+static char rcsid[] = "$Id: genome-write.c,v 1.16 2007/06/25 18:57:00 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -60,15 +60,27 @@ find_positions (bool *revcompp, Genomicpos_T *leftposition, Genomicpos_T *rightp
     *leftposition = Interval_low(interval);
     *rightposition = Interval_high(interval);
 
-    firstchar = IIT_annotation_firstchar(contig_iit,index);
-    if (firstchar == '-') {
-      *revcompp = true;
-      *startposition = Interval_high(interval) + 1U;
-      *endposition = Interval_low(interval) + 1U;
+    if (IIT_version(contig_iit) <= 1) {
+      firstchar = IIT_annotation_firstchar(contig_iit,index);
+      if (firstchar == '-') {
+	*revcompp = true;
+	*startposition = Interval_high(interval) + 1U;
+	*endposition = Interval_low(interval) + 1U;
+      } else {
+	*revcompp = false;
+	*startposition = Interval_low(interval);
+	*endposition = Interval_high(interval);
+      }
     } else {
-      *revcompp = false;
-      *startposition = Interval_low(interval);
-      *endposition = Interval_high(interval);
+      if (Interval_sign(interval) < 0) {
+	*revcompp = true;
+	*startposition = Interval_high(interval) + 1U;
+	*endposition = Interval_low(interval) + 1U;
+      } else {
+	*revcompp = false;
+	*startposition = Interval_low(interval);
+	*endposition = Interval_high(interval);
+      }
     }
 
     *truelength = Interval_length(interval);

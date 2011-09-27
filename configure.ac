@@ -1,7 +1,7 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-# $Id: configure.ac,v 1.43 2007/05/24 15:57:01 twu Exp $
+# $Id: configure.ac,v 1.44 2007/09/19 17:30:23 twu Exp $
 
 AC_PREREQ(2.57)
 
@@ -197,6 +197,7 @@ AC_CONFIG_FILES([util/gmap_compress.pl])
 AC_CONFIG_FILES([util/gmap_uncompress.pl])
 AC_CONFIG_FILES([util/gmap_process.pl])
 AC_CONFIG_FILES([util/gmap_setup.pl])
+AC_CONFIG_FILES([util/gmap_update.pl])
 AC_CONFIG_FILES([util/md_coords.pl])
 AC_CONFIG_FILES([util/fa_coords.pl])
 AC_CONFIG_FILES([tests/Makefile])

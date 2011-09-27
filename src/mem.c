@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.17 2007/04/26 00:58:47 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.19 2007/08/28 23:20:57 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,7 +15,7 @@ static char rcsid[] = "$Id: mem.c,v 1.17 2007/04/26 00:58:47 twu Exp $";
 #define debug(x)
 #endif
 
-/* #define TRAP */
+/* #define TRAP 1 */
 #ifdef TRAP
 static void *trap_contents;
 static void **trap_location;
@@ -118,8 +118,8 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   }
 #endif
 
-  debug(printf("Allocating %p to %p -- Calloc of %d x %d bytes requested from %s:%d\n",
-	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,file,line));
+  debug(printf("Allocating %p to %p -- Calloc of %d x %d = %u bytes requested from %s:%d\n",
+	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 
   if (ptr == NULL) {
     fprintf(stderr,"Failed attempt to calloc %d x %d bytes\n",count,nbytes);

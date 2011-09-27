@@ -6954,18 +6954,6 @@ if test "x$acx_pthread_ok" = xyes; then
                                 uses a non-standard name on your system.])
         fi
 
-        # pthread_getspecific, pthread_setspecific, pthread_key_create
-	AC_MSG_CHECKING([for pthread thread-specific data])
-        AC_TRY_LINK([#include <pthread.h>],
-                    [pthread_key_t key; pthread_key_create(&key,NULL);
-                     pthread_setspecific(key,NULL); pthread_getspecific(key); ],
-                    [acx_pthread_tsd_ok=yes])
-        AC_MSG_RESULT($acx_pthread_tsd_ok)
-
-        if test x"$acx_pthread_tsd_ok" = xyes; then
-          AC_DEFINE(HAVE_PTHREAD_TSD,1,[Define if you have pthread_getspecific, pthread_setspecific, and pthread_key_create.])
-        fi
-
         AC_MSG_CHECKING([if more special flags are required for pthreads])
         flag=no
         case "${host_cpu}-${host_os}" in

@@ -1,4 +1,4 @@
-/* $Id: tableint.h,v 1.4 2005/02/15 01:57:34 twu Exp $ */
+/* $Id: tableint.h,v 1.5 2007/09/28 22:47:16 twu Exp $ */
 #ifndef TABLEINT_INCLUDED
 #define TABLEINT_INCLUDED
 
@@ -25,6 +25,8 @@ Tableint_map (T table,
 	      void *cl);
 extern void **
 Tableint_keys (T table, void *end);
+extern void **
+Tableint_keys_by_timeindex (T table, void *end);
 extern int *
 Tableint_values (T table, int end);
 

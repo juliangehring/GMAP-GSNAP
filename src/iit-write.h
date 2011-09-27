@@ -1,4 +1,4 @@
-/* $Id: iit-write.h,v 1.14 2007/02/20 17:01:37 twu Exp $ */
+/* $Id: iit-write.h,v 1.17 2007/09/18 20:55:56 twu Exp $ */
 #ifndef IIT_WRITE_INCLUDED
 #define IIT_WRITE_INCLUDED
 #include "list.h"
@@ -11,8 +11,10 @@ typedef struct T *T;
 #endif
 
 extern void
-IIT_write (char *filename, List_T intervallist, List_T typelist, List_T labellist, List_T annotlist,
-	   Uintlist_T annot_strlen_list);
+IIT_output_direct (char *iitfile, T this, int version);
+extern void
+IIT_write (char *filename, List_T intervallist, List_T typelist, List_T labellist,
+	   List_T fieldlist, List_T annotlist, Uintlist_T annot_strlen_list, int version);
 extern T
 IIT_new (List_T intervallist);
 extern void

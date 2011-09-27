@@ -1,9 +1,10 @@
-static char rcsid[] = "$Id: interval.c,v 1.14 2005/05/09 22:33:28 twu Exp $";
+static char rcsid[] = "$Id: interval.c,v 1.16 2007/06/21 19:20:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "interval.h"
+#include <stdio.h>
 #include <stdlib.h>		/* For qsort */
 #include "mem.h"
 
@@ -14,8 +15,19 @@ T
 Interval_new (unsigned int low, unsigned int high, int type) {
   T new = (T) MALLOC(sizeof(*new));
 
-  new->low = low;
-  new->high = high;
+  if (low < high) {
+    new->low = low;
+    new->high = high;
+    new->sign = +1;
+  } else if (low > high) {
+    new->low = high;
+    new->high = low;
+    new->sign = -1;
+  } else {
+    new->low = low;
+    new->high = high;
+    new->sign = 0;
+  }
   new->type = type;
   return new;
 }
@@ -26,6 +38,7 @@ Interval_copy (T old) {
 
   new->low = old->low;
   new->high = old->high;
+  new->sign = old->sign;
   new->type = old->type;
   return new;
 }
@@ -38,6 +51,12 @@ Interval_free (T *old) {
   return;
 }
 
+void
+Interval_print (T this) {
+  printf("%u %u %d",this->low,this->high,this->type);
+  return;
+}
+
 unsigned int
 Interval_low (T this) {
   return this->low;
@@ -46,6 +65,11 @@ Interval_low (T this) {
 unsigned int
 Interval_high (T this) {
   return this->high;
+}
+
+int
+Interval_sign (T this) {
+  return this->sign;
 }
 
 unsigned int
@@ -158,3 +182,20 @@ Interval_qsort_by_omega (int *table, int i, int j, struct T *intervals) {
 }
 
 
+int
+Interval_cmp (const void *a, const void *b) {
+  T x = * (T *) a;
+  T y = * (T *) b;
+
+  if (x->low < y->low) {
+    return -1;
+  } else if (x->low > y->low) {
+    return +1;
+  } else if (x->high < y->high) {
+    return -1;
+  } else if (x->high > y->high) {
+    return +1;
+  } else {
+    return 0;
+  }
+}

@@ -1,3 +1,513 @@
+2007-10-11 15:06  twu
+
+	* src/orderstat.c: Included appropriate header files for memcpy
+
+2007-10-08 12:59  twu
+
+	* src/reader.c: Made reader go all the way to the ends of the
+	  sequence
+
+2007-10-08 12:59  twu
+
+	* src/sequence.c: Fixed computation of trimlength
+
+2007-10-08 12:58  twu
+
+	* src/: indexdb.c, indexdb.h: Implemented read and write procedures
+	  for new genomic index format (trading off position resolution for
+	  adjacent nucleotide contents).
+
+2007-10-07 06:42  twu
+
+	* src/stage1.c: Implemented mapping at ends
+
+2007-10-06 17:36  twu
+
+	* src/stage1.c: Completed initial mapping from middle outward
+
+2007-10-06 06:49  twu
+
+	* src/stage1.c: Added computation of best subpaths
+
+2007-10-03 15:17  twu
+
+	* src/stage1.c: Implemented high-resolution mapping, and
+	  arbitrarily long matches for the middle of the sequence outward.
+
+2007-09-30 14:39  twu
+
+	* src/stage1.c: Attempt to use diagonals to find genomic position
+
+2007-09-29 15:47  twu
+
+	* src/: genome.c, genome.h: Added Genome_totallength function
+
+2007-09-29 15:16  twu
+
+	* src/: stage1.c, stage1.h: Added procedure to match doubles of
+	  truncated indexdb entries
+
+2007-09-28 15:48  twu
+
+	* util/gmap_setup.pl.in: In -S mode (treating each contig as a
+	  chromosome), turning off sorting of chromosomes and contigs.
+
+2007-09-28 15:47  twu
+
+	* src/gmapindex.c: Added -S flag to turn off sorting of chromosomes
+	  and contigs
+
+2007-09-28 15:47  twu
+
+	* src/: table.c, table.h, tableint.c, tableint.h: Added ability to
+	  return keys sorted by timeindex
+
+2007-09-28 13:15  twu
+
+	* src/: stage1.c, trial.c, trial.h: Changes made to scan query
+	  sequence from middle outward
+
+2007-09-28 09:36  twu
+
+	* VERSION: Updated version
+
+2007-09-27 12:23  twu
+
+	* src/gmap.c: Fixed bug for -f 9 and -E output when no paths were
+	  found
+
+2007-09-26 11:07  twu
+
+	* VERSION: Updated version
+
+2007-09-26 11:07  twu
+
+	* share/index.html: Revised features for 2007-09-26 version
+
+2007-09-26 11:04  twu
+
+	* util/: gmap_update.pl.in: Made new IIT file permissions the same
+	  as the old permissions
+
+2007-09-26 09:41  twu
+
+	* src/iit-read.c: Added error messages to various conditions in
+	  IIT_read
+
+2007-09-25 13:20  twu
+
+	* src/sequence.c: Fixed reading of sequences with multiple PC line
+	  feeds
+
+2007-09-20 15:33  twu
+
+	* src/stage1.c: Kept code that depended on USE_MATCHPOOL and
+	  removed alternate (old) code
+
+2007-09-20 15:32  twu
+
+	* src/: block.c, block.h: Put save variables inside Block_T object
+
+2007-09-19 11:00  twu
+
+	* VERSION: Updated version number
+
+2007-09-19 10:59  twu
+
+	* MAINTAINER: Added reminder to do cvs tag
+
+2007-09-19 10:48  twu
+
+	* src/: iit-read.c, iit-read.h, iit-write.c: Moved compute_flanking
+	  procedure from iit-read.c to iit-write.c
+
+2007-09-19 10:29  twu
+
+	* util/Makefile.am, util/gmap_update.pl.in, configure.ac: Added
+	  gmap_update program
+
+2007-09-19 10:28  twu
+
+	* src/Makefile.am: Added compile instructions for iit_update
+
+2007-09-19 10:27  twu
+
+	* src/iit-write.c: Made stringlen of type off_t (to handle
+	  annotations of length greater than can be handled by int).  Added
+	  check to make sure stringlen is non-zero.
+
+2007-09-19 10:27  twu
+
+	* src/iit-read.c: Made stringlen of type off_t (to handle
+	  annotations of length greater than can be handled by int)
+
+2007-09-19 10:26  twu
+
+	* share/: archive.html, index.html: Made changes for 2007-09-20
+	  release
+
+2007-09-18 13:55  twu
+
+	* src/: Makefile.gmaponly.am, Makefile.pmaptoo.am, iit-read.c,
+	  iit-read.h, iit-write.c, iit-write.h, iit_update.c: Implemented
+	  iit_update program
+
+2007-09-18 13:55  twu
+
+	* src/iit_store.c: Added -v flag to specify desired version
+
+2007-09-17 13:35  twu
+
+	* src/: oligoindex.c, stage2.c: Changed R output for diagonal
+	  graphics
+
+2007-09-12 12:01  twu
+
+	* src/gmap.c: Added a check to make sure we don't push NULL for
+	  Stage3_T object.
+
+2007-09-12 11:38  twu
+
+	* src/dynprog.c: Fixed bug in Dynprog_dual_break; need to compute
+	  matrix scores only to the minimum of length1 and length2.
+
+2007-09-11 15:06  twu
+
+	* src/dynprog.c: Fixed problem where Dynprog_dual_break was exiting
+	  unnecessarily; need to be concerned only about shorter distance.
+
+2007-09-11 15:04  twu
+
+	* src/stage3.c: Added cDNA direction to debugging statements
+
+2007-09-11 13:45  twu
+
+	* src/pair.c: Added provision in PMAP to limit coverage to 100%
+	  (could exceed previously because of implicit stop codon added at
+	  end of query sequence).
+
+2007-09-11 13:43  twu
+
+	* src/: iit_get.c, stage3.c: Added sign argument for getting
+	  flanking entries
+
+2007-09-11 13:43  twu
+
+	* src/: iit-read.c, iit-read.h: Added a sign argument for getting
+	  flanking entries
+
+2007-09-11 13:43  twu
+
+	* src/get-genome.c: Added flags for accessing from map files
+	  entries of a particular direction or tag
+
+2007-09-11 09:42  twu
+
+	* src/stage1.c: Performing filtering based on clustersize only if
+	  too many entries and at least one cluster is large.
+
+2007-09-04 09:27  twu
+
+	* src/stage1.c: Removed filtering based on too many matching pairs
+
+2007-08-30 16:42  twu
+
+	* src/: gbuffer.c, gbuffer.h, gmap.c: Removed unused code and
+	  parameters from Gbuffer_T
+
+2007-08-30 16:32  twu
+
+	* src/gmap.c: Allocating memory for genomicseg only as needed
+
+2007-08-28 16:23  twu
+
+	* src/: sequence.c, sequence.h, gmap.c, blackboard.c, blackboard.h:
+	  Added ability to read input from multiple sequence files
+
+2007-08-28 16:23  twu
+
+	* src/oligoindex.h: Changed calls to reset oligoindex
+
+2007-08-28 16:23  twu
+
+	* src/oligoindex.c: Fixed hang that resulted when no oligomer
+	  positions were found.  Eliminated an extra call to
+	  Oligoindex_set_inquery.
+
+2007-08-28 16:22  twu
+
+	* src/stage2.c: Changed call to Oligoindex to reset after tally
+
+2007-08-28 16:21  twu
+
+	* src/stage1.c: Modified debugging output
+
+2007-08-28 16:20  twu
+
+	* src/: mem.c, match.c: Enhanced debugging output
+
+2007-08-28 10:31  twu
+
+	* src/: stage2.c, stage2.h: Returned to previous algorithm for
+	  finding shifted canonical dinucleotides, but now allocating
+	  memory dynamically.
+
+2007-08-28 10:29  twu
+
+	* src/: gbuffer.c, gbuffer.h: Removed pre-allocated memory for
+	  finding shifted dinucleotides
+
+2007-08-28 09:59  twu
+
+	* src/stage2.c: Attempt to conserve memory used in finding shifted
+	  canonical dinucleotides.  However, results in speed penalty.
+
+2007-08-26 06:59  twu
+
+	* src/: gbuffer.c, gbuffer.h: Removed unused matchscores variable
+	  and unnecessary memory allocation.
+
+2007-08-23 17:27  twu
+
+	* util/gmap_uncompress.pl.in: Added a missing space in the output
+
+2007-08-23 16:14  twu
+
+	* util/gmap_uncompress.pl.in: Added coordinates output (with flag
+	  '-f 9')
+
+2007-08-22 10:39  twu
+
+	* src/pair.c: Fixed potential divide-by-zero bug
+
+2007-08-20 11:09  twu
+
+	* util/gmap_setup.pl.in: Added a .SUFFIXES: command at top to
+	  prevent unexpected behaviors
+
+2007-08-18 07:04  twu
+
+	* src/stage2.c: Added step to recover when all scores at a querypos
+	  are negative, by continuing from grand result.
+
+2007-08-16 13:20  twu
+
+	* src/: pair.c, pair.h, stage2.c, stage2.h, stage3.c: Computing
+	  defect rate in middle of stage 3, instead of in stage 2
+
+2007-08-15 15:52  twu
+
+	* src/oligoindex.c: Restored amino acid alphabet to 20 from 18.
+
+2007-08-15 15:32  twu
+
+	* src/oligoindex.c: Fixed typo in variable name
+
+2007-08-15 15:31  twu
+
+	* src/stage2.c: Inactivated limit on number of active hits
+
+2007-08-15 15:31  twu
+
+	* src/: Makefile.gmaponly.am, Makefile.pmaptoo.am: Added
+	  orderstat.c and orderstat.h to code
+
+2007-08-15 15:30  twu
+
+	* src/: orderstat.c, orderstat.h: Modified procedures to compute
+	  order statistics in place and for both doubles and ints.
+
+2007-08-15 15:29  twu
+
+	* src/oligoindex.c: Computing overabundance based on upper
+	  percentile of non-zero counts
+
+2007-08-15 15:27  twu
+
+	* src/doublelist.h: Added Id info to header
+
+2007-08-15 15:27  twu
+
+	* src/gmap.c: Fixed memory leak when user segment is provided
+
+2007-08-15 14:05  twu
+
+	* src/: orderstat.c, orderstat.h: Added orderstat to CVS
+
+2007-08-15 12:30  twu
+
+	* src/: oligoindex.c, oligoindex.h: Trial to eliminate limit on
+	  maxoligohits
+
+2007-08-15 10:29  twu
+
+	* src/stage2.c: Improved output for graphical debugging
+
+2007-08-15 10:28  twu
+
+	* src/oligoindex.c: Improved debugging output
+
+2007-08-13 09:54  twu
+
+	* src/stage2.c: Fixed problem with debugging output
+
+2007-08-13 09:53  twu
+
+	* src/stage1.c: Added pruning by path sizes
+
+2007-08-13 09:52  twu
+
+	* src/: matchpair.c, matchpair.h: Added a procedure for finding
+	  path size of a given matchpair
+
+2007-07-16 13:59  twu
+
+	* src/: Makefile.gmaponly.am, Makefile.pmaptoo.am: Created two
+	  specialized Makefile.am files
+
+2007-07-16 12:30  twu
+
+	* src/Makefile.am: Preparing for iit and genome libraries
+
+2007-07-16 12:28  twu
+
+	* bootstrap, bootstrap.gmaponly, bootstrap.pmaptoo: Created
+	  separate bootstrap routines for gmap and gmap-plus-pmap
+
+2007-07-16 12:27  twu
+
+	* VERSION: Updated version number
+
+2007-07-16 12:26  twu
+
+	* src/iit-read.c: Computing alphas and betas for iit_dump
+
+2007-07-16 10:46  twu
+
+	* src/iit-read.c: Computing alphas and betas only when needed for
+	  flanking
+
+2007-07-16 10:21  twu
+
+	* src/: gmapindex.c, iit-read.c, iit-read.h, iit-write.c,
+	  iit-write.h, iit_get.c, iit_store.c, iitdef.h: Added fields for
+	  annotation in IITs
+
+2007-07-16 10:21  twu
+
+	* src/indexdb.c: Added monitoring information
+
+2007-06-25 11:58  twu
+
+	* src/iit_store.c: Added -v flag to print IIT version
+
+2007-06-25 11:57  twu
+
+	* src/iit_get.c: Added -U flag to indicate unsigned results
+
+2007-06-25 11:57  twu
+
+	* src/: get-genome.c, plotgenes.c: Providing sortp parameter to
+	  IIT_get
+
+2007-06-25 11:57  twu
+
+	* src/genome.c: Added comment
+
+2007-06-25 11:57  twu
+
+	* src/: genome-write.c, segmentpos.c: For version 2 IITs and later,
+	  getting sign directly from IIT, rather than from annotation.
+
+2007-06-25 11:53  twu
+
+	* src/gmapindex.c: No longer writing segment length in contig IITs
+
+2007-06-25 11:51  twu
+
+	* src/iit-write.c: Writing alphas and betas for correct calculation
+	  of flanking intervals.
+
+2007-06-25 11:50  twu
+
+	* src/: iit-read.c, iit-read.h: Using alphas and betas for correct
+	  calculation of flanking intervals.  Added functions IIT_types,
+	  IIT_get_all, and IIT_get_all_typed.
+
+2007-06-25 11:47  twu
+
+	* src/interval.h: Added interface for Interval_sign
+
+2007-06-25 11:46  twu
+
+	* src/iitdef.h: Added space for alphas and betas, needed for
+	  correct calculation of flanking intervals
+
+2007-06-22 11:17  twu
+
+	* src/dynprog.h: Defined UNKNOWNJUMP to be used for temporary
+	  gapholders during stage 3 calculations.
+
+2007-06-22 11:16  twu
+
+	* src/dynprog.c: Returning NULL on all failures, without gapholders
+	  (which are now inserted by calling procedures in stage 3).
+	  Allowing 5' and 3' extensions to work to maxlength allowed.
+
+2007-06-21 12:20  twu
+
+	* src/iitdef.h: Added version to IIT_T
+
+2007-06-21 12:20  twu
+
+	* src/interval.c: Storing sign for each interval
+
+2007-06-21 12:19  twu
+
+	* src/: iit-read.c, iit-read.h, iit-write.c, iit-write.h:
+	  Introduced version 2 format, which stores sign for each interval.
+	  Not using annotation anymore to represent sign.  Added function
+	  IIT_find_multiple.
+
+2007-06-20 20:19  twu
+
+	* src/pairpool.c: Improved debugging statements
+
+2007-06-20 20:19  twu
+
+	* src/: gdiag.c, get-genome.c, gmap.c, iit-read.c, iit-read.h,
+	  iit_get.c, interval.c, interval.h, plotgenes.c, segmentpos.c,
+	  stage3.c: Added ability to sort intervals by coordinates in
+	  IIT_get routines
+
+2007-06-20 19:05  twu
+
+	* src/mem.c: In comments, showing how TRAP should be defined
+
+2007-06-20 19:04  twu
+
+	* src/stage3.c: Whenever dynprog procedure returns NULL, make sure
+	  to put back peeled pairs and insert a gapholder.  Fixes a bug in
+	  BQ672778 against hg18.  Jumps in gapholders now calculated only
+	  in certain procedures.
+
+2007-06-06 19:53  twu
+
+	* src/stage3.c: Removed abort commands on peels that run into gaps
+
+2007-06-06 19:52  twu
+
+	* src/dynprog.c: Expanded on comment
+
+2007-06-04 09:36  twu
+
+	* VERSION, share/index.html: Updated version
+
+2007-06-04 09:31  twu
+
+	* src/dynprog.c: Removed insertion of gapholder for a single gap
+	  that is too long to solve.
+
 2007-06-02 13:39  twu
 
 	* src/stage1.c: Added debugging statement to signal end of stage 1

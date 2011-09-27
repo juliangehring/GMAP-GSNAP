@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c,v 1.76 2006/12/08 16:34:22 twu Exp $";
+static char rcsid[] = "$Id: match.c,v 1.77 2007/08/28 23:21:04 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -168,11 +168,11 @@ Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size) {
 #endif
   genomicseg_ptr = Sequence_fullpointer(genomicseg);
 
-  printf("%.*s ",stage1size,&(queryseq_ptr[querypos]));
+  printf("query:%.*s ",stage1size,&(queryseq_ptr[querypos]));
 #ifdef PMAP
-  printf("%.*s",3*stage1size,genomicseg_ptr);
+  printf("genomic:%.*s",3*stage1size,genomicseg_ptr);
 #else
-  printf("%.*s",stage1size,genomicseg_ptr);
+  printf("genomic:%.*s",stage1size,genomicseg_ptr);
 #endif
 
   Sequence_free(&genomicseg);

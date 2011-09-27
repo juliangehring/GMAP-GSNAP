@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.106 2006/11/30 17:16:50 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.109 2007/09/28 22:47:45 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -50,6 +50,7 @@ static int index1interval = 6;	/* Interval for storing 12-mers */
 static bool uncompressedp = false;
 static bool rawp = false;
 static bool writefilep = false;
+static bool sortchrp = true;
 static int wraplength = 0;
 
 
@@ -355,7 +356,7 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
 
 /* Modifies chrlength_table to store offsets, rather than chrlengths */
 static void
-write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_table) {
+write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_table, bool sortchrp) {
   FILE *textfp, *chrsubsetfp;
   char *textfile, *chrsubsetfile, *iitfile, *chr_string, emptystring[1];
   int n, i;
@@ -366,10 +367,15 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
 
   emptystring[0] = '\0';
 
-  /* Get chromosomes in order */
-  chroms = (Chrom_T *) Tableint_keys(chrlength_table,0U);
-  n = Tableint_length(chrlength_table);
-  qsort(chroms,n,sizeof(Chrom_T),Chrom_compare);
+  if (sortchrp == true) {
+    /* Get chromosomes in order */
+    chroms = (Chrom_T *) Tableint_keys(chrlength_table,0U);
+    n = Tableint_length(chrlength_table);
+    qsort(chroms,n,sizeof(Chrom_T),Chrom_compare);
+  } else {
+    chroms = (Chrom_T *) Tableint_keys_by_timeindex(chrlength_table,0U);
+    n = Tableint_length(chrlength_table);
+  }
 
   /* Write chromosome text file and chrsubset file */
   textfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
@@ -423,7 +429,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			    strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
   sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-  IIT_write(iitfile,intervallist,chrtypelist,labellist,annotlist,NULL);
+  IIT_write(iitfile,intervallist,chrtypelist,labellist,
+	    /*fieldlist*/(List_T) NULL,annotlist,NULL,/*version*/0);
   FREE(iitfile);
 
   List_free(&annotlist);
@@ -462,7 +469,7 @@ bysegmentpos_compare (const void *x, const void *y) {
 static void
 write_contig_file (char *genomesubdir, char *fileroot, 
 		   Table_T accsegmentpos_table, Tableint_T contigtype_table, List_T contigtypelist, 
-		   Tableint_T chrlength_table) {
+		   Tableint_T chrlength_table, bool sortchrp) {
   FILE *textfp;
   char *textfile, *iitfile, *chr_string, seglength[24], *annot;
   void **keys;
@@ -475,11 +482,16 @@ write_contig_file (char *genomesubdir, char *fileroot,
   List_T intervallist = NULL, labellist = NULL, annotlist = NULL, p;
   Interval_T interval;
   
-  /* Get accessions in order */
-  accessions = (char **) Table_keys(accsegmentpos_table,NULL);
-  naccessions = Table_length(accsegmentpos_table);
-  current_accsegmentpos_table = accsegmentpos_table;
-  qsort(accessions,naccessions,sizeof(char *),bysegmentpos_compare);
+  if (sortchrp == true) {
+    /* Get accessions in order */
+    accessions = (char **) Table_keys(accsegmentpos_table,NULL);
+    naccessions = Table_length(accsegmentpos_table);
+    current_accsegmentpos_table = accsegmentpos_table;
+    qsort(accessions,naccessions,sizeof(char *),bysegmentpos_compare);
+  } else {
+    accessions = (char **) Table_keys_by_timeindex(accsegmentpos_table,NULL);
+    naccessions = Table_length(accsegmentpos_table);
+  }
 
   /* Get types in order */
   keys = Tableint_keys(contigtype_table,NULL);
@@ -532,20 +544,31 @@ write_contig_file (char *genomesubdir, char *fileroot,
     FREE(chr_string);
 
     /* Store as 0-based, inclusive [a,b] */
-    intervallist = List_push(intervallist, 
-			     (void *) Interval_new(universalpos1,universalpos2-1U,
-						   Segmentpos_type(segmentpos)));
     labellist = List_push(labellist,(void *) accessions[i]);
-    /* The negative sign in the annotation is the only indication that the contig 
-       was reverse complement */
     if (Segmentpos_revcompp(segmentpos) == true) {
-      sprintf(seglength,"-%u",Segmentpos_length(segmentpos));
+      /* The negative sign in the interval is the indication that the
+	 contig was reverse complement */
+      intervallist = List_push(intervallist, 
+			       (void *) Interval_new(universalpos2-1U,universalpos1,
+						     Segmentpos_type(segmentpos)));
     } else {
-      sprintf(seglength,"%u",Segmentpos_length(segmentpos));
+      intervallist = List_push(intervallist, 
+			       (void *) Interval_new(universalpos1,universalpos2-1U,
+						     Segmentpos_type(segmentpos)));
     }
+
+#if 0
+    /* IIT version 1 */
+    sprintf(seglength,"%u",Segmentpos_length(segmentpos));
     annot = (char *) CALLOC(strlen(seglength)+1,sizeof(char));
     strcpy(annot,seglength);
+#else
+    /* IIT versions >= 2 */
+    annot = (char *) CALLOC(1,sizeof(char));
+    annot[0] = '\0';
+#endif
     annotlist = List_push(annotlist,(void *) annot);
+
   }
 
   FREE(contigtypes);
@@ -559,7 +582,8 @@ write_contig_file (char *genomesubdir, char *fileroot,
   iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			    strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
   sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
-  IIT_write(iitfile,intervallist,contigtypelist,labellist,annotlist,NULL);
+  IIT_write(iitfile,intervallist,contigtypelist,labellist,
+	    /*fieldlist*/NULL,annotlist,NULL,/*version*/0);
   FREE(iitfile);
 
   for (p = annotlist; p != NULL; p = List_next(p)) {
@@ -692,7 +716,7 @@ main (int argc, char *argv[]) {
   extern int optind;
   extern char *optarg;
 
-  while ((c = getopt(argc,argv,"F:D:d:AGgrCUOoPpc:Ww:q:")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:AGgrCUOoPpc:Ww:Sq:")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -710,6 +734,7 @@ main (int argc, char *argv[]) {
     case 'c': coordsfile = optarg; break;
     case 'W': writefilep = true; break;
     case 'w': wraplength = atoi(optarg); break;
+    case 'S': sortchrp = false; break;
     case 'q': 
       index1interval = atoi(optarg);
       if (INDEX1PART % index1interval != 0) {
@@ -763,9 +788,9 @@ main (int argc, char *argv[]) {
     }
 
     contigtypelist = List_reverse(contigtypelist);
-    write_chromosome_file(destdir,fileroot,chrlength_table);
+    write_chromosome_file(destdir,fileroot,chrlength_table,sortchrp);
     write_contig_file(destdir,fileroot,accsegmentpos_table,contigtype_table,contigtypelist,
-		      chrlength_table);
+		      chrlength_table,sortchrp);
 
     stringlist_gc(&contigtypelist);
     Tableint_free(&contigtype_table);
@@ -805,7 +830,8 @@ main (int argc, char *argv[]) {
 	 (in Genome_write) */
       fprintf(stderr,"Writing alternate strain file...\n");
       IIT_write(iitfile,altintervallist,contigtypelist,labellist,
-		/*annotlist*/(List_T) NULL,seglength_list);
+		/*fieldlist*/(List_T) NULL,/*annotlist*/(List_T) NULL,
+		seglength_list,/*version*/0);
       fprintf(stderr,"Done writing alternate strain file\n");
 
       altstrain_iit = IIT_read(iitfile,NULL,false);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpair.c,v 1.56 2007/04/16 23:45:40 twu Exp $";
+static char rcsid[] = "$Id: matchpair.c,v 1.57 2007/08/13 16:52:48 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -649,7 +649,7 @@ find_best_path (int *size, Match_T *matches, int n, int stage1size, int minsize,
 static List_T
 find_paths_bounded (int *bestsize, List_T clusterlist, Match_T *matches, int npositions, 
 		    int maxintronlen, int stage1size, int minclustersize, double sizebound, 
-		    int trimstart, int trimend,int trimlength, bool plusp) {
+		    int trimstart, int trimend, int trimlength, bool plusp) {
   int starti, endi;
   Chrnum_T startchrnum;
   Match_T prevstart = NULL, prevend = NULL;
@@ -699,6 +699,68 @@ find_paths_bounded (int *bestsize, List_T clusterlist, Match_T *matches, int npo
   debug1(printf("Done\n"));
 
   return clusterlist;
+}
+
+static int
+find_pathsize (T this, Match_T *plus_matches, int plus_npositions, 
+	       Match_T *minus_matches, int minus_npositions, int stage1size, 
+	       int trimstart, int trimend, int trimlength) {
+  int pathsize;
+  int starti, endi, npositions;
+  Chrnum_T startchrnum;
+  Match_T start, end, temp, *matches;
+  bool plusp;
+  T result;
+  Genomicpos_T startpos, endpos;
+  int minsize = 2;
+
+  start = Matchpair_bound5(this);
+  end = Matchpair_bound3(this);
+  if (Match_forwardp(start) == true) {
+    plusp = true;
+    matches = plus_matches;
+    npositions = plus_npositions;
+  } else {
+    temp = start;
+    start = end;
+    end = temp;
+    plusp = false;
+    matches = minus_matches;
+    npositions = minus_npositions;
+  }
+
+  startchrnum = Match_chrnum(start);
+
+  startpos = Match_position(start);
+  starti = -1;
+  while (starti+1 < npositions && Match_position(matches[starti+1]) < startpos) {
+    starti = starti+1;
+  }
+  if (starti+1 < npositions && Match_position(matches[starti+1]) == startpos) {
+    starti = starti+1;
+  }
+  debug4(printf("start: #%d:%u -> %u plusp:%d\n",Match_chrnum(start),Match_chrpos(start),Match_chrpos(matches[starti]),plusp));
+
+  if (starti < 0) {
+    return 0;
+  } else {
+    endpos = Match_position(end);
+    endi = starti;
+    while (endi+1 < npositions && Match_chrnum(matches[endi+1]) == startchrnum &&
+	   Match_position(matches[endi+1]) < endpos) {
+      endi = endi+1;
+    }
+    if (endi+1 < npositions && Match_position(matches[endi+1]) == endpos) {
+      endi = endi+1;
+    }
+    debug4(printf("end: #%d:%u -> %u plusp:%d\n",Match_chrnum(end),Match_chrpos(end),Match_chrpos(matches[endi]),plusp));
+
+    result = find_best_path(&pathsize,&(matches[starti]),endi-starti+1,stage1size,
+			    /*minsize*/2,/*prevstart*/NULL,/*prevend*/NULL,
+			    trimstart,trimend,trimlength,plusp);
+    Matchpair_free(&result);
+    return pathsize;
+  }
 }
 
 
@@ -1029,6 +1091,37 @@ Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size,
   } else {
     abort();
   }
+}
+
+int
+Matchpair_assign_pathsizes (List_T matchlist, List_T matches5, List_T matches3, int stage1size, 
+			    int maxintronlen, int trimstart, int trimend, int trimlength) {
+  int bestsize = 0;
+  List_T p;
+  Match_T *plus_matches = NULL, *minus_matches = NULL;
+  T matchpair;
+  int plus_npositions, minus_npositions;
+
+  separate_strands(&plus_matches,&plus_npositions,&minus_matches,&minus_npositions,matches5,matches3,
+		   maxintronlen);
+
+  for (p = matchlist; p != NULL; p = List_next(p)) {
+    matchpair = (Matchpair_T) List_head(p);
+    matchpair->clustersize = find_pathsize(matchpair,plus_matches,plus_npositions,minus_matches,minus_npositions,
+					stage1size,trimstart,trimend,trimlength);
+    if (matchpair->clustersize > bestsize) {
+      bestsize = matchpair->clustersize;
+    }
+  }
+
+  if (plus_matches != NULL) {
+    FREE(plus_matches);
+  }
+  if (minus_matches != NULL) {
+    FREE(minus_matches);
+  }
+
+  return bestsize;
 }
 
 

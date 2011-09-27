@@ -1,4 +1,4 @@
-/* $Id: sequence.h,v 1.38 2006/12/15 12:00:59 twu Exp $ */
+/* $Id: sequence.h,v 1.39 2007/08/28 23:23:54 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -41,6 +41,8 @@ extern T
 Sequence_genomic_new (char *contents, int length);
 extern T
 Sequence_read (int *nextchar, FILE *input, bool maponlyp);
+extern T
+Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp);
 extern T
 Sequence_read_unlimited (FILE *input);
 #ifdef PMAP

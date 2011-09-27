@@ -1,4 +1,4 @@
-/* $Id: table.h,v 1.10 2005/02/15 01:57:30 twu Exp $ */
+/* $Id: table.h,v 1.11 2007/09/28 22:47:15 twu Exp $ */
 #ifndef TABLE_INCLUDED
 #define TABLE_INCLUDED
 
@@ -27,6 +27,8 @@ Table_map (T table,
 	   void *cl);
 extern void **
 Table_keys (T table, void *end);
+extern void **
+Table_keys_by_timeindex (T table, void *end);
 extern void **
 Table_values (T table, void *end);
 

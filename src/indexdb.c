@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.99 2007/04/23 18:35:16 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.100 2007/07/16 17:21:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1539,6 +1539,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 	  });
   }
 
+  fprintf(stderr,"Writing %u offsets to file\n",oligospace+1);
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
   FREE(offsets);
 
@@ -2267,6 +2268,8 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
       compute_positions_in_memory(positions,offsets_fp,offsets,sequence_fp,altstrain_iit,
 				  index1interval,uncompressedp,fileroot);
 #endif
+      fprintf(stderr,"Writing %u genomic positions to file %s ...\n",
+	      totalcounts,positionsfile);
       FWRITE_UINTS(positions,totalcounts,positions_fp);
 
       fclose(positions_fp);

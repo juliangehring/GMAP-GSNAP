@@ -1,6 +1,0 @@
-sizeof(off_t) == 8
-#define _LARGEFILE64_SOURCE
-#define _FiLE_OFFSET_BITS 64
-
-open (... O_LARGEFILE)
-

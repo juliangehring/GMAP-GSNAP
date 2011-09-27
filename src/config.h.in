@@ -91,10 +91,6 @@
 /* Define if you have POSIX threads libraries and header files. */
 #undef HAVE_PTHREAD
 
-/* Define if you have pthread_getspecific, pthread_setspecific, and
-   pthread_key_create. */
-#undef HAVE_PTHREAD_TSD
-
 /* Define to 1 if you have the `rint' function. */
 #undef HAVE_RINT
 

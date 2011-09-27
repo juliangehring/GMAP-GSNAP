@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c,v 1.49 2006/10/09 17:02:25 twu Exp $";
+static char rcsid[] = "$Id: block.c,v 1.50 2007/09/20 22:32:42 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,6 +20,11 @@ static char rcsid[] = "$Id: block.c,v 1.49 2006/10/09 17:02:25 twu Exp $";
 #define debug(x)
 #endif
 
+
+/* In reading inward from both ends, the block5 and block3 share the
+   same reader.  But in reading outward from the middle, the block5
+   and block3 each have their own reader. */
+
 #define T Block_T
 struct T {
   Reader_T reader;
@@ -34,6 +39,16 @@ struct T {
 #else
   Storedoligomer_T forward;
   Storedoligomer_T revcomp;
+#endif
+
+  /* For saving state */
+  int last_querypos_save;
+  Oligostate_T last_state_save;
+#ifdef PMAP
+  unsigned int aaindex_save;
+#else
+  Storedoligomer_T forward_save;
+  Storedoligomer_T revcomp_save;
 #endif
 };
 
@@ -61,18 +76,18 @@ Block_revcomp (T this) {
 
 
 extern void
-Block_save (T save, T this) {
+Block_save (T this) {
   /* save->reader = this->reader; -- not necessary */
   /* save->cdnaend = this->cdnaend; -- not necessary */
 
-  save->last_querypos = this->last_querypos;
-  save->last_state = this->last_state;
+  this->last_querypos_save = this->last_querypos;
+  this->last_state_save = this->last_state;
 #ifdef PMAP
-  save->aaindex = this->aaindex;
+  this->aaindex_save = this->aaindex;
   debug(printf("Saving block at last_querypos %d, aaindex %u\n",this->last_querypos,this->aaindex));
 #else
-  save->forward = this->forward;
-  save->revcomp = this->revcomp;
+  this->forward_save = this->forward;
+  this->revcomp_save = this->revcomp;
   debug(printf("Saving block at last_querypos %d, forward %u, revcomp %u\n",
 	       this->last_querypos,this->forward,this->revcomp));
 #endif
@@ -81,31 +96,31 @@ Block_save (T save, T this) {
 }
 
 extern void
-Block_restore (T this, T save) {
+Block_restore (T this) {
   /* this->reader = save->reader; -- not necessary */
   /* this->cdnaend = save->cdnaend; -- not necessary */
 
   if (this->cdnaend == FIVE) {
 #ifdef PMAP
-    Reader_reset_start(this->reader,save->last_querypos+INDEX1PART_AA);
+    Reader_reset_start(this->reader,this->last_querypos_save+INDEX1PART_AA);
 #else
-    Reader_reset_start(this->reader,save->last_querypos+INDEX1PART);
+    Reader_reset_start(this->reader,this->last_querypos_save+INDEX1PART);
 #endif
   } else {
 #ifdef PMAP
-    Reader_reset_end(this->reader,save->last_querypos-1);
+    Reader_reset_end(this->reader,this->last_querypos_save-1);
 #else
-    Reader_reset_end(this->reader,save->last_querypos-1);
+    Reader_reset_end(this->reader,this->last_querypos_save-1);
 #endif
   }
 
-  this->last_querypos = save->last_querypos;
-  this->last_state = save->last_state;
+  this->last_querypos = this->last_querypos_save;
+  this->last_state = this->last_state_save;
 #ifdef PMAP
-  this->aaindex = save->aaindex;
+  this->aaindex = this->aaindex_save;
 #else
-  this->forward = save->forward;
-  this->revcomp = save->revcomp;
+  this->forward = this->forward_save;
+  this->revcomp = this->revcomp_save;
 #endif
   return;
 }
@@ -151,6 +166,15 @@ Block_new (cDNAEnd_T cdnaend, Reader_T reader) {
 #else
   new->forward = 0U;
   new->revcomp = 0U;
+#endif
+
+  new->last_querypos_save = new->last_querypos;
+  new->last_state_save = new->last_state;
+#ifdef PMAP
+  new->aaindex_save = new->aaindex;
+#else
+  new->forward_save = new->forward;
+  new->revcomp_save = new->revcomp;
 #endif
 
   return new;

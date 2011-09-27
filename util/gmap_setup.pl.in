@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_setup.pl.in,v 1.40 2006/11/30 17:23:31 twu Exp $
+# $Id: gmap_setup.pl.in,v 1.42 2007/09/28 22:48:23 twu Exp $
 
 $gmapdb = "@GMAPDB@";
 $bindir = "@BINDIR@";
@@ -16,7 +16,7 @@ undef($opt_D);			# destination directory
 undef($opt_o);			# name of output file (default is "Makefile.<genome>")
 
 undef($opt_M);			# use seq_contig.md file (provide as argument)
-undef($opt_S);			# Treat each sequence as a separate chromosome
+undef($opt_S);			# Treat each sequence as a separate chromosome (also turns off chromosome sorting)
 
 undef($opt_W);			# write directly to file, not RAM
 undef($opt_E);			# interpret argument as a command
@@ -51,6 +51,8 @@ print $MAKEFILE "# Makefile for creating genome $genome_name for use by GMAP.\n"
 print $MAKEFILE "# Created by gmap_setup, but may be edited as needed\n\n";
 #print $MAKEFILE ":SILENT: \n"; -- Doesn't work
 print $MAKEFILE "\n";
+
+print $MAKEFILE ".SUFFIXES:\n\n"; # Remove unexpected suffix behavior
 
 print $MAKEFILE "GENOME = $genome_name\n";
 
@@ -203,7 +205,12 @@ if (defined($opt_E)) {
   print $MAKEFILE "\$(GENOME).contig.iit: \$(COORDS) \$(FASTA)\n";
 }
 print $MAKEFILE "\techo Making contig files...\n";
-print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) -A -c \$(COORDS)\n";
+if (defined($opt_S)) {
+  # -S flag here turns off sorting
+  print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) -A -S -c \$(COORDS)\n";
+} else {
+  print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) -A -c \$(COORDS)\n";
+}
 print $MAKEFILE "\n";
 
 

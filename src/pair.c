@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c,v 1.218 2007/06/02 20:38:56 twu Exp $";
+static char rcsid[] = "$Id: pair.c,v 1.221 2007/09/11 20:45:01 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -653,8 +653,8 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool zerobasedp, bool maponlyp,
 			bool diagnosticp, int stage1_genomicstart, int stage1_genomiclength,
-			double stage2_runtime, int stage2_indexsize, double stage2_defectrate, 
-			double stage3_runtime) {
+			double stage2_runtime, int stage2_indexsize, double stage3_runtime,
+			double stage3_defectrate) {
   int querypos1, querypos2, den;
   double fracidentity, coverage, trimmed_coverage;
   Genomicpos_T position1, position2, chrpos1, chrpos2;
@@ -711,8 +711,8 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 
       printf("    Stage 2 runtime: %.3f sec\n",stage2_runtime);
       printf("    Stage 2 indexsize: %d\n",stage2_indexsize);
-      printf("    Stage 2 defectrate: %f\n",stage2_defectrate);
       printf("    Stage 3 runtime: %.3f sec\n",stage3_runtime);
+      printf("    Stage 3 defectrate: %f\n",stage3_defectrate);
     }
 
     printf("    cDNA direction: ");
@@ -769,6 +769,10 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 
 #ifdef PMAP
     coverage = (double) (matches + mismatches + qindels)/(double) (3*(querylength_given + skiplength));
+    /* Can have coverage greater than given querylength because of added '*' at end */
+    if (coverage > 1.0) {
+      coverage = 1.0;
+    }
 #else
     coverage = (double) (matches + mismatches + qindels)/(double) (querylength_given + skiplength);
 #endif
@@ -2823,12 +2827,17 @@ double
 Pair_frac_error (List_T pairs, int cdna_direction) {
   int matches, unknowns, mismatches, qopens, qindels,
     topens, tindels, ncanonical, nsemicanonical, nnoncanonical;
+  int den;
 
   Pair_fracidentity(&matches,&unknowns,&mismatches,&qopens,&qindels, 
 		    &topens,&tindels,&ncanonical,&nsemicanonical,&nnoncanonical,
 		    pairs,cdna_direction);
 
-  return (double) (mismatches + qindels + tindels)/(double) (matches + mismatches + qindels + tindels);
+  if ((den = matches + mismatches + qindels + tindels) == 0) {
+    return 1.0;
+  } else {
+    return (double) (mismatches + qindels + tindels)/(double) den;
+  }
 }
 
 void

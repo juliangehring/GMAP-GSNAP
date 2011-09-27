@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: table.c,v 1.11 2005/02/15 01:57:20 twu Exp $";
+static char rcsid[] = "$Id: table.c,v 1.12 2007/09/28 22:47:15 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,11 +16,12 @@ struct T {
   int (*cmp)(const void *x, const void *y);
   unsigned int (*hash)(const void *key);
   int length;
-  unsigned timestamp;
+  unsigned int timestamp;
   struct binding {
     struct binding *link;
     const void *key;
     void *value;
+    unsigned int timeindex;
   } **buckets;
 };
 
@@ -105,6 +106,7 @@ Table_put (T table, const void *key, void *value) {
     prev = p->value;
   }
   p->value = value;
+  p->timeindex = table->timestamp;
   table->timestamp++;
   return prev;
 }
@@ -171,6 +173,47 @@ Table_keys (T table, void *end) {
   keyarray[j] = end;
   return keyarray;
 }
+
+static int
+timeindex_cmp (const void *x, const void *y) {
+  struct binding *a = * (struct binding **) x;
+  struct binding *b = * (struct binding **) y;
+
+  if (a->timeindex < b->timeindex) {
+    return -1;
+  } else if (a->timeindex > b->timeindex) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+void **
+Table_keys_by_timeindex (T table, void *end) {
+  void **keyarray;
+  int i, j = 0;
+  struct binding **buckets, *p;
+
+  assert(table);
+  buckets = (struct binding **) CALLOC(table->length,sizeof(struct binding *));
+  for (i = 0; i < table->size; i++) {
+    for (p = table->buckets[i]; p; p = p->link) {
+      buckets[j++] = p;
+    }
+  }
+  qsort(buckets,table->length,sizeof(struct binding *),timeindex_cmp);
+
+  keyarray = (void **) CALLOC(table->length+1,sizeof(void *));
+  for (j = 0; j < table->length; j++) {
+    p = buckets[j];
+    keyarray[j] = (void *) p->key;
+  }
+  keyarray[j] = end;
+
+  return keyarray;
+}
+
 
 void **
 Table_values (T table, void *end) {

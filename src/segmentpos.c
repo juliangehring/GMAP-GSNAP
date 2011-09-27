@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c,v 1.56 2005/10/19 03:55:58 twu Exp $";
+static char rcsid[] = "$Id: segmentpos.c,v 1.58 2007/06/25 18:58:37 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -191,7 +191,7 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 
   printf("    Accessions: ");
 
-  indices = IIT_get(&nindices,contig_iit,position1,position2);
+  indices = IIT_get(&nindices,contig_iit,position1,position2,/*sortp*/false);
   if (referencealignp == true) {
     printreferencep = true;
     printaltp = false;
@@ -224,7 +224,6 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 
       comma1 = Genomicpos_commafmt((Genomicpos_T) (relstart + !zerobasedp));
       comma2 = Genomicpos_commafmt((Genomicpos_T) (relend + !zerobasedp));
-      firstchar = IIT_annotation_firstchar(contig_iit,index);
       
       if (firstprintp == true) {
 	printf("; ");
@@ -232,8 +231,15 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 	firstprintp = true;
       }
 
-      if (firstchar == '-') {
-	printf("[-]");
+      if (IIT_version(contig_iit) <= 1) {
+	firstchar = IIT_annotation_firstchar(contig_iit,index);
+	if (firstchar == '-') {
+	  printf("[-]");
+	}
+      } else {
+	if (Interval_sign(interval) < 0) {
+	  printf("[-]");
+	}
       }
       printf("%s",IIT_label(contig_iit,index));
       if (referencealignp == false && contig_straintype == 0) {

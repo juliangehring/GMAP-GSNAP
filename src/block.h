@@ -1,4 +1,4 @@
-/* $Id: block.h,v 1.37 2006/05/19 17:06:16 twu Exp $ */
+/* $Id: block.h,v 1.38 2007/09/20 22:32:42 twu Exp $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"
@@ -16,9 +16,9 @@ Block_forward (T this);
 extern Storedoligomer_T
 Block_revcomp (T this);
 extern void
-Block_save (T save, T this);
+Block_save (T this);
 extern void
-Block_restore (T this, T save);
+Block_restore (T this);
 extern void
 Block_reset_ends (T this);
 

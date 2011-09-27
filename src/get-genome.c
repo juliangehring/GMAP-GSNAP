@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.65 2006/11/13 04:05:55 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.68 2007/09/11 20:43:12 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -51,6 +51,9 @@ static bool rawp = false;
 static char *user_mapdir = NULL;
 static char *map_iitfile = NULL;
 static int nflanking = 0;
+static char *map_typestring = NULL;
+static int map_type;
+
 
 /* Dump options */
 static bool dumpchrp = false;
@@ -61,7 +64,6 @@ static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'}, /* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
-  {"rel", required_argument, 0, 'R'}, /* releasestring */
 
   /* Output options */
   {"altstrain", no_argument, 0, 'S'}, /* altstrainp */
@@ -79,6 +81,9 @@ static struct option long_options[] = {
   {"ranks", no_argument, 0, 'k'}, /* levelsp */
   {"raw", no_argument, 0, 'r'}, /* rawp */
   {"flanking", required_argument, 0, 'u'}, /* nflanking */
+  {"forward", no_argument, 0, 'F'}, /* sign */
+  {"reverse", no_argument, 0, 'R'}, /* sign */
+  {"maptype", required_argument, 0, 't'}, /* map_typestring */
 
   /* Dump options */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
@@ -117,7 +122,6 @@ where\n\
 Input options\n\
   -D, --dir=STRING        Data directory\n\
   -d, --db=STRING         Database (e.g., NHGD)\n\
-  -R, --rel=STRING        Release of database\n\
 \n\
 Output options\n\
   -S, --altstrain         Show sequence for all strains (in addition to reference)\n\
@@ -135,6 +139,9 @@ External map file options\n\
   -k, --ranks             Prints levels for non-overlapping printing of map hits\n\
   -r, --raw               Prints sequence as ASCII numeric codes\n\
   -u, --flanking=INT      Show flanking hits (default 0)\n\
+  -F, --forward           Show only intervals with forward sign\n\
+  -R, --reverse           Show only intervals with reverse sign\n\
+  -t, --maptype=STRING    Show only intervals with given type\n\
 \n\
 Dump options\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
@@ -286,16 +293,24 @@ convert_to_chrpos (unsigned int *chrpos, char *genomesubdir, char *fileroot, uns
 }
 
 static void
-print_map (IIT_T map_iit, IIT_T chromosome_iit, unsigned int left, unsigned int length) {
+print_map (IIT_T map_iit, IIT_T chromosome_iit, unsigned int left, unsigned int length, int sign) {
   int *matches, *submatches, index, i, j, k;
   int nmatches, nsubmatches, *leftflanks, nleftflanks, *rightflanks, nrightflanks;
   int *levels = NULL, maxlevel;
   Interval_T interval;
   unsigned int low, high;
 
-  matches = IIT_get(&nmatches,map_iit,left,left+length);
+  if (map_type >= 0) {
+    matches = IIT_get_typed(&nmatches,map_iit,left,left+length,map_type,/*sortp*/true);
+  } else {
+    matches = IIT_get(&nmatches,map_iit,left,left+length,/*sortp*/true);
+  }
   if (nflanking > 0) {
-    IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,map_iit,left,left+length,nflanking);
+    if (map_type >= 0) {
+      IIT_get_flanking_typed(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,map_iit,left,left+length,nflanking,map_type);
+    } else {
+      IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,map_iit,left,left+length,nflanking,sign);
+    }
   }
 
   if (levelsp == true) {
@@ -306,7 +321,11 @@ print_map (IIT_T map_iit, IIT_T chromosome_iit, unsigned int left, unsigned int 
       low = Interval_low(interval);
       high = Interval_high(interval);
     
-      submatches = IIT_get(&nsubmatches,map_iit,low,high);
+      if (map_type >= 0) {
+	submatches = IIT_get_typed(&nsubmatches,map_iit,low,high,map_type,/*sortp*/true);
+      } else {
+	submatches = IIT_get(&nsubmatches,map_iit,low,high,/*sortp*/true);
+      }
       maxlevel = -1;
       j = k = 0;
       while (j < i && k < nsubmatches) {
@@ -608,7 +627,7 @@ print_sequence (char *genomesubdir, char *fileroot, char *dbversion, Genomicpos_
   if (altstrain_iit != NULL) {
     if (user_typestring == NULL) {
       /* No user-specified strain.  Get all indices. */
-      indexarray = IIT_get(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1);
+      indexarray = IIT_get(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,/*sortp*/false);
     } else {
       user_type = IIT_typeint(altstrain_iit,user_typestring);
       if (user_type < 0) {
@@ -620,7 +639,7 @@ print_sequence (char *genomesubdir, char *fileroot, char *dbversion, Genomicpos_
 	Sequence_free(&genomicseg);
       } else {
 	/* Valid user-specified strain.  Get subset of indices. */
-	indexarray = IIT_get_typed(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,user_type);
+	indexarray = IIT_get_typed(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,user_type,/*sortp*/false);
 	if (nindices == 0) {
 	  /* Print reference strain */
 	  if (rawp == true) {
@@ -702,13 +721,14 @@ main (int argc, char *argv[]) {
   IIT_T chromosome_iit, contig_iit, map_iit = NULL;
   Chrsubset_T chrsubset;
   char Buffer[BUFFERLEN], subsetname[BUFFERLEN];
+  int sign = 0;
 
   int opt;
   extern int optind;
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:M:m:kru:LIcV?",
+  while ((opt = getopt_long(argc,argv,"D:d:Ss:CUXl:Gh:M:m:kru:FRt:LIcV?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -716,7 +736,6 @@ main (int argc, char *argv[]) {
       dbroot = (char *) CALLOC(strlen(optarg)+1,sizeof(char));
       strcpy(dbroot,optarg);
       break;
-    case 'R': releasestring = optarg; break;
 
     case 'S': altstrainp = true; break;
     case 's': user_typestring = optarg; break;
@@ -732,6 +751,9 @@ main (int argc, char *argv[]) {
     case 'k': levelsp = true; break;
     case 'r': uncompressedp = true; rawp = true; break;
     case 'u': nflanking = atoi(optarg); break;
+    case 'F': sign = +1; break;
+    case 'R': sign = -1; break;
+    case 't': map_typestring = optarg; break;
 
     case 'L': dumpchrp = true; break;
     case 'I': dumpsegsp = true; break;
@@ -834,6 +856,14 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"Either install file %s.iit or specify a full directory path\n",map_iitfile);
       fprintf(stderr,"using the -M flag to gmap.\n");
       exit(9);
+    } else if (map_typestring != NULL) {
+      map_type = IIT_typeint(map_iit,map_typestring);
+      if (map_type < 0) {
+	/* Invalid user-specified strain.  Print nothing. */
+	fprintf(stderr,"No such type as %s.  Allowed strains are:\n",map_typestring);
+	IIT_dump_typestrings(stderr,map_iit);
+	exit(9);
+      }
     }
     FREE(iitfile);
     FREE(mapdir);
@@ -850,7 +880,7 @@ main (int argc, char *argv[]) {
       debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
 		   genomicstart,genomiclength,revcomp));
       if (map_iitfile != NULL) {
-	print_map(map_iit,chromosome_iit,genomicstart,genomiclength);
+	print_map(map_iit,chromosome_iit,genomicstart,genomiclength,sign);
 
       } else if (coordp == true) {
 	print_two_coords(genomesubdir,fileroot,genomicstart,genomiclength);
@@ -875,7 +905,7 @@ main (int argc, char *argv[]) {
 	debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
 		     genomicstart,genomiclength,revcomp));
 	if (map_iitfile != NULL) {
-	  print_map(map_iit,chromosome_iit,genomicstart,genomiclength);
+	  print_map(map_iit,chromosome_iit,genomicstart,genomiclength,sign);
 	  fprintf(stdout,"# End\n");
 	  fflush(stdout);
 	  

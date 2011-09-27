@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.23 2007/02/20 17:01:29 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.29 2007/09/19 17:48:31 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -294,12 +294,25 @@ IIT_build (Node_T *root, List_T intervallist) {
   int i;
   List_T p;
 
+  new->version = 0;		/* Irrelevant for internally built IITs */
   new->nintervals = List_length(intervallist);
   new->intervals = (struct Interval_T *) CALLOC(new->nintervals,sizeof(struct Interval_T));
   for (p = intervallist, i = 0; i < new->nintervals; i++, p = List_next(p)) {
     memcpy(&(new->intervals[i]),List_head(p),sizeof(struct Interval_T));
   }
 
+
+  /* Strict ordering of intervals */
+  new->alphas = (int *) CALLOC(new->nintervals+1,sizeof(int));
+  new->betas = (int *) CALLOC(new->nintervals+1,sizeof(int));
+  for (i = 1; i <= new->nintervals; i++) {
+    new->alphas[i] = new->betas[i] = i;
+  }
+  Interval_qsort_by_sigma(new->alphas,1,new->nintervals,new->intervals);
+  Interval_qsort_by_omega(new->betas,1,new->nintervals,new->intervals);
+
+
+  /* IIT ordering of intervals */
   new->nnodes = 0;
   new->sigmas = (int *) CALLOC(new->nintervals+1,sizeof(int));
   for (i = 1; i <= new->nintervals; i++) {
@@ -324,18 +337,26 @@ IIT_build (Node_T *root, List_T intervallist) {
 
 /************************************************************************
  * File format:
+ *   0: sizeof(int)  [in version >= 2]
+ *   version: sizeof(int)  [in version >= 2]
  *   nintervals: sizeof(int)
  *   ntypes: sizeof(int)
+ *   nfields: sizeof(int)  [in version >= 2]
  *   nnodes: sizeof(int) 
+ *   alphas: (nintervals+1)*sizeof(int)  [in version >= 2]
+ *   betas: (nintervals+1)*sizeof(int)  [in version >= 2]
  *   sigmas: (nintervals+1)*sizeof(int)
  *   omegas: (nintervals+1)*sizeof(int)
  *   nodes: nnodes*sizeof(struct FNode_T)
- *   intervals: nintervals*sizeof(struct Interval_T)
+ *   intervals: nintervals*sizeof(struct Interval_T)  [3 ints in version 1; 4 ints in version >= 2]
  *
  *   typepointers: (ntypes+1)*sizeof(unsigned int)
  *   types: ntypes*(variable length strings, including '\0')
  *
- *   labelorder: nintervals*sizeof(int)
+ *   fieldpointers: (nfields+1)*sizeof(unsigned int)  [in version >= 2]
+ *   fields: nfields*(variable length strings, including '\0')  [in version >= 2]
+ *
+ *   labelorder: nintervals*sizeof(int);
  *   labelpointers: (nintervals+1)*sizeof(unsigned int)
  *   labels: nintervals*(variable length strings, including '\0')
  *
@@ -461,19 +482,40 @@ IIT_new (List_T intervallist) {
 }
 
 static void
-IIT_output (FILE *fp, T this, Node_T root, List_T typelist, List_T labellist, List_T annotlist,
-	    Uintlist_T annot_strlen_list) {
+IIT_output (FILE *fp, T this, Node_T root, List_T typelist, List_T labellist,
+	    List_T fieldlist, List_T annotlist, Uintlist_T annot_strlen_list, int version) {
   List_T p;
   Uintlist_T q;
   unsigned int pointer = 0U, count;
-  char *type, *label, *annot, X[1], endofstring[1];
+  char *type, *field, *label, *annot, X[1], endofstring[1];
   int i;
+  int new_format_indicator = 0;
   int *labelorder;
 
+  if (version == 0) {
+    version = IIT_LATEST_VERSION;
+  }
+
   this->ntypes = List_length(typelist);
+  if (version < 2) {
+    this->nfields = 0;
+  } else {
+    this->nfields = List_length(fieldlist);
+  }
+  if (version >= 2) {
+    FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
+    FWRITE_INT(version,fp);
+  }
   FWRITE_INT(this->nintervals,fp);
   FWRITE_INT(this->ntypes,fp);
+  if (version >= 2) {
+    FWRITE_INT(this->nfields,fp);
+  }
   FWRITE_INT(this->nnodes,fp);
+  if (version >= 2) {
+    FWRITE_INTS(this->alphas,this->nintervals + 1,fp);
+    FWRITE_INTS(this->betas,this->nintervals + 1,fp);
+  }
   FWRITE_INTS(this->sigmas,this->nintervals + 1,fp);
   FWRITE_INTS(this->omegas,this->nintervals + 1,fp);
   Node_fwrite(fp,root);
@@ -481,6 +523,9 @@ IIT_output (FILE *fp, T this, Node_T root, List_T typelist, List_T labellist, Li
   for (i = 0; i < this->nintervals; i++) {
     FWRITE_UINT(this->intervals[i].low,fp);
     FWRITE_UINT(this->intervals[i].high,fp);
+    if (version >= 2) {
+      FWRITE_INT(this->intervals[i].sign,fp);
+    }
     FWRITE_INT(this->intervals[i].type,fp);
   }
 
@@ -499,6 +544,22 @@ IIT_output (FILE *fp, T this, Node_T root, List_T typelist, List_T labellist, Li
     FWRITE_CHARS(type,strlen(type)+1,fp); /* Write '\0' */
   }      
 
+  if (version >= 2) {
+    /* Write field pointers */
+    pointer = 0U;
+    FWRITE_UINT(pointer,fp);
+    for (p = fieldlist; p != NULL; p = List_next(p)) {
+      field = (char *) List_head(p);
+      pointer += (unsigned int) strlen(field)+1U;	/* Add count for '\0' */
+      FWRITE_UINT(pointer,fp);
+    }
+
+    /* Write fields */
+    for (p = fieldlist; p != NULL; p = List_next(p)) {
+      field = (char *) List_head(p);
+      FWRITE_CHARS(field,strlen(field)+1,fp); /* Write '\0' */
+    }
+  }
 
   /* Write labelorder */
   labelorder = get_labelorder(labellist,this->nintervals);
@@ -560,12 +621,132 @@ IIT_output (FILE *fp, T this, Node_T root, List_T typelist, List_T labellist, Li
   return;
 }
 
+static void
+compute_flanking (T this) {
+  int i;
+
+  this->alphas = (int *) CALLOC(this->nintervals+1,sizeof(int));
+  this->betas = (int *) CALLOC(this->nintervals+1,sizeof(int));
+  for (i = 1; i <= this->nintervals; i++) {
+    this->alphas[i] = this->betas[i] = i;
+  }
+  Interval_qsort_by_sigma(this->alphas,1,this->nintervals,this->intervals);
+  Interval_qsort_by_omega(this->betas,1,this->nintervals,this->intervals);
+  return;
+}
+
+
+void
+IIT_output_direct (char *iitfile, T this, int version) {
+  FILE *fp;
+  off_t stringlen;
+  int new_format_indicator = 0, i;
+  FNode_T node;
+
+  if ((fp = FOPEN_WRITE_BINARY(iitfile)) == NULL) {
+    fprintf(stderr,"Error: can't open file %s\n",iitfile);
+    exit(9);
+  }
+
+  if (version == 0) {
+    version = IIT_LATEST_VERSION;
+  }
+
+  if (version >= 2) {
+    FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
+    FWRITE_INT(version,fp);
+  }
+  FWRITE_INT(this->nintervals,fp);
+  FWRITE_INT(this->ntypes,fp);
+  if (version < 2) {
+    this->nfields = 0;
+  } else {
+    FWRITE_INT(this->nfields,fp);
+  }
+  FWRITE_INT(this->nnodes,fp);
+  if (version >= 2) {
+    if (this->alphas == NULL) {
+      compute_flanking(this);
+    }
+    FWRITE_INTS(this->alphas,this->nintervals + 1,fp);
+    FWRITE_INTS(this->betas,this->nintervals + 1,fp);
+  }
+  FWRITE_INTS(this->sigmas,this->nintervals + 1,fp);
+  FWRITE_INTS(this->omegas,this->nintervals + 1,fp);
+
+  /* Write nodes directly */
+  for (i = 0; i < this->nnodes; i++) {
+    node = &(this->nodes[i]);
+    FWRITE_UINT(node->value,fp);
+    FWRITE_INT(node->a,fp);
+    FWRITE_INT(node->b,fp);
+    FWRITE_INT(node->leftindex,fp);
+    FWRITE_INT(node->rightindex,fp);
+  }
+
+  for (i = 0; i < this->nintervals; i++) {
+    FWRITE_UINT(this->intervals[i].low,fp);
+    FWRITE_UINT(this->intervals[i].high,fp);
+    if (version >= 2) {
+      FWRITE_INT(this->intervals[i].sign,fp);
+    }
+    FWRITE_INT(this->intervals[i].type,fp);
+  }
+
+  /* Write types directly */
+  for (i = 0; i < this->ntypes+1; i++) {
+    FWRITE_UINT(this->typepointers[i],fp);
+  }
+  if ((stringlen = this->typepointers[this->ntypes]) == 0) {
+    fprintf(stderr,"Error in writing types: type stringlen is 0.\n");
+    exit(9);
+  } else {
+    FWRITE_CHARS(this->typestrings,stringlen,fp);
+  }
+
+  if (version >= 2) {
+    /* Write fields directly */
+    for (i = 0; i < this->nfields+1; i++) {
+      FWRITE_UINT(this->fieldpointers[i],fp);
+    }
+    stringlen = this->fieldpointers[this->nfields];
+    if (stringlen > 0) {
+      FWRITE_CHARS(this->fieldstrings,stringlen,fp);
+    }
+  }
+
+  /* Write labelorder */
+  FWRITE_INTS(this->labelorder,this->nintervals,fp);
+
+  /* Write labels directly */
+  FWRITE_UINTS(this->labelpointers,this->nintervals+1,fp);
+  if ((stringlen = this->labelpointers[this->nintervals]) == 0) {
+    fprintf(stderr,"Error in writing labels: label stringlen is 0.\n");
+    exit(9);
+  } else {
+    FWRITE_CHARS(this->labels,stringlen,fp);
+  }
+
+  /* Write annotations directly */
+  FWRITE_UINTS(this->annotpointers,this->nintervals+1,fp);
+  if ((stringlen = this->annotpointers[this->nintervals]) == 0) {
+    fprintf(stderr,"Error in writing annotations: annotation stringlen is 0.\n");
+    exit(9);
+  } else {
+    FWRITE_CHARS(this->annotations,stringlen,fp);
+  }
+
+  fclose(fp);
+
+  return;
+}
+
 
 /* Remember to List_reverse intervallist, typelist, and annotlist if desired */
 /* If annotlist is NULL, X's are written */
 void
-IIT_write (char *iitfile, List_T intervallist, List_T typelist, List_T labellist, List_T annotlist,
-	   Uintlist_T annot_strlen_list) {
+IIT_write (char *iitfile, List_T intervallist, List_T typelist, List_T labellist,
+	   List_T fieldlist, List_T annotlist, Uintlist_T annot_strlen_list, int version) {
   Node_T root;
   T iit;
   FILE *fp;
@@ -575,7 +756,7 @@ IIT_write (char *iitfile, List_T intervallist, List_T typelist, List_T labellist
     exit(9);
   } else {
     iit = IIT_build(&root,intervallist);
-    IIT_output(fp,iit,root,typelist,labellist,annotlist,annot_strlen_list);
+    IIT_output(fp,iit,root,typelist,labellist,fieldlist,annotlist,annot_strlen_list,version);
     Node_gc(&root);
     IIT_write_free(&iit);
     fclose(fp);

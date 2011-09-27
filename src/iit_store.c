@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c,v 1.27 2006/05/11 18:46:13 twu Exp $";
+static char rcsid[] = "$Id: iit_store.c,v 1.30 2007/09/18 20:55:09 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,12 +40,16 @@ static char rcsid[] = "$Id: iit_store.c,v 1.27 2006/05/11 18:46:13 twu Exp $";
 static char *outputfile = NULL;
 static bool gff3_format_p = false;
 static char *labelid = "ID";
+static bool fieldsp = false;
+static char iit_version = 0;	/* Means latest version */
 
 static struct option long_options[] = {
   /* Input options */
   {"output", required_argument, 0, 'o'}, /* outputfile */
+  {"fields", no_argument, 0, 'F'}, /* fieldsp */
   {"gff", no_argument, 0, 'G'}, /* gff3_format_p */
   {"label", required_argument, 0, 'l'}, /* labelid */
+  {"iitversion", required_argument, 0, 'v'}, /* iit_version */
 
   /* Help options */
   {"version", no_argument, 0, 'V'}, /* print_program_version */
@@ -75,12 +79,15 @@ where\n\
    inputfile is in either FASTA or GFF3 format, as described below.\n\
 \n\
 Options\n\
-  -o, --output=STRING     Name of output iit file\n\
-  -G, --gff               Parse input file in gff3 format\n\
-  -l, --label=STRING      For gff input, the feature attribute to use (default is ID)\n\
+  -o, --output=STRING       Name of output iit file\n\
+  -F, --fields              Annotation consists of separate fields\n\
+  -G, --gff                 Parse input file in gff3 format\n\
+  -l, --label=STRING        For gff input, the feature attribute to use (default is ID)\n\
+  -v, --iitversion=STRING   Desired iit version for output iit\n\
+                            (default = 0, which means latest version)\n\
 \n\
-  -V, --version           Show version\n\
-  -?, --help              Show this help message\n\
+  -V, --version             Show version\n\
+  -?, --help                Show this help message\n\
 \n\
 \n\
 Description of input format:\n\
@@ -92,10 +99,25 @@ The FASTA format for input files should be\n\
 \n\
 For example, the label may be a sequence accession, with the start and end\n\
 numbers representing chromosomal coordinates, and the tag indicating the\n\
-chromosome and strand, such as '17+'.  The start coordinate should be less\n\
-than or equal to the end coordinate.  A header would therefore look like\n\
+chromosome and strand, such as '17'.\n\
 \n\
-    >NM_004448 35109780 35138441 17+\n\
+In version 2 and later of IIT files, intervals may have directions.\n\
+To indicate a forward direction, the start coordinate should be less\n\
+than the end coordinate.  To indicate a reverse direction,\n\
+the start coordinate should be greater than the end coordinate.\n\
+If they are the same, then no direction is implied.\n\
+\n\
+A header would therefore look like\n\
+\n\
+    >NM_004448 35138441 35109780 17\n\
+\n\
+which indicates an interval on tag (i.e., chromosome) 17 in the reverse\n\
+direction.\n\
+\n\
+If the -F flag is provided, IIT files may store annotation for each interval\n\
+as separate fields.  The input must contain the names of the fields, one per\n\
+line, before the first interval header.  Each interval then contains annotation\n\
+corresponding to each field, one value per line.\n\
 \n\
 The GFF3 format requires the -G flag and optionally the -l flag.\n\
 The iit_store program will parse the chromosome from column 1, the start\n\
@@ -203,15 +225,43 @@ scan_header (List_T typelist, Tableint_T typetable,
   return typelist;
 }
 
+static List_T
+parse_fieldlist (char *firstchar, FILE *fp) {
+  List_T fieldlist = NULL;
+  char Buffer[LINELENGTH], *fieldname, *p;
+
+  while ((*firstchar = fgetc(fp)) != '>') {
+    Buffer[0] = *firstchar;
+    fgets(&(Buffer[1]),LINELENGTH-1,fp);
+    if ((p = rindex(Buffer,'\n')) == NULL) {
+      fprintf(stderr,"Line %s exceeds maximum length of %d\n",Buffer,LINELENGTH);
+      exit(9);
+    } else {
+      *p = '\0';
+    }
+    fieldname = (char *) CALLOC(strlen(Buffer)+1,sizeof(char));
+    strcpy(fieldname,Buffer);
+    fieldlist = List_push(fieldlist,fieldname);
+  }
+
+  return List_reverse(fieldlist);
+}
+
+
 static void
 parse_fasta (List_T *intervallist, List_T *typelist, List_T *labellist, List_T *annotlist,
-	     FILE *fp, Tableint_T typetable) {
+	     FILE *fp, Tableint_T typetable, char firstchar) {
   char Buffer[LINELENGTH], *label, *tempstring;
   unsigned int start, end;
   List_T lines;
   int content_size, type;
 
-  fgets(Buffer,LINELENGTH,fp);
+  if (firstchar == '\0') {
+    fgets(Buffer,LINELENGTH,fp);
+  } else {
+    Buffer[0] = firstchar;
+    fgets(&(Buffer[1]),LINELENGTH-1,fp);
+  }
   *typelist = scan_header(*typelist,typetable,&label,&start,&end,&type,Buffer);
   *labellist = List_push(NULL,label);
   lines = NULL;
@@ -367,23 +417,21 @@ parse_gff3 (List_T *intervallist, List_T *typelist, List_T *labellist, List_T *a
 	fprintf(stderr,"Skipping line %d with only %d fields: %s\n",lineno,nfields,line);
 	FREE(line);
       } else {
-	start = atof(columns[STARTCOLUMN]);
-	end = atof(columns[ENDCOLUMN]);
 	chr = columns[CHRCOLUMN];
+	sprintf(typestring,"%s",chr);
 	
 	if ((strandchar = columns[STRANDCOLUMN][0]) == '+') {
-	  typestring = (char *) CALLOC(strlen(chr) + strlen("+") + 1,sizeof(char));
-	  sprintf(typestring,"%s+",chr);
+	  start = atof(columns[STARTCOLUMN]);
+	  end = atof(columns[ENDCOLUMN]);
 	} else if (strandchar == '-') {
-	  typestring = (char *) CALLOC(strlen(chr) + strlen("-") + 1,sizeof(char));
-	  sprintf(typestring,"%s-",chr);
+	  start = atof(columns[ENDCOLUMN]);
+	  end = atof(columns[STARTCOLUMN]);
 	} else if (strandchar == '.' || strandchar == '?') {
-	  typestring = (char *) CALLOC(strlen(chr) + 1,sizeof(char));
-	  sprintf(typestring,"%s",chr);
+	  start = atof(columns[STARTCOLUMN]);
+	  end = atof(columns[ENDCOLUMN]);
 	} else {
-	  fprintf(stderr,"Don't recognize strand %c.  Treating as '.': %s.\n",strandchar,line);
-	  typestring = (char *) CALLOC(strlen(chr) + 1,sizeof(char));
-	  sprintf(typestring,"%s",chr);
+	  start = atof(columns[STARTCOLUMN]);
+	  end = atof(columns[ENDCOLUMN]);
 	}
 
 	if ((type = Tableint_get(typetable,(void *) typestring)) != 0) {
@@ -433,8 +481,8 @@ int getopt (int argc, char *const argv[], const char *optstring);
 int 
 main (int argc, char *argv[]) {
   char *inputfile = NULL, *iitfile, *tempstring, *typestring, *p;
-  char Buffer[8192];
-  List_T lines = NULL, l, intervallist = NULL, typelist = NULL, labellist = NULL, annotlist = NULL;
+  char Buffer[8192], firstchar;
+  List_T lines = NULL, l, intervallist = NULL, typelist = NULL, labellist = NULL, fieldlist = NULL, annotlist = NULL;
   FILE *fp;
   Interval_T interval;
   Tableint_T typetable;
@@ -444,12 +492,14 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"o:Gl:",
+  while ((opt = getopt_long(argc,argv,"o:FGl:v:",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'o': outputfile = optarg; break;
+    case 'F': fieldsp = true; break;
     case 'G': gff3_format_p = true; break;
     case 'l': labelid = optarg; break;
+    case 'v': iit_version = atoi(optarg); break;
 
     case 'V': print_program_version(); exit(0);
     case '?': print_program_usage(); exit(0);
@@ -484,7 +534,8 @@ main (int argc, char *argv[]) {
   if (gff3_format_p == true) {
     parse_gff3(&intervallist,&typelist,&labellist,&annotlist,fp,typetable);
   } else {
-    parse_fasta(&intervallist,&typelist,&labellist,&annotlist,fp,typetable);
+    fieldlist = parse_fieldlist(&firstchar,fp);
+    parse_fasta(&intervallist,&typelist,&labellist,&annotlist,fp,typetable,firstchar);
   }
 
   if (inputfile != NULL) {
@@ -507,7 +558,7 @@ main (int argc, char *argv[]) {
     }
   }
 
-  IIT_write(iitfile,intervallist,typelist,labellist,annotlist,NULL);
+  IIT_write(iitfile,intervallist,typelist,labellist,fieldlist,annotlist,NULL,iit_version);
   FREE(iitfile);
 
   for (l = annotlist; l != NULL; l = List_next(l)) {
@@ -515,6 +566,12 @@ main (int argc, char *argv[]) {
     FREE(tempstring);
   }
   List_free(&annotlist);
+
+  for (l = fieldlist; l != NULL; l = List_next(l)) {
+    tempstring = (char *) List_head(l);
+    FREE(tempstring);
+  }
+  List_free(&fieldlist);
 
   for (l = labellist; l != NULL; l = List_next(l)) {
     tempstring = (char *) List_head(l);

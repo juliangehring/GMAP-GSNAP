@@ -1,4 +1,4 @@
-/* $Id: oligoindex.h,v 1.44 2007/04/16 23:46:20 twu Exp $ */
+/* $Id: oligoindex.h,v 1.46 2007/08/28 23:23:29 twu Exp $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"
@@ -26,9 +26,11 @@ extern double
 Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *trim_start, int *trim_end,
 			T this, Sequence_T queryuc, bool trimp);
 extern void
-Oligoindex_tally (T this, Sequence_T genomicuc, Sequence_T queryuc, int maxoligohits);
+Oligoindex_tally (T this, Sequence_T genomicuc, Sequence_T queryuc);
 extern void
-Oligoindex_cleanup (T this, Sequence_T queryuc);
+Oligoindex_untally (T this);
+extern void
+Oligoindex_clear_inquery (T this);
 extern void
 Oligoindex_free (T *old);
 

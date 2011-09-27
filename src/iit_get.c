@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c,v 1.38 2006/11/02 02:19:10 twu Exp $";
+static char rcsid[] = "$Id: iit_get.c,v 1.42 2007/09/11 20:43:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,12 +24,19 @@ static char rcsid[] = "$Id: iit_get.c,v 1.38 2006/11/02 02:19:10 twu Exp $";
  *   Program options
  ************************************************************************/
 
+static char *fieldstring = NULL;
 static bool annotationonlyp = false;
+static bool sortp = false;
+static bool signedp = true;
 static int nflanking = 0;
 
 static struct option long_options[] = {
   /* Input options */
+  {"field", required_argument, 0, 'f'},	/* fieldstring */
   {"annotonly", no_argument, 0, 'A'},	/* annotationonlyp */
+  {"sort", no_argument, 0, 'S'},	/* sortp */
+  {"unsigned", no_argument, 0, 'U'},	/* signedp */
+  {"flanking", required_argument, 0, 'u'},	/* nflanking */
 
   /* Help options */
   {"version", no_argument, 0, 'V'}, /* print_program_version */
@@ -58,7 +65,10 @@ Usage: iit_get [OPTIONS...] iitfile start, or\n\
        iit_get [OPTIONS...] iitfile\n\
 \n\
 Options\n\
+  -f, --field=STRING      Show given field part of the annotation\n\
   -A, --annotonly         Show annotation lines only (no headers)\n\
+  -S, --sort              Sort results by coordinates\n\
+  -U, --unsigned          Print all intervals as low..high, even those entered as reverse (high < low)\n\
   -u, --flanking=INT      Show flanking segments on left and right\n\
 \n\
   -V, --version           Show version\n\
@@ -106,7 +116,7 @@ int getopt (int argc, char *const argv[], const char *optstring);
 #endif
 
 static void
-print_interval (int index, IIT_T iit) {
+print_interval (int index, IIT_T iit, int fieldint) {
   Interval_T interval;
   char *annotation;
   bool allocp;
@@ -115,13 +125,24 @@ print_interval (int index, IIT_T iit) {
     printf(">%s",IIT_label(iit,index));
       
     interval = IIT_interval(iit,index);
-    printf(" %u %u",Interval_low(interval),Interval_high(interval));
+    if (signedp == false) {
+      printf(" %u %u",Interval_low(interval),Interval_high(interval));
+    } else if (Interval_sign(interval) < 0) {
+      printf(" %u %u",Interval_high(interval),Interval_low(interval));
+    } else {
+      printf(" %u %u",Interval_low(interval),Interval_high(interval));
+    }
     if (Interval_type(interval) > 0) {
       printf(" %s",IIT_typestring(iit,Interval_type(interval)));
     }
     printf("\n");
   }
-  annotation = IIT_annotation(iit,index,&allocp);
+  if (fieldint < 0) {
+    annotation = IIT_annotation(iit,index,&allocp);
+  } else {
+    annotation = IIT_fieldvalue(iit,index,fieldint);
+    allocp = true;
+  }
   if (strlen(annotation) == 0) {
   } else if (annotation[strlen(annotation)-1] == '\n') {
     printf("%s",annotation);
@@ -141,6 +162,7 @@ main (int argc, char *argv[]) {
   char Buffer[BUFLEN], nocomment[BUFLEN], label[BUFLEN], typestring[BUFLEN], *annotation;
   unsigned int query1, query2;
   int typeint, *types, c;
+  int fieldint = -1;
   int nargs, ntypes;
   int *matches, nmatches, i, *leftflanks, *rightflanks, nleftflanks = 0, nrightflanks = 0;
   IIT_T iit;
@@ -151,9 +173,12 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"Au:",long_options,&long_option_index)) != -1) {
+  while ((opt = getopt_long(argc,argv,"f:ASUu:",long_options,&long_option_index)) != -1) {
     switch (opt) {
+    case 'f': fieldstring = optarg; break;
     case 'A': annotationonlyp = true; break;
+    case 'S': sortp = true; break;
+    case 'U': signedp = false; break;
     case 'u': nflanking = atoi(optarg); break;
 
     case 'V': print_program_version(); exit(0);
@@ -175,10 +200,17 @@ main (int argc, char *argv[]) {
     iitfile = (char *) CALLOC(strlen(argv[0])+strlen(".iit")+1,sizeof(char));
     sprintf(iitfile,"%s.iit",argv[0]);
     if ((iit = IIT_read(iitfile,NULL,true)) == NULL) {
-      fprintf(stderr,"Can't open IIT file %s\n",argv[0]);
+      fprintf(stderr,"Can't open file %s or file is not an IIT file\n",argv[0]);
       exit(9);
     } else {
       FREE(iitfile);
+    }
+  }
+
+  if (fieldstring != NULL) {
+    if ((fieldint = IIT_fieldint(iit,fieldstring)) < 0) {
+      fprintf(stderr,"No field %s defined in iit file.\n",fieldstring);
+      exit(9);
     }
   }
 
@@ -198,24 +230,24 @@ main (int argc, char *argv[]) {
 	if ((typeint = IIT_typeint(iit,typestring)) < 0) {
 #ifdef ROBUST
 	  fprintf(stderr,"For %s, no such type as %s.  Ignoring the type.\n",nocomment,typestring);
-	  matches = IIT_get(&nmatches,iit,query1,query2);
+	  matches = IIT_get(&nmatches,iit,query1,query2,sortp);
 	  if (nflanking > 0) {
-	    IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking);
+	    IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,/*sign*/0);
 	  }
 #else
 	  matches = NULL;
 	  nmatches = 0;
 #endif
 	} else {
-	  matches = IIT_get_typed(&nmatches,iit,query1,query2,typeint);
+	  matches = IIT_get_typed(&nmatches,iit,query1,query2,typeint,sortp);
 	  if (nflanking > 0) {
 	    IIT_get_flanking_typed(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,typeint);
 	  }
 	}
       } else if (nargs == 2) {
-	matches = IIT_get(&nmatches,iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2,sortp);
 	if (nflanking > 0) {
-	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking);
+	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,/*sign*/0);
 	}
       } else if (sscanf(nocomment,"%s",label) == 1) {
 	matches = IIT_find(&nmatches,iit,label);
@@ -227,7 +259,7 @@ main (int argc, char *argv[]) {
       if (skipp == false) {
 	fprintf(stdout,"# Query: %s\n",Buffer);
 	for (i = 0; i < nmatches; i++) {
-	  print_interval(matches[i],iit);
+	  print_interval(matches[i],iit,fieldint);
 	}
       }
       FREE(matches);
@@ -241,9 +273,9 @@ main (int argc, char *argv[]) {
       matches = IIT_find(&nmatches,iit,argv[1]);
       if (matches == NULL && isnumberp(argv[1])) {
 	query1 = (unsigned int) strtoul(argv[1],(char **) NULL,10);
-	matches = IIT_get(&nmatches,iit,query1,query1);
+	matches = IIT_get(&nmatches,iit,query1,query1,sortp);
 	if (nflanking > 0) {
-	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query1,nflanking);
+	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query1,nflanking,/*sign*/0);
 	}
       }
     } else if (argc == 3) {
@@ -254,9 +286,9 @@ main (int argc, char *argv[]) {
       } else {
 	query1 = (unsigned int) strtoul(argv[1],(char **) NULL,10);
 	query2 = (unsigned int) strtoul(argv[2],(char **) NULL,10);
-	matches = IIT_get(&nmatches,iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2,sortp);
 	if (nflanking > 0) {
-	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking);
+	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,/*sign*/0);
 	}
       }
     } else if (argc == 4) {
@@ -266,16 +298,16 @@ main (int argc, char *argv[]) {
 #ifdef ROBUST
 	fprintf(stderr,"For %s %s %s, no such type as %s.  Ignoring the type.\n",
 		argv[1],argv[2],argv[3],argv[3]);
-	matches = IIT_get(&nmatches,iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2,sortp);
 	if (nflanking > 0) {
-	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking);
+	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,/*sign*/0);
 	}
 #else
 	matches = NULL;
 	nmatches = 0;
 #endif
       } else {
-	matches = IIT_get_typed(&nmatches,iit,query1,query2,typeint);
+	matches = IIT_get_typed(&nmatches,iit,query1,query2,typeint,sortp);
 	if (nflanking > 0) {
 	  IIT_get_flanking_typed(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,typeint);
 	}
@@ -293,21 +325,21 @@ main (int argc, char *argv[]) {
       }
       if (ntypes == 0) {
 #ifdef ROBUST
-	matches = IIT_get(&nmatches,iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2,sortp);
 	if (nflanking > 0) {
-	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking);
+	  IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,/*sign*/0);
 	}
 #else
 	matches = NULL;
 	nmatches = 0;
 #endif
       } else if (ntypes == 1) {
-	matches = IIT_get_typed(&nmatches,iit,query1,query2,types[0]);
+	matches = IIT_get_typed(&nmatches,iit,query1,query2,types[0],sortp);
 	if (nflanking > 0) {
 	  IIT_get_flanking_typed(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,typeint);
 	}
       } else {
-	matches = IIT_get_multiple_typed(&nmatches,iit,query1,query2,types,ntypes);
+	matches = IIT_get_multiple_typed(&nmatches,iit,query1,query2,types,ntypes,sortp);
 	if (nflanking > 0) {
 	  IIT_get_flanking_multiple_typed(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,iit,query1,query2,nflanking,types,ntypes);
 	}
@@ -316,20 +348,20 @@ main (int argc, char *argv[]) {
 
     if (nflanking > 0) {
       for (i = nleftflanks-1; i >= 0; i--) {
-	print_interval(leftflanks[i],iit);
+	print_interval(leftflanks[i],iit,fieldint);
       }
       printf("====================\n");
       FREE(leftflanks);
     }
 
     for (i = 0; i < nmatches; i++) {
-      print_interval(matches[i],iit);
+      print_interval(matches[i],iit,fieldint);
     }
 
     if (nflanking > 0) {
       printf("====================\n");
       for (i = 0; i < nrightflanks; i++) {
-	print_interval(rightflanks[i],iit);
+	print_interval(rightflanks[i],iit,fieldint);
       }
       FREE(rightflanks);
     }

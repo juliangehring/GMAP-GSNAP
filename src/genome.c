@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.88 2007/04/23 18:34:48 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.89 2007/06/25 18:57:12 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -651,7 +651,7 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
     interval = IIT_interval(altstrain_iit,index);
     srcL = Interval_low(interval);
     srcR = Interval_high(interval) + 1;	/* Intervals are inclusive */
-    matbuffer = IIT_annotation(altstrain_iit,index,&allocp);
+    matbuffer = IIT_annotation(altstrain_iit,index,&allocp); /* Holds the sequence */
     matlen = IIT_annotation_strlen(altstrain_iit,index);
     matR = srcL + matlen;
 

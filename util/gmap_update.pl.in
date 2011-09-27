@@ -1,0 +1,96 @@
+#! @PERL@ -w
+# $Id: gmap_update.pl.in,v 1.3 2007/09/26 18:05:53 twu Exp $
+
+$gmapdb = "@GMAPDB@";
+$package_version = "@PACKAGE_VERSION@";
+$IIT_UPDATE = "@BINDIR@/iit_update";
+
+# Usage: gmap_update -d <db> [-D <destdir>] [-v <version>]
+
+use IO::Dir;
+use IO::File;
+use Getopt::Std;
+undef($opt_d);			# genome name
+undef($opt_D);			# destination directory
+undef($opt_v);			# version
+getopts("d:D:v:");
+
+
+if (!defined($genome = $opt_d)) {
+  print_usage();
+  die "Must specify genome database name with -d flag.";
+} elsif ($opt_d =~ /(\S+)\/(\S+)/) {
+  $genome = $2;
+  if (defined($directory = $opt_D)) {
+    $directory = $directory . "/" . $1;
+  } else {
+    $directory = $1;
+  }
+} else {
+  if (!defined($directory = $opt_D)) {
+    $directory = $gmapdb;
+  }
+}
+
+if (!defined($version = $opt_v)) {
+  $version_flag = "";
+} else {
+  $version_flag = "-v $version";
+}
+
+$subdir = $directory . "/" . $genome;
+update_subdir($subdir);
+
+exit;
+
+
+sub update_subdir {
+  my ($subdir) = @_;
+  my $DP;
+  my $file;
+
+  $DP = new IO::Dir($subdir) or die "Cannot open directory $subdir";
+  while (defined($file = $DP->read)) {
+    if ($file =~ /\.iit$/) {
+      $filename = "$subdir/$file";
+      print STDERR "Updating iit file $filename\n";
+      $mode = (stat ($filename))[2] & 07777;
+      system("$IIT_UPDATE $version_flag -o $subdir/$$.iit $filename");
+      system("mv -f $subdir/$$.iit $filename");
+      if ((chmod $mode,$filename) != 1) {
+	print STDERR "Could not change permissions on $filename : $!\n";
+      }
+    }
+  }
+  close($DP);
+
+  $DP = new IO::Dir($subdir);
+  while (defined($file = $DP->read)) {
+    if ($file eq "." || $file eq "..") {
+      # Skip
+    } elsif (-d "$subdir/$file") {
+      update_subdir("$subdir/$file");
+    }
+  }
+  close($DP);
+
+  return;
+}
+
+
+sub print_usage {
+  print <<TEXT1;
+
+gmap_update: Updates a gmapdb database
+Part of GMAP package, version $package_version.
+
+Usage: gmap_update -d <db> [-D <destdir>] [-v <version>]
+
+    -d    genome name
+    -D    directory for genome (defaults to gmapdb directory specified at configure time)
+    -v    version (default 0 means latest version)
+
+TEXT1
+  return;
+}
+

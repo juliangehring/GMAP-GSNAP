@@ -1,12 +1,13 @@
 #! @PERL@ -w
-# $Id: gmap_uncompress.pl.in,v 1.18 2006/06/12 18:52:11 twu Exp $
+# $Id: gmap_uncompress.pl.in,v 1.20 2007/08/24 00:27:41 twu Exp $
 
 use IO::File;
 use Getopt::Std;
 undef($opt_F);			# Flip so that genome sequence is first
 undef($opt_4);			# sim4-style output
 undef($opt_I);			# invert mode
-getopts("F4I:");
+undef($opt_f);			# format
+getopts("F4I:f:");
 
 if (defined($opt_4)) {
   $date = `/usr/bin/date`;
@@ -20,6 +21,13 @@ if (defined($opt_I)) {
 }
 
 $opt_F = 1;
+
+if (defined($opt_f) && $opt_f eq "9") {
+  $print_coordinates_p = 1;
+} else {
+  $print_coordinates_p = 0;
+}
+
 
 my $gsequence;
 
@@ -112,42 +120,45 @@ sub process_one {
     print " $flags";
   }
   print "\n";
-  print "Paths (1):\n";
-  print "  Path 1: query $cdnarange ($cdnamatchlen bp) => chr $chrrange ($genomelength bp)\n";
-  print "    cDNA direction: " . cdna_direction($agreements) . "\n";
-  print "    Genomic pos: $genomevers:$genomerange ($strand strand)\n";
-  print "    Number of exons: $nexons\n";
-  print "    Coverage: $coverage (query length: $cdnalength bp)\n";
-  print "    Percent identity: $pctidentity\n";
-  print "\n";
 
-  print "Alignments:\n";
-  print "  Alignment for path 1:\n";
-  print "\n";
+  if ($print_coordinates_p == 0) {
+    print "Paths (1):\n";
+    print "  Path 1: query $cdnarange ($cdnamatchlen bp) => chr $chrrange ($genomelength bp)\n";
+    print "    cDNA direction: " . cdna_direction($agreements) . "\n";
+    print "    Genomic pos: $genomevers:$genomerange ($strand strand)\n";
+    print "    Number of exons: $nexons\n";
+    print "    Coverage: $coverage (query length: $cdnalength bp)\n";
+    print "    Percent identity: $pctidentity\n";
+    print "\n";
 
-  if ($strand eq "-" && $invertmode == 2) {
-    for ($i = $#{$coordinates}; $i >= 0; $i--) {
-      $coords = $ {$coordinates}[$i];
-      $agree = $ {$agreements}[$i];
-      if ($i == 0) {
-	$intron = "*";
-      } else {
-	($intron) = $ {$agreements}[$i-1] =~ /.+(.)/;
-	$intron =~ tr/><][)(/<>[]()/;
+    print "Alignments:\n";
+    print "  Alignment for path 1:\n";
+    print "\n";
+
+    if ($strand eq "-" && $invertmode == 2) {
+      for ($i = $#{$coordinates}; $i >= 0; $i--) {
+	$coords = $ {$coordinates}[$i];
+	$agree = $ {$agreements}[$i];
+	if ($i == 0) {
+	  $intron = "*";
+	} else {
+	  ($intron) = $ {$agreements}[$i-1] =~ /.+(.)/;
+	  $intron =~ tr/><][)(/<>[]()/;
+	}
+	($chrstart,$chrend,$cdsstart,$cdsend,$pct) = split " ",$coords;
+	print_exon("+",$chr,$chrend,$chrstart,$cdsend,$cdsstart,$pct,$intron);
       }
-      ($chrstart,$chrend,$cdsstart,$cdsend,$pct) = split " ",$coords;
-      print_exon("+",$chr,$chrend,$chrstart,$cdsend,$cdsstart,$pct,$intron);
+    } else {
+      for ($i = 0; $i <= $#{$coordinates}; $i++) {
+	$coords = $ {$coordinates}[$i];
+	$agree = $ {$agreements}[$i];
+	($intron) = $agree =~ /.+(.)/;
+	($chrstart,$chrend,$cdsstart,$cdsend,$pct) = split " ",$coords;
+	print_exon($strand,$chr,$chrstart,$chrend,$cdsstart,$cdsend,$pct,$intron);
+      }
     }
-  } else {
-    for ($i = 0; $i <= $#{$coordinates}; $i++) {
-      $coords = $ {$coordinates}[$i];
-      $agree = $ {$agreements}[$i];
-      ($intron) = $agree =~ /.+(.)/;
-      ($chrstart,$chrend,$cdsstart,$cdsend,$pct) = split " ",$coords;
-      print_exon($strand,$chr,$chrstart,$chrend,$cdsstart,$cdsend,$pct,$intron);
-    }
+    print "\n";
   }
-  print "\n";
 
   uncompress($coordinates,$agreements,$intronends,$intronlengths,$gsequence,
 	     $chr,$strand);
@@ -422,7 +433,12 @@ sub uncompress {
     $sequence2 = join('',@sequence2);
   }
 
-  print_alignment($sequence1,$agreement,$sequence2,\@gpos,\@cpos,$chr,$strand);
+  if ($print_coordinates_p == 1) {
+    print_coordinates($sequence1,$agreement,$sequence2,\@gpos,\@cpos,$chr,$strand);
+  } else {
+    print_alignment($sequence1,$agreement,$sequence2,\@gpos,\@cpos,$chr,$strand);
+  }
+
   return;
 }
 
@@ -494,6 +510,43 @@ sub print_alignment {
       }
       print "\n";
     }
+    $pos += $length + 9;	# 9 is length of "===...===";
+  }
+
+  return;
+}
+
+
+sub print_coordinates {
+  my ($sequence1, $agreement, $sequence2, $gpositions, $cpositions, $chr, $strand) = @_;
+  my ($length, $i);
+
+  @pieces = split "DONOTSPLIT",$agreement;
+  $pos = 0;
+  foreach $agreement_piece (@pieces) {
+    $length = length($agreement_piece);
+    $sequence1_piece = substr($sequence1,$pos,$length);
+    $sequence2_piece = substr($sequence2,$pos,$length);
+
+    for ($i = 0; $i < $length; $i++) {
+      $agreement = substr($agreement_piece,$i,1);
+      if ($agreement eq "|" || $agreement eq " " || $agreement eq "-") {
+	$gpos = $ {$gpositions}[$i];
+	$cpos = $ {$cpositions}[$i];
+	printf ("%d %s\t",$cpos,substr($sequence2_piece,$i,1));
+	if ($strand eq "+") {
+	  printf ("+%s:%d ",$chr,$gpos);
+	} elsif ($strand eq "-") {
+	  if ($invertmode == 2) {
+	    printf ("+%s:%d ",$chr,abs($gpos));
+	  } else {
+	    printf ("-%s:%d ",$chr,abs($gpos));
+	  }
+	}
+	printf ("%s\n",substr($sequence1_piece,$i,1));
+      }
+    }
+
     $pos += $length + 9;	# 9 is length of "===...===";
   }
 

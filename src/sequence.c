@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.74 2006/12/15 12:00:58 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.76 2007/09/25 20:20:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,6 +19,7 @@ static char rcsid[] = "$Id: sequence.c,v 1.74 2006/12/15 12:00:58 twu Exp $";
 #include "mem.h"
 #include "complement.h"
 #include "intlist.h"
+#include "fopen.h"
 #include "md5.h"
 
 /* Before setting DEBUG, may want to reduce MAXSEQLEN in sequence.h */
@@ -345,8 +346,8 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
   int c;
 
   ptr = &(Firsthalf[0]);
-  if (Initc != '>') {
-    *ptr++ = (char) Initc;
+  if (*nextchar != '>') {
+    *ptr++ = (char) *nextchar;
   }
   remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
 
@@ -365,6 +366,7 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
       return (ptr - &(Firsthalf[0]))/sizeof(char);
 
     } else if (*eolnp == true) {
+      /* Peek at character after eoln */
       if ((c = fgetc(fp)) == EOF || c == '>') {
 	debug(printf("c == EOF or >.  Returning true\n"));
 	*nextchar = c;
@@ -388,6 +390,7 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 	strlenp = strlen(p);
 	memmove(ptr,p,strlenp);
         ptr[strlenp] = '\0';
+	debug(printf("Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
       } else {
 	p = fgets(ptr,remainder+1,fp);
       }
@@ -398,12 +401,15 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else {
 	debug(printf("Read %s\n",ptr));
-	if ((p = find_bad_char(ptr)) != NULL) {
+	while ((p = find_bad_char(ptr)) != NULL) {
 	  /* Handle PC line feed ^M */
 	  ptr = p++;
-	  *eolnp = false;
-	  debug(printf("Found control-M/space.  Advancing to %s\n",p));
-	} else if ((p = index(ptr,'\n')) != NULL) {
+	  strlenp = strlen(p);
+	  memmove(ptr,p,strlenp);
+	  ptr[strlenp] = '\0';
+	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	}
+	if ((p = index(ptr,'\n')) != NULL) {
 	  ptr = p;
 	  *eolnp = true;
 	  debug(printf("line == EOLN.  Continuing\n"));
@@ -448,6 +454,7 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
       debug(printf("remainder <= 0.  Cycling\n"));
 
     } else if (eolnp == true) {
+      /* Peek at character after eoln */
       if ((c = fgetc(fp)) == EOF || c == '>') {
 	debug(printf("c == EOF or >.  Returning\n"));
 	*nextchar = c;
@@ -469,6 +476,7 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
         strlenp = strlen(p);
 	memmove(ptr,p,strlenp);
         ptr[strlenp] = '\0';
+	debug(printf("Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
       } else {
 	p = fgets(ptr,remainder+1,fp);
       }
@@ -478,12 +486,15 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 	break;
       } else {
 	debug(printf("Read %s\n",ptr));
-	if ((p = find_bad_char(ptr)) != NULL) {
+	while ((p = find_bad_char(ptr)) != NULL) {
 	  /* Handle PC line feed ^M */
 	  ptr = p++;
-	  eolnp = false;
-	  debug(printf("Found control-M/space.  Advancing to %s\n",p));
-	} else if ((p = index(ptr,'\n')) != NULL) {
+	  strlenp = strlen(p);
+	  memmove(ptr,p,strlenp);
+	  ptr[strlenp] = '\0';
+	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	} 
+	if ((p = index(ptr,'\n')) != NULL) {
 	  ptr = p;
 	  eolnp = true;
 	  debug(printf("line == EOLN.  Continuing\n"));
@@ -766,13 +777,13 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
 
   new = (T) MALLOC(sizeof(*new));
 
-  if (Initc == '\0') {
-    if ((Initc = input_init(input)) == EOF) {
+  if (*nextchar == '\0') {
+    if ((*nextchar = input_init(input)) == EOF) {
       *nextchar = EOF;
       return NULL;
     }
   }
-  if (Initc != '>') {
+  if (*nextchar != '>') {
     blank_header(new);
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
@@ -784,7 +795,6 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
     /* File ends during header.  Continue with a sequence of length 0. */
     /* fprintf(stderr,"File ends after header\n"); */
   }
-  Initc = *nextchar;
 
   if (skiplength > 0) {
     if (maponlyp == false) {
@@ -841,6 +851,34 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   debug(Sequence_print(new,/*uppercasep*/false,/*wraplength*/60,/*trimmedp*/false));
   return new;
 }
+
+
+T
+Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp) {
+  T queryseq;
+
+  while (1) {
+    if (*input == NULL || feof(*input)) {
+      if (*nfiles == 0) {
+	*nextchar = EOF;
+	return NULL;
+      } else {
+	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
+	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
+	}
+	(*files)++;
+	(*nfiles)--;
+	*nextchar = '\0';
+      }
+    }
+    if (*input != NULL) {
+      if ((queryseq = Sequence_read(&(*nextchar),*input,maponlyp)) != NULL) {
+	return queryseq;
+      }
+    }
+  }
+}
+
 
 T
 Sequence_read_unlimited (FILE *input) {

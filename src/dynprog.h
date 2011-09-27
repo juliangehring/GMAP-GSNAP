@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.53 2007/04/23 15:52:16 twu Exp $ */
+/* $Id: dynprog.h,v 1.54 2007/06/22 18:17:11 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -9,6 +9,8 @@
    and low sequence quality, respectively */
 #define DEFECT_HIGHQ 0.003
 #define DEFECT_MEDQ 0.014
+
+#define UNKNOWNJUMP -1000000
 
 #define T Dynprog_T
 typedef struct T *T;

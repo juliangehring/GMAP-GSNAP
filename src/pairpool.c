@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.39 2007/04/23 17:50:17 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.40 2007/06/21 03:19:27 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -312,12 +312,25 @@ Pairpool_push_existing (List_T list, T this, Pair_T pair) {
   int n;
 
   debug(
+	Pair_T head;
 	if (pair->gapp == true) {
-	  printf("Pushing gap %p: queryjump=%d, genomejump=%d\n",
+	  printf("Pushing gap %p: queryjump=%d, genomejump=%d onto ",
 		 pair,pair->queryjump,pair->genomejump);
 	} else {
-	  printf("Pushing %p: %d %d %c %c %c\n",
+	  printf("Pushing %p: %d %d %c %c %c onto ",
 		 pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	}
+	if (list == NULL) {
+	  printf("NULL\n");
+	} else {
+	  head = list->first;
+	  if (head->gapp == true) {
+	    printf("gap %p: queryjump=%d, genomejump=%d\n",
+		   head,head->queryjump,head->genomejump);
+	  } else {
+	    printf("%p: %d %d %c %c %c\n",
+		   head,head->querypos,head->genomepos,head->cdna,head->comp,head->genome);
+	  }
 	}
 	);
   

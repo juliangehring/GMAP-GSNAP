@@ -1,4 +1,4 @@
-/* $Id: blackboard.h,v 1.12 2005/10/14 19:05:33 twu Exp $ */
+/* $Id: blackboard.h,v 1.13 2007/08/28 23:24:30 twu Exp $ */
 #ifndef BLACKBOARD_INCLUDED
 #define BLACKBOARD_INCLUDED
 #include <stdio.h>
@@ -16,12 +16,17 @@
 typedef struct T *T;
 
 extern T
-Blackboard_new (FILE *input, int nextchar, Sequence_T usersegment, int nworkers, Params_T params);
+Blackboard_new (FILE *input, char **files, int nfiles, int nextchar,
+		Sequence_T usersegment, int nworkers, Params_T params);
 extern void
 Blackboard_free (T *old);
 
 extern FILE *
 Blackboard_input (T this);
+extern char **
+Blackboard_files (T this);
+extern int
+Blackboard_nfiles (T this);
 extern int
 Blackboard_nextchar (T this);
 extern Sequence_T

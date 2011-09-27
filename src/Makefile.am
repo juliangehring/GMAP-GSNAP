@@ -1,10 +1,11 @@
 
 if FULLDIST
-bin_PROGRAMS = gmap pmap get-genome gmapindex pmapindex iit_store iit_get iit_dump \
-               oligo-count md5-compute genomeplot pdlimage gdiag
+bin_PROGRAMS = gmap pmap get-genome gmapindex pmapindex iit_store iit_get iit_dump iit_update \
+               oligo-count md5-compute genomeplot pdlimage gdiag libiit.so libgenome.so
 else
-bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump 
+bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump iit_update
 endif
+
 
 
 GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
@@ -20,7 +21,8 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
  matchpool.c matchpool.h stage1.c stage1.h \
- intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h oligoindex.c oligoindex.h \
+ intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h \
+ orderstat.c orderstat.h oligoindex.c oligoindex.h \
  scores.h intron.c intron.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h \
@@ -36,20 +38,14 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 # In front of stage3
-# FULLDIST
-# GMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
-# NORMAL
-GMAP_FILES_BETA = 
+GMAP_FILES_BETA =
 
 gmap_CC = $(PTHREAD_CC)
-if FULLDIST
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
-else
 gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
-endif
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
-dist_gmap_SOURCES = $(GMAP_FILES) $(GMAP_FILES_BETA)
+
+dist_gmap_SOURCES = $(GMAP_FILES)
 
 
 PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
@@ -65,7 +61,8 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
  matchpool.c matchpool.h stage1.c stage1.h \
- intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h oligoindex.c oligoindex.h \
+ intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h \
+ orderstat.c orderstat.h oligoindex.c oligoindex.h \
  intron.c intron.h scores.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h dynprog.c dynprog.h boyer-moore.c boyer-moore.h \
@@ -75,12 +72,7 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  blackboard.c blackboard.h params.c params.h \
  getopt.c getopt1.c getopt.h gmap.c
 
-# In front of stage3
-# FULLDIST
-# PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
-# NORMAL
-PMAP_FILES_BETA = 
-
+PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h
 
 pmap_CC = $(PTHREAD_CC)
 if FULLDIST
@@ -91,9 +83,6 @@ endif
 pmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmap_LDADD = $(PTHREAD_LIBS)
 
-# FULLDIST
-# dist_pmap_SOURCES = $(PMAP_FILES) $(PMAP_FILES_BETA)
-# NORMAL
 nodist_pmap_SOURCES = $(PMAP_FILES) $(PMAP_FILES_BETA)
 
 
@@ -130,9 +119,7 @@ pmapindex_CC = $(PTHREAD_CC)
 pmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DPMAP=1
 pmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmapindex_LDADD = $(PTHREAD_LIBS)
-# FULLDIST
-# dist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
-# NORMAL
+
 nodist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
 
 
@@ -153,6 +140,41 @@ get_genome_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 get_genome_LDADD = $(PTHREAD_LIBS)
 dist_get_genome_SOURCES = $(GET_GENOME_FILES)
+
+
+LIBGENOME_SO_FILES = fopen.h bool.h types.h separator.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ md5.c md5.h complement.h sequence.c sequence.h \
+ genome.c genome.h \
+ genomicpos.c genomicpos.h chrom.c chrom.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h \
+ datadir.c datadir.h 
+
+if FULLDIST
+libgenome_so_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -fPIC -DGMAPDB=\"$(GMAPDB)\"
+libgenome_so_LDFLAGS = -shared $(AM_LDFLAGS) $(SHARED_LDFLAG) $(PTHREAD_CFLAGS)
+libgenome_so_LDADD = $(PTHREAD_LIBS)
+libgenome_so_SOURCES = $(LIBGENOME_SO_FILES)
+endif
+
+
+
+IIT_UPDATE_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-write.c iit-write.h \
+ chrom.c chrom.h iit-read.c iit-read.h \
+ getopt.c getopt1.c getopt.h iit_update.c
+iit_update_CFLAGS = $(AM_CFLAGS)  $(PTHREAD_CFLAGS)
+iit_update_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+iit_update_LDADD = $(PTHREAD_LIBS)
+dist_iit_update_SOURCES = $(IIT_UPDATE_FILES)
 
 
 IIT_STORE_FILES = fopen.h bool.h types.h \
@@ -180,6 +202,20 @@ iit_get_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 iit_get_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_get_LDADD = $(PTHREAD_LIBS)
 dist_iit_get_SOURCES = $(IIT_GET_FILES)
+
+LIBIIT_SO_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h
+
+if FULLDIST
+libiit_so_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -fPIC
+libiit_so_LDFLAGS = -shared $(AM_LDFLAGS) $(SHARED_LDFLAG) $(PTHREAD_CFLAGS)
+libiit_so_LDADD = $(PTHREAD_LIBS)
+libiit_so_SOURCES = $(LIBIIT_SO_FILES)
+endif
 
 
 IIT_DUMP_FILES = fopen.h bool.h types.h \

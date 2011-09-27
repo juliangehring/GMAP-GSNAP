@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.110 2007/05/25 16:12:15 twu Exp $ */
+/* $Id: pair.h,v 1.111 2007/08/16 20:20:39 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -67,8 +67,8 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool zerobasedp, bool maponlyp,
 			bool diagnosticp, int stage1_genomicstart, int stage1_genomiclength,
-			double stage2_runtime, int stage2_indexsize, double stage2_defectrate,
-			double stage3_runtime);
+			double stage2_runtime, int stage2_indexsize, double stage3_runtime,
+			double stage3_defectrate);
 
 extern void
 Pair_print_mutation (struct T *pairs, int npairs, int cdna_direction,

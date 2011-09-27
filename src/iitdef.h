@@ -1,4 +1,4 @@
-/* $Id: iitdef.h,v 1.11 2005/10/19 03:48:58 twu Exp $ */
+/* $Id: iitdef.h,v 1.14 2007/07/16 17:21:55 twu Exp $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -14,6 +14,12 @@
 #include "access.h"
 #include "interval.h"
 
+
+#define IIT_LATEST_VERSION 2
+/* version 1 starts with nintervals */
+/* version 2 starts with 0, then version number.  Also adds sign to each interval.  */
+
+
 typedef struct FNode_T *FNode_T;
 struct FNode_T {
   unsigned int value;
@@ -26,6 +32,7 @@ struct FNode_T {
 #define T IIT_T
 struct T {
   char *name;			/* Name of IIT (optional) */
+  int version;			
 
   Access_T access;		/* access type */
 
@@ -38,14 +45,22 @@ struct T {
 #endif
 
   int nintervals;
-  int ntypes;
+  int ntypes;			/* Always >= 1 */
+  int nfields;			/* Can be zero */
   int nnodes;
-  int *sigmas;
-  int *omegas;
+  int *alphas;			/* Strict ordering of Interval_low */
+  int *betas;			/* Strict ordering of Interval_high */
+  int *sigmas;			/* Ordering for IIT */
+  int *omegas;			/* Ordering for IIT */
   struct FNode_T *nodes;
   struct Interval_T *intervals;
+
   unsigned int *typepointers;
   char *typestrings;
+
+  unsigned int *fieldpointers;
+  char *fieldstrings;
+
   int *labelorder;
   unsigned int *labelpointers;
   char *labels;

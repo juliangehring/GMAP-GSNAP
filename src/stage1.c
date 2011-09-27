@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c,v 1.160 2007/06/02 20:39:42 twu Exp $";
+static char rcsid[] = "$Id: stage1.c,v 1.165 2007/09/20 22:33:45 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -46,8 +46,12 @@ typedef enum {TRIAL0, TRIAL1, TRIAL2, TRIAL3, FAILED} Trial_T;
 #define MAX_NSAMPLES 50
 
 #define SIZEBOUND 0.7
+#if 0
 #define MAXMATCHPAIRS_PREUNIQUE 500
 #define MAXMATCHPAIRS_POSTUNIQUE 80
+#endif
+
+#define NENTRIES_FOR_CLUSTERSIZE_FILTER 50
 
 #define SUFFICIENT_FSUPPORT 0.90
 #define MIN_SUPPORT_FRACTION 0.30
@@ -67,8 +71,6 @@ typedef enum {TRIAL0, TRIAL1, TRIAL2, TRIAL3, FAILED} Trial_T;
 
 #define PROMISCUOUS 4
 
-#define USE_MATCHPOOL 1
-
 /* Debugging of scanning for 24-mers */
 #ifdef DEBUG
 #define debug(x) x
@@ -77,6 +79,13 @@ static Genome_T global_genome;
 static char *queryuc_ptr;
 #else
 #define debug(x)
+#endif
+
+/* Final matchlist */
+#ifdef DEBUG0
+#define debug0(x) x
+#else
+#define debug0(x)
 #endif
 
 /* Debugging of clusterlist.  May want to turn on DEBUG1 or DEBUG2 in matchpair.c. */
@@ -131,8 +140,6 @@ struct T {
   Reader_T reader;
   Block_T block5;
   Block_T block3;
-  Block_T block5_save;
-  Block_T block3_save;
   List_T matches5;
   List_T matches3;
   Genomicpos_T **plus_positions;
@@ -321,8 +328,6 @@ Stage1_new (Sequence_T queryuc, int maxtotallen, int stage1size, int maxentries,
 #endif
   new->block5 = Block_new(FIVE,new->reader);
   new->block3 = Block_new(THREE,new->reader);
-  new->block5_save = Block_new(FIVE,new->reader);
-  new->block3_save = Block_new(THREE,new->reader);
   new->matches5 = NULL;
   new->matches3 = NULL;
 
@@ -355,9 +360,6 @@ Stage1_free (T *old, bool completep) {
   List_T p;
   Matchpair_T matchpair;
   int i;
-#ifndef USE_MATCHPOOL
-  Match_T match;
-#endif
 
   /* Stage1_check(*old); */
 
@@ -387,24 +389,6 @@ Stage1_free (T *old, bool completep) {
   }
   List_free(&(*old)->matchlist);
 
-#ifdef USE_MATCHPOOL
-  /* Not necessary to free matches, since matchpool gets reset */
-#else
-  for (p = (*old)->matches5; p != NULL; p = p->rest) {
-    match = p->first;
-    Match_free(&match);
-  }
-  List_free(&(*old)->matches5);
-
-  for (p = (*old)->matches3; p != NULL; p = p->rest) {
-    match = p->first;
-    Match_free(&match);
-  }
-  List_free(&(*old)->matches3);
-#endif
-
-  Block_free(&(*old)->block3_save);
-  Block_free(&(*old)->block5_save);
   Block_free(&(*old)->block3);
   Block_free(&(*old)->block5);
   Reader_free(&(*old)->reader);
@@ -549,6 +533,7 @@ pair_up (bool *foundpairp, List_T matchpairlist, List_T newmatches5, List_T newm
     debug(printf("--No new matching pairs found\n"));
     *foundpairp = false;
 
+#if 0
   } else if (List_length(newmatchpairs) > MAXMATCHPAIRS_PREUNIQUE) {
     debug(printf("--Too many matching pairs preunique (%d > %d)\n",
 		 List_length(newmatchpairs),MAXMATCHPAIRS_PREUNIQUE));
@@ -558,10 +543,12 @@ pair_up (bool *foundpairp, List_T matchpairlist, List_T newmatches5, List_T newm
       Matchpair_free(&matchpair);
     }
     List_free(&newmatchpairs);
+#endif
 
   } else {
     debug(printf("--%d matching pairs found before uniq\n",List_length(newmatchpairs)));
     newmatchpairs = Matchpair_filter_unique(newmatchpairs,/*removedupsp*/false);
+#if 0
     if (List_length(newmatchpairs) > MAXMATCHPAIRS_POSTUNIQUE) {
       debug(printf("--Too many matching pairs postunique (%d > %d)\n",
 		   List_length(newmatchpairs),MAXMATCHPAIRS_POSTUNIQUE));
@@ -574,6 +561,7 @@ pair_up (bool *foundpairp, List_T matchpairlist, List_T newmatches5, List_T newm
       List_free(&newmatchpairs);
       
     } else {
+#endif
       debug(printf("--%d matching pairs found after uniq\n",List_length(newmatchpairs)));
       *foundpairp = true;
       for (p = newmatchpairs; p != NULL; p = p->rest) {
@@ -591,7 +579,9 @@ pair_up (bool *foundpairp, List_T matchpairlist, List_T newmatches5, List_T newm
 	matchpairlist = List_push(matchpairlist,(Matchpair_T) List_head(p));
       }
       List_free(&newmatchpairs);
+#if 0
     }
+#endif
   }
 
   return matchpairlist;
@@ -618,21 +608,15 @@ identify_singles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     position = positions[0];
   }    
 
-#ifdef USE_MATCHPOOL
   Matchpool_save(matchpool);
-#endif
+
   while (donep == false) {
     if (Chrsubset_includep(chrsubset,position,chromosome_iit) == true) {
       if (++nentries > maxentries) {
 	donep = true;
       } else {
-#ifdef USE_MATCHPOOL
 	newmatches = Matchpool_push(newmatches,matchpool,merstart,forwardp,fivep,
 				    position+positionadj,chromosome_iit);
-#else
-	newmatches = List_push(newmatches,(void *) Match_new(merstart,forwardp,fivep,
-							     position+positionadj,chromosome_iit));
-#endif
       }
     }
 
@@ -649,16 +633,10 @@ identify_singles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     *newp = false;
     *overflowp = true;
     debug(printf("  Singles overflow at %d\n",querypos));
-#ifdef USE_MATCHPOOL
+
     /* Not necessary to free */
     Matchpool_restore(matchpool);
-#else
-    for (p = newmatches; p != NULL; p = p->rest) {
-      match = (Match_T) p->first;
-      Match_free(&match);
-    }
-    List_free(&newmatches);
-#endif
+
   } else {
     *newp = (newmatches != NULL) ? true : false;
     *overflowp = false;
@@ -677,15 +655,8 @@ identify_singles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
 	    );
       match = (Match_T) p->first;
       Match_set_weight(match,weight);
-#ifndef USE_MATCHPOOL
-      matches = List_push(matches,(void *) match);
-#endif
     }
-#ifdef USE_MATCHPOOL
     matches = Matchpool_transfer(matches,newmatches);
-#else
-    List_free(&newmatches);
-#endif
   }
   return matches;
 }
@@ -769,9 +740,8 @@ identify_doubles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     }
   }
 
-#ifdef USE_MATCHPOOL
   Matchpool_save(matchpool);
-#endif
+
   while (donep == false) {
     debug4(printf("  %d:%u %d:%u\n",i,position0,j,position1));
     debug4(
@@ -819,13 +789,8 @@ identify_doubles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
 	if (++nentries > maxentries) {
 	  donep = true;
 	} else {
-#ifdef USE_MATCHPOOL
 	  newmatches = Matchpool_push(newmatches,matchpool,merstart,forwardp,fivep,
 				      position0+positionadj,chromosome_iit);
-#else
-	  newmatches = List_push(newmatches,(void *) Match_new(merstart,forwardp,fivep,
-							       position0+positionadj,chromosome_iit));
-#endif
 	}
       }
 
@@ -850,16 +815,10 @@ identify_doubles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     *newp = false;
     *overflowp = true;
     /* debug(printf("  Doubles overflow at %d\n\n",querypos1)); */
-#ifdef USE_MATCHPOOL
+
     /* Not necessary to free */
     Matchpool_restore(matchpool);
-#else
-    for (p = newmatches; p != NULL; p = p->rest) {
-      match = p->first;
-      Match_free(&match);
-    }
-    List_free(&newmatches);
-#endif
+
   } else {
     /* debug(printf("Leaving identify_doubles with %d matches\n\n",List_length(newmatches))); */
     *newp = (newmatches != NULL) ? true : false;
@@ -875,7 +834,7 @@ identify_doubles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
 
     for (p = newmatches; p != NULL; p = p->rest) {
       debug(
-	    printf("  Match at %d: #%d(chr%s):%u (forwardp:%d, npairings:%d)",
+	    printf("  Match at %d: #%d(chr%s):%u (forwardp:%d, npairings:%d) ",
 		   Match_querypos(List_head(p)),Match_chrnum(List_head(p)),
 		   Match_chr(List_head(p),chromosome_iit),
 		   Match_chrpos(List_head(p)),Match_forwardp(List_head(p)),
@@ -885,15 +844,8 @@ identify_doubles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
 	    );
       match = (Match_T) p->first;
       Match_set_weight(match,weight);
-#ifndef USE_MATCHPOOL
-      matches = List_push(matches,(void *) match);
-#endif
     }
-#ifdef USE_MATCHPOOL
     matches = Matchpool_transfer(matches,newmatches);
-#else
-    List_free(&newmatches);
-#endif
   }
   return matches;
 }
@@ -940,9 +892,9 @@ identify_triples (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     }
   }
       
-#ifdef USE_MATCHPOOL
+
   Matchpool_save(matchpool);
-#endif
+
   while (donep == false) {
     debug4(printf("  %d:%u %d:%u %d:%u\n",
 		  i,position0,j,position1,k,position2));
@@ -1013,13 +965,8 @@ identify_triples (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
 	if (++nentries > maxentries) {
 	  donep = true;
 	} else {
-#ifdef USE_MATCHPOOL
 	  newmatches = Matchpool_push(newmatches,matchpool,merstart,forwardp,fivep,
 				      position0+positionadj,chromosome_iit);
-#else
-	  newmatches = List_push(newmatches,(void *) Match_new(merstart,forwardp,fivep,
-							       position0+positionadj,chromosome_iit));
-#endif
 	}
       }
 
@@ -1048,15 +995,7 @@ identify_triples (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     *newp = false;
     *overflowp = true;
     debug(printf("  Triples overflow at %d\n",querypos2));
-#ifdef USE_MATCHPOOL
     Matchpool_restore(matchpool);
-#else
-    for (p = newmatches; p != NULL; p = p->rest) {
-      match = p->first;
-      Match_free(&match);
-    }
-    List_free(&newmatches);
-#endif
   } else {
     *newp = (newmatches != NULL) ? true : false;
     *overflowp = false;
@@ -1066,15 +1005,8 @@ identify_triples (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     for (p = newmatches; p != NULL; p = p->rest) {
       match = (Match_T) p->first;
       Match_set_weight(match,weight);
-#ifndef USE_MATCHPOOL
-      matches = List_push(matches,(void *) match);
-#endif
     }
-#ifdef USE_MATCHPOOL
     matches = Matchpool_transfer(matches,newmatches);
-#else
-    List_free(&newmatches);
-#endif
   }
 
   return matches;
@@ -1316,9 +1248,6 @@ stutter (T this,
   List_T newmatches5 = NULL, newmatches3 = NULL;
   int stutterdist5 = 0, stutterdist3 = 0, maxbases, start5, start3, n5hits = 0, n3hits = 0;
   bool newp, foundpairp;
-#ifndef USE_MATCHPOOL
-  Match_T match;
-#endif
 
   start5 = Block_querypos(this->block5);
   start3 = Block_querypos(this->block3);
@@ -1388,19 +1317,8 @@ stutter (T this,
 			    this->matches5,this->matches3,this->maxtotallen,
 			    this->stage1size,this->interval,this->trimstart,this->trimend,this->trimlength);
 
-#ifdef USE_MATCHPOOL
   this->matches5 = Matchpool_transfer(this->matches5,newmatches5);
   this->matches3 = Matchpool_transfer(this->matches3,newmatches3);
-#else
-  while (newmatches5 != NULL) {
-    newmatches5 = List_pop(newmatches5,(void **) &match);
-    this->matches5 = List_push(this->matches5,(void *) match);
-  }
-  while (newmatches3 != NULL) {
-    newmatches3 = List_pop(newmatches3,(void **) &match);
-    this->matches3 = List_push(this->matches3,(void *) match);
-  }
-#endif
 
   return;
 }
@@ -1420,9 +1338,6 @@ fill_in_5 (T this, List_T dangling3,
   List_T newmatches5 = NULL;
   int fillindist5 = 0, maxbases, start5;
   bool newp, foundpairp = false;
-#ifndef USE_MATCHPOOL
-  Match_T match;
-#endif
 
   start5 = Block_querypos(this->block5);
   maxbases = MAX_FILL_IN;
@@ -1465,14 +1380,7 @@ fill_in_5 (T this, List_T dangling3,
 			    (List_T) NULL,this->matches3,this->maxtotallen,
 			    this->stage1size,this->interval,this->trimstart,this->trimend,this->trimlength);
 
-#ifdef USE_MATCHPOOL
   this->matches5 = Matchpool_transfer(this->matches5,newmatches5);
-#else
-  while (newmatches5 != NULL) {
-    newmatches5 = List_pop(newmatches5,(void **) &match);
-    this->matches5 = List_push(this->matches5,(void *) match);
-  }
-#endif
 
   debug(printf("*** Ending fill_in_5 ***\n"));
   return;
@@ -1493,9 +1401,6 @@ fill_in_3 (T this, List_T dangling5,
   List_T newmatches3 = NULL;
   int fillindist3 = 0, maxbases, start3;
   bool newp, foundpairp = false;
-#ifndef USE_MATCHPOOL
-  Match_T match;
-#endif
 
   start3 = Block_querypos(this->block3);
   maxbases = MAX_FILL_IN;
@@ -1538,14 +1443,7 @@ fill_in_3 (T this, List_T dangling5,
 			    this->matches5,(List_T) NULL,this->maxtotallen,
 			    this->stage1size,this->interval,this->trimstart,this->trimend,this->trimlength);
 
-#ifdef USE_MATCHPOOL
   this->matches3 = Matchpool_transfer(this->matches3,newmatches3);
-#else
-  while (newmatches3 != NULL) {
-    newmatches3 = List_pop(newmatches3,(void **) &match);
-    this->matches3 = List_push(this->matches3,(void *) match);
-  }
-#endif
 
   debug(printf("*** Ending fill_in_3 ***\n"));
   return;
@@ -1564,16 +1462,13 @@ sample (T this, int nskip, int maxentries2,
   List_T newmatches5 = NULL, newmatches3 = NULL;
   int n5hits = 0, n3hits = 0;
   bool donep = false, newp;
-#ifndef USE_MATCHPOOL
-  Match_T match;
-#endif
 
 #ifdef OLDSAMPLING
   Block_reset_ends(this->block5);
   Block_reset_ends(this->block3);
 #else
-  Block_restore(this->block5,this->block5_save);
-  Block_restore(this->block3,this->block3_save);
+  Block_restore(this->block5);
+  Block_restore(this->block3);
 #endif
 
   while (!donep) {
@@ -1601,15 +1496,8 @@ sample (T this, int nskip, int maxentries2,
 	if (newp) {
 	  n5hits++;
 	  debug3(printf("    n5hits: %d, n3hits: %d\n",n5hits,n3hits));
-#ifdef USE_MATCHPOOL
 	  this->matches5 = Matchpool_transfer(this->matches5,newmatches5);
 	  newmatches5 = NULL;
-#else
-	  while (newmatches5 != NULL) {
-	    newmatches5 = List_pop(newmatches5,(void **) &match);
-	    this->matches5 = List_push(this->matches5,(void *) match);
-	  }
-#endif
 	  Block_skip(this->block5,nskip);
 	}
       }
@@ -1637,15 +1525,8 @@ sample (T this, int nskip, int maxentries2,
 	if (newp) {
 	  n3hits++;
 	  debug3(printf("    n5hits: %d, n3hits: %d\n",n5hits,n3hits));
-#ifdef USE_MATCHPOOL
 	  this->matches3 = Matchpool_transfer(this->matches3,newmatches3);
 	  newmatches3 = NULL;
-#else
-	  while (newmatches3 != NULL) {
-	    newmatches3 = List_pop(newmatches3,(void **) &match);
-	    this->matches3 = List_push(this->matches3,(void *) match);
-	  }
-#endif
 	  Block_skip(this->block3,nskip);
 	}
       }
@@ -1909,9 +1790,6 @@ find_first_pair (T this,
   List_T newmatches5 = NULL, newmatches3 = NULL;
   bool donep = false, newp, foundpairp = false;
   double n5hits = 0.0, n3hits = 0.0;
-#ifndef USE_MATCHPOOL
-  Match_T match;
-#endif
 
   debug(printf("*** Starting stage1 ***\n"));
   debug(printf("Reader querystart is %d and queryend is %d\n",
@@ -1944,15 +1822,8 @@ find_first_pair (T this,
 	  this->matchlist = pair_up(&foundpairp,this->matchlist,newmatches5,NULL,
 				    this->matches5,this->matches3,this->maxtotallen,
 				    this->stage1size,this->interval,this->trimstart,this->trimend,this->trimlength);
-#ifdef USE_MATCHPOOL
 	  this->matches5 = Matchpool_transfer(this->matches5,newmatches5);
 	  newmatches5 = NULL;
-#else
-	  while (newmatches5 != NULL) {
-	    newmatches5 = List_pop(newmatches5,(void **) &match);
-	    this->matches5 = List_push(this->matches5,(void *) match);
-	  }
-#endif
 	}
       }
 
@@ -1983,15 +1854,8 @@ find_first_pair (T this,
 	  this->matchlist = pair_up(&foundpairp,this->matchlist,NULL,newmatches3,
 				    this->matches5,this->matches3,this->maxtotallen,
 				    this->stage1size,this->interval,this->trimstart,this->trimend,this->trimlength);
-#ifdef USE_MATCHPOOL
 	  this->matches3 = Matchpool_transfer(this->matches3,newmatches3);
 	  newmatches3 = NULL;
-#else
-	  while (newmatches3 != NULL) {
-	    newmatches3 = List_pop(newmatches3,(void **) &match);
-	    this->matches3 = List_push(this->matches3,(void *) match);
-	  }
-#endif
 	}
       }
     }
@@ -2052,11 +1916,7 @@ get_dangling (List_T matches, Matchpool_T matchpool) {
   for (p = matches; p != NULL; p = p->rest) {
     match = (Match_T) p->first;
     if (Match_npairings(match) == 0) {
-#ifdef USE_MATCHPOOL
       dangling = Matchpool_push_existing(dangling,matchpool,match);
-#else
-      dangling = List_push(dangling,match);
-#endif
     }
   }
   return dangling;
@@ -2090,8 +1950,8 @@ compute_matchlist (T this,
   frontier_end = Block_querypos(this->block3);
 
   /* Save blocks as prerequisite for sampling */
-  Block_save(this->block5_save,this->block5);
-  Block_save(this->block3_save,this->block3);
+  Block_save(this->block5);
+  Block_save(this->block3);
 #endif
 
   if (this->matchlist != NULL && 
@@ -2353,12 +2213,12 @@ Stage1_compute (Sequence_T queryuc,
   T this = NULL;
   List_T matchlist = NULL, p;
   Matchpair_T matchpair;
-  int trimlength, trimstart, trimend, maxtotallen, stage1size, maxentries, maxsupport = 0;
+  int trimlength, trimstart, trimend, maxtotallen, stage1size, maxentries, support_cutoff = 0, clustersize_cutoff;
   Genomicpos_T **plus_positions = NULL, **minus_positions = NULL;
   int *plus_npositions = NULL, *minus_npositions = NULL;
   bool *processedp = NULL;
   Trial_T trial, maxtrial;
-#ifdef DEBUG
+#ifdef DEBUG0
   Match_T match5, match3;
 #endif
 
@@ -2473,49 +2333,64 @@ Stage1_compute (Sequence_T queryuc,
 
   this->matchlist = Matchpair_filter_unique(this->matchlist,/*removedupsp*/true);
 
-  this->nentries_used = this->nentries_total = 0;
-  /* Filter matchlist */
-  if (this->matchlist != NULL) {
+  this->nentries_used = this->nentries_total = List_length(this->matchlist);
+
+  if (this->nentries_total > 1) {
+    /* Filter matchlist based on support */
     for (p = this->matchlist; p != NULL; p = List_next(p)) {
       matchpair = (Matchpair_T) List_head(p);
-      if (Matchpair_support(matchpair) > maxsupport) {
-	maxsupport = Matchpair_support(matchpair);
+      if (Matchpair_support(matchpair) > support_cutoff) {
+	support_cutoff = Matchpair_support(matchpair);
       }
-      this->nentries_total++;
     }
 #ifdef PMAP
-    maxsupport -= 15*stage1size;
+    support_cutoff -= 15*stage1size;
 #else
-
-   maxsupport -= 5*stage1size;
+    support_cutoff -= 5*stage1size;
 #endif
 
-    this->nentries_used = this->nentries_total;
     for (p = this->matchlist; p != NULL; p = List_next(p)) {
       matchpair = (Matchpair_T) List_head(p);
-      if (Matchpair_support(matchpair) < MIN_SUPPORT_FRACTION*maxsupport) {
+      if (Matchpair_support(matchpair) < MIN_SUPPORT_FRACTION*support_cutoff) {
 	Matchpair_clear_usep(matchpair);
 	this->nentries_used--;
       }
     }
+
+    /* If too many entries and one entry looks significant, filter poor entries */
+    if (this->nentries_used > NENTRIES_FOR_CLUSTERSIZE_FILTER) {
+      clustersize_cutoff = Matchpair_assign_pathsizes(this->matchlist,this->matches5,this->matches3,stage1size,
+						      this->maxtotallen,trimstart,trimend,trimlength);
+      if (clustersize_cutoff > 10) {
+	clustersize_cutoff = 4;
+      
+	for (p = this->matchlist; p != NULL; p = List_next(p)) {
+	  matchpair = (Matchpair_T) List_head(p);
+	  if (Matchpair_clustersize(matchpair) < clustersize_cutoff) {
+	    Matchpair_clear_usep(matchpair);
+	    this->nentries_used--;
+	  }
+	}
+      }
+    }
   }
 
-  debug(printf("Matchlist has %d entries\n",List_length(this->matchlist)));
-  debug(for (p = this->matchlist; p != NULL; p = p->rest) {
-	  matchpair = (Matchpair_T) List_head(p);
-	  match5 = Matchpair_bound5(matchpair);
-	  match3 = Matchpair_bound3(matchpair);
-	  printf("Entry: #%d(%s):%u (%d)-#%d(%s):%u (%d) for %d..%d, usep = %d\n",
-		 Match_chrnum(match5),Match_chr(match5,chromosome_iit),
-		 Match_chrpos(match5),Match_forwardp(match5),
-		 Match_chrnum(match3),Match_chr(match3,chromosome_iit),
-		 Match_chrpos(match3),Match_forwardp(match3),
-		 Match_querypos(match5),Match_querypos(match3),Matchpair_usep(matchpair));
+  debug0(for (p = this->matchlist; p != NULL; p = p->rest) {
+	   matchpair = (Matchpair_T) List_head(p);
+	   match5 = Matchpair_bound5(matchpair);
+	   match3 = Matchpair_bound3(matchpair);
+	   printf("Entry: #%d(%s):%u (%d)-#%d(%s):%u (%d) for %d..%d, support = %d, clustersize = %d, usep = %d\n",
+		  Match_chrnum(match5),Match_chr(match5,chromosome_iit),
+		  Match_chrpos(match5),Match_forwardp(match5),
+		  Match_chrnum(match3),Match_chr(match3,chromosome_iit),
+		  Match_chrpos(match3),Match_forwardp(match3),
+		  Match_querypos(match5),Match_querypos(match3),
+		  Matchpair_support(matchpair),Matchpair_clustersize(matchpair),Matchpair_usep(matchpair));
 	});
-	  
+  
   this->runtime = Stopwatch_stop(stopwatch);
 
-  debug(printf("Finished with stage 1\n"));
+  debug0(printf("Finished with stage 1\n"));
   return this;
 }
 

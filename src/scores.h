@@ -1,4 +1,4 @@
-/* $Id: scores.h,v 1.3 2005/02/08 00:00:20 twu Exp $ */
+/* $Id: scores.h,v 1.3 2005-02-08 00:00:20 twu Exp $ */
 #ifndef SCORES_INCLUDED
 #define SCORES_INCLUDED
 

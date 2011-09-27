@@ -1,4 +1,4 @@
-/* $Id: intron.h,v 1.8 2006/05/06 07:43:30 twu Exp $ */
+/* $Id: intron.h,v 1.8 2006-05-06 07:43:30 twu Exp $ */
 #ifndef INTRON_INCLUDED
 #define INTRON_INCLUDED
 #include "bool.h"

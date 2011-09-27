@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_process.pl.in,v 1.7 2010/02/10 16:55:45 twu Exp $
+# $Id: gmap_process.pl.in,v 1.8 2010-07-21 22:02:18 twu Exp $
 
 use warnings;
 
@@ -25,6 +25,7 @@ if ($#ARGV < 0) {
 } else {
     process_fasta(\@ARGV);
 }
+
 check_processed();
 
 exit;
@@ -130,15 +131,14 @@ sub process_fasta {
 sub check_processed {
   $nwarnings = 0;
   foreach $contig (keys %coords) {
-    if (!defined($processedp{$contig}) && !defined($noversionp{$contig})) {
+    if (!defined($processedp{$contig})) {
       print STDERR "Warning!!  Contig $contig was listed in coords file, but not seen in a FASTA file\n";
       $nwarnings++;
     }
   }
   if ($nwarnings > 0) {
-    print STDERR "Build halted.  A total of $nwarnings contigs were listed in coords file, but not seen in a FASTA file\n";
-    print STDERR "Either provide the correct FASTA files, or comment out these contigs in the coords file $coord_file\n";
-    exit(9);
+    print STDERR "Warning: A total of $nwarnings contigs were listed in coords file, but not seen in a FASTA file\n";
+    print STDERR "Should provide the correct FASTA files, or comment out these contigs in the coords file $coord_file\n";
   }
   return;
 }

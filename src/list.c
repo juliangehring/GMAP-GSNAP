@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c,v 1.20 2010/02/03 18:10:24 twu Exp $";
+static char rcsid[] = "$Id: list.c,v 1.21 2010-07-16 22:19:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -214,6 +214,26 @@ List_reinsert (T *listptr, T cell) {
   *listptr = cell;
 
   return;
+}
+
+T
+List_transfer_one (T dest, T *source) {
+  T next;
+
+  next = (*source)->rest;
+  (*source)->rest = dest;
+  dest = *source;
+  *source = next;
+  return dest;
+}
+
+T
+List_push_existing (T dest, T source) {
+  T next;
+
+  next = source->rest;
+  source->rest = dest;
+  return source;
 }
 
 T

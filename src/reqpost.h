@@ -1,4 +1,4 @@
-/* $Id: reqpost.h,v 1.15 2008/02/28 18:12:06 twu Exp $ */
+/* $Id: reqpost.h,v 1.15 2008-02-28 18:12:06 twu Exp $ */
 #ifndef REQPOST_INCLUDED
 #define REQPOST_INCLUDED
 #include "blackboard.h"

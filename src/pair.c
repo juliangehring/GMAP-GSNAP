@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c,v 1.241 2010/02/03 18:12:54 twu Exp $";
+static char rcsid[] = "$Id: pair.c,v 1.244 2010-07-21 21:46:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -33,7 +33,6 @@ static char rcsid[] = "$Id: pair.c,v 1.241 2010/02/03 18:12:54 twu Exp $";
 #ifdef __STRICT_ANSI__
 #define rint(x) floor(0.5+(x))
 #endif
-
 
 #define DEFAULT_MARGIN 14
 
@@ -743,7 +742,7 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool zerobasedp, bool maponlyp,
 			bool diagnosticp, int stage1_genomicstart, int stage1_genomiclength,
-			double stage2_diag_runtime, double stage2_align_runtime, int stage2_indexsize,
+			double stage2_diag_runtime, double stage2_align_runtime, int stage2_source, int stage2_indexsize,
 			double stage3_runtime, double stage3_defectrate) {
   int querypos1, querypos2, den;
   double fracidentity, coverage, trimmed_coverage;
@@ -797,10 +796,11 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
       FREE(comma2);
       FREE(comma1);
 
-      printf("    Stage 2 diag runtime: %.3f sec\n",stage2_diag_runtime);
-      printf("    Stage 2 align runtime: %.3f sec\n",stage2_align_runtime);
+      /* printf("    Stage 2 diag runtime: %.3f sec\n",stage2_diag_runtime); */
+      /* printf("    Stage 2 align runtime: %.3f sec\n",stage2_align_runtime); */
+      printf("    Stage 2 source: %d\n",stage2_source);
       printf("    Stage 2 indexsize: %d\n",stage2_indexsize);
-      printf("    Stage 3 runtime: %.3f sec\n",stage3_runtime);
+      /* printf("    Stage 3 runtime: %.3f sec\n",stage3_runtime); */
       printf("    Stage 3 defectrate: %f\n",stage3_defectrate);
     }
 
@@ -1083,6 +1083,11 @@ Pair_dump_one (T this, bool zerobasedp) {
     }
     printf(" %c",this->genome);
   }
+
+  if (this->state == BAD) {
+    printf(" bad");
+  }
+
   return;
 }
 
@@ -1845,10 +1850,55 @@ print_gff3_cdna_match (int cdsno, int pathnum, char *dbversion, char *accession,
 }
 
 
+static char
+strand_char (int strand) {
+  switch (strand) {
+    case  1: return '+';
+    case -1: return '-';
+    case  0: return '?';
+    default: return '.';
+  }
+}
+
+
+static void
+print_gff3_est_match (int cdsno, int pathnum, char *dbversion, char *accession, char *chrstring,
+		      Genomicpos_T exon_genomestart, Genomicpos_T exon_genomeend,
+		      int exon_querystart, int exon_queryend, bool watsonp, int cdna_direction,
+		      int pctidentity, List_T tokens) {
+  int feature_strand, target_strand;
+
+  printf("%s\t",chrstring);	/* 1: seqid */
+  printf("%s\t",dbversion);	/* 2: source */
+  printf("EST_match\t");	/* 3: type */
+  if (exon_genomestart < exon_genomeend) {
+    printf("%u\t%u\t",exon_genomestart,exon_genomeend); /* 4,5: start, end */
+  } else {
+    printf("%u\t%u\t",exon_genomeend,exon_genomestart); /* 4,5: start, end */
+  }
+  printf("%d\t",pctidentity);	/* 6: score */
+
+  /* 7: strand */
+  feature_strand = watsonp ? cdna_direction : -cdna_direction;
+  printf("%c\t",strand_char(feature_strand));
+
+  printf(".\t");		/* 8: phase */
+
+  /* 9: features */
+  printf("ID=%s.path%d;",accession,pathnum);
+  printf("Name=%s;",accession);
+  target_strand = cdna_direction != 0 ? cdna_direction : (watsonp ? 1 : -1);
+  printf("Target=%s %d %d %c;Gap=",accession,exon_querystart,exon_queryend,
+      strand_char(target_strand));
+  print_tokens_gff3(tokens);
+  printf("\n");
+}
+
+
 static void
 print_gff3_exons_forward (struct T *pairs, int npairs, int pathnum, char *dbversion, char *accession, char *chrstring,
 			  Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp, int cdna_direction,
-			  bool gff_introns_p, bool gff_gene_format_p) {
+			  bool gff_introns_p, bool gff_gene_format_p, bool gff_estmatch_format_p) {
   bool in_exon = false;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_genomestart = -1, exon_queryend, exon_genomeend;
@@ -1856,9 +1906,8 @@ print_gff3_exons_forward (struct T *pairs, int npairs, int pathnum, char *dbvers
   int Mlength = 0, Ilength = 0, Dlength = 0;
   List_T tokens = NULL;
   char token[10];
-#if 0
   int intron_start, intron_end, intronno = 0;
-#endif
+  int estmatch_querystart, estmatch_queryend, estmatch_genomestart, estmatch_genomeend;
 
   ptr = pairs;
   for (i = 0; i < npairs; i++) {
@@ -1870,10 +1919,10 @@ print_gff3_exons_forward (struct T *pairs, int npairs, int pathnum, char *dbvers
 	exon_queryend = prev->querypos + 1;
 	if (watsonp) {
 	  exon_genomeend = chrpos + prev->genomepos + 1;
-	  /* intron_start = exon_genomeend + 1; */
+	  intron_start = exon_genomeend + 1;
 	} else {
 	  exon_genomeend = chrpos + (genomiclength - 1) - prev->genomepos + 1;
-	  /* intron_start = exon_genomeend - 1; */
+	  intron_start = exon_genomeend - 1;
 	}
 	
 	if (den == 0) {
@@ -1896,10 +1945,12 @@ print_gff3_exons_forward (struct T *pairs, int npairs, int pathnum, char *dbvers
 	    sprintf(token,"D%d",Ilength);
 	    tokens = push_token(tokens,token);
 	  }
-	  tokens = List_reverse(tokens);
-	  print_gff3_cdna_match(++exonno,pathnum,dbversion,accession,chrstring,exon_genomestart,exon_genomeend,
-				exon_querystart,exon_queryend,watsonp,cdna_direction,pctidentity,tokens);
-	  List_free(&tokens);
+	  if (gff_estmatch_format_p == false) {
+	    tokens = List_reverse(tokens);
+	    print_gff3_cdna_match(++exonno,pathnum,dbversion,accession,chrstring,exon_genomestart,exon_genomeend,
+		exon_querystart,exon_queryend,watsonp,cdna_direction,pctidentity,tokens);
+	    List_free(&tokens);
+	  }
 	}
 
 	Mlength = Ilength = Dlength = 0;
@@ -1914,13 +1965,16 @@ print_gff3_exons_forward (struct T *pairs, int npairs, int pathnum, char *dbvers
 	exon_querystart = this->querypos + 1;
 	if (watsonp) {
 	  exon_genomestart = chrpos + this->genomepos + 1;
-	  /* intron_end = exon_genomestart - 1; */
+	  intron_end = exon_genomestart - 1;
 	} else {
 	  exon_genomestart = chrpos + (genomiclength - 1) - this->genomepos + 1;
-	  /* intron_end = exon_genomestart + 1; */
+	  intron_end = exon_genomestart + 1;
 	}
 
-	if (gff_introns_p == true) {
+	if (gff_estmatch_format_p == true && i > 0) {
+	  sprintf(token,"N%u",abs(intron_end - intron_start) + 1);
+	  tokens = push_token(tokens,token);
+	} else if (gff_introns_p == true) {
 	  if (i > 0) {
 #if 0
 	    printf_gff3_intron(++intronno,pathnum,dbversion,accession,chrstring,?,?,intron_start,intron_end,watsonp);
@@ -2029,9 +2083,24 @@ print_gff3_exons_forward (struct T *pairs, int npairs, int pathnum, char *dbvers
       sprintf(token,"D%d",Ilength);
       tokens = push_token(tokens,token);
     }
-    tokens = List_reverse(tokens);
-    print_gff3_cdna_match(++exonno,pathnum,dbversion,accession,chrstring,exon_genomestart,exon_genomeend,
-			  exon_querystart,exon_queryend,watsonp,cdna_direction,pctidentity,tokens);
+    if (gff_estmatch_format_p == true) {
+      estmatch_querystart = pairs->querypos + 1;
+      estmatch_queryend = exon_queryend;
+      estmatch_genomestart = chrpos + 1 + 
+	(watsonp ? pairs->genomepos : (genomiclength - 1) - pairs->genomepos);
+      estmatch_genomeend = exon_genomeend;
+      if (watsonp) {
+	tokens = List_reverse(tokens);
+      }
+      print_gff3_est_match(++exonno,pathnum,dbversion,accession,chrstring,
+			   estmatch_genomestart,estmatch_genomeend,
+			   estmatch_querystart,estmatch_queryend,
+			   watsonp,cdna_direction,pctidentity,tokens);
+    } else {
+      tokens = List_reverse(tokens);
+      print_gff3_cdna_match(++exonno,pathnum,dbversion,accession,chrstring,exon_genomestart,exon_genomeend,
+			    exon_querystart,exon_queryend,watsonp,cdna_direction,pctidentity,tokens);
+    }
     List_free(&tokens);
   }
 
@@ -2375,7 +2444,7 @@ Pair_print_gff3 (struct T *pairs, int npairs, int pathnum, char *dbversion, char
 		 int querylength_given, int skiplength, int matches, int unknowns, int mismatches, 
 		 int qopens, int qindels, int topens, int tindels, 
 		 bool watsonp, int cdna_direction,
-		 bool gff_gene_format_p, char *user_genomicseg) {
+		 bool gff_gene_format_p, bool gff_estmatch_format_p, char *user_genomicseg) {
   char *chrstring = NULL, *source;
   Genomicpos_T chrpos1, chrpos2;
 
@@ -2408,7 +2477,8 @@ Pair_print_gff3 (struct T *pairs, int npairs, int pathnum, char *dbversion, char
 
     if (cdna_direction >= 0) {
       print_gff3_exons_forward(pairs,npairs,pathnum,source,accession,chrstring,chrpos,genomiclength,watsonp,
-			       cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/true);
+			       cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/true,
+			       /*gff_estmatch_format_p*/false);
       if (translation_end > 0) {
 	print_gff3_cdss_forward(pairs,npairs,pathnum,source,accession,chrstring,chrpos,genomiclength,watsonp,
 				cdna_direction,translation_start,translation_end);
@@ -2425,7 +2495,7 @@ Pair_print_gff3 (struct T *pairs, int npairs, int pathnum, char *dbversion, char
     printf("###\n");		/* Terminates gene format */
   } else {
     print_gff3_exons_forward(pairs,npairs,pathnum,source,accession,chrstring,chrpos,genomiclength,watsonp,
-			     cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/false);
+			     cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/false,gff_estmatch_format_p);
   }
 
   if (chrnum != 0) {
@@ -4208,3 +4278,6 @@ Pair_print_splicesites (struct T *pairs, int npairs, char *accession,
 
   return;
 }
+
+
+

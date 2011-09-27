@@ -1,4 +1,4 @@
-/* $Id: iit-read.h,v 1.64 2010/03/05 05:53:48 twu Exp $ */
+/* $Id: iit-read.h,v 1.69 2010-07-27 01:10:41 twu Exp $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -43,8 +43,12 @@ extern unsigned int
 IIT_interval_low (T this, int index);
 extern unsigned int
 IIT_interval_high (T this, int index);
+extern int
+IIT_interval_sign (T this, int index);
 extern void
 IIT_interval_bounds (unsigned int *low, unsigned int *high, T this, int index);
+extern int
+IIT_index (T this, int divno, int i);
 
 extern int
 IIT_ndivs (T this);
@@ -142,6 +146,9 @@ IIT_get_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsig
 extern int *
 IIT_get_typed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y, int type, bool sortp);
 extern int *
+IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y, 
+				 int type, int sign, bool sortp);
+extern int *
 IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsigned int y, 
 			int *types, int ntypes, bool sortp);
 extern int
@@ -160,11 +167,8 @@ extern char *
 IIT_string_from_position (unsigned int *chrpos, unsigned int position, 
 			  T chromosome_iit);
 extern void
-IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p,
-	   T chromosome_iit, int *levels, bool reversep, bool relativep, unsigned int left);
-extern void
 IIT_print_header (T this, int *matches, int nmatches, bool map_bothstrands_p,
-		  T chromosome_iit, bool reversep, bool relativep, unsigned int left);
+		  char *chr, bool reversep, bool relativep, unsigned int left);
 
 
 #undef T

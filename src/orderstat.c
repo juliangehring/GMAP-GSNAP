@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: orderstat.c,v 1.5 2010/02/03 18:12:25 twu Exp $";
+static char rcsid[] = "$Id: orderstat.c,v 1.6 2010-07-10 01:37:11 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,8 +40,15 @@ quickselect_double_aux (double *set, int n, int k) {
   for (i = 1; i < n; i++) {
     if ((elt = set[i]) < x) {
       lowcount++;
+#if 0
     } else if (elt == x) {
       eqcount++;
+#else
+    } else if (elt > x) {
+      /* Do nothing */
+    } else {
+      eqcount++;
+#endif
     }
   }
 

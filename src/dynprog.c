@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c,v 1.183 2010/02/03 01:58:21 twu Exp $";
+static char rcsid[] = "$Id: dynprog.c,v 1.185 2010-07-16 22:18:08 twu Exp $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -1855,7 +1855,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		   int cdna_direction, int extraband_paired, int canonical_reward,
 		   int maxhorizjump, int maxvertjump, int leftoffset, int rightoffset, bool halfp,
 		   bool finalp) {
-  int bestscore = -100000, scoreL, scoreR, scoreI, bestscoreI;
+  int bestscore = -100000, scoreL, scoreR, scoreI, bestscoreI = -100000;
   int rL, rR, cL, cR;
   int lbandL, rbandL, cloL, chighL;
   int lbandR, rbandR, cloR, chighR;
@@ -2284,7 +2284,7 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR, int **matrix
 /************************************************************************/
 
 List_T
-Dynprog_single_gap (int *dynprogindex,int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
+Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    T dynprog, char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2,
 #ifdef PMAP
@@ -2654,6 +2654,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 
   *nmatches = *nmismatches = *nopens = *nindels = 0;
   if (length1 <= 1) {
+    *finalscore = -100000;
     return NULL;
   }
 
@@ -2720,6 +2721,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
     */
 #endif
     *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
+    *finalscore = -100000;
     return (List_T) NULL;
   }
 
@@ -2736,6 +2738,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
     */
 #endif
     *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
+    *finalscore = -1000000;
     return (List_T) NULL;
   }
 

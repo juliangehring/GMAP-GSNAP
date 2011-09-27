@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: fa_coords.pl.in,v 1.22 2009/03/18 20:56:01 twu Exp $
+# $Id: fa_coords.pl.in,v 1.23 2010-07-21 21:49:33 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 

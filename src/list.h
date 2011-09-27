@@ -1,4 +1,4 @@
-/* $Id: list.h,v 1.14 2010/02/03 18:10:23 twu Exp $ */
+/* $Id: list.h,v 1.15 2010-07-16 22:19:24 twu Exp $ */
 #ifndef LIST_INCLUDED
 #define LIST_INCLUDED
 
@@ -29,6 +29,10 @@ extern T
 List_insert (T this, void *x);
 extern void
 List_reinsert (T *listptr, T cell);
+extern T
+List_transfer_one (T dest, T *source);
+extern T
+List_push_existing (T dest, T source);
 extern T
 List_from_string (char *string);
 

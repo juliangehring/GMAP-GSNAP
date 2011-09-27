@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.41 2009/11/18 18:41:44 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.44 2010-07-16 20:12:06 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -66,6 +66,36 @@ Pairpool_free (T *old) {
     List_free(&(*old)->listcellchunks);
     FREE(*old);
   }
+  return;
+}
+
+void
+Pairpool_free_memory (T this) {
+  List_T p;
+  struct Pair_T *pairptr;
+  struct List_T *listcellptr;
+
+  for (p = this->pairchunks; p != NULL; p = List_next(p)) {
+    pairptr = (struct Pair_T *) List_head(p);
+    FREE(pairptr);
+  }
+  List_free(&this->pairchunks);
+  for (p = this->listcellchunks; p != NULL; p = List_next(p)) {
+    listcellptr = (struct List_T *) List_head(p);
+    FREE(listcellptr);
+  }
+  List_free(&this->listcellchunks);
+
+  this->npairs = 0;
+  this->pairctr = 0;
+  this->pairchunks = NULL;
+  /* this->pairptr = add_new_pairchunk(this); */
+
+  this->nlistcells = 0;
+  this->listcellctr = 0;
+  this->listcellchunks = NULL;
+  /* this->listcellptr = add_new_listcellchunk(this); */
+
   return;
 }
 
@@ -165,6 +195,8 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->queryjump = 0;
   pair->genomejump = 0;
 
+  pair->state = GOOD;
+
   debug(
 	printf("Creating %p: %d %d %c %c %c\n",
 	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
@@ -226,6 +258,8 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
   pair->queryjump = 0;
   pair->genomejump = 0;
 
+  pair->state = GOOD;
+
   debug(
 	printf("Creating %p: %d %d %c %c %c\n",
 	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
@@ -285,6 +319,8 @@ Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump) {
 
   pair->queryjump = queryjump;
   pair->genomejump = genomejump;
+
+  pair->state = GOOD;
 
   debug(printf("Creating gap %p, queryjump=%d, genomejump=%d\n",pair,queryjump,genomejump));
 
@@ -352,6 +388,7 @@ Pairpool_push_existing (List_T list, T this, Pair_T pair) {
 }
 
 
+/* Note: this does not free the list cell */
 List_T
 Pairpool_pop (List_T list, Pair_T *x) {
   List_T head;
@@ -506,5 +543,6 @@ Pairpool_copy (List_T source, T this) {
   }
   return List_reverse(dest);
 }
+
 
 

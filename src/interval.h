@@ -1,4 +1,4 @@
-/* $Id: interval.h,v 1.18 2010/02/03 18:08:28 twu Exp $ */
+/* $Id: interval.h,v 1.18 2010-02-03 18:08:28 twu Exp $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
 #include "bool.h"

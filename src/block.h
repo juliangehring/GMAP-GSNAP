@@ -1,4 +1,4 @@
-/* $Id: block.h,v 1.47 2008/10/24 23:29:05 twu Exp $ */
+/* $Id: block.h,v 1.47 2008-10-24 23:29:05 twu Exp $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"

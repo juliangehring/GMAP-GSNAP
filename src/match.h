@@ -1,4 +1,4 @@
-/* $Id: match.h,v 1.48 2008/10/10 17:52:44 twu Exp $ */
+/* $Id: match.h,v 1.49 2010-07-10 01:35:55 twu Exp $ */
 #ifndef MATCH_INCLUDED
 #define MATCH_INCLUDED
 #include "bool.h"
@@ -35,6 +35,8 @@ extern void
 Match_set_weight (T this, double weight);
 extern double
 Match_weight (T this);
+extern bool
+Match_has_weight_p (T this);
 
 extern int
 Match_cmp (const void *a, const void *b);

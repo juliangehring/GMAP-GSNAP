@@ -1,4 +1,4 @@
-/* $Id: genome.h,v 1.35 2009/08/29 00:31:30 twu Exp $ */
+/* $Id: genome.h,v 1.37 2010-07-19 20:27:03 twu Exp $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 #include "bool.h"
@@ -30,6 +30,10 @@ Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left,
 		    IIT_T chromosome_iit);
 extern void
 Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1);
+extern void
+Genome_fill_buffer_nucleotides (T this, Genomicpos_T left, Genomicpos_T length, unsigned char *gbuffer);
+extern char
+Genome_get_char (T this, Genomicpos_T left);
 extern Sequence_T
 Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
 		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen);

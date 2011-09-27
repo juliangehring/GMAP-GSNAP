@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c,v 1.36 2009/08/31 15:51:18 twu Exp $";
+static char rcsid[] = "$Id: iit_store.c,v 1.37 2010-05-28 19:17:01 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -881,20 +881,23 @@ main (int argc, char *argv[]) {
     }
   }
 
-  if (divsort == NO_SORT) {
-  } else if (divsort == ALPHA_SORT) {
+  if (divsort == NO_SORT || divsort == ALPHA_SORT) {
     if ((n_proper_divs = List_length(divlist) - 1) > 0) {
       strings = (char **) CALLOC(n_proper_divs,sizeof(char *));
-      for (l = List_next(divlist), i = 0; l != NULL; l = List_next(l), i++) {
-	strings[i] = (char *) List_head(l);
+      for (l = divlist, i = 0; l != NULL; l = List_next(l)) {
+	tempstring = List_head(l);
+	if (tempstring[0] == '\0') {
+	  FREE(tempstring);
+	} else {
+	  strings[i++] = (char *) tempstring;
+	}
       }
-      qsort(chroms,n_proper_divs,sizeof(char *),string_compare);
-
-      /* Free initial empty string */
-      tempstring = List_head(divlist);
-      FREE(tempstring);
 
       List_free(&divlist);
+
+      if (divsort == ALPHA_SORT) {
+	qsort(strings,n_proper_divs,sizeof(char *),string_compare);
+      }
 
       /* The zeroth div is empty */
       divstring = (char *) CALLOC(1,sizeof(char));
@@ -912,17 +915,18 @@ main (int argc, char *argv[]) {
   } else if (divsort == CHROM_SORT) {
     if ((n_proper_divs = List_length(divlist) - 1) > 0) {
       chroms = (Chrom_T *) CALLOC(n_proper_divs,sizeof(Chrom_T));
-      for (l = List_next(divlist), i = 0; l != NULL; l = List_next(l), i++) {
-	chroms[i] = Chrom_from_string((char *) List_head(l));
+      for (l = divlist, i = 0; l != NULL; l = List_next(l)) {
+	tempstring = List_head(l);
+	if (tempstring[0] == '\0') {
+	  FREE(tempstring);
+	} else {
+	  chroms[i++] = Chrom_from_string(tempstring);
+	}
       }
-      qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare);
-	
-      for (l = divlist; l != NULL; l = List_next(l)) {
-	tempstring = (char *) List_head(l);
-	FREE(tempstring);
-      }
+
       List_free(&divlist);
-      
+      qsort(chroms,n_proper_divs,sizeof(Chrom_T),Chrom_compare);
+
       /* The zeroth div is empty */
       divstring = (char *) CALLOC(1,sizeof(char));
       divstring[0] = '\0';
@@ -932,6 +936,15 @@ main (int argc, char *argv[]) {
 	divlist = List_push(divlist,Chrom_string(chroms[i]));
       }
       divlist = List_reverse(divlist);
+
+#if 0
+      /* Causes invalid reads later on */
+      for (i = 0; i < n_proper_divs; i++) {
+	Chrom_free(&(chroms[i]));
+      }
+#endif
+
+      FREE(chroms);
     }
   }
 
@@ -939,15 +952,6 @@ main (int argc, char *argv[]) {
 	    divsort,iit_version);
   FREE(iitfile);
 
-  if (chroms != NULL) {
-#if 0
-    /* Causes invalid reads later on */
-    for (i = 0; i < n_proper_divs; i++) {
-      Chrom_free(&(chroms[i]));
-    }
-#endif
-    FREE(chroms);
-  }
 
   for (d = divlist; d != NULL; d = List_next(d)) {
     divstring = (char *) List_head(d);

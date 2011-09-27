@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c,v 1.88 2010/03/10 01:34:52 twu Exp $";
+static char rcsid[] = "$Id: stage3hr.c,v 1.107 2010-07-27 00:02:16 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,6 +19,8 @@ static char rcsid[] = "$Id: stage3hr.c,v 1.88 2010/03/10 01:34:52 twu Exp $";
 #include "substring.h"
 
 
+#define MAX_HITS 100000
+
 #if 0
 #define TRANSLOCATION_TEXT "pair_translocation"
 #define INVERSION_TEXT "pair_inversion"
@@ -27,10 +29,12 @@ static char rcsid[] = "$Id: stage3hr.c,v 1.88 2010/03/10 01:34:52 twu Exp $";
 #endif
 
 #define CONCORDANT_TEXT "concordant"
+#define SAMECHR_TEXT "samechr"
+#define UNPAIRED_TEXT "unpaired"
+
 #define SAMECHR_TOOLONG_TEXT "toolong"
 #define SAMECHR_INVERSION_TEXT "inversion"
 #define SAMECHR_SCRAMBLE_TEXT "scramble"
-#define UNPAIRED_TEXT "unpaired"
 
 
 #ifdef DEBUG
@@ -53,12 +57,58 @@ static char rcsid[] = "$Id: stage3hr.c,v 1.88 2010/03/10 01:34:52 twu Exp $";
 #define debug3(x)
 #endif
 
-/* Stage3_pair_up */
+/* Stage3_pair_up_concordant */
 #ifdef DEBUG5
 #define debug5(x) x
 #else
 #define debug5(x)
 #endif
+
+/* Stage3_pair_up_samechr */
+#ifdef DEBUG6
+#define debug6(x) x
+#else
+#define debug6(x)
+#endif
+
+/* Stage3_remove_duplicates */
+#ifdef DEBUG7
+#define debug7(x) x
+#else
+#define debug7(x)
+#endif
+
+/* Stage3pair_remove_duplicates */
+#ifdef DEBUG8
+#define debug8(x) x
+#else
+#define debug8(x)
+#endif
+
+/* Stage3_mark_ambiguous_splices */
+#ifdef DEBUG9
+#define debug9(x) x
+#else
+#define debug9(x)
+#endif
+
+
+
+#ifdef DEBUG5
+static char *
+print_sense (int sense) {
+  if (sense == SENSE_NULL) {
+    return "null";
+  } else if (sense == SENSE_ANTI) {
+    return "antisense";
+  } else if (sense == SENSE_FORWARD) {
+    return "sense";
+  } else {
+    abort();
+  }
+}
+#endif
+
 
 void
 Stage3hr_print_nsnpdiffs (bool labelsp) {
@@ -78,6 +128,8 @@ Stage3hr_print_ncolordiffs () {
 struct T {
   Hittype_T hittype;
   Chrnum_T chrnum; /* Needed for printing paired-end results.  A chrnum of 0 indicates a distant splice. */
+  Chrnum_T effective_chrnum;	/* For concordance and samechr */
+  Chrnum_T other_chrnum;	/* 0 for non-translocations, and other chrnum besides effective_chrnum for translocations */
   Genomicpos_T chroffset;
 
   Genomicpos_T genomicstart;
@@ -86,6 +138,7 @@ struct T {
 
   int score;			/* Includes colordiffs and penalties */
   int ntscore;			/* Includes penalties */
+  int nmatches;
   int total_nmismatches;
   int geneprob;
 
@@ -95,11 +148,18 @@ struct T {
 
   double chimera_prob;		/* for splicing */
   Genomicpos_T distance;	/* for splicing */
-  bool sensep;			/* for splicing */
+  int sensedir;			/* for splicing */
+  bool chimera_ambiguous_p;	/* for splicing */
+#if 0
   double half_intron_score;	/* combination of support, nmismatches, and splice site probability */
+#endif
+#ifdef USE_HALFINTRON_SUPPORT
+  int halfintron_support;	/* support - 3*nmismatches */
+#endif
 
   Substring_T substring1;	/* indel or donor */
   Substring_T substring2;	/* indel or acceptor */
+  Substring_T substring_low;	/* For SAM output */
 
   bool paired_seenp;   /* for paired-end.  set to true by Stage3_pair_up(). */
   bool concordantp;    /* for paired-end.  set to true by Stage3_pair_up(). */
@@ -115,8 +175,10 @@ struct Stage3pair_T {
   Genomicpos_T high;
   int pairedlength;
   int score;
+  int nmatches;
   Genomicpos_T absdifflength;
   int dir;			/* -1, 0, or +1 */
+  bool sense_consistent_p;
 };
 
 #if 0
@@ -155,6 +217,7 @@ Genomicpos_T
 Stage3_genomicend (T this) {
   return this->genomicend;
 }
+
 
 int
 Stage3_score (T this) {
@@ -197,14 +260,19 @@ Stage3_substring2 (T this) {
   return this->substring2;
 }
 
+Substring_T
+Stage3_substring_low (T this) {
+  return this->substring_low;
+}
+
 Genomicpos_T
 Stage3_distance (T this) {
   return this->distance;
 }
 
-bool
-Stage3_sensep (T this) {
-  return this->sensep;
+int
+Stage3_sensedir (T this) {
+  return this->sensedir;
 }
 
 
@@ -288,6 +356,8 @@ Stage3_copy (T old) {
 
   new->hittype = old->hittype;
   new->chrnum = old->chrnum;
+  new->effective_chrnum = old->effective_chrnum;
+  new->other_chrnum = old->other_chrnum;
   new->chroffset = old->chroffset;
   new->genomicstart = old->genomicstart;
   new->genomicend = old->genomicend;
@@ -308,12 +378,28 @@ Stage3_copy (T old) {
   }
   
   new->chimera_prob = old->chimera_prob;
+  new->chimera_ambiguous_p = old->chimera_ambiguous_p;
   new->distance = old->distance;
+#if 0
   new->half_intron_score = old->half_intron_score;
-  new->sensep = old->sensep;
+#endif
+#ifdef USE_HALFINTRON_SUPPORT
+  new->halfintron_support = old->halfintron_support;
+#endif
+  new->sensedir = old->sensedir;
 
   new->substring1 = Substring_copy(old->substring1);
   new->substring2 = Substring_copy(old->substring2);
+  if (old->substring_low == NULL) {
+    new->substring_low = NULL;
+  } else if (old->substring_low == old->substring1) {
+    new->substring_low = new->substring1;
+  } else if (old->substring_low == old->substring2) {
+    new->substring_low = new->substring2;
+  } else {
+    fprintf(stderr,"substring_low is not NULL, substring1, or substring2\n");
+    abort();
+  }
 
   new->paired_seenp = old->paired_seenp;
   new->concordantp = old->concordantp;
@@ -324,46 +410,68 @@ Stage3_copy (T old) {
 
 T
 Stage3_new_exact (int *found_score, Genomicpos_T left, int genomiclength, bool plusp, Chrnum_T chrnum, Genomicpos_T chroffset) {
-  T new = (T) MALLOC(sizeof(*new));
+  T new;
+  Substring_T substring;
+  Genomicpos_T genomicstart, genomicend;
 
-  new->deletion = (char *) NULL;
   if (plusp == true) {
-    new->genomicstart = left;
-    new->genomicend = left + genomiclength;
+    genomicstart = left;
+    genomicend = left + genomiclength;
   } else {
-    new->genomicstart = left + genomiclength;
-    new->genomicend = left;
+    genomicstart = left + genomiclength;
+    genomicend = left;
   }
-  new->substring1 = Substring_new(/*nmismatches*/0,/*ncolordiffs*/0,chrnum,
-				  chroffset,new->genomicstart,new->genomicend,
-				  /*querystart*/0,/*queryend*/genomiclength,/*querylength*/genomiclength,
-				  /*alignstart*/new->genomicstart,/*alignend*/new->genomicend,
-				  genomiclength,/*extraleft*/0,/*extraright*/0,
-				  /*genomicseg*/NULL,/*query*/NULL,plusp,
-				  /*trim_ends_p*/false,/*dibasep*/false,/*cmetp*/false);
 
-  new->substring2 = (Substring_T) NULL;
+  if ((substring = Substring_new(/*nmismatches*/0,/*ncolordiffs*/0,chrnum,
+				 chroffset,genomicstart,genomicend,
+				 /*querystart*/0,/*queryend*/genomiclength,/*querylength*/genomiclength,
+				 /*alignstart*/genomicstart,/*alignend*/genomicend,
+				 genomiclength,/*extraleft*/0,/*extraright*/0,
+				 /*genomicseg*/NULL,/*query*/NULL,plusp,
+				 /*trim_left_p*/false,/*trim_right_p*/false,/*trim_maxlength*/0,
+				 /*minlength*/0,/*dibasep*/false,/*cmetp*/false)) == NULL) {
+    return (T) NULL;
 
-  new->hittype = EXACT;
-  new->chrnum = chrnum;
-  new->chroffset = chroffset;
-  new->plusp = plusp;
+  } else {
+    new = (T) MALLOC(sizeof(*new));
+    new->substring1 = substring;
+    new->substring2 = (Substring_T) NULL;
+    new->substring_low = new->substring1;
 
-  new->nindels = 0;
-  new->total_nmismatches = 0;
-  new->ntscore = 0;
-  new->score = 0;
-  new->geneprob = -1;
-  *found_score = 0;
+    new->deletion = (char *) NULL;
+    new->genomicstart = genomicstart;
+    new->genomicend = genomicend;
 
-  new->chimera_prob = 2.0;
-  new->distance = 0U;
-  new->half_intron_score = 0.0;
+    new->hittype = EXACT;
+    new->chrnum = new->effective_chrnum = chrnum;
+    new->other_chrnum = 0;
+    new->chroffset = chroffset;
+    new->plusp = plusp;
+    new->sensedir = SENSE_NULL;
 
-  new->paired_seenp = false;
-  new->concordantp = false;
+    new->nindels = 0;
+    new->total_nmismatches = 0;
+    new->ntscore = 0;
+    new->score = 0;
+    new->nmatches = genomiclength;
+    new->geneprob = -1;
+    *found_score = 0;
 
-  return new;
+    new->chimera_prob = 2.0;
+    new->chimera_ambiguous_p = false;
+    new->distance = 0U;
+#if 0
+    new->half_intron_score = 0.0;
+#endif
+#ifdef USE_HALFINTRON_SUPPORT
+    new->halfintron_support = 0;
+#endif
+
+    new->paired_seenp = false;
+    new->concordantp = false;
+
+    return new;
+  }
 }
 
 
@@ -371,53 +479,78 @@ T
 Stage3_new_substitution (int *found_score, int nmismatches, int ncolordiffs, Genomicpos_T left,
 			 int genomiclength, bool plusp, char *genomicseg, char *query,
 			 Chrnum_T chrnum, Genomicpos_T chroffset, 
-			 bool trim_ends_p, bool dibasep, bool cmetp) {
-  T new = (T) MALLOC(sizeof(*new));
+			 int trim_maxlength, bool dibasep, bool cmetp) {
+  T new;
+  Substring_T substring;
+  Genomicpos_T genomicstart, genomicend;
 
   debug(printf("Entered new_substitution with nmismatches %d\n",nmismatches));
 
-  new->deletion = (char *) NULL;
-
   if (plusp == true) {
-    new->genomicstart = left;
-    new->genomicend = left + genomiclength;
+    genomicstart = left;
+    genomicend = left + genomiclength;
   } else {
-    new->genomicstart = left + genomiclength;
-    new->genomicend = left;
+    genomicstart = left + genomiclength;
+    genomicend = left;
   }
 
-  new->substring1 = Substring_new(nmismatches,ncolordiffs,chrnum,
-				  chroffset,new->genomicstart,new->genomicend,
-				  /*querystart*/0,/*queryend*/genomiclength,/*querylength*/genomiclength,
-				  /*alignstart*/new->genomicstart,/*alignend*/new->genomicend,
-				  genomiclength,/*extraleft*/0,/*extraright*/0,
-				  genomicseg,query,plusp,trim_ends_p,dibasep,cmetp);
+  if ((substring = Substring_new(nmismatches,ncolordiffs,chrnum,
+				 chroffset,genomicstart,genomicend,
+				 /*querystart*/0,/*queryend*/genomiclength,/*querylength*/genomiclength,
+				 /*alignstart*/genomicstart,/*alignend*/genomicend,
+				 genomiclength,/*extraleft*/0,/*extraright*/0,
+				 genomicseg,query,plusp,
+				 /*trim_left_p*/true,/*trim_right_p*/true,trim_maxlength,
+				 /*minlength*/genomiclength/2,dibasep,cmetp)) == NULL) {
+    return (T) NULL;
 
-  new->substring2 = (Substring_T) NULL;
+  } else {
+    new = (T) MALLOC(sizeof(*new));
+    new->substring1 = substring;
+    new->substring2 = (Substring_T) NULL;
+    new->substring_low = new->substring1;
 
-  new->hittype = SUB;
-  new->chrnum = chrnum;
-  new->chroffset = chroffset;
-  new->plusp = plusp;
+    new->deletion = (char *) NULL;
+    new->genomicstart = genomicstart;
+    new->genomicend = genomicend;
 
-  new->nindels = 0;
-  new->total_nmismatches = nmismatches;
-  new->ntscore = nmismatches;
-  new->score = nmismatches + ncolordiffs;
-  new->geneprob = -1;
+    new->hittype = SUB;
+    new->chrnum = new->effective_chrnum = chrnum;
+    new->other_chrnum = 0;
+    new->chroffset = chroffset;
+    new->plusp = plusp;
+    new->sensedir = SENSE_NULL;
 
-  if (new->score < *found_score) {
-    *found_score = new->score;
+    new->nindels = 0;
+    new->total_nmismatches = nmismatches;
+    new->ntscore = nmismatches;
+    new->score = nmismatches + ncolordiffs;
+#if 0
+    new->nmatches = Substring_match_length(new->substring1) - new->score;
+#else
+    new->nmatches = Substring_nmatches(new->substring1);
+#endif
+    new->geneprob = -1;
+
+    if (new->score < *found_score) {
+      *found_score = new->score;
+    }
+
+    new->chimera_prob = 2.0;
+    new->chimera_ambiguous_p = false;
+    new->distance = 0U;
+#if 0
+    new->half_intron_score = 0.0;
+#endif
+#ifdef USE_HALFINTRON_SUPPORT
+    new->halfintron_support = 0;
+#endif
+
+    new->paired_seenp = false;
+    new->concordantp = false;
+
+    return new;
   }
-
-  new->chimera_prob = 2.0;
-  new->distance = 0U;
-  new->half_intron_score = 0.0;
-
-  new->paired_seenp = false;
-  new->concordantp = false;
-
-  return new;
 }
 
 
@@ -427,9 +560,11 @@ Stage3_new_insertion (int *found_score, int nindels, int indel_pos, int nmismatc
 		      int ncolordiffs1, int ncolordiffs2,
 		      Genomicpos_T left, int genomiclength, int querylength, bool plusp,
 		      char *genomicseg, char *query, Chrnum_T chrnum, Genomicpos_T chroffset,
-		      int indel_penalty, bool trim_ends_p, bool dibasep, bool cmetp) {
-  T new = (T) MALLOC(sizeof(*new));
+		      int indel_penalty, int trim_maxlength, bool dibasep, bool cmetp) {
+  T new;
+  Substring_T substring1, substring2;
   int querystart1, queryend1, querystart2, queryend2;
+  Genomicpos_T genomicstart, genomicend;
   Genomicpos_T alignstart1, alignend1, alignstart2, alignend2;
 
   debug2(printf("Entered with left %u, querylength %d, genomiclength %d, indel_pos %d\n",
@@ -448,63 +583,96 @@ Stage3_new_insertion (int *found_score, int nindels, int indel_pos, int nmismatc
   queryend2 = querylength;
 
   if (plusp == true) {
-    new->genomicstart = left;
-    new->genomicend = left + genomiclength;
+    genomicstart = left;
+    genomicend = left + genomiclength;
 
-    alignstart1 = new->genomicstart;
-    alignend1 = alignstart2 = new->genomicstart + indel_pos;
-    alignend2 = new->genomicend/* - nindels*/;
+    alignstart1 = genomicstart;
+    alignend1 = alignstart2 = genomicstart + indel_pos;
+    alignend2 = genomicend/* - nindels*/;
 
   } else {
-    new->genomicstart = left + genomiclength;
-    new->genomicend = left;
+    genomicstart = left + genomiclength;
+    genomicend = left;
 
-    alignstart1 = new->genomicstart;
-    alignend1 = alignstart2 = new->genomicstart - indel_pos;
-    alignend2 = new->genomicend/* + nindels*/;
-
+    alignstart1 = genomicstart;
+    alignend1 = alignstart2 = genomicstart - indel_pos;
+    alignend2 = genomicend/* + nindels*/;
   }
 
-  new->deletion = (char *) NULL;
-  new->substring1 = Substring_new(nmismatches1,ncolordiffs1,chrnum,
-				  chroffset,new->genomicstart,new->genomicend,
+  if ((substring1 = Substring_new(nmismatches1,ncolordiffs1,chrnum,
+				  chroffset,genomicstart,genomicend,
 				  querystart1,queryend1,querylength,
 				  alignstart1,alignend1,genomiclength,
 				  /*extraleft*/0,/*extraright*/0,
-				  genomicseg,query,plusp,trim_ends_p,dibasep,cmetp);
+				  genomicseg,query,plusp,
+				  /*trim_left_p*/true,/*trim_right_p*/false,
+				  trim_maxlength,/*minlength*/0,dibasep,cmetp)) == NULL) {
+    return (T) NULL;
 
-  new->substring2 = Substring_new(nmismatches2,ncolordiffs2,chrnum,
-				  chroffset,new->genomicstart,new->genomicend,
-				  querystart2,queryend2,querylength,
-				  alignstart2,alignend2,genomiclength,
-				  /*extraleft*/0,/*extraright*/0,
-				  genomicseg,query,plusp,trim_ends_p,dibasep,cmetp);
+  } else if ((substring2 = Substring_new(nmismatches2,ncolordiffs2,chrnum,
+					 chroffset,genomicstart,genomicend,
+					 querystart2,queryend2,querylength,
+					 alignstart2,alignend2,genomiclength,
+					 /*extraleft*/0,/*extraright*/0,
+					 genomicseg,query,plusp,
+					 /*trim_left_p*/false,/*trim_right_p*/true,
+					 trim_maxlength,/*minlength*/0,dibasep,cmetp)) == NULL) {
+    Substring_free(&substring1);
+    return (T) NULL;
 
-  new->hittype = INS;
-  new->chrnum = chrnum;
-  new->chroffset = chroffset;
-  new->plusp = plusp;
+  } else {
+    new = (T) MALLOC(sizeof(*new));
+    new->substring1 = substring1;
+    new->substring2 = substring2;
+    if (plusp == true) {
+      new->substring_low = new->substring1;
+    } else {
+      new->substring_low = new->substring2;
+    }
 
-  new->nindels = nindels;
-  new->total_nmismatches = nmismatches1 + nmismatches2;
-  new->ntscore = indel_penalty + nmismatches1 + nmismatches2;
-  new->score = new->ntscore + ncolordiffs1 + ncolordiffs2;
-  new->geneprob = -1;
+    new->deletion = (char *) NULL;
+    new->genomicstart = genomicstart;
+    new->genomicend = genomicend;
 
-  if (new->score < *found_score) {
-    *found_score = new->score;
+    new->hittype = INS;
+    new->chrnum = new->effective_chrnum = chrnum;
+    new->other_chrnum = 0;
+    new->chroffset = chroffset;
+    new->plusp = plusp;
+    new->sensedir = SENSE_NULL;
+
+    new->nindels = nindels;
+    new->total_nmismatches = nmismatches1 + nmismatches2;
+    new->ntscore = indel_penalty + nmismatches1 + nmismatches2;
+    new->score = new->ntscore + ncolordiffs1 + ncolordiffs2;
+#if 0
+    new->nmatches = Substring_match_length(new->substring1) + Substring_match_length(new->substring2) - new->score;
+#else
+    new->nmatches = Substring_nmatches(new->substring1) + Substring_nmatches(new->substring2);
+#endif
+    new->geneprob = -1;
+
+    if (new->score < *found_score) {
+      *found_score = new->score;
+    }
+
+    new->indel_pos = indel_pos;
+
+    new->chimera_prob = 2.0;
+    new->chimera_ambiguous_p = false;
+    new->distance = 0U;
+#if 0
+    new->half_intron_score = 0.0;
+#endif
+#ifdef USE_HALFINTRON_SUPPORT
+    new->halfintron_support = 0;
+#endif
+
+    new->paired_seenp = false;
+    new->concordantp = false;
+
+    return new;
   }
-
-  new->indel_pos = indel_pos;
-
-  new->chimera_prob = 2.0;
-  new->distance = 0U;
-  new->half_intron_score = 0.0;
-
-  new->paired_seenp = false;
-  new->concordantp = false;
-
-  return new;
 }
 
 
@@ -513,9 +681,11 @@ Stage3_new_deletion (int *found_score, int nindels, int indel_pos, int nmismatch
 		     int ncolordiffs1, int ncolordiffs2,
 		     Genomicpos_T left, int genomiclength, int querylength, bool plusp,
 		     char *genomicseg, char *query, Chrnum_T chrnum, Genomicpos_T chroffset,
-		     int indel_penalty, bool trim_ends_p, bool dibasep, bool cmetp) {
-  T new = (T) MALLOC(sizeof(*new));
+		     int indel_penalty, int trim_maxlength, bool dibasep, bool cmetp) {
+  T new;
+  Substring_T substring1, substring2;
   int querystart1, queryend1, querystart2, queryend2;
+  Genomicpos_T genomicstart, genomicend;
   Genomicpos_T alignstart1, alignend1, alignstart2, alignend2;
 
   debug3(printf("Entered with left %u, querylength %d, genomiclength %d, indel_pos %d\n",
@@ -534,68 +704,171 @@ Stage3_new_deletion (int *found_score, int nindels, int indel_pos, int nmismatch
   queryend2 = querylength;
 
   if (plusp == true) {
-    new->genomicstart = left;
-    new->genomicend = left + genomiclength;
-    alignstart1 = new->genomicstart;
-    alignend1 = new->genomicstart + indel_pos;
+    genomicstart = left;
+    genomicend = left + genomiclength;
+
+    alignstart1 = genomicstart;
+    alignend1 = genomicstart + indel_pos;
     alignstart2 = alignend1 + nindels;
-    alignend2 = new->genomicend/* + nindels*/;
+    alignend2 = genomicend/* + nindels*/;
 
   } else {
-    new->genomicstart = left + genomiclength;
-    new->genomicend = left;
-    alignstart1 = new->genomicstart;
-    alignend1 = new->genomicstart - indel_pos;
+    genomicstart = left + genomiclength;
+    genomicend = left;
+
+    alignstart1 = genomicstart;
+    alignend1 = genomicstart - indel_pos;
     alignstart2 = alignend1 - nindels;
-    alignend2 = new->genomicend/* - nindels*/;
+    alignend2 = genomicend/* - nindels*/;
   }
 
-  new->substring1 = Substring_new(nmismatches1,ncolordiffs1,chrnum,chroffset,
-				  new->genomicstart,new->genomicend,
+  if ((substring1 = Substring_new(nmismatches1,ncolordiffs1,chrnum,chroffset,
+				  genomicstart,genomicend,
 				  querystart1,queryend1,querylength,
 				  alignstart1,alignend1,genomiclength,
 				  /*extraleft*/0,/*extraright*/0,	
-				  genomicseg,query,plusp,trim_ends_p,dibasep,cmetp);
+				  genomicseg,query,plusp,
+				  /*trim_left_p*/true,/*trim_right_p*/false,
+				  trim_maxlength,/*minlength*/0,dibasep,cmetp)) == NULL) {
+    return (T) NULL;
 
-  new->deletion = (char *) CALLOC(nindels+1,sizeof(char));
-  if (plusp == true) {
-    strncpy(new->deletion,&(genomicseg[indel_pos]),nindels);
+  } else if ((substring2 = Substring_new(nmismatches2,ncolordiffs2,chrnum,chroffset,
+					 genomicstart,genomicend,
+					 querystart2,queryend2,querylength,
+					 alignstart2,alignend2,genomiclength,
+					 /*extraleft*/0,/*extraright*/0,
+					 genomicseg,query,plusp,
+					 /*trim_left_p*/false,/*trim_right_p*/true,
+					 trim_maxlength,/*minlength*/0,dibasep,cmetp)) == NULL) {
+    Substring_free(&substring1);
+    return (T) NULL;
+    
   } else {
-    make_complement_buffered(new->deletion,&(genomicseg[querylength-indel_pos]),nindels);
+    new = (T) MALLOC(sizeof(*new));
+    new->substring1 = substring1;
+    new->substring2 = substring2;
+
+    new->deletion = (char *) CALLOC(nindels+1,sizeof(char));
+    if (plusp == true) {
+      strncpy(new->deletion,&(genomicseg[indel_pos]),nindels);
+      new->substring_low = new->substring1;
+    } else {
+      make_complement_buffered(new->deletion,&(genomicseg[querylength-indel_pos]),nindels);
+      new->substring_low = new->substring2;
+    }
+    new->genomicstart = genomicstart;
+    new->genomicend = genomicend;
+
+    new->hittype = DEL;
+    new->chrnum = new->effective_chrnum = chrnum;
+    new->other_chrnum = 0;
+    new->chroffset = chroffset;
+    new->plusp = plusp;
+    new->sensedir = SENSE_NULL;
+
+    new->nindels = nindels;
+    new->total_nmismatches = nmismatches1 + nmismatches2;
+    new->ntscore = indel_penalty + nmismatches1 + nmismatches2;
+    new->score = new->ntscore + ncolordiffs1 + ncolordiffs2;
+#if 0
+    new->nmatches = Substring_match_length(new->substring1) + Substring_match_length(new->substring2) - new->score;
+#else
+    new->nmatches = Substring_nmatches(new->substring1) + Substring_nmatches(new->substring2);
+#endif
+    new->geneprob = -1;
+
+    if (new->score < *found_score) {
+      *found_score = new->score;
+    }
+
+    new->indel_pos = indel_pos;
+
+    new->chimera_prob = 2.0;
+    new->chimera_ambiguous_p = false;
+    new->distance = 0U;
+#if 0
+    new->half_intron_score = 0.0;
+#endif
+#ifdef USE_HALFINTRON_SUPPORT
+    new->halfintron_support = 0;
+#endif
+
+    new->paired_seenp = false;
+    new->concordantp = false;
+
+    return new;
+  }
+}
+
+
+T
+Stage3_new_terminal (int querystart, int queryend, int nmismatches, int ncolordiffs,
+		     Genomicpos_T left, int querylength,
+		     bool plusp, char *genomicseg, char *query, 
+		     Chrnum_T chrnum, Genomicpos_T chroffset,
+		     int terminal_penalty, int trim_maxlength, bool dibasep, bool cmetp) {
+  T new;
+  Substring_T substring;
+  Genomicpos_T genomicstart, genomicend, alignstart, alignend;
+
+  if (plusp == true) {
+    genomicstart = left;
+    genomicend = left + querylength;
+
+    alignstart = genomicstart + querystart;
+    alignend = genomicstart + queryend;
+
+  } else {
+    genomicstart = left + querylength;
+    genomicend = left;
+    
+    alignstart = genomicstart - querystart;
+    alignend = genomicstart - queryend;
   }
 
-  new->substring2 = Substring_new(nmismatches2,ncolordiffs2,chrnum,chroffset,
-				  new->genomicstart,new->genomicend,
-				  querystart2,queryend2,querylength,
-				  alignstart2,alignend2,genomiclength,
-				  /*extraleft*/0,/*extraright*/0,
-				  genomicseg,query,plusp,trim_ends_p,dibasep,cmetp);
+  if ((substring = Substring_new(nmismatches,ncolordiffs,chrnum,chroffset,
+				 genomicstart,genomicend,querystart,queryend,querylength,
+				 alignstart,alignend,/*genomiclength*/querylength,
+				 /*extraleft*/0,/*extraright*/0,genomicseg,query,plusp,
+				 /*trim_left_p*/true,/*trim_right_p*/true,trim_maxlength,
+				 /*minlength*/querylength/2,dibasep,cmetp)) == NULL) {
+    return (T) NULL;
+    
+  } else {
+    new = (T) MALLOC(sizeof(*new));
+    new->substring1 = substring;
+    new->substring2 = (Substring_T) NULL;
+    new->substring_low = new->substring1;
 
-  new->hittype = DEL;
-  new->chrnum = chrnum;
-  new->chroffset = chroffset;
-  new->plusp = plusp;
+    new->deletion = (char *) NULL;
+    new->genomicstart = genomicstart;
+    new->genomicend = genomicend;
 
-  new->nindels = nindels;
-  new->total_nmismatches = nmismatches1 + nmismatches2;
-  new->ntscore = indel_penalty + nmismatches1 + nmismatches2;
-  new->score = new->ntscore + ncolordiffs1 + ncolordiffs2;
-  new->geneprob = -1;
+    new->hittype = TERMINAL;
+    new->chrnum = new->effective_chrnum = chrnum;
+    new->other_chrnum = 0;
+    new->chroffset = chroffset;
+    new->plusp = plusp;
+    new->total_nmismatches = nmismatches;
+    new->ntscore = terminal_penalty + nmismatches;
+    new->score = terminal_penalty + nmismatches + ncolordiffs;
+#if 0
+    new->nmatches = Substring_match_length(new->substring1) - (nmismatches + ncolordiffs);
+#else
+    new->nmatches = Substring_nmatches(new->substring1);
+#endif
+    /* new->chimera_prob = Substring_chimera_prob(acceptor); */
+    new->chimera_ambiguous_p = false;
 
-  if (new->score < *found_score) {
-    *found_score = new->score;
+    new->distance = 0U;
+    new->sensedir = SENSE_NULL;
+    new->geneprob = -1;
+
+    new->paired_seenp = false;
+    new->concordantp = false;
+
+    return new;
   }
-
-  new->indel_pos = indel_pos;
-
-  new->chimera_prob = 2.0;
-  new->distance = 0U;
-  new->half_intron_score = 0.0;
-
-  new->paired_seenp = false;
-  new->concordantp = false;
-
-  return new;
 }
 
 
@@ -604,17 +877,21 @@ Stage3_output_cmp (const void *a, const void *b) {
   T x = * (T *) a;
   T y = * (T *) b;
 
-  if (x->score < y->score) {
+  if (x->nmatches > y->nmatches) {
     return -1;
-  } else if (x->score > y->score) {
+  } else if (y->nmatches > x->nmatches) {
+    return +1;
+  } else if (x->score < y->score) {
+    return -1;
+  } else if (y->score < x->score) {
     return +1;
   } else if (x->hittype < y->hittype) {
     return -1;
-  } else if (x->hittype > y->hittype) {
+  } else if (y->hittype < x->hittype) {
     return +1;
   } else if (x->genomicstart < y->genomicstart) {
     return -1;
-  } else if (x->genomicstart > y->genomicstart) {
+  } else if (y->genomicstart < x->genomicstart) {
     return +1;
   } else if (x->plusp == true && y->plusp == false) {
     return -1;
@@ -632,6 +909,7 @@ Stage3_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatche
   T hit;
   int n;
   int minscore = MAX_QUERYLENGTH;
+  int best_terminal_nmatches = 0;
 
   n = List_length(hitlist);
   if (n == 0) {
@@ -642,15 +920,22 @@ Stage3_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatche
     hit = (T) p->first;
     /* For dibasep were previously using hit->ntscore, but gives false positives */
     if (hit->score <= cutoff_level) {
-      if (hit->score < minscore) {
-	minscore = hit->score;
+      if (hit->hittype == TERMINAL) {
+	if (hit->nmatches > best_terminal_nmatches) {
+	  best_terminal_nmatches = hit->nmatches;
+	}
+      } else if (hit->chimera_ambiguous_p == false) {
+	if (hit->score < minscore) {
+	  minscore = hit->score;
+	}
       }
     }
   }
 
-  debug(printf("Stage3_optimal_score: minscore = %d + subopt:%d, nhits = %d\n",
-	       minscore,suboptimal_mismatches,n));
+  debug(printf("Stage3_optimal_score over %d hits: minscore = %d + subopt:%d, best_terminal_nmatches %d\n",
+	       n,minscore,suboptimal_mismatches,best_terminal_nmatches));
   minscore += suboptimal_mismatches;
+
   for (p = hitlist; p != NULL; p = p->rest) {
     hit = (T) p->first;
     /* For dibasep were previously using hit->ntscore, but gives false positives */
@@ -658,8 +943,23 @@ Stage3_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatche
       debug(printf("Eliminating a hit with ntscore %d > cutoff_level %d\n",
 		   hit->ntscore,cutoff_level));
       Stage3_free(&hit);
+    } else if (hit->chimera_ambiguous_p == true) {
+      debug(printf("Eliminating a hit with ntscore %d and ambiguous splice\n",
+		   hit->ntscore));
+      Stage3_free(&hit);
     } else if (hit->score <= minscore) {
-      optimal = List_push(optimal,hit);
+      if (hit->hittype == TERMINAL) {
+	if (hit->nmatches < best_terminal_nmatches) {
+	  debug(printf("Eliminating a terminal hit with nmatches %d\n",hit->nmatches));
+	  Stage3_free(&hit);
+	} else {
+	  debug(printf("Keeping a terminal hit with nmatches %d\n",hit->nmatches));
+	  optimal = List_push(optimal,hit);
+	}
+      } else {
+	debug(printf("Keeping a hit with score %d\n",hit->score));
+	optimal = List_push(optimal,hit);
+      }
     } else {
       debug(printf("Eliminating a hit with score %d\n",hit->score));
       Stage3_free(&hit);
@@ -704,6 +1004,10 @@ genomicstart_cmp (const void *a, const void *b) {
     return -1;
   } else if (x->genomicstart > y->genomicstart) {
     return +1;
+  } else if (x->nmatches > y->nmatches) {
+    return -1;
+  } else if (y->nmatches > x->nmatches) {
+    return +1;
   } else {
     return 0;
   }
@@ -723,17 +1027,109 @@ genomicend_cmp (const void *a, const void *b) {
   }
 }
 
+
+List_T
+Stage3_mark_ambiguous_splices (bool *ambiguousp, List_T hitlist) {
+  T x, y, *hits;
+  int n, i, j;
+
+  *ambiguousp = false;
+  n = List_length(hitlist);
+  debug9(printf("Entered Stage3_mark_ambiguous_splices with %d pairs\n",n));
+  if (n == 0) {
+    return NULL;
+  }
+
+  hits = (T *) List_to_array(hitlist,NULL);
+
+  /* By genomicstart */
+  debug9(printf("Stage3_mark_ambiguous_splices: checking %d hits by genomicstart\n",n));
+  qsort(hits,n,sizeof(T),genomicstart_cmp);
+  for (i = 0; i < n; i++) {
+    x = hits[i];
+    if (x->hittype == SPLICE) {
+      j = i+1;
+      while (j < n && hits[j]->genomicstart == x->genomicstart) {
+	y = hits[j];
+	if (y->hittype == SPLICE) {
+	  debug9(printf("  #%d has common start with #%d\n",i,j));
+	  if (SENSE_INCONSISTENT_P(x->sensedir,y->sensedir)) {
+	    debug9(printf("  #%d and #%d have different sense, so skipping\n",i,j));
+	  } else if (x->score != y->score) {
+	    debug9(printf("  #%d overlaps #%d and score %d != %d, so skipping\n",
+			  i,j,x->score,y->score));
+	  } else {
+	    debug9(printf("  #%d overlaps #%d and score %d == %d, so both are ambiguous\n",
+			  i,j,x->score,y->score));
+	    x->chimera_ambiguous_p = true;
+	    y->chimera_ambiguous_p = true;
+	    *ambiguousp = true;
+	  }
+	}
+	j++;
+      }
+      i = j;
+    }
+  }
+    
+  /* By genomicend */
+  debug9(printf("Stage3_mark_ambiguous_splices: checking %d hits by genomicend\n",n));
+  qsort(hits,n,sizeof(T),genomicend_cmp);
+  for (i = 0; i < n; i++) {
+    x = hits[i];
+    if (x->hittype == SPLICE) {
+      j = i+1;
+      while (j < n && hits[j]->genomicend == x->genomicend) {
+	y = hits[j];
+	if (y->hittype == SPLICE) {
+	  debug9(printf("  #%d has common end with #%d\n",i,j));
+	  if (SENSE_INCONSISTENT_P(x->sensedir,y->sensedir)) {
+	    debug9(printf("  #%d and #%d have different sense, so skipping\n",i,j));
+	  } else if (x->score != y->score) {
+	    debug9(printf("  #%d overlaps #%d and score %d != %d, so skipping\n",
+			  i,j,x->score,y->score));
+	  } else {
+	    debug9(printf("  #%d overlaps #%d and score %d == %d, so both are ambiguous\n",
+			  i,j,x->score,y->score));
+	    x->chimera_ambiguous_p = true;
+	    y->chimera_ambiguous_p = true;
+	    *ambiguousp = true;
+	  }
+	}
+	j++;
+      }
+      i = j;
+    }
+  }
+
+  debug9(
+	 for (i = 0; i < n; i++) {
+	   x = hits[i];
+	   if (x->hittype == SPLICE) {
+	     printf("  %d: %u..%u (plusp = %d) ambiguousp:%d\n",
+		    i,x->genomicstart,x->genomicend,x->plusp,x->chimera_ambiguous_p);
+	   }
+	 }
+	 );
+
+  FREE(hits);
+
+  return hitlist;
+}
+
+
 List_T
 Stage3_remove_duplicates (List_T hitlist) {
-#ifdef DEBUG
+#ifdef DEBUG7
   List_T p;
 #endif
   List_T unique = NULL;
   T x, y, hit, *hits, *prev;
-  int n, i, j;
+  int n, i, j, nkept;
   bool *eliminate;
 
   n = List_length(hitlist);
+  debug7(printf("Entered Stage3_remove_duplicates with %d hits\n",n));
   if (n == 0) {
     return NULL;
   }
@@ -745,196 +1141,283 @@ Stage3_remove_duplicates (List_T hitlist) {
 
 
   /* By genomicstart */
-  debug(printf("Checking %d hits for duplicates by genomicstart\n",n));
+  debug7(printf("Stage3_remove_duplicates: checking %d hits by genomicstart\n",n));
   qsort(hits,n,sizeof(T),genomicstart_cmp);
-  for (i = 0; i < n; i++) {
-    x = hits[i];
-    j = i+1;
-    while (j < n && hits[j]->genomicstart == x->genomicstart) {
-      y = hits[j];
-      debug(printf("  #%d has common start with #%d\n",i,j));
-      if ((x->half_intron_score == 0.0 || y->half_intron_score == 0.0) && x->score < y->score) {
-	debug(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,j));
-	eliminate[j] = true;
-      } else if ((x->half_intron_score == 0.0 || y->half_intron_score == 0.0) && x->score > y->score) {
-	debug(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,i));
-	eliminate[i] = true;
-      } else if (x->hittype < y->hittype) {
-	debug(printf("  #%d overlaps #%d and score %d == %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,j));
-	eliminate[j] = true;
-      } else if (x->hittype > y->hittype) {
-	debug(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,i));
-	eliminate[i] = true;
-      } else if (x->nindels < y->nindels) {
-	debug(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
-		     i,j,j));
-	eliminate[j] = true;
-      } else if (x->nindels > y->nindels) {
-	debug(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
-		     i,j,i));
-	eliminate[i] = true;
-      } else if (x->chrnum == 0 && y->chrnum != 0) {
-	debug(printf("  #%d overlaps #%d and first one is a distant splice, so marking first one for elimination\n",
-		     i,j));
-	eliminate[i] = true;
-      } else if (x->chrnum > 0 && y->chrnum == 0) {
-	debug(printf("  #%d overlaps #%d and second one is a distant splice, so marking second one for elimination\n",
-		     i,j));
-	eliminate[j] = true;
 
-      } else if (x->distance > y->distance) {
-	debug(printf("  #%d overlaps #%d and first one has longer distance, so marking first one for elimination\n",
-		     i,j));
-	eliminate[i] = true;
-      } else if (x->distance < y->distance) {
-	debug(printf("  #%d overlaps #%d and second one has longer distance, so marking second one for elimination\n",
-		     i,j));
-	eliminate[j] = true;
+  debug7(
+	 for (i = 0; i < n; i++) {
+	   hit = hits[i];
+	   printf("  Initial %d: #%d:%u..%u, nmatches: %d\n",
+		  i,hit->chrnum,hit->genomicstart-hit->chroffset,hit->genomicend-hit->chroffset,hit->nmatches);
+	 }
+	 );
 
-      } else if (x->genomicend == y->genomicend) {
-	if (x->half_intron_score != 0.0 && y->half_intron_score != 0.0) {
-	  if (x->half_intron_score > y->half_intron_score) {
-	    debug(printf("  #%d overlaps #%d and equal and first has better support score %f > %f, so marking second one for elimination\n",
-			 i,j,x->half_intron_score,y->half_intron_score));
-	    eliminate[j] = true;
-	  } else if (y->half_intron_score > x->half_intron_score) {
-	    debug(printf("  #%d overlaps #%d and equal and second has better support score %f > %f, so marking first one for elimination\n",
-			 i,j,y->half_intron_score,x->half_intron_score));
-	    eliminate[i] = true;
-	  } else {
-	    debug(printf("  #%d overlaps #%d and equal so eliminate second one\n",
-			 i,j));
-	    eliminate[j] = true;
-	  }
-	} else {
-	  debug(printf("  #%d overlaps #%d and equal so eliminate second one\n",
+  i = 0;
+  while (i < n) {
+    if (eliminate[i] == true) {
+      debug7(printf("Skipping %d because already eliminated\n",i));
+      i++;
+    } else {
+      x = hits[i];
+      j = i+1;
+      while (j < n && hits[j]->genomicstart == x->genomicstart) {
+	debug7(printf("Looking at %d and %d with common start\n",i,j));
+	y = hits[j];
+	if (SENSE_INCONSISTENT_P(x->sensedir,y->sensedir)) {
+	  debug7(printf("  #%d and #%d have different sense, so skipping\n",i,j));
+#if 0
+	} else if (x->score < y->score) {
+	  debug7(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
+		       i,j,x->score,y->score,j));
+	  eliminate[j] = true;
+	} else if (x->score > y->score) {
+	  debug7(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
+		       i,j,x->score,y->score,i));
+	  eliminate[i] = true;
+#else
+	} else if (x->nmatches > y->nmatches) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d > %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,j));
+	  eliminate[j] = true;
+	} else if (x->nmatches < y->nmatches) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d < %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,i));
+	  eliminate[i] = true;
+#endif
+	} else if (x->hittype < y->hittype) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d == %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,j));
+	  eliminate[j] = true;
+	} else if (x->hittype > y->hittype) {
+	  debug7(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,i));
+	  eliminate[i] = true;
+	} else if (x->nindels < y->nindels) {
+	  debug7(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
+		       i,j,j));
+	  eliminate[j] = true;
+	} else if (x->nindels > y->nindels) {
+	  debug7(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
+		       i,j,i));
+	  eliminate[i] = true;
+	} else if (x->chrnum == 0 && y->chrnum != 0) {
+	  debug7(printf("  #%d overlaps #%d and first one is a distant splice, so marking first one for elimination\n",
+		       i,j));
+	  eliminate[i] = true;
+	} else if (x->chrnum > 0 && y->chrnum == 0) {
+	  debug7(printf("  #%d overlaps #%d and second one is a distant splice, so marking second one for elimination\n",
 		       i,j));
 	  eliminate[j] = true;
+
+	} else if (x->distance > y->distance) {
+	  debug7(printf("  #%d overlaps #%d and first one has longer distance, so marking first one for elimination\n",
+		       i,j));
+	  eliminate[i] = true;
+	} else if (x->distance < y->distance) {
+	  debug7(printf("  #%d overlaps #%d and second one has longer distance, so marking second one for elimination\n",
+		       i,j));
+	  eliminate[j] = true;
+
+	} else if (x->genomicend == y->genomicend) {
+#if 0
+	  if (x->half_intron_score != 0.0 && y->half_intron_score != 0.0) {
+	    if (x->half_intron_score > y->half_intron_score) {
+	      debug7(printf("  #%d overlaps #%d and equal and first has better support score %f > %f, so marking second one for elimination\n",
+			   i,j,x->half_intron_score,y->half_intron_score));
+	      eliminate[j] = true;
+	    } else if (y->half_intron_score > x->half_intron_score) {
+	      debug7(printf("  #%d overlaps #%d and equal and second has better support score %f > %f, so marking first one for elimination\n",
+			   i,j,y->half_intron_score,x->half_intron_score));
+	      eliminate[i] = true;
+	    } else {
+	      debug7(printf("  #%d overlaps #%d and equal so eliminate second one\n",
+			   i,j));
+	      eliminate[j] = true;
+	    }
+	  } else {
+#endif
+	    debug7(printf("  #%d overlaps #%d and equal so eliminate second one\n",
+			 i,j));
+	    eliminate[j] = true;
+#if 0
+	  }
+#endif
 	}
+	j++;
       }
-      j++;
+      i = j;
     }
   }
     
   j = 0;
   prev = hits;
   hits = (T *) CALLOC(n,sizeof(T));
+
+  nkept = 0;
+  for (i = 0; i < n; i++) {
+    if (eliminate[i] == false) {
+      nkept++;
+    }
+  }
+  if (nkept == 0) {
+    /* All entries eliminated one another, so keep the first one */
+    eliminate[0] = false;
+  }
+
   for (i = n-1; i >= 0; i--) {
     hit = prev[i];
     if (eliminate[i] == false) {
-      debug(printf("  Keeping %u..%u (nindels %d, distance %u, chrnum %d) (plusp = %d) on basis of genomicstart\n",
-		   hit->genomicstart,hit->genomicend,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
+      debug7(printf("  Keeping #%d:%u..%u, nmatches %d (nindels %d, distance %u, chrnum %d) (plusp = %d) on basis of genomicstart\n",
+		    hit->chrnum,hit->genomicstart-hit->chroffset,hit->genomicend-hit->chroffset,
+		    hit->nmatches,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
       hits[j++] = hit;
     } else {
-      debug(printf("  Eliminating %u..%u (nindels %d, distance %u, chrnum %d) (plusp = %d) on basis of genomicstart\n",
-		   hit->genomicstart,hit->genomicend,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
+      debug7(printf("  Eliminating #%d:%u..%u, nmatches %d (nindels %d, distance %u, chrnum %d) (plusp = %d) on basis of genomicstart\n",
+		    hit->chrnum,hit->genomicstart-hit->chroffset,hit->genomicend-hit->chroffset,
+		    hit->nmatches,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
       Stage3_free(&hit);
     }
   }
+  
   FREE(prev);
   FREE(eliminate);
+
 
   /* By genomicend */
   n = j;
   eliminate = (bool *) CALLOC(n,sizeof(bool));
-  debug(printf("Checking %d hits for duplicates by genomicend\n",n));
+  debug7(printf("Stage3_remove_duplicates: checking %d hits by genomicend\n",n));
   qsort(hits,n,sizeof(T),genomicend_cmp);
-  for (i = 0; i < n; i++) {
-    x = hits[i];
-    j = i+1;
-    while (j < n && hits[j]->genomicend == x->genomicend) {
-      y = hits[j];
-      debug(printf("  #%d has common end with #%d\n",i,j));
-      if ((x->half_intron_score == 0.0 || y->half_intron_score == 0.0) && x->score < y->score) {
-	debug(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,j));
-	eliminate[j] = true;
-      } else if ((x->half_intron_score == 0.0 || y->half_intron_score == 0.0) && x->score > y->score) {
-	debug(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,i));
-	eliminate[i] = true;
-      } else if (x->hittype < y->hittype) {
-	debug(printf("  #%d overlaps #%d and score %d == %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,j));
-	eliminate[j] = true;
-      } else if (x->hittype > y->hittype) {
-	debug(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
-		     i,j,x->score,y->score,i));
-	eliminate[i] = true;
-      } else if (x->nindels < y->nindels) {
-	debug(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
-		     i,j,j));
-	eliminate[j] = true;
-      } else if (x->nindels > y->nindels) {
-	debug(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
-		     i,j,i));
-	eliminate[i] = true;
-      } else if (x->chrnum == 0 && y->chrnum != 0) {
-	debug(printf("  #%d overlaps #%d and first one is a distant splice, so marking first one for elimination\n",
-		     i,j));
-	eliminate[i] = true;
-      } else if (x->chrnum != 0 && y->chrnum == 0) {
-	debug(printf("  #%d overlaps #%d and second one is a distant splice, so marking second one for elimination\n",
-		     i,j));
-	eliminate[j] = true;
-
-      } else if (x->distance > y->distance) {
-	debug(printf("  #%d overlaps #%d and first one has longer distance, so marking first one for elimination\n",
-		     i,j));
-	eliminate[i] = true;
-      } else if (x->distance < y->distance) {
-	debug(printf("  #%d overlaps #%d and second one has longer distance, so marking second one for elimination\n",
-		     i,j));
-	eliminate[j] = true;
-
-      } else if (x->genomicstart == y->genomicstart) {
-	if (x->half_intron_score != 0.0 && y->half_intron_score != 0.0) {
-	  if (x->half_intron_score > y->half_intron_score) {
-	    debug(printf("  #%d overlaps #%d and equal and first has better support score %f > %f, so marking second one for elimination\n",
-			 i,j,x->half_intron_score,y->half_intron_score));
-	    eliminate[j] = true;
-	  } else if (y->half_intron_score > x->half_intron_score) {
-	    debug(printf("  #%d overlaps #%d and equal and second has better support score %f > %f, so marking first one for elimination\n",
-			 i,j,y->half_intron_score,x->half_intron_score));
-	    eliminate[i] = true;
-	  } else {
-	    debug(printf("  #%d overlaps #%d and equal so eliminate second one\n",
-			 i,j));
-	    eliminate[j] = true;
-	  }
-	} else {
-	  debug(printf("  #%d overlaps #%d and equal so eliminate second one\n",
+  i = 0;
+  while (i < n) {
+    if (eliminate[i] == true) {
+      debug7(printf("Skipping %d because already eliminated\n",i));
+      i++;
+    } else {
+      x = hits[i];
+      j = i+1;
+      while (j < n && hits[j]->genomicend == x->genomicend) {
+	debug7(printf("Looking at %d and %d with common end\n",i,j));
+	y = hits[j];
+	if (SENSE_INCONSISTENT_P(x->sensedir,y->sensedir)) {
+	  debug7(printf("  #%d and #%d have different sense, so skipping\n",i,j));
+#if 0
+	} else if (x->score < y->score) {
+	  debug7(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
+		       i,j,x->score,y->score,j));
+	  eliminate[j] = true;
+	} else if (x->score > y->score) {
+	  debug7(printf("  #%d overlaps #%d and score %d < %d, so marking %d for elimination\n",
+		       i,j,x->score,y->score,i));
+	  eliminate[i] = true;
+#else
+	} else if (x->nmatches > y->nmatches) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d > %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,j));
+	  eliminate[j] = true;
+	} else if (x->nmatches < y->nmatches) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d < %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,i));
+	  eliminate[i] = true;
+#endif
+	} else if (x->hittype < y->hittype) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d == %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,j));
+	  eliminate[j] = true;
+	} else if (x->hittype > y->hittype) {
+	  debug7(printf("  #%d overlaps #%d and nmatches %d < %d, so marking %d for elimination\n",
+		       i,j,x->nmatches,y->nmatches,i));
+	  eliminate[i] = true;
+	} else if (x->nindels < y->nindels) {
+	  debug7(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
+		       i,j,j));
+	  eliminate[j] = true;
+	} else if (x->nindels > y->nindels) {
+	  debug7(printf("  #%d overlaps #%d and fewer indels, so marking %d for elimination\n",
+		       i,j,i));
+	  eliminate[i] = true;
+	} else if (x->chrnum == 0 && y->chrnum != 0) {
+	  debug7(printf("  #%d overlaps #%d and first one is a distant splice, so marking first one for elimination\n",
+		       i,j));
+	  eliminate[i] = true;
+	} else if (x->chrnum != 0 && y->chrnum == 0) {
+	  debug7(printf("  #%d overlaps #%d and second one is a distant splice, so marking second one for elimination\n",
 		       i,j));
 	  eliminate[j] = true;
+
+	} else if (x->distance > y->distance) {
+	  debug7(printf("  #%d overlaps #%d and first one has longer distance, so marking first one for elimination\n",
+		       i,j));
+	  eliminate[i] = true;
+	} else if (x->distance < y->distance) {
+	  debug7(printf("  #%d overlaps #%d and second one has longer distance, so marking second one for elimination\n",
+		       i,j));
+	  eliminate[j] = true;
+
+	} else if (x->genomicstart == y->genomicstart) {
+#if 0
+	  if (x->half_intron_score != 0.0 && y->half_intron_score != 0.0) {
+	    if (x->half_intron_score > y->half_intron_score) {
+	      debug7(printf("  #%d overlaps #%d and equal and first has better support score %f > %f, so marking second one for elimination\n",
+			   i,j,x->half_intron_score,y->half_intron_score));
+	      eliminate[j] = true;
+	    } else if (y->half_intron_score > x->half_intron_score) {
+	      debug7(printf("  #%d overlaps #%d and equal and second has better support score %f > %f, so marking first one for elimination\n",
+			   i,j,y->half_intron_score,x->half_intron_score));
+	      eliminate[i] = true;
+	    } else {
+	      debug7(printf("  #%d overlaps #%d and equal so eliminate second one\n",
+			   i,j));
+	      eliminate[j] = true;
+	    }
+	  } else {
+#endif
+	    debug7(printf("  #%d overlaps #%d and equal so eliminate second one\n",
+			 i,j));
+	    eliminate[j] = true;
+#if 0
+	  }
+#endif
 	}
+	j++;
       }
-      j++;
+      i = j;
     }
+  }
+
+  nkept = 0;
+  for (i = 0; i < n; i++) {
+    if (eliminate[i] == false) {
+      nkept++;
+    }
+  }
+  if (nkept == 0) {
+    /* All entries eliminated one another, so keep the first one */
+    eliminate[0] = false;
   }
 
   for (i = n-1; i >= 0; i--) {
     hit = hits[i];
     if (eliminate[i] == false) {
-      debug(printf("  Keeping %u..%u (nindels %d, distance %u, chrnum %d) (plusp = %d)\n",
-		   hit->genomicstart,hit->genomicend,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
+      debug7(printf("  Keeping #%d:%u..%u, nmatches %d (nindels %d, distance %u, chrnum %d) (plusp = %d)\n",
+		    hit->chrnum,hit->genomicstart-hit->chroffset,hit->genomicend-hit->chroffset,
+		    hit->nmatches,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
       unique = List_push(unique,hit);
     } else {
-      debug(printf("  Eliminating %u..%u (nindels %d, distance %u, chrnum %d) (plusp = %d)\n",
-		   hit->genomicstart,hit->genomicend,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
+      debug7(printf("  Eliminating #%d:%u..%u, nmatches %d (nindels %d, distance %u, chrnum %d) (plusp = %d)\n",
+		    hit->chrnum,hit->genomicstart-hit->chroffset,hit->genomicend-hit->chroffset,
+		    hit->nmatches,hit->nindels,hit->distance,hit->chrnum,hit->plusp));
       Stage3_free(&hit);
     }
   }
   FREE(hits);
   FREE(eliminate);
 
-  debug(
+  debug7(
 	for (p = unique, i = 0; p != NULL; p = p->rest, i++) {
 	  hit = (T) p->first;
-	  printf("  Final %d: %u..%u (plusp = %d)\n",i,hit->genomicstart,hit->genomicend,hit->plusp);
+	  printf("  Final %d: #%d:%u..%u (plusp = %d)\n",
+		 i,hit->chrnum,hit->genomicstart-hit->chroffset,hit->genomicend-hit->chroffset,hit->plusp);
 	}
 	);
 
@@ -953,20 +1436,24 @@ print_alignment_info (int nblocks, int score, int geneprob) {
 
 
 static char *
-samechr_text (T hit5, T hit3) {
-  if (hit5->chrnum != hit3->chrnum) {
-    return (char *) NULL;
-  } else if (hit5->plusp != hit3->plusp) {
+samechr_type_text (Genomicpos_T genomicstart5, bool plus5p,
+		   Genomicpos_T genomicstart3, bool plus3p, Genomicpos_T pairedlength,
+		   Genomicpos_T pairmax) {
+  if (plus5p != plus3p) {
     return SAMECHR_INVERSION_TEXT;
-  } else if (hit5->plusp == true) {
-    if (hit3->genomicstart < hit5->genomicstart) {
+  } else if (plus5p == true) {
+    if (genomicstart3 < genomicstart5) {
       return SAMECHR_SCRAMBLE_TEXT;
+    } else if (pairedlength < pairmax) {
+      return CONCORDANT_TEXT;
     } else {
       return SAMECHR_TOOLONG_TEXT;
     }
   } else {
-    if (hit5->genomicstart < hit3->genomicstart) {
+    if (genomicstart5 < genomicstart3) {
       return SAMECHR_SCRAMBLE_TEXT;
+    } else if (pairedlength < pairmax) {
+      return CONCORDANT_TEXT;
     } else {
       return SAMECHR_TOOLONG_TEXT;
     }
@@ -1040,7 +1527,7 @@ print_single (T this, int score, int geneprob, IIT_T chromosome_iit, Sequence_T 
 
 
 static void
-print_insertion (T this, int score, int geneprob, IIT_T chromosome_iit,
+print_insertion (T this, int score, int geneprob, IIT_T chromosome_iit, Sequence_T queryseq,
 		 bool invertp, IIT_T snps_iit, int *snps_divint_crosstable,
 		 T hit5, T hit3, Pairtype_T pairtype, int pairedlength, int pairscore) {
   char *chr;
@@ -1050,7 +1537,7 @@ print_insertion (T this, int score, int geneprob, IIT_T chromosome_iit,
 
   printf(" ");
   Substring_print_insertion_1(this->substring1,this->substring2,this->nindels,
-			      chr,invertp,snps_iit,snps_divint_crosstable);
+			      queryseq,chr,invertp,snps_iit,snps_divint_crosstable);
   /* Alignment info */
   printf("\t");
   print_alignment_info(/*nblocks*/2,score,geneprob);
@@ -1066,7 +1553,7 @@ print_insertion (T this, int score, int geneprob, IIT_T chromosome_iit,
 
   printf(",");
   Substring_print_insertion_2(this->substring1,this->substring2,this->nindels,
-			      chr,invertp,snps_iit,snps_divint_crosstable);
+			      queryseq,chr,invertp,snps_iit,snps_divint_crosstable);
   printf("\n");
 
   if (allocp == true) {
@@ -1077,7 +1564,7 @@ print_insertion (T this, int score, int geneprob, IIT_T chromosome_iit,
 }
 
 static void
-print_deletion (T this, int score, int geneprob, IIT_T chromosome_iit,
+print_deletion (T this, int score, int geneprob, IIT_T chromosome_iit, Sequence_T queryseq,
 		bool invertp, IIT_T snps_iit, int *snps_divint_crosstable,
 		T hit5, T hit3, Pairtype_T pairtype, int pairedlength, int pairscore) {
   char *chr;
@@ -1087,7 +1574,7 @@ print_deletion (T this, int score, int geneprob, IIT_T chromosome_iit,
 
   printf(" ");
   Substring_print_deletion_1(this->substring1,this->substring2,this->nindels,this->deletion,
-			     chr,invertp,snps_iit,snps_divint_crosstable);
+			     queryseq,chr,invertp,snps_iit,snps_divint_crosstable);
   /* Alignment info */
   printf("\t");
   print_alignment_info(/*nblocks*/2,score,geneprob);
@@ -1102,7 +1589,7 @@ print_deletion (T this, int score, int geneprob, IIT_T chromosome_iit,
 
   printf(",");
   Substring_print_deletion_2(this->substring1,this->substring2,this->nindels,this->deletion,
-			     chr,invertp,snps_iit,snps_divint_crosstable);
+			     queryseq,chr,invertp,snps_iit,snps_divint_crosstable);
   printf("\n");
 
   if (allocp == true) {
@@ -1113,9 +1600,10 @@ print_deletion (T this, int score, int geneprob, IIT_T chromosome_iit,
 
 static void
 print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromosome_iit,
-	      bool invertp, IIT_T snps_iit, int *snps_divint_crosstable, IIT_T splicesites_iit,
-	      int donor_typeint, int acceptor_typeint, int *splicesites_divint_crosstable,
-	      T hit5, T hit3, Pairtype_T pairtype, int pairedlength, int pairscore) {
+	      Sequence_T queryseq, bool invertp, IIT_T snps_iit, int *snps_divint_crosstable,
+	      IIT_T splicesites_iit, int donor_typeint, int acceptor_typeint,
+	      int *splicesites_divint_crosstable, T hit5, T hit3,
+	      Pairtype_T pairtype, int pairedlength, int pairscore) {
   Substring_T donor, acceptor;
   
   donor = chimera->substring1;
@@ -1125,10 +1613,11 @@ print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromos
   Substring_assign_acceptor_prob(acceptor,genome,chromosome_iit);
 
   if (acceptor == NULL) {
+    abort();			/* Using terminals now instead of halfdonor */
     /* Single sequence */
     printf(" ");
-    Substring_print_donor(donor,chimera->sensep,invertp,
-			  chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
+    Substring_print_donor(donor,/*sensep*/chimera->sensedir==SENSE_FORWARD,invertp,
+			  queryseq,chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			  donor_typeint,splicesites_divint_crosstable,/*endp*/true,
 			  /*acceptor*/NULL,/*chimera_distance*/0);
     /* Alignment info */
@@ -1143,10 +1632,11 @@ print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromos
     printf("\n");
 
   } else if (donor == NULL) {
+    abort();			/* Using terminals now instead of halfacceptor */
     /* Single sequence */
     printf(" ");
-    Substring_print_acceptor(acceptor,chimera->sensep,invertp,
-			     chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
+    Substring_print_acceptor(acceptor,/*sensep*/chimera->sensedir==SENSE_FORWARD,invertp,
+			     queryseq,chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			     acceptor_typeint,splicesites_divint_crosstable,/*endp*/true,
 			     /*donor*/NULL,/*chimera_distance*/0);
     /* Alignment info */
@@ -1160,10 +1650,10 @@ print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromos
     }
     printf("\n");
 
-  } else if (chimera->sensep == true && invertp == false) {
+  } else if (chimera->sensedir == SENSE_FORWARD && invertp == false) {
     printf(" ");
-    Substring_print_donor(donor,chimera->sensep,invertp,
-			  chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
+    Substring_print_donor(donor,/*sensep*/true,/*invertp*/false,
+			  queryseq,chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			  donor_typeint,splicesites_divint_crosstable,/*endp*/false,
 			  acceptor,chimera->distance);
     /* Alignment info */
@@ -1178,39 +1668,15 @@ print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromos
     printf("\n");
 
     printf(",");
-    Substring_print_acceptor(acceptor,chimera->sensep,invertp,
+    Substring_print_acceptor(acceptor,/*sensep*/true,/*invertp*/false,queryseq,
 			     chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			     acceptor_typeint,splicesites_divint_crosstable,/*endp*/false,
 			     donor,chimera->distance);
     printf("\n");
 
-  } else if (chimera->sensep == true && invertp == true) {
+  } else if (chimera->sensedir == SENSE_FORWARD && invertp == true) {
     printf(" ");
-    Substring_print_acceptor(acceptor,chimera->sensep,invertp,
-			     chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
-			     acceptor_typeint,splicesites_divint_crosstable,/*endp*/false,
-			     donor,chimera->distance);
-    /* Alignment info */
-    printf("\t");
-    print_alignment_info(/*nblocks*/2,score,geneprob);
-
-    /* Pairing info */
-    if (hit5 != NULL && hit3 != NULL) {
-      printf("\t");
-      print_pair_info(hit5,hit3,pairtype,pairedlength,pairscore);
-    }
-    printf("\n");
-
-    printf(",");
-    Substring_print_donor(donor,chimera->sensep,invertp,
-			  chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
-			  donor_typeint,splicesites_divint_crosstable,/*endp*/false,
-			  acceptor,chimera->distance);
-    printf("\n");
-
-  } else if (chimera->sensep == false && invertp == false) {
-    printf(" ");
-    Substring_print_acceptor(acceptor,chimera->sensep,invertp,
+    Substring_print_acceptor(acceptor,/*sensep*/true,/*invertp*/true,queryseq,
 			     chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			     acceptor_typeint,splicesites_divint_crosstable,/*endp*/false,
 			     donor,chimera->distance);
@@ -1226,15 +1692,39 @@ print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromos
     printf("\n");
 
     printf(",");
-    Substring_print_donor(donor,chimera->sensep,invertp,
+    Substring_print_donor(donor,/*sensep*/true,/*invertp*/true,queryseq,
 			  chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			  donor_typeint,splicesites_divint_crosstable,/*endp*/false,
 			  acceptor,chimera->distance);
     printf("\n");
 
-  } else if (chimera->sensep == false && invertp == true) {
+  } else if (chimera->sensedir == SENSE_ANTI && invertp == false) {
     printf(" ");
-    Substring_print_donor(donor,chimera->sensep,invertp,
+    Substring_print_acceptor(acceptor,/*sensep*/false,/*invertp*/false,queryseq,
+			     chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
+			     acceptor_typeint,splicesites_divint_crosstable,/*endp*/false,
+			     donor,chimera->distance);
+    /* Alignment info */
+    printf("\t");
+    print_alignment_info(/*nblocks*/2,score,geneprob);
+
+    /* Pairing info */
+    if (hit5 != NULL && hit3 != NULL) {
+      printf("\t");
+      print_pair_info(hit5,hit3,pairtype,pairedlength,pairscore);
+    }
+    printf("\n");
+
+    printf(",");
+    Substring_print_donor(donor,/*sensep*/false,/*invertp*/false,queryseq,
+			  chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
+			  donor_typeint,splicesites_divint_crosstable,/*endp*/false,
+			  acceptor,chimera->distance);
+    printf("\n");
+
+  } else if (chimera->sensedir == SENSE_ANTI && invertp == true) {
+    printf(" ");
+    Substring_print_donor(donor,/*sensep*/false,/*invertp*/true,queryseq,
 			  chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			  donor_typeint,splicesites_divint_crosstable,/*endp*/false,
 			  acceptor,chimera->distance);
@@ -1250,11 +1740,44 @@ print_splice (T chimera, int score, int geneprob, Genome_T genome, IIT_T chromos
     printf("\n");
 
     printf(",");
-    Substring_print_acceptor(acceptor,chimera->sensep,invertp,
+    Substring_print_acceptor(acceptor,/*sensep*/false,/*invertp*/true,queryseq,
 			     chromosome_iit,snps_iit,snps_divint_crosstable,splicesites_iit,
 			     acceptor_typeint,splicesites_divint_crosstable,/*endp*/false,
 			     donor,chimera->distance);
     printf("\n");
+  }
+
+  return;
+}
+
+
+static void
+print_terminal (T this, int score, int geneprob, IIT_T chromosome_iit, Sequence_T queryseq,
+		bool invertp, IIT_T snps_iit, int *snps_divint_crosstable,
+		T hit5, T hit3, Pairtype_T pairtype, int pairedlength, int pairscore) {
+  char *chr;
+  bool allocp;
+
+  chr = IIT_label(chromosome_iit,this->chrnum,&allocp);
+
+  printf(" ");
+  Substring_print_terminal(this->substring1,invertp,queryseq,chr,
+			   snps_iit,snps_divint_crosstable);
+
+  /* Alignment info */
+  printf("\t");
+  print_alignment_info(/*nblocks*/1,score,geneprob);
+
+  /* Pairing info */
+  if (hit5 != NULL && hit3 != NULL) {
+    printf("\t");
+    print_pair_info(hit5,hit3,pairtype,pairedlength,pairscore);
+  }
+
+  printf("\n");
+
+  if (allocp == true) {
+    FREE(chr);
   }
 
   return;
@@ -1273,16 +1796,19 @@ Stage3_print (T this, int score, int geneprob, Genome_T genome, IIT_T chromosome
     print_single(this,score,geneprob,chromosome_iit,queryseq,invertp,
 		 snps_iit,snps_divint_crosstable,hit5,hit3,pairtype,pairedlength,pairscore);
   } else if (this->hittype == INS) {
-    print_insertion(this,score,geneprob,chromosome_iit,invertp,
+    print_insertion(this,score,geneprob,chromosome_iit,queryseq,invertp,
 		    snps_iit,snps_divint_crosstable,hit5,hit3,pairtype,pairedlength,pairscore);
   } else if (this->hittype == DEL) {
-    print_deletion(this,score,geneprob,chromosome_iit,invertp,
+    print_deletion(this,score,geneprob,chromosome_iit,queryseq,invertp,
 		   snps_iit,snps_divint_crosstable,hit5,hit3,pairtype,pairedlength,pairscore);
   } else if (this->hittype == SPLICE) {
-    print_splice(this,score,geneprob,genome,chromosome_iit,invertp,
+    print_splice(this,score,geneprob,genome,chromosome_iit,queryseq,invertp,
 		 snps_iit,snps_divint_crosstable,splicesites_iit,
 		 donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
 		 hit5,hit3,pairtype,pairedlength,pairscore);
+  } else if (this->hittype == TERMINAL) {
+    print_terminal(this,score,geneprob,chromosome_iit,queryseq,invertp,
+		   snps_iit,snps_divint_crosstable,hit5,hit3,pairtype,pairedlength,pairscore);
   }
   return;
 }
@@ -1305,7 +1831,8 @@ Stage3_geneprob_eval (List_T list, IIT_T geneprob_iit, IIT_T chromosome_iit, Seq
 							geneprob_iit,chromosome_iit,queryseq);
     } else if (this->hittype == SPLICE) {
       this->geneprob = Substring_geneprob_eval_splice(/*donor*/this->substring1,/*acceptor*/this->substring2,
-						      geneprob_iit,chromosome_iit,Sequence_fulllength(queryseq),this->sensep);
+						      geneprob_iit,chromosome_iit,Sequence_fulllength(queryseq),
+						      /*sensep*/this->sensedir==SENSE_FORWARD);
     }
   }
 
@@ -1332,7 +1859,8 @@ Stage3pair_geneprob_eval (List_T list, IIT_T geneprob_iit, IIT_T chromosome_iit,
 							geneprob_iit,chromosome_iit,queryseq5);
     } else if (this->hittype == SPLICE) {
       this->geneprob = Substring_geneprob_eval_splice(/*donor*/this->substring1,/*acceptor*/this->substring2,
-						      geneprob_iit,chromosome_iit,Sequence_fulllength(queryseq5),this->sensep);
+						      geneprob_iit,chromosome_iit,Sequence_fulllength(queryseq5),
+						      /*sensep*/this->sensedir==SENSE_FORWARD);
     }
 
     this = pair->hit3;
@@ -1346,7 +1874,8 @@ Stage3pair_geneprob_eval (List_T list, IIT_T geneprob_iit, IIT_T chromosome_iit,
 							geneprob_iit,chromosome_iit,queryseq3);
     } else if (this->hittype == SPLICE) {
       this->geneprob = Substring_geneprob_eval_splice(/*donor*/this->substring1,/*acceptor*/this->substring2,
-						      geneprob_iit,chromosome_iit,Sequence_fulllength(queryseq3),this->sensep);
+						      geneprob_iit,chromosome_iit,Sequence_fulllength(queryseq3),
+						      /*sensep*/this->sensedir==SENSE_FORWARD);
     }
   }
 
@@ -1354,20 +1883,184 @@ Stage3pair_geneprob_eval (List_T list, IIT_T geneprob_iit, IIT_T chromosome_iit,
 }
 
 
+static Genomicpos_T
+compute_pairlength (Genomicpos_T start1, Genomicpos_T end1, 
+		    Genomicpos_T start2, Genomicpos_T end2) {
+  Genomicpos_T low1, high1, low2, high2;
+
+  if (start1 < end1) {
+    low1 = start1;
+    high1 = end1;
+  } else {
+    low1 = end1;
+    high1 = start1;
+  }
+
+  if (start2 < end2) {
+    low2 = start2;
+    high2 = end2;
+  } else {
+    low2 = end2;
+    high2 = start2;
+  }
+
+  if (low2 > high1) {
+    return low2 - high1;
+  } else if (low1 > high2) {
+    return low1 - high2;
+  } else {
+    return 0U;
+  }
+}
+
+
+
+static bool
+result_failed_p (Result_T result, bool fivep, int maxpaths, bool quiet_if_excessive_p) {
+  Resulttype_T resulttype;
+  int npaths;
+
+  resulttype = Result_resulttype(result);
+  if (resulttype == PAIREDEND_CONCORDANT || resulttype == PAIREDEND_SAMECHR_SINGLE || resulttype == PAIREDEND_SAMECHR_MULTIPLE) {
+    /* stage3pairarray = (Stage3pair_T *) */ Result_array(&npaths,result);
+
+    if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+      return true;
+    } else {
+      return false;
+    }
+
+  } else {
+    /* PAIREDEND_AS_SINGLES or PAIREDEND_AS_SINGLES_UNIQUE */
+    if (fivep == true) {
+      /* stage3array = (T *) */ Result_array(&npaths,result);
+    } else {
+      /* stage3array = (T *) */ Result_array2(&npaths,result);
+    }
+      
+    if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+}
+
 
 static void
 print_paired_hits (Result_T result, char initchar, bool fivep, 
 		   Genome_T genome, IIT_T chromosome_iit,
-		   Sequence_T queryseq, Sequence_T headerseq, 
+		   Sequence_T queryseq, Sequence_T headerseq, Genomicpos_T pairmax,
 		   IIT_T snps_iit, int *snps_divint_crosstable,
 		   IIT_T splicesites_iit, int donor_typeint, int acceptor_typeint,
 		   int *splicesites_divint_crosstable, int maxpaths, bool quiet_if_excessive_p,
 		   bool sequence_inverted_p, bool invertp) {
   Stage3pair_T *stage3pairarray, stage3pair;
   Resulttype_T resulttype;
+  T *stage3array, this, hit5, hit3;
+  int npaths, pathnum;
+  bool double_transloc_p, single_transloc_p;
+
+  printf("%c",initchar);
+  if (sequence_inverted_p == true) {
+    invertp = (invertp == true) ? false : true;
+  }
+  if (invertp == false) {
+    Sequence_print_oneline(stdout,queryseq);
+  } else {
+    Sequence_print_oneline_revcomp(stdout,queryseq);
+  }
+
+  resulttype = Result_resulttype(result);
+  if (resulttype == PAIREDEND_CONCORDANT || resulttype == PAIREDEND_SAMECHR_SINGLE || resulttype == PAIREDEND_SAMECHR_MULTIPLE) {
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
+    if (resulttype == PAIREDEND_CONCORDANT) {
+      printf("\t%d %s\t",npaths,CONCORDANT_TEXT);
+    } else if (resulttype == PAIREDEND_SAMECHR_SINGLE) {
+      stage3pair = stage3pairarray[0];
+      hit5 = stage3pair->hit5;
+      hit3 = stage3pair->hit3;
+      printf("\t%d %s\t",npaths,samechr_type_text(hit5->genomicstart,hit5->plusp,hit3->genomicstart,hit3->plusp,
+						  stage3pair->pairedlength,pairmax));
+    } else {
+      printf("\t%d %s\t",npaths,UNPAIRED_TEXT);
+    }
+    Sequence_print_header(headerseq,/*checksump*/false);
+    /* printf("\n"); -- included in header */
+
+    if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+      /* No output */
+    } else {
+      for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+	stage3pair = stage3pairarray[pathnum-1];
+	hit5 = stage3pair->hit5;
+	hit3 = stage3pair->hit3;
+
+	if (fivep == true) {
+	  Stage3_print(hit5,hit5->score,hit5->geneprob+hit3->geneprob,
+		       genome,chromosome_iit,queryseq,
+		       snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		       invertp,hit5,hit3,stage3pair->pairtype,stage3pair->pairedlength,
+		       stage3pair->score);
+	} else {
+	  Stage3_print(hit3,hit3->score,hit5->geneprob+hit3->geneprob,
+		       genome,chromosome_iit,queryseq,
+		       snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		       invertp,hit5,hit3,stage3pair->pairtype,stage3pair->pairedlength,
+		       stage3pair->score);
+	}
+      }
+    }
+
+  } else {
+    /* PAIREDEND_AS_SINGLES or PAIREDEND_AS_SINGLES_UNIQUE */
+    if (fivep == true) {
+      stage3array = (T *) Result_array(&npaths,result);
+    } else {
+      stage3array = (T *) Result_array2(&npaths,result);
+    }
+    printf("\t%d %s\t",npaths,UNPAIRED_TEXT);
+    Sequence_print_header(headerseq,/*checksump*/false);
+    /* printf("\n"); -- included in header */
+      
+    if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+      /* No output */
+    } else {
+      for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+	this = stage3array[pathnum-1];
+	Stage3_print(this,this->score,this->geneprob,genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,/*hit5*/(T) NULL,/*hit3*/(T) NULL,/*pairtype*/UNPAIRED,/*pairedlength*/0,
+		     /*pairscore*/0);
+      }
+    }
+  }
+
+  printf("\n");
+
+  return;
+}
+
+
+#if 0
+static void
+print_paired_hits_old (Result_T result, char initchar, bool fivep, 
+		       Genome_T genome, IIT_T chromosome_iit,
+		       Sequence_T queryseq, Sequence_T headerseq, Genomicpos_T pairmax,
+		       IIT_T snps_iit, int *snps_divint_crosstable,
+		       IIT_T splicesites_iit, int donor_typeint, int acceptor_typeint,
+		       int *splicesites_divint_crosstable, int maxpaths, bool quiet_if_excessive_p,
+		       bool sequence_inverted_p, bool invertp) {
+  Stage3pair_T *stage3pairarray, stage3pair;
+  Resulttype_T resulttype;
+  Pairtype_T pairtype;
   T *stage3array, *stage3array1, *stage3array2, this, hit5, hit3;
   int npaths, pathnum;
-  bool samechrp;
+  bool samechrp, double_transloc_p, single_transloc_p;
   Genomicpos_T pairedlength, low5, high5, low3, high3;
 
   printf("%c",initchar);
@@ -1381,45 +2074,47 @@ print_paired_hits (Result_T result, char initchar, bool fivep,
   }
 
   resulttype = Result_resulttype(result);
-  if (resulttype == PAIREDEND_SAMECHR) {
-    /* Should be discovered only within PAIREDEND_AS_SINGLES_UNIQUE */
-    abort();
-
-  } else if (resulttype == PAIREDEND_CONCORDANT) {
+  if (resulttype == PAIREDEND_CONCORDANT || resulttype == PAIREDEND_SAMECHR) {
     stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
 
-    printf("\t%d %s\t",npaths,CONCORDANT_TEXT);
+    if (resulttype == PAIREDEND_CONCORDANT) {
+      printf("\t%d %s\t",npaths,CONCORDANT_TEXT);
+      samechrp = false;
+    } else {
+      printf("\t%d %s\t",npaths,SAMECHR_TEXT);
+      samechrp = true;
+    }
     Sequence_print_header(headerseq,/*checksump*/false);
     /* printf("\n"); -- included in header */
 
     if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+      /* No output */
     } else {
       for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
 	stage3pair = stage3pairarray[pathnum-1];
+	hit5 = stage3pair->hit5;
+	hit3 = stage3pair->hit3;
+
 	if (fivep == true) {
-	  Stage3_print(stage3pair->hit5,stage3pair->hit5->score,
-		       stage3pair->hit5->geneprob+stage3pair->hit3->geneprob,
+	  Stage3_print(hit5,hit5->score,hit5->geneprob+hit3->geneprob,
 		       genome,chromosome_iit,queryseq,
 		       snps_iit,snps_divint_crosstable,
 		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		       invertp,
-		       stage3pair->hit5,stage3pair->hit3,stage3pair->pairtype,stage3pair->pairedlength,
+		       invertp,hit5,hit3,stage3pair->pairtype,stage3pair->pairedlength,
 		       stage3pair->score);
 	} else {
-	  Stage3_print(stage3pair->hit3,stage3pair->hit3->score,
-		       stage3pair->hit5->geneprob+stage3pair->hit3->geneprob,
+	  Stage3_print(hit3,hit3->score,hit5->geneprob+hit3->geneprob,
 		       genome,chromosome_iit,queryseq,
 		       snps_iit,snps_divint_crosstable,
 		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		       invertp,
-		       stage3pair->hit5,stage3pair->hit3,stage3pair->pairtype,stage3pair->pairedlength,
+		       invertp,hit5,hit3,stage3pair->pairtype,stage3pair->pairedlength,
 		       stage3pair->score);
 	}
       }
     }
 
   } else if (resulttype == PAIREDEND_AS_SINGLES || resulttype == PAIREDEND_AS_SINGLES_UNIQUE) {
-    samechrp = false;
+    samechrp = double_transloc_p = single_transloc_p = false;
     if (resulttype == PAIREDEND_AS_SINGLES_UNIQUE) {
       stage3array1 = (T *) Result_array(&npaths,result);
       stage3array2 = (T *) Result_array2(&npaths,result);
@@ -1427,11 +2122,170 @@ print_paired_hits (Result_T result, char initchar, bool fivep,
       hit3 = stage3array2[0];
 
       if (hit5->chrnum == hit3->chrnum) {
-	samechrp = true;
+	if (hit5->chrnum == 0) {
+	  double_transloc_p = true;
+	} else {
+	  samechrp = true;
+	}
+      } else if (hit5->chrnum == 0 || hit3->chrnum == 0) {
+	single_transloc_p = true;
       }
     }
 
-    if (samechrp == false) {
+
+    if (double_transloc_p == true) {
+      /* Unique and double translocation */
+
+      if (Substring_chrnum(hit5->substring1) != Substring_chrnum(hit3->substring1) ||
+	  Substring_chrnum(hit5->substring2) != Substring_chrnum(hit3->substring2)) {
+	pairedlength = 0U;
+	pairtype = UNPAIRED;
+	printf("\t%d unpaired\t",npaths);
+
+      } else {
+	if ((pairedlength = compute_pairlength(Substring_genomicstart(hit5->substring1),
+					       Substring_genomicend(hit5->substring1),
+					       Substring_genomicstart(hit3->substring1),
+					       Substring_genomicend(hit3->substring1))) < pairmax ||
+	    (pairedlength = compute_pairlength(Substring_genomicstart(hit5->substring2),
+					       Substring_genomicend(hit5->substring2),
+					       Substring_genomicstart(hit3->substring2),
+					       Substring_genomicend(hit3->substring2))) < pairmax) {
+	  pairtype = CONCORDANT;
+	  printf("\t%d concordant\t",npaths);
+	} else {
+	  pairtype = SAMECHR;
+	  printf("\t%d %s\t",npaths,samechr_type_text(Substring_genomicstart(hit5->substring1),Substring_plusp(hit5->substring1),
+						      Substring_genomicstart(hit3->substring1),Substring_plusp(hit3->substring1)));
+	}
+      }
+
+      Sequence_print_header(headerseq,/*checksump*/false);
+
+      if (fivep == true) {
+	Stage3_print(hit5,hit5->score,hit5->geneprob+hit3->geneprob,
+		     genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,hit5,hit3,pairtype,pairedlength,
+		     hit5->score+hit3->score);
+      } else {
+	Stage3_print(hit3,hit3->score,hit5->geneprob+hit3->geneprob,
+		     genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,hit5,hit3,pairtype,pairedlength,
+		     hit5->score+hit3->score);
+      }
+
+    } else if (single_transloc_p == true) {
+      /* Unique and single translocation */
+
+      if (hit5->chrnum == 0) {
+	if (Substring_chrnum(hit5->substring1) == hit3->chrnum) {
+	  if ((pairedlength = compute_pairlength(Substring_genomicstart(hit5->substring1),Substring_genomicend(hit5->substring1),
+						 hit3->genomicstart,hit3->genomicend)) < pairmax) {
+	    pairtype = CONCORDANT;
+	    printf("\t%d concordant\t",npaths);
+	  } else {
+	    pairtype = SAMECHR;
+	    printf("\t%d %s\t",npaths,samechr_type_text(Substring_genomicstart(hit5->substring1),Substring_plusp(hit5->substring1),
+							hit3->genomicstart,hit3->plusp));
+	  }
+
+	} else if (Substring_chrnum(hit5->substring2) == hit3->chrnum) {
+	  if ((pairedlength = compute_pairlength(Substring_genomicstart(hit5->substring2),Substring_genomicend(hit5->substring2),
+						 hit3->genomicstart,hit3->genomicend)) < pairmax) {
+	    pairtype = CONCORDANT;
+	    printf("\t%d concordant\t",npaths);
+	  } else {
+	    pairtype = SAMECHR;
+	    printf("\t%d %s\t",npaths,samechr_type_text(Substring_genomicstart(hit5->substring2),Substring_plusp(hit5->substring2),
+							hit3->genomicstart,hit3->plusp));
+	  }
+
+	} else {
+	  pairedlength = 0U;
+	  pairtype = UNPAIRED;
+	  printf("\t%d unpaired\t",npaths);
+	}
+
+      } else {
+	if (Substring_chrnum(hit3->substring1) == hit5->chrnum) {
+	  if ((pairedlength = compute_pairlength(hit5->genomicstart,hit5->genomicend,
+						 Substring_genomicstart(hit3->substring1),
+						 Substring_genomicend(hit3->substring1))) < pairmax) {
+	    pairtype = CONCORDANT;
+	    printf("\t%d concordant\t",npaths);
+	  } else {
+	    pairtype = SAMECHR;
+	    printf("\t%d %s\t",npaths,samechr_type_text(hit5->genomicstart,hit5->plusp,
+							Substring_genomicstart(hit3->substring1),Substring_plusp(hit3->substring1)));
+	  }
+
+	} else if (Substring_chrnum(hit3->substring2) == hit5->chrnum) {
+	  if ((pairedlength = compute_pairlength(hit5->genomicstart,hit5->genomicend,
+						 Substring_genomicstart(hit3->substring2),
+						 Substring_genomicend(hit3->substring2))) < pairmax) {
+	    printf("\t%d concordant\t",npaths);
+	    pairtype = CONCORDANT;
+	  } else {
+	    pairtype = SAMECHR;
+	    printf("\t%d %s\t",npaths,samechr_type_text(hit5->genomicstart,hit5->plusp,
+							Substring_genomicstart(hit3->substring2),Substring_plusp(hit3->substring2)));
+	  }
+
+	} else {
+	  pairedlength = 0U;
+	  pairtype = UNPAIRED;
+	  printf("\t%d unpaired\t",npaths);
+	}
+      }
+
+      Sequence_print_header(headerseq,/*checksump*/false);
+
+      if (fivep == true) {
+	Stage3_print(hit5,hit5->score,hit5->geneprob+hit3->geneprob,
+		     genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,hit5,hit3,pairtype,pairedlength,
+		     hit5->score+hit3->score);
+      } else {
+	Stage3_print(hit3,hit3->score,hit5->geneprob+hit3->geneprob,
+		     genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,hit5,hit3,pairtype,pairedlength,
+		     hit5->score+hit3->score);
+      }
+
+    } else if (samechrp == true) {
+      /* Unique and same chromosome */
+      printf("\t%d %s\t",npaths,samechr_type_text(hit5->genomicstart,hit5->plusp,hit3->genomicstart,hit3->plusp));
+      Sequence_print_header(headerseq,/*checksump*/false);
+      /* printf("\n"); -- included in header */
+
+      pairedlength = compute_pairlength(hit5->genomicstart,hit5->genomicend,
+					hit3->genomicstart,hit3->genomicend);
+      if (fivep == true) {
+	Stage3_print(hit5,hit5->score,hit5->geneprob+hit3->geneprob,
+		     genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,hit5,hit3,/*pairtype*/SAMECHR,pairedlength,
+		     hit5->score+hit3->score);
+      } else {
+	Stage3_print(hit3,hit3->score,hit5->geneprob+hit3->geneprob,
+		     genome,chromosome_iit,queryseq,
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		     invertp,hit5,hit3,/*pairtype*/SAMECHR,pairedlength,
+		     hit5->score+hit3->score);
+      }
+
+    } else {
+      /* Unpaired */
       if (fivep == true) {
 	stage3array = (T *) Result_array(&npaths,result);
       } else {
@@ -1442,6 +2296,7 @@ print_paired_hits (Result_T result, char initchar, bool fivep,
       /* printf("\n"); -- included in header */
       
       if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+	/* No output */
       } else {
 	for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
 	  this = stage3array[pathnum-1];
@@ -1453,338 +2308,454 @@ print_paired_hits (Result_T result, char initchar, bool fivep,
 	}
       }
 
-    } else {
-      printf("\t%d %s\t",npaths,samechr_text(hit5,hit3));
-      Sequence_print_header(headerseq,/*checksump*/false);
-      /* printf("\n"); -- included in header */
-
-      if (hit5->plusp == true) {
-	high5 = hit5->genomicend;
-	low5 = hit5->genomicstart;
-      } else {
-	high5 = hit5->genomicstart;
-	low5 = hit5->genomicend;
-      }
-
-      if (hit3->plusp == true) {
-	high3 = hit3->genomicend;
-	low3 = hit3->genomicstart;
-      } else {
-	high3 = hit3->genomicstart;
-	low3 = hit3->genomicend;
-      }
-
-      if (low3 > high5) {
-	pairedlength = low3 - high5;
-      } else if (low5 > high3) {
-	pairedlength = low5 - high3;
-      } else {
-	pairedlength = 0U;
-      }
-
-      if (fivep == true) {
-	Stage3_print(hit5,hit5->score,hit5->geneprob+hit3->geneprob,
-		     genome,chromosome_iit,queryseq,
-		     snps_iit,snps_divint_crosstable,
-		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		     invertp,
-		     hit5,hit3,/*pairtype*/SAMECHR,pairedlength,
-		     hit5->score+hit3->score);
-      } else {
-	Stage3_print(hit3,hit3->score,hit5->geneprob+hit3->geneprob,
-		     genome,chromosome_iit,queryseq,
-		     snps_iit,snps_divint_crosstable,
-		     splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		     invertp,
-		     hit5,hit3,/*pairtype*/SAMECHR,pairedlength,
-		     hit5->score+hit3->score);
-      }
-
     }
 
   } else {
     /* abort() */
   }
 
-  printf("\n");
+   printf("\n");
 
-  return;
-}
-
-
-void
-Stage3_print_paired (Result_T result, Genome_T genome, IIT_T chromosome_iit, Sequence_T queryseq1, Sequence_T queryseq2,
-		     IIT_T snps_iit, int *snps_divint_crosstable,
-		     IIT_T splicesites_iit, int donor_typeint, int acceptor_typeint,
-		     int *splicesites_divint_crosstable, int maxpaths, bool quiet_if_excessive_p,
-		     bool circularp, bool invertp) {
-  
-  if (circularp == false) {
-    /* First sequence */
-    print_paired_hits(result,'>',/*fivep*/true,
-		      genome,chromosome_iit,queryseq1,/*headerseq*/queryseq1,
-		      snps_iit,snps_divint_crosstable,
-		      splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		      maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/false,/*invertp*/false);
-
-    /* Second sequence.  query2 has already been revcomp'd */
-    print_paired_hits(result,'<',/*fivep*/false,
-		      genome,chromosome_iit,queryseq2,/*headerseq*/queryseq1,
-		      snps_iit,snps_divint_crosstable,
-		      splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		      maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/true,/*invertp*/invertp);
-
-  } else {
-    /* First sequence.  query2 has already been revcomp'd */
-    print_paired_hits(result,'>',/*fivep*/false,
-		      genome,chromosome_iit,queryseq2,/*headerseq*/queryseq2,
-		      snps_iit,snps_divint_crosstable,
-		      splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		      maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/true,/*invertp*/(invertp == true) ? false : true);
-
-    /* Second sequence */
-    print_paired_hits(result,'<',/*fivep*/true,
-		      genome,chromosome_iit,queryseq1,/*headerseq*/queryseq2,
-		      snps_iit,snps_divint_crosstable,
-		      splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
-		      maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/false,/*invertp*/true);
-  }
-
-  return;
-}
+   return;
+ }
+ #endif
 
 
-#if 0
-/* Note: doesn't handle translocations, which are handled in gsnap.c as individual runs on each single-end */
-bool
-Stage3_pairable_p (T hit5, T hit3, Genomicpos_T pairmax, Pairedresult_T pairedresult) {
 
-  debug(printf("Comparing %s%u (chr %d) with %s%u (chr %d): ",
-	       hit3->plusp ? "+" : "-",hit5->genomicstart,hit5->chrnum,
-	       hit3->plusp ? "+" : "-",hit3->genomicstart,hit3->chrnum));
+ /* Cannot put back output in fastq format */
+ static void
+ print_query_pairedend (Sequence_T queryseq1, Sequence_T queryseq2) {
+   printf(">");
+   Sequence_print_header(queryseq1,/*checksump*/false);
+   /* printf("\n"); -- included in header */
+   Sequence_print_oneline(stdout,queryseq1);
+   printf("\n");
+   Sequence_print_oneline_revcomp(stdout,queryseq2);
+   printf("\n");
 
-  if (hit5->chrnum != hit3->chrnum) {
-    debug(printf("No, different chromosomes\n\n"));
-    return false;
-  } else if (hit5->plusp != hit3->plusp) {
-    if (pairedresult == INVERSION) {
-      debug(printf("Yes, saw inversion and pairedresult is inversion\n\n"));
-      return true;
-    } else {
-      debug(printf("No, saw inversion and pairedresult not inversion\n\n"));
-      return false;
-    }
-  } else if (pairedresult == INVERSION) {
-    debug(printf("Yes, didn't see inversion and pairedresult is inversion\n\n"));
-    return false;
-  } else if (pairedresult == SCRAMBLE) {
-    debug(printf("No, didn't see inversion and pairedresult is scramble\n\n"));
-    return true;
-  } else if (hit5->plusp == true) {
-    if (hit3->genomicstart < hit5->genomicstart) {
-      debug(printf("No, positions wrong\n"));
-      return false;
-    } else if (pairedresult == INSERTION_DELETION) {
-      debug(printf("Yes, pairedresult is insertion_deletion\n\n"));
-      return true;
-    } else if (hit3->genomicstart > hit5->genomicstart + pairmax) {
-      debug(printf("No, length %u too long\n",hit3->genomicstart - hit5->genomicstart + 1));
-      return false;
-    } else {
-      debug(printf("Yes, length %u is okay\n",hit3->genomicstart - hit5->genomicstart + 1));
-      return true;
-    }
-  } else {
-    if (hit5->genomicstart < hit3->genomicstart) {
-      debug(printf("No, positions wrong\n"));
-      return false;
-    } else if (pairedresult == INSERTION_DELETION) {
-      debug(printf("Yes, pairedresult is insertion_deletion\n\n"));
-      return true;
-    } else if (hit5->genomicstart > hit3->genomicstart + pairmax) {
-      debug(printf("No, length %u too long\n",hit5->genomicstart - hit3->genomicstart + 1));
-      return false;
-    } else {
-      debug(printf("Yes, length %u is okay\n",hit5->genomicstart - hit3->genomicstart + 1));
-      return true;
-    }
-  }
-}
-#endif
-
-static Stage3pair_T
-Stage3pair_new (T hit5, T hit3, int querylength5, int querylength3, int expected_pairlength,
-		Pairtype_T pairtype) {
-  Stage3pair_T new = (Stage3pair_T) MALLOC(sizeof(*new));
-  Genomicpos_T pairlength5, pairlength3;
-  
-  new->hit5 = Stage3_copy(hit5);
-  new->hit3 = Stage3_copy(hit3);
-  new->pairtype = pairtype;
-
-  new->score = hit5->score + hit3->score;
-  if (pairtype == SAMECHR) {
-    new->dir = 0;
-    new->low = hit5->genomicstart;
-    if (hit5->genomicend < new->low) {
-      new->low = hit5->genomicend;
-    }
-    if (hit3->genomicstart < new->low) {
-      new->low = hit3->genomicstart;
-    }
-    if (hit3->genomicend < new->low) {
-      new->low = hit3->genomicend;
-    }
-
-    new->high = hit5->genomicstart;
-    if (hit5->genomicend > new->high) {
-      new->high = hit5->genomicend;
-    }
-    if (hit3->genomicstart > new->high) {
-      new->high = hit3->genomicstart;
-    }
-    if (hit3->genomicend > new->high) {
-      new->high = hit3->genomicend;
-    }
-
-    new->pairedlength = new->high - new->low;
-
-  } else {
-    if (hit5->plusp == true) {
-      new->dir = +1;
-      new->low = hit5->genomicstart;
-      new->high = hit3->genomicend;
-
-      pairlength5 = hit3->genomicend - (hit5->genomicend - querylength5);
-      pairlength3 = (hit3->genomicstart + querylength3) - hit5->genomicstart;
-      if (pairlength5 < pairlength3) {
-	new->pairedlength = pairlength5;
-      } else {
-	new->pairedlength = pairlength3;
-      }
-
-    } else {
-      new->dir = -1;
-      new->low = hit3->genomicend;
-      new->high = hit5->genomicstart;
-
-      pairlength5 = (hit5->genomicend + querylength5) - hit3->genomicend;
-      pairlength3 = hit5->genomicstart - (hit3->genomicstart - querylength3);
-      if (pairlength5 < pairlength3) {
-	new->pairedlength = pairlength5;
-      } else {
-	new->pairedlength = pairlength3;
-      }
-    }
-  }
-
-  if (new->pairedlength < expected_pairlength) {
-    new->absdifflength = expected_pairlength - new->pairedlength;
-  } else {
-    new->absdifflength = new->pairedlength - expected_pairlength;
-  }
-
-  return new;
-}
-
-List_T
-Stage3_filter_bymatch (List_T hitlist) {
-  List_T filtered = NULL, p;
-  T hit;
-  int min_total_nmismatches = 1000;
-
-  for (p = hitlist; p != NULL; p = p->rest) {
-    hit = (T) p->first;
-    if (hit->total_nmismatches < min_total_nmismatches) {
-      min_total_nmismatches = hit->total_nmismatches;
-    }
-  }
-
-  for (p = hitlist; p != NULL; p = p->rest) {
-    hit = (T) p->first;
-    if (hit->total_nmismatches == min_total_nmismatches) {
-      filtered = List_push(filtered,hit);
-    } else {
-      Stage3_free(&hit);
-    }
-  }
-  List_free(&hitlist);
-
-  return filtered;
-}
-
-#if 0
-static int
-chimera_match_distance_cmp (const void *a, const void *b) {
-  T x = * (T *) a;
-  T y = * (T *) b;
-
-  if (x->total_nmismatches < y->total_nmismatches) {
-    return -1;
-  } else if (x->total_nmismatches > y->total_nmismatches) {
-    return +1;
-  } else if (x->distance < y->distance) {
-    return -1;
-  } else if (x->distance > y->distance) {
-    return +1;
-  } else {
-    return 0;
-  }
-}
-#endif
-
-#if 0
-List_T
-Stage3_sort_bymatchdist (List_T hitlist, int maxchimerapaths) {
-#ifdef DEBUG
-  T hit;
-#endif
-  List_T sorted = NULL, p;
-  T *hits;
-  int npaths, n, i;
-
-  if ((n = List_length(hitlist)) == 0) {
-    return NULL;
-  }
-
-  hits = (T *) CALLOC(n,sizeof(T));
-  for (p = hitlist, i = 0; p != NULL; p = p->rest) {
-    hits[i++] = (T) p->first;
-  }
-  List_free(&hitlist);
-
-  qsort(hits,n,sizeof(T),chimera_match_distance_cmp);
-
-  if (n < maxchimerapaths) {
-    npaths = n;
-  } else {
-    npaths = maxchimerapaths;
-  }
-  for (i = n-1; i >= npaths; i--) {
-    Stage3_free(&(hits[i]));
-  }
-  for (i = npaths-1; i >= 0; i--) {
-    sorted = List_push(sorted,hits[i]);
-  }
-  FREE(hits);
-
-  debug(
-	for (p = sorted, i = 0; p != NULL; p = p->rest, i++) {
-	  hit = (T) p->first;
-	  printf("  Final %d: chr %d -- %d\n",
-		 i,hit->substring1->chrnum,hit->substring2->chrnum);
-	}
-	);
-
-  return sorted;
-}
-#endif
+   return;
+ }
 
 
+
+ void
+ Stage3_print_paired (Result_T result, Genome_T genome, IIT_T chromosome_iit, Sequence_T queryseq1, Sequence_T queryseq2,
+		      Genomicpos_T pairmax, IIT_T snps_iit, int *snps_divint_crosstable,
+		      IIT_T splicesites_iit, int donor_typeint, int acceptor_typeint,
+		      int *splicesites_divint_crosstable, int maxpaths, bool quiet_if_excessive_p,
+		      bool circularp, bool invertp, bool nofailsp, bool failsonlyp) {
+   if (result_failed_p(result,/*fivep*/true,maxpaths,quiet_if_excessive_p) == true &&
+       result_failed_p(result,/*fivep*/false,maxpaths,quiet_if_excessive_p) == true) {
+     if (nofailsp == true) {
+       /* No output */
+       return;
+     } else if (failsonlyp == true) {
+       print_query_pairedend(queryseq1,queryseq2);
+       return;
+     }
+   } else {
+     if (failsonlyp == true) {
+       /* No output */
+       return;
+     }
+   }
+
+   if (circularp == false) {
+     /* First sequence */
+     print_paired_hits(result,'>',/*fivep*/true,
+		       genome,chromosome_iit,queryseq1,/*headerseq*/queryseq1,
+		       pairmax,snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		       maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/false,/*invertp*/false);
+
+     /* Second sequence.  query2 has already been revcomp'd */
+     print_paired_hits(result,'<',/*fivep*/false,
+		       genome,chromosome_iit,queryseq2,/*headerseq*/queryseq1,
+		       pairmax,snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		       maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/true,/*invertp*/invertp);
+
+   } else {
+     /* First sequence.  query2 has already been revcomp'd */
+     print_paired_hits(result,'>',/*fivep*/false,
+		       genome,chromosome_iit,queryseq2,/*headerseq*/queryseq2,
+		       pairmax,snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		       maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/true,/*invertp*/(invertp == true) ? false : true);
+
+     /* Second sequence */
+     print_paired_hits(result,'<',/*fivep*/true,
+		       genome,chromosome_iit,queryseq1,/*headerseq*/queryseq2,
+		       pairmax,snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,splicesites_divint_crosstable,
+		       maxpaths,quiet_if_excessive_p,/*sequence_inverted_p*/false,/*invertp*/true);
+   }
+
+   return;
+ }
+
+
+ #if 0
+ /* Note: doesn't handle translocations, which are handled in gsnap.c as individual runs on each single-end */
+ bool
+ Stage3_pairable_p (T hit5, T hit3, Genomicpos_T pairmax, Pairedresult_T pairedresult) {
+
+   debug(printf("Comparing %s%u (chr %d) with %s%u (chr %d): ",
+		hit3->plusp ? "+" : "-",hit5->genomicstart,hit5->chrnum,
+		hit3->plusp ? "+" : "-",hit3->genomicstart,hit3->chrnum));
+
+   if (hit5->chrnum != hit3->chrnum) {
+     debug(printf("No, different chromosomes\n\n"));
+     return false;
+   } else if (hit5->plusp != hit3->plusp) {
+     if (pairedresult == INVERSION) {
+       debug(printf("Yes, saw inversion and pairedresult is inversion\n\n"));
+       return true;
+     } else {
+       debug(printf("No, saw inversion and pairedresult not inversion\n\n"));
+       return false;
+     }
+   } else if (pairedresult == INVERSION) {
+     debug(printf("Yes, didn't see inversion and pairedresult is inversion\n\n"));
+     return false;
+   } else if (pairedresult == SCRAMBLE) {
+     debug(printf("No, didn't see inversion and pairedresult is scramble\n\n"));
+     return true;
+   } else if (hit5->plusp == true) {
+     if (hit3->genomicstart < hit5->genomicstart) {
+       debug(printf("No, positions wrong\n"));
+       return false;
+     } else if (pairedresult == INSERTION_DELETION) {
+       debug(printf("Yes, pairedresult is insertion_deletion\n\n"));
+       return true;
+     } else if (hit3->genomicstart > hit5->genomicstart + pairmax) {
+       debug(printf("No, length %u too long\n",hit3->genomicstart - hit5->genomicstart + 1));
+       return false;
+     } else {
+       debug(printf("Yes, length %u is okay\n",hit3->genomicstart - hit5->genomicstart + 1));
+       return true;
+     }
+   } else {
+     if (hit5->genomicstart < hit3->genomicstart) {
+       debug(printf("No, positions wrong\n"));
+       return false;
+     } else if (pairedresult == INSERTION_DELETION) {
+       debug(printf("Yes, pairedresult is insertion_deletion\n\n"));
+       return true;
+     } else if (hit5->genomicstart > hit3->genomicstart + pairmax) {
+       debug(printf("No, length %u too long\n",hit5->genomicstart - hit3->genomicstart + 1));
+       return false;
+     } else {
+       debug(printf("Yes, length %u is okay\n",hit5->genomicstart - hit3->genomicstart + 1));
+       return true;
+     }
+   }
+ }
+ #endif
+
+ static Stage3pair_T
+ Stage3pair_new (T hit5, T hit3, int querylength5, int querylength3, int expected_pairlength,
+		 Pairtype_T pairtype) {
+   Stage3pair_T new = (Stage3pair_T) MALLOC(sizeof(*new));
+   Genomicpos_T pairlength5, pairlength3;
+
+   new->hit5 = Stage3_copy(hit5);
+   new->hit3 = Stage3_copy(hit3);
+   new->pairtype = pairtype;
+
+   new->score = hit5->score + hit3->score;
+   new->nmatches = hit5->nmatches + hit3->nmatches;
+
+   if (pairtype == SAMECHR) {
+     new->dir = 0;
+     new->low = hit5->genomicstart;
+     if (hit5->genomicend < new->low) {
+       new->low = hit5->genomicend;
+     }
+     if (hit3->genomicstart < new->low) {
+       new->low = hit3->genomicstart;
+     }
+     if (hit3->genomicend < new->low) {
+       new->low = hit3->genomicend;
+     }
+
+     new->high = hit5->genomicstart;
+     if (hit5->genomicend > new->high) {
+       new->high = hit5->genomicend;
+     }
+     if (hit3->genomicstart > new->high) {
+       new->high = hit3->genomicstart;
+     }
+     if (hit3->genomicend > new->high) {
+       new->high = hit3->genomicend;
+     }
+
+     new->pairedlength = new->high - new->low;
+
+   } else if (pairtype == CONCORDANT) {
+     if (hit5->chrnum == 0 && hit3->chrnum == 0) {
+       new->dir = 0;
+
+       new->low = Substring_genomicstart(hit5->substring1);
+       if (Substring_genomicend(hit5->substring1) < new->low) {
+	 new->low = Substring_genomicend(hit5->substring1);
+       }
+       if (Substring_genomicstart(hit5->substring2) < new->low) {
+	 new->low = Substring_genomicstart(hit5->substring2);
+       }
+       if (Substring_genomicend(hit5->substring2) < new->low) {
+	 new->low = Substring_genomicend(hit5->substring2);
+       }
+       if (Substring_genomicstart(hit3->substring1) < new->low) {
+	 new->low = Substring_genomicstart(hit3->substring1);
+       }
+       if (Substring_genomicend(hit3->substring1) < new->low) {
+	 new->low = Substring_genomicend(hit3->substring1);
+       }
+       if (Substring_genomicstart(hit3->substring2) < new->low) {
+	 new->low = Substring_genomicstart(hit3->substring2);
+       }
+       if (Substring_genomicend(hit3->substring2) < new->low) {
+	 new->low = Substring_genomicend(hit3->substring2);
+       }
+
+       new->high = Substring_genomicstart(hit5->substring1);
+       if (Substring_genomicend(hit5->substring1) > new->high) {
+	 new->high = Substring_genomicend(hit5->substring1);
+       }
+       if (Substring_genomicstart(hit5->substring2) > new->high) {
+	 new->high = Substring_genomicstart(hit5->substring2);
+       }
+       if (Substring_genomicend(hit5->substring2) > new->high) {
+	 new->high = Substring_genomicend(hit5->substring2);
+       }
+       if (Substring_genomicstart(hit3->substring1) > new->high) {
+	 new->high = Substring_genomicstart(hit3->substring1);
+       }
+       if (Substring_genomicend(hit3->substring1) > new->high) {
+	 new->high = Substring_genomicend(hit3->substring1);
+       }
+       if (Substring_genomicstart(hit3->substring2) > new->high) {
+	 new->high = Substring_genomicstart(hit3->substring2);
+       }
+       if (Substring_genomicend(hit3->substring2) > new->high) {
+	 new->high = Substring_genomicend(hit3->substring2);
+       }
+
+       if (Substring_chrnum(hit5->substring1) == Substring_chrnum(hit3->substring1) &&
+	   Substring_plusp(hit5->substring1) == Substring_plusp(hit3->substring1)) {
+	 if (Substring_plusp(hit5->substring1) == true) {
+	   pairlength5 = Substring_genomicend(hit3->substring1) - (Substring_genomicend(hit5->substring1) - querylength5);
+	   pairlength3 = (Substring_genomicstart(hit3->substring1) + querylength3) - Substring_genomicstart(hit5->substring1);
+	 } else {
+	   pairlength5 = (Substring_genomicend(hit5->substring1) + querylength5) - Substring_genomicend(hit3->substring1);
+	   pairlength3 = Substring_genomicstart(hit5->substring1) - (Substring_genomicstart(hit3->substring1) - querylength3);
+	 }
+
+       } else if (Substring_chrnum(hit5->substring1) == Substring_chrnum(hit3->substring2) &&
+		  Substring_plusp(hit5->substring1) == Substring_plusp(hit3->substring2)) {
+	 if (Substring_plusp(hit5->substring1) == true) {
+	   pairlength5 = Substring_genomicend(hit3->substring2) - (Substring_genomicend(hit5->substring1) - querylength5);
+	   pairlength3 = (Substring_genomicstart(hit3->substring2) + querylength3) - Substring_genomicstart(hit5->substring1);
+	 } else {
+	   pairlength5 = (Substring_genomicend(hit5->substring1) + querylength5) - Substring_genomicend(hit3->substring2);
+	   pairlength3 = Substring_genomicstart(hit5->substring1) - (Substring_genomicstart(hit3->substring2) - querylength3);
+	 }
+
+       } else if (Substring_chrnum(hit5->substring2) == Substring_chrnum(hit3->substring1) &&
+		  Substring_plusp(hit5->substring2) == Substring_plusp(hit3->substring1)) {
+	 if (Substring_plusp(hit5->substring2) == true) {
+	   pairlength5 = Substring_genomicend(hit3->substring1) - (Substring_genomicend(hit5->substring2) - querylength5);
+	   pairlength3 = (Substring_genomicstart(hit3->substring1) + querylength3) - Substring_genomicstart(hit5->substring2);
+	 } else {
+	   pairlength5 = (Substring_genomicend(hit5->substring2) + querylength5) - Substring_genomicend(hit3->substring1);
+	   pairlength3 = Substring_genomicstart(hit5->substring2) - (Substring_genomicstart(hit3->substring1) - querylength3);
+	 }
+
+       } else if (Substring_chrnum(hit5->substring2) == Substring_chrnum(hit3->substring2) &&
+		  Substring_plusp(hit5->substring2) == Substring_plusp(hit3->substring2)) {
+	 if (Substring_plusp(hit5->substring2) == true) {
+	   pairlength5 = Substring_genomicend(hit3->substring2) - (Substring_genomicend(hit5->substring2) - querylength5);
+	   pairlength3 = (Substring_genomicstart(hit3->substring2) + querylength3) - Substring_genomicstart(hit5->substring2);
+	 } else {
+	   pairlength5 = (Substring_genomicend(hit5->substring2) + querylength5) - Substring_genomicend(hit3->substring2);
+	   pairlength3 = Substring_genomicstart(hit5->substring2) - (Substring_genomicstart(hit3->substring2) - querylength3);
+	 }
+
+       } else {
+	 pairlength5 = pairlength3 = 0;
+       }
+
+       if (pairlength5 < pairlength3) {
+	 new->pairedlength = pairlength5;
+       } else {
+	 new->pairedlength = pairlength3;
+       }
+
+     } else if (hit5->chrnum == 0) {
+       /* Use hit3 */
+       if (hit3->plusp == true /* implies hit5->plusp is true */) {
+	 new->dir = +1;
+	 new->low = hit5->genomicstart;
+	 new->high = hit3->genomicend;
+       } else {
+	 new->dir = -1;
+	 new->low = hit3->genomicend;
+	 new->high = hit5->genomicstart;
+       }
+       pairlength5 = hit3->genomicend - (hit5->genomicend - querylength5);
+       pairlength3 = (hit3->genomicstart + querylength3) - hit5->genomicstart;
+       if (pairlength5 < pairlength3) {
+	 new->pairedlength = pairlength5;
+       } else {
+	 new->pairedlength = pairlength3;
+       }
+
+     } else if (hit5->plusp == true) {
+       new->dir = +1;
+       new->low = hit5->genomicstart;
+       new->high = hit3->genomicend;
+
+       pairlength5 = hit3->genomicend - (hit5->genomicend - querylength5);
+       pairlength3 = (hit3->genomicstart + querylength3) - hit5->genomicstart;
+       if (pairlength5 < pairlength3) {
+	 new->pairedlength = pairlength5;
+       } else {
+	 new->pairedlength = pairlength3;
+       }
+
+     } else {
+       new->dir = -1;
+       new->low = hit3->genomicend;
+       new->high = hit5->genomicstart;
+
+       pairlength5 = (hit5->genomicend + querylength5) - hit3->genomicend;
+       pairlength3 = hit5->genomicstart - (hit3->genomicstart - querylength3);
+       if (pairlength5 < pairlength3) {
+	 new->pairedlength = pairlength5;
+       } else {
+	 new->pairedlength = pairlength3;
+       }
+     }
+
+   } else {
+     abort();
+   }
+
+   if (new->pairedlength < expected_pairlength) {
+     new->absdifflength = expected_pairlength - new->pairedlength;
+   } else {
+     new->absdifflength = new->pairedlength - expected_pairlength;
+   }
+
+   if (SENSE_CONSISTENT_P(hit5->sensedir,hit3->sensedir)) {
+     new->sense_consistent_p = true;
+   } else {
+     new->sense_consistent_p = false;
+   }
+
+   return new;
+ }
+
+ List_T
+ Stage3_filter_bymatch (List_T hitlist) {
+   List_T filtered = NULL, p;
+   T hit;
+   int min_total_nmismatches = 1000;
+
+   for (p = hitlist; p != NULL; p = p->rest) {
+     hit = (T) p->first;
+     if (hit->total_nmismatches < min_total_nmismatches) {
+       min_total_nmismatches = hit->total_nmismatches;
+     }
+   }
+
+   for (p = hitlist; p != NULL; p = p->rest) {
+     hit = (T) p->first;
+     if (hit->total_nmismatches == min_total_nmismatches) {
+       filtered = List_push(filtered,hit);
+     } else {
+       Stage3_free(&hit);
+     }
+   }
+   List_free(&hitlist);
+
+   return filtered;
+ }
+
+ #if 0
+ static int
+ chimera_match_distance_cmp (const void *a, const void *b) {
+   T x = * (T *) a;
+   T y = * (T *) b;
+
+   if (x->total_nmismatches < y->total_nmismatches) {
+     return -1;
+   } else if (x->total_nmismatches > y->total_nmismatches) {
+     return +1;
+   } else if (x->distance < y->distance) {
+     return -1;
+   } else if (x->distance > y->distance) {
+     return +1;
+   } else {
+     return 0;
+   }
+ }
+ #endif
+
+ #if 0
+ List_T
+ Stage3_sort_bymatchdist (List_T hitlist, int maxchimerapaths) {
+ #ifdef DEBUG
+   T hit;
+ #endif
+   List_T sorted = NULL, p;
+   T *hits;
+   int npaths, n, i;
+
+   if ((n = List_length(hitlist)) == 0) {
+     return NULL;
+   }
+
+   hits = (T *) CALLOC(n,sizeof(T));
+   for (p = hitlist, i = 0; p != NULL; p = p->rest) {
+     hits[i++] = (T) p->first;
+   }
+   List_free(&hitlist);
+
+   qsort(hits,n,sizeof(T),chimera_match_distance_cmp);
+
+   if (n < maxchimerapaths) {
+     npaths = n;
+   } else {
+     npaths = maxchimerapaths;
+   }
+   for (i = n-1; i >= npaths; i--) {
+     Stage3_free(&(hits[i]));
+   }
+   for (i = npaths-1; i >= 0; i--) {
+     sorted = List_push(sorted,hits[i]);
+   }
+   FREE(hits);
+
+   debug(
+	 for (p = sorted, i = 0; p != NULL; p = p->rest, i++) {
+	   hit = (T) p->first;
+	   printf("  Final %d: chr %d -- %d\n",
+		  i,hit->substring1->chrnum,hit->substring2->chrnum);
+	 }
+	 );
+
+   return sorted;
+ }
+ #endif
+
+
+/* Never returns NULL */
 T
 Stage3_new_splice (int *found_score, Substring_T donor, Substring_T acceptor, Genomicpos_T distance,
-		   bool shortdistancep, int splicing_penalty, int support, int querylength,
-		   bool copyp, bool sensep) {
+		   bool shortdistancep, int splicing_penalty, int querylength,
+		   bool copy_donor_p, bool copy_acceptor_p, int sensedir) {
   T new;
   
   new = (T) MALLOC(sizeof(*new));
@@ -1793,42 +2764,15 @@ Stage3_new_splice (int *found_score, Substring_T donor, Substring_T acceptor, Ge
   new->nindels = 0;
 
   if (donor == NULL) {
-    new->substring1 = (Substring_T) NULL;
-    new->substring2 = copyp ? Substring_copy(acceptor) : acceptor;
-    new->chrnum = Substring_chrnum(acceptor);
-    new->chroffset = Substring_chroffset(acceptor);
-    new->genomicstart = Substring_genomicstart(acceptor);
-    new->genomicend = Substring_genomicend(acceptor);
-    new->plusp = Substring_plusp(acceptor);
-    new->total_nmismatches = Substring_nmismatches(acceptor);
-    new->ntscore = splicing_penalty + Substring_nmismatches(acceptor);
-    new->score = splicing_penalty + Substring_nmismatches(acceptor) + Substring_ncolordiffs(acceptor) + 
-      (querylength - support + 8) / 8;
-    new->chimera_prob = Substring_chimera_prob(acceptor);
-    new->half_intron_score = support*0.25 - Substring_nmismatches(acceptor) + new->chimera_prob;
-    debug(printf("%d*0.25 - %d + %f => half_intron_score %f\n",
-		 support,Substring_nmismatches(acceptor),new->chimera_prob,new->half_intron_score));
+    abort();
 
   } else if (acceptor == NULL) {
-    new->substring1 = copyp ? Substring_copy(donor) : donor;
-    new->substring2 = (Substring_T) NULL;
-    new->chrnum = Substring_chrnum(donor);
-    new->chroffset = Substring_chroffset(donor);
-    new->genomicstart = Substring_genomicstart(donor);
-    new->genomicend = Substring_genomicend(donor);
-    new->plusp = Substring_plusp(donor);
-    new->total_nmismatches = Substring_nmismatches(donor);
-    new->ntscore = splicing_penalty + Substring_nmismatches(donor);
-    new->score = splicing_penalty + Substring_nmismatches(donor) + Substring_ncolordiffs(donor) +
-      (querylength - support + 8) / 8;
-    new->chimera_prob = Substring_chimera_prob(donor);
-    new->half_intron_score = support*0.25 + new->chimera_prob;
-    debug(printf("%d*0.25 - %d + %f => half_intron_score %f\n",
-		 support,Substring_nmismatches(donor),new->chimera_prob,new->half_intron_score));
+    abort();
 
   } else {
-    new->substring1 = copyp ? Substring_copy(donor) : donor;
-    new->substring2 = copyp ? Substring_copy(acceptor) : acceptor;
+    new->substring1 = copy_donor_p ? Substring_copy(donor) : donor;
+    new->substring2 = copy_acceptor_p ? Substring_copy(acceptor) : acceptor;
+
     if (shortdistancep == true) {
       new->chrnum = Substring_chrnum(donor);
       new->chroffset = Substring_chroffset(donor);
@@ -1851,34 +2795,61 @@ Stage3_new_splice (int *found_score, Substring_T donor, Substring_T acceptor, Ge
       }
     }
 
-    if (new->chrnum > 0) {
-      if (sensep == true) {
-#if 0
-	printf("Case 1. sense: donor:%u..%u, acceptor:%u..%u\n",
-	       Substring_genomicstart(donor),Substring_genomicend(donor),
-	       Substring_genomicstart(acceptor),Substring_genomicend(acceptor));
-#endif
-	new->genomicstart = Substring_genomicstart(donor);
-	new->genomicend = Substring_genomicend(acceptor);
+    /* printf("Making splice with shortdistancep = %d, donor chrnum %d, and acceptor chrnum %d => chrnum %d\n",
+       shortdistancep,Substring_chrnum(donor),Substring_chrnum(acceptor),new->chrnum); */
+
+    if (sensedir == SENSE_FORWARD) {
+      new->genomicstart = Substring_genomicstart(donor);
+      new->genomicend = Substring_genomicend(acceptor);
+    } else if (sensedir == SENSE_ANTI) {
+      new->genomicstart = Substring_genomicstart(acceptor);
+      new->genomicend = Substring_genomicend(donor);
+    } else {
+      abort();
+    }
+
+
+    if (new->chrnum == 0) {
+      new->effective_chrnum = -1; /* not assigning here */
+      new->other_chrnum = -1;	  /* not assigning here */
+      new->substring_low = (Substring_T) NULL;
+    
+    } else {
+      new->effective_chrnum = new->chrnum;
+      new->other_chrnum = 0;
+      if (sensedir == SENSE_FORWARD) {
+	if (new->plusp == true) {
+	  new->substring_low = new->substring1; /* donor */
+	} else {
+	  new->substring_low = new->substring2; /* acceptor */
+	}
+
+      } else if (sensedir == SENSE_ANTI) {
+	if (new->plusp == true) {
+	  new->substring_low = new->substring2; /* acceptor */
+	} else {
+	  new->substring_low = new->substring1; /* donor */
+	}
+
       } else {
-#if 0
-	printf("Case 2. antisense: donor:%u..%u, acceptor:%u..%u\n",
-	       Substring_genomicstart(donor),Substring_genomicend(donor),
-	       Substring_genomicstart(acceptor),Substring_genomicend(acceptor));
-#endif
-	new->genomicstart = Substring_genomicstart(acceptor);
-	new->genomicend = Substring_genomicend(donor);
+	abort();
       }
-#if 0
-      printf("Picking %u..%u\n",new->genomicstart,new->genomicend);
-#endif
     }
 
     new->total_nmismatches = Substring_nmismatches(donor) + Substring_nmismatches(acceptor);
     new->ntscore = splicing_penalty + Substring_nmismatches(donor) + Substring_nmismatches(acceptor);
     new->score = new->ntscore + Substring_ncolordiffs(donor) + Substring_ncolordiffs(acceptor);
+#if 0
+    new->nmatches = Substring_match_length(donor) + Substring_match_length(acceptor) - 
+      (Substring_nmismatches(donor) + Substring_ncolordiffs(donor) + Substring_nmismatches(acceptor) + Substring_ncolordiffs(acceptor));
+#else
+    new->nmatches = Substring_nmatches(donor) + Substring_nmatches(acceptor);
+#endif
     new->chimera_prob = Substring_chimera_prob(donor) + Substring_chimera_prob(acceptor);
+    new->chimera_ambiguous_p = false;
+#if 0
     new->half_intron_score = 0.0;
+#endif
   }
   new->geneprob = -1;
 
@@ -1887,7 +2858,7 @@ Stage3_new_splice (int *found_score, Substring_T donor, Substring_T acceptor, Ge
   }
 
   new->distance = distance;
-  new->sensep = sensep;
+  new->sensedir = sensedir;
 
   new->paired_seenp = false;
   new->concordantp = false;
@@ -1918,9 +2889,9 @@ hitpair_position_cmp (const void *a, const void *b) {
     return -1;
   } else if (y->high < x->high) {
     return +1;
-  } else if (x->score < y->score) {
+  } else if (x->sense_consistent_p == true && y->sense_consistent_p == false) {
     return -1;
-  } else if (y->score < x->score) {
+  } else if (x->sense_consistent_p == false && y->sense_consistent_p == true) {
     return +1;
   } else {
     return 0;
@@ -1940,25 +2911,22 @@ hitpair_equal (Stage3pair_T x, Stage3pair_T y) {
   }
 }
 
-#if 0
-static int
-hitpair_score_cmp (const void *a, const void *b) {
-  Stage3pair_T x = * (Stage3pair_T *) a;
-  Stage3pair_T y = * (Stage3pair_T *) b;
-
-  if (x->score < y->score) {
-    return -1;
-  } else if (x->score > y->score) {
-    return +1;
-  } else if (x->absdifflength < y->absdifflength) {
-    return -1;
-  } else if (x->absdifflength > y->absdifflength) {
-    return +1;
+static bool
+hitpair_overlap (Stage3pair_T x, Stage3pair_T y) {
+  if ((x->hit5->hittype == SPLICE || x->hit3->hittype == SPLICE) &&
+      (y->hit5->hittype == SPLICE || y->hit3->hittype == SPLICE)) {
+    /* Special case: pairs involving splices don't overlap */
+    return false;
+  } else if (x->dir != y->dir) {
+    return false;		/* Different strands */
+  } else if (x->high < y->low) {
+    return false;
+  } else if (x->low > y->high) {
+    return false;
   } else {
-    return 0;
+    return true;
   }
 }
-#endif
 
 
 static int
@@ -2018,6 +2986,7 @@ Stage3pair_remove_samechr (List_T hitpairlist) {
   List_T concordant = NULL, p;
   Stage3pair_T hitpair;
 
+#if 0
   for (p = hitpairlist; p != NULL; p = p->rest) {
     hitpair = (Stage3pair_T) p->first;
     if (hitpair->pairtype == SAMECHR) {
@@ -2030,54 +2999,149 @@ Stage3pair_remove_samechr (List_T hitpairlist) {
   List_free(&hitpairlist);
 
   return concordant;
+#else
+  return hitpairlist;
+#endif
 }
 
 
 List_T
 Stage3pair_remove_duplicates (List_T hitpairlist) {
-#ifdef DEBUG
+#ifdef DEBUG8
   List_T p;
 #endif
   List_T unique = NULL;
-  Stage3pair_T hitpair, *hitpairs;
-  int n, i, j;
-  bool *eliminate;
+  Stage3pair_T hitpair, *hitpairs, *prev;
+  int best_nmatches;
+  int nkept, n, i, j;
+  bool *eliminate, used_equal_p;
 
   n = List_length(hitpairlist);
+  debug8(printf("Entered Stage3pair_remove_duplicates with %d pairs\n",n));
   if (n == 0) {
     return NULL;
   }
-
-  debug(
-	for (p = hitpairlist, i = 0; p != NULL; p = p->rest, i++) {
-	  hitpair = (Stage3pair_T) p->first;
-	  printf("  Initial %d: %u-%u (dir = %d)\n",
-		 i,hitpair->low,hitpair->high,hitpair->dir);
-	}
-	);
 
   eliminate = (bool *) CALLOC(n,sizeof(bool));
 
   hitpairs = (Stage3pair_T *) List_to_array(hitpairlist,NULL);
   List_free(&hitpairlist);
 
-  /* Check for duplicates */
-  debug(printf("Checking %d hits for duplicates\n",n));
+  /* Check for exact duplicates */
+  debug8(printf("Checking for exact duplicates\n"));
   qsort(hitpairs,n,sizeof(Stage3pair_T),hitpair_position_cmp);
+
+  debug8(
+	 for (i = 0; i < n; i++) {
+	   hitpair = hitpairs[i];
+	   printf("  Initial %d: %u..%u (dir = %d), nmatches: %d\n",
+		  i,hitpair->low,hitpair->high,hitpair->dir,hitpair->nmatches);
+	 }
+	 );
+
   i = 0;
   while (i < n) {
-    if (eliminate[i] == true) {
-      i++;
-    } else {
-      j = i+1;
-      while (j < n && hitpair_equal(hitpairs[j],hitpairs[i]) == true) {
-	debug(printf("  %d (score %d) == %d (score %d), so marking %d for elimination\n",
-		     i,hitpairs[i]->score,j,hitpairs[j]->score,j));
-	eliminate[j] = true;
-	j++;
-      }
-      i = j;
+    j = i+1;
+    while (j < n && hitpair_equal(hitpairs[j],hitpairs[i]) == true) {
+      debug8(printf("  %d is identical to %d => eliminating\n",j,i));
+      eliminate[j] = true;
+      j++;
     }
+    i = j;
+  }
+
+  j = 0;
+  prev = hitpairs;
+  hitpairs = (Stage3pair_T *) CALLOC(n,sizeof(Stage3pair_T));
+
+  nkept = 0;
+  for (i = 0; i < n; i++) {
+    if (eliminate[i] == false) {
+      nkept++;
+    }
+  }
+  if (nkept == 0) {
+    /* All entries eliminated one another, so keep the first one */
+    eliminate[0] = false;
+  }
+
+  for (i = n-1; i >= 0; i--) {
+    hitpair = prev[i];
+    if (eliminate[i] == false) {
+      debug8(printf("  Keeping %u..%u, nmatches %d (dir = %d)\n",
+		    hitpair->low,hitpair->high,hitpair->nmatches,hitpair->dir));
+      hitpairs[j++] = hitpair;
+    } else {
+      debug8(printf("  Eliminating %u..%u, nmatches %d (dir = %d)\n",
+		    hitpair->low,hitpair->high,hitpair->nmatches,hitpair->dir));
+      Stage3pair_free(&hitpair);
+    }
+  }
+
+  FREE(prev);
+  FREE(eliminate);
+
+
+  /* Check for duplicates by equivalence according to overlap, and keep best nmatches */
+  n = j;
+  eliminate = (bool *) CALLOC(n,sizeof(bool));
+  debug8(printf("Checking for duplicates among %d hitpairs by overlap\n",n));
+  qsort(hitpairs,n,sizeof(Stage3pair_T),hitpair_position_cmp);
+
+  debug8(
+	 for (i = 0; i < n; i++) {
+	   hitpair = hitpairs[i];
+	   printf("  Initial %d: %u-%u (dir = %d), nmatches: %d\n",
+		  i,hitpair->low,hitpair->high,hitpair->dir,hitpair->nmatches);
+	 }
+	 );
+
+  i = 0;
+  while (i < n) {
+    debug8(printf("Looking at %d\n",i));
+    best_nmatches = hitpairs[i]->nmatches;
+
+    j = i+1;
+    while (j < n && hitpair_overlap(hitpairs[j],hitpairs[i]) == true) {
+      debug8(printf("  %d overlaps with %d",j,i));
+      if (hitpairs[j]->nmatches > best_nmatches) {
+	best_nmatches = hitpairs[j]->nmatches;
+	debug8(printf("=> best_nmatches %d\n",best_nmatches));
+      }
+      debug8(printf("\n"));
+      j++;
+    }
+
+    used_equal_p = false;
+    if (hitpairs[i]->nmatches == best_nmatches) {
+      used_equal_p = true;
+    } else if (hitpairs[i]->nmatches < best_nmatches) {
+      eliminate[i] = true;
+      debug8(printf("  %d: nmatches %d < nmatches %d, so marking for elimination\n",
+		   i,hitpairs[i]->nmatches,best_nmatches));
+    }
+
+    j = i+1;
+    while (j < n && hitpair_overlap(hitpairs[j],hitpairs[i]) == true) {
+      if (hitpairs[j]->nmatches == best_nmatches) {
+	if (used_equal_p == true) {
+	  eliminate[j] = true;
+	  debug8(printf("  %d: nmatches %d == nmatches %d, so marking for elimination\n",
+		       j,hitpairs[j]->nmatches,best_nmatches));
+	} else {
+	  used_equal_p = true;
+	}
+
+      } else if (hitpairs[j]->nmatches < best_nmatches) {
+	eliminate[j] = true;
+	debug8(printf("  %d: nmatches %d < nmatches %d, so marking for elimination\n",
+		     j,hitpairs[i]->nmatches,best_nmatches));
+	
+      }
+      j++;
+    }
+
+    i = j;
   }
 
   for (i = 0; i < n; i++) {
@@ -2102,6 +3166,7 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
   Stage3pair_T hitpair;
   int n;
   int minscore = MAX_QUERYLENGTH + MAX_QUERYLENGTH;
+  int best_terminal_nmatches = 0;
 
   n = List_length(hitpairlist);
   if (n == 0) {
@@ -2111,14 +3176,18 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
   for (p = hitpairlist; p != NULL; p = p->rest) {
     hitpair = (Stage3pair_T) p->first;
     if (hitpair->score <= cutoff_level) {
-      if (hitpair->score < minscore) {
+      if (hitpair->hit5->hittype == TERMINAL || hitpair->hit3->hittype == TERMINAL) {
+	if (hitpair->nmatches > best_terminal_nmatches) {
+	  best_terminal_nmatches = hitpair->nmatches;
+	}
+      } else if (hitpair->score < minscore) {
 	minscore = hitpair->score;
       }
     }
   }
 
-  debug(printf("Stage3pair_optimal_score: minscore = %d + subopt:%d, nhits = %d\n",
-	       minscore,suboptimal_mismatches,n));
+  debug(printf("Stage3pair_optimal_score over %d pairs: minscore = %d + subopt:%d, best_terminal_nmatches = %d\n",
+	       n,minscore,suboptimal_mismatches,best_terminal_nmatches));
   minscore += suboptimal_mismatches;
 
   for (p = hitpairlist; p != NULL; p = p->rest) {
@@ -2128,7 +3197,20 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
 		   hitpair->score,cutoff_level));
       Stage3pair_free(&hitpair);
     } else if (hitpair->score <= minscore) {
-      optimal = List_push(optimal,hitpair);
+      if (hitpair->hit5->hittype == TERMINAL || hitpair->hit3->hittype == TERMINAL) {
+	if (hitpair->nmatches < best_terminal_nmatches) {
+	  debug(printf("Eliminating a terminal hitpair with nmatches %d < best %d\n",
+		       hitpair->nmatches,best_terminal_nmatches));
+	  Stage3pair_free(&hitpair);
+	} else {
+	  debug(printf("Keeping a terminal hitpair with nmatches %d >= best %d\n",
+		       hitpair->nmatches,best_terminal_nmatches));
+	  optimal = List_push(optimal,hitpair);
+	}
+      } else {
+	debug(printf("Keeping a hit pair with score %d\n",hitpair->score));
+	optimal = List_push(optimal,hitpair);
+      }
     } else {
       debug(printf("Eliminating a hit pair with score %d\n",hitpair->score));
       Stage3pair_free(&hitpair);
@@ -2142,32 +3224,48 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
 
 
 
-/* Finds concordant pairs and samechr pairs if nconcordant is 0 */
+/* Finds concordant pairs if nconcordant is 0 */
 List_T
-Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *nsamechr, List_T hitpairs,
-		List_T *hitarray5, int narray5, List_T *hitarray3, int narray3,
-		int cutoff_level_5, int cutoff_level_3, int subopt_levels,
-		Genomicpos_T pairmax, Genomicpos_T expected_pairlength,
-		int querylength5, int querylength3, int maxpairedpaths) {
-  List_T q;
-  T **hits5_plus, **hits5_minus, **hits3_plus, **hits3_minus, *hits5, *hits3, hit5, hit3;
-  int *nhits5_plus = 0, *nhits5_minus = 0, *nhits3_plus = 0, *nhits3_minus = 0, nhits5, nhits3;
+Stage3_pair_up_concordant (bool *abort_pairing_p, int *found_score, int *nconcordant, List_T hitpairs,
+			   List_T *hitarray5, int narray5, List_T *hitarray3, int narray3,
+			   int cutoff_level_5, int cutoff_level_3, int subopt_levels,
+			   Genomicpos_T pairmax, Genomicpos_T expected_pairlength,
+			   int querylength5, int querylength3, int maxpairedpaths) {
+  List_T copies = NULL, q;
+  T **hits5_plus, **hits5_minus, **hits3_plus, **hits3_minus, *hits5, *hits3, hit5, hit3, copy;
+  int *nhits5_plus, *nhits5_minus, *nhits3_plus, *nhits3_minus, nhits5, nhits3;
   int pairscore, score5, score3, i, j, jj;
   bool *sorted5p, *sorted3p;
   
-  debug5(printf("Starting Stage3_pair_up_concordant with %d concordant and %d samechr\n",
-		*nconcordant,*nsamechr));
+  debug5(printf("Starting Stage3_pair_up_concordant with %d concordant, narray5 %d, narray3 %d, found_score %d\n",
+		*nconcordant,narray5,narray3,*found_score));
 
   /* Find sizes for allocating memory */
-  debug5(printf("Sizes of 5-end pieces:\n"));
+  debug5(printf("Sizes of 5-end pieces by level:\n"));
   nhits5_plus = (int *) CALLOC(cutoff_level_5+1,sizeof(int));
   nhits5_minus = (int *) CALLOC(cutoff_level_5+1,sizeof(int));
   for (i = 0; i < narray5; i++) {
+    debug5(printf("  array5 level %d with %d hits\n",i,List_length(hitarray5[i])));
     for (q = hitarray5[i]; q != NULL; q = q->rest) {
       hit5 = (T) q->first;
-      if (hit5->chrnum == 0) {
-	/* Cannot be paired */
-      } else if (hit5->score > cutoff_level_5) {
+      if (hit5->score > cutoff_level_5) {
+	debug5(printf("Skipping hit with score %d > cutoff level %d\n",hit5->score,cutoff_level_5));
+      } else if (hit5->chimera_ambiguous_p == true) {
+	debug5(printf("Skipping hit with score %d because chimera is ambiguous\n",hit5->score));
+      } else if (hit5->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	if (Substring_plusp(hit5->substring1)) {
+	  nhits5_plus[hit5->score]++;
+	} else {
+	  nhits5_minus[hit5->score]++;
+	}
+
+	if (Substring_plusp(hit5->substring2)) {
+	  nhits5_plus[hit5->score]++;
+	} else {
+	  nhits5_minus[hit5->score]++;
+	}
+
       } else if (hit5->plusp) {
 	nhits5_plus[hit5->score]++;
       } else {
@@ -2177,21 +3275,50 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
   }
 
   debug5(
-	 printf("Sizes of 5-end pieces:\n");
+	 printf("Sizes of 5-end pieces by score:\n");
 	 for (score5 = 0; score5 <= cutoff_level_5; score5++) {
 	   printf("  score %d: %d plus, %d minus\n",score5,nhits5_plus[score5],nhits5_minus[score5]);
 	 }
 	 );
 
-  debug5(printf("Sizes of 3-end pieces:\n"));
+
+  /* Reset cutoff_level_5 */
+  score5 = 0;
+  nhits5 = nhits5_plus[score5] + nhits5_minus[score5];
+  while (score5+1 <= cutoff_level_5 && nhits5 + nhits5_plus[score5+1] + nhits5_minus[score5+1] < MAX_HITS) {
+    nhits5 += nhits5_plus[score5+1] + nhits5_minus[score5+1];
+    score5++;
+    debug5(printf("Allowing score5 to go to %d, because nhits = %d\n",score5,nhits5));
+  }
+  debug5(printf("Resetting cutoff_level_5 to be %d\n",score5));
+  cutoff_level_5 = score5;
+
+
+  debug5(printf("Sizes of 3-end pieces by level:\n"));
   nhits3_plus = (int *) CALLOC(cutoff_level_3+1,sizeof(int));
   nhits3_minus = (int *) CALLOC(cutoff_level_3+1,sizeof(int));
   for (i = 0; i < narray3; i++) {
+    debug5(printf(" array3 level %d with %d hits\n",i,List_length(hitarray3[i])));
     for (q = hitarray3[i]; q != NULL; q = q->rest) {
       hit3 = (T) q->first;
-      if (hit3->chrnum == 0) {
-	/* Cannot be paired */
-      } else if (hit3->score > cutoff_level_3) {
+      if (hit3->score > cutoff_level_3) {
+	debug5(printf("Skipping hit with score %d > cutoff level %d\n",hit3->score,cutoff_level_3));
+      } else if (hit3->chimera_ambiguous_p == true) {
+	debug5(printf("Skipping hit with score %d because chimera is ambiguous\n",hit3->score));
+      } else if (hit3->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	if (Substring_plusp(hit3->substring1)) {
+	  nhits3_plus[hit3->score]++;
+	} else {
+	  nhits3_minus[hit3->score]++;
+	}
+
+	if (Substring_plusp(hit3->substring2)) {
+	  nhits3_plus[hit3->score]++;
+	} else {
+	  nhits3_minus[hit3->score]++;
+	}
+
       } else if (hit3->plusp) {
 	nhits3_plus[hit3->score]++;
       } else {
@@ -2200,11 +3327,25 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
     }
   }
   debug5(
-	 printf("Sizes of 3-end pieces:\n");
+	 printf("Sizes of 3-end pieces by score:\n");
 	 for (score3 = 0; score3 <= cutoff_level_3; score3++) {
 	   printf("  score %d: %d plus, %d minus\n",score3,nhits3_plus[score3],nhits3_minus[score3]);
 	 }
 	 );
+
+
+  /* Reset cutoff_level_3 */
+  score3 = 0;
+  nhits3 = nhits3_plus[score3] + nhits3_minus[score3];
+  while (score3+1 <= cutoff_level_3 && nhits3 + nhits3_plus[score3+1] + nhits3_minus[score3+1] < MAX_HITS) {
+    nhits3 += nhits3_plus[score3+1] + nhits3_minus[score3+1];
+    score3++;
+    debug5(printf("Allowing score3 to go to %d, because nhits = %d\n",score3,nhits3));
+  }
+  debug5(printf("Resetting cutoff_level_3 to be %d\n",score3));
+  cutoff_level_3 = score3;
+
+
 
   /* Store hits5 */
   hits5_plus = (T **) CALLOC(cutoff_level_5+1,sizeof(T *));
@@ -2233,9 +3374,38 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
   for (i = 0; i < narray5; i++) {
     for (q = hitarray5[i]; q != NULL; q = q->rest) {
       hit5 = (T) q->first;
-      if (hit5->chrnum == 0) {
-	/* Cannot be paired */
-      } else if (hit5->score > cutoff_level_5) {
+      if (hit5->score > cutoff_level_5) {
+	/* Skip */
+      } else if (hit5->chimera_ambiguous_p == true) {
+	/* Skip */
+      } else if (hit5->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	copy = Stage3_copy(hit5);
+	copy->effective_chrnum = Substring_chrnum(hit5->substring1);
+	copy->other_chrnum = Substring_chrnum(hit5->substring2);
+	copy->genomicstart = Substring_genomicstart(hit5->substring1);
+	copy->genomicend = Substring_genomicend(hit5->substring1);
+	copy->plusp = Substring_plusp(hit5->substring1);
+	copies = List_push(copies,(void *) copy);
+	if (copy->plusp) {
+	  hits5_plus[hit5->score][nhits5_plus[hit5->score]++] = copy;
+	} else {
+	  hits5_minus[hit5->score][nhits5_minus[hit5->score]++] = copy;
+	}
+
+	copy = Stage3_copy(hit5);
+	copy->effective_chrnum = Substring_chrnum(hit5->substring2);
+	copy->other_chrnum = Substring_chrnum(hit5->substring1);
+	copy->genomicstart = Substring_genomicstart(hit5->substring2);
+	copy->genomicend = Substring_genomicend(hit5->substring2);
+	copy->plusp = Substring_plusp(hit5->substring2);
+	copies = List_push(copies,(void *) copy);
+	if (copy->plusp) {
+	  hits5_plus[hit5->score][nhits5_plus[hit5->score]++] = copy;
+	} else {
+	  hits5_minus[hit5->score][nhits5_minus[hit5->score]++] = copy;
+	}
+
       } else if (hit5->plusp) {
 	hits5_plus[hit5->score][nhits5_plus[hit5->score]++] = hit5;
       } else {
@@ -2269,13 +3439,41 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
     nhits3_minus[score3] = 0;
   }
 
-
   for (i = 0; i < narray3; i++) {
     for (q = hitarray3[i]; q != NULL; q = q->rest) {
       hit3 = (T) q->first;
-      if (hit3->chrnum == 0) {
-	/* Cannot be paired */
-      } else if (hit3->score > cutoff_level_3) {
+      if (hit3->score > cutoff_level_3) {
+	/* Skip */
+      } else if (hit3->chimera_ambiguous_p == true) {
+	/* Skip */
+      } else if (hit3->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	copy = Stage3_copy(hit3);
+	copy->effective_chrnum = Substring_chrnum(hit3->substring1);
+	copy->other_chrnum = Substring_chrnum(hit3->substring2);
+	copy->genomicstart = Substring_genomicstart(hit3->substring1);
+	copy->genomicend = Substring_genomicend(hit3->substring1);
+	copy->plusp = Substring_plusp(hit3->substring1);
+	copies = List_push(copies,(void *) copy);
+	if (copy->plusp) {
+	  hits3_plus[hit3->score][nhits3_plus[hit3->score]++] = copy;
+	} else {
+	  hits3_minus[hit3->score][nhits3_minus[hit3->score]++] = copy;
+	}
+
+	copy = Stage3_copy(hit3);
+	copy->effective_chrnum = Substring_chrnum(hit3->substring2);
+	copy->other_chrnum = Substring_chrnum(hit3->substring1);
+	copy->genomicstart = Substring_genomicstart(hit3->substring2);
+	copy->genomicend = Substring_genomicend(hit3->substring2);
+	copy->plusp = Substring_plusp(hit3->substring2);
+	copies = List_push(copies,(void *) copy);
+	if (copy->plusp) {
+	  hits3_plus[hit3->score][nhits3_plus[hit3->score]++] = copy;
+	} else {
+	  hits3_minus[hit3->score][nhits3_minus[hit3->score]++] = copy;
+	}
+
       } else if (hit3->plusp) {
 	hits3_plus[hit3->score][nhits3_plus[hit3->score]++] = hit3;
       } else {
@@ -2284,13 +3482,18 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
     }
   }
 
+
   /* Look for concordant pairs */
   sorted5p = (bool *) CALLOC(cutoff_level_5+1,sizeof(bool));
   sorted3p = (bool *) CALLOC(cutoff_level_3+1,sizeof(bool));
 
   pairscore = 0;
-  while (*abort_pairing_p == false && pairscore <= *found_score + subopt_levels) {
+  while (*abort_pairing_p == false && pairscore <= *found_score + subopt_levels &&
+	 pairscore <= cutoff_level_5 + cutoff_level_3) {
+    debug5(printf("pairscore = %d\n",pairscore));
     for (score5 = 0; score5 <= pairscore; score5++) {
+      debug5(printf("score5 = %d, score3 = %d\n",score5,pairscore-score5));
+
       if (score5 <= cutoff_level_5 && ((score3 = pairscore - score5) <= cutoff_level_3)) {
 	/* Sort if necessary */
 	if (sorted5p[score5] == false) {
@@ -2322,25 +3525,48 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
 	while (*abort_pairing_p == false && i < nhits5 && j < nhits3) {
 	  hit5 = hits5[i];
 	  hit3 = hits3[j];
-	  debug5(printf("plus: i=%d %u, j=%d %u",i,hit5->genomicstart,j,hit3->genomicstart));
 
 	  if (hit3->genomicstart + querylength3 < hit5->genomicstart) {
+	    debug5(printf("plus: i=%d %u %s, j=%d %u %s, advance j\n",
+			  i,hit5->genomicstart,print_sense(hit5->sensedir),
+			  j,hit3->genomicstart,print_sense(hit3->sensedir)));
 	    j++;
 	  } else if (hit5->genomicstart + pairmax < hit3->genomicstart) {
+	    debug5(printf("plus: i=%d %u %s, j=%d %u %s, advance i\n",
+			  i,hit5->genomicstart,print_sense(hit5->sensedir),
+			  j,hit3->genomicstart,print_sense(hit3->sensedir)));
 	    i++;
 	  } else {
-	    for (jj = j; jj >= 0 && hits3[jj]->genomicstart + querylength3 >= hit5->genomicstart; jj--) ;
+	    debug5(printf("plus: i=%d %u %s, j=%d %u %s, overlap\n",
+			  i,hit5->genomicstart,print_sense(hit5->sensedir),
+			  j,hit3->genomicstart,print_sense(hit3->sensedir)));
+	    for (jj = j; jj >= 0 && hits3[jj]->genomicstart + querylength3 >= hit5->genomicstart; jj--) {
+	      debug5(printf("plus: i=%d %u %s, jj=%d %u %s, backup jj\n",
+			    i,hit5->genomicstart,print_sense(hit5->sensedir),
+			    jj,hits3[jj]->genomicstart,print_sense(hit3->sensedir)));
+	    }
 	    for (jj++; jj < nhits3 && hits3[jj]->genomicstart <= hit5->genomicstart + pairmax; jj++) {
+	      debug5(printf("plus: i=%d %u %s, jj=%d %u %s",
+			    i,hit5->genomicstart,print_sense(hit5->sensedir),
+			    jj,hits3[jj]->genomicstart,print_sense(hit3->sensedir)));
 	      hit3 = hits3[jj];
 
 	      /* Only want pairs not previously seen */
 	      if (hit5->paired_seenp == false || hit3->paired_seenp == false) {
-		if (hit5->chrnum == hit3->chrnum) {
-		  debug5(printf(" => concordant %d",hit5->chrnum));
+		if (hit5->effective_chrnum != hit3->effective_chrnum) {
+		  debug5(printf(" => diff chrs %d and %d",hit5->effective_chrnum,hit3->effective_chrnum));
+		} else if (SENSE_INCONSISTENT_P(hit5->sensedir,hit3->sensedir)) {
+		  debug5(printf(" => sense inconsistent"));
+		} else if (hit5->chrnum == 0 && hit3->chrnum == 0 && hit5->other_chrnum != hit3->other_chrnum) {
+		  debug5(printf(" => translocations not reciprocal"));
+		} else {
+		  debug5(printf(" => concordant effchr %d (chrnum5 %d, chrnum3 %d)",
+				hit5->effective_chrnum,hit5->chrnum,hit3->chrnum));
 		  hitpairs = List_push(hitpairs,Stage3pair_new(hit5,hit3,querylength5,querylength3,
 							       expected_pairlength,/*pairtype*/CONCORDANT));
 		  if (pairscore < *found_score) {
 		    *found_score = pairscore;
+		    debug5(printf(" => updating found_score to be %d",*found_score));
 		  }
 		  if (++(*nconcordant) > maxpairedpaths) {
 		    debug(printf("%d concordant paths exceeds %d\n",*nconcordant,maxpairedpaths));
@@ -2350,11 +3576,10 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
 		  hit3->paired_seenp = true;
 		}
 	      }
-
+	      debug5(printf("\n"));
 	    }
 	    i++;
 	  }
-	  debug5(printf("\n"));
 	}
 
 	/* hits3_minus (really on plus) against hits5_minus */
@@ -2364,28 +3589,51 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
 	nhits3 = nhits3_minus[score3];
 	nhits5 = nhits5_minus[score5];
 
-	while (*abort_pairing_p == false && i < nhits3 && j < nhits5) {
-	  hit3 = hits3[i];
+	while (*abort_pairing_p == false && j < nhits5 && i < nhits3) {
 	  hit5 = hits5[j];
-	  debug5(printf("minus: i=%d %u, j=%d %u",i,hit3->genomicstart,j,hit5->genomicstart));
+	  hit3 = hits3[i];
 
 	  if (hit5->genomicstart + querylength5 < hit3->genomicstart) {
+	    debug5(printf("minus: j=%d %u %s, i=%d %u %s, advance j\n",
+			  j,hit5->genomicstart,print_sense(hit5->sensedir),
+			  i,hit3->genomicstart,print_sense(hit3->sensedir)));
 	    j++;
 	  } else if (hit3->genomicstart + pairmax < hit5->genomicstart) {
+	    debug5(printf("minus: j=%d %u %s, i=%d %u %s, advance i\n",
+			  j,hit5->genomicstart,print_sense(hit5->sensedir),
+			  i,hit3->genomicstart,print_sense(hit3->sensedir)));
 	    i++;
 	  } else {
-	    for (jj = j; jj >= 0 && hits5[jj]->genomicstart + querylength5 >= hit3->genomicstart; jj--) ;
+	    debug5(printf("minus: j=%d %u %s, i=%d %u %s, overlap\n",
+			  j,hit5->genomicstart,print_sense(hit5->sensedir),
+			  i,hit3->genomicstart,print_sense(hit3->sensedir)));
+	    for (jj = j; jj >= 0 && hits5[jj]->genomicstart + querylength5 >= hit3->genomicstart; jj--) {
+	      debug5(printf("minus: jj=%d %u %s, i=%d %u %s, backup jj",
+			    jj,hits5[jj]->genomicstart,print_sense(hit5->sensedir),
+			    i,hit3->genomicstart,print_sense(hit3->sensedir)));
+	    }
 	    for (jj++; jj < nhits5 && hits5[jj]->genomicstart <= hit3->genomicstart + pairmax; jj++) {
+	      debug5(printf("minus: jj=%d %u %s, i=%d %u %s",
+			    jj,hits5[jj]->genomicstart,print_sense(hit5->sensedir),
+			    i,hit3->genomicstart,print_sense(hit3->sensedir)));
 	      hit5 = hits5[jj];
 
 	      /* Only want pairs not previously seen */
 	      if (hit3->paired_seenp == false || hit5->paired_seenp == false) {
-		if (hit3->chrnum == hit5->chrnum) {
-		  debug5(printf(" => concordant %d",hit3->chrnum));
+		if (hit3->effective_chrnum != hit5->effective_chrnum) {
+		  debug5(printf(" => diff chrs %d and %d",hit5->effective_chrnum,hit3->effective_chrnum));
+		} else if (SENSE_INCONSISTENT_P(hit3->sensedir,hit5->sensedir)) {
+		  debug5(printf(" => sense inconsistent"));
+		} else if (hit5->chrnum == 0 && hit3->chrnum == 0 && hit5->other_chrnum != hit3->other_chrnum) {
+		  debug5(printf(" => translocations not reciprocal"));
+		} else {
+		  debug5(printf(" => concordant effchr %d (chrnum5 %d, chrnum3 %d)",
+				hit3->effective_chrnum,hit5->chrnum,hit3->chrnum));
 		  hitpairs = List_push(hitpairs,Stage3pair_new(hit5,hit3,querylength5,querylength3,
 							       expected_pairlength,/*pairtype*/CONCORDANT));
 		  if (pairscore < *found_score) {
 		    *found_score = pairscore;
+		    debug5(printf(" => updating found_score to be %d",*found_score));
 		  }
 		  if (++(*nconcordant) > maxpairedpaths) {
 		    debug(printf("%d concordant paths exceeds %d\n",*nconcordant,maxpairedpaths));
@@ -2395,10 +3643,10 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
 		  hit5->paired_seenp = true;
 		}
 	      }
+	      debug5(printf("\n"));
 	    }
 	    i++;
 	  }
-	  debug5(printf("\n"));
 	}
       }
     }
@@ -2407,6 +3655,12 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
 
   FREE(sorted3p);
   FREE(sorted5p);
+
+  for (q = copies; q != NULL; q = List_next(q)) {
+    copy = (T) List_head(q);
+    Stage3_free(&copy);
+  }
+  List_free(&copies);
 
   for (score3 = 0; score3 <= cutoff_level_3; score3++) {
     FREE(hits3_plus[score3]);
@@ -2426,92 +3680,263 @@ Stage3_pair_up (bool *abort_pairing_p, int *found_score, int *nconcordant, int *
   FREE(nhits5_plus);
   FREE(nhits5_minus);
 
-  debug5(printf("Finished with Stage3_pair_up\n"));
+  debug5(printf("Finished with Stage3_pair_up_concordant: %d pairs\n",List_length(hitpairs)));
 
   return hitpairs;
 }
 
 
-#if 0
-/* Code to look for samechr */
+/* Want one samechr, but could have duplicates or hitarray5 and
+   hitarray3, so need to check at time of creating a result (after
+   duplicates removed). */
+List_T
+Stage3_pair_up_samechr (int *found_score, List_T hitpairs,
+			List_T *hitarray5, int narray5, List_T *hitarray3, int narray3,
+			int cutoff_level_5, int cutoff_level_3, int subopt_levels,
+			Genomicpos_T expected_pairlength, int querylength5, int querylength3,
+			int maxpairedpaths) {
+  List_T copies = NULL, q;
+  T **hits5_all, **hits3_all, *hits5, *hits3, hit5, hit3, copy;
+  Stage3pair_T stage3pair;
+  int *nhits5_all, *nhits3_all, nhits5, nhits3;
+  int pairscore, score5, score3, i, j, jj;
+  bool abort_samechr_p = false;
+  bool *sorted5p, *sorted3p;
+  int nsamechr = 0;
+  
+  debug6(printf("Starting Stage3_pair_up_samechr\n"));
 
-  if (*abort_pairing_p == false && *nconcordant == 0) {
-    /* Look for samechr pairs */
-
-    nhits5 = nhits5_plus + nhits5_minus;
-    nhits3 = nhits3_plus + nhits3_minus;
-    debug5(printf("Looking for samechr in %d hits5 against %d hits3\n",nhits5,nhits3));
-
-    /* Sort */
-    if (nhits5 == 0) {
-      hits5 = (T *) NULL;
-    } else {
-      hits5 = (T *) CALLOC(nhits5,sizeof(Stage3_T));
-      j = 0;
-      for (i = 0; i < nhits5_plus; i++) {
-	hits5[j++] = hits5_plus[i];
-      }
-      for (i = 0; i < nhits5_minus; i++) {
-	hits5[j++] = hits5_minus[i];
-      }
-      qsort(hits5,nhits5,sizeof(T),genomicstart_cmp);
-    }
-
-    if (nhits3 == 0) {
-      hits3 = (T *) NULL;
-    } else {
-      hits3 = (T *) CALLOC(nhits3,sizeof(Stage3_T));
-      j = 0;
-      for (i = 0; i < nhits3_plus; i++) {
-	hits3[j++] = hits3_plus[i];
-      }
-      for (i = 0; i < nhits3_minus; i++) {
-	hits3[j++] = hits3_minus[i];
-      }
-      qsort(hits3,nhits3,sizeof(T),genomicstart_cmp);
-    }
-
-    /* hits5 against hits3 */
-    i = j = 0;
-    while (*nsamechr <= maxpairedpaths && i < nhits5 && j < nhits3) {
-      hit5 = hits5[i];
-      hit3 = hits3[j];
-      debug5(printf("either: i=%d %u (chr %d, seenp %d), j=%d %u (chr %d, seenp %d)",
-		    i,hit5->genomicstart,hit5->chrnum,hit5->paired_seenp,
-		    j,hit3->genomicstart,hit3->chrnum,hit3->paired_seenp));
-      
-      if (hit3->chrnum < hit5->chrnum) {
-	j++;
-      } else if (hit5->chrnum < hit3->chrnum) {
-	i++;
-      } else if (hit5->concordantp == true) {
-	/* Disregard a hit involved in a concordant pair */
-	debug5(printf(" => hit5 concordant"));
-	i++;
+  /* Find sizes for allocating memory */
+  debug6(printf("Sizes of 5-end pieces:\n"));
+  nhits5_all = (int *) CALLOC(cutoff_level_5+1,sizeof(int));
+  for (i = 0; i < narray5; i++) {
+    for (q = hitarray5[i]; q != NULL; q = q->rest) {
+      hit5 = (T) q->first;
+      if (hit5->score > cutoff_level_5) {
+      } else if (hit5->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	nhits5_all[hit5->score]++;
+	nhits5_all[hit5->score]++;
       } else {
-	for (jj = j; jj < nhits3 && hits3[jj]->chrnum == hit5->chrnum; jj++) {
-	  hit3 = hits3[jj];
-	  if (hit3->concordantp == true) {
-	    /* Disregard a hit involved in a concordant pair */
-	    debug5(printf(" => hit3 concordant"));
-	  } else if (hit5->paired_seenp == false || hit3->paired_seenp == false) {
-	    /* Want only pairs not previously seen */
-	    debug5(printf(" => samechr"));
-	    hitpairs = List_push(hitpairs,Stage3pair_new(hit5,hit3,querylength5,querylength3,
-							 expected_pairlength,/*pairtype*/SAMECHR));
-	    if (++(*nsamechr) >= maxpairedpaths) {
-	      debug(printf("%d samechr paths exceeds %d\n",*nsamechr,maxpairedpaths));
-	    }
-	  }
-	}
-	i++;
+	nhits5_all[hit5->score]++;
       }
-      debug5(printf("\n"));
     }
-
-    FREE(hits5);
-    FREE(hits3);
   }
 
-#endif
+  debug6(
+	 printf("Sizes of 5-end pieces:\n");
+	 for (score5 = 0; score5 <= cutoff_level_5; score5++) {
+	   printf("  score %d: %d\n",score5,nhits5_all[score5]);
+	 }
+	 );
+
+  debug6(printf("Sizes of 3-end pieces:\n"));
+  nhits3_all = (int *) CALLOC(cutoff_level_3+1,sizeof(int));
+  for (i = 0; i < narray3; i++) {
+    for (q = hitarray3[i]; q != NULL; q = q->rest) {
+      hit3 = (T) q->first;
+      if (hit3->score > cutoff_level_3) {
+      } else if (hit3->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	nhits3_all[hit3->score]++;
+	nhits3_all[hit3->score]++;
+      } else {
+	nhits3_all[hit3->score]++;
+      }
+    }
+  }
+  debug6(
+	 printf("Sizes of 3-end pieces:\n");
+	 for (score3 = 0; score3 <= cutoff_level_3; score3++) {
+	   printf("  score %d: %d\n",score3,nhits3_all[score3]);
+	 }
+	 );
+
+  /* Store hits5 */
+  hits5_all = (T **) CALLOC(cutoff_level_5+1,sizeof(T *));
+  for (score5 = 0; score5 <= cutoff_level_5; score5++) {
+    if (nhits5_all[score5] == 0) {
+      hits5_all[score5] = (T *) NULL;
+    } else {
+      hits5_all[score5] = (T *) CALLOC(nhits5_all[score5],sizeof(Stage3_T));
+    }
+  }
+
+  for (score5 = 0; score5 <= cutoff_level_5; score5++) {
+    nhits5_all[score5] = 0;
+  }
+
+  for (i = 0; i < narray5; i++) {
+    for (q = hitarray5[i]; q != NULL; q = q->rest) {
+      hit5 = (T) q->first;
+      if (hit5->score > cutoff_level_5) {
+      } else if (hit5->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	copy = Stage3_copy(hit5);
+	copy->effective_chrnum = Substring_chrnum(hit5->substring1);
+	copy->genomicstart = Substring_genomicstart(hit5->substring1);
+	copy->genomicend = Substring_genomicend(hit5->substring1);
+	copy->plusp = Substring_plusp(hit5->substring1);
+	copies = List_push(copies,(void *) copy);
+	hits5_all[hit5->score][nhits5_all[hit5->score]++] = copy;
+
+	copy = Stage3_copy(hit5);
+	copy->effective_chrnum = Substring_chrnum(hit5->substring2);
+	copy->genomicstart = Substring_genomicstart(hit5->substring2);
+	copy->genomicend = Substring_genomicend(hit5->substring2);
+	copy->plusp = Substring_plusp(hit5->substring2);
+	copies = List_push(copies,(void *) copy);
+	hits5_all[hit5->score][nhits5_all[hit5->score]++] = copy;
+      } else {
+	hits5_all[hit5->score][nhits5_all[hit5->score]++] = hit5;
+      }
+    }
+  }
+
+  /* Store hits3 */
+  hits3_all = (T **) CALLOC(cutoff_level_3+1,sizeof(T *));
+  for (score3 = 0; score3 <= cutoff_level_3; score3++) {
+    if (nhits3_all[score3] == 0) {
+      hits3_all[score3] = (T *) NULL;
+    } else {
+      hits3_all[score3] = (T *) CALLOC(nhits3_all[score3],sizeof(Stage3_T));
+    }
+  }
+
+  for (score3 = 0; score3 <= cutoff_level_3; score3++) {
+    nhits3_all[score3] = 0;
+  }
+
+  for (i = 0; i < narray3; i++) {
+    for (q = hitarray3[i]; q != NULL; q = q->rest) {
+      hit3 = (T) q->first;
+      if (hit3->score > cutoff_level_3) {
+      } else if (hit3->chrnum == 0) {
+	/* Translocation: Enter under each substring chrnum */
+	copy = Stage3_copy(hit3);
+	copy->effective_chrnum = Substring_chrnum(hit3->substring1);
+	copy->genomicstart = Substring_genomicstart(hit3->substring1);
+	copy->genomicend = Substring_genomicend(hit3->substring1);
+	copy->plusp = Substring_plusp(hit3->substring1);
+	copies = List_push(copies,(void *) copy);
+	hits3_all[hit3->score][nhits3_all[hit3->score]++] = copy;
+
+	copy = Stage3_copy(hit3);
+	copy->effective_chrnum = Substring_chrnum(hit3->substring2);
+	copy->genomicstart = Substring_genomicstart(hit3->substring2);
+	copy->genomicend = Substring_genomicend(hit3->substring2);
+	copy->plusp = Substring_plusp(hit3->substring2);
+	copies = List_push(copies,(void *) copy);
+	hits3_all[hit3->score][nhits3_all[hit3->score]++] = copy;
+      } else {
+	hits3_all[hit3->score][nhits3_all[hit3->score]++] = hit3;
+      }
+    }
+  }
+
+
+  /* Look for samechr pairs */
+  sorted5p = (bool *) CALLOC(cutoff_level_5+1,sizeof(bool));
+  sorted3p = (bool *) CALLOC(cutoff_level_3+1,sizeof(bool));
+
+  pairscore = 0;
+  while (abort_samechr_p == false && pairscore <= *found_score + subopt_levels) {
+    for (score5 = 0; score5 <= pairscore; score5++) {
+      if (score5 <= cutoff_level_5 && ((score3 = pairscore - score5) <= cutoff_level_3)) {
+	/* Sort if necessary, at least by chrnum */
+	if (sorted5p[score5] == false) {
+	  if (nhits5_all[score5] > 0) {
+	    qsort(hits5_all[score5],nhits5_all[score5],sizeof(T),genomicstart_cmp);
+	  }
+	  sorted5p[score5] = true;
+	}
+	if (sorted3p[score3] == false) {
+	  if (nhits3_all[score3] > 0) {
+	    qsort(hits3_all[score3],nhits3_all[score3],sizeof(T),genomicstart_cmp);
+	  }
+	  sorted3p[score3] = true;
+	}
+
+	/* hits5 against hits3 */
+	i = j = 0;
+	hits5 = hits5_all[score5];
+	hits3 = hits3_all[score3];
+	nhits5 = nhits5_all[score5];
+	nhits3 = nhits3_all[score3];
+
+	while (abort_samechr_p == false && i < nhits5 && j < nhits3) {
+	  hit5 = hits5[i];
+	  hit3 = hits3[j];
+	  debug6(printf("either: i=%d %u (chr %d), j=%d %u (chr %d)",
+			i,hit5->genomicstart,hit5->effective_chrnum,j,hit3->genomicstart,hit3->effective_chrnum));
+
+	  if (hit3->effective_chrnum < hit5->effective_chrnum) {
+	    j++;
+	  } else if (hit5->effective_chrnum < hit3->effective_chrnum) {
+	    i++;
+	  } else if (hit5->concordantp == true) {
+	    /* Disregard a hit involved in a concordant pair */
+	    abort();		/* Should be calling this procedure only if nconcordant == 0 */
+	    debug6(printf(" => hit5 concordant"));
+	    i++;
+	  } else {
+	    for (jj = j; jj < nhits3 && hits3[jj]->effective_chrnum == hit5->effective_chrnum; jj++) {
+	      hit3 = hits3[jj];
+	      if (hit3->concordantp == true) {
+		/* Disregard a hit involved in a concordant pair */
+		abort();		/* Should be calling this procedure only if nconcordant == 0 */
+		debug6(printf(" => hit3 concordant"));
+	      } else /* if (hit5->paired_seenp == false || hit3->paired_seenp == false) */ {
+		debug6(printf(" => samechr chr %d",hit5->effective_chrnum));
+		hitpairs = List_push(hitpairs,Stage3pair_new(hit5,hit3,querylength5,querylength3,
+							     expected_pairlength,/*pairtype*/SAMECHR));
+		if (pairscore < *found_score) {
+		  *found_score = pairscore;
+		}
+		if (++nsamechr >= maxpairedpaths) {
+		  debug(printf("%d samechr paths exceeds %d\n",nsamechr,maxpairedpaths));
+		  abort_samechr_p = true;
+		  for (q = hitpairs; q != NULL; q = List_next(q)) {
+		    stage3pair = (Stage3pair_T) List_head(q);
+		    Stage3pair_free(&stage3pair);
+		  }
+		  List_free(&hitpairs);
+		  hitpairs = (List_T) NULL;
+		}
+	      }
+	    }
+	    i++;
+	  }
+	  debug6(printf("\n"));
+	}
+      }
+    }
+    pairscore++;
+  }
+
+  FREE(sorted3p);
+  FREE(sorted5p);
+
+  for (q = copies; q != NULL; q = List_next(q)) {
+    copy = (T) List_head(q);
+    Stage3_free(&copy);
+  }
+  List_free(&copies);
+
+  for (score3 = 0; score3 <= cutoff_level_3; score3++) {
+    FREE(hits3_all[score3]);
+  }
+  FREE(hits3_all);
+  FREE(nhits3_all);
+
+  for (score5 = 0; score5 <= cutoff_level_5; score5++) {
+    FREE(hits5_all[score5]);
+  }
+  FREE(hits5_all);
+  FREE(nhits5_all);
+
+  debug6(printf("Finished with Stage3_pair_up_samechr\n"));
+
+  return hitpairs;
+}
 

@@ -1,4 +1,4 @@
-/* $Id: genome_hr.h,v 1.17 2010/02/26 01:11:47 twu Exp $ */
+/* $Id: genome_hr.h,v 1.18 2010-07-19 20:27:49 twu Exp $ */
 #ifndef GENOME_HR_INCLUDED
 #define GENOME_HR_INCLUDED
 #include "types.h"
@@ -36,6 +36,10 @@ extern int
 Genome_trim_right (char *queryuc_ptr, Compress_T query_compress,
 		   UINT4 *blocks, UINT4 *snp_blocks, Genomicpos_T left, int pos5, int pos3,
 		   bool dibasep, bool cmetp, bool plusp);
+
+extern char
+Genome_get_dinucleotide (char *altdinucl, UINT4 *ref_blocks, UINT4 *alt_blocks,
+			 Genomicpos_T pos);
 
 #endif
 

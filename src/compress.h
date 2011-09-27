@@ -1,4 +1,4 @@
-/* $Id: compress.h,v 1.6 2009/03/24 20:10:54 twu Exp $ */
+/* $Id: compress.h,v 1.6 2009-03-24 20:10:54 twu Exp $ */
 #ifndef COMPRESS_INCLUDED
 #define COMPRESS_INCLUDED
 #include <stdio.h>

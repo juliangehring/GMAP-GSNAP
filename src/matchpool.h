@@ -1,4 +1,4 @@
-/* $Id: matchpool.h,v 1.3 2008/08/01 17:50:21 twu Exp $ */
+/* $Id: matchpool.h,v 1.4 2010-07-16 20:11:32 twu Exp $ */
 #ifndef MATCHPOOL_INCLUDED
 #define MATCHPOOL_INCLUDED
 #include "bool.h"
@@ -12,6 +12,8 @@ typedef struct T *T;
 
 extern void
 Matchpool_free (T *old);
+extern void
+Matchpool_free_memory (T this);
 extern T
 Matchpool_new (void);
 extern void

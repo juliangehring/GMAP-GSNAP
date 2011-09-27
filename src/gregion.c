@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c,v 1.11 2009/04/02 21:26:56 twu Exp $";
+static char rcsid[] = "$Id: gregion.c,v 1.12 2010-07-10 01:28:53 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,9 +57,10 @@ struct T {
 
   double weight;		/* Product of match weights */
   int support;
+
+  int ncovered;
+  int source;			/* Oligoindex source in stage 2 */
 };
-
-
 
 
 
@@ -161,6 +162,19 @@ bool
 Gregion_extendedp (T this) {
   return this->extendedp;
 }
+
+void
+Gregion_set_ncovered (T this, int ncovered, int source) {
+  this->ncovered = ncovered;
+  this->source = source;
+  return;
+}
+
+int
+Gregion_ncovered (T this) {
+  return this->ncovered;
+}
+
 
 
 T
@@ -461,6 +475,8 @@ Gregion_best_weight (List_T gregionlist) {
 
 
 
+#if 0
+
 /* Not intended for qsort.  Returns 0 when not comparable. */
 static int
 gregion_dominate (const void *a, const void *b) {
@@ -531,7 +547,6 @@ gregion_equal (const void *a, const void *b) {
   }
 }
 
-#if 0
 List_T
 Gregion_filter_unique_old (List_T gregionlist) {
   List_T unique = NULL, p, q;
@@ -771,4 +786,19 @@ Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int qu
 
   debug(printf("  genomicstart %u, genomiclength %u\n",this->genomicstart,this->genomiclength));
   return;
+}
+
+
+int
+Gregion_cmp (const void *a, const void *b) {
+  T x = * (T *) a;
+  T y = * (T *) b;
+
+  if (x->ncovered > y->ncovered) {
+    return -1;
+  } else if (y->ncovered > x->ncovered) {
+    return +1;
+  } else {
+    return 0;
+  }
 }

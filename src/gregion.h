@@ -1,4 +1,4 @@
-/* $Id: gregion.h,v 1.7 2009/04/02 21:26:56 twu Exp $ */
+/* $Id: gregion.h,v 1.8 2010-07-10 01:28:53 twu Exp $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
@@ -64,6 +64,13 @@ Gregion_support (T this);
 extern bool 
 Gregion_extendedp (T this);
 
+extern void
+Gregion_set_ncovered (T this, int ncovered, int source);
+
+extern int
+Gregion_ncovered (T this);
+
+
 extern T
 Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
 	     bool plusp, IIT_T chromosome_iit, int querystart, int queryend, 
@@ -90,6 +97,9 @@ Gregion_sufficient_support (T this);
 
 extern void
 Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength);
+
+extern int
+Gregion_cmp (const void *a, const void *b);
 
 #undef T
 #endif

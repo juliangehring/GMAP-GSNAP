@@ -1,4 +1,4 @@
-/* $Id: reader.h,v 1.14 2009/08/29 00:37:29 twu Exp $ */
+/* $Id: reader.h,v 1.14 2009-08-29 00:37:29 twu Exp $ */
 #ifndef READER_INCLUDED
 #define READER_INCLUDED
 #include <stdio.h>

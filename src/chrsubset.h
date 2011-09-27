@@ -1,4 +1,4 @@
-/* $Id: chrsubset.h,v 1.9 2007/11/03 00:44:24 twu Exp $ */
+/* $Id: chrsubset.h,v 1.9 2007-11-03 00:44:24 twu Exp $ */
 #ifndef CHRSUBSET_INCLUDED
 #define CHRSUBSET_INCLUDED
 #include "bool.h"

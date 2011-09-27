@@ -16,7 +16,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h gregion.c gregion.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
- intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h \
+ diagdef.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h \
  scores.h intron.c intron.h maxent.c maxent.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
@@ -36,11 +36,11 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 GMAP_FILES_BETA = chimera.c chimera.h 
 
 gmap_CC = $(PTHREAD_CC)
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
 
-dist_gmap_SOURCES = $(GMAP_FILES) $(GMAP_FILES_BETA)
+dist_gmap_SOURCES = $(GMAP_FILES)
 
 
 GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
@@ -103,10 +103,11 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  indexdbdef.h indexdb.c indexdb.h \
  chrom.c chrom.h \
  complement.h md5.c md5.h sequence.c sequence.h genome.c genome.h \
+ datadir.c datadir.h \
  getopt.c getopt1.c getopt.h snpindex.c
 
 snpindex_CC = $(PTHREAD_CC)
-snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" 
 snpindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 snpindex_LDADD = $(PTHREAD_LIBS)
 dist_snpindex_SOURCES = $(SNPINDEX_FILES)

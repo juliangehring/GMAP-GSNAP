@@ -54,7 +54,7 @@ am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
-mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
+mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = config.h
 CONFIG_CLEAN_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
@@ -126,27 +126,25 @@ am__objects_4 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-chrsubset.$(OBJEXT) gmap-gregion.$(OBJEXT) \
 	gmap-match.$(OBJEXT) gmap-matchpool.$(OBJEXT) \
 	gmap-diagnostic.$(OBJEXT) gmap-stage1.$(OBJEXT) \
-	gmap-intpool.$(OBJEXT) gmap-diag.$(OBJEXT) \
-	gmap-diagpool.$(OBJEXT) gmap-orderstat.$(OBJEXT) \
-	gmap-oligoindex.$(OBJEXT) gmap-intron.$(OBJEXT) \
-	gmap-maxent.$(OBJEXT) gmap-pair.$(OBJEXT) \
-	gmap-pairpool.$(OBJEXT) gmap-stage2.$(OBJEXT) \
-	gmap-smooth.$(OBJEXT) gmap-boyer-moore.$(OBJEXT) \
-	gmap-dynprog.$(OBJEXT) gmap-translation.$(OBJEXT) \
-	gmap-pbinom.$(OBJEXT) gmap-changepoint.$(OBJEXT) \
-	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
-	gmap-reqpost.$(OBJEXT) gmap-result.$(OBJEXT) \
-	gmap-blackboard.$(OBJEXT) gmap-datadir.$(OBJEXT) \
-	gmap-getopt.$(OBJEXT) gmap-getopt1.$(OBJEXT) \
-	gmap-gmap.$(OBJEXT)
-am__objects_5 = gmap-chimera.$(OBJEXT)
-dist_gmap_OBJECTS = $(am__objects_4) $(am__objects_5)
+	gmap-diag.$(OBJEXT) gmap-diagpool.$(OBJEXT) \
+	gmap-orderstat.$(OBJEXT) gmap-oligoindex.$(OBJEXT) \
+	gmap-intron.$(OBJEXT) gmap-maxent.$(OBJEXT) \
+	gmap-pair.$(OBJEXT) gmap-pairpool.$(OBJEXT) \
+	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
+	gmap-boyer-moore.$(OBJEXT) gmap-dynprog.$(OBJEXT) \
+	gmap-translation.$(OBJEXT) gmap-pbinom.$(OBJEXT) \
+	gmap-changepoint.$(OBJEXT) gmap-stage3.$(OBJEXT) \
+	gmap-request.$(OBJEXT) gmap-reqpost.$(OBJEXT) \
+	gmap-result.$(OBJEXT) gmap-blackboard.$(OBJEXT) \
+	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
+	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
+dist_gmap_OBJECTS = $(am__objects_4)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
 gmap_DEPENDENCIES = $(am__DEPENDENCIES_1)
 gmap_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(gmap_CFLAGS) $(CFLAGS) $(gmap_LDFLAGS) \
 	$(LDFLAGS) -o $@
-am__objects_6 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
+am__objects_5 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-mem.$(OBJEXT) gmapindex-intlist.$(OBJEXT) \
 	gmapindex-list.$(OBJEXT) gmapindex-littleendian.$(OBJEXT) \
 	gmapindex-bigendian.$(OBJEXT) gmapindex-interval.$(OBJEXT) \
@@ -157,13 +155,13 @@ am__objects_6 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-indexdb.$(OBJEXT) gmapindex-table.$(OBJEXT) \
 	gmapindex-tableint.$(OBJEXT) gmapindex-chrom.$(OBJEXT) \
 	gmapindex-segmentpos.$(OBJEXT) gmapindex-gmapindex.$(OBJEXT)
-dist_gmapindex_OBJECTS = $(am__objects_6)
+dist_gmapindex_OBJECTS = $(am__objects_5)
 gmapindex_OBJECTS = $(dist_gmapindex_OBJECTS)
 gmapindex_DEPENDENCIES = $(am__DEPENDENCIES_1)
 gmapindex_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(gmapindex_CFLAGS) \
 	$(CFLAGS) $(gmapindex_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_7 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
+am__objects_6 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
 	gsnap-mem.$(OBJEXT) gsnap-intlist.$(OBJEXT) \
 	gsnap-list.$(OBJEXT) gsnap-littleendian.$(OBJEXT) \
 	gsnap-bigendian.$(OBJEXT) gsnap-interval.$(OBJEXT) \
@@ -184,13 +182,13 @@ am__objects_7 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
 	gsnap-blackboard.$(OBJEXT) gsnap-datadir.$(OBJEXT) \
 	gsnap-getopt.$(OBJEXT) gsnap-getopt1.$(OBJEXT) \
 	gsnap-gsnap.$(OBJEXT)
-dist_gsnap_OBJECTS = $(am__objects_7)
+dist_gsnap_OBJECTS = $(am__objects_6)
 gsnap_OBJECTS = $(dist_gsnap_OBJECTS)
 gsnap_DEPENDENCIES = $(am__DEPENDENCIES_1)
 gsnap_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(gsnap_CFLAGS) $(CFLAGS) $(gsnap_LDFLAGS) \
 	$(LDFLAGS) -o $@
-am__objects_8 = gsnap_tally-except.$(OBJEXT) \
+am__objects_7 = gsnap_tally-except.$(OBJEXT) \
 	gsnap_tally-assert.$(OBJEXT) gsnap_tally-mem.$(OBJEXT) \
 	gsnap_tally-intlist.$(OBJEXT) gsnap_tally-list.$(OBJEXT) \
 	gsnap_tally-littleendian.$(OBJEXT) \
@@ -202,13 +200,13 @@ am__objects_8 = gsnap_tally-except.$(OBJEXT) \
 	gsnap_tally-genome.$(OBJEXT) gsnap_tally-datadir.$(OBJEXT) \
 	gsnap_tally-getopt.$(OBJEXT) gsnap_tally-getopt1.$(OBJEXT) \
 	gsnap_tally-gsnap_tally.$(OBJEXT)
-dist_gsnap_tally_OBJECTS = $(am__objects_8)
+dist_gsnap_tally_OBJECTS = $(am__objects_7)
 gsnap_tally_OBJECTS = $(dist_gsnap_tally_OBJECTS)
 gsnap_tally_DEPENDENCIES = $(am__DEPENDENCIES_1)
 gsnap_tally_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(gsnap_tally_CFLAGS) \
 	$(CFLAGS) $(gsnap_tally_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_9 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
+am__objects_8 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-mem.$(OBJEXT) iit_dump-littleendian.$(OBJEXT) \
 	iit_dump-bigendian.$(OBJEXT) iit_dump-intlist.$(OBJEXT) \
 	iit_dump-list.$(OBJEXT) iit_dump-interval.$(OBJEXT) \
@@ -216,13 +214,13 @@ am__objects_9 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-access.$(OBJEXT) iit_dump-iit-read.$(OBJEXT) \
 	iit_dump-getopt.$(OBJEXT) iit_dump-getopt1.$(OBJEXT) \
 	iit_dump-iit_dump.$(OBJEXT)
-dist_iit_dump_OBJECTS = $(am__objects_9)
+dist_iit_dump_OBJECTS = $(am__objects_8)
 iit_dump_OBJECTS = $(dist_iit_dump_OBJECTS)
 iit_dump_DEPENDENCIES = $(am__DEPENDENCIES_1)
 iit_dump_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(iit_dump_CFLAGS) $(CFLAGS) \
 	$(iit_dump_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_10 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
+am__objects_9 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-mem.$(OBJEXT) iit_get-intlist.$(OBJEXT) \
 	iit_get-list.$(OBJEXT) iit_get-littleendian.$(OBJEXT) \
 	iit_get-bigendian.$(OBJEXT) iit_get-interval.$(OBJEXT) \
@@ -230,13 +228,13 @@ am__objects_10 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-access.$(OBJEXT) iit_get-iit-read.$(OBJEXT) \
 	iit_get-parserange.$(OBJEXT) iit_get-getopt.$(OBJEXT) \
 	iit_get-getopt1.$(OBJEXT) iit_get-iit_get.$(OBJEXT)
-dist_iit_get_OBJECTS = $(am__objects_10)
+dist_iit_get_OBJECTS = $(am__objects_9)
 iit_get_OBJECTS = $(dist_iit_get_OBJECTS)
 iit_get_DEPENDENCIES = $(am__DEPENDENCIES_1)
 iit_get_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(iit_get_CFLAGS) $(CFLAGS) \
 	$(iit_get_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_11 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
+am__objects_10 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-mem.$(OBJEXT) iit_store-intlist.$(OBJEXT) \
 	iit_store-list.$(OBJEXT) iit_store-littleendian.$(OBJEXT) \
 	iit_store-bigendian.$(OBJEXT) iit_store-interval.$(OBJEXT) \
@@ -245,13 +243,13 @@ am__objects_11 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-tableint.$(OBJEXT) iit_store-table.$(OBJEXT) \
 	iit_store-chrom.$(OBJEXT) iit_store-getopt.$(OBJEXT) \
 	iit_store-getopt1.$(OBJEXT) iit_store-iit_store.$(OBJEXT)
-dist_iit_store_OBJECTS = $(am__objects_11)
+dist_iit_store_OBJECTS = $(am__objects_10)
 iit_store_OBJECTS = $(dist_iit_store_OBJECTS)
 iit_store_DEPENDENCIES = $(am__DEPENDENCIES_1)
 iit_store_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(iit_store_CFLAGS) \
 	$(CFLAGS) $(iit_store_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_12 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
+am__objects_11 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
 	snpindex-mem.$(OBJEXT) snpindex-intlist.$(OBJEXT) \
 	snpindex-list.$(OBJEXT) snpindex-littleendian.$(OBJEXT) \
 	snpindex-bigendian.$(OBJEXT) snpindex-interval.$(OBJEXT) \
@@ -260,9 +258,10 @@ am__objects_12 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
 	snpindex-genomicpos.$(OBJEXT) snpindex-compress.$(OBJEXT) \
 	snpindex-indexdb.$(OBJEXT) snpindex-chrom.$(OBJEXT) \
 	snpindex-md5.$(OBJEXT) snpindex-sequence.$(OBJEXT) \
-	snpindex-genome.$(OBJEXT) snpindex-getopt.$(OBJEXT) \
-	snpindex-getopt1.$(OBJEXT) snpindex-snpindex.$(OBJEXT)
-dist_snpindex_OBJECTS = $(am__objects_12)
+	snpindex-genome.$(OBJEXT) snpindex-datadir.$(OBJEXT) \
+	snpindex-getopt.$(OBJEXT) snpindex-getopt1.$(OBJEXT) \
+	snpindex-snpindex.$(OBJEXT)
+dist_snpindex_OBJECTS = $(am__objects_11)
 snpindex_OBJECTS = $(dist_snpindex_OBJECTS)
 snpindex_DEPENDENCIES = $(am__DEPENDENCIES_1)
 snpindex_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
@@ -430,7 +429,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h gregion.c gregion.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
- intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h \
+ diagdef.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h \
  scores.h intron.c intron.h maxent.c maxent.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
@@ -449,10 +448,10 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 # In front of stage3
 GMAP_FILES_BETA = chimera.c chimera.h 
 gmap_CC = $(PTHREAD_CC)
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
-dist_gmap_SOURCES = $(GMAP_FILES) $(GMAP_FILES_BETA)
+dist_gmap_SOURCES = $(GMAP_FILES)
 GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
@@ -507,10 +506,11 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  indexdbdef.h indexdb.c indexdb.h \
  chrom.c chrom.h \
  complement.h md5.c md5.h sequence.c sequence.h genome.c genome.h \
+ datadir.c datadir.h \
  getopt.c getopt1.c getopt.h snpindex.c
 
 snpindex_CC = $(PTHREAD_CC)
-snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" 
 snpindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 snpindex_LDADD = $(PTHREAD_LIBS)
 dist_snpindex_SOURCES = $(SNPINDEX_FILES)
@@ -794,7 +794,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-block.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-boyer-moore.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-changepoint.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chimera.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrsubset.Po@am__quote@
@@ -817,7 +816,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-indexdb_hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-interval.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-intlist.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-intpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-intron.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-littleendian.Po@am__quote@
@@ -983,6 +981,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-compress.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-datadir.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-genome.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-genomicpos.Po@am__quote@
@@ -2240,20 +2239,6 @@ gmap-stage1.obj: stage1.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-stage1.obj `if test -f 'stage1.c'; then $(CYGPATH_W) 'stage1.c'; else $(CYGPATH_W) '$(srcdir)/stage1.c'; fi`
 
-gmap-intpool.o: intpool.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-intpool.o -MD -MP -MF $(DEPDIR)/gmap-intpool.Tpo -c -o gmap-intpool.o `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-intpool.Tpo $(DEPDIR)/gmap-intpool.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='gmap-intpool.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-intpool.o `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c
-
-gmap-intpool.obj: intpool.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-intpool.obj -MD -MP -MF $(DEPDIR)/gmap-intpool.Tpo -c -o gmap-intpool.obj `if test -f 'intpool.c'; then $(CYGPATH_W) 'intpool.c'; else $(CYGPATH_W) '$(srcdir)/intpool.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-intpool.Tpo $(DEPDIR)/gmap-intpool.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='gmap-intpool.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-intpool.obj `if test -f 'intpool.c'; then $(CYGPATH_W) 'intpool.c'; else $(CYGPATH_W) '$(srcdir)/intpool.c'; fi`
-
 gmap-diag.o: diag.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diag.o -MD -MP -MF $(DEPDIR)/gmap-diag.Tpo -c -o gmap-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-diag.Tpo $(DEPDIR)/gmap-diag.Po
@@ -2589,20 +2574,6 @@ gmap-gmap.obj: gmap.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gmap.c' object='gmap-gmap.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-gmap.obj `if test -f 'gmap.c'; then $(CYGPATH_W) 'gmap.c'; else $(CYGPATH_W) '$(srcdir)/gmap.c'; fi`
-
-gmap-chimera.o: chimera.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.o -MD -MP -MF $(DEPDIR)/gmap-chimera.Tpo -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-chimera.Tpo $(DEPDIR)/gmap-chimera.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
-
-gmap-chimera.obj: chimera.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.obj -MD -MP -MF $(DEPDIR)/gmap-chimera.Tpo -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-chimera.Tpo $(DEPDIR)/gmap-chimera.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
 
 gmapindex-except.o: except.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-except.o -MD -MP -MF $(DEPDIR)/gmapindex-except.Tpo -c -o gmapindex-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
@@ -4731,6 +4702,20 @@ snpindex-genome.obj: genome.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='snpindex-genome.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
+
+snpindex-datadir.o: datadir.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-datadir.o -MD -MP -MF $(DEPDIR)/snpindex-datadir.Tpo -c -o snpindex-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-datadir.Tpo $(DEPDIR)/snpindex-datadir.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='snpindex-datadir.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+snpindex-datadir.obj: datadir.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-datadir.obj -MD -MP -MF $(DEPDIR)/snpindex-datadir.Tpo -c -o snpindex-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-datadir.Tpo $(DEPDIR)/snpindex-datadir.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='snpindex-datadir.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
 
 snpindex-getopt.o: getopt.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-getopt.o -MD -MP -MF $(DEPDIR)/snpindex-getopt.Tpo -c -o snpindex-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c

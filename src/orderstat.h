@@ -1,4 +1,4 @@
-/* $Id: orderstat.h,v 1.3 2010/02/03 18:12:25 twu Exp $ */
+/* $Id: orderstat.h,v 1.3 2010-02-03 18:12:25 twu Exp $ */
 #ifndef ORDERSTAT_INCLUDED
 #define ORDERSTAT_INCLUDED
 

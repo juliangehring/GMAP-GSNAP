@@ -1,4 +1,4 @@
-/* $Id: intlist.h,v 1.14 2008/12/17 22:10:55 twu Exp $ */
+/* $Id: intlist.h,v 1.14 2008-12-17 22:10:55 twu Exp $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
 #include "bool.h"

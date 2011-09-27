@@ -1,4 +1,4 @@
-/* $Id: stage3.h,v 1.143 2010/02/03 18:18:26 twu Exp $ */
+/* $Id: stage3.h,v 1.146 2010-07-21 21:46:32 twu Exp $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 #include "bool.h"
@@ -21,8 +21,8 @@
 #define EXTRAQUERYGAP 10
 
 typedef enum {NO_STAGE3DEBUG, POST_STAGE2, POST_SMOOTHING, POST_SINGLES, 
-	      POST_INTRONS, POST_CANONICAL, POST_CHANGEPOINT, POST_DISTAL_MEDIAL,
-              POST_TRIM_MIDDLE} Stage3debug_T;
+	      POST_INTRONS, POST_HMM, POST_DUAL_BREAKS, POST_CANONICAL, POST_CHANGEPOINT,
+	      POST_DISTAL_MEDIAL} Stage3debug_T;
 
 #define T Stage3_T
 typedef struct T *T;
@@ -116,7 +116,7 @@ Stage3_print_pslformat_pro (T this, int pathnum, IIT_T chromosome_iit, Sequence_
 extern void
 Stage3_print_gff3 (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq, char *dbversion,
 		   bool diagnosticp, bool fulllengthp, bool truncatep, bool strictp,
-		   bool gff_gene_format_p, char *user_genomicseg);
+		   bool gff_gene_format_p, bool gff_estmatch_format_p, char *user_genomicseg);
 extern void
 Stage3_print_iit_map (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq);
 extern void
@@ -166,7 +166,8 @@ Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 int worker_id);
 
 extern T
-Stage3_compute (List_T path, Genomicpos_T genomicstart, Genomicpos_T genomiclength,
+Stage3_compute (List_T path, int stage2_source, int stage2_indexsize,
+		Genomicpos_T genomicstart, Genomicpos_T genomiclength,
 #ifdef PMAP
 		Sequence_T queryaaseq,
 #endif
@@ -183,7 +184,7 @@ Stage3_compute (List_T path, Genomicpos_T genomicstart, Genomicpos_T genomicleng
 		Dynprog_T dynprogM, Dynprog_T dynprogR,
 		IIT_T altstrain_iit, int ngap, Stage3debug_T stage3debug,
 		bool diagnosticp, bool checkp, Stopwatch_T stopwatch, bool do_final_p, int sense,
-		Oligoindex_T *oligoindices, int noligoindices, Diagpool_T diagpool,
+		Oligoindex_T *oligoindices_minor, int noligoindices_minor, Diagpool_T diagpool,
 		int sufflookback, int nsufflookback, int maxintronlen);
 
 extern T

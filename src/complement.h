@@ -1,4 +1,4 @@
-/* $Id: complement.h,v 1.9 2007/02/21 19:16:40 twu Exp $ */
+/* $Id: complement.h,v 1.9 2007-02-21 19:16:40 twu Exp $ */
 #ifndef COMPLEMENT_INCLUDED
 #define COMPLEMENT_INCLUDED
 

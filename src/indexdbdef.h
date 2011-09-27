@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h,v 1.4 2008/12/24 19:35:31 twu Exp $ */
+/* $Id: indexdbdef.h,v 1.4 2008-12-24 19:35:31 twu Exp $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.127 2010/03/05 05:53:48 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.133 2010-07-27 01:10:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -207,6 +207,16 @@ IIT_interval_high (T this, int index) {
   return Interval_high(interval);
 }
 
+int
+IIT_interval_sign (T this, int index) {
+  Interval_T interval;
+
+  assert(index <= this->total_nintervals);
+  interval = &(this->intervals[0][index-1]);
+  return Interval_sign(interval);
+}
+
+
 void
 IIT_interval_bounds (unsigned int *low, unsigned int *high, T this, int index) {
   Interval_T interval;
@@ -217,6 +227,13 @@ IIT_interval_bounds (unsigned int *low, unsigned int *high, T this, int index) {
   *high = Interval_high(interval);
   return;
 }
+
+int
+IIT_index (T this, int divno, int i) {
+  return this->cum_nintervals[divno] + i + 1; /* 1-based */
+}
+
+
 
 int
 IIT_ndivs (T this) {
@@ -798,7 +815,7 @@ void
 IIT_dump_sam (T this) {
   int index = 0, i;
   Interval_T interval;
-  unsigned int startpos, endpos;
+  unsigned int startpos;
   char *label;
   bool allocp;
 
@@ -810,7 +827,7 @@ IIT_dump_sam (T this) {
       FREE(label);
     }
     startpos = Interval_low(interval);
-    endpos = startpos + Interval_length(interval) - 1U;
+    /* endpos = startpos + Interval_length(interval) - 1U; */
 
     printf("\tLN:%u",Interval_length(interval));
     printf("\n");
@@ -2368,6 +2385,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
   Interval_T interval;
 #endif
 
+  /* printf("Reading IIT file %s\n",filename); */
   if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
     if (add_iit_p == false) {
       /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
@@ -4173,6 +4191,62 @@ IIT_get_typed_with_divno (int *ntypematches, T this, int divno, unsigned int x, 
 
 
 int *
+IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y, 
+				 int type, int sign, bool sortp) {
+  int *sorted;
+  int index;
+  int *typematches = NULL, *matches, nmatches, i, j;
+  Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    *ntypematches = 0;
+    return (int *) NULL;
+  }
+
+  *ntypematches = 0;
+  matches = IIT_get_with_divno(&nmatches,this,divno,x,y,/*sortp*/false);
+  for (i = 0; i < nmatches; i++) {
+    index = matches[i];
+    interval = &(this->intervals[0][index-1]);
+    if (Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      (*ntypematches)++;
+    }
+  }
+
+  if (*ntypematches > 0) {
+    typematches = (int *) CALLOC(*ntypematches,sizeof(int));
+    j = 0;
+    for (i = 0; i < nmatches; i++) {
+      index = matches[i];
+      interval = &(this->intervals[0][index-1]);
+      if (Interval_type(interval) == type && Interval_sign(interval) == sign) {
+	typematches[j++] = index;
+      }
+    }
+  }
+  
+  if (matches != NULL) {
+    FREE(matches);
+  }
+
+  if (sortp == false) {
+    return typematches;
+#if 0
+  } else if (this->version <= 2) {
+    sorted = sort_matches_by_type(this,typematches,*ntypematches,/*alphabetizep*/false);
+    FREE(typematches);
+    return sorted;
+#endif
+  } else {
+    sorted = sort_matches_by_position_with_divno(this,typematches,*ntypematches,divno);
+    FREE(typematches);
+    return sorted;
+  }
+}
+
+
+int *
 IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsigned int y, 
 			int *types, int ntypes, bool sortp) {
   int *sorted;
@@ -4418,9 +4492,11 @@ IIT_string_from_position (unsigned int *chrpos, unsigned int position,
 }
 
 
+#if 0
+/* Not used anymore */
 /* Assume 0-based index */
 static void
-print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int level,
+print_record (T this, int recno, bool map_bothstrands_p, char *chr, int level,
 	      bool relativep, unsigned int left) {
 #ifdef HAVE_64_BIT
   UINT8 start, end;
@@ -4428,7 +4504,7 @@ print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int l
   unsigned int start, end;
 #endif
   unsigned int chrpos1, chrpos2;
-  char *string, *chrstring1, *chrstring2;
+  char *string;
   Interval_T interval;
   bool allocp;
 #if 0
@@ -4483,19 +4559,11 @@ print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int l
       printf("\t%u..%u",Interval_high(interval)-left,Interval_low(interval)-left);
     }
   } else {
-    chrstring1 = IIT_string_from_position(&chrpos1,Interval_low(interval),
-					  chromosome_iit);
-    chrstring2 = IIT_string_from_position(&chrpos2,Interval_high(interval),
-					  chromosome_iit);
-
     if (Interval_sign(interval) >= 0) {
-      printf("\t%s:%u..%u",chrstring1,chrpos1,chrpos2);
+      printf("\t%s:%u..%u",chr,Interval_low(interval),Interval_high(interval));
     } else {
-      printf("\t%s:%u..%u",chrstring1,chrpos2,chrpos1);
+      printf("\t%s:%u..%u",chr,Interval_high(interval),Interval_low(interval));
     }
-
-    FREE(chrstring2);
-    FREE(chrstring1);
   }
 
 #if 0
@@ -4521,49 +4589,54 @@ print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int l
 
   return;
 }
+#endif
 
 
+#if 0
+/* Not used anymore */
 void
 IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p,
-	   T chromosome_iit, int *levels, bool reversep, bool relativep, unsigned int left) {
+	   char *chr, int *levels, bool reversep, bool relativep, unsigned int left) {
   int recno, i;
 
   if (levels == NULL) {
     if (reversep == true) {
       for (i = nmatches-1; i >= 0; i--) {
 	recno = matches[i] - 1;	/* Convert to 0-based */
-	print_record(this,recno,map_bothstrands_p,chromosome_iit,/*level*/-1,relativep,left);
+	print_record(this,recno,map_bothstrands_p,chr,/*level*/-1,relativep,left);
       }
     } else {
       for (i = 0; i < nmatches; i++) {
 	recno = matches[i] - 1;	/* Convert to 0-based */
-	print_record(this,recno,map_bothstrands_p,chromosome_iit,/*level*/-1,relativep,left);
+	print_record(this,recno,map_bothstrands_p,chr,/*level*/-1,relativep,left);
       }
     }
   } else {
     if (reversep == true) {
       for (i = nmatches-1; i >= 0; i--) {
 	recno = matches[i] - 1;	/* Convert to 0-based */
-	print_record(this,recno,map_bothstrands_p,chromosome_iit,levels[i],relativep,left);
+	print_record(this,recno,map_bothstrands_p,chr,levels[i],relativep,left);
       }
     } else {
       for (i = 0; i < nmatches; i++) {
 	recno = matches[i] - 1;	/* Convert to 0-based */
-	print_record(this,recno,map_bothstrands_p,chromosome_iit,levels[i],relativep,left);
+	print_record(this,recno,map_bothstrands_p,chr,levels[i],relativep,left);
       }
     }
   }
 
   return;
 }
+#endif
+
 
 
 /* Assume 0-based index */
 static void
-print_header (T this, int recno, bool map_bothstrands_p, T chromosome_iit,
+print_header (T this, int recno, char *chr, bool map_bothstrands_p,
 	      bool relativep, unsigned int left) {
   unsigned int chrpos1, chrpos2;
-  char *string, *chrstring1, *chrstring2;
+  char *string, *chrstring1;
   Interval_T interval;
   bool allocp;
 #if 0
@@ -4582,19 +4655,13 @@ print_header (T this, int recno, bool map_bothstrands_p, T chromosome_iit,
       printf("\t%u..%u",Interval_high(interval)-left,Interval_low(interval)-left);
     }
   } else {
-    chrstring1 = IIT_string_from_position(&chrpos1,Interval_low(interval),
-					  chromosome_iit);
-    chrstring2 = IIT_string_from_position(&chrpos2,Interval_high(interval),
-					  chromosome_iit);
-
     if (Interval_sign(interval) >= 0) {
-      printf("\t%s:%u..%u",chrstring1,chrpos1,chrpos2);
+      printf("\t%s:%u..%u",chr,Interval_low(interval),Interval_high(interval));
     } else {
-      printf("\t%s:%u..%u",chrstring1,chrpos2,chrpos1);
+      printf("\t%s:%u..%u",chr,Interval_high(interval),Interval_low(interval));
     }
 
-    FREE(chrstring2);
-    FREE(chrstring1);
+    /* FREE(chrstring1); */
   }
 
 #if 0
@@ -4624,18 +4691,18 @@ print_header (T this, int recno, bool map_bothstrands_p, T chromosome_iit,
 
 void
 IIT_print_header (T this, int *matches, int nmatches, bool map_bothstrands_p,
-		  T chromosome_iit, bool reversep, bool relativep, unsigned int left) {
+		  char *chr, bool reversep, bool relativep, unsigned int left) {
   int recno, i;
 
   if (reversep == true) {
     for (i = nmatches-1; i >= 0; i--) {
       recno = matches[i] - 1;	/* Convert to 0-based */
-      print_header(this,recno,map_bothstrands_p,chromosome_iit,relativep,left);
+      print_header(this,recno,chr,map_bothstrands_p,relativep,left);
     }
   } else {
     for (i = 0; i < nmatches; i++) {
       recno = matches[i] - 1;	/* Convert to 0-based */
-      print_header(this,recno,map_bothstrands_p,chromosome_iit,relativep,left);
+      print_header(this,recno,chr,map_bothstrands_p,relativep,left);
     }
   }
 

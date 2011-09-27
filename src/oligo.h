@@ -1,4 +1,4 @@
-/* $Id: oligo.h,v 1.34 2009/05/16 14:06:40 twu Exp $ */
+/* $Id: oligo.h,v 1.34 2009-05-16 14:06:40 twu Exp $ */
 #ifndef OLIGO_INCLUDED
 #define OLIGO_INCLUDED
 #include "bool.h"

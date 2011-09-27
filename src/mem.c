@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.20 2009/08/14 16:35:58 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.23 2010-07-26 23:59:57 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,12 +8,7 @@ static char rcsid[] = "$Id: mem.c,v 1.20 2009/08/14 16:35:58 twu Exp $";
 #include <stdlib.h>
 #include "assert.h"
 #include "except.h"
-
-#ifdef DEBUG
-#define debug(x) x
-#else
-#define debug(x)
-#endif
+#include "bool.h"
 
 /* #define TRAP 1 */
 #ifdef TRAP
@@ -47,16 +42,148 @@ Mem_trap_check (const char *file, int line) {
 #endif
 
 
+#ifdef MEMUSAGE
+static long memusage_nalloc = 0;
+
+void
+Mem_usage_init () {
+  memusage_nalloc = 0;
+}
+
+long
+Mem_usage_report () {
+  return memusage_nalloc;
+}
+
+#define hash(p, t) (((unsigned long)(p)>>3) & (sizeof (t)/sizeof ((t)[0])-1))
+struct descriptor {
+  struct descriptor *link;
+  const void *ptr;
+  long size;
+};
+static struct descriptor *htab[2048];
+
+/* Also removes element from linked list */
+static struct descriptor *
+find (const void *ptr) {
+  struct descriptor *bp, **pp;
+
+  pp = &(htab[hash(ptr, htab)]);
+  while (*pp && (*pp)->ptr != ptr) {
+    pp = &(*pp)->link;
+  }
+  if (*pp) {
+    bp = *pp;
+    *pp = bp->link;
+    return bp;
+  } else {
+    return NULL;
+  }
+}
+#endif
+
+
+
+/* #define DEBUG 1 */
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
+#ifdef LEAKCHECK
+static bool leak_check_p = false;
+static int nalloc = 0;
+static unsigned int total_alloc = 0U;
+
+const Except_T Mem_Leak = { "Memory Leak" };
+
+void
+Mem_leak_check_start (const char *file, int line) {
+  debug(printf("Starting leak check\n"));
+  nalloc = 0;
+  total_alloc = 0U;
+  return;
+}
+
+void
+Mem_leak_check_end (const char *file, int line) {
+  if (nalloc != 0) {
+    fprintf(stderr,"Leak check gives %d\n",nalloc);
+    Except_raise(&Mem_Leak, file, line);
+  } else {
+    debug(printf("Total nalloc = %u\n",total_alloc));
+  }
+  return;
+}
+
+void
+Mem_leak_check_activate () {
+  leak_check_p = true;
+  return;
+}
+
+void
+Mem_leak_check_deactivate () {
+  leak_check_p = false;
+  return;
+}
+
+void
+Mem_leak_check_add (unsigned int nbytes) {
+  if (leak_check_p == true) {
+    nalloc++;
+    total_alloc += nbytes;
+  }
+  return;
+}
+
+void
+Mem_leak_check_subtract () {
+  if (leak_check_p == true) {
+    nalloc--;
+  }
+  return;
+}
+
+#endif
+
+
 const Except_T Mem_Failed = { "Allocation Failed" };
+
 
 void *
 Mem_alloc (size_t nbytes, const char *file, int line) {
   void *ptr;
+#ifdef MEMUSAGE
+  static struct descriptor *bp;
+  unsigned h;
+#endif
 
   assert(nbytes > 0);
   ptr = malloc(nbytes);
-  debug(printf("Allocating %p to %p -- Malloc of %d bytes requested from %s:%d\n",
+
+#ifdef MEMUSAGE
+  memusage_nalloc += nbytes;
+  h = hash(ptr,htab);
+  bp = malloc(sizeof(*bp));
+  bp->link = htab[h];
+  bp->ptr = ptr;
+  bp->size = nbytes;
+  htab[h] = bp;
+#endif
+
+#ifdef LEAKCHECK
+  Mem_leak_check_add(nbytes);
+  debug(if (leak_check_p == true) {
+	  printf("%d: Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+		 nalloc,ptr,(char *) ptr + nbytes-1,nbytes,file,line);
+	});
+#else
+  debug(printf("Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
 	       ptr,(char *) ptr + nbytes-1,nbytes,file,line));
+#endif
+
 
 #ifdef TRAP
   if (ptr == trap_location) {
@@ -92,6 +219,10 @@ Mem_alloc_no_exception (size_t nbytes, const char *file, int line) {
 void *
 Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   void *ptr;
+#ifdef MEMUSAGE
+  static struct descriptor *bp;
+  unsigned h;
+#endif
 
   if (count <= 0) {
     fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
@@ -118,8 +249,26 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   }
 #endif
 
-  debug(printf("Allocating %p to %p -- Calloc of %d x %d = %u bytes requested from %s:%d\n",
+#ifdef MEMUSAGE
+  memusage_nalloc += count*nbytes;
+  h = hash(ptr,htab);
+  bp = malloc(sizeof(*bp));
+  bp->link = htab[h];
+  bp->ptr = ptr;
+  bp->size = count*nbytes;
+  htab[h] = bp;
+#endif
+
+#ifdef LEAKCHECK
+  Mem_leak_check_add(count*nbytes);
+  debug(if (leak_check_p == true) {
+	  printf("%d: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+		 nalloc,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line);
+	});
+#else
+  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
 	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
+#endif
 
   if (ptr == NULL) {
     fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
@@ -135,6 +284,10 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 void *
 Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line) {
   void *ptr;
+#ifdef MEMUSAGE
+  static struct descriptor *bp;
+  unsigned h;
+#endif
 
   if (count <= 0) {
     fprintf(stderr,"Failed attempt to allocate %lu x %lu bytes\n",count,nbytes);
@@ -145,12 +298,29 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
     }
   }
   assert(nbytes > 0);
+
   ptr = calloc(count, nbytes);
+
+#ifdef MEMUSAGE
+  memusage_nalloc += count*nbytes;
+  h = hash(ptr,htab);
+  bp = malloc(sizeof(*bp));
+  bp->link = htab[h];
+  bp->ptr = ptr;
+  bp->size = count*nbytes;
+  htab[h] = bp;
+#endif
+
+#ifdef LEAKCHECK
+  Mem_leak_check_add(count*nbytes);
+#endif
+
   return ptr;
 }
 
 void 
 Mem_free (void *ptr, const char *file, int line) {
+  struct descriptor *bp;
 
 #ifdef TRAP
   if (ptr == trap_location) {
@@ -159,7 +329,23 @@ Mem_free (void *ptr, const char *file, int line) {
 #endif
 
   if (ptr) {
+#ifdef MEMUSAGE
+    if ((bp = find(ptr)) == NULL) {
+      Except_raise(&Mem_Failed, file, line);
+    } else {
+      memusage_nalloc -= bp->size;
+      free(bp);
+    }
+#endif
+
+#ifdef LEAKCHECK
+    Mem_leak_check_subtract();
+    debug(if (leak_check_p == true) {
+	printf("%d: Freeing %p at %s:%d\n",nalloc,ptr,file,line);
+      });
+#else
     debug(printf("Freeing %p at %s:%d\n",ptr,file,line));
+#endif
     free(ptr);
   }
 

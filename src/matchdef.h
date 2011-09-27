@@ -1,4 +1,4 @@
-/* $Id: matchdef.h,v 1.5 2006/02/26 19:07:11 twu Exp $ */
+/* $Id: matchdef.h,v 1.6 2010-07-10 01:35:55 twu Exp $ */
 #ifndef MATCHDEF_INCLUDED
 #define MATCHDEF_INCLUDED
 #include "bool.h"
@@ -11,6 +11,7 @@ struct T {
   Chrnum_T chrnum;
   Genomicpos_T chrpos;
   double weight;		/* equal to 1/nentries */
+  bool has_weight_p;
   int querypos;
   int npairings;		/* number of matchpairs made with
 				   other matches */

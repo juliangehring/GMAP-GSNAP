@@ -1,4 +1,4 @@
-/* $Id: request.h,v 1.19 2008/01/08 01:43:38 twu Exp $ */
+/* $Id: request.h,v 1.19 2008-01-08 01:43:38 twu Exp $ */
 #ifndef REQUEST_INCLUDED
 #define REQUEST_INCLUDED
 #include "sequence.h"

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c,v 1.18 2010/02/03 01:57:48 twu Exp $";
+static char rcsid[] = "$Id: diag.c,v 1.19 2010-07-10 15:42:56 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,6 +32,27 @@ static char rcsid[] = "$Id: diag.c,v 1.18 2010/02/03 01:57:48 twu Exp $";
 #define debug1(x)
 #endif
 
+
+#ifndef USE_DIAGPOOL
+T
+Diag_new (int diagonal, int querystart, int queryend, int nconsecutive) {
+  T new = (T) MALLOC(sizeof(*new));
+
+  new->diagonal = diagonal;
+  new->querystart = querystart;
+  new->queryend = queryend;
+  new->nconsecutive = nconsecutive;
+  new->dominatedp = false;
+
+  return new;
+}
+
+void
+Diag_free (T *old) {
+  FREE(*old);
+  return;
+}
+#endif
 
 int
 Diag_diagonal (T this) {
@@ -150,6 +171,7 @@ Diag_update_coverage (bool *coveredp, int *ncovered, List_T diagonals, int query
 }
 
 
+#if 0
 static int
 diagonal_coverage (int *clear_coverage, T *array, int nunique) {
   int coverage = 0, regionstart, clear_regionstart, i, j = 0, status;
@@ -196,6 +218,7 @@ diagonal_coverage (int *clear_coverage, T *array, int nunique) {
   
   return coverage;
 }
+#endif
 
 
 int
@@ -230,15 +253,19 @@ print_segment (T this, char *queryseq_ptr, char *genomicseg_ptr) {
 #endif  
 
   printf(">%d..%d %u..%u score:%f\n",this->querystart,this->queryend,genomicstart,genomicend,this->score);
-  for (querypos = this->querystart; querypos <= this->queryend; querypos++) {
-    printf("%c",queryseq_ptr[querypos]);
+  if (queryseq_ptr != NULL) {
+    for (querypos = this->querystart; querypos <= this->queryend; querypos++) {
+      printf("%c",queryseq_ptr[querypos]);
+    }
+    printf("\n");
   }
-  printf("\n");
 
-  for (genomicpos = genomicstart; genomicpos <= genomicend; genomicpos++) {
-    printf("%c",genomicseg_ptr[genomicpos]);
+  if (genomicseg_ptr != NULL) {
+    for (genomicpos = genomicstart; genomicpos <= genomicend; genomicpos++) {
+      printf("%c",genomicseg_ptr[genomicpos]);
+    }
+    printf("\n");
   }
-  printf("\n");
 
   return;
 }
@@ -253,6 +280,7 @@ Diag_print_segments (List_T diagonals, char *queryseq_ptr, char *genomicseg_ptr)
   for (i = 0; i < List_length(diagonals); i++) {
     print_segment(array[i],queryseq_ptr,genomicseg_ptr);
   }
+  FREE(array);
   return;
 }
 
@@ -347,10 +375,10 @@ compute_dominance (int *nunique, T *array, int ndiagonals, int indexsize) {
 }
   
 
-void
+static void
 assign_scores (List_T diagonals, int querylength) {
-  int count, querypos;
-  double *cumscores, cum;
+  int querypos;
+  double *cumscores, cum, count;
   List_T p;
   T diag;
 
@@ -364,13 +392,13 @@ assign_scores (List_T diagonals, int querylength) {
   }
 
   /* Record scores: 1.0/cumsum(endpoints) */
-  count = 0;
+  count = 0.0;
   for (querypos = 0; querypos < querylength; querypos++) {
     count += cumscores[querypos];
-    if (count == 0) {
-      cumscores[querypos] = 0.0;
-    } else {
+    if (count > 0.0) {
       cumscores[querypos] = 1.0/(double) count;
+    } else {
+      cumscores[querypos] = 0.0;
     }
     /* printf("%d count=%d score=%f\n",querypos,count,cumscores[querypos]); */
   }
@@ -439,9 +467,11 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 
     assign_scores(diagonals,querylength);
 
+#if 0
     if (diagnosticp == true) {
       Diag_print_segments(diagonals,queryuc_ptr,genomicuc_ptr);
     }
+#endif
 
     if (debug_graphic_p == true) {
       print_segments_for_R_list(diagonals,"black");

@@ -477,14 +477,33 @@ To see the full set of options for GSNAP, type "gsnap --help".  A key
 parameter you will need to set is the "-m" flag, which is the maximal
 score you will allow per read (or each end of a paired-end read).  The
 score equals the number of mismatches, plus penalties for indels and
-local or distant splicing, if any.  For half-intron alignments, a
-further penalty is assessed for the amount of sequence that was not
-aligned.  If you do not set a value for "-m", then GSNAP will pick a
-value, depending on the length of each read, that will allow it to run
-fairly quickly.  For RNA-Seq data, we recommend setting -m to a
-relatively high value, because alignments past the end of an exon can
-result in several mismatches.  For 75-mer RNA-Seq data, we typically
-set -m to be at least 10.
+local or distant splicing, if any.  If you do not set a value for
+"-m", then GSNAP will pick a value, depending on the length of each
+read, that will allow it to run fairly quickly.
+
+For DNA-Seq, the automatic setting should be fine, unless you need to
+accommodate penalty values for indels or splicing, or your reads are
+of poor quality.
+
+For RNA-Seq, alignments that cross the end of an exon could show up as
+several mismatches, so such alignments may require GSNAP to be run
+with slightly higher value of -m.  In previous versions, we
+recommended a moderately high value of -m, such as 10 or so, based on
+the fact that GSNAP relies on 12-mers indexed from the genome every 3
+bp, so it cannot find the other end of an exon-exon junction if it is
+a novel splice site and occurs in the last 12-14 bp of a read.  (If
+GSNAP is provided with a database of known splice sites with the -s
+flag, it will allow arbitrarily short segments that cross a known
+splice site.)
+
+However, in current versions, such high values are not necessary,
+since GSNAP has a "terminal" alignment mode that gets called when a
+match within -m mismatches cannot be found.  In this mode, alignments
+are found from either end of the read until the m'th mismatch, and if
+that alignment after trimming covers more than half the read length,
+it is considered a valid terminal alignment.  If the best alignment
+requires a terminal alignment, then GSNAP reports the one with the
+most matches to the genome after trimming.
 
 Input to GSNAP should be in FASTA format, with one line per read (or
 end of a paired-end read).  (In future versions, we will implement the
@@ -545,8 +564,8 @@ is paired-end, the relationship between the ends (as discussed in the
 next paragraph); and in column 3, the accession number for the query.
 
 The two ends of a paired-end read can have the following
-relationships: "concordant", "unpaired", "inversion", "toolong", or
-"scramble".  A paired-end read is concordant if the ends are on the
+relationships: "concordant", "inversion", "toolong", "scramble", or
+"unpaired".  A paired-end read is concordant if the ends are on the
 same chromosome, in the expected directions, and within the
 "--pairmax" parameter.  There may be more than one concordant
 alignment for a given read, and if so, the alignments for each end are
@@ -599,17 +618,18 @@ sign.
 
 Column 4: Segment information, delimited by commas.  The first item
 reports on the ends of the segment, which can be of type "start",
-"end", "ins", "del", "donor", "acceptor", "end_donor", or
-"end_acceptor".  After "start" and "end", we report the number of
-nucleotides clipped or trimmed from the segment.  In our example
-above, "end:3" means that 3 nucleotides should be trimmed from the
-end.  Trimming is computed only if the "-T" flag is specified.  After
-"ins" and "del", we report the number of nucleotides that were
-inserted or deleted in the query relative to the genome.  After
-"donor", "acceptor", "end_donor", and "end_acceptor", we report the
-probability of the splice site, based on the MaxEnt model.  The
-"end_donor" and "end_acceptor" labels indicate a "half-intron"
-segment, where the other exon could not be found.  
+"end", "ins", "del", "donor", "acceptor", or "term".  After "start"
+and "end", we report the number of nucleotides clipped or trimmed from
+the segment.  In our example above, "end:3" means that 3 nucleotides
+should be trimmed from the end.  Trimming finds a local maximum of
+matches to mismatches from the end and is computed only if the "-T"
+flag is specified, and the value for "-T" limits the amount of
+trimming allowed.  After "ins" and "del", we report the number of
+nucleotides that were inserted or deleted in the query relative to the
+genome.  After "donor" or "acceptor", we report the probability of the
+splice site, based on the MaxEnt model.  The "term" label indicate a
+terminal segment, where the entire read could not be aligned, but more
+than half of the read could be aligned from either end.
 
 Each segment will also show after the "sub" tag, he number of
 mismatches in that segment including the part that is trimmed, if any.
@@ -618,8 +638,10 @@ shown (see details below under SNP-tolerant alignment).  Other
 information may also be included with the segment information, such as
 the orientation and distance of the splice or known splice labels, if
 appropriate flags and information are given to GSNAP.  Splices are
-marked as being "splice_translocation", "splice_inversion", and
-"splice_scramble", if appropriate.
+marked with a splice_type, which can be "consistent", "inversion",
+"scramble", or "translocation".  A "translocation" splice includes
+splices on the same chromosome where the splice distance exceeds the
+parameter for localsplicedist.
 
 Column 5: Alignment or hit information, delimited by commas.  For the
 first segment in a hit (the one starting with a space), this column
@@ -756,11 +778,14 @@ Each line must start with a ">" character, then be followed by an
 identifier (which may have duplicates).  Then there should be the
 chromosomal coordinate of the SNP.  (Coordinates are all 1-based, so
 the first character of a chromosome is number 1.)  Finally, there
-should be the two possible alleles in alphabetical order: "AC", "AG",
-"AT", "CG", "CT", or "GT".  These alleles must correspond to the
-possible nucleotides on the plus strand of the genome.  If the allele
-in the reference sequence does not match one of these two letters, the
-SNP will be ignored in subsequent processing.
+should be the two possible alleles.  (Previous versions required that
+these be in alphabetical order: "AC", "AG", "AT", "CG", "CT", or "GT",
+but that is no longer a requirement.)  These alleles must correspond
+to the possible nucleotides on the plus strand of the genome.  If the
+allele in the reference sequence does not match one of these two
+letters, the SNP will be ignored in subsequent processing.  Also, if
+one of the alleles is not an A, C, G, or T, it will also be ignored in
+subsequent processing.
                                                                                                 
 Once you have built this file, you create an IIT file by doing this
                                                                                                 

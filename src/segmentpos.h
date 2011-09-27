@@ -1,4 +1,4 @@
-/* $Id: segmentpos.h,v 1.27 2005/07/08 07:58:34 twu Exp $ */
+/* $Id: segmentpos.h,v 1.27 2005-07-08 07:58:34 twu Exp $ */
 #ifndef SEGMENTPOS_INCLUDED
 #define SEGMENTPOS_INCLUDED
 #include <stdio.h>

@@ -1,4 +1,4 @@
-/* $Id: iit-write.h,v 1.18 2008/03/27 20:43:11 twu Exp $ */
+/* $Id: iit-write.h,v 1.18 2008-03-27 20:43:11 twu Exp $ */
 #ifndef IIT_WRITE_INCLUDED
 #define IIT_WRITE_INCLUDED
 #include "list.h"

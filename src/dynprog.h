@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.55 2008/09/04 21:48:01 twu Exp $ */
+/* $Id: dynprog.h,v 1.55 2008-09-04 21:48:01 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"

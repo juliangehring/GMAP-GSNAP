@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c,v 1.44 2009/03/10 16:21:30 twu Exp $";
+static char rcsid[] = "$Id: smooth.c,v 1.45 2010-07-16 22:20:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -362,7 +362,7 @@ trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int 
 static List_T
 delete_and_mark_exons (List_T pairs, Pairpool_T pairpool, int *exonstatus, int *exonmatches, int nexons,
 		       bool markp, bool bysizep) {
-  List_T newpairs = NULL;
+  List_T newpairs = NULL, pairptr;
   Pair_T pair;
   int currstatus, prevstatus;
   int i;
@@ -384,28 +384,40 @@ delete_and_mark_exons (List_T pairs, Pairpool_T pairpool, int *exonstatus, int *
   i = 0;
   currstatus = exonstatus[i];
   while (pairs != NULL) {
-    pair = List_head(pairs);
+    pairptr = pairs;
+    pairs = Pairpool_pop(pairs,&pair);
     if (pair->gapp == true && big_gap_p(pair,bysizep) == true) {
       prevstatus = currstatus;
       currstatus = exonstatus[++i];
       debug(printf("Gap observed\n"));
       if (prevstatus != DELETE && currstatus != DELETE) {
+#ifdef WASTE
 	newpairs = Pairpool_push_existing(newpairs,pairpool,pair);
+#else
+	newpairs = List_push_existing(newpairs,pairptr);
+#endif
       }
 
     } else if (currstatus == KEEP) {
       /* debug(printf("Marking position %d as keep\n",pair->querypos)); */
+#ifdef WASTE
       newpairs = Pairpool_push_existing(newpairs,pairpool,pair);
+#else
+      newpairs = List_push_existing(newpairs,pairptr);
+#endif
     } else if (currstatus == MARK) {
       debug(printf("Marking position %d as short\n",pair->querypos));
       if (markp == true) {
 	pair->shortexonp = true;
       }
+#ifdef WASTE
       newpairs = Pairpool_push_existing(newpairs,pairpool,pair);
+#else
+      newpairs = List_push_existing(newpairs,pairptr);
+#endif
     } else {
       debug(printf("Marking position %d for deletion\n",pair->querypos));
     }
-    pairs = List_next(pairs);
   }
 
   /* Remove gaps at end */

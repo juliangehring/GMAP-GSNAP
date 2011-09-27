@@ -1,4 +1,5 @@
-static char rcsid[] = "$Id: gsnap_tally.c,v 1.8 2010/03/08 20:21:06 twu Exp $";
+/* TODO: Implement high/low */
+static char rcsid[] = "$Id: gsnap_tally.c,v 1.11 2010-07-16 20:20:47 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,8 +33,16 @@ static char rcsid[] = "$Id: gsnap_tally.c,v 1.8 2010/03/08 20:21:06 twu Exp $";
 #define debug(x)
 #endif
 
+/* trimming */
+#ifdef DEBUG8
+#define debug8(x) x
+#else
+#define debug8(x)
+#endif
+
+
 #define MATCH_SCORE 1
-#define MISMATCH_SCORE -4
+#define MISMATCH_SCORE -3
 
 static char *user_genomedir = NULL;
 static char *dbroot = NULL;
@@ -48,7 +57,7 @@ static int blocksize = 1000;
 static int min_readlength = 10;
 static Genomicpos_T haltpos = -1U;
 
-static bool trimp = true;
+static bool trimp = false;
 static bool trim_endnt_p = false;
 static bool dibasep = false;
 
@@ -59,7 +68,7 @@ static bool want_first_p = true;
 static bool want_second_p = true;
 
 
-typedef enum {FIVE, THREE} Pairend_T;
+typedef enum {FIRST, SECOND} Pairend_T;
 typedef enum {ALL_SCORES, MISMATCH_HIGH_SCORES, HIGH_SCORES, ONE_SUB, ONE_SUB_HIGH_SCORES} Mode_T;
 
 static Mode_T mode = HIGH_SCORES;
@@ -233,64 +242,120 @@ make_complement_buffered (char *complement, char *sequence, int length) {
 }
 
 
+/* querystart (typically 0) and query3 (typically querylength) are exclusive */
+/* sequences may have had lower case characters marked */
+static int
+trim_left_end (char *genomicdir, char *query, int querystart, int queryend) {
+  int bestscore, score;
+  int trim5, alignlength, pos;
+  char *p, *q;
+
+  alignlength = queryend - querystart;
+
+  p = &(query[querystart]);
+  q = &(genomicdir[querystart]);
+
+  debug8(printf("querystart = %d, queryend = %d\n",querystart,queryend));
+  debug8(printf("Trim left query:   %s\n",p));
+  debug8(printf("Trim left genomic: %s\n",q));
+
+  bestscore = 0;
+  score = 0;
+  trim5 = 0;
+  for (pos = alignlength-1; pos >= 0; pos--) {
+    if (toupper(p[pos]) == toupper(q[pos])) {
+      score += MATCH_SCORE;
+    } else {
+      score += MISMATCH_SCORE;
+    }
+    if (score < 0) {
+      score = 0;
+    }
+    if (score > bestscore) {
+      bestscore = score;
+      trim5 = pos;
+    }
+    debug8(printf("Trim left pos %d (%c vs %c), score %d, trim5 %d\n",
+		  pos,p[pos],q[pos],score,trim5));
+  }
+
+  debug8({
+      printf("Trim left called with querystart %d and queryend %d\n",querystart,queryend);
+      printf("At query ->: %.*s\n",alignlength,&(query[querystart]));
+      printf("At genome->: %.*s\n",alignlength,&(genomicdir[querystart]));
+      printf("trim %02d  ->: ",trim5);
+      for (pos = 0; pos < trim5; pos++) {
+	printf(" ");
+      }
+      for ( ; pos < alignlength; pos++) {
+	printf("*");
+      }
+      printf("\n");
+    });
+
+  return trim5;
+}
+
+
+
+/* querystart (typically 0) and queryend (typically querylength) are exclusive */
+/* sequences may have had lower case characters marked */
+static int
+trim_right_end (char *genomicdir, char *query, int querystart, int queryend) {
+  int bestscore, score;
+  int trim3, alignlength, pos;
+  char *p, *q;
+
+  alignlength = queryend - querystart;
+
+  p = &(query[querystart]);
+  q = &(genomicdir[querystart]);
+
+  bestscore = 0;
+  score = 0;
+  trim3 = 0;
+  for (pos = 0; pos < alignlength; pos++) {
+    if (toupper(p[pos]) == toupper(q[pos])) {
+      score += MATCH_SCORE;
+    } else {
+      score += MISMATCH_SCORE;
+    }
+    if (score < 0) {
+      score = 0;
+    }
+    if (score > bestscore) {
+      bestscore = score;
+      trim3 = alignlength - pos - 1;
+    }
+    debug8(printf("Trim right pos %d, score %d, trim3 %d\n",pos,score,trim3));
+  }
+
+  debug8({
+      printf("Trim right called with querystart %d and queryend %d\n",querystart,queryend);
+      printf("At query ->: %.*s\n",alignlength,&(query[querystart]));
+      printf("At genome->: %.*s\n",alignlength,&(genomicdir[querystart]));
+      printf("trim %02d  ->: ",trim3);
+      for (pos = 0; pos < alignlength - trim3; pos++) {
+	printf("*");
+      }
+      for ( ; pos < alignlength; pos++) {
+	printf(" ");
+      }
+      printf("\n");
+    });
+
+  return trim3;
+}
+
+
+
 static void
 compute_trims (int *trimleft, int *trimright, char *query, char *genomic, int readlength,
 	       char strand, int query5, int query3, int querylength) {
-  int score, pos;
-
-  score = 0;
-  *trimleft = 0;
-  for (pos = 0; pos < readlength; pos++) {
-    if (toupper(query[pos]) == toupper(genomic[pos])) {
-      score += MATCH_SCORE;
-    } else {
-      score += MISMATCH_SCORE;
-      if (score < 0) {
-	score = 0;
-	*trimleft = pos + 1;
-      }
-    }
-  }
-
-  score = 0;
-  *trimright = 0;
-  for (pos = readlength-1; pos >= 0; pos--) {
-    if (toupper(query[pos]) == toupper(genomic[pos])) {
-      score += MATCH_SCORE;
-    } else {
-      score += MISMATCH_SCORE;
-      if (score < 0) {
-	score = 0;
-	*trimright = readlength - pos;
-      }
-    }
-  }
-
-  if (trim_endnt_p) {
-    if (strand == '+') {
-      if (query5 == 1 && *trimleft == 0) {
-	debug(printf("query5 is 1 and trimleft is 0, so trimming 1 on left\n"));
-	*trimleft = 1;
-      }
-      if (query3 == querylength && *trimright == 0) {
-	debug(printf("query3 is %d and trimright is 0, so trimming 1 on right\n",querylength));
-	*trimright = 1;
-      }
-    } else if (strand == '-') {
-      if (query3 == querylength && *trimleft == 0) {
-	debug(printf("query3 is %d and trimleft is 0, so trimming 1 on left\n",querylength));
-	*trimleft = 1;
-      }
-      if (query5 == 1 && *trimright == 0) {
-	debug(printf("query5 is 1 and trimright is 0, so trimming 1 on right\n"));
-	*trimright = 1;
-      }
-    }
-  }
-
+  *trimleft = trim_left_end(genomic,query,/*query5*/0,/*query3*/query3 - query5 + 1);
+  *trimright = trim_right_end(genomic,query,/*query5*/0,/*query3*/query3 - query5 + 1);
   return;
 }
-
 
 
 static void
@@ -344,6 +409,7 @@ process_lines (char *refnts, int *nmatches, List_T *mismatches, int querylength,
 
     readlength = query3 - query5 + 1;
     if (readlength < min_readlength) {
+      debug(printf("readlength %d < min_readlength %d\n",readlength,min_readlength));
       /* Skip rest of line */
       while (*p != '\0') p++;
     } else {
@@ -374,8 +440,8 @@ process_lines (char *refnts, int *nmatches, List_T *mismatches, int querylength,
 	chr[len] = '\0';
       }
 
-      if (desired_strand != ' ' && ((pairend == FIVE && strand != desired_strand) ||
-				    (pairend == THREE && strand != opposite_strand))) {
+      if (desired_strand != ' ' && ((pairend == FIRST && strand != desired_strand) ||
+				    (pairend == SECOND && strand != opposite_strand))) {
 	processp = false;
 
       } else if (chromosome == NULL) {
@@ -418,9 +484,10 @@ process_lines (char *refnts, int *nmatches, List_T *mismatches, int querylength,
 	    /* Use genome according to GSNAP */
 	    q = &(genomic[query5-1]);
 	  } else {
+	    debug(printf("Looking up genomic segment\n"));
 	    /* Look up genomic segment.  Don't use known gene. */
 	    /* printf("Before (+): %s\n",&(genomic[query5-1])); */
-	    Genome_fill_buffer(&chrnum,&nunknowns,genome,chrstart + pos5 - 1U,readlength,genomic,chromosome_iit);
+	    Genome_fill_buffer(&chrnum,&nunknowns,genome,chrstart + pos /*=pos5-1U*/,readlength,genomic,chromosome_iit);
 	    /* printf("After (+): %s\n",genomic); */
 	    q = genomic;
 	  }
@@ -433,9 +500,10 @@ process_lines (char *refnts, int *nmatches, List_T *mismatches, int querylength,
 	    make_complement_buffered(genomic_rc,&(genomic[query5-1]),readlength);
 	    q = genomic_rc;
 	  } else {
+	    debug(printf("Looking up genomic segment\n"));
 	    /* Look up genomic segment.  Don't use known gene. */
 	    /* printf("Before (-): %s\n",&(genomic[query5-1])); */
-	    Genome_fill_buffer(&chrnum,&nunknowns,genome,chrstart + pos3 - 1U,readlength,genomic_rc,chromosome_iit);
+	    Genome_fill_buffer(&chrnum,&nunknowns,genome,chrstart + pos /*=pos3-1U*/,readlength,genomic_rc,chromosome_iit);
 	    /* printf("After (-): %s\n",genomic_rc); */
 	    q = genomic_rc;
 	  }
@@ -444,8 +512,10 @@ process_lines (char *refnts, int *nmatches, List_T *mismatches, int querylength,
 	  abort();
 	}
 
-	psave = p; qsave = q;
-	debug(printf("Processing %.*s and %.*s\n",readlength,p,readlength,q));
+	/* psave = p; qsave = q; */
+	debug(printf("Processing strand %c, %.*s and %.*s\n",strand,readlength,p,readlength,q));
+	debug(printf("shortread: %s\n",shortread));
+	debug(printf("shortread_rc: %s\n",shortread_rc));
 
 	if (trimp == true) {
 	  compute_trims(&trimleft,&trimright,p,q,readlength,strand,query5,query3,querylength);
@@ -582,15 +652,14 @@ process_lines (char *refnts, int *nmatches, List_T *mismatches, int querylength,
 static void
 print_chromosome_blocks (Genomicpos_T allocoffset, Genomicpos_T chrlength,
 			 char *refnts, List_T *mismatches, int *nmatches,
-			 IIT_T chromosome_iit, char *chr) {
-  int segno;
+			 Genome_T genome, IIT_T chromosome_iit, char *chr) {
   int n, i;
   Genomicpos_T pos, posi, firsti, lasti;
   bool hitp;
   Mismatch_T mismatch, mismatch0, *array;
   List_T unique_mismatches, ptr;
+  long int total;
  
-  segno = 0;
   for (pos = 0; pos < chrlength; pos += blocksize) {
     hitp = false;
     for (posi = pos; posi < chrlength && posi < pos + blocksize; posi += 1U) {
@@ -605,9 +674,21 @@ print_chromosome_blocks (Genomicpos_T allocoffset, Genomicpos_T chrlength,
       
     if (hitp == true) {
       /* old: printf(">%s_%d %u %u %s\n",chromosome,++segno,firsti+1U,lasti+1U,chromosome); */
-      printf(">%s_%d %s:%u..%u\n",chr,++segno,chr,firsti+1U,lasti+1U);
+      total = 0;
       for (posi = firsti; posi <= lasti; posi++) {
-	if (nmatches[allocoffset+posi] > 0 || mismatches[allocoffset+posi] != NULL) {
+	total += nmatches[allocoffset+posi];
+	for (ptr = mismatches[allocoffset+posi]; ptr != NULL; ptr = List_next(ptr)) {
+	  mismatch = (Mismatch_T) List_head(ptr);
+	  total += mismatch->count;
+	}
+      }
+      printf(">%ld %s:%u..%u\n",total,chr,firsti+1U,lasti+1U);
+
+      for (posi = firsti; posi <= lasti; posi++) {
+
+	if (nmatches[allocoffset+posi] <= 0 && mismatches[allocoffset+posi] == NULL) {
+	  printf("%c0",Genome_get_char(genome,allocoffset+posi));
+	} else {
 	  printf("%c%d",refnts[allocoffset+posi],nmatches[allocoffset+posi]);
 	  if (mismatches[allocoffset+posi] != NULL) {
 	    if ((n = List_length(mismatches[allocoffset+posi])) == 1) {
@@ -616,7 +697,7 @@ print_chromosome_blocks (Genomicpos_T allocoffset, Genomicpos_T chrlength,
 	    } else {
 	      unique_mismatches = NULL;
 	      for (ptr = mismatches[allocoffset+posi]; ptr != NULL; ptr = List_next(ptr)) {
-		mismatch0 = List_head(ptr);
+		mismatch0 = (Mismatch_T) List_head(ptr);
 		if ((mismatch = find_mismatch_nt(unique_mismatches,mismatch0->nt)) != NULL) {
 		  mismatch->count += mismatch0->count;
 		  mismatch->querypos += 1; /* Using querypos here as number of unique querypos's */
@@ -678,7 +759,7 @@ main (int argc, char *argv[]) {
   IIT_T chromosome_iit;
   int querylength;
   int index;
-  Pairend_T pairend = FIVE;
+  Pairend_T pairend = FIRST;
 
   char shortread[1000];
   List_T lines;
@@ -780,6 +861,9 @@ main (int argc, char *argv[]) {
     print_program_usage();
     exit(9);
   }
+  if (chromosome == NULL) {
+    fprintf(stderr,"Processing entire genome...\n");
+  }
 
   genomesubdir = Datadir_find_genomesubdir(&fileroot,&dbversion,user_genomedir,dbroot);
 
@@ -790,11 +874,9 @@ main (int argc, char *argv[]) {
 			    /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
   FREE(iitfile);
 
-  if (remappedp == true || dibasep == true) {
-    /* Need genome to determine wild-type, because "known gene" may not match reference genome */
-    genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*uncompressedp*/false,
-			/*batchp*/true);
-  }
+  /* Need genome to determine wild-type, because "known gene" may not match reference genome */
+  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*uncompressedp*/false,
+		      /*batchp*/true);
 
   if (dibasep == true && trimp == true) {
     fprintf(stderr,"Turning trimming off for 2-base encoded alignments\n");
@@ -827,7 +909,7 @@ main (int argc, char *argv[]) {
 
   while (fgets(line,1024000,stdin) != NULL) {
     if (line[0] == '>') {
-      pairend = FIVE;
+      pairend = FIRST;
       sscanf(&(line[1]),"%s",shortread);
       querylength = strlen(shortread);
       header = (char *) CALLOC(strlen(line)+1,sizeof(char));
@@ -836,7 +918,7 @@ main (int argc, char *argv[]) {
       nhits = 0;
 
     } else if (line[0] == '<') {
-      pairend = THREE;
+      pairend = SECOND;
       sscanf(&(line[1]),"%s",shortread);
       querylength = strlen(shortread);
       header = (char *) CALLOC(strlen(line)+1,sizeof(char));
@@ -846,8 +928,8 @@ main (int argc, char *argv[]) {
 
     } else if (line[0] == '\n') {
       if (uniquep == false || nhits == 1) {
-	if ((pairend == FIVE && want_first_p == true) ||
-	    (pairend == THREE && want_second_p == true)) {
+	if ((pairend == FIRST && want_first_p == true) ||
+	    (pairend == SECOND && want_second_p == true)) {
 	  process_lines(refnts,nmatches,mismatches,querylength,chromosome,
 			pairend,header,lines,shortread,chromosome_iit,genome,chrstart);
 	}
@@ -868,8 +950,8 @@ main (int argc, char *argv[]) {
 
   if (header != NULL) {
     if (uniquep == false || nhits == 1) {
-      if ((pairend == FIVE && want_first_p == true) ||
-	  (pairend == THREE && want_second_p == true)) {
+      if ((pairend == FIRST && want_first_p == true) ||
+	  (pairend == SECOND && want_second_p == true)) {
 	process_lines(refnts,nmatches,mismatches,querylength,chromosome,
 		      pairend,header,lines,shortread,chromosome_iit,genome,chrstart);
       }
@@ -881,13 +963,14 @@ main (int argc, char *argv[]) {
 
   /* Print results */
   if (chromosome != NULL) {
-    print_chromosome_blocks(/*allocoffset*/0,/*chrlength*/alloclength,refnts,mismatches,nmatches,chromosome_iit,/*chr*/chromosome);
+    print_chromosome_blocks(/*allocoffset*/0,/*chrlength*/alloclength,refnts,mismatches,nmatches,genome,chromosome_iit,/*chr*/chromosome);
   } else {
-    for (index = 0; index < IIT_total_nintervals(chromosome_iit); index++) {
+    for (index = 1; index <= IIT_total_nintervals(chromosome_iit); index++) {
       allocoffset = Interval_low(IIT_interval(chromosome_iit,index));
       chrlength = Interval_length(IIT_interval(chromosome_iit,index));
       chr = IIT_label(chromosome_iit,index,&allocp);
-      print_chromosome_blocks(allocoffset,chrlength,refnts,mismatches,nmatches,chromosome_iit,chr);
+      fprintf(stderr,"%s\t%u\t%u\n",chr,allocoffset,chrlength);
+      print_chromosome_blocks(allocoffset,chrlength,refnts,mismatches,nmatches,genome,chromosome_iit,chr);
       if (allocp == true) {
 	FREE(chr);
       }

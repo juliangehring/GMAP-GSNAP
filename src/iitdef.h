@@ -1,4 +1,4 @@
-/* $Id: iitdef.h,v 1.20 2009/08/29 00:36:12 twu Exp $ */
+/* $Id: iitdef.h,v 1.20 2009-08-29 00:36:12 twu Exp $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H

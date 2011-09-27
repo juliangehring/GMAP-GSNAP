@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c,v 1.13 2010/03/08 20:25:36 twu Exp $";
+static char rcsid[] = "$Id: resulthr.c,v 1.14 2010-05-14 16:00:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,14 @@ static char rcsid[] = "$Id: resulthr.c,v 1.13 2010/03/08 20:25:36 twu Exp $";
 #include <stdlib.h>
 #include "mem.h"
 #include "stage3hr.h"
+
+
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
 
 
 #define T Result_T
@@ -71,17 +79,17 @@ Result_paired_read_new (int id, int worker_id, void **resultarray, int npaths) {
 
   if (npaths == 0) {
     abort();
-  } else {
-#if 0
-    if (Stage3pair_pairtype((Stage3pair_T) resultarray[0]) == CONCORDANT) {
-      new->resulttype = PAIREDEND_CONCORDANT;
-    } else {
-      new->resulttype = PAIREDEND_SAMECHR;
-    }
-#else
+  } else if (Stage3pair_pairtype((Stage3pair_T) resultarray[0]) == CONCORDANT) {
+    debug(printf("resulttype is PAIREDEND_CONCORDANT\n"));
     new->resulttype = PAIREDEND_CONCORDANT;
-#endif
+  } else if (npaths == 1) {
+    debug(printf("resulttype is PAIREDEND_SAMECHR_SINGLE\n"));
+    new->resulttype = PAIREDEND_SAMECHR_SINGLE;
+  } else {
+    debug(printf("resulttype is PAIREDEND_SAMECHR_MULTIPLE\n"));
+    new->resulttype = PAIREDEND_SAMECHR_MULTIPLE;
   }
+
   new->id = id;
   new->worker_id = worker_id;
   new->array = resultarray;
@@ -95,10 +103,14 @@ Result_paired_as_singles_new (int id, int worker_id, void **hits5, int npaths5, 
   T new = (T) MALLOC(sizeof(*new));
 
   if (npaths5 == 1 && npaths3 == 1) {
+    /* Distinction needed by SAM */
+    debug(printf("resulttype is PAIREDEND_AS_SINGLES_UNIQUE\n"));
     new->resulttype = PAIREDEND_AS_SINGLES_UNIQUE;
   } else {
+    debug(printf("resulttype is PAIREDEND_AS_SINGLES\n"));
     new->resulttype = PAIREDEND_AS_SINGLES;
   }
+
   new->id = id;
   new->worker_id = worker_id;
   new->array = hits5;
@@ -122,7 +134,7 @@ Result_free (T *old) {
     }
     FREE((*old)->array);
 
-  } else if ((*old)->resulttype == PAIREDEND_CONCORDANT || (*old)->resulttype == PAIREDEND_SAMECHR) {
+  } else if ((*old)->resulttype == PAIREDEND_CONCORDANT || (*old)->resulttype == PAIREDEND_SAMECHR_SINGLE || (*old)->resulttype == PAIREDEND_SAMECHR_MULTIPLE) {
     for (i = 0; i < (*old)->npaths; i++) {
       stage3pair = (*old)->array[i];
       Stage3pair_free(&stage3pair);

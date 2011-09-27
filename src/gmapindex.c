@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.122 2010/02/03 02:14:40 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.122 2010-02-03 02:14:40 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

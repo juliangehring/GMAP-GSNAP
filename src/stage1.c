@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c,v 1.207 2010/02/03 18:15:26 twu Exp $";
+static char rcsid[] = "$Id: stage1.c,v 1.208 2010-07-10 15:23:23 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -612,16 +612,16 @@ identify_singles (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
     *overflowp = false;
     if (nentries > 0) {
       weight = 1.0/(double) nentries;
-    }
-    for (p = newmatches; p != NULL; p = p->rest) {
-      match = (Match_T) p->first;
-      Match_set_weight(match,weight);
+      for (p = newmatches; p != NULL; p = p->rest) {
+	match = (Match_T) p->first;
+	Match_set_weight(match,weight);
 
-      debug(
-	    Match_print(match,chromosome_iit);
-	    Match_print_mer(match,queryuc_ptr,global_genome,chromosome_iit,matchsize);
-	    printf("\n");
-	    );
+	debug(
+	      Match_print(match,chromosome_iit);
+	      Match_print_mer(match,queryuc_ptr,global_genome,chromosome_iit,matchsize);
+	      printf("\n");
+	      );
+      }
     }
     matches = Matchpool_transfer(matches,newmatches);
   }
@@ -805,21 +805,21 @@ identify_doubles (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
     *overflowp = false;
     if (nentries > 0) {
       weight = 1.0/(double) nentries;
-    }
 
-    debug(if (newmatches != NULL) {
-	    printf("Entering identify_doubles with merstart = %d, positionadj = %u\n",
-		   merstart,positionadj);
-	  });
+      debug(if (newmatches != NULL) {
+	  printf("Entering identify_doubles with merstart = %d, positionadj = %u\n",
+		 merstart,positionadj);
+	});
 
-    for (p = newmatches; p != NULL; p = p->rest) {
-      match = (Match_T) p->first;
-      Match_set_weight(match,weight);
-      debug(
-	    Match_print(match,chromosome_iit);
-	    Match_print_mer(match,queryuc_ptr,global_genome,chromosome_iit,matchsize);
-	    printf("\n");
-	    );
+      for (p = newmatches; p != NULL; p = p->rest) {
+	match = (Match_T) p->first;
+	Match_set_weight(match,weight);
+	debug(
+	      Match_print(match,chromosome_iit);
+	      Match_print_mer(match,queryuc_ptr,global_genome,chromosome_iit,matchsize);
+	      printf("\n");
+	      );
+      }
     }
     matches = Matchpool_transfer(matches,newmatches);
   }
@@ -981,10 +981,10 @@ identify_triples (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
     *overflowp = false;
     if (nentries > 0) {
       weight = 1.0/(double) nentries;
-    }
-    for (p = newmatches; p != NULL; p = p->rest) {
-      match = (Match_T) p->first;
-      Match_set_weight(match,weight);
+      for (p = newmatches; p != NULL; p = p->rest) {
+	match = (Match_T) p->first;
+	Match_set_weight(match,weight);
+      }
     }
     matches = Matchpool_transfer(matches,newmatches);
   }
@@ -2017,15 +2017,19 @@ dangling_pct (List_T matches) {
   double ndangling = 0.0, denominator = 0.0;
   Match_T match;
   List_T p;
+  bool weightp = false;
 
   for (p = matches; p != NULL; p = p->rest) {
     match = (Match_T) p->first;
     if (Match_npairings(match) == 0) {
       ndangling += Match_weight(match);
     }
-    denominator += Match_weight(match);
+    if (Match_has_weight_p(match) == true) {
+      denominator += Match_weight(match);
+      weightp = true;
+    }
   }
-  if (denominator == 0.0) {
+  if (weightp == false) {
     return 0.0;
   } else {
     debug(printf("(%f/%f) ",ndangling,denominator));
@@ -2160,6 +2164,14 @@ identify_repeated_oligos (T this, int oligobase, int querylength) {
   }
   
   qsort(reps,n,sizeof(struct Rep_T),Rep_compare);
+#if 0
+  /* Test for thread safety */
+  for (i = 0; i < n-1; i++) {
+    if (Rep_compare(&(reps[i]),&(reps[i+1])) > 0) {
+      abort();
+    }
+  }
+#endif
 
   for (i = 0, j = 1; j < n; i++, j++) {
     if (reps[j].oligo == reps[i].oligo) {
@@ -3491,6 +3503,7 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc,
 #endif
 
   diagnostic->stage1_runtime = Stopwatch_stop(stopwatch);
+  diagnostic->ngregions = List_length(gregionlist);
 
   Stage1_free(&this);
 

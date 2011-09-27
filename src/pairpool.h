@@ -1,4 +1,4 @@
-/* $Id: pairpool.h,v 1.17 2009/11/18 18:41:44 twu Exp $ */
+/* $Id: pairpool.h,v 1.18 2010-07-10 19:16:58 twu Exp $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 #include "bool.h"
@@ -10,6 +10,8 @@ typedef struct T *T;
 
 extern void
 Pairpool_free (T *old);
+extern void
+Pairpool_free_memory (T this);
 extern T
 Pairpool_new (void);
 extern void

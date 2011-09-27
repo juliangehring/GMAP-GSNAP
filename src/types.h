@@ -1,4 +1,4 @@
-/* $Id: types.h,v 1.7 2009/02/20 22:19:25 twu Exp $ */
+/* $Id: types.h,v 1.7 2009-02-20 22:19:25 twu Exp $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H

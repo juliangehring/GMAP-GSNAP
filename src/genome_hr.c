@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome_hr.c,v 1.27 2010/02/26 01:11:47 twu Exp $";
+static char rcsid[] = "$Id: genome_hr.c,v 1.28 2010-07-19 20:27:49 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -27738,3 +27738,106 @@ Genome_trim_right (char *queryuc_ptr, Compress_T query_compress,
 				     left,pos5,pos3,cmetp,plusp);
   }
 }
+
+
+
+/* Not tested yet */
+char
+Genome_get_dinucleotide (char *altdinucl, UINT4 *ref_blocks, UINT4 *alt_blocks,
+			 Genomicpos_T pos) {
+  /* Genomicpos_T length = endpos - startpos; */
+  char refdinucl;
+  Genomicpos_T shift, ptr;
+  UINT4 high, low;
+
+  ptr = pos/32*3;
+  shift = pos % 32;
+
+  if (shift < 15) {
+#ifdef WORDS_BIGENDIAN
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+#else
+    low = ref_blocks[ptr+1];
+#endif
+    refdinucl = (char) ((low >> (shift+shift)) & 0x0F);
+
+    if (alt_blocks == NULL) {
+      *altdinucl = refdinucl;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      low = Bigendian_convert_uint(alt_blocks[ptr+1]);
+#else
+      low = alt_blocks[ptr+1];
+#endif
+      *altdinucl = (char) ((low >> (shift+shift)) & 0x0F);
+    }
+
+  } else if (shift == 15) {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+#else
+    high = ref_blocks[ptr]; low = ref_blocks[ptr+1];
+#endif
+    refdinucl = (char) (((low >> 30) | (high << 2)) & 0x0F);
+
+    if (alt_blocks == NULL) {
+      *altdinucl = refdinucl;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(alt_blocks[ptr]);
+      low = Bigendian_convert_uint(alt_blocks[ptr+1]);
+#else
+      high = alt_blocks[ptr]; low = alt_blocks[ptr+1];
+#endif
+      *altdinucl = (char) (((low >> 30) | (high << 2)) & 0x0F);
+    }
+    
+  } else if (shift < 31) {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+#else
+    high = ref_blocks[ptr];
+#endif
+    shift -= 16;
+    refdinucl = (char) ((high >> (shift+shift)) & 0x0F);
+
+    if (alt_blocks == NULL) {
+      *altdinucl = refdinucl;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(alt_blocks[ptr]);
+#else
+      high = alt_blocks[ptr];
+#endif
+      shift -= 16;
+      *altdinucl = (char) ((high >> (shift+shift)) & 0x0F);
+    }
+      
+  } else {
+    /* shift == 31 */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr]; low = ref_blocks[ptr+4];
+#endif
+    refdinucl = (char) (((high >> 30) | (low << 2)) & 0x0F);
+
+    if (alt_blocks == NULL) {
+      *altdinucl = refdinucl;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(alt_blocks[ptr]);
+      low = Bigendian_convert_uint(alt_blocks[ptr+4]);
+#else
+      high = alt_blocks[ptr]; low = alt_blocks[ptr+4];
+#endif
+      *altdinucl = (char) (((high >> 30) | (low << 2)) & 0x0F);
+    }
+
+  }
+
+  return refdinucl;
+}
+

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: maxent.c,v 1.4 2009/11/06 22:29:25 twu Exp $";
+static char rcsid[] = "$Id: maxent.c,v 1.5 2010-07-19 20:29:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -99005,6 +99005,25 @@ hashseq (char *sequence, int length) {
   return sum;
 }
 
+static int
+hashseq_nucleotides (unsigned char *nucleotides, int length) {
+  int sum = 0;
+  int i;
+  
+  for (i = 0; i < length; i++) {
+#if 0
+    if (nucleotides[i] > 0x3) {
+      fprintf(stderr,"nucleotides[%d] = %d, length = %d\n",
+	      i,nucleotides[i],length);
+      abort();
+    }
+#endif
+    sum = sum*4 + nucleotides[i];
+  }
+  return sum;
+}
+  
+
 #if 0
 static int
 hashseq_revcomp (char *sequence, int length) {
@@ -99050,6 +99069,36 @@ hashseq_skip (char *sequence, int length1, int skip, int length2) {
     default: fprintf(stderr,"Can't handle %c\n",sequence[i]); exit(9);
     }
     sum = sum*4 + digit;
+  }
+
+  return sum;
+}
+
+static int
+hashseq_skip_nucleotides (unsigned char *nucleotides, int length1, int skip, int length2) {
+  int sum = 0;
+  int i, j;
+  
+  for (i = 0; i < length1; i++) {
+#if 0
+    if (nucleotides[i] > 0x3) {
+      fprintf(stderr,"nucleotides[%d] = %d, length1 = %d\n",
+	      i,nucleotides[i],length1);
+      abort();
+    }
+#endif
+    sum = sum*4 + nucleotides[i];
+  }
+  for (j = 0; j < skip; j++, i++) ;
+  for (j = 0; j < length2; j++, i++) {
+#if 0
+    if (nucleotides[i] > 0x3) {
+      fprintf(stderr,"nucleotides[%d] = %d, length2 = %d\n"
+	      ,i,nucleotides[i],length2);
+      abort();
+    }
+#endif
+    sum = sum*4 + nucleotides[i];
   }
 
   return sum;
@@ -99117,6 +99166,42 @@ score_donor_dinucleotide (char *sequence) {
 }
 
 
+static double donor_scores[16] = 
+  {0.0040/BACKGROUND_A * 0.0034/BACKGROUND_A,
+   0.0040/BACKGROUND_A * 0.0039/BACKGROUND_C,
+   0.0040/BACKGROUND_A * 0.0042/BACKGROUND_G,
+   0.0040/BACKGROUND_A * 0.9884/BACKGROUND_T,
+
+   0.0032/BACKGROUND_C * 0.0034/BACKGROUND_A,
+   0.0032/BACKGROUND_C * 0.0039/BACKGROUND_C,
+   0.0032/BACKGROUND_C * 0.0042/BACKGROUND_G,
+   0.0032/BACKGROUND_C * 0.9884/BACKGROUND_T,
+
+   0.9896/BACKGROUND_G * 0.0034/BACKGROUND_A,
+   0.9896/BACKGROUND_G * 0.0039/BACKGROUND_C,
+   0.9896/BACKGROUND_G * 0.0042/BACKGROUND_G,
+   0.9896/BACKGROUND_G * 0.9884/BACKGROUND_T,
+
+   0.0032/BACKGROUND_T * 0.0034/BACKGROUND_A,
+   0.0032/BACKGROUND_T * 0.0039/BACKGROUND_C,
+   0.0032/BACKGROUND_T * 0.0042/BACKGROUND_G,
+   0.0032/BACKGROUND_T * 0.9884/BACKGROUND_T};
+
+
+static double
+score_donor_dinucleotide_nucleotides (unsigned char *nucleotides) {
+  int i;
+
+  i = nucleotides[DONOR_MODEL_LEFT_MARGIN]*4 + nucleotides[DONOR_MODEL_LEFT_MARGIN + 1];
+#if 0
+  if (i >= 16) {
+    abort();
+  }
+#endif
+  return donor_scores[i];
+}
+
+
 static double
 score_acceptor_dinucleotide (char *sequence) {
   double score;
@@ -99140,6 +99225,43 @@ score_acceptor_dinucleotide (char *sequence) {
   
   return score;
 }
+
+
+static double acceptor_scores[16] = 
+  {0.9903/BACKGROUND_A * 0.0027/BACKGROUND_A,
+   0.9903/BACKGROUND_A * 0.0037/BACKGROUND_C,
+   0.9903/BACKGROUND_A * 0.9905/BACKGROUND_G,
+   0.9903/BACKGROUND_A * 0.0030/BACKGROUND_T,
+
+   0.0032/BACKGROUND_C * 0.0027/BACKGROUND_A,
+   0.0032/BACKGROUND_C * 0.0037/BACKGROUND_C,
+   0.0032/BACKGROUND_C * 0.9905/BACKGROUND_G,
+   0.0032/BACKGROUND_C * 0.0030/BACKGROUND_T,
+
+   0.0034/BACKGROUND_G * 0.0027/BACKGROUND_A,
+   0.0034/BACKGROUND_G * 0.0037/BACKGROUND_C,
+   0.0034/BACKGROUND_G * 0.9905/BACKGROUND_G,
+   0.0034/BACKGROUND_G * 0.0030/BACKGROUND_T,
+
+   0.0030/BACKGROUND_T * 0.0027/BACKGROUND_A,
+   0.0030/BACKGROUND_T * 0.0037/BACKGROUND_C,
+   0.0030/BACKGROUND_T * 0.9905/BACKGROUND_G,
+   0.0030/BACKGROUND_T * 0.0030/BACKGROUND_T};
+
+
+static double
+score_acceptor_dinucleotide_nucleotides (unsigned char *nucleotides) {
+  int i;
+
+  i = nucleotides[ACCEPTOR_MODEL_LEFT_MARGIN - 2]*4 + nucleotides[ACCEPTOR_MODEL_LEFT_MARGIN - 1];
+#if 0
+  if (i >= 16) {
+    abort();
+  }
+#endif
+  return acceptor_scores[i];
+}
+
 
 
 static bool
@@ -99175,6 +99297,16 @@ Maxent_donor_prob (char *sequence) {
 }
 
 double
+Maxent_donor_prob_nucleotides (unsigned char *nucleotides) {
+  double maxentscore, odds;
+
+  maxentscore = me2x3donor[hashseq_skip_nucleotides(&(nucleotides[0]),3,2,4)];
+  odds = score_donor_dinucleotide_nucleotides(nucleotides)*maxentscore;
+  return odds/(1.0 + odds);
+}
+
+
+double
 Maxent_donor_logodds (char *sequence) {
   double maxentscore, odds;
 
@@ -99185,6 +99317,15 @@ Maxent_donor_logodds (char *sequence) {
     odds = score_donor_dinucleotide(sequence)*maxentscore;
     return log(odds);
   }
+}
+
+double
+Maxent_donor_logodds_nucleotides (unsigned char *nucleotides) {
+  double maxentscore, odds;
+
+  maxentscore = me2x3donor[hashseq_skip_nucleotides(&(nucleotides[0]),3,2,4)];
+  odds = score_donor_dinucleotide_nucleotides(nucleotides)*maxentscore;
+  return log(odds);
 }
 
 
@@ -99214,6 +99355,28 @@ Maxent_acceptor_prob (char *sequence) {
   }
 }
 
+/* Expects a 23-mer, 20 bases in intron, 3 bases in exon */
+double
+Maxent_acceptor_prob_nucleotides (unsigned char *nucleotides) {
+  double score[9];
+  double maxentscore, odds;
+
+  score[0] = me2x3acc1[hashseq_nucleotides(&(nucleotides[0]),7)];
+  score[1] = me2x3acc2[hashseq_nucleotides(&(nucleotides[7]),7)];
+  score[2] = me2x3acc3[hashseq_skip_nucleotides(&(nucleotides[14]),4,2,3)];
+  score[3] = me2x3acc4[hashseq_nucleotides(&(nucleotides[4]),7)];
+  score[4] = me2x3acc5[hashseq_nucleotides(&(nucleotides[11]),7)];
+  score[5] = me2x3acc6[hashseq_nucleotides(&(nucleotides[4]),3)];
+  score[6] = me2x3acc7[hashseq_nucleotides(&(nucleotides[7]),4)];
+  score[7] = me2x3acc8[hashseq_nucleotides(&(nucleotides[11]),3)];
+  score[8] = me2x3acc9[hashseq_nucleotides(&(nucleotides[14]),4)];
+
+  maxentscore = (score[0] * score[1] * score[2] * score[3] * score[4])/
+    (score[5] * score[6] * score[7] * score[8]);
+  odds = score_acceptor_dinucleotide_nucleotides(nucleotides)*maxentscore;
+  return odds/(1.0 + odds);
+}
+
 double
 Maxent_acceptor_logodds (char *sequence) {
   double score[9];
@@ -99237,4 +99400,25 @@ Maxent_acceptor_logodds (char *sequence) {
     odds = score_acceptor_dinucleotide(sequence)*maxentscore;
     return log(odds);
   }
+}
+
+double
+Maxent_acceptor_logodds_nucleotides (unsigned char *nucleotides) {
+  double score[9];
+  double maxentscore, odds;
+
+  score[0] = me2x3acc1[hashseq_nucleotides(&(nucleotides[0]),7)];
+  score[1] = me2x3acc2[hashseq_nucleotides(&(nucleotides[7]),7)];
+  score[2] = me2x3acc3[hashseq_skip_nucleotides(&(nucleotides[14]),4,2,3)];
+  score[3] = me2x3acc4[hashseq_nucleotides(&(nucleotides[4]),7)];
+  score[4] = me2x3acc5[hashseq_nucleotides(&(nucleotides[11]),7)];
+  score[5] = me2x3acc6[hashseq_nucleotides(&(nucleotides[4]),3)];
+  score[6] = me2x3acc7[hashseq_nucleotides(&(nucleotides[7]),4)];
+  score[7] = me2x3acc8[hashseq_nucleotides(&(nucleotides[11]),3)];
+  score[8] = me2x3acc9[hashseq_nucleotides(&(nucleotides[14]),4)];
+
+  maxentscore = (score[0] * score[1] * score[2] * score[3] * score[4])/
+    (score[5] * score[6] * score[7] * score[8]);
+  odds = score_acceptor_dinucleotide_nucleotides(nucleotides)*maxentscore;
+  return log(odds);
 }

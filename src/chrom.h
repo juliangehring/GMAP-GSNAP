@@ -1,4 +1,4 @@
-/* $Id: chrom.h,v 1.5 2008/03/31 23:49:01 twu Exp $ */
+/* $Id: chrom.h,v 1.5 2008-03-31 23:49:01 twu Exp $ */
 #ifndef CHROM_INCLUDED
 #define CHROM_INCLUDED
 #include "bool.h"

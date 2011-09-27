@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c,v 1.8 2006/10/01 03:55:23 twu Exp $";
+static char rcsid[] = "$Id: boyer-moore.c,v 1.9 2010-07-21 17:13:39 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -354,11 +354,89 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 }
 
 
+int *
+BoyerMoore_bad_char_shift (char *query, int querylen) {
+  int *bad_char_shift;
+  int i;
+
+  if (query_okay(query,querylen)) {
+    bad_char_shift = precompute_bad_char_shift(query,querylen);
+  } else {
+    fprintf(stderr,"Query cannot have bad characters\n");
+    abort();
+  }
+
+  debug(
+	printf("bad_char_shift:\n");
+	for (i = 0; i < ASIZE; i++) {
+	  printf("%d %d\n",i,bad_char_shift[i]);
+	}
+	printf("\n");
+	);
+
+  return bad_char_shift;
+}
+
+
+int
+BoyerMoore_maxprefix (char *query, int querylen, char *text, int textlen,
+		      int *bad_char_shift) {
+  int maxprefix = 0;
+  int i, j;
+
+  debug(printf("Query: %s\n",query));
+  debug(printf("Text:  %s\n",text));
+
+  j = -querylen + 1;
+  while (j <= textlen - querylen) {
+#ifdef PMAP
+    for (i = querylen - 1; i >= 0 && matchtable[query[i]-'A'][text[i+j]-'A'] == true; i--) ;
+#else
+    for (i = querylen - 1; i+j >= 0 && query[i] == text[i+j]; i--) ;
+#endif
+    if (i < 0 || i+j < 0) {
+      maxprefix = querylen+j;
+      debug1(printf("Success at %d (length %d)\n",j,querylen+j));
+      debug(printf("Shift by 1\n"));
+      j += 1;
+    } else {
+      debug1(printf("Failure at j=%d, i=%d\n",j,i));
+      debug(
+	    printf("Shift by %d (Gs[%d] == Bc[%c] - %d + %d)\n",
+		   bad_char_shift[na_index(text[i+j])],
+		   i,text[i+j],querylen,i+1);
+	    );
+      j += bad_char_shift[na_index(text[i+j])];
+    }
+  }
+
+  return maxprefix;
+}
+
+
+
+static char *
+string_reverse (char *original, int length) {
+  char *reverse;
+  int i, j;
+
+  reverse = (char *) CALLOC(length,sizeof(char));
+
+  for (i = 0, j = length-1; i < length; i++, j--) {
+    reverse[i] = original[j];
+  }
+  return reverse;
+}
+
+
+
 #ifdef STANDALONE
 int
 main (int argc, char *argv[]) {
   char *query, *text;
+  char *query_rev, *text_rev;
   int querylen, textlen;
+  int *bad_char_shift;
 
 #ifdef PMAP
   int i, j;
@@ -375,7 +453,21 @@ main (int argc, char *argv[]) {
   text = argv[2];
   querylen = strlen(query);
   textlen = strlen(text);
+
+#if 0
   BoyerMoore(query,querylen,text,textlen);
+#else
+  /* Test of maxprefix */
+  query_rev = string_reverse(query,querylen);
+  text_rev = string_reverse(text,textlen);
+
+  printf("Query rev: %s\n",query_rev);
+  printf("Text rev: %s\n",text_rev);
+  bad_char_shift = BoyerMoore_bad_char_shift(query_rev,querylen);
+  BoyerMoore_maxprefix(query_rev,querylen,text_rev,textlen,bad_char_shift);
+  FREE(bad_char_shift);
+#endif
+
   return 0;
 }
 #endif

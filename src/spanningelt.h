@@ -1,4 +1,4 @@
-/* $Id: spanningelt.h,v 1.5 2009/05/06 22:11:50 twu Exp $ */
+/* $Id: spanningelt.h,v 1.5 2009-05-06 22:11:50 twu Exp $ */
 #ifndef SPANNINGELT_INCLUDED
 #define SPANNINGELT_INCLUDED
 #include "bool.h"
@@ -26,6 +26,7 @@ struct T {
   Compoundpos_T compoundpos;
   int compoundpos_diagterm;
 
+  Genomicpos_T *positions_allocated;
   Genomicpos_T *positions;
   int diagterm;
   int npositions;
@@ -44,6 +45,8 @@ struct T {
   int npositions_reset;
 };
 
+extern void
+Spanningelt_init_positions_free (bool positions_fileio_p);
 extern void
 Spanningelt_free (T *old);
 extern T

@@ -1,4 +1,4 @@
-/* $Id: md5.h,v 1.5 2005/02/15 01:58:50 twu Exp $ */
+/* $Id: md5.h,v 1.5 2005-02-15 01:58:50 twu Exp $ */
 #ifndef MD5_INCLUDED
 #define MD5_INCLUDED
 

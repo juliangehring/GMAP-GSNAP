@@ -1,10 +1,9 @@
-/* $Id: oligoindex.h,v 1.59 2010/02/03 18:12:10 twu Exp $ */
+/* $Id: oligoindex.h,v 1.61 2010-07-16 22:19:58 twu Exp $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"
 #include "list.h"
 #include "intlist.h"
-#include "intpool.h"
 #include "diagpool.h"
 
 #define T Oligoindex_T
@@ -38,7 +37,6 @@ Oligoindex_free_array (T **oligoindices, int noligoindices);
 extern List_T
 Oligoindex_get_mappings (List_T diagonals, bool *coveredp, unsigned int **mappings, int *npositions,
 			 int *totalpositions, bool *oned_matrix_p, int *maxnconsecutive, 
-			 unsigned int *minactive, unsigned int *maxactive,
 			 T this, char *queryuc_ptr, int querylength, int genomiclength, Diagpool_T diagpool);
 
 #undef T

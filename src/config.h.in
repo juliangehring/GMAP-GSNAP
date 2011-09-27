@@ -160,6 +160,9 @@
 /* Define MAP_FAILED here if not available otherwise. */
 #undef MAP_FAILED
 
+/* Define to 1 if your C compiler doesn't accept -c and -o together. */
+#undef NO_MINUS_C_MINUS_O
+
 /* Name of package */
 #undef PACKAGE
 

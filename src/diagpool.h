@@ -1,15 +1,18 @@
-/* $Id: diagpool.h,v 1.2 2007/02/06 14:30:44 twu Exp $ */
+/* $Id: diagpool.h,v 1.4 2010-07-10 19:16:41 twu Exp $ */
 #ifndef DIAGPOOL_INCLUDED
 #define DIAGPOOL_INCLUDED
 #include "diag.h"
 #include "list.h"
 
+#define USE_DIAGPOOL 1
 
 #define T Diagpool_T
 typedef struct T *T;
 
 extern void
 Diagpool_free (T *old);
+extern void
+Diagpool_free_memory (T this);
 extern T
 Diagpool_new (void);
 extern void

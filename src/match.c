@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c,v 1.84 2008/10/10 17:52:44 twu Exp $";
+static char rcsid[] = "$Id: match.c,v 1.85 2010-07-10 01:35:55 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -96,12 +96,18 @@ Match_npairings (T this) {
 void
 Match_set_weight (T this, double weight) {
   this->weight = weight;
+  this->has_weight_p = true;
   return;
 }
 
 double
 Match_weight (T this) {
   return this->weight;
+}
+
+bool
+Match_has_weight_p (T this) {
+  return this->has_weight_p;
 }
 
 
@@ -129,6 +135,7 @@ Match_new (int querypos, bool forwardp, bool fivep,
 
   new->querypos = querypos;
   new->weight = 0.0;		/* Will be entered later */
+  new->has_weight_p = false;
   new->position = position;
   new->forwardp = forwardp;
   new->fivep = fivep;
@@ -264,6 +271,8 @@ Match_acceptable_pair (T match5, T match3, int trimlength, int stage1size) {
 }
 
 
+#if 0
+
 bool
 Match_sufficient_support (T match5, T match3, int trimstart, int trimend) {
 #ifdef PMAP
@@ -289,3 +298,4 @@ Match_sufficient_support (T match5, T match3, int trimstart, int trimend) {
 #endif
 }
 
+#endif

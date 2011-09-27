@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.122 2010/02/03 18:12:54 twu Exp $ */
+/* $Id: pair.h,v 1.125 2010-07-21 21:46:32 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -71,7 +71,7 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool zerobasedp, bool maponlyp,
 			bool diagnosticp, int stage1_genomicstart, int stage1_genomiclength,
-			double stage2_diag_runtime, double stage2_align_runtime, int stage2_indexsize,
+			double stage2_diag_runtime, double stage2_align_runtime, int stage2_source, int stage2_indexsize,
 			double stage3_runtime, double stage3_defectrate);
 
 extern void
@@ -115,7 +115,7 @@ Pair_print_gff3 (struct T *pairs, int npairs, int pathnum, char *dbversion, char
 		 int querylength_given, int skiplength, int matches, int unknowns, int mismatches, 
 		 int qopens, int qindels, int topens, int tindels, 
 		 bool watsonp, int cdna_direction,
-		 bool gff_gene_format_p, char *user_genomicseg);
+		 bool gff_gene_format_p, bool gff_estmatch_format_p, char *user_genomicseg);
 
 extern Uintlist_T
 Pair_exonbounds (struct T *pairs, int npairs, Genomicpos_T chrpos,

@@ -1,7 +1,9 @@
-/* $Id: pairdef.h,v 1.14 2007/04/23 16:07:07 twu Exp $ */
+/* $Id: pairdef.h,v 1.15 2010-07-10 01:38:26 twu Exp $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
+
+typedef enum {GOOD,BAD} State_T;
 
 #define T Pair_T
 struct T {
@@ -29,7 +31,9 @@ struct T {
   bool extraexonp;
   bool shortexonp;
 
-
+  State_T state;
+  State_T vstate_good;
+  State_T vstate_bad;
 };
 
 #undef T

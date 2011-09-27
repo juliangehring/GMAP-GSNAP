@@ -1,4 +1,4 @@
-/* $Id: access.h,v 1.9 2008/05/09 16:33:28 twu Exp $ */
+/* $Id: access.h,v 1.9 2008-05-09 16:33:28 twu Exp $ */
 #ifndef ACCESS_INCLUDED
 #define ACCESS_INCLUDED
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c,v 1.82 2010/03/10 01:32:50 twu Exp $";
+static char rcsid[] = "$Id: gsnap.c,v 1.93 2010-07-27 15:23:02 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -27,6 +27,7 @@ static char rcsid[] = "$Id: gsnap.c,v 1.82 2010/03/10 01:32:50 twu Exp $";
 #include "sequence.h"
 #include "stopwatch.h"
 #include "genome.h"
+#include "indexdb_hr.h"
 #include "stage3hr.h"
 #include "sam.h"
 #include "stage1hr.h"
@@ -59,6 +60,8 @@ static Indexdb_T indexdb2 = NULL; /* For cmet */
 static Genome_T genome = NULL;
 static Genome_T genomealt = NULL;
 
+static bool fastq_format_p = false;
+static Stopwatch_T stopwatch = NULL;
 
 /************************************************************************
  *   Program options
@@ -73,8 +76,9 @@ static int part_interval = 1;
 static bool circularp = false;
 
 /* Compute options */
+static bool chop_primers_p = false;
 static bool novelsplicingp = false;
-static bool trim_ends_p = false;
+static int trim_maxlength = 1000;
 static int pairlength = 200;
 static bool batch_offsets_p = true;
 static bool batch_positions_p = true;
@@ -101,9 +105,9 @@ static int max_end_insertions = 3;
 static int max_end_deletions = 6;
 static int min_indel_end_matches = 3;
 static Genomicpos_T shortsplicedist = 200000;
-static int localsplicing_penalty = 2;
+static int localsplicing_penalty = 0;
 static int distantsplicing_penalty = 3;
-static int min_localsplicing_end_matches = 15;
+static int min_localsplicing_end_matches = 14;
 static int min_distantsplicing_end_matches = 16;
 static double min_distantsplicing_identity = 0.95;
 static int indexdb_size_threshold;
@@ -136,6 +140,8 @@ static IIT_T geneprob_iit = NULL; /* Needs to be of cumulative IIT
 
 /* Output options */
 static bool output_sam_p = false;
+static int quality_shift = -31;
+static bool output_combined_p = false;
 static bool exception_raise_p = true;
 static bool quiet_if_excessive_p = false;
 static int maxpaths = 100;
@@ -148,7 +154,7 @@ static bool nofailsp = false;
 static bool uncompressedp = false;
 static bool invertp = false;
 
-/* getopt used alphabetically: ABCcDdEeFfGgIiJKkLlMmNnOPpQqRSsTtVvwYyZz2 */
+/* getopt used alphabetically: AaBCcDdEeFfGgIiJjKkLlMmNnOPpQqRSsTtVvwYyZz2 */
 
 static struct option long_options[] = {
   /* Input options */
@@ -167,7 +173,8 @@ static struct option long_options[] = {
 #ifdef HAVE_PTHREAD
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
 #endif
-  {"trim", required_argument, 0, 'T'}, /* trim_ends_p */
+  {"adapter-strip", required_argument, 0, 'a'},	/* chop_primers_p */
+  {"trimlength", required_argument, 0, 'T'}, /* trim_maxlength */
   {"novelsplicing", required_argument, 0, 'N'}, /* novelsplicingp */
 
   {"max-mismatches", required_argument, 0, 'm'}, /* usermax_level_float */
@@ -196,7 +203,8 @@ static struct option long_options[] = {
   {"geneprob", required_argument, 0, 'g'}, /* geneprob_iit */
 
   /* Output options */
-  {"format", required_argument, 0, 'A'}, /* output_sam_p */
+  {"format", required_argument, 0, 'A'}, /* output_sam_p, output_combined_p */
+  {"quality-shift", required_argument, 0, 'j'}, /* quality_shift */
   {"noexceptions", no_argument, 0, '0'}, /* exception_raise_p */
   {"npaths", required_argument, 0, 'n'}, /* maxpaths */
   {"quiet-if-excessive", no_argument, 0, 'Q'}, /* quiet_if_excessive_p */
@@ -285,30 +293,67 @@ static void *
 input_thread (void *data) {
   Blackboard_T blackboard = (Blackboard_T) data;
   FILE *input = Blackboard_input(blackboard);
+  FILE *input2 = NULL;
   char **files = Blackboard_files(blackboard);
   int nfiles = Blackboard_nfiles(blackboard);
   Sequence_T queryseq1, queryseq2;
   Request_T request;
   int inputid = 1;		/* Initial queryseq, inputid 0, already handled by main() */
   int nextchar = Blackboard_nextchar(blackboard);
+  bool dynprog_init_p = false;
 
   debug(printf("input_thread: Starting\n"));
-  while ((queryseq1 = Sequence_read_multifile_shortreads(&nextchar,&queryseq2,&input,&files,&nfiles,
-							 circularp)) != NULL) {
-    if (inputid % part_interval != part_modulus) {
-      Sequence_free(&queryseq1);
-      if (queryseq2 != NULL) {
-	Sequence_free(&queryseq2);
+  if (fastq_format_p == true) {
+    input2 = Blackboard_input2(blackboard);
+    while ((queryseq1 = Sequence_read_fastq_shortreads(&nextchar,&queryseq2,input,input2,
+						       circularp)) != NULL) {
+      if (inputid % part_interval != part_modulus) {
+	Sequence_free(&queryseq1);
+	if (queryseq2 != NULL) {
+	  Sequence_free(&queryseq2);
+	}
+      } else {
+	if (chop_primers_p == true && queryseq2 != NULL) {
+	  if (dynprog_init_p == false) {
+	    Sequence_dynprog_init(MAX_QUERYLENGTH);
+	    dynprog_init_p = true;
+	  }
+	  Sequence_chop_primers(queryseq1,queryseq2);
+	}
+	debug(printf("input_thread: Putting request id %d\n",requestid));
+	request = Request_new(requestid++,queryseq1,queryseq2);
+	Blackboard_put_request(blackboard,request);
       }
-    } else {
-      debug(printf("input_thread: Putting request id %d\n",requestid));
-      request = Request_new(requestid++,queryseq1,queryseq2);
-      Blackboard_put_request(blackboard,request);
+      inputid++;
     }
-    inputid++;
+  } else {
+    while ((queryseq1 = Sequence_read_multifile_shortreads(&nextchar,&queryseq2,&input,&files,&nfiles,
+							   circularp)) != NULL) {
+      if (inputid % part_interval != part_modulus) {
+	Sequence_free(&queryseq1);
+	if (queryseq2 != NULL) {
+	  Sequence_free(&queryseq2);
+	}
+      } else {
+	if (chop_primers_p == true && queryseq2 != NULL) {
+	  if (dynprog_init_p == false) {
+	    Sequence_dynprog_init(MAX_QUERYLENGTH);
+	    dynprog_init_p = true;
+	  }
+	  Sequence_chop_primers(queryseq1,queryseq2);
+	}
+	debug(printf("input_thread: Putting request id %d\n",requestid));
+	request = Request_new(requestid++,queryseq1,queryseq2);
+	Blackboard_put_request(blackboard,request);
+      }
+      inputid++;
+    }
   }
 
   Blackboard_set_inputdone(blackboard);
+  if (dynprog_init_p == true) {
+    Sequence_dynprog_term();
+  }
   debug(printf("input_thread: Ending\n"));
   return (void *) NULL;
 }
@@ -327,28 +372,59 @@ print_result_sam (Result_T result, Request_T request) {
     if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
       SAM_print_nomapping(queryseq1,/*mate*/NULL,/*acc*/Sequence_accession(queryseq1),
 			  chromosome_iit,/*resulttype*/SINGLEEND_READ,
-			  /*first_read_p*/true,/*nhits_mate*/0,/*queryseq_mate*/NULL);
+			  /*first_read_p*/true,/*nhits_mate*/0,/*queryseq_mate*/NULL,
+			  quality_shift);
     } else {
       qsort(stage3array,npaths,sizeof(Stage3_T),Stage3_output_cmp);
       for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
 	SAM_print(stage3array[pathnum-1],/*mate*/NULL,/*acc*/Sequence_accession(queryseq1),
 		  pathnum,npaths,Stage3_score(stage3array[pathnum-1]),
-		  genome,chromosome_iit,queryseq1,
+		  chromosome_iit,queryseq1,
 		  /*queryseq2*/NULL,snps_iit,snps_divint_crosstable,
 		  splicesites_iit,donor_typeint,acceptor_typeint,
 		  splicesites_divint_crosstable,/*pairedlength*/0,/*resulttype*/SINGLEEND_READ,
-		  /*first_read_p*/true,/*npaths_mate*/0);
+		  /*first_read_p*/true,/*npaths_mate*/0,quality_shift);
       }
     }
 
   } else {
     /* PAIRED_CONCORDANT, PAIRED_SAMECHR, PAIRED_AS_SINGLES, or PAIRED_AS_SINGLES_UNIQUE */
-    SAM_print_paired(result,genome,chromosome_iit,
+    SAM_print_paired(result,chromosome_iit,
 		     Request_queryseq1(request),Request_queryseq2(request),
 		     snps_iit,snps_divint_crosstable,
 		     splicesites_iit,donor_typeint,acceptor_typeint,
 		     splicesites_divint_crosstable,maxpaths,
-		     quiet_if_excessive_p,circularp);
+		     quiet_if_excessive_p,quality_shift,circularp);
+  }
+
+  return;
+}
+
+
+static void
+print_query_singleend (Request_T request) {
+  Sequence_T queryseq1;
+
+  queryseq1 = Request_queryseq1(request);
+
+  if (fastq_format_p == true) {
+    printf("@");
+    Sequence_print_header(queryseq1,/*checksump*/false);
+    /* printf("\n"); -- included in header */
+    Sequence_print_oneline(stdout,queryseq1);
+    printf("\n");
+
+    printf("+");
+    Sequence_print_header(queryseq1,/*checksump*/false);
+    /* printf("\n"); -- included in header */
+    printf("%s\n",Sequence_quality(queryseq1));
+
+  } else {
+    printf(">");
+    Sequence_print_header(queryseq1,/*checksump*/false);
+    /* printf("\n"); -- included in header */
+    Sequence_print_oneline(stdout,queryseq1);
+    printf("\n");
   }
 
   return;
@@ -368,12 +444,7 @@ print_result_gsnap (Result_T result, Request_T request) {
       if (nofailsp == true) {
 	/* Skip */
       } else if (failsonlyp == true) {
-	queryseq1 = Request_queryseq1(request);
-	printf(">");
-	Sequence_print_header(queryseq1,/*checksump*/false);
-	/* printf("\n"); -- included in header */
-	Sequence_print_oneline(stdout,queryseq1);
-	printf("\n");
+	print_query_singleend(request);
       } else {
 	queryseq1 = Request_queryseq1(request);
 	printf(">");
@@ -414,11 +485,98 @@ print_result_gsnap (Result_T result, Request_T request) {
   } else {
     /* PAIRED_CONCORDANT, PAIRED_SAMECHR, PAIRED_AS_SINGLES, or PAIRED_AS_SINGLES_UNIQUE */
     Stage3_print_paired(result,genome,chromosome_iit,
-			Request_queryseq1(request),Request_queryseq2(request),
+			Request_queryseq1(request),Request_queryseq2(request),pairmax,
 			snps_iit,snps_divint_crosstable,
 			splicesites_iit,donor_typeint,acceptor_typeint,
 			splicesites_divint_crosstable,maxpaths,
-			quiet_if_excessive_p,circularp,invertp);
+			quiet_if_excessive_p,circularp,invertp,nofailsp,failsonlyp);
+  }
+
+  return;
+}
+
+
+static void
+print_result_combined (Result_T result, Request_T request) {
+  Sequence_T queryseq1;
+  Stage3_T *stage3array;
+  int npaths, pathnum;
+
+  if (Result_resulttype(result) == SINGLEEND_READ) {
+    stage3array = (Stage3_T *) Result_array(&npaths,result);
+    if (npaths == 0 || (quiet_if_excessive_p && npaths > maxpaths)) {
+      if (nofailsp == true) {
+	/* Skip */
+      } else if (failsonlyp == true) {
+	print_query_singleend(request);
+      } else {
+	queryseq1 = Request_queryseq1(request);
+	printf(">");
+	Sequence_print_oneline(stdout,queryseq1);
+	printf("\t%d\t",npaths);
+	Sequence_print_header(queryseq1,/*checksump*/false);
+	/* printf("\n"); -- included in header */
+	printf("\n");
+      }
+
+      SAM_print_nomapping(queryseq1,/*mate*/NULL,/*acc*/Sequence_accession(queryseq1),
+			  chromosome_iit,/*resulttype*/SINGLEEND_READ,
+			  /*first_read_p*/true,/*nhits_mate*/0,/*queryseq_mate*/NULL,
+			  quality_shift);
+
+    } else {
+      qsort(stage3array,npaths,sizeof(Stage3_T),Stage3_output_cmp);
+
+      /* npaths > 0 */
+      if (failsonlyp == true) {
+	/* Skip */
+      } else {
+	queryseq1 = Request_queryseq1(request);
+	printf(">");
+	Sequence_print_oneline(stdout,queryseq1);
+	printf("\t%d\t",npaths);
+	Sequence_print_header(queryseq1,/*checksump*/false);
+	/* printf("\n"); -- included in header */
+	
+	for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+	  Stage3_print(stage3array[pathnum-1],Stage3_score(stage3array[pathnum-1]),
+		       Stage3_geneprob(stage3array[pathnum-1]),
+		       genome,chromosome_iit,queryseq1,
+		       snps_iit,snps_divint_crosstable,
+		       splicesites_iit,donor_typeint,acceptor_typeint,
+		       splicesites_divint_crosstable,/*invertp*/false,
+		       /*hit5*/(Stage3_T) NULL,/*hit3*/(Stage3_T) NULL,/*pairtype*/UNPAIRED,
+		       /*pairlength*/0,/*pairscore*/0);
+	}
+	printf("\n");
+      }
+
+      for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+	SAM_print(stage3array[pathnum-1],/*mate*/NULL,/*acc*/Sequence_accession(queryseq1),
+		  pathnum,npaths,Stage3_score(stage3array[pathnum-1]),
+		  chromosome_iit,queryseq1,
+		  /*queryseq2*/NULL,snps_iit,snps_divint_crosstable,
+		  splicesites_iit,donor_typeint,acceptor_typeint,
+		  splicesites_divint_crosstable,/*pairedlength*/0,/*resulttype*/SINGLEEND_READ,
+		  /*first_read_p*/true,/*npaths_mate*/0,quality_shift);
+      }
+      printf("\n");
+    }
+
+  } else {
+    /* PAIRED_CONCORDANT, PAIRED_SAMECHR, PAIRED_AS_SINGLES, or PAIRED_AS_SINGLES_UNIQUE */
+    Stage3_print_paired(result,genome,chromosome_iit,
+			Request_queryseq1(request),Request_queryseq2(request),pairmax,
+			snps_iit,snps_divint_crosstable,
+			splicesites_iit,donor_typeint,acceptor_typeint,
+			splicesites_divint_crosstable,maxpaths,
+			quiet_if_excessive_p,circularp,invertp,nofailsp,failsonlyp);
+    SAM_print_paired(result,chromosome_iit,
+		     Request_queryseq1(request),Request_queryseq2(request),
+		     snps_iit,snps_divint_crosstable,
+		     splicesites_iit,donor_typeint,acceptor_typeint,
+		     splicesites_divint_crosstable,maxpaths,
+		     quiet_if_excessive_p,quality_shift,circularp);
   }
 
   return;
@@ -427,8 +585,15 @@ print_result_gsnap (Result_T result, Request_T request) {
 
 static void
 print_result (Result_T result, Request_T request) {
+
+#ifdef MEMUSAGE
+  printf("Memusage: %lu\n",Mem_usage_report());
+#endif
+
   if (output_sam_p == true) {
     print_result_sam(result,request);
+  } else if (output_combined_p == true) {
+    print_result_combined(result,request);
   } else {
     print_result_gsnap(result,request);
   }
@@ -443,6 +608,7 @@ output_thread_anyorder (void *data) {
   Blackboard_T blackboard = (Blackboard_T) data;
   Result_T result;
   Request_T request;
+  double runtime;
   int outputid = 0;
 
   debug(printf("output_thread: Starting\n"));
@@ -454,7 +620,12 @@ output_thread_anyorder (void *data) {
   }
 
   debug(printf("output_thread: Ending\n"));
-  fprintf(stderr,"Processed %d queries\n",outputid);
+
+  runtime = Stopwatch_stop(stopwatch);
+  Stopwatch_free(&stopwatch);
+
+  fprintf(stderr,"Processed %d queries in %.2f seconds\n",outputid,runtime);
+
   return (void *) NULL;
 }
 
@@ -493,6 +664,7 @@ output_thread_ordered (void *data) {
   Request_T request;
   void *item;
   List_T request_queue = NULL, result_queue = NULL;
+  double runtime;
   int outputid = 0;
 
   debug(printf("output_thread: Starting\n"));
@@ -535,7 +707,11 @@ output_thread_ordered (void *data) {
   }
 
   debug(printf("output_thread: Ending\n"));
-  fprintf(stderr,"Processed %d queries\n",outputid);
+
+  runtime = Stopwatch_stop(stopwatch);
+  Stopwatch_free(&stopwatch);
+
+  fprintf(stderr,"Processed %d queries in %.2f seconds\n",outputid,runtime);
   return (void *) NULL;
 }
 
@@ -544,7 +720,7 @@ output_thread_ordered (void *data) {
 
 static void
 handle_request (Request_T request, int worker_id, Floors_T *floors_array,
-		Reqpost_T reqpost, Stopwatch_T stopwatch) {
+		Reqpost_T reqpost) {
   int jobid;
   Result_T result;
   Sequence_T queryseq1, queryseq2;
@@ -559,17 +735,20 @@ handle_request (Request_T request, int worker_id, Floors_T *floors_array,
   queryseq1 = Request_queryseq1(request);
   queryseq2 = Request_queryseq2(request);
 
+  /* printf("%s\n",Sequence_accession(queryseq1)); */
+
   if (queryseq2 == NULL) {
     hits = Stage1_single_read(queryseq1,indexdb,indexdb2,indexdb_size_threshold,geneprob_iit,chromosome_iit,
 			      genome,genomealt,floors_array,knownsplicingp,novelsplicingp,/*canonicalp*/true,
-			      trim_ends_p,maxpaths,/*maxchimerapaths*/maxpaths,
+			      trim_maxlength,maxpaths,/*maxchimerapaths*/maxpaths,
 			      usermax_level_float,subopt_levels,masktype,indel_penalty,
 			      max_middle_insertions,max_middle_deletions,
 			      allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			      shortsplicedist,
 			      localsplicing_penalty,distantsplicing_penalty,min_localsplicing_end_matches,
 			      min_distantsplicing_end_matches,min_distantsplicing_identity,
-			      splicesites,splicetypes,nsplicesites,dibasep,cmetp);
+			      splicesites,splicetypes,nsplicesites,splicesites_iit,splicesites_divint_crosstable,
+			      donor_typeint,acceptor_typeint,dibasep,cmetp);
     npaths = List_length(hits);
     stage3array = (Stage3_T *) List_to_array(hits,NULL);
     List_free(&hits);
@@ -589,15 +768,15 @@ handle_request (Request_T request, int worker_id, Floors_T *floors_array,
 					    queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
 					    geneprob_iit,chromosome_iit,genome,genomealt,floors_array,
 					    knownsplicingp,novelsplicingp,/*canonicalp*/true,
-					    trim_ends_p,maxpaths,/*maxchimerapaths*/maxpaths,
+					    trim_maxlength,maxpaths,/*maxchimerapaths*/maxpaths,
 					    usermax_level_float,subopt_levels,masktype,indel_penalty,
 					    max_middle_insertions,max_middle_deletions,
 					    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					    shortsplicedist,
 					    localsplicing_penalty,distantsplicing_penalty,min_localsplicing_end_matches,
 					    min_distantsplicing_end_matches,min_distantsplicing_identity,
-					    splicesites,splicetypes,nsplicesites,dibasep,cmetp,
-					    pairmax,pairlength)) == NULL) {
+					    splicesites,splicetypes,nsplicesites,splicesites_iit,splicesites_divint_crosstable,
+					    donor_typeint,acceptor_typeint,dibasep,cmetp,pairmax,pairlength)) == NULL) {
     /* One read failed to match, or possible translocation */
     npaths5 = List_length(singlehits5);
     stage3array = (Stage3_T *) List_to_array(singlehits5,NULL);
@@ -659,7 +838,7 @@ signal_handler (int sig) {
   } else if (sig == SIGSEGV) {
     Except_raise(&sigsegv_error,__FILE__,__LINE__);
   } else if (sig == SIGTRAP) {
-    Except_raise(&sigsegv_error,__FILE__,__LINE__);
+    Except_raise(&sigtrap_error,__FILE__,__LINE__);
   } else {
     fprintf(stderr,"Signal %d\n",sig);
     Except_raise(&misc_signal_error,__FILE__,__LINE__);
@@ -670,41 +849,128 @@ signal_handler (int sig) {
 
 
 static void
-single_thread (FILE *input, char **files, int nfiles, int nextchar, 
+single_thread (FILE *input, FILE *input2, char **files, int nfiles, int nextchar, 
 	       Sequence_T queryseq1, Sequence_T queryseq2) {
   Floors_T *floors_array;
-  Stopwatch_T stopwatch;
   Request_T request;
-  int jobid = 0, i;
+  int jobid = 0, outputid = 0, i;
+  bool dynprog_init_p = false;
+  double runtime;
 
   floors_array = (Floors_T *) CALLOC(MAX_QUERYLENGTH+1,sizeof(Floors_T));
-  stopwatch = (Stopwatch_T) NULL;
 
-  while (jobid == 0 || (queryseq1 = Sequence_read_multifile_shortreads(&nextchar,&queryseq2,&input,&files,&nfiles,
-								       circularp)) != NULL) {
-    request = Request_new(jobid++,queryseq1,queryseq2);
+  stopwatch = Stopwatch_new();
+  Stopwatch_start(stopwatch);
+
+#ifdef LEAKCHECK
+  Mem_leak_check_activate ();
+#endif
+
+  if (fastq_format_p == true) {
+    while (jobid == 0 || (queryseq1 = Sequence_read_fastq_shortreads(&nextchar,&queryseq2,input,input2,
+								     circularp)) != NULL) {
+      if (jobid % part_interval != part_modulus) {
+	Sequence_free(&queryseq1);
+	if (queryseq2 != NULL) {
+	  Sequence_free(&queryseq2);
+	}
+      } else {
+	if (chop_primers_p == true && queryseq2 != NULL) {
+	  if (dynprog_init_p == false) {
+	    Sequence_dynprog_init(MAX_QUERYLENGTH);
+	    dynprog_init_p = true;
+	  }
+	  Sequence_chop_primers(queryseq1,queryseq2);
+	}
+	request = Request_new(jobid,queryseq1,queryseq2);
 TRY
-    handle_request(request,/*worker_id*/0,floors_array,(Reqpost_T) NULL,stopwatch);
+        handle_request(request,/*worker_id*/0,floors_array,(Reqpost_T) NULL);
 ELSE
-    if (Sequence_accession(queryseq1) == NULL) {
-      fprintf(stderr,"Problem with unnamed sequence (%d bp):\n",Sequence_fulllength_given(queryseq1));
-    } else {
-      fprintf(stderr,"Problem with sequence %s (%d bp):\n",
-	      Sequence_accession(queryseq1),Sequence_fulllength_given(queryseq1));
-    }
-    Sequence_print_oneline(stderr,queryseq1);
-    fprintf(stderr,"\n");
+        if (Sequence_accession(queryseq1) == NULL) {
+	  fprintf(stderr,"Problem with unnamed sequence (%d bp):\n",Sequence_fulllength_given(queryseq1));
+	} else {
+	  fprintf(stderr,"Problem with sequence %s (%d bp):\n",
+		  Sequence_accession(queryseq1),Sequence_fulllength_given(queryseq1));
+	}
+        Sequence_print_oneline(stderr,queryseq1);
+        fprintf(stderr,"\n");
 
-    fprintf(stderr,"To obtain a core dump, re-run program on problem sequence with the -0 [zero] flag\n");
-    fprintf(stderr,"Exiting...\n");
-    exit(9);
-  RERAISE;
+        fprintf(stderr,"To obtain a core dump, re-run program on problem sequence with the -0 [zero] flag\n");
+        fprintf(stderr,"Exiting...\n");
+        exit(9);
+RERAISE;
 END_TRY;
-    Request_free(&request);
-   /* Don't free queryseq; done by Request_free */
+        Request_free(&request);
+        /* Don't free queryseq; done by Request_free */
+	outputid++;
+      }
+
+#ifdef LEAKCHECK
+      Mem_leak_check_end(__FILE__,__LINE__);
+#endif
+
+      jobid++;
+    }
+  } else {
+    while (jobid == 0 || (queryseq1 = Sequence_read_multifile_shortreads(&nextchar,&queryseq2,&input,&files,&nfiles,
+									 circularp)) != NULL) {
+      if (jobid % part_interval != part_modulus) {
+	Sequence_free(&queryseq1);
+	if (queryseq2 != NULL) {
+	  Sequence_free(&queryseq2);
+	}
+      } else {
+        if (chop_primers_p == true && queryseq2 != NULL) {
+  	  if (dynprog_init_p == false) {
+	    Sequence_dynprog_init(MAX_QUERYLENGTH);
+	    dynprog_init_p = true;
+	  }
+	  Sequence_chop_primers(queryseq1,queryseq2);
+	}
+	request = Request_new(jobid,queryseq1,queryseq2);
+TRY
+        handle_request(request,/*worker_id*/0,floors_array,(Reqpost_T) NULL);
+ELSE
+	if (Sequence_accession(queryseq1) == NULL) {
+	  fprintf(stderr,"Problem with unnamed sequence (%d bp):\n",Sequence_fulllength_given(queryseq1));
+	} else {
+	  fprintf(stderr,"Problem with sequence %s (%d bp):\n",
+		  Sequence_accession(queryseq1),Sequence_fulllength_given(queryseq1));
+  	}
+        Sequence_print_oneline(stderr,queryseq1);
+        fprintf(stderr,"\n");
+
+        fprintf(stderr,"To obtain a core dump, re-run program on problem sequence with the -0 [zero] flag\n");
+        fprintf(stderr,"Exiting...\n");
+        exit(9);
+RERAISE;
+END_TRY;
+        Request_free(&request);
+        /* Don't free queryseq; done by Request_free */
+	outputid++;
+      }
+
+#ifdef LEAKCHECK
+      Mem_leak_check_end(__FILE__,__LINE__);
+#endif
+
+      jobid++;
+    }
   }
 
+#ifdef LEAKCHECK
+  Mem_leak_check_deactivate ();
+#endif
+
+  runtime = Stopwatch_stop(stopwatch);
   Stopwatch_free(&stopwatch);
+
+  if (dynprog_init_p == true) {
+    Sequence_dynprog_term();
+  }
+
+  fprintf(stderr,"Processed %d queries in %.2f seconds\n",outputid,runtime);
+
   for (i = 0; i <= MAX_QUERYLENGTH; i++) {
     if (floors_array[i] != NULL) {
       Floors_free(&(floors_array[i]));
@@ -722,7 +988,6 @@ Blackboard_T blackboard_global;	/* Needed only for exception handling */
 static void *
 worker_thread (void *data) {
   Floors_T *floors_array;
-  Stopwatch_T stopwatch;
   Request_T request;
   Sequence_T queryseq1;
 
@@ -731,12 +996,11 @@ worker_thread (void *data) {
 
   /* Thread-specific data and storage */
   floors_array = (Floors_T *) CALLOC(MAX_QUERYLENGTH+1,sizeof(Floors_T));
-  stopwatch = (Stopwatch_T) NULL;
   Except_stack_create();
 
   while ((request = Reqpost_get_request(reqpost))) {
 TRY
-    handle_request(request,worker_id,floors_array,reqpost,stopwatch);
+    handle_request(request,worker_id,floors_array,reqpost);
 ELSE
     /* Kill output thread first, so requests (and queryseqs) can't disappear */
     fprintf(stderr,"Killing output thread...\n");
@@ -795,7 +1059,6 @@ END_TRY;
 
   Except_stack_destroy();
 
-  Stopwatch_free(&stopwatch);
   for (i = 0; i <= MAX_QUERYLENGTH; i++) {
     if (floors_array[i] != NULL) {
       Floors_free(&(floors_array[i]));
@@ -847,7 +1110,7 @@ int
 main (int argc, char *argv[]) {
   Sequence_T queryseq1, queryseq2;
   char *genomesubdir = NULL, *mapdir = NULL, *iitfile = NULL, *fileroot = NULL;
-  FILE *input;
+  FILE *input, *input2 = NULL;
 
   bool multiple_sequences_p = false;
   char **files;
@@ -870,7 +1133,7 @@ main (int argc, char *argv[]) {
 #endif
 
   while ((opt = getopt_long(argc,argv,
-			    "q:D:d:GT:N:R:M:m:i:I:y:Y:z:Z:w:E:e:J:K:k:s:2V:g:B:P:p:t:A:0n:QCOsSFfcv?",
+			    "q:D:d:Ga:T:N:R:M:m:i:I:y:Y:z:Z:w:E:e:J:K:k:s:2V:g:B:P:p:t:A:j:0n:QCOsSFfcv?",
 			    long_options, &long_option_index)) != -1) {
     switch (opt) {
     case 'q': parse_part(&part_modulus,&part_interval,optarg); break;
@@ -881,16 +1144,16 @@ main (int argc, char *argv[]) {
       break;
     case 'G': uncompressedp = true; break;
 
-    case 'T':
-      if (!strcmp(optarg,"1")) {
-	trim_ends_p = true;
-      } else if (!strcmp(optarg,"0")) {
-	trim_ends_p = false;
+    case 'a': 
+      if (!strcmp(optarg,"paired")) {
+	chop_primers_p = true;
       } else {
-	fprintf(stderr,"Trim (-T flag) must be 0 or 1\n");
+	fprintf(stderr,"Currently allowed values for adapter stripping (-a): paired\n");
 	exit(9);
       }
       break;
+
+    case 'T': trim_maxlength = atoi(optarg); break;
 
     case 'N':
       if (!strcmp(optarg,"1")) {
@@ -996,11 +1259,14 @@ main (int argc, char *argv[]) {
     case 'A':
       if (!strcmp(optarg,"sam")) {
 	output_sam_p = true;
+      } else if (!strcmp(optarg,"combined")) {
+	output_combined_p = true;
       } else {
 	fprintf(stderr,"Output format %s not recognized\n",optarg);
       }
       break;
 
+    case 'j': quality_shift = atoi(optarg); break;
     case '0': exception_raise_p = false; break; /* Allows signals to pass through */
     case 'n': maxpaths = atoi(optarg); break;
     case 'Q': quiet_if_excessive_p = true; break;
@@ -1017,8 +1283,22 @@ main (int argc, char *argv[]) {
       }
       break;
 
-    case 'F': failsonlyp = true; break;
-    case 'f': nofailsp = true; break;
+    case 'F': 
+      if (nofailsp == true) {
+	fprintf(stderr,"Cannot specify both --nofails and --failsonly\n");
+	exit(9);
+      } else {
+	failsonlyp = true;
+      }
+      break;
+    case 'f':
+      if (failsonlyp == true) {
+	fprintf(stderr,"Cannot specify both --nofails and --failsonly\n");
+	exit(9);
+      } else {
+	nofailsp = true;
+      }
+      break;
     case 'c': circularp = true; break;
 
     case 'v': print_program_version(); exit(0);
@@ -1057,17 +1337,72 @@ main (int argc, char *argv[]) {
     files = (char **) NULL;
     nfiles = 0;
   } else {
-    input = NULL;
     files = argv;
     nfiles = argc;
+    if ((input = FOPEN_READ_TEXT(files[0])) == NULL) {
+      fprintf(stderr,"Cannot open file %s\n",files[0]);
+      exit(9);
+    }
+    files++;
+    nfiles--;
   }
 
-  /* Read first query sequence */
-  if ((queryseq1 = Sequence_read_multifile_shortreads(&nextchar,&queryseq2,&input,&files,&nfiles,
-						      circularp)) == NULL) {
-    fprintf(stderr,"No input detected\n");
+#ifdef MEMUSAGE
+  Mem_usage_init();
+  nworkers = 0;
+  fprintf(stderr,"For memusage, setting to 0 threads\n");
+#endif
+
+#ifdef LEAKCHECK
+  Mem_leak_check_activate ();
+#endif
+
+  nextchar = Sequence_input_init(input);
+  if (nextchar == EOF) {
+    fprintf(stderr,"Input is empty\n");
     exit(9);
-  } else if (nextchar == '>' || nfiles >= 1) {
+
+  } else if (nextchar == '@') {
+    /* Looks like a FASTQ file */
+    if (nfiles == 0) {
+      input2 = (FILE *) NULL;
+    } else {
+      if ((input2 = FOPEN_READ_TEXT(files[0])) == NULL) {
+	fprintf(stderr,"Cannot open file %s\n",files[0]);
+      }
+      /* nextchar2 = */ Sequence_input_init(input2);
+      files++;
+      nfiles--;
+    }
+    fastq_format_p = true;
+
+
+    /* Read first query sequence */
+    if ((queryseq1 = Sequence_read_fastq_shortreads(&nextchar,&queryseq2,input,input2,
+						    circularp)) == NULL) {
+      fprintf(stderr,"No input detected\n");
+      exit(9);
+    }
+
+  } else if (nextchar == '>') {
+    /* Read first query sequence */
+    if ((queryseq1 = Sequence_read_multifile_shortreads(&nextchar,&queryseq2,&input,&files,&nfiles,
+							circularp)) == NULL) {
+      fprintf(stderr,"No input detected\n");
+      exit(9);
+    } 
+
+  } else {
+    fprintf(stderr,"First char is %c.  Expecting either '>' for FASTA or '@' for FASTQ format.\n",nextchar);
+    exit(9);
+  }
+
+#ifdef LEAKCHECK
+  Mem_leak_check_deactivate ();
+#endif
+
+
+  if (nextchar != EOF || nfiles >= 1) {
     multiple_sequences_p = true;
 #ifdef HAVE_MMAP
     if (batch_offsets_p == false && batch_positions_p == false) {
@@ -1160,6 +1495,15 @@ main (int argc, char *argv[]) {
 				   /*required_interval*/3,batch_offsets_p,batch_positions_p);
       indexdb2 = Indexdb_new_genome(genomesubdir,fileroot,/*idx_filesuffix*/"metga",snps_root,
 				    /*required_interval*/3,batch_offsets_p,batch_positions_p);
+      if (indexdb == NULL) {
+	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
+	exit(9);
+      }
+      if (indexdb2 == NULL) {
+	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
+	exit(9);
+      }
+
     } else {
       indexdb = Indexdb_new_genome(genomesubdir,fileroot,/*idx_filesuffix*/"ref",snps_root,
 				   /*required_interval*/3,batch_offsets_p,batch_positions_p);
@@ -1189,6 +1533,9 @@ main (int argc, char *argv[]) {
     FREE(mapdir);
   }
 
+  Compoundpos_init_positions_free(Indexdb_positions_fileio_p(indexdb));
+  Spanningelt_init_positions_free(Indexdb_positions_fileio_p(indexdb));
+  Stage1_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,cmetp));
   debug(printf("Size threshold is %d\n",indexdb_size_threshold));
 
@@ -1233,16 +1580,22 @@ main (int argc, char *argv[]) {
     IIT_dump_sam(chromosome_iit);
   }
 
+
+#ifdef LEAKCHECK
+  nworkers = 0;
+#endif
+
+
 #ifndef HAVE_PTHREAD
-  single_thread(input,files,nfiles,nextchar,queryseq1,queryseq2);
+  single_thread(input,input2,files,nfiles,nextchar,queryseq1,queryseq2);
 #else
-  if (multiple_sequences_p == false) {
-    single_thread(input,files,nfiles,nextchar,queryseq1,queryseq2);
-  } else if (nworkers == 0) {
-    single_thread(input,files,nfiles,nextchar,queryseq1,queryseq2);
+  if (nworkers == 0) {
+    single_thread(input,input2,files,nfiles,nextchar,queryseq1,queryseq2);
+  } else if (multiple_sequences_p == false) {
+    single_thread(input,input2,files,nfiles,nextchar,queryseq1,queryseq2);
   } else {
     /* Make blackboard and threads */
-    blackboard = Blackboard_new(input,files,nfiles,nextchar,/*usersegment*/NULL,nworkers);
+    blackboard = Blackboard_new(input,input2,files,nfiles,nextchar,/*usersegment*/NULL,nworkers);
     blackboard_global = blackboard; /* Needed only for exception handling */
     debug(printf("input_thread: Putting request id 0\n"));
     if (part_modulus != 0) {
@@ -1270,6 +1623,8 @@ main (int argc, char *argv[]) {
 
     Except_init_pthread();
 
+    stopwatch = Stopwatch_new();
+    Stopwatch_start(stopwatch);
     if (orderedp == true) {
       pthread_create(&output_thread_id,&thread_attr_join,output_thread_ordered,
 		     (void *) blackboard);
@@ -1323,7 +1678,7 @@ main (int argc, char *argv[]) {
   }
 
   if (snps_iit != NULL) {
-     FREE(snps_divint_crosstable);
+    FREE(snps_divint_crosstable);
     IIT_free(&snps_iit);
   }
 
@@ -1372,6 +1727,8 @@ is still designed to be fast.\n\
                                    If specified between 0.0 and 1.0, then treated as a fraction\n\
                                    of each read length.  Otherwise, treated as an integral number\n\
                                    of mismatches (including indel and splicing penalties)\n\
+                                   For RNA-Seq, you may need to increase this value slightly\n\
+                                   to align reads extending past the ends of an exon.\n\
   -i, --indel-penalty=INT        Penalty for an indel (default 1000, essentially turning it off).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches\n\
@@ -1392,7 +1749,9 @@ is still designed to be fast.\n\
                                        try no masking if alignments not found\n\
                                    4 = greedy repetitive: mask frequent and repetitive oligomers first, then\n\
                                        try no masking if alignments not found\n\
-  -T, --trim=INT                 Trim mismatches at ends (0 = no (default), 1 = yes)\n\
+  -a, --adapter-strip=STRING     Method for removing adapters from reads.  Currently allowed values: paired\n\
+  -T, --trimlength=INT           Maximum amount of trimming of mismatches at ends (default is 1000;\n\
+                                   to turn off trimming, specify 0)\n\
   -2, --dibase                   Input is 2-base encoded (e.g., SOLiD), with database built\n\
                                    previously using dibaseindex)\n\
   -C, --cmet                     Use database for methylcytosine experiments, built\n\
@@ -1415,9 +1774,8 @@ is still designed to be fast.\n\
   -s, --splicesites=STRING       Look for splicing involving known splice sites\n\
                                    (in <STRING>.iit), at short or long distances\n\
   -N, --novelsplicing=INT        Look for novel splicing, not in known splice sites (if -s provided)\n\
-                                  within shortsplicedist (-w flag) or with novelspliceprob (-x flag)\n\
   -w, --localsplicedist=INT      Definition of local novel splicing event (default 200000)\n\
-  -e, --local-splice-penalty=INT       Penalty for a local splice (default 2).\n\
+  -e, --local-splice-penalty=INT       Penalty for a local splice (default 0).\n\
                                        Counts against mismatches allowed\n\
   -E, --distant-splice-penalty=INT     Penalty for a distant splice (default 3).\n\
                                        Counts against mismatches allowed\n\
@@ -1450,6 +1808,8 @@ Output options\n\
   -f, --nofails                  Exclude printing of failed alignments\n\
   -A, --format=STRING            Another format type, other than default.\n\
                                    Currently implemented: sam\n\
+  -j, --quality-shift=INT        Shift FASTQ quality scores by this amount in SAM output\n\
+                                   (default -31)\n\
 ");
     fprintf(stdout,"\n");
 

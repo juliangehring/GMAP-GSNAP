@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dibase.c,v 1.1 2009/08/29 00:28:47 twu Exp $";
+static char rcsid[] = "$Id: dibase.c,v 1.2 2010-07-21 17:16:59 twu Exp $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>

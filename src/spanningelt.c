@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c,v 1.9 2010/02/23 18:30:21 twu Exp $";
+static char rcsid[] = "$Id: spanningelt.c,v 1.9 2010-02-23 18:30:21 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -33,15 +33,30 @@ static char rcsid[] = "$Id: spanningelt.c,v 1.9 2010/02/23 18:30:21 twu Exp $";
 #define debug10(x)
 #endif
 
+static bool free_positions_p;	/* Needs to be true if Indexdb positions are FILEIO */
+
+void
+Spanningelt_init_positions_free (bool positions_fileio_p) {
+  if (positions_fileio_p == true) {
+    free_positions_p = true;
+  } else {
+    free_positions_p = false;
+  }
+  return;
+}
 
 void
 Spanningelt_free (T *old) {
+
   if ((*old)->intersection_diagonals_reset != NULL) {
     FREE((*old)->intersection_diagonals_reset);
   }
   if ((*old)->compoundpos != NULL) {
     Compoundpos_free(&((*old)->compoundpos));
   }
+  FREE((*old)->positions_allocated);
+  /* Should not free partner_positions */
+
   FREE(*old);
   return;
 }
@@ -147,12 +162,19 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
     new->compoundpos = NULL;
     new->positions = 
       Indexdb_read_inplace(&new->npositions,indexdb,stage1_oligos[querypos]);
+    if (free_positions_p == true) {
+      new->positions_allocated = new->positions;
+    } else {
+      new->positions_allocated = (Genomicpos_T *) NULL;
+    }
     new->diagterm = plusp ? querylength - querypos : querypos + INDEX1PART; /* FORMULA */
 
   } else if (plusp) {
     /* Plus compoundpos */
     new->positions = NULL;
+    new->positions_allocated = NULL;
     new->npositions = 0;
+
     if (querypos == -2) {
       new->compoundpos = Indexdb_compoundpos_left_subst_2(indexdb,stage1_oligos[0]);
       new->compoundpos_diagterm = querylength+2; /* FORMULA */
@@ -176,7 +198,9 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
   } else {
     /* Minus compoundpos */
     new->positions = NULL;
+    new->positions_allocated = NULL;
     new->npositions = 0;
+
     if (querypos == -2) {
       new->compoundpos = Indexdb_compoundpos_right_subst_2(indexdb,stage1_oligos[0]);
       new->compoundpos_diagterm = INDEX1PART-2; /* FORMULA */

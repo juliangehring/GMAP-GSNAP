@@ -1,4 +1,4 @@
-/* $Id: uintlist.h,v 1.5 2010/02/03 18:19:20 twu Exp $ */
+/* $Id: uintlist.h,v 1.5 2010-02-03 18:19:20 twu Exp $ */
 #ifndef UINTLIST_INCLUDED
 #define UINTLIST_INCLUDED
 #include "bool.h"

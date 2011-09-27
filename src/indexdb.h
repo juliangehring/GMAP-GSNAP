@@ -1,4 +1,4 @@
-/* $Id: indexdb.h,v 1.52 2009/08/14 15:05:19 twu Exp $ */
+/* $Id: indexdb.h,v 1.52 2009-08-14 15:05:19 twu Exp $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -73,6 +73,8 @@ Indexdb_free (T *old);
 extern int
 Indexdb_interval (T this);
 #endif
+extern bool
+Indexdb_positions_fileio_p (T this);
 extern double
 Indexdb_mean_size (T this, bool cmetp);
 extern T

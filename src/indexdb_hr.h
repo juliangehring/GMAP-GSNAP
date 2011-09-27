@@ -1,4 +1,4 @@
-/* $Id: indexdb_hr.h,v 1.14 2009/05/23 03:09:55 twu Exp $ */
+/* $Id: indexdb_hr.h,v 1.14 2009-05-23 03:09:55 twu Exp $ */
 #ifndef INDEXDB_HR_INCLUDED
 #define INDEXDB_HR_INCLUDED
 #include "bool.h"
@@ -12,6 +12,8 @@ typedef struct Compoundpos_T *Compoundpos_T;
 
 #define T Indexdb_T
 
+extern void
+Compoundpos_init_positions_free (bool positions_fileio_p);
 extern void
 Compoundpos_set (Compoundpos_T compoundpos);
 extern void

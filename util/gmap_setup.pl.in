@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_setup.pl.in,v 1.49 2009/08/19 18:24:58 twu Exp $
+# $Id: gmap_setup.pl.in,v 1.50 2010-07-21 22:01:03 twu Exp $
 
 use warnings;
 
@@ -129,7 +129,7 @@ if (defined($opt_W)) {
 print $MAKEFILE "\n";
 
 # Now hardcoded
-#print $MAKEFILE "GMAPINDEX_INTERVAL = $opt_q # Change this only for special situations.  Intervals < 6\n";
+#print $MAKEFILE "GMAPINDEX_INTERVAL = $opt_q # Change this only for special situations.  Intervals < 3\n";
 #print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 #print $MAKEFILE "                       # If you set interval to be 3 (default) or 1, the file can also be used for GSNAP\n";
 

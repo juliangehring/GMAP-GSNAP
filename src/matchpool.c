@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpool.c,v 1.10 2008/08/08 12:19:36 twu Exp $";
+static char rcsid[] = "$Id: matchpool.c,v 1.11 2010-07-16 20:11:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -65,6 +65,37 @@ Matchpool_free (T *old) {
     List_free(&(*old)->listcellchunks);
     FREE(*old);
   }
+  return;
+}
+
+
+void
+Matchpool_free_memory (T this) {
+  List_T p;
+  struct Match_T *matchptr;
+  struct List_T *listcellptr;
+
+  for (p = this->matchchunks; p != NULL; p = List_next(p)) {
+    matchptr = (struct Match_T *) List_head(p);
+    FREE(matchptr);
+  }
+  List_free(&this->matchchunks);
+  for (p = this->listcellchunks; p != NULL; p = List_next(p)) {
+    listcellptr = (struct List_T *) List_head(p);
+    FREE(listcellptr);
+  }
+  List_free(&this->listcellchunks);
+
+  this->nmatches = 0;
+  this->matchctr = 0;
+  this->matchchunks = NULL;
+  /* this->matchptr = add_new_matchchunk(this); */
+
+  this->nlistcells = 0;
+  this->listcellctr = 0;
+  this->listcellchunks = NULL;
+  /* this->listcellptr = add_new_listcellchunk(this); */
+
   return;
 }
 

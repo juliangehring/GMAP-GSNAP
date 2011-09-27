@@ -1,4 +1,4 @@
-/* $Id: sequence.h,v 1.49 2009/08/21 19:26:11 twu Exp $ */
+/* $Id: sequence.h,v 1.53 2010-07-22 00:11:06 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -14,12 +14,23 @@
 #define T Sequence_T
 typedef struct T *T;
 
+extern int
+Sequence_input_init (FILE *fp);
+
 extern char *
 Sequence_fullpointer (T this);
 extern char *
-Sequence_fullpointer_uc (T this);
-extern char *
 Sequence_trimpointer (T this);
+
+#ifdef GSNAP
+extern char *
+Sequence_fullpointer_uc (T this);
+extern int
+Sequence_choplength (T this);
+extern char *
+Sequence_quality (T this);
+#endif
+
 extern int
 Sequence_ntlength (T this);
 extern int
@@ -47,9 +58,24 @@ extern T
 Sequence_read (int *nextchar, FILE *input, bool maponlyp);
 extern T
 Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp);
+
+#ifdef GSNAP
+extern void
+Sequence_dynprog_init (int maxlength);
+extern void
+Sequence_dynprog_term ();
+extern void
+Sequence_chop_primers (T queryseq1, T queryseq2);
 extern T
 Sequence_read_multifile_shortreads (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles,
 				    bool circularp);
+extern T
+Sequence_read_multifile_shortreads_simple (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles);
+extern T
+Sequence_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE *input1, FILE *input2,
+				bool circularp);
+#endif
+
 extern T
 Sequence_read_unlimited (FILE *input);
 #ifdef PMAP
@@ -79,14 +105,30 @@ extern void
 Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp);
 extern void
 Sequence_print_two (T this, T alt, bool uppercasep, int wraplength);
+
+#ifdef GSNAP
+extern void
+Sequence_print_chop_symbols (FILE *fp, T this);
 extern void
 Sequence_print_oneline (FILE *fp, T this);
 extern void
-Sequence_print_oneline_uc (FILE *fp, T this);
-extern void
 Sequence_print_oneline_revcomp (FILE *fp, T this);
 extern void
+Sequence_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high);
+extern void
+Sequence_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high);
+extern void
+Sequence_print_quality (FILE *fp, T this, int hardclip_low, int hardclip_high,
+			int shift);
+extern void
+Sequence_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high,
+				int shift);
+extern void
+Sequence_print_oneline_uc (FILE *fp, T this);
+extern void
 Sequence_print_oneline_revcomp_uc (FILE *fp, T this);
+#endif
+
 extern void
 Sequence_print_raw (T this);
 extern char *

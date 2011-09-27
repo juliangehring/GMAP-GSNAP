@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reqpost.c,v 1.20 2008/02/28 18:12:06 twu Exp $";
+static char rcsid[] = "$Id: reqpost.c,v 1.20 2008-02-28 18:12:06 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

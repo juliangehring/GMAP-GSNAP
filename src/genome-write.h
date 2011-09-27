@@ -1,4 +1,4 @@
-/* $Id: genome-write.h,v 1.2 2005/11/09 22:04:23 twu Exp $ */
+/* $Id: genome-write.h,v 1.2 2005-11-09 22:04:23 twu Exp $ */
 #ifndef GENOME_WRITE_INCLUDED
 #define GENOME_WRITE_INCLUDED
 #include <stdio.h>

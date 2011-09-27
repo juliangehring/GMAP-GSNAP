@@ -1,4 +1,4 @@
-/* $Id: diagnostic.h,v 1.1 2008/07/18 01:00:58 twu Exp $ */
+/* $Id: diagnostic.h,v 1.1 2008-07-18 01:00:58 twu Exp $ */
 #ifndef DIAGNOSTIC_INCLUDED
 #define DIAGNOSTIC_INCLUDED
 

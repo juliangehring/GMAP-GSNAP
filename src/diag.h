@@ -1,4 +1,4 @@
-/* $Id: diag.h,v 1.14 2010/02/03 01:57:58 twu Exp $ */
+/* $Id: diag.h,v 1.15 2010-07-10 15:42:56 twu Exp $ */
 #ifndef DIAG_INCLUDED
 #define DIAG_INCLUDED
 #include "bool.h"
@@ -6,6 +6,13 @@
 
 #define T Diag_T
 typedef struct T *T;
+
+#ifndef USE_DIAGPOOL
+extern T
+Diag_new (int diagonal, int querystart, int queryend, int nconsecutive);
+extern void
+Diag_free (T *old);
+#endif
 
 extern int
 Diag_diagonal (T this);

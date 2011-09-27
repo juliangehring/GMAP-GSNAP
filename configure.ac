@@ -1,7 +1,7 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-# $Id: configure.ac,v 1.45 2008/09/04 21:52:44 twu Exp $
+# $Id: configure.ac,v 1.46 2010-07-21 22:05:35 twu Exp $
 
 AC_PREREQ(2.57)
 
@@ -24,6 +24,8 @@ AC_CONFIG_SRCDIR([src/gmap.c])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_AUX_DIR([config])
 # For autotest: AC_CONFIG_TESTDIR([tests],[tests:src:util])
+
+AC_CONFIG_MACRO_DIR([m4])
 
 AC_CANONICAL_SYSTEM
 AC_SYS_LARGEFILE
@@ -109,6 +111,7 @@ AC_MSG_RESULT($GMAPDB)
 #AC_PATH_PROG([PERL],[perl])
 ACX_PATH_PERL
 AC_PROG_CC
+AM_PROG_CC_C_O
 AC_PROG_LIBTOOL
 
 # Checks for libraries.

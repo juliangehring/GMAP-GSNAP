@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c,v 1.10 2010/02/03 18:53:26 twu Exp $";
+static char rcsid[] = "$Id: snpindex.c,v 1.11 2010-07-27 01:10:20 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -60,6 +60,8 @@ static char rcsid[] = "$Id: snpindex.c,v 1.10 2010/02/03 18:53:26 twu Exp $";
 #include "uintlist.h"
 #include "chrnum.h"
 #include "genome.h"
+#include "datadir.h"
+#include "iit-read.h"
 #include "indexdb.h"
 #include "indexdbdef.h"
 
@@ -85,13 +87,16 @@ static char rcsid[] = "$Id: snpindex.c,v 1.10 2010/02/03 18:53:26 twu Exp $";
 
 
 
-static char *sourcedir = ".";
-static char *destdir = ".";
+static char *genomesubdir = ".";
+static char *dbroot = NULL;
 static char *fileroot = NULL;
+
+static char *destdir = ".";
+static char *dbversion = NULL;
+static char *user_genomedir = NULL;
+
 static char *snps_root = NULL;
-static int index1interval = 3;	/* Interval for storing 12-mers */
-static bool genome_lc_p = false;
-static bool show_warnings_p = false;
+static bool show_warnings_p = true;
 
 
 static int
@@ -138,13 +143,17 @@ shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
 }
 
 static char
-check_acgt (char nt, IIT_T snps_iit, int index) {
+check_acgt (char nt, IIT_T snps_iit, int divno, int i) {
+  int index;
   char *label;
   bool allocp;
 
-  if (nt != 'A' && nt != 'C' && nt != 'G' && nt != 'T') {
+  if (nt == 'N') {
+    return nt;
+  } else if (nt != 'A' && nt != 'C' && nt != 'G' && nt != 'T') {
+    index = IIT_index(snps_iit,divno,i);
     label = IIT_label(snps_iit,index,&allocp);
-    fprintf(stderr,"\nFor %s, alternate allele %c is not-ACGT, using N as alternate allele",
+    fprintf(stderr,"\nFor %s, alternate allele %c is not ACGT, using N as alternate allele",
 	    label,nt);
     if (allocp) {
       FREE(label);
@@ -170,6 +179,7 @@ revise_oligomer (Storedoligomer_T oligo, char nt) {
 }
 
 
+#if 0
 static bool
 samep (char *string1, char *string2, int length) {
   int i;
@@ -181,19 +191,20 @@ samep (char *string1, char *string2, int length) {
   }
   return true;
 }
-
+#endif
 
 static int
 process_snp_block (Positionsptr_T *offsets, Genomicpos_T *positions,
 		   Interval_T *intervals, int nintervals,
-		   int divno, Genomicpos_T chroffset, Genome_T genome,
-		   UINT4 *genome_blocks, IIT_T snps_iit, IIT_T chromosome_iit) {
+		   Genomicpos_T chroffset, Genome_T genome,
+		   UINT4 *genome_blocks, int divno, int intervali,
+		   IIT_T snps_iit, IIT_T chromosome_iit) {
   int nerrors = 0;
   bool *snpp;
   char *refstring;
   char *altstring;
 
-  int *snps, index, length;
+  int index, length;
   int nsnps, stringi, starti, shift, i, k;
   char *snptype, *label, refnt, altnt;
   unsigned int ptr;
@@ -201,11 +212,10 @@ process_snp_block (Positionsptr_T *offsets, Genomicpos_T *positions,
   Chrnum_T chrnum;
   Interval_T interval;
   int nunknowns;
-  bool allocp, badcharp;
+  bool badcharp, allocp;
   
   Uintlist_T oligomers, newoligomers, p;
   Storedoligomer_T oligo;
-  char *nt;
 
   /* Subtract 1 because snps_iit is 1-based */
   first_snppos = Interval_low(intervals[0]) - 1U;
@@ -247,14 +257,19 @@ process_snp_block (Positionsptr_T *offsets, Genomicpos_T *positions,
     } else {
       refnt = refstring[stringi];
       if (refnt == snptype[0]) {
-	altnt = check_acgt(snptype[1],snps_iit,index);
+	altnt = check_acgt(snptype[1],snps_iit,divno,intervali);
       } else if (refnt == snptype[1]) {
-	altnt = check_acgt(snptype[0],snps_iit,index);
+	altnt = check_acgt(snptype[0],snps_iit,divno,intervali);
       } else {
 	nerrors++;
 	if (show_warnings_p == true) {
-	  fprintf(stderr,"\nAt %u, snptype %s not consistent with reference allele %c, using N as alternate allele",
-		  snpposition,snptype,refstring[stringi]);
+	  index = IIT_index(snps_iit,divno,intervali);
+	  label = IIT_label(snps_iit,index,&allocp);
+	  fprintf(stderr,"\nFor %s at %u, snptype %s not consistent with reference allele %c, using N as alternate allele",
+		  label,snpposition,snptype,refstring[stringi]);
+	  if (allocp == true) {
+	    FREE(label);
+	  }
 	}
 	altnt = 'N';
       }
@@ -441,7 +456,8 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *g
 	  j++;
 	}
 	nerrors += process_snp_block(offsets,/*positions*/NULL,&(intervals[i]),j-i,
-				     divno,chroffset,genome,genome_blocks,snps_iit,chromosome_iit);
+				     chroffset,genome,genome_blocks,
+				     divno,/*intervali*/i,snps_iit,chromosome_iit);
 	i = j;
       }
 
@@ -520,8 +536,8 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
 	  j++;
 	}
 	process_snp_block(pointers,positions,&(intervals[i]),j-i,
-			  divno,chroffset,genome,/*genome_blocks*/NULL,
-			  snps_iit,chromosome_iit);
+			  chroffset,genome,/*genome_blocks*/NULL,
+			  divno,/*intervali*/i,snps_iit,chromosome_iit);
 	i = j;
       }
 
@@ -591,8 +607,7 @@ merge_positions (FILE *positions_fp, Genomicpos_T *start1, Genomicpos_T *end1,
 /* Note: Depends on having gmapindex sampled on mod 3 bounds */
 int
 main (int argc, char *argv[]) {
-  FILE *input;
-  char *iitfile, *genomefile;
+  char *iitfile;
   IIT_T chromosome_iit, snps_iit;
   Genome_T genome;
   Positionsptr_T *offsets, *snp_offsets, *ref_offsets, npositions;
@@ -609,19 +624,17 @@ main (int argc, char *argv[]) {
   extern int optind;
   extern char *optarg;
 
-  while ((c = getopt(argc,argv,"F:D:d:V:l")) != -1) {
+  while ((c = getopt(argc,argv,"D:d:V:")) != -1) {
     switch (c) {
-    case 'F': sourcedir = optarg; break;
-    case 'D': destdir = optarg; break;
-    case 'd': fileroot = optarg; break;
+    case 'D': user_genomedir = optarg; break;
+    case 'd': dbroot = optarg; break;
     case 'V': snps_root = optarg; break;
-    case 'l': genome_lc_p = true; break;
     }
   }
   argc -= (optind - 1);
   argv += (optind - 1);
 
-  if (fileroot == NULL) {
+  if (dbroot == NULL) {
     fprintf(stderr,"Missing name of genome database.  Must specify with -d flag.\n");
     fprintf(stderr,"Usage: snpindex -d <genome> -V <snpversion> <snp_iitfile>\n");
     exit(9);
@@ -635,6 +648,9 @@ main (int argc, char *argv[]) {
   if (argc <= 1) {
     fprintf(stderr,"Must specify an iit file\n");
     exit(9);
+  } else if (Access_file_exists_p(argv[1]) == false) {
+    fprintf(stderr,"SNP IIT file %s not found\n",argv[1]);
+    exit(9);
   } else {
     fprintf(stderr,"Reading SNPs IIT file %s...",argv[1]);
     if ((snps_iit = IIT_read(argv[1],/*name*/NULL,/*readonlyp*/true,
@@ -643,28 +659,47 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"SNP IIT file %s is not valid\n",argv[1]);
       exit(9);
     }
-    fprintf(stderr,"done\n");
   }
 
 
-  iitfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
-			    strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
-  sprintf(iitfile,"%s/%s.chromosome.iit",sourcedir,fileroot);
-  if ((chromosome_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,
-				 /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
-				 /*labels_read_p*/true)) == NULL) {
-    fprintf(stderr,"Chromosome IIT file %s is not valid\n",iitfile);
-    exit(9);
-  }
-  FREE(iitfile);
+  /* Chromosome IIT file */
+  iitfile = (char *) CALLOC(strlen(dbroot)+strlen(".chromosome.iit")+1,sizeof(char));
+  sprintf(iitfile,"%s.chromosome.iit",dbroot);
+  if (Access_file_exists_p(iitfile) == true) {
+    genomesubdir = ".";
+    fileroot = dbroot;
+    if ((chromosome_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,
+				   /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
+				   /*labels_read_p*/true)) == NULL) {
+      fprintf(stderr,"Found %s in this directory, but not valid\n",iitfile);
+      exit(9);
+    } else {
+      FREE(iitfile);
+    }
 
-  genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*uncompressedp*/false,
+  } else {
+    genomesubdir = Datadir_find_genomesubdir(&fileroot,&dbversion,user_genomedir,dbroot);
+    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
+    if ((chromosome_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,
+				   /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
+				   /*labels_read_p*/true)) == NULL) {
+      fprintf(stderr,"Could not find valid IIT in %s\n",iitfile);
+      exit(9);
+    } else {
+      FREE(iitfile);
+    }
+  }
+
+
+  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*uncompressedp*/false,
 		      /*batch_genome_p*/false);
 
   /* Copy genome */
   nblocks = Genome_totallength(genome)/32U;
   genome_blocks = (UINT4 *) CALLOC(nblocks*3,sizeof(UINT4));
-  fprintf(stderr,"Allocating %d*3*%lu bytes for compressed genome\n",nblocks,sizeof(UINT4));
+  fprintf(stderr,"Allocating %u*3*%lu bytes for compressed genome\n",nblocks,sizeof(UINT4));
   memcpy(genome_blocks,Genome_blocks(genome),nblocks*3*sizeof(UINT4));
 
 
@@ -688,13 +723,15 @@ main (int argc, char *argv[]) {
 
 
   /* Read reference offsets and update */
-  filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
 			     strlen(OFFSETS_FILESUFFIX)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",OFFSETS_FILESUFFIX);
+  sprintf(filename,"%s/%s.%s%s%s",genomesubdir,fileroot,IDX_FILESUFFIX,"3",OFFSETS_FILESUFFIX);
   if ((ref_offsets_fp = FOPEN_READ_BINARY(filename)) == NULL) {
-    fprintf(stderr,"Can't open file %s\n",filename);
+    fprintf(stderr,"Can't open ref_offsets file %s\n",filename);
     exit(9);
+  } else {
+    fclose(ref_offsets_fp);
   }
   ref_offsets = (Positionsptr_T *) Access_mmap(&ref_offsets_fd,&ref_offsets_len,
 					       filename,sizeof(Positionsptr_T),/*randomp*/false);
@@ -709,39 +746,41 @@ main (int argc, char *argv[]) {
 
 
   /* Write offsets */
-  filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".")+strlen("ref")+strlen("3")+
 			     strlen(OFFSETS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,"ref","3",OFFSETS_FILESUFFIX,snps_root);
+  sprintf(filename,"%s/%s.%s%s%s.%s",genomesubdir,fileroot,"ref","3",OFFSETS_FILESUFFIX,snps_root);
   if ((offsets_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
     exit(9);
   }
   FREE(filename);
 
-  fprintf(stderr,"Writing %u offsets to file with %d total positions\n",
+  fprintf(stderr,"Writing %d offsets to file with %u total positions\n",
 	  oligospace+1,offsets[oligospace]);
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
   FREE(offsets);
 
 
   /* Read reference positions and merge */
-  filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".")+strlen(IDX_FILESUFFIX)+strlen("3")+
 			     strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s%s%s",sourcedir,fileroot,IDX_FILESUFFIX,"3",POSITIONS_FILESUFFIX);
+  sprintf(filename,"%s/%s.%s%s%s",genomesubdir,fileroot,IDX_FILESUFFIX,"3",POSITIONS_FILESUFFIX);
   if ((ref_positions_fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s\n",filename);
     exit(9);
+  } else {
+    fclose(ref_positions_fp);
   }
   ref_positions = (Genomicpos_T *) Access_mmap(&ref_positions_fd,&ref_positions_len,
 					       filename,sizeof(Genomicpos_T),/*randomp*/false);
   FREE(filename);
 
-  filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
+  filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".")+strlen("ref")+strlen("3")+
 			     strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s%s%s.%s",sourcedir,fileroot,"ref","3",POSITIONS_FILESUFFIX,snps_root);
+  sprintf(filename,"%s/%s.%s%s%s.%s",genomesubdir,fileroot,"ref","3",POSITIONS_FILESUFFIX,snps_root);
   if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
     exit(9);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.37 2009/08/29 00:36:12 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.38 2010-04-17 00:31:19 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -325,7 +325,9 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
   int i;
   List_T p;
 
-  if (nintervals > 0) {
+  if (nintervals == 0) {
+    *intervals = (struct Interval_T *) NULL;
+  } else {
     *intervals = (struct Interval_T *) CALLOC(nintervals,sizeof(struct Interval_T));
     for (p = intervallist, i = 0; i < nintervals; i++, p = List_next(p)) {
       memcpy(&((*intervals)[i]),List_head(p),sizeof(struct Interval_T));
@@ -1000,7 +1002,7 @@ IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Tab
 
       fprintf(stderr,"writing...");
       IIT_output_one_div(fp,root,intervals,alphas,betas,sigmas,omegas,nintervals[divno],version);
-      fprintf(stderr,"done\n");
+      fprintf(stderr,"done (%d intervals)\n",nintervals[divno]);
 
       Node_gc(&root);
       FREE(omegas);

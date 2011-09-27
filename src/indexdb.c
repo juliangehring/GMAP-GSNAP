@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.138 2010/02/03 19:07:14 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c 27450 2010-08-05 19:02:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -142,6 +142,16 @@ Indexdb_interval (T this) {
 }
 
 
+bool
+Indexdb_positions_fileio_p (T this) {
+  if (this->positions_access == FILEIO) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
 static int
 power (int base, int exponent) {
   int result = 1, i;
@@ -277,7 +287,7 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
     new->offsets = (Positionsptr_T *) Access_mmap_and_preload(&new->offsets_fd,&new->offsets_len,&npages,&seconds,
 							    filename,sizeof(Positionsptr_T));
     if (new->offsets == NULL) {
-      fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+      fprintf(stderr,"insufficient memory (will use disk file instead, but program may not run)\n");
       new->offsets_access = FILEIO;
     } else {
       fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
@@ -362,7 +372,7 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, ch
     new->positions = (Genomicpos_T *) Access_mmap_and_preload(&new->positions_fd,&new->positions_len,&npages,&seconds,
 							    filename,sizeof(Genomicpos_T));
     if (new->positions == NULL) {
-      fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+      fprintf(stderr,"insufficient memory (will use disk file instead, but program will be slow)\n");
       new->positions_access = FILEIO;
     } else {
       fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
@@ -754,6 +764,10 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
   int bigendian, littleendian;
   char byte1, byte2, byte3;
 #endif
+#ifdef DEBUG0
+  int j;
+#endif
+
 
 #if 0
   debug0(printf("%06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
@@ -785,6 +799,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
     break;
 
   case FILEIO:
+    fprintf(stderr,"Sorry, cannot run GMAP with insufficient memory for offsets file.\n");
     abort();
   }
 
@@ -851,8 +866,8 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 
     debug0(
 	   printf("%d entries:",*nentries);
-	   for (i = 0; i < *nentries; i++) {
-	     printf(" %u",positions[i]);
+	   for (j = 0; j < *nentries; j++) {
+	     printf(" %u",positions[j]);
 	   }
 	   printf("\n");
 	   );
@@ -865,6 +880,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 /* GSNAP version.  Expects calling procedure to handle bigendian conversion. */
 Genomicpos_T *
 Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
+  Genomicpos_T *positions;
   Positionsptr_T ptr0, end0;
   Storedoligomer_T part0;
 #ifdef DEBUG0
@@ -891,6 +907,7 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
     break;
 
   case FILEIO:
+    fprintf(stderr,"Sorry, cannot run GMAP with insufficient memory for offsets file.\n");
     abort();
   }
 
@@ -898,6 +915,24 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
 
   *nentries = end0 - ptr0;
 
+  if (*nentries == 0) {
+    return NULL;
+  } else if (this->positions_access == FILEIO) {
+    positions = (Genomicpos_T *) CALLOC(*nentries,sizeof(Genomicpos_T));
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->positions_read_mutex);
+#endif
+    positions_move_absolute(this->positions_fd,ptr0);
+    positions_read_multiple(this->positions_fd,positions,*nentries);
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->positions_read_mutex);
+#endif
+    return positions;
+  } else {
+    return &(this->positions[ptr0]);
+  }
+
+#if 0
   debug0(
 	 printf("%d entries:",*nentries);
 	 for (ptr = ptr0; ptr < end0; ptr++) {
@@ -905,12 +940,8 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
 	 }
 	 printf("\n");
 	 );
+#endif
 
-  if (*nentries == 0) {
-    return NULL;
-  } else {
-    return &(this->positions[ptr0]);
-  }
 }
 
 #endif	/* ifdef PMAP */
@@ -940,6 +971,7 @@ Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int d
     break;
 
   case FILEIO:
+    fprintf(stderr,"Sorry, cannot run GMAP with insufficient memory for offsets file.\n");
     abort();
   }
 
@@ -1016,6 +1048,7 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
     break;
 
   case FILEIO:
+    fprintf(stderr,"Sorry, cannot run GMAP with insufficient memory for offsets file.\n");
     abort();
   }
 
@@ -1725,7 +1758,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T chromosome_iit
   fprintf(stderr,"Offset for T...T is %u to %u\n",offsets[oligospace-1],offsets[oligospace]);
   */
 
-  fprintf(stderr,"Writing %u offsets to file with total of %d positions\n",oligospace+1,offsets[oligospace]);
+  fprintf(stderr,"Writing %d offsets to file with total of %u positions\n",oligospace+1,offsets[oligospace]);
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
   FREE(offsets);
 

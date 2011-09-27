@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c,v 1.36 2009/08/14 14:56:28 twu Exp $";
+static char rcsid[] = "$Id: indexdb_hr.c,v 1.37 2010-07-10 01:34:52 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -837,6 +837,21 @@ Indexdb_count_right_subst_1 (T this, Storedoligomer_T oligo) {
 
 /************************************************************************/
 
+
+static bool free_positions_p;	/* Needs to be true if Indexdb positions are FILEIO */
+
+void
+Compoundpos_init_positions_free (bool positions_fileio_p) {
+  if (positions_fileio_p == true) {
+    free_positions_p = true;
+  } else {
+    free_positions_p = false;
+  }
+  return;
+}
+
+
+
 struct Compoundpos_T {
   int n;
 
@@ -915,14 +930,14 @@ Compoundpos_dump (Compoundpos_T compoundpos, int diagterm) {
 
 void
 Compoundpos_free (Compoundpos_T *old) {
+  int i;
 
   if (*old) {
-#if 0
-    /* Don't free, because only pointers are used */
-    for (i = 0; i < (*old)->n; i++) {
-      FREE((*old)->positions[i]);
+    if (free_positions_p == true) {
+      for (i = 0; i < (*old)->n; i++) {
+	FREE((*old)->positions[i]);
+      }
     }
-#endif
 
     /* No need, since allocated statically.  FREE((*old)->npositions); */
     /* No need, since allocated statically.  FREE((*old)->positions); */
@@ -1121,6 +1136,7 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
 }
 
 
+/* Used by DEBUG3 and DEBUG6 */
 static void
 heap_even_dump (Batch_T *heap, int heapsize) {
   int i;

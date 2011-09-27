@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gbuffer.c,v 1.7 2007/08/30 23:42:27 twu Exp $";
+static char rcsid[] = "$Id: gbuffer.c,v 1.7 2007-08-30 23:42:27 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

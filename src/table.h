@@ -1,4 +1,4 @@
-/* $Id: table.h,v 1.12 2008/04/15 20:01:19 twu Exp $ */
+/* $Id: table.h,v 1.12 2008-04-15 20:01:19 twu Exp $ */
 #ifndef TABLE_INCLUDED
 #define TABLE_INCLUDED
 

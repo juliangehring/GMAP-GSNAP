@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c,v 1.53 2009/08/29 00:38:26 twu Exp $";
+static char rcsid[] = "$Id: oligo.c,v 1.53 2009-08-29 00:38:26 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

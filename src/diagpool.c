@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diagpool.c,v 1.4 2008/09/04 20:27:03 twu Exp $";
+static char rcsid[] = "$Id: diagpool.c,v 1.5 2010-07-10 19:16:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -66,6 +66,36 @@ Diagpool_free (T *old) {
     List_free(&(*old)->listcellchunks);
     FREE(*old);
   }
+  return;
+}
+
+void
+Diagpool_free_memory (T this) {
+  List_T p;
+  struct Diag_T *diagptr;
+  struct List_T *listcellptr;
+
+  for (p = this->diagchunks; p != NULL; p = List_next(p)) {
+    diagptr = (struct Diag_T *) List_head(p);
+    FREE(diagptr);
+  }
+  List_free(&this->diagchunks);
+  for (p = this->listcellchunks; p != NULL; p = List_next(p)) {
+    listcellptr = (struct List_T *) List_head(p);
+    FREE(listcellptr);
+  }
+  List_free(&this->listcellchunks);
+
+  this->ndiags = 0;
+  this->diagctr = 0;
+  this->diagchunks = NULL;
+  /* this->diagptr = add_new_diagchunk(this); */
+
+  this->nlistcells = 0;
+  this->listcellctr = 0;
+  this->listcellchunks = NULL;
+  /* this->listcellptr = add_new_listcellchunk(this); */
+
   return;
 }
 

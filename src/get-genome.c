@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.86 2010/02/03 18:37:35 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.88 2010-07-21 21:32:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -303,88 +303,6 @@ convert_to_chrpos (unsigned int *chrpos, char *genomesubdir, char *fileroot, uns
   IIT_free(&chromosome_iit);
 
   return chromosome;
-}
-
-static void
-print_map (IIT_T map_iit, IIT_T chromosome_iit, char *divstring, unsigned int left, unsigned int length) {
-  int *matches, *submatches, index, i, j, k;
-  int nmatches, nsubmatches, *leftflanks, nleftflanks, *rightflanks, nrightflanks;
-  int *levels = NULL, maxlevel;
-  Interval_T interval;
-  unsigned int low, high;
-
-  if (map_type >= 0) {
-    matches = IIT_get_typed(&nmatches,map_iit,divstring,left,left+length,map_type,/*sortp*/true);
-  } else {
-    matches = IIT_get(&nmatches,map_iit,divstring,left,left+length,/*sortp*/true);
-  }
-  if (nflanking > 0) {
-    if (map_type >= 0) {
-      IIT_get_flanking_typed(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,map_iit,
-			     divstring,left,left+length,nflanking,map_type);
-    } else {
-      IIT_get_flanking(&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,map_iit,
-		       divstring,left,left+length,nflanking,/*sign*/0);
-    }
-  }
-
-  if (levelsp == true) {
-    levels = (int *) CALLOC(nmatches,sizeof(int));
-    for (i = 0; i < nmatches; i++) {
-      index = matches[i];
-      interval = IIT_interval(map_iit,index);
-      low = Interval_low(interval);
-      high = Interval_high(interval);
-    
-      if (map_type >= 0) {
-	submatches = IIT_get_typed(&nsubmatches,map_iit,divstring,low,high,map_type,/*sortp*/true);
-      } else {
-	submatches = IIT_get(&nsubmatches,map_iit,divstring,low,high,/*sortp*/true);
-      }
-      maxlevel = -1;
-      j = k = 0;
-      while (j < i && k < nsubmatches) {
-	if (matches[j] < submatches[k]) {
-	  j++;
-	} else if (matches[j] > submatches[k]) {
-	  k++;
-	} else {
-	  if (levels[j] > maxlevel) {
-	    maxlevel = levels[j];
-	  }
-	  j++;
-	  k++;
-	}
-      }
-      FREE(submatches);
-
-      levels[i] = maxlevel + 1;
-    }
-  }
-
-  if (nflanking > 0) {
-    IIT_print(map_iit,leftflanks,nleftflanks,/*bothstrandsp*/true,chromosome_iit,/*levels*/NULL,
-	      /*reversep*/true,map_relativep,left+1);
-    printf("    ====================\n");
-  }
-  IIT_print(map_iit,matches,nmatches,/*bothstrandsp*/true,chromosome_iit,levels,
-	    /*reversep*/false,map_relativep,left+1);
-  if (nflanking > 0) {
-    printf("    ====================\n");
-    IIT_print(map_iit,rightflanks,nrightflanks,/*bothstrandsp*/true,chromosome_iit,/*levels*/NULL,
-	      /*reversep*/false,map_relativep,left+1);
-  }
-
-  if (levels != NULL) {
-    FREE(levels);
-  }
-  if (nflanking > 0) {
-    FREE(rightflanks);
-    FREE(leftflanks);
-  }
-  FREE(matches);
-
-  return;
 }
 
 
@@ -1322,11 +1240,13 @@ main (int argc, char *argv[]) {
 	debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
 		     genomicstart,genomiclength,revcomp));
 	divstring = IIT_string_from_position(&coordstart,genomicstart,chromosome_iit);
-	divstring2 = IIT_string_from_position(&coordend,genomicstart+genomiclength,chromosome_iit);
+	divstring2 = IIT_string_from_position(&coordend,genomicstart+genomiclength-1U,chromosome_iit);
 	if (strcmp(divstring,divstring2)) {
 	  fprintf(stderr,"Coordinates cross chromosomal boundary\n");
 	  exit(9);
 	} else {
+	  coordstart += 1U;
+	  coordend += 1U;
 	  debug(printf("Query translated to %s:%u..%u\n",divstring,coordstart,coordend));
 	}
 	matches = get_matches(&nmatches,divstring,coordstart,coordend,

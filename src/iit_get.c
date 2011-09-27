@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c,v 1.53 2010/02/03 18:07:17 twu Exp $";
+static char rcsid[] = "$Id: iit_get.c,v 1.54 2010-04-02 17:20:13 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -291,13 +291,23 @@ get_total_tally (long int *tally, char *ptr) {
 }
 
 
+static void
+print_line (char *ptr) {
+  while (*ptr != '\0' && *ptr != '\n') {
+    printf("%c",*ptr);
+    ptr++;
+  }
+  return;
+}
+
+
 
 /* Need to store just the part of the query specified (e.g., 1..10) */
 static void
 print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coordstart, unsigned int coordend,
 		      int indexi, IIT_T iit, bool zeroesp) {
   Interval_T interval;
-  char *annotation, *ptr;
+  char *annotation, *ptr, *nextptr;
   bool allocp;
   long int total = 0;
   unsigned int chrpos, intervalend;
@@ -312,7 +322,7 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
 
   if (zeroesp == true) {
     while (*lastcoord < chrpos) {
-      printf("%s\t%u\t%d\n",divstring,*lastcoord,0);
+      printf("%s\t%u\t%d\t\n",divstring,*lastcoord,0);
       (*lastcoord)++;
     }
   }
@@ -330,10 +340,13 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
 
   while (chrpos <= intervalend && chrpos <= coordend) {
     total = 0;
-    ptr = get_total_tally(&total,ptr);
+    nextptr = get_total_tally(&total,ptr);
     if (total > 0 || zeroesp == true) {
-      printf("%s\t%u\t%ld\n",divstring,chrpos,total);
+      printf("%s\t%u\t%ld\t",divstring,chrpos,total);
+      print_line(ptr);
+      printf("\n");
     }
+    ptr = nextptr;
     if ((ptr = index(ptr,'\n')) == NULL) {
       fprintf(stderr,"Premature end of tally from %u to %u\n",
 	      Interval_low(interval),Interval_high(interval));

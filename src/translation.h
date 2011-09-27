@@ -1,4 +1,4 @@
-/* $Id: translation.h,v 1.23 2007/04/23 16:10:23 twu Exp $ */
+/* $Id: translation.h,v 1.23 2007-04-23 16:10:23 twu Exp $ */
 #ifndef TRANSLATION_INCLUDED
 #define TRANSLATION_INCLUDED
 #include "bool.h"

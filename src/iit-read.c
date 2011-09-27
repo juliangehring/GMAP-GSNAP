@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.66 2005/07/08 14:39:24 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.70 2005/10/19 03:50:08 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,8 +32,10 @@ static char rcsid[] = "$Id: iit-read.c,v 1.66 2005/07/08 14:39:24 twu Exp $";
 #include <sys/stat.h>		/* For open and fstat */
 #endif
 #include <sys/mman.h>		/* For mmap and madvise */
+#include <errno.h>		/* For perror */
 #include "assert.h"
 #include "mem.h"
+#include "chrom.h"
 
 /* Integer interval tree. */
 
@@ -148,16 +150,69 @@ IIT_label (T this, int index) {
   return &(this->labels[start]);
 }
 
+static void
+annotations_move_absolute (T this, unsigned int start) {
+  off_t offset = this->offset + start*((off_t) sizeof(char));
+
+  if (lseek(this->fd,offset,SEEK_SET) < 0) {
+    perror("Error in gmap, annotations_move_absolute");
+    exit(9);
+  }
+  return;
+}
+
 /* The iit file has a '\0' after each string, so functions know where
    it ends */
 char *
-IIT_annotation (T this, int index) {
+IIT_annotation (T this, int index, bool *allocp) {
+  char *annotation;
   int recno;
-  unsigned int start;
+  unsigned int start, end;
 
   recno = index - 1; /* Convert to 0-based */
   start = this->annotpointers[recno];
-  return &(this->annotations[start]);
+  if (this->access == FILEIO) {
+    end = this->annotpointers[recno+1];
+    annotation = (char *) CALLOC(end-start,sizeof(char));
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->read_mutex);
+#endif
+    annotations_move_absolute(this,start);
+    read(this->fd,annotation,end-start);
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->read_mutex);
+#endif
+    *allocp = true;
+    return annotation;
+  } else {
+    *allocp = false;
+    return &(this->annotations[start]);
+  }
+}
+
+/* The iit file has a '\0' after each string, so functions know where
+   it ends */
+char
+IIT_annotation_firstchar (T this, int index) {
+  int recno;
+  unsigned int start;
+  char buffer[1];
+
+  recno = index - 1; /* Convert to 0-based */
+  start = this->annotpointers[recno];
+  if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->read_mutex);
+#endif
+    annotations_move_absolute(this,start);
+    read(this->fd,buffer,1);
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->read_mutex);
+#endif
+    return buffer[0];
+  } else {
+    return this->annotations[start];
+  }
 }
 
 unsigned int
@@ -201,6 +256,7 @@ IIT_dump (T this) {
   int i;
   Interval_T interval;
   char *annotation;
+  bool allocp;
 
   for (i = 0; i < this->nintervals; i++) {
     printf(">%s",IIT_label(this,i+1));
@@ -212,13 +268,16 @@ IIT_dump (T this) {
     }
     printf("\n");
 
-    annotation = IIT_annotation(this,i+1);
+    annotation = IIT_annotation(this,i+1,&allocp);
     if (strlen(annotation) == 0) {
       /* Don't print anything */
     } else if (annotation[strlen(annotation)-1] == '\n') {
       printf("%s",annotation);
     } else {
       printf("%s\n",annotation);
+    }
+    if (allocp == true) {
+      FREE(annotation);
     }
   }
   return;
@@ -229,7 +288,8 @@ IIT_dump_formatted (T this, bool directionalp) {
   int i;
   Interval_T interval;
   unsigned int start, startpos, endpos;
-  char *label, *annotation;
+  char *label, firstchar;
+
 
   for (i = 0; i < this->nintervals; i++) {
     interval = &(this->intervals[i]);
@@ -242,8 +302,8 @@ IIT_dump_formatted (T this, bool directionalp) {
     if (directionalp == false) {
       printf("%u..%u\t",startpos+1U,endpos+1U);
     } else {
-      annotation = IIT_annotation(this,i+1);
-      if (annotation[0] == '-') {
+      firstchar = IIT_annotation_firstchar(this,i+1);
+      if (firstchar == '-') {
 	printf("%u..%u\t",endpos+1U,startpos+1U);
       } else {
 	printf("%u..%u\t",startpos+1U,endpos+1U);
@@ -282,13 +342,21 @@ IIT_dump_formatted (T this, bool directionalp) {
  ************************************************************************/
 
 void
-IIT_free_mmapped (T *old) {
+IIT_free (T *old) {
   if (*old != NULL) {
     if ((*old)->name != NULL) {
       FREE((*old)->name);
     }
 
-    /* Annotations is mmapped, so don't free. */
+    if ((*old)->access == MMAPPED) {
+      munmap((void *) (*old)->finfo,(*old)->flength);
+      close((*old)->fd);
+    } else if ((*old)->access == FILEIO) {
+      close((*old)->fd);
+    } else {
+      abort();
+    }
+
     FREE((*old)->annotpointers);
     FREE((*old)->labels);
     FREE((*old)->labelpointers);
@@ -299,9 +367,6 @@ IIT_free_mmapped (T *old) {
     FREE((*old)->nodes);
     FREE((*old)->omegas);
     FREE((*old)->sigmas);
-
-    munmap((void *) (*old)->finfo,(*old)->flength);
-    close((*old)->fd);
 
     FREE(*old);
 
@@ -467,7 +532,6 @@ T
 IIT_read (char *filename, char *name, bool readonlyp) {
   T new;
   FILE *fp;
-  struct stat sb;
   off_t offset = 0;
   int i, stringlen, prot, oflag, mapflags;
 
@@ -562,54 +626,34 @@ IIT_read (char *filename, char *name, bool readonlyp) {
 
   fclose(fp);
 
+#ifndef HAVE_MMAP
+  new->annotations = (char *) NULL;
+  new->fd = Access_fileio(filename);
+  new->access = FILEIO;
+  new->offset = offset;
+#else  
   if (readonlyp == true) {
-    oflag = O_RDONLY;
-    prot = PROT_READ;
-    mapflags = 0
-#ifdef HAVE_MMAP_MAP_PRIVATE
-			     |MAP_PRIVATE
-#endif
-#ifdef HAVE_MMAP_MAP_FILE
-			     |MAP_FILE
-#endif
-      ;
+    new->finfo = (char *) Access_mmap(&new->fd,&new->flength,filename,sizeof(char),/*randomp*/true);
   } else {
-    oflag = O_RDWR;
-    prot = PROT_READ | PROT_WRITE;
-    mapflags = 0
-#ifdef HAVE_MMAP_MAP_SHARED
-			     |MAP_SHARED
-#endif
-#ifdef HAVE_MMAP_MAP_FILE
-			     |MAP_FILE
-#endif
-      ;
+    new->finfo = (char *) Access_mmap_rw(&new->fd,&new->flength,filename,sizeof(char),/*randomp*/true);
   }
+  if (new->finfo == NULL) {
+    new->annotations = (char *) NULL;
+    /* fd already assigned */
+    new->access = FILEIO;
+    new->offset = offset;
+  } else {
+    new->annotations = (char *) &(new->finfo[offset]);
+    new->access = MMAPPED;
+    new->offset = 0U;		/* Not used */
+  }
+#endif
 
-  if ((new->fd = open(filename,oflag,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
-    return NULL;
+#ifdef HAVE_PTHREAD
+  if (new->access == FILEIO) {
+    pthread_mutex_init(&new->read_mutex,NULL);
   }
-  fstat(new->fd,&sb);
-  new->flength = sb.st_size;
-
-  new->finfo = (char *) mmap(NULL,sb.st_size,prot,mapflags,
-			     new->fd,0);
-  if (new->finfo == MAP_FAILED) {
-    fprintf(stderr,"Error: mmap failed for file %s\n",
-	    filename);
-    return NULL;
-  }
-#ifdef HAVE_MADVISE
-#ifdef HAVE_MADVISE_MADV_RANDOM
-#ifdef HAVE_CADDR_T
-  madvise((caddr_t) new->finfo,new->flength,MADV_RANDOM);
-#else
-  madvise((void *) new->finfo,new->flength,MADV_RANDOM);
 #endif
-#endif
-#endif
-  new->annotations = (char *) &(new->finfo[offset]);
 
   return new;
 }
@@ -811,10 +855,10 @@ IIT_get (int *nmatches, T this, unsigned int x, unsigned int y) {
   int lambda, prev;
   int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
 
-  debug(printf("%u %u\n",x,y));
+  debug(printf("Entering IIT_get with query %u %u\n",x,y));
   fnode_query_aux(&min1,&max1,this,0,x);
   fnode_query_aux(&min2,&max2,this,0,y);
-  debug(fprintf(stderr,"%d %d  %d %d\n",min1,max1,min2,max2));
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
 
   *nmatches = 0;
   if (max2 >= min1) {
@@ -875,10 +919,10 @@ IIT_get_one (T this, unsigned int x, unsigned int y) {
   int lambda;
   int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
 
-  debug(printf("%u %u\n",x,y));
+  debug(printf("Entering IIT_get_one with query %u %u\n",x,y));
   fnode_query_aux(&min1,&max1,this,0,x);
   fnode_query_aux(&min2,&max2,this,0,y);
-  debug(fprintf(stderr,"%d %d  %d %d\n",min1,max1,min2,max2));
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
 
   if (max2 >= min1) {
     for (lambda = min1; lambda <= max2; lambda++) {
@@ -980,27 +1024,42 @@ IIT_get_exact (T this, unsigned int x, unsigned int y, int type) {
 
 /* Assume 0-based index */
 static void
-print_record (T this, int recno, bool map_bothstrands_p) {
-  unsigned int start, end;
-  char *string;
+print_record (T this, int recno, bool map_bothstrands_p, T chromosome_iit, int level) {
+  unsigned int start, end, chrpos1, chrpos2;
+  char *string, *chrstring;
   int typeint;
   Interval_T interval;
+  bool allocp;
 
   start = this->annotpointers[recno];
   end = this->annotpointers[recno+1];
   
-  string = (char *) CALLOC(end - start + 1,sizeof(char));
-  strncpy(string,&(this->annotations[start]),end-start);
+  if (this->access == FILEIO) {
+    string = IIT_annotation(this,start,&allocp);
+  } else {
+    string = (char *) CALLOC(end - start + 1,sizeof(char));
+    strncpy(string,&(this->annotations[start]),end-start);
+  }
+
+  printf("    %s",this->name);
+  interval = &(this->intervals[recno]);
+  chrstring = Chrom_string_from_position(&chrpos1,Interval_low(interval),
+					 chromosome_iit);
+  chrstring = Chrom_string_from_position(&chrpos2,Interval_high(interval),
+					 chromosome_iit);
+  if (level >= 0) {
+    printf("\t%d",level);
+  }
+  printf("\t%s:%u..%u",chrstring,chrpos1,chrpos2);
 
   if (map_bothstrands_p == true) {
-    interval = &(this->intervals[recno]);
     if ((typeint = Interval_type(interval)) <= 0) {
-      printf("    %s\t\t%s",this->name,string);
+      printf("\t\t%s",string);
     } else {
-      printf("    %s\t%s\t%s",this->name,IIT_typestring(this,typeint),string);
+      printf("\t%s\t%s",IIT_typestring(this,typeint),string);
     }
   } else {
-    printf("    %s\t%s",this->name,string);
+    printf("\t%s",string);
   }
   if (string[strlen(string)-1] != '\n') {
     printf("\n");
@@ -1013,12 +1072,20 @@ print_record (T this, int recno, bool map_bothstrands_p) {
 
 
 void
-IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p) {
+IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p,
+	   T chromosome_iit, int *levels) {
   int recno, i;
 
-  for (i = 0; i < nmatches; i++) {
-    recno = matches[i] - 1;	/* Convert to 0-based */
-    print_record(this,recno,map_bothstrands_p);
+  if (levels == NULL) {
+    for (i = 0; i < nmatches; i++) {
+      recno = matches[i] - 1;	/* Convert to 0-based */
+      print_record(this,recno,map_bothstrands_p,chromosome_iit,/*level*/-1);
+    }
+  } else {
+    for (i = 0; i < nmatches; i++) {
+      recno = matches[i] - 1;	/* Convert to 0-based */
+      print_record(this,recno,map_bothstrands_p,chromosome_iit,levels[i]);
+    }
   }
 
   return;
@@ -1033,7 +1100,8 @@ List_T
 IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this) {
   List_T intervallist = NULL;
   Interval_T interval;
-  char *annotation;
+  char *annotation, firstchar;
+  bool allocp;
   int i;
   unsigned int seglength;
 
@@ -1046,13 +1114,17 @@ IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this) {
       *labellist = List_push(*labellist,IIT_label(this,i+1));
 
       /* Annotation may be negative to indicate contig is reverse complement */
-      annotation = IIT_annotation(this,i+1);
-      if (annotation[0] == '-') {
+      annotation = IIT_annotation(this,i+1,&allocp);
+      firstchar = annotation[0];
+      if (firstchar == '-') {
 	seglength = (unsigned int) strtoul(&(annotation[1]),NULL,10);
       } else {
 	seglength = (unsigned int) strtoul(annotation,NULL,10);
       }
       *seglength_list = Uintlist_push(*seglength_list,seglength);
+      if (allocp == true) {
+	FREE(annotation);
+      }
     }
   }
   *labellist = List_reverse(*labellist);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c,v 1.46 2005/06/23 22:47:42 twu Exp $";
+static char rcsid[] = "$Id: result.c,v 1.47 2005/10/14 19:35:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -66,7 +66,9 @@ Result_new (int id, Chimera_T chimera, Stage1_T stage1,
 
 void
 Result_free (T *old) {
+#ifdef BETATEST
   Chimera_T chimera;
+#endif
   Stage1_T stage1;
   Stage3_T stage3;
   int i;

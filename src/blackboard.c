@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: blackboard.c,v 1.14 2005/02/16 18:44:48 twu Exp $";
+static char rcsid[] = "$Id: blackboard.c,v 1.15 2005/10/14 19:05:33 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -23,6 +23,7 @@ static char rcsid[] = "$Id: blackboard.c,v 1.14 2005/02/16 18:44:48 twu Exp $";
 #define T Blackboard_T
 struct T {
   FILE *input;
+  int nextchar;
   Sequence_T usersegment;
   Params_T params;
 
@@ -47,11 +48,12 @@ struct T {
 };
 
 T
-Blackboard_new (FILE *input, Sequence_T usersegment, int nworkers, Params_T params) {
+Blackboard_new (FILE *input, int nextchar, Sequence_T usersegment, int nworkers, Params_T params) {
   T new = (T) MALLOC(sizeof(*new));
   int i;
 
   new->input = input;
+  new->nextchar = nextchar;
   new->usersegment = usersegment;
   new->params = params;
   new->nworkers = nworkers;
@@ -108,6 +110,11 @@ Blackboard_free (T *old) {
 FILE *
 Blackboard_input (T this) {
   return this->input;
+}
+
+int
+Blackboard_nextchar (T this) {
+  return this->nextchar;
 }
 
 Sequence_T

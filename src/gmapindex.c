@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.95 2005/07/08 07:58:31 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.99 2005/10/19 03:55:44 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -228,8 +228,8 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
 /* Modifies chrlength_table to store offsets, rather than chrlengths */
 static void
 write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_table) {
-  FILE *textfp;
-  char *textfile, *iitfile, *chr_string, emptystring[1];
+  FILE *textfp, *chrsubsetfp;
+  char *textfile, *chrsubsetfile, *iitfile, *chr_string, emptystring[1];
   int n, i;
   Chrom_T *chroms;
   Genomicpos_T chroffset = 0, chrlength;
@@ -243,7 +243,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   n = Tableint_length(chrlength_table);
   qsort(chroms,n,sizeof(Chrom_T),Chrom_compare);
 
-  /* Write chromosome text file */
+  /* Write chromosome text file and chrsubset file */
   textfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			     strlen(fileroot)+strlen(".chromosome")+1,sizeof(char));
   sprintf(textfile,"%s/%s.chromosome",genomesubdir,fileroot);
@@ -253,6 +253,17 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   }
   FREE(textfile);
 
+  chrsubsetfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+				  strlen(fileroot)+strlen(".chrsubset")+1,sizeof(char));
+  sprintf(chrsubsetfile,"%s/%s.chrsubset",genomesubdir,fileroot);
+  if ((chrsubsetfp = fopen(chrsubsetfile,"w")) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",chrsubsetfile);
+    exit(9);
+  }
+  FREE(chrsubsetfile);
+  fprintf(chrsubsetfp,">all\n");
+  fprintf(chrsubsetfp,"\n");
+
   chrtypelist = List_push(chrtypelist,"");
   for (i = 0; i < n; i++) {
     chrlength = (Genomicpos_T) Tableint_get(chrlength_table,chroms[i]);
@@ -260,6 +271,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
     assert(chroffset < chroffset+chrlength-1);
     fprintf(stderr,"Chromosome %s has universal coordinates %u..%u\n",
 	    chr_string,chroffset+1,chroffset+1+chrlength-1);
+    fprintf(chrsubsetfp,">chr%s\n",chr_string);
+    fprintf(chrsubsetfp,"+%s\n",chr_string);
 
     fprintf(textfp,"%s\t%u..%u\t%u\n",
 	    chr_string,chroffset+1,chroffset+chrlength,chrlength);
@@ -272,6 +285,9 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   FREE(chroms);
   intervallist = List_reverse(intervallist);
   labellist = List_reverse(labellist);
+
+  fclose(chrsubsetfp);
+  fclose(textfp);
 
   /* Write chromosome IIT file */
   iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
@@ -415,6 +431,10 @@ write_contig_file (char *genomesubdir, char *fileroot,
   IIT_write(iitfile,intervallist,contigtypelist,labellist,annotlist,NULL);
   FREE(iitfile);
 
+  for (p = annotlist; p != NULL; p = List_next(p)) {
+    annot = (char *) List_head(p);
+    FREE(annot);
+  }
   List_free(&annotlist);
 
   /* Labels (accessions) are freed by accsegmentpos_table_gc */
@@ -482,6 +502,8 @@ accsegmentpos_table_gc (Table_T *accsegmentpos_table) {
   Segmentpos_T segmentpos;
   void **keys, **values;
 
+  /* For some reason, this fails on some computers */
+  /*
   n = Table_length(*accsegmentpos_table);
   keys = Table_keys(*accsegmentpos_table,NULL);
   values = Table_values(*accsegmentpos_table,NULL);
@@ -495,6 +517,7 @@ accsegmentpos_table_gc (Table_T *accsegmentpos_table) {
   }
   FREE(values);
   FREE(keys);
+  */
   Table_free(&(*accsegmentpos_table));
   return;
 }
@@ -667,10 +690,10 @@ main (int argc, char *argv[]) {
       }
       FREE(iittypefile);
 
-      IIT_free_mmapped(&altstrain_iit);
+      IIT_free(&altstrain_iit);
     }
 
-    IIT_free_mmapped(&contig_iit);
+    IIT_free(&contig_iit);
 
   } else if (action == COMPRESS) {
     /* Usage: cat <genomefile> | gmapindex -C > <genomecompfile>, or
@@ -717,7 +740,7 @@ main (int argc, char *argv[]) {
 
     Indexdb_write_offsets(offsets_fp,stdin,altstrain_iit,index1interval,uncompressedp);
 
-    IIT_free_mmapped(&altstrain_iit);
+    IIT_free(&altstrain_iit);
     FREE(iitfile);
     fclose(offsets_fp);
     FREE(offsetsfile);
@@ -747,7 +770,7 @@ main (int argc, char *argv[]) {
     Indexdb_write_positions(positionsfile,offsets_fp,stdin,altstrain_iit,index1interval,
 			    uncompressedp,writefilep);
 
-    IIT_free_mmapped(&altstrain_iit);
+    IIT_free(&altstrain_iit);
     FREE(iitfile);
     fclose(offsets_fp);
     FREE(positionsfile);

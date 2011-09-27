@@ -1,15 +1,17 @@
 #! @PERL@ -w
-# $Id: fa_coords.pl.in,v 1.7 2005/05/10 02:18:14 twu Exp $
+# $Id: fa_coords.pl.in,v 1.12 2005/10/25 16:52:32 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
 use IO::File;
+$opt_l = 1000000;		# Don't report contigs smaller than this length
 undef($opt_o);			# Output file
+undef($opt_C);			# Treat each sequence as a separate chromosome
 undef($opt_E);			# Interpret argument as a command
 use Getopt::Std;
-getopts("o:E");
+getopts("o:CE");
 
-# Usage: fa_coords [-o <output>] [-E] <fastafiles or command>
+# Usage: fa_coords [-o <output>] [-C] [-E] <fastafiles or command>
 
 if (!defined($outfile = $opt_o)) {
   $outfile = "coords.txt";
@@ -18,17 +20,33 @@ if (!defined($outfile = $opt_o)) {
 $flags = "";
 $flags .= "-o $outfile";
 
+#print STDERR "Printing processing messages only for those contigs longer than\n";
+#print STDERR "  $opt_l nt (but processing all of them, of course).\n";
+#print STDERR "  You can change this value with the -l flag to fa_coords.\n";
+
 $OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
 print $OUT "#contig" . "\t" . "coordinates" . "\t" . "altstrain\n";
-$skipped = parse_fa_files($OUT,\@ARGV);
+if ($#ARGV < 0) {
+  @streams = ();
+  push @streams,"<&STDIN";
+  $skipped = parse_fa_files($OUT,\@streams);
+} else {
+  $skipped = parse_fa_files($OUT,\@ARGV);
+}
 close($OUT);
 
 if ($#$skipped >= 0) {
   printf "\n";
-  printf STDOUT ("*** %d contigs had no recognizable chromosomal assignment, and\n",$#$skipped + 1);
-  print STDOUT   "    were concatenated into a chromosome called \"NA\" ***\n";
-  print STDOUT "If you do not wish to include these contigs, please remove them from $outfile,\n";
-  print STDOUT "or comment them out with the # character at the beginning of each line.\n";
+  printf STDOUT "********************************************************************************\n";
+  printf STDOUT ("    A total of %d contigs had no recognizable chromosomal assignment, and\n",$#$skipped + 1);
+  print <<NAMSG;
+    were therefore concatenated into a chromosome called "NA".
+
+    GMAP can handle this chromosome without any problems.  However,
+    if you do not wish to include these contigs, please remove them from $outfile,
+    or comment them out with the # character at the beginning of each line.
+NAMSG
+  printf STDOUT "********************************************************************************\n";
   print "\n";
 }
 
@@ -73,13 +91,26 @@ if ($outfile ne "coords.txt") {
 print STDOUT "\n";
 print STDOUT "where you decide on the db_name, and the fastafiles are the\n";
 print STDOUT "same you used in running this fa_coords program.\n";
-print STDOUT "\n";
-print STDOUT "Note that gmap_setup can take a while to index a large genome\n";
 print STDOUT "============================================================\n";
 print STDOUT "\n";
 
 
 exit;
+
+
+
+sub handle_consecutive_errors {
+  my ($consec_errors) = @_;
+
+  if ($consec_errors > 0) {
+    print STDERR "\n\n";
+    print STDERR "***  Note: For a total of $consec_errors consecutive contigs, ";
+    print STDERR "the chromosome could not be parsed from the header, \n";
+    print STDERR "     and were therefore assigned to chromosome NA.\n\n";
+    $consec_errors = 0;
+  }
+  return $consec_errors;
+}
 
 
 
@@ -99,6 +130,8 @@ sub parse_fa_files {
     }
     $seglength = 0;
     undef($orientation);
+    $consec_errors = 0;
+    $shortp = 0;
     while (defined($line = <$FP>)) {
       chop $line;
       if ($line !~ /\S/) {
@@ -112,11 +145,25 @@ sub parse_fa_files {
       } else {
 	# Handle previous contig
 	if ($seglength > 0) {
-	  printf STDERR ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
-	  if (defined($orientation) && $orientation eq "rev") {
-	    printf STDERR (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	  if ($seglength > $opt_l) {
+	    if ($shortp == 1) {
+	      print STDERR "\n";
+	      $shortp = 0;
+	    }
+	    printf STDERR ("  Processed contig %s at chromosomal coordinates %s:%d..",
+			   $contig,$chr,$chrpos{$chr});
+	    printf STDERR ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
+	    if (defined($orientation) && $orientation eq "rev") {
+	      printf STDERR (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	    }
+	    print STDERR "\n";
+	  } else {
+	    if ($shortp == 0) {
+	      printf STDERR "  Processed short contigs (<$opt_l nt): ";
+	      $shortp = 1;
+	    }
+	    printf STDERR ".";
 	  }
-	  print STDERR "\n";
 
 	  if (defined($orientation) && $orientation eq "rev") {
 	    printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
@@ -132,16 +179,21 @@ sub parse_fa_files {
 	}
 
 	# Handle current header
-	print STDERR "  Header line: $line\n";
+	# print STDERR "  Header line: $line\n";
 	$seglength = 0;
 	($contig) = $line =~ /^>(\S+)/;
 	undef $orientation;
-	if ($line =~ /\/chr=(\S+):(\d+)\D+\d+/) {
+	if (defined($opt_C)) {
+	  $chr = $contig;
+
+	} elsif ($line =~ /\/chr=(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /\/chr=(\S+)/) {
 	  $chr = $1;
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /chromosome:[^:]+:([^:]+):(\d+)/) {
 	  # Ensembl format: chromosome:NCBI35:22:1:49554710:1
@@ -152,6 +204,7 @@ sub parse_fa_files {
 	    # Ensembl notation for unmapped contig
 	    $chr = $1 . "U";
 	  }
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /\/chromosome=\S+/) {
 	  # Celera format
@@ -163,35 +216,54 @@ sub parse_fa_files {
 	  if ($line =~ /\/orientation=rev/) {
 	    $orientation = "rev";
 	  }
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
-	} elsif ($line =~ /chr(\S+):(\d+)\D+\d+/) {
+	} elsif ($line =~ /[Cc]hr(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
-	} elsif ($line =~ /chr(\S+)/) {
+	} elsif ($line =~ /[Cc]hr(\S+)/) {
 	  $chr = $1;
+	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} else {
-	  print STDERR "  Can't find chromosome in header.  Assigning to chromosome NA instead.";
+	  if ($consec_errors == 0) {
+	    print STDERR "\n\n***  Note: Can't find chromosome in header $line.  Assigning to chromosome NA instead.\n\n";
+	  }
 	  $chr = "NA";
 	  push @skipped,$contig;
+	  $consec_errors += 1;
 	}
 
 	if (!defined($chrpos{$chr})) {
 	  $chrpos{$chr} = 1;	# Start this contig at beginning of chromosome
 	}
-	printf STDERR ("  Processing contig %s at chromosomal coordinates %s:%d..",
-		       $contig,$chr,$chrpos{$chr});
       }
     }
 
     # Handle last contig in the file
     if ($seglength > 0) {
-      printf STDERR ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
-      if (defined($orientation) && $orientation eq "rev") {
-	printf STDERR (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+      if ($seglength > $opt_l) {
+	if ($shortp == 1) {
+	  print STDERR "\n";
+	  $shortp = 0;
+	}
+	printf STDERR ("  Processed contig %s at chromosomal coordinates %s:%d..",
+		       $contig,$chr,$chrpos{$chr});
+	printf STDERR ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
+	if (defined($orientation) && $orientation eq "rev") {
+	  printf STDERR (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	}
+	print STDERR "\n";
+	$shortp = 0;
+      } else {
+	if ($shortp == 0) {
+	  printf STDERR "  Processed short contigs (<$opt_l nt): ";
+	  $shortp = 1;
+	}
+	printf STDERR ".";
       }
-      print STDERR "\n";
 
       if (defined($orientation) && $orientation eq "rev") {
 	printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
@@ -205,6 +277,7 @@ sub parse_fa_files {
       }
     }
     close($FP);
+    handle_consecutive_errors($consec_errors);
   }
 
   return \@skipped;

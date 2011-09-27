@@ -1,4 +1,4 @@
-/* $Id: stage2.h,v 1.42 2005/06/21 18:37:35 twu Exp $ */
+/* $Id: stage2.h,v 1.44 2005/10/01 05:13:00 twu Exp $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "bool.h"
@@ -27,10 +27,13 @@ extern void
 Stage2_free (T *old);
 
 extern T
-Stage2_compute (Sequence_T queryseq, Sequence_T genomicseg,
+Stage2_compute (Sequence_T queryseq, Sequence_T queryuc,
+#ifdef PMAP
+		Sequence_T queryntseq,
+#endif
+		Sequence_T genomicseg, Sequence_T genomicuc,
 		Oligoindex_T oligoindex, int indexsize, Pairpool_T pairpool, 
-		int sufflookback, int nsufflookback, int badoligos,
-		bool crossspeciesp);
+		int sufflookback, int nsufflookback, int badoligos, bool crossspeciesp);
 
 #undef T
 #endif

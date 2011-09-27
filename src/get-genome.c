@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.53 2005/07/15 20:54:30 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.58 2005/10/19 03:53:07 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -44,6 +44,10 @@ static char altstrainp = false;
 static char *user_typestring = NULL;
 static int wraplength = 60;
 static char *header = NULL;
+static bool levelsp = false;
+
+static char *user_mapdir = NULL;
+static char *map_iitfile = NULL;
 
 /* Dump options */
 static bool dumpchrp = false;
@@ -64,6 +68,10 @@ static struct option long_options[] = {
   {"wraplength", required_argument, 0, 'l'}, /* wraplength */
   {"fullgenome", no_argument, 0, 'G'}, /* uncompressedp */
   {"header", required_argument, 0, 'h'}, /* header */
+
+  {"mapdir", required_argument, 0, 'M'}, /* user_mapdir */
+  {"map", required_argument, 0, 'm'},	/* map_iitfile */
+  {"ranks", no_argument, 0, 'r'}, /* levelsp */
 
   /* Dump options */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
@@ -112,6 +120,9 @@ Output options\n\
   -l, --wraplength=INT    Wrap length for sequence (default=60)\n\
   -G, --fullgenome        Use full (uncompressed) version of genome\n\
   -h, --header=STRING     Desired header line\n\
+  -M, --mapdir=directory  Map directory\n\
+  -m, --map=iitfile       Map file\n\
+  -r, --ranks             Prints levels for non-overlapping printing of map hits\n\
 \n\
 Dump options\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
@@ -257,10 +268,59 @@ convert_to_chrpos (unsigned int *chrpos, char *genomesubdir, char *fileroot, uns
   chromosome = Chrom_string_from_position(&(*chrpos),position,chromosome_iit);
   copy = (char *) CALLOC(strlen(chromosome)+1,sizeof(char));
   strcpy(copy,chromosome);
-  IIT_free_mmapped(&chromosome_iit);
+  IIT_free(&chromosome_iit);
 
   return copy;
 }
+
+static void
+print_map (IIT_T map_iit, IIT_T chromosome_iit, unsigned int left, unsigned int length) {
+  int *matches, *submatches, index, i, j, k;
+  int nmatches, nsubmatches;
+  int *levels = NULL, maxlevel;
+  Interval_T interval;
+  unsigned int low, high;
+
+  matches = IIT_get(&nmatches,map_iit,left,left+length);
+  if (levelsp == true) {
+    levels = (int *) CALLOC(nmatches,sizeof(int));
+    for (i = 0; i < nmatches; i++) {
+      index = matches[i];
+      interval = IIT_interval(map_iit,index);
+      low = Interval_low(interval);
+      high = Interval_high(interval);
+    
+      submatches = IIT_get(&nsubmatches,map_iit,low,high);
+      maxlevel = -1;
+      j = k = 0;
+      while (j < i && k < nsubmatches) {
+	if (matches[j] < submatches[k]) {
+	  j++;
+	} else if (matches[j] > submatches[k]) {
+	  k++;
+	} else {
+	  if (levels[j] > maxlevel) {
+	    maxlevel = levels[j];
+	  }
+	  j++;
+	  k++;
+	}
+      }
+      FREE(submatches);
+
+      levels[i] = maxlevel + 1;
+    }
+  }
+
+  IIT_print(map_iit,matches,nmatches,/*bothstrandsp*/true,chromosome_iit,levels);
+
+  if (levels != NULL) {
+    FREE(levels);
+  }
+  FREE(matches);
+  return;
+}
+
 
 static void
 print_two_coords (char *genomesubdir, char *fileroot, unsigned int left, unsigned int length) {
@@ -291,7 +351,7 @@ translate_chromosomepos (unsigned int *genomicstart, unsigned int *genomiclength
     interval = IIT_interval(chromosome_iit,index);
     *genomicstart = Interval_low(interval)+left;
     if (length == 0) {
-      *genomiclength = Interval_length(interval)-left;
+      *genomiclength = Interval_length(interval)-1U-left;
     } else {
       *genomiclength = length;
     }
@@ -362,7 +422,7 @@ parse_query (Genomicpos_T *genomicstart, Genomicpos_T *genomiclength, bool *revc
       rc = -1;
     }
 
-    IIT_free_mmapped(&chromosome_iit);
+    IIT_free(&chromosome_iit);
 
     if (rc != 0) {
       /* Try contig */
@@ -385,7 +445,7 @@ parse_query (Genomicpos_T *genomicstart, Genomicpos_T *genomiclength, bool *revc
 	rc = -1;
       }
 
-      IIT_free_mmapped(&contig_iit);
+      IIT_free(&contig_iit);
     }
 
     if (rc != 0) {
@@ -418,7 +478,7 @@ parse_query (Genomicpos_T *genomicstart, Genomicpos_T *genomiclength, bool *revc
       debug(printf("contig\n"));
       rc = translate_contig(&(*genomicstart),&(*genomiclength),query,left=0,length=0,contig_iit);
 
-      IIT_free_mmapped(&contig_iit);
+      IIT_free(&contig_iit);
     }
 
     if (rc != 0) {
@@ -470,11 +530,11 @@ int
 main (int argc, char *argv[]) {
   char *iitfile;
   Genomicpos_T genomicstart, genomiclength, sourcelength, extra;
-  char *genomesubdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL;
+  char *genomesubdir = NULL, *mapdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL;
   char *gbuffer1, *gbuffer2, *gbuffer3;
   Sequence_T genomicseg;
   Genome_T genome;
-  IIT_T chromosome_iit, contig_iit, altstrain_iit = NULL;
+  IIT_T chromosome_iit, contig_iit, altstrain_iit = NULL, map_iit = NULL;
   Interval_T interval;
   char *strain;
   int user_type = -1, type, *indexarray, nindices, i, j;
@@ -484,7 +544,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:LIV?",
+  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:M:m:rLIV?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -502,6 +562,9 @@ main (int argc, char *argv[]) {
     case 'l': wraplength = atoi(optarg); break;
     case 'G': uncompressedp = true; break;
     case 'h': header = optarg; break;
+    case 'M': user_mapdir = optarg; break;
+    case 'm': map_iitfile = optarg; break;
+    case 'r': levelsp = true; break;
 
     case 'L': dumpchrp = true; break;
     case 'I': dumpsegsp = true; break;
@@ -533,7 +596,7 @@ main (int argc, char *argv[]) {
     FREE(iitfile);
 
     IIT_dump_formatted(chromosome_iit,/*directionalp*/false);
-    IIT_free_mmapped(&chromosome_iit);
+    IIT_free(&chromosome_iit);
     return 0;
 
   } else if (dumpsegsp == true) {
@@ -544,7 +607,7 @@ main (int argc, char *argv[]) {
     FREE(iitfile);
 
     IIT_dump_formatted(contig_iit,/*directionalp*/true);
-    IIT_free_mmapped(&contig_iit);
+    IIT_free(&contig_iit);
     return 0;
 
   } else if (argc < 1) {
@@ -561,8 +624,34 @@ main (int argc, char *argv[]) {
     debug(printf("Query parsed as: genomicstart = %u, genomiclength = %u, revcomp = %d\n",
 		 genomicstart,genomiclength,revcomp));
 
-    if (coordp == true) {
+    if (map_iitfile != NULL) {
+      mapdir = Datadir_find_mapdir(user_mapdir,genomesubdir,fileroot);
+      iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
+				strlen(map_iitfile)+strlen(".iit")+1,sizeof(char));
+      sprintf(iitfile,"%s/%s.iit",mapdir,map_iitfile);
+      if ((map_iit = IIT_read(iitfile,map_iitfile,true)) == NULL) {
+	fprintf(stderr,"Map file %s.iit not found in %s.  Available files:\n",map_iitfile,mapdir);
+	Datadir_list_directory(stderr,mapdir);
+	fprintf(stderr,"Either install file %s.iit or specify a full directory path\n",map_iitfile);
+	fprintf(stderr,"using the -M flag to gmap.\n");
+	exit(9);
+      }
+      FREE(iitfile);
+      FREE(mapdir);
+
+      iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+				strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+      sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
+      chromosome_iit = IIT_read(iitfile,NULL,true);
+      FREE(iitfile);
+
+      print_map(map_iit,chromosome_iit,genomicstart,genomiclength);
+      IIT_free(&chromosome_iit);
+      IIT_free(&map_iit);
+
+    } else if (coordp == true) {
       print_two_coords(genomesubdir,fileroot,genomicstart,genomiclength);
+
     } else {
       gbuffer1 = (char *) CALLOC(genomiclength+1,sizeof(char));
       gbuffer2 = (char *) CALLOC(genomiclength+1,sizeof(char));
@@ -666,7 +755,7 @@ main (int argc, char *argv[]) {
 	  }
 	  FREE(indexarray);
 	}
-	IIT_free_mmapped(&altstrain_iit);
+	IIT_free(&altstrain_iit);
       }
       Genome_free(&genome);
       FREE(gbuffer2);

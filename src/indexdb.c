@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.67 2005/07/08 14:39:48 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.81 2005/10/21 16:43:05 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -22,34 +22,21 @@ static char rcsid[] = "$Id: indexdb.c,v 1.67 2005/07/08 14:39:48 twu Exp $";
 #include <stdlib.h>
 #include <string.h>		/* For memset */
 #include <ctype.h>		/* For toupper */
+#include <sys/mman.h>		/* For munmap */
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>		/* For mmap on Linux and for lseek */
+#include <unistd.h>		/* For lseek and close */
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>		/* For mmap and off_t */
+#include <sys/types.h>		/* For off_t */
 #endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>		/* For open */
-#endif
-#include <sys/mman.h>		/* For mmap */
-/* Not sure why this was included
-#include <errno.h>
-*/
-#ifdef PAGESIZE_VIA_SYSCTL
-#include <sys/sysctl.h>
-#endif
+
 #include "mem.h"
-#include "stopwatch.h"
 #include "compress.h"
+#include "access.h"
 
 #ifdef HAVE_PTHREAD
 #include <pthread.h>		/* sys/types.h already included above */
 #endif
-
-#define PAGESIZE 1024*4
 
 /* An offset into the positions file of an IndexDB.  Typically, 3
    billion divided by sampling interval, requiring a maximum of 32
@@ -60,39 +47,83 @@ typedef UINT4 Positionsptr_T;
 #define MAXENTRIES 20
 #define BADVAL (Genomicpos_T) -1
 
+/* Low-level codon hacking */
 #ifdef DEBUG
 #define debug(x) x
 #else
 #define debug(x)
 #endif
 
+/* Output of positions */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
+#endif
+
+/* Shifting of high word to low word for PMAP */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
+#endif
+
+
 #define T Indexdb_T
 struct T {
+  Access_T offsets_access;
+  int offsets_fd;
+  size_t offsets_len;
   Positionsptr_T *offsets;
+#ifdef HAVE_PTHREAD
+#ifdef PMAP
+  pthread_mutex_t offsets_read_mutex;
+#endif
+#endif
 
+  Access_T positions_access;
   int positions_fd;
   size_t positions_len;
   Genomicpos_T *positions;
-
-  bool user_provided_p;
-  bool batchp;
+#ifdef HAVE_PTHREAD
+  pthread_mutex_t positions_read_mutex;
+#endif
 };
 
 
 void
 Indexdb_free (T *old) {
   if (*old) {
-    if ((*old)->user_provided_p == true) {
+    if ((*old)->positions_access == ALLOCATED) {
       FREE((*old)->positions);
-    } else {
 #ifdef HAVE_MMAP
-      if ((*old)->positions != NULL) {
-	munmap((void *) (*old)->positions,(*old)->positions_len);
-      }
+    } else if ((*old)->positions_access == MMAPPED) {
+      munmap((void *) (*old)->positions,(*old)->positions_len);
+      close((*old)->positions_fd);
+#endif
+    } else if ((*old)->positions_access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_destroy(&(*old)->positions_read_mutex);
 #endif
       close((*old)->positions_fd);
     }
-    FREE((*old)->offsets);
+
+    if ((*old)->offsets_access == ALLOCATED) {
+      FREE((*old)->offsets);
+#ifdef HAVE_MMAP
+    } else if ((*old)->offsets_access == MMAPPED) {
+      munmap((void *) (*old)->offsets,(*old)->offsets_len);
+      close((*old)->offsets_fd);
+#endif
+    } else if ((*old)->offsets_access == FILEIO) {
+#ifdef HAVE_PTHREAD
+#ifdef PMAP
+      pthread_mutex_destroy(&(*old)->offsets_read_mutex);
+#endif
+#endif
+      close((*old)->offsets_fd);
+    }
+
     FREE(*old);
   }
   return;
@@ -100,140 +131,150 @@ Indexdb_free (T *old) {
 
 
 T
-Indexdb_new_genome (char *genomesubdir, char *fileroot, bool batchp) {
+Indexdb_new_genome (char *genomesubdir, char *fileroot,
+#ifdef PMAP
+		    bool watsonp,
+#endif
+		    bool batch_offsets_p, bool batch_positions_p) {
   T new = (T) MALLOC(sizeof(*new));
   char *filename;
-  FILE *fp;
-  int offsets_fd;
-  struct stat sb;
-  int pagesize, indicesperpage, totalindices;
-  size_t i;
-  int nzero = 0, npos = 0;
-
-#ifdef PAGESIZE_VIA_SYSCTL
   size_t len;
-  int mib[2];
-#endif
-
-  new->user_provided_p = false;
-  new->batchp = batchp;
+  int npages;
+  double seconds;
 
   /* Read offsets file */
+#ifdef PMAP
+  if (watsonp == true) {
+    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			       strlen(fileroot)+strlen(".pfxoffsets")+1,sizeof(char));
+    sprintf(filename,"%s/%s.pfxoffsets",genomesubdir,fileroot);
+  } else {
+    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			       strlen(fileroot)+strlen(".prxoffsets")+1,sizeof(char));
+    sprintf(filename,"%s/%s.prxoffsets",genomesubdir,fileroot);
+  }
+#else
   filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			     strlen(fileroot)+strlen(".idxoffsets")+1,sizeof(char));
   sprintf(filename,"%s/%s.idxoffsets",genomesubdir,fileroot);
-  if ((offsets_fd = open(filename,O_RDONLY,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
-    exit(9);
-  }
-  fstat(offsets_fd,&sb);
-  close(offsets_fd);
+#endif
 
-  if ((fp = fopen(filename,"r")) == NULL) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
-    exit(9);
-  }
-  new->offsets = (Positionsptr_T *) MALLOC(sb.st_size);
-  if (batchp == true) {
-    FREAD_UINTS(new->offsets,sb.st_size/sizeof(Positionsptr_T),fp);
+#ifdef PMAP
+#ifndef HAVE_MMAP
+  new->offsets = (Positionsptr_T *) NULL;
+  new->offsets_fd = Access_fileio(filename);
+  new->offsets_access = FILEIO;
+#else
+  if (batch_offsets_p == true) {
+    fprintf(stderr,"Pre-loading offsets db...");
+    new->offsets = (Positionsptr_T *) Access_mmap_and_preload(&new->offsets_fd,&new->offsets_len,&npages,&seconds,
+							    filename,sizeof(Positionsptr_T));
+    if (new->offsets == NULL) {
+      fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+      new->offsets_access = FILEIO;
+    } else {
+      fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
+	      new->offsets_len,npages,seconds);
+      new->offsets_access = MMAPPED;
+    }
   } else {
-    /* Note: Need to convert to bigendian later, as needed */
-    fread(new->offsets,sizeof(Positionsptr_T),sb.st_size/sizeof(Positionsptr_T),fp);
+    new->offsets = (Positionsptr_T *) Access_mmap(&new->offsets_fd,&new->offsets_len,
+						  filename,sizeof(Positionsptr_T),/*randomp*/false);
+    if (new->offsets == NULL) {
+      new->offsets_access = FILEIO;
+    } else {
+      new->offsets_access = MMAPPED;
+    }
   }
-  fclose(fp);
+
+#ifdef HAVE_PTHREAD
+  if (new->offsets_access == FILEIO) {
+    pthread_mutex_init(&new->offsets_read_mutex,NULL);
+  }
+#endif
+
+#endif
+
+#else
+
+#ifndef HAVE_MMAP
+  new->offsets = (Positionsptr_T *) Access_allocated(&len,&seconds,filename,sizeof(Positionsptr_T));
+  new->offsets_access = ALLOCATED;
+#else
+  if (batch_offsets_p == true) {
+    fprintf(stderr,"Pre-reading offsets db...");
+    new->offsets = (Positionsptr_T *) Access_allocated(&len,&seconds,filename,sizeof(Positionsptr_T));
+    fprintf(stderr,"done (%u bytes, %.2f sec)\n",(unsigned int) len,seconds);
+    new->offsets_access = ALLOCATED;
+  } else {
+    new->offsets = (Positionsptr_T *) Access_mmap(&new->offsets_fd,&new->offsets_len,
+						  filename,sizeof(Positionsptr_T),/*randomp*/false);
+    if (new->offsets == NULL) {
+      new->offsets = (Positionsptr_T *) Access_allocated(&len,&seconds,filename,sizeof(Positionsptr_T));
+      close(new->offsets_fd);	/* Needed here because ALLOCATED implies fd is closed */
+      new->offsets_access = ALLOCATED;
+    } else {
+      new->offsets_access = MMAPPED;
+    }
+  }
+#endif
+
+#endif
+
   FREE(filename);
 
 
   /* Read positions file */
+#ifdef PMAP
+  if (watsonp == true) {
+    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			       strlen(fileroot)+strlen(".pfxpositions")+1,sizeof(char));
+    sprintf(filename,"%s/%s.pfxpositions",genomesubdir,fileroot);
+  } else {
+    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			       strlen(fileroot)+strlen(".prxpositions")+1,sizeof(char));
+    sprintf(filename,"%s/%s.prxpositions",genomesubdir,fileroot);
+  }
+#else
   filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			     strlen(fileroot)+strlen(".idxpositions")+1,sizeof(char));
   sprintf(filename,"%s/%s.idxpositions",genomesubdir,fileroot);
-  if ((new->positions_fd = open(filename,O_RDONLY,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
-    exit(9);
-  }
-  fstat(new->positions_fd,&sb);
-  new->positions_len = sb.st_size;
+#endif
+
 #ifndef HAVE_MMAP
-  new->positions = NULL;
+  new->positions = (Genomicpos_T *) NULL;
+  new->positions_fd = Access_fileio(filename);
+  new->positions_access = FILEIO;
 #else
-
-  if (batchp == true) {
-
-#ifdef __STRICT_ANSI__
-    pagesize = PAGESIZE;
-#elif defined(HAVE_GETPAGESIZE)
-    pagesize = getpagesize();
-#elif defined(PAGESIZE_VIA_SYSCONF)
-    pagesize = (int) sysconf(_SC_PAGESIZE);
-#elif defined(PAGESIZE_VIA_SYSCTL)
-    len = sizeof(pagesize);
-    mib[0] = CTL_HW;
-    mib[1] = HW_PAGESIZE;
-    sysctl(mib,2,&pagesize,&len,NULL,0);
-#else
-    pagesize = PAGESIZE;
-#endif
-
-    indicesperpage = pagesize/sizeof(Genomicpos_T);
-    fprintf(stderr,"Pre-loading index db every %d indices/page...",
-	    indicesperpage);
-    Stopwatch_start();
-  }
-
-  new->positions = (Genomicpos_T *) mmap(NULL,sb.st_size,PROT_READ,0
-#ifdef HAVE_MMAP_MAP_SHARED
-					 |MAP_SHARED
-#endif
-#ifdef HAVE_MMAP_MAP_FILE
-					 |MAP_FILE
-#endif
-#ifdef HAVE_MMAP_MAP_VARIABLE
-					 |MAP_VARIABLE
-#endif
-					 ,new->positions_fd,0);
-  if (new->positions == MAP_FAILED) {
-    new->positions = NULL;
-    if (batchp == true) {
-      Stopwatch_stop();
+  if (batch_positions_p == true) {
+    fprintf(stderr,"Pre-loading positions db...");
+    new->positions = (Genomicpos_T *) Access_mmap_and_preload(&new->positions_fd,&new->positions_len,&npages,&seconds,
+							    filename,sizeof(Genomicpos_T));
+    if (new->positions == NULL) {
       fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+      new->positions_access = FILEIO;
+    } else {
+      fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
+	      new->positions_len,npages,seconds);
+      new->positions_access = MMAPPED;
     }
-  } else if (batchp == false) {
-#ifdef HAVE_MADVISE
-#ifdef HAVE_MADVISE_MADV_RANDOM
-#ifdef HAVE_CADDR_T
-    madvise((caddr_t) new->positions,new->positions_len,MADV_RANDOM);
-#else
-    madvise((void *) new->positions,new->positions_len,MADV_RANDOM);
-#endif
-#endif
-#endif
   } else {
-    /* Touch all pages */
-#ifdef HAVE_MADVISE
-#ifdef HAVE_MADVISE_MADV_WILLNEED
-#ifdef HAVE_CADDR_T
-    madvise((caddr_t) new->positions,new->positions_len,MADV_WILLNEED);
-#else
-    madvise((void *) new->positions,new->positions_len,MADV_WILLNEED);
-#endif
-#endif
-#endif
-    totalindices = new->positions_len/sizeof(Genomicpos_T);
-    for (i = 0; i < totalindices; i += indicesperpage) {
-      /* memcpy(temp,(caddr_t) new->positions + i,pagesize); */
-      if (new->positions[i] == 0U) {
-	nzero++;
-      } else {
-	npos++;
-      }
-      if (i % 10000 == 0) {
-	fprintf(stderr,".");
-      }
+    new->positions = (Genomicpos_T *) Access_mmap(&new->positions_fd,&new->positions_len,
+						  filename,sizeof(Genomicpos_T),/*randomp*/true);
+    if (new->positions == NULL) {
+      new->positions_access = FILEIO;
+    } else {
+      new->positions_access = MMAPPED;
     }
-    fprintf(stderr,"done (%d pages, %.2f sec)\n",nzero+npos,Stopwatch_stop());
   }
-#endif /* HAVE_MMAP */
+#endif
+
+#ifdef HAVE_PTHREAD
+  if (new->positions_access == FILEIO) {
+    pthread_mutex_init(&new->positions_read_mutex,NULL);
+  }
+#endif
+
   FREE(filename);
 
   return new;
@@ -243,6 +284,37 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, bool batchp) {
 /************************************************************************
  *   Read procedures
  ************************************************************************/
+
+#ifdef PMAP
+static void
+offsets_move_absolute (T this, unsigned int aaindex) {
+  off_t offset = aaindex*((off_t) sizeof(Positionsptr_T));
+
+  if (lseek(this->offsets_fd,offset,SEEK_SET) < 0) {
+    perror("Error in gmap, offsets_move_absolute");
+    exit(9);
+  }
+  return;
+}
+
+static Positionsptr_T
+offsets_read_forward (T this) {
+  Positionsptr_T value;
+  char buffer[4];
+
+  read(this->offsets_fd,buffer,4);
+
+  value = (buffer[3] & 0xff);
+  value <<= 8;
+  value |= (buffer[2] & 0xff);
+  value <<= 8;
+  value |= (buffer[1] & 0xff);
+  value <<= 8;
+  value |= (buffer[0] & 0xff);
+
+  return value;
+}
+#endif
 
 static void
 positions_move_absolute (T this, Positionsptr_T ptr) {
@@ -256,7 +328,7 @@ positions_move_absolute (T this, Positionsptr_T ptr) {
 }
 
 static Genomicpos_T
-positions_read_current (T this) {
+positions_read_forward (T this) {
   Genomicpos_T value;
   char buffer[4];
 
@@ -274,7 +346,7 @@ positions_read_current (T this) {
 }
 
 static Genomicpos_T
-positions_read_backwards (T this) {
+positions_read_backward (T this) {
   Genomicpos_T value;
   char buffer[4];
   off_t reloffset = -2*((off_t) sizeof(Genomicpos_T)); /* 1 to undo the effect of read */
@@ -290,20 +362,132 @@ positions_read_backwards (T this) {
   value |= (buffer[0] & 0xff);
 
   if (lseek(this->positions_fd,reloffset,SEEK_CUR) < 0) {
-    perror("Error in gmap, positions_read_backwards");
+    perror("Error in gmap, positions_read_backward");
     exit(9);
   }
     
   return value;
 }
 
+#ifdef PMAP
+
+/* PMAP version */
+Genomicpos_T *
+Indexdb_read (int *nentries, T this, unsigned int aaindex) {
+  Genomicpos_T *positions, position0, expected1, position1;
+  Positionsptr_T ptr, ptr0, end0;
+  int i;
+  char byte1, byte2, byte3;
+  int bigendian, littleendian;
+
+  switch (this->offsets_access) {
+  case FILEIO:
 #ifdef HAVE_PTHREAD
-static pthread_mutex_t indexdb_read_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&this->offsets_read_mutex);
+#endif
+    offsets_move_absolute(this,aaindex);
+    ptr0 = offsets_read_forward(this);
+    end0 = offsets_read_forward(this);
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->offsets_read_mutex);
+#endif
+    break;
+
+  case ALLOCATED:
+    ptr0 = this->offsets[aaindex];
+    end0 = this->offsets[aaindex+1];
+    break;
+
+  case MMAPPED:
+#ifdef WORDS_BIGENDIAN
+    ptr0 = Bigendian_convert_uint(this->offsets[aaindex]);
+    end0 = Bigendian_convert_uint(this->offsets[aaindex+1]);
+#else
+    ptr0 = this->offsets[aaindex];
+    end0 = this->offsets[aaindex+1];
+#endif
+    break;
+  }
+  debug(printf("offset pointers are %u and %u\n",ptr0,end0));
+
+  /* Skip backward over bad values, due to duplicates */
+  if (this->positions_access == FILEIO) {
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->positions_read_mutex);
+#endif
+    positions_move_absolute(this,end0-1);
+    while (end0 > ptr0 && positions_read_backward(this) == BADVAL) {
+      end0--;
+    }
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->positions_read_mutex);
+#endif
+  } else {
+    while (end0 > ptr0 && this->positions[end0-1] == BADVAL) {
+      end0--;
+    }
+  }
+
+  *nentries = end0 - ptr0;
+
+  if (*nentries == 0) {
+    return NULL;
+  } else {
+    positions = (Genomicpos_T *) CALLOC(*nentries,sizeof(Genomicpos_T));
+    if (this->positions_access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->positions_read_mutex);
+#endif
+      positions_move_absolute(this,ptr0);
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
+	positions[i] = positions_read_forward(this);
+      }
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
+    } else if (this->positions_access == ALLOCATED) {
+      memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Genomicpos_T));
+
+    } else {
+#ifdef WORDS_BIGENDIAN
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
+	littleendian = this->positions[ptr];
+	bigendian = littleendian & 0xff;
+	byte1 = (littleendian >>= 8);
+	byte2 = (littleendian >>= 8);
+	byte3 = (littleendian >>= 8);
+	  
+	bigendian <<= 8;
+	bigendian |= (byte1 & 0xff);
+	bigendian <<= 8;
+	bigendian |= (byte2 & 0xff);
+	bigendian <<= 8;
+	bigendian |= (byte3 & 0xff);
+	  
+	positions[i] = bigendian;
+      }
+#else
+      memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Genomicpos_T));
+#endif
+    }
+    debug(
+	  printf("%d entries:",*nentries);
+	  for (i = 0; i < *nentries; i++) {
+	    printf(" %u",positions[i]);
+	  }
+	  printf("\n");
+	  );
+
+    return positions;
+  }
+}
+
+#else
 /*                 87654321 */
 #define LOW12MER 0x00FFFFFF
 
+/* GMAP version */
 Genomicpos_T *
 Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
   Genomicpos_T *positions;
@@ -323,26 +507,40 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
     return NULL;
   }
 
-#ifdef WORDS_BIGENDIAN
-  if (this->user_provided_p == true || this->batchp == true) {
+  switch (this->offsets_access) {
+  case ALLOCATED:
     ptr0 = this->offsets[part0];
     end0 = this->offsets[part0+1];
-  } else {
+    break;
+
+  case MMAPPED:
+#ifdef WORDS_BIGENDIAN
     ptr0 = Bigendian_convert_uint(this->offsets[part0]);
     end0 = Bigendian_convert_uint(this->offsets[part0+1]);
-  }
 #else
-  ptr0 = this->offsets[part0];
-  end0 = this->offsets[part0+1];
+    ptr0 = this->offsets[part0];
+    end0 = this->offsets[part0+1];
 #endif
+    break;
+
+  case FILEIO:
+    abort();
+  }
+
   debug(printf("offset pointers are %u and %u\n",ptr0,end0));
 
   /* Skip backward over bad values, due to duplicates */
-  if (this->positions == NULL) {
+  if (this->positions_access == FILEIO) {
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->positions_read_mutex);
+#endif
     positions_move_absolute(this,end0-1);
-    while (end0 > ptr0 && positions_read_backwards(this) == BADVAL) {
+    while (end0 > ptr0 && positions_read_backward(this) == BADVAL) {
       end0--;
     }
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->positions_read_mutex);
+#endif
   } else {
     while (end0 > ptr0 && this->positions[end0-1] == BADVAL) {
       end0--;
@@ -355,40 +553,37 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
     return NULL;
   } else {
     positions = (Genomicpos_T *) CALLOC(*nentries,sizeof(Genomicpos_T));
-    if (this->positions == NULL) {
-      /* non-mmap procedures */
+    if (this->positions_access == FILEIO) {
 #ifdef HAVE_PTHREAD
-      pthread_mutex_lock(&indexdb_read_mutex);
+      pthread_mutex_lock(&this->positions_read_mutex);
 #endif
       positions_move_absolute(this,ptr0);
       for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
-	positions[i] = positions_read_current(this);
+	positions[i] = positions_read_forward(this);
       }
 #ifdef HAVE_PTHREAD
-      pthread_mutex_unlock(&indexdb_read_mutex);
+      pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
+    } else if (this->positions_access == ALLOCATED) {
+      memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Genomicpos_T));
+
     } else {
-      /* mmap procedures */
 #ifdef WORDS_BIGENDIAN
-      if (this->user_provided_p == true) {
-	memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Genomicpos_T));
-      } else {
-	for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
-	  littleendian = this->positions[ptr];
-	  bigendian = littleendian & 0xff;
-	  byte1 = (littleendian >>= 8);
-	  byte2 = (littleendian >>= 8);
-	  byte3 = (littleendian >>= 8);
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
+	littleendian = this->positions[ptr];
+	bigendian = littleendian & 0xff;
+	byte1 = (littleendian >>= 8);
+	byte2 = (littleendian >>= 8);
+	byte3 = (littleendian >>= 8);
 	  
-	  bigendian <<= 8;
-	  bigendian |= (byte1 & 0xff);
-	  bigendian <<= 8;
-	  bigendian |= (byte2 & 0xff);
-	  bigendian <<= 8;
-	  bigendian |= (byte3 & 0xff);
+	bigendian <<= 8;
+	bigendian |= (byte1 & 0xff);
+	bigendian <<= 8;
+	bigendian |= (byte2 & 0xff);
+	bigendian <<= 8;
+	bigendian |= (byte3 & 0xff);
 	  
-	  positions[i] = bigendian;
-	}
+	positions[i] = bigendian;
       }
 #else
       memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Genomicpos_T));
@@ -406,9 +601,10 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
   }
 }
 
+#endif
 
 /************************************************************************
- *   Write procedures -- called by gmapindex
+ *   Write procedures -- called by gmapindex/pmapindex
  ************************************************************************/
 
 static int
@@ -421,34 +617,540 @@ power (int base, int exponent) {
   return result;
 }
 
+#ifdef PMAP
+/*                  87654321 */
+#define LOW_CODON 0x0000003F
 
+/*                87654321 */
+#define RIGHT_A 0x00000000
+#define RIGHT_C 0x00000001
+#define RIGHT_G 0x00000002
+#define RIGHT_T 0x00000003
+
+/*                      87654321 */
+#define LOW_TWO_BITS  0x00000003
+
+static char *
+shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
+  char *nt;
+  int i, j;
+  Storedoligomer_T lowbits;
+
+  nt = (char *) CALLOC(oligosize+1,sizeof(char));
+  j = oligosize-1;
+  for (i = 0; i < oligosize; i++) {
+    lowbits = oligo & LOW_TWO_BITS;
+    switch (lowbits) {
+    case RIGHT_A: nt[j] = 'A'; break;
+    case RIGHT_C: nt[j] = 'C'; break;
+    case RIGHT_G: nt[j] = 'G'; break;
+    case RIGHT_T: nt[j] = 'T'; break;
+    }
+    oligo >>= 2;
+    j--;
+  }
+
+  return nt;
+}
+
+/*              87654321 */
+#define CHAR1 0x00000030
+#define CHAR2 0x0000000C
+#define CHAR3 0x00000003
+
+#define A1    0x00000000
+#define C1    0x00000010
+#define G1    0x00000020
+#define T1    0x00000030
+
+#define A2    0x00000000
+#define C2    0x00000004
+#define G2    0x00000008
+#define T2    0x0000000C
+
+#define A3    0x00000000
+#define C3    0x00000001
+#define G3    0x00000002
+#define T3    0x00000003
+
+/* Amino acids are collapsed from 20 to 15, because 20^7*4 is greater
+   than 2 GB, and 15^7*4 is less than 2 GB.  Now have DE, NQ, ST, and
+   ILV. */
+
+#ifdef NOCOLLAPSE
+typedef enum {AA_A, AA_C, AA_D, AA_E, AA_F, 
+	      AA_G, AA_H, AA_I, AA_K, AA_L,
+	      AA_M, AA_N, AA_P, AA_Q, AA_R,
+	      AA_S, AA_T, AA_V, AA_W, AA_Y,
+	      AA_STOP} Aminoacid_T;
+#else
+typedef enum {AA_A, AA_C, AA_DE, AA_F, 
+	      AA_G, AA_H, AA_ILV, AA_K,
+	      AA_M, AA_NQ, AA_P, AA_R,
+	      AA_ST, AA_W, AA_Y, AA_STOP} Aminoacid_T;
+#endif
+
+static int
+get_codon_fwd (Storedoligomer_T codon) {
+  switch (codon & CHAR2) {
+  case T2:
+    switch (codon & CHAR1) {
+    case T1:
+      switch (codon & CHAR3) {
+      case T3: case C3: return AA_F;
+      default: /* case A3: case G3: */
+#ifdef NOCOLLAPSE
+	return AA_L;
+#else
+	return AA_ILV;
+#endif
+      }
+    case C1:
+#ifdef NOCOLLAPSE
+      return AA_L;
+#else
+      return AA_ILV;
+#endif
+    case A1: 
+      switch (codon & CHAR3) {
+      case G3: return AA_M;
+      default: /* case T3: case A3: case C3: */
+#ifdef NOCOLLAPSE
+	return AA_I;
+#else
+	return AA_ILV;
+#endif
+      }
+    default: /* case G1: */
+#ifdef NOCOLLAPSE
+      return AA_V;
+#else
+      return AA_ILV;
+#endif
+  }
+  case C2:
+    switch (codon & CHAR1) {
+    case C1: return AA_P;
+#ifdef NOCOLLAPSE
+    case T1: return AA_S;
+    case A1: return AA_T;
+#else
+    case T1: case A1: return AA_ST;
+#endif
+    default: /* case G1: */ return AA_A;
+    }
+  case A2:
+    switch (codon & CHAR1) {
+    case T1:
+      switch (codon & CHAR3) {
+      case T3: case C3: return AA_Y;
+      default: /* case A3: case G3: */ return AA_STOP;
+      }
+    case C1:
+      switch (codon & CHAR3) {
+      case T3: case C3: return AA_H;
+      default: /* case A3: case G3: */
+#ifdef NOCOLLAPSE
+	return AA_Q;
+#else
+	return AA_NQ;
+#endif
+      }
+    case A1:
+      switch (codon & CHAR3) {
+      case T3: case C3: 
+#ifdef NOCOLLAPSE
+	return AA_N;
+#else
+	return AA_NQ;
+#endif
+      default: /* case A3: case G3: */ return AA_K;
+      }
+    default: /* case G1: */
+#ifdef NOCOLLAPSE
+      switch (codon & CHAR3) {
+      case T3: case C3: return AA_D;
+      default: /* case A3: case G3: */ return AA_E;
+      }
+#else
+      return AA_DE;
+#endif
+    }
+  default: /* case G2: */
+    switch (codon & CHAR1) {
+    case T1:
+      switch (codon & CHAR3) {
+      case T3: case C3: return AA_C;
+      case A3: return AA_STOP;
+      default: /* case G3: */ return AA_W;
+      }
+    case C1: return AA_R;
+    case A1:
+      switch (codon & CHAR3) {
+      case T3: case C3:
+#ifdef NOCOLLAPSE
+	return AA_S;
+#else
+	return AA_ST;
+#endif
+      default: /* case A3: case G3: */ return AA_R;
+      }
+    default: /* case G1: */ return AA_G;
+    }
+  }
+
+  abort();
+  return -1;
+}
+
+
+static int
+get_codon_rev (Storedoligomer_T codon) {
+  switch (codon & CHAR2) {
+  case A2:
+    switch (codon & CHAR3) {
+    case A3:
+      switch (codon & CHAR1) {
+      case A1: case G1: debug(printf("F\n")); return AA_F;
+      default: /* case T1: case C1: */
+#ifdef NOCOLLAPSE
+	debug(printf("L\n"));
+	return AA_L;
+#else
+	debug(printf("[ILV]\n"));
+	return AA_ILV;
+#endif
+      }
+    case G3:
+#ifdef NOCOLLAPSE
+      debug(printf("L\n"));
+      return AA_L;
+#else
+      debug(printf("[ILV]\n"));
+      return AA_ILV;
+#endif
+    case T3: 
+      switch (codon & CHAR1) {
+      case C1: debug(printf("M\n")); return AA_M;
+      default: /* case A1: case T1: case G1: */
+#ifdef NOCOLLAPSE
+	debug(printf("I\n"));
+	return AA_I;
+#else
+	debug(printf("[ILV]\n"));
+	return AA_ILV;
+#endif
+      }
+    default: /* case C3: */
+#ifdef NOCOLLAPSE
+      debug(printf("V\n"));
+      return AA_V;
+#else
+      debug(printf("[ILV]\n"));
+      return AA_ILV;
+#endif
+  }
+  case G2:
+    switch (codon & CHAR3) {
+    case G3: debug(printf("P\n")); return AA_P;
+#ifdef NOCOLLAPSE
+    case A3: debug(printf("S\n")); return AA_S;
+    case T3: debug(printf("T\n")); return AA_T;
+#else
+    case A3: case T3: debug(printf("[ST]\n")); return AA_ST;
+#endif
+    default: /* case C3: */ debug(printf("A\n")); return AA_A;
+    }
+  case T2:
+    switch (codon & CHAR3) {
+    case A3:
+      switch (codon & CHAR1) {
+      case A1: case G1: debug(printf("Y\n")); return AA_Y;
+      default: /* case T1: case C1: */ debug(printf("*\n")); return AA_STOP;
+      }
+    case G3:
+      switch (codon & CHAR1) {
+      case A1: case G1: debug(printf("H\n")); return AA_H;
+      default: /* case T1: case C1: */
+#ifdef NOCOLLAPSE
+	debug(printf("Q\n"));
+	return AA_Q;
+#else
+	debug(printf("[NQ]\n"));
+	return AA_NQ;
+#endif
+      }
+    case T3:
+      switch (codon & CHAR1) {
+      case A1: case G1: 
+#ifdef NOCOLLAPSE
+	debug(printf("N\n"));
+	return AA_N;
+#else
+	debug(printf("[NQ]\n"));
+	return AA_NQ;
+#endif
+      default: /* case T1: case C1: */ debug(printf("K\n")); return AA_K;
+      }
+    default: /* case C3: */
+#ifdef NOCOLLAPSE
+      switch (codon & CHAR1) {
+      case A1: case G1: debug(printf("D\n")); return AA_D;
+      default: /* case T1: case C1: */ debug(printf("E\n")); return AA_E;
+      }
+#else
+      debug(printf("[DE]\n"));
+      return AA_DE;
+#endif
+    }
+  default: /* case C2: */
+    switch (codon & CHAR3) {
+    case A3:
+      switch (codon & CHAR1) {
+      case A1: case G1: debug(printf("C\n")); return AA_C;
+      case T1: debug(printf("*\n")); return AA_STOP;
+      default: /* case C1: */ debug(printf("W\n")); return AA_W;
+      }
+    case G3: debug(printf("R\n")); return AA_R;
+    case T3:
+      switch (codon & CHAR1) {
+      case A1: case G1:
+#ifdef NOCOLLAPSE
+	debug(printf("S\n"));
+	return AA_S;
+#else
+	debug(printf("[ST]\n"));
+	return AA_ST;
+#endif
+      default: /* case T1: case C1: */ debug(printf("R\n")); return AA_R;
+      }
+    default: /* case C3: */ debug(printf("G\n")); return AA_G;
+    }
+  }
+
+  abort();
+  return -1;
+}
+
+
+
+static Storedoligomer_T
+offset_codon (Storedoligomer_T high, Storedoligomer_T low, int offset) {
+  Storedoligomer_T shifted;
+  char *nt;
+
+  if (offset < 14) {
+    shifted = (low >> (offset + offset));
+  } else if (offset == 14) {
+    shifted = (high << 4) | (low >> 28);
+  } else if (offset == 15) {
+    shifted = (high << 2) | (low >> 30);
+  } else {
+    shifted = (high >> (offset + offset - 32));
+  }
+
+  debug2(
+	nt = shortoligo_nt(shifted,3);
+	printf("Offset = %d.  Shifted = %s.  %2X %2X %2X\n",
+	       offset,nt,shifted & CHAR1,shifted & CHAR2,shifted & CHAR3);
+	FREE(nt);
+	);
+
+  return shifted;
+}
+
+
+/*               87654321 */
+#define LEFT_A 0x00000000
+#define LEFT_C 0x40000000
+#define LEFT_G 0x80000000
+#define LEFT_T 0xC0000000
+
+static char *
+highlow_nt (Storedoligomer_T high, Storedoligomer_T low) {
+  char *nt;
+  int i, j;
+  Storedoligomer_T lowbits;
+  int oligosize = INDEX1PART_NT;
+
+  nt = (char *) CALLOC(oligosize+1,sizeof(char));
+  j = oligosize-1;
+  for (i = 0; i < 16; i++) {
+    lowbits = low & LOW_TWO_BITS;
+    switch (lowbits) {
+    case RIGHT_A: nt[j] = 'A'; break;
+    case RIGHT_C: nt[j] = 'C'; break;
+    case RIGHT_G: nt[j] = 'G'; break;
+    case RIGHT_T: nt[j] = 'T'; break;
+    }
+    low >>= 2;
+    j--;
+  }
+  for ( ; i < oligosize; i++) {
+    lowbits = high & LOW_TWO_BITS;
+    switch (lowbits) {
+    case RIGHT_A: nt[j] = 'A'; break;
+    case RIGHT_C: nt[j] = 'C'; break;
+    case RIGHT_G: nt[j] = 'G'; break;
+    case RIGHT_T: nt[j] = 'T'; break;
+    }
+    high >>= 2;
+    j--;
+  }
+
+  return nt;
+}
+
+
+#ifdef NOCOLLAPSE
+static char aa_table[NAMINOACIDS] = "ACDEFGHIKLMNPQRSTVWY";
+#else
+static char aa_table[NAMINOACIDS] = "ACDFGHIKMNPRSWY";
+#endif
+
+static char *
+aaindex_aa (unsigned int aaindex) {
+  char *aa;
+  int i, j;
+  int aasize = INDEX1PART_AA;
+
+  aa = (char *) CALLOC(aasize+1,sizeof(char));
+  j = aasize-1;
+  for (i = 0; i < aasize; i++) {
+    aa[j] = aa_table[aaindex % NAMINOACIDS];
+    aaindex /= NAMINOACIDS;
+    j--;
+  }
+
+  return aa;
+}
+
+
+static unsigned int
+get_aa_index (Storedoligomer_T high, Storedoligomer_T low, bool watsonp) {
+  unsigned int aaindex = 0U;
+  Storedoligomer_T shifted;
+  int i, codonindex;
+  char *nt, *aa;
+
+  if (watsonp == true) {
+    for (i = INDEX1PART_NT-3; i >= 0; i -= 3) {
+      shifted = offset_codon(high,low,i);
+      if ((codonindex = get_codon_fwd(shifted)) == AA_STOP) {
+	fprintf(stderr,"Unexpected stop codon in get_aa_index\n");
+	abort();
+      } else {
+	aaindex = aaindex * NAMINOACIDS + codonindex;
+      }
+    }
+  } else {
+    for (i = 0; i < INDEX1PART_NT; i += 3) {
+      shifted = offset_codon(high,low,i);
+      if ((codonindex = get_codon_rev(shifted)) == AA_STOP) {
+	fprintf(stderr,"Unexpected stop codon in get_aa_index\n");
+	abort();
+      } else {
+	aaindex = aaindex * NAMINOACIDS + codonindex;
+      }
+    }
+  }
+
+  debug(
+	nt = highlow_nt(high,low);
+	aa = aaindex_aa(aaindex);
+	printf("For oligo %s, aa is %s\n",nt,aa);
+	FREE(aa);
+	FREE(nt);
+	);
+
+  return aaindex;
+}
+#endif
+
+
+/* Another MONITOR_INTERVAL is in compress.c */
 #define MONITOR_INTERVAL 10000000 /* 10 million nt */
 
 void
 Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
-		       int index1interval, bool uncompressedp) {
+		       int index1interval,
+#ifdef PMAP
+		       bool watsonp,
+#endif
+		       bool uncompressedp) {
   Positionsptr_T *offsets;
   char *p, b;
+  bool allocp;
   int c, oligospace, index, i;
   Genomicpos_T position = 0;
+#ifdef PMAP
+  int frame = 0, between_counter[3], in_counter[3];
+  Storedoligomer_T high = 0U, low = 0U, carry;
+  unsigned int aaindex;
+#else
   int between_counter = 0, in_counter = 0;
-  Storedoligomer_T oligo = 0, masked, mask;
+  Storedoligomer_T oligo = 0U, masked, mask;
+#endif
   Interval_T interval;
 
+#ifdef PMAP
+  oligospace = power(NAMINOACIDS,INDEX1PART_AA);
+  between_counter[0] = between_counter[1] = between_counter[2] = 0;
+  in_counter[0] = in_counter[1] = in_counter[2] = 0;
+#else
   mask = ~(~0UL << 2*INDEX1PART);
   oligospace = power(4,INDEX1PART);
+#endif
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
 
   /* Handle reference strain */
   while ((c = Compress_get_char(sequence_fp,position,uncompressedp)) != EOF) {
+#ifdef PMAP
+    if (++frame == 3) {
+      frame = 0;
+    }
+    between_counter[frame] += 1;
+    in_counter[frame] += 1;
+#else
     between_counter++;
     in_counter++;
+#endif
     position++;
 
     if (position % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,"Indexing offsets of oligomers in genome (every %d), position %u\n",index1interval,position);
+      fprintf(stderr,"Indexing offsets of oligomers in genome (every %d), position %u",index1interval,position);
+#ifdef PMAP
+      if (watsonp == true) {
+	fprintf(stderr," (fwd)");
+      } else {
+	fprintf(stderr," (rev)");
+      }
+#endif
+      fprintf(stderr,"\n");
     }
 
+#ifdef PMAP
+    carry = (low >> 30);
+    switch (c) {
+    case 'A': low = (low << 2); break;
+    case 'C': low = (low << 2) | 1U; break;
+    case 'G': low = (low << 2) | 2U; break;
+    case 'T': low = (low << 2) | 3U; break;
+    case 'X': case 'N': 
+      high = low = carry = 0U; 
+      in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      break;
+    default: 
+      if (uncompressedp == true) {
+	high = low = carry = 0U;
+	in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      } else {
+	fprintf(stderr,"Bad character %c at position %u\n",c,position-1);
+	abort();
+      }
+    }
+    high = (high << 2) | carry; 
+#else
     switch (c) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
@@ -463,12 +1165,34 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 	abort();
       }
     }
+#endif
 
-    /*
-    debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
-		 c,between_counter,in_counter,oligo));
-    */
+#ifdef PMAP
+    debug(printf("frame=%d char=%c bc=%d ic=%d high=%016lX low=%016lX\n",
+		 frame,c,between_counter[frame],in_counter[frame],high,low));
 
+    if (in_counter[frame] > 0) {
+      if (watsonp == true) {
+	if (get_codon_fwd(low) == AA_STOP) {
+	  debug(printf("Resetting in_counter for frame %d to 0\n",frame));
+	  in_counter[frame] = 0; 
+	}
+      } else {
+	if (get_codon_rev(low) == AA_STOP) {
+	  debug(printf("Resetting in_counter for frame %d to 0\n",frame));
+	  in_counter[frame] = 0; 
+	}
+      }
+    }
+    if (in_counter[frame] == INDEX1PART_AA + 1) {
+      if (between_counter[frame] >= index1interval) {
+	aaindex = get_aa_index(high,low,watsonp);
+	offsets[aaindex + 1U] += 1;
+	between_counter[frame] = 0;
+      }
+      in_counter[frame] -= 1;
+    }
+#else
     if (in_counter == INDEX1PART) {
       if (between_counter >= index1interval) {
 	masked = oligo & mask;
@@ -479,6 +1203,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
       }
       in_counter--;
     }
+#endif
   }
 
   /* Handle alternate strains */
@@ -487,15 +1212,44 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
       interval = IIT_interval(altstrain_iit,index);
 
       position = Interval_low(interval);
-      p = IIT_annotation(altstrain_iit,index); /* Holds the sequence */
+      p = IIT_annotation(altstrain_iit,index,&allocp); /* Holds the sequence */
       
+#ifdef PMAP
+      frame = 0;
+      between_counter[0] = between_counter[1] = between_counter[2] = 0;
+      in_counter[0] = in_counter[1] = in_counter[2] = 0;
+      high = low = 0U;
+#else
       between_counter = in_counter = 0;
       oligo = 0U;
+#endif
       while ((b = *p++) != '\0') {
+#ifdef PMAP
+	if (++frame == 3) {
+	  frame = 0;
+	}
+	between_counter[frame] += 1;
+	in_counter[frame] += 1;
+#else
 	between_counter++;
 	in_counter++;
+#endif
 	position++;
 
+#ifdef PMAP
+	carry = (low >> 30);
+	switch (toupper(b)) {
+	case 'A': low = (low << 2); break;
+	case 'C': low = (low << 2) | 1U; break;
+	case 'G': low = (low << 2) | 2U; break;
+	case 'T': low = (low << 2) | 3U; break;
+	default:
+	  high = low = carry = 0U;
+	  in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+	  break;
+	}
+	high = (high << 2) | carry; 
+#else
 	switch (toupper((int) b)) {
 	case 'A': oligo = (oligo << 2); break;
 	case 'C': oligo = (oligo << 2) | 1; break;
@@ -503,12 +1257,35 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 	case 'T': oligo = (oligo << 2) | 3; break;
 	default: oligo = 0U; in_counter = 0; break;
 	}
+#endif
 	
 	/*
 	  debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
 	  c,between_counter,in_counter,oligo));
 	*/
 
+#ifdef PMAP
+	if (in_counter[frame] > 0) {
+	  if (watsonp == true) {
+	    if (get_codon_fwd(low) == AA_STOP) {
+	      in_counter[frame] = 0; 
+	    }
+	  } else {
+	    if (get_codon_rev(low) == AA_STOP) {
+	      in_counter[frame] = 0; 
+	    }
+	  }
+	}
+
+	if (in_counter[frame] == INDEX1PART_AA + 1) {
+	  if (between_counter[frame] >= index1interval) {
+	    aaindex = get_aa_index(high,low,watsonp);
+	    offsets[aaindex + 1U] += 1;
+	    between_counter[frame] = 0;
+	  }
+	  in_counter[frame] -= 1;
+	}
+#else
 	if (in_counter == INDEX1PART) {
 	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
@@ -519,6 +1296,10 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 	  }
 	  in_counter--;
 	}
+#endif
+      }
+      if (allocp == true) {
+	FREE(p);
       }
     }
   }
@@ -581,28 +1362,80 @@ need_to_sort_p (Genomicpos_T *positions, int length) {
 static void
 compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T *offsets,
 			   FILE *sequence_fp, IIT_T altstrain_iit, int index1interval,
+#ifdef PMAP
+			   bool watsonp,
+#endif
 			   bool uncompressedp) {
   Positionsptr_T block_start, block_end;
   Genomicpos_T *positions_for_block, position = 0, adjposition, prevpos;
   char *p, b;
+  bool allocp;
   int c, oligospace, index, i, npositions, nbadvals, j, k;
+#ifdef PMAP
+  int frame = 0, between_counter[3], in_counter[3];
+  Storedoligomer_T high = 0U, low = 0U, carry;
+  unsigned int aaindex;
+#else
   int between_counter = 0, in_counter = 0;
   Storedoligomer_T oligo = 0U, masked, mask;
+#endif
   Interval_T interval;
 
+#ifdef PMAP
+  oligospace = power(NAMINOACIDS,INDEX1PART_AA);
+#else
   mask = ~(~0UL << 2*INDEX1PART);
   oligospace = power(4,INDEX1PART);
+#endif
 
   /* Handle reference strain */
   while ((c = Compress_get_char(sequence_fp,position,uncompressedp)) != EOF) {
+#ifdef PMAP
+    if (++frame == 3) {
+      frame = 0;
+    }
+    between_counter[frame] += 1;
+    in_counter[frame] += 1;
+#else
     between_counter++;
     in_counter++;
+#endif
     position++;
 
     if (position % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,"Indexing positions of oligomers in genome (every %d), position %u\n",index1interval,position);
+      fprintf(stderr,"Indexing positions of oligomers in genome (every %d), position %u",index1interval,position);
+#ifdef PMAP
+      if (watsonp == true) {
+	fprintf(stderr," (fwd)");
+      } else {
+	fprintf(stderr," (rev)");
+      }
+#endif
+      fprintf(stderr,"\n");
     }
 
+#ifdef PMAP
+    carry = (low >> 30);
+    switch (c) {
+    case 'A': low = (low << 2); break;
+    case 'C': low = (low << 2) | 1; break;
+    case 'G': low = (low << 2) | 2; break;
+    case 'T': low = (low << 2) | 3; break;
+    case 'X': case 'N': 
+      high = low = carry = 0U;
+      in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      break;
+    default: 
+      if (uncompressedp == true) {
+	high = low = carry = 0U;
+	in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      } else {
+	fprintf(stderr,"Bad character %c at position %u\n",c,position-1U);
+	abort();
+      }
+    }
+    high = (high << 2) | carry; 
+#else
     switch (c) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
@@ -617,12 +1450,41 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	abort();
       }
     }
+#endif
 
     /*
     debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
 		 c,between_counter,in_counter,oligo));
     */
     
+#ifdef PMAP
+    if (in_counter[frame] > 0) {
+      if (watsonp == true) {
+	if (get_codon_fwd(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      } else {
+	if (get_codon_rev(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      }
+    }
+    if (in_counter[frame] == INDEX1PART_AA + 1) {
+      if (between_counter[frame] >= index1interval) {
+	aaindex = get_aa_index(high,low,watsonp);
+	positionsfile_move_absolute(positions_fp,offsets[aaindex]);
+	offsets[aaindex] += 1;
+	if (watsonp == true) {
+	  adjposition = position-INDEX1PART_NT;
+	} else {
+	  adjposition = position;
+	}
+	FWRITE_UINT(adjposition,positions_fp);
+	between_counter[frame] = 0;
+      }
+      in_counter[frame] -= 1;
+    }
+#else
     if (in_counter == INDEX1PART) {
       if (between_counter >= index1interval) {
 	masked = oligo & mask;
@@ -634,6 +1496,7 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
       }
       in_counter--;
     }
+#endif
     
   }
 
@@ -642,15 +1505,44 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
     for (index = 1; index <= IIT_nintervals(altstrain_iit); index++) {
       interval = IIT_interval(altstrain_iit,index);
       position = Interval_low(interval);
-      p = IIT_annotation(altstrain_iit,index); /* Holds the sequence */
+      p = IIT_annotation(altstrain_iit,index,&allocp); /* Holds the sequence */
       
+#ifdef PMAP
+      frame = 0;
+      between_counter[0] = between_counter[1] = between_counter[2] = 0;
+      in_counter[0] = in_counter[1] = in_counter[2] = 0;
+      high = low = 0U;
+#else
       between_counter = in_counter = 0;
       oligo = 0U;
+#endif
       while ((b = *p++) != '\0') {
+#ifdef PMAP
+	if (++frame == 3) {
+	  frame = 0;
+	}
+	between_counter[frame] += 1;
+	in_counter[frame] += 1;
+#else
 	between_counter++;
 	in_counter++;
+#endif
 	position++;
 
+#ifdef PMAP
+	carry = (low >> 30);
+	switch (toupper(b)) {
+	case 'A': low = (low << 2); break;
+	case 'C': low = (low << 2) | 1; break;
+	case 'G': low = (low << 2) | 2; break;
+	case 'T': low = (low << 2) | 3; break;
+	default:
+	  high = low = carry = 0U;
+	  in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+	  break;
+	}
+	high = (high << 2) | carry; 
+#else
 	switch (toupper((int) b)) {
 	case 'A': oligo = (oligo << 2); break;
 	case 'C': oligo = (oligo << 2) | 1; break;
@@ -658,12 +1550,42 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	case 'T': oligo = (oligo << 2) | 3; break;
 	default: oligo = 0U; in_counter = 0; break;
 	}
+#endif
 
 	/*
 	  debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
 	  c,between_counter,in_counter,oligo));
 	*/
     
+#ifdef PMAP
+	if (in_counter[frame] > 0) {
+	  if (watsonp == true) {
+	    if (get_codon_fwd(low) == AA_STOP) {
+	      in_counter[frame] = 0; 
+	    }
+	  } else {
+	    if (get_codon_rev(low) == AA_STOP) {
+	      in_counter[frame] = 0; 
+	    }
+	  }
+	}
+
+	if (in_counter[frame] == INDEX1PART_AA + 1) {
+	  if (between_counter[frame] >= index1interval) {
+	    aaindex = get_aa_index(high,low,watsonp);
+	    positionsfile_move_absolute(positions_fp,offsets[aaindex]);
+	    offsets[aaindex] += 1;
+	    if (watsonp == true) {
+	      adjposition = position-INDEX1PART_NT;
+	    } else {
+	      adjposition = position;
+	    }
+	    FWRITE_UINT(adjposition,positions_fp);
+	    between_counter[frame] = 0;
+	  }
+	  in_counter[frame] -= 1;
+	}
+#else
 	if (in_counter == INDEX1PART) {
 	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
@@ -675,6 +1597,10 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	  }
 	  in_counter--;
 	}
+#endif
+      }
+      if (allocp == true) {
+	FREE(p);
       }
     }
 
@@ -739,28 +1665,81 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 static void
 compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Positionsptr_T *offsets,
 			     FILE *sequence_fp, IIT_T altstrain_iit, int index1interval,
+#ifdef PMAP
+			     bool watsonp,
+#endif
 			     bool uncompressedp) {
   Positionsptr_T block_start, block_end, j, k;
   Genomicpos_T position = 0, prevpos;
   char *p, b;
+  bool allocp;
   int c, oligospace, index, i, npositions, nbadvals;
+#ifdef PMAP
+  int frame = 0, between_counter[3], in_counter[3];
+  Storedoligomer_T high = 0U, low = 0U, carry;
+  unsigned int aaindex;
+  debug1(char *aa);
+#else
   int between_counter = 0, in_counter = 0;
   Storedoligomer_T oligo = 0U, masked, mask;
+#endif
   Interval_T interval;
 
+#ifdef PMAP
+  oligospace = power(NAMINOACIDS,INDEX1PART_AA);
+#else
   mask = ~(~0UL << 2*INDEX1PART);
   oligospace = power(4,INDEX1PART);
+#endif
 
   /* Handle reference strain */
   while ((c = Compress_get_char(sequence_fp,position,uncompressedp)) != EOF) {
+#ifdef PMAP
+    if (++frame == 3) {
+      frame = 0;
+    }
+    between_counter[frame] += 1;
+    in_counter[frame] += 1;
+#else
     between_counter++;
     in_counter++;
+#endif
     position++;
 
     if (position % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,"Indexing positions of oligomers in genome (every %d), position %u\n",index1interval,position);
+      fprintf(stderr,"Indexing positions of oligomers in genome (every %d), position %u",index1interval,position);
+#ifdef PMAP
+      if (watsonp == true) {
+	fprintf(stderr," (fwd)");
+      } else {
+	fprintf(stderr," (rev)");
+      }
+#endif
+      fprintf(stderr,"\n");
     }
 
+#ifdef PMAP
+    carry = (low >> 30);
+    switch (c) {
+    case 'A': low = (low << 2); break;
+    case 'C': low = (low << 2) | 1U; break;
+    case 'G': low = (low << 2) | 2U; break;
+    case 'T': low = (low << 2) | 3U; break;
+    case 'X': case 'N':
+      high = low = carry = 0U;
+      in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      break;
+    default: 
+      if (uncompressedp == true) {
+	high = low = carry = 0U;
+	in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      } else {
+	fprintf(stderr,"Bad character %c at position %u\n",c,position-1U);
+	abort();
+      }
+    }
+    high = (high << 2) | carry; 
+#else
     switch (c) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
@@ -775,12 +1754,48 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 	abort();
       }
     }
+#endif
 
     /*
     debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
 		 c,between_counter,in_counter,oligo));
     */
     
+#ifdef PMAP
+    if (in_counter[frame] > 0) {
+      if (watsonp == true) {
+	if (get_codon_fwd(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      } else {
+	if (get_codon_rev(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      }
+    }
+    if (in_counter[frame] == INDEX1PART_AA + 1) {
+      if (between_counter[frame] >= index1interval) {
+	aaindex = get_aa_index(high,low,watsonp);
+	if (watsonp == true) {
+	  positions[offsets[aaindex]++] = position-INDEX1PART_NT;
+	  debug1(
+		 aa = aaindex_aa(aaindex);
+		 printf("Storing %s (%u) at %u\n",aa,aaindex,position-INDEX1PART_NT);
+		 FREE(aa);
+		 );
+	} else {
+	  positions[offsets[aaindex]++] = position;
+	  debug1(
+		 aa = aaindex_aa(aaindex);
+		 printf("Storing %s (%u) at %u\n",aa,aaindex,position);
+		 FREE(aa);
+		 );
+	}
+	between_counter[frame] = 0;
+      }
+      in_counter[frame] -= 1;
+    }
+#else
     if (in_counter == INDEX1PART) {
       if (between_counter >= index1interval) {
 	masked = oligo & mask;
@@ -789,6 +1804,7 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
       }
       in_counter--;
     }
+#endif
     
   }
 
@@ -797,15 +1813,44 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
     for (index = 1; index <= IIT_nintervals(altstrain_iit); index++) {
       interval = IIT_interval(altstrain_iit,index);
       position = Interval_low(interval);
-      p = IIT_annotation(altstrain_iit,index); /* Holds the sequence */
+      p = IIT_annotation(altstrain_iit,index,&allocp); /* Holds the sequence */
       
+#ifdef PMAP
+      frame = 0;
+      between_counter[0] = between_counter[1] = between_counter[2] = 0;
+      in_counter[0] = in_counter[1] = in_counter[2] = 0;
+      high = low = 0U;
+#else
       between_counter = in_counter = 0;
       oligo = 0U;
+#endif
       while ((b = *p++) != '\0') {
+#ifdef PMAP
+	if (++frame == 3) {
+	  frame = 0;
+	}
+	between_counter[frame] += 1;
+	in_counter[frame] += 1;
+#else
 	between_counter++;
 	in_counter++;
+#endif
 	position++;
 
+#ifdef PMAP
+	carry = (low >> 30);
+	switch (toupper(b)) {
+	case 'A': low = (low << 2); break;
+	case 'C': low = (low << 2) | 1U; break;
+	case 'G': low = (low << 2) | 2U; break;
+	case 'T': low = (low << 2) | 3U; break;
+	default:
+	  high = low = carry = 0U;
+	  in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+	  break;
+	}
+	high = (high << 2) | carry; 
+#else
 	switch (toupper((int) b)) {
 	case 'A': oligo = (oligo << 2); break;
 	case 'C': oligo = (oligo << 2) | 1; break;
@@ -813,12 +1858,39 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 	case 'T': oligo = (oligo << 2) | 3; break;
 	default: oligo = 0U; in_counter = 0; break;
 	}
+#endif
 
 	/*
 	  debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
 	  c,between_counter,in_counter,oligo));
 	*/
     
+#ifdef PMAP
+	if (in_counter[frame] > 0) {
+	  if (watsonp == true) {
+	    if (get_codon_fwd(low) == AA_STOP) {
+	      in_counter[frame] = 0; 
+	    }
+	  } else {
+	    if (get_codon_rev(low) == AA_STOP) {
+	      in_counter[frame] = 0; 
+	    }
+	  }
+	}
+
+	if (in_counter[frame] == INDEX1PART_AA + 1) {
+	  if (between_counter[frame] >= index1interval) {
+	    aaindex = get_aa_index(high,low,watsonp);
+	    if (watsonp == true) {
+	      positions[offsets[aaindex]++] = position-INDEX1PART_NT;
+	    } else {
+	      positions[offsets[aaindex]++] = position;
+	    }
+	    between_counter[frame] = 0;
+	  }
+	  in_counter[frame] -= 0;
+	}
+#else
 	if (in_counter == INDEX1PART) {
 	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
@@ -827,6 +1899,10 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 	  }
 	  in_counter--;
 	}
+#endif
+      }
+      if (allocp == true) {
+	FREE(p);
       }
     }
 
@@ -883,16 +1959,28 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 void
 Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_fp, 
 			 IIT_T altstrain_iit, int index1interval, bool uncompressedp, 
+#ifdef PMAP
+			 bool watsonp,
+#endif
 			 bool writefilep) {
   FILE *positions_fp;
   Positionsptr_T *offsets, totalcounts;
   Genomicpos_T *positions;
   int oligospace;
 
+#ifdef PMAP
+  oligospace = power(NAMINOACIDS,INDEX1PART_AA);
+#else
   oligospace = power(4,INDEX1PART);
+#endif
+
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
   FREAD_UINTS(offsets,oligospace+1,offsets_fp);
   totalcounts = offsets[oligospace];
+  if (totalcounts == 0) {
+    fprintf(stderr,"Something is wrong with the offsets file.  Total counts is zero.\n");
+    exit(9);
+  }
 
   if (writefilep == true) {
     fprintf(stderr,"User requested build of positions in file\n");
@@ -900,12 +1988,17 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
       fprintf(stderr,"Can't open file %s\n",positionsfile);
       exit(9);
     }
+#ifdef PMAP
+    compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+			      index1interval,watsonp,uncompressedp);
+#else
     compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
 			      index1interval,uncompressedp);
+#endif
     fclose(positions_fp);
 
   } else {
-    fprintf(stderr,"Trying to allocate %u*%u bytes of memory...",totalcounts,(unsigned int) sizeof(Genomicpos_T));
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",totalcounts,(int) sizeof(Genomicpos_T));
     positions = (Genomicpos_T *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(Genomicpos_T));
     if (positions == NULL) {
       fprintf(stderr,"failed.  Building positions in file.\n");
@@ -913,8 +2006,13 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
 	fprintf(stderr,"Can't open file %s\n",positionsfile);
 	exit(9);
       }
+#ifdef PMAP
+      compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+				index1interval,watsonp,uncompressedp);
+#else
       compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
 				index1interval,uncompressedp);
+#endif
       fclose(positions_fp);
 
     } else {
@@ -923,8 +2021,13 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
 	fprintf(stderr,"Can't open file %s\n",positionsfile);
 	exit(9);
       }
+#ifdef PMAP
+      compute_positions_in_memory(positions,offsets_fp,offsets,sequence_fp,altstrain_iit,
+				  index1interval,watsonp,uncompressedp);
+#else
       compute_positions_in_memory(positions,offsets_fp,offsets,sequence_fp,altstrain_iit,
 				  index1interval,uncompressedp);
+#endif
       FWRITE_UINTS(positions,totalcounts,positions_fp);
 
       fclose(positions_fp);
@@ -942,31 +2045,65 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
  ************************************************************************/
 
 T
-Indexdb_new_segment (char *genomicseg, int index1interval) {
+Indexdb_new_segment (char *genomicseg, int index1interval
+#ifdef PMAP
+		     , bool watsonp
+#endif
+		     ) {
   T new = (T) MALLOC(sizeof(*new));
   Positionsptr_T *work_offsets;	/* Working set for use in calculating positions */
   int totalcounts = 0;
   int c, oligospace, i;
   char *p;
   Genomicpos_T position = 0;
+#ifdef PMAP
+  int frame = 0, between_counter[3], in_counter[3];
+  Storedoligomer_T high = 0U, low = 0U, carry;
+  unsigned int aaindex;
+#else
   int between_counter = 0, in_counter = 0;
   Storedoligomer_T oligo = 0U, masked, mask;
+#endif
 
-  new->user_provided_p = true;
-  new->batchp = false;
-
+#ifdef PMAP
+  oligospace = power(NAMINOACIDS,INDEX1PART_AA);
+#else
   mask = ~(~0UL << 2*INDEX1PART);
   oligospace = power(4,INDEX1PART);
+#endif
 
   /* Create offsets */
   new->offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
+  new->offsets_access = ALLOCATED;
 
   p = genomicseg;
   while ((c = *(p++)) != '\0') {
+#ifdef PMAP
+    if (++frame == 3) {
+      frame = 0;
+    }
+    between_counter[frame] += 1;
+    in_counter[frame] += 1;
+#else
     between_counter++;
     in_counter++;
+#endif
     position++;
 
+#ifdef PMAP
+    carry = (low >> 30);
+    switch (toupper(c)) {
+    case 'A': low = (low << 2); break;
+    case 'C': low = (low << 2) | 1U; break;
+    case 'G': low = (low << 2) | 2U; break;
+    case 'T': low = (low << 2) | 3U; break;
+    default:
+      high = low = carry = 0U;
+      in_counter[0] = in_counter[1] = in_counter[2] = 0;
+      break;
+    }
+    high = (high << 2) | carry; 
+#else
     switch (toupper(c)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
@@ -974,12 +2111,34 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
     case 'T': oligo = (oligo << 2) | 3; break;
     default: oligo = 0U; in_counter = 0; break;
     }
+#endif
 
     /*
     debug(printf("char=%c bc=%d ic=%d oligo=%016lX\n",
 		 c,between_counter,in_counter,oligo));
     */
 
+#ifdef PMAP
+    if (in_counter[frame] > 0) {
+      if (watsonp == true) {
+	if (get_codon_fwd(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      } else {
+	if (get_codon_rev(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      }
+    }
+    if (in_counter[frame] == INDEX1PART_AA + 1) {
+      if (between_counter[frame] >= index1interval) {
+	aaindex = get_aa_index(high,low,watsonp);
+	new->offsets[aaindex + 1U] += 1;
+	between_counter[frame] = 0;
+      }
+      in_counter[frame] -= 1;
+    }
+#else
     if (in_counter == INDEX1PART) {
       if (between_counter >= index1interval) {
 	masked = oligo & mask;
@@ -990,6 +2149,7 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
       }
       in_counter--;
     }
+#endif
   }
 
   for (i = 1; i <= oligospace; i++) {
@@ -999,8 +2159,15 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
 
   /* Create positions */
   position = 0;
+#ifdef PMAP
+  frame = 0;
+  between_counter[0] = between_counter[1] = between_counter[2] = 0;
+  in_counter[0] = in_counter[1] = in_counter[2] = 0;
+  high = low = 0UL;
+#else
   between_counter = in_counter = 0;
   oligo = 0UL;
+#endif
 
   work_offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
   for (i = 0; i <= oligospace; i++) {
@@ -1009,17 +2176,44 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
 
   totalcounts = new->offsets[oligospace];
   if (totalcounts == 0) {
+#ifdef PMAP
+    fprintf(stderr,"Error: user-provided genomic segment has no valid oligomers of size %d\n",INDEX1PART_NT);
+#else
     fprintf(stderr,"Error: user-provided genomic segment has no valid oligomers of size %d\n",INDEX1PART);
+#endif
     exit(9);
   }
   new->positions = (Genomicpos_T *) CALLOC(totalcounts,sizeof(Genomicpos_T));
+  new->positions_access = ALLOCATED;
 
   p = genomicseg;
   while ((c = *(p++)) != '\0') {
+#ifdef PMAP
+    if (++frame == 3) {
+      frame = 0;
+    }
+    between_counter[frame] += 1;
+    in_counter[frame] += 1;
+#else
     between_counter++;
     in_counter++;
+#endif
     position++;
 
+#ifdef PMAP
+    carry = (low >> 30);
+    switch (toupper(c)) {
+    case 'A': low = (low << 2); break;
+    case 'C': low = (low << 2) | 1; break;
+    case 'G': low = (low << 2) | 2; break;
+    case 'T': low = (low << 2) | 3; break;
+    default:
+      high = low = carry = 0U;
+      in_counter[0] = 0; in_counter[1] = in_counter[2] = 0;
+      break;
+    }
+    high = (high << 2) | carry; 
+#else
     switch (toupper(c)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
@@ -1027,12 +2221,39 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
     case 'T': oligo = (oligo << 2) | 3; break;
     default: oligo = 0U; in_counter = 0; break;
     }
+#endif
 
     /*
     debug(printf("char=%c bc=%d ic=%d oligo=%06X\n",
 		 c,between_counter,in_counter,oligo));
     */
     
+#ifdef PMAP
+    if (in_counter[frame] > 0) {
+      if (watsonp == true) {
+	if (get_codon_fwd(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      } else {
+	if (get_codon_rev(low) == AA_STOP) {
+	  in_counter[frame] = 0; 
+	}
+      }
+    }
+
+    if (in_counter[frame] == INDEX1PART_AA + 1) {
+      if (between_counter[frame] >= index1interval) {
+	aaindex = get_aa_index(high,low,watsonp);
+	if (watsonp == true) {
+	  new->positions[work_offsets[aaindex]++] = position-INDEX1PART_NT;
+	} else {
+	  new->positions[work_offsets[aaindex]++] = position;
+	}
+	between_counter[frame] = 0;
+      }
+      in_counter[frame] -= 1;
+    }
+#else
     if (in_counter == INDEX1PART) {
       if (between_counter >= index1interval) {
 	masked = oligo & mask;
@@ -1041,7 +2262,7 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
       }
       in_counter--;
     }
-    
+#endif
   }
 
   FREE(work_offsets);

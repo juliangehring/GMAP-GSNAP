@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c,v 1.7 2005/07/08 07:58:29 twu Exp $";
+static char rcsid[] = "$Id: genome-write.c,v 1.8 2005/10/19 03:53:07 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -44,7 +44,7 @@ find_positions (bool *revcompp, Genomicpos_T *leftposition, Genomicpos_T *rightp
 		int *contigtype, char *accession, IIT_T contig_iit) {
   int index;
   Interval_T interval;
-  char *annotation;
+  char firstchar;
 
   if ((index = IIT_find_one(contig_iit,accession)) == -1) {
     fprintf(stderr,"Can't find accession %s in contig IIT file\n",
@@ -56,8 +56,8 @@ find_positions (bool *revcompp, Genomicpos_T *leftposition, Genomicpos_T *rightp
     *leftposition = Interval_low(interval);
     *rightposition = Interval_high(interval);
 
-    annotation = IIT_annotation(contig_iit,index);
-    if (annotation[0] == '-') {
+    firstchar = IIT_annotation_firstchar(contig_iit,index);
+    if (firstchar == '-') {
       *revcompp = true;
       *startposition = Interval_high(interval) + 1U;
       *endposition = Interval_low(interval) + 1U;

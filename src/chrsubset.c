@@ -1,4 +1,7 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.10 2005/07/08 07:58:27 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.12 2005/10/19 03:56:35 twu Exp $";
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "chrsubset.h"
 #include <stdio.h>
@@ -31,6 +34,11 @@ Chrsubset_print (T this) {
     printf("    Chromosome subset: %s\n",this->name);
   }
   return;
+}
+
+char *
+Chrsubset_name (T this) {
+  return this->name;
 }
 
 int
@@ -312,6 +320,20 @@ compute_old_indices (bool *includep, int nincluded, int nchromosomes) {
   }
 
   return oldindices;
+}
+
+
+T
+Chrsubset_new_single (Chrnum_T chrnum, IIT_T chromosome_iit) {
+  T new = (T) MALLOC(sizeof(*new));
+
+  new->name = Chrnum_to_string(chrnum,chromosome_iit);
+  new->includep = (bool *) CALLOC(IIT_nintervals(chromosome_iit),sizeof(bool));
+  new->includep[chrnum-1] = true;
+  new->nincluded = 1;
+  new->newindices = compute_new_indices(new->includep,IIT_nintervals(chromosome_iit));
+  new->oldindices = compute_old_indices(new->includep,new->nincluded,IIT_nintervals(chromosome_iit));
+  return new;
 }
 
 

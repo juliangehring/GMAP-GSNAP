@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: md_coords.pl.in,v 1.8 2005/05/06 20:33:50 twu Exp $
+# $Id: md_coords.pl.in,v 1.9 2005/10/12 22:50:28 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
@@ -18,7 +18,7 @@ undef($opt_o);			# Output file
 use Getopt::Std;
 getopts("9U:A:s:c:o:");
 
-# Usage: md_coords [-U] <mdfile>
+# Usage: md_coords [-o <outfile>] [-U] <mdfile>
 
 $mdfile = $ARGV[0];
 if (!defined($outfile = $opt_o)) {
@@ -103,8 +103,6 @@ if ($outfile ne "coords.txt") {
 print STDOUT "\n";
 print STDOUT "where you decide on the db_name, and the fastafiles contain\n";
 print STDOUT "the sequences for the contigs listed in $mdfile\n";
-print STDOUT "\n";
-print STDOUT "Note that gmap_setup can take a while to index a large genome\n";
 print STDOUT "============================================================\n";
 print STDOUT "\n";
 

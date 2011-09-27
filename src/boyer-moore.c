@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c,v 1.5 2005/07/08 14:37:51 twu Exp $";
+static char rcsid[] = "$Id: boyer-moore.c,v 1.7 2005/10/01 15:29:21 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -31,10 +31,10 @@ static char rcsid[] = "$Id: boyer-moore.c,v 1.5 2005/07/08 14:37:51 twu Exp $";
 static int
 na_index (char c) {
   switch (c) {
-  case 'A': case 'a': return 0;
-  case 'C': case 'c': return 1;
-  case 'G': case 'g': return 2;
-  case 'T': case 't': return 3;
+  case 'A': return 0;
+  case 'C': return 1;
+  case 'G': return 2;
+  case 'T': return 3;
   default: return 4;
   }
 }
@@ -117,8 +117,7 @@ query_okay (char *query, int querylen) {
 
   for (i = 0, p = query; i < querylen; i++, p++) {
     c = *p;
-    if (c != 'A' && c != 'C' && c != 'G' && c != 'T' &&
-	c != 'a' && c != 'c' && c != 'g' && c != 't') {
+    if (c != 'A' && c != 'C' && c != 'G' && c != 'T') {
       return false;
     }
   }
@@ -146,7 +145,7 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 
     j = 0;
     while (j <= textlen - querylen) {
-      for (i = querylen - 1; i >= 0 && toupper((int) query[i]) == toupper((int) text[i+j]); i--) ;
+      for (i = querylen - 1; i >= 0 && query[i] == text[i+j]; i--) ;
       if (i < 0) {
 	hits = Intlist_push(hits,j);
 	

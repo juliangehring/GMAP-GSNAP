@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c,v 1.38 2005/07/08 14:37:40 twu Exp $";
+static char rcsid[] = "$Id: oligo.c,v 1.39 2005/10/01 05:06:42 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,7 +6,6 @@ static char rcsid[] = "$Id: oligo.c,v 1.38 2005/07/08 14:37:40 twu Exp $";
 #include "oligo.h" 
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>		/* For toupper */
 #include "mem.h"
 
 
@@ -60,7 +59,7 @@ Oligo_read (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp,
   *forward = *revcomp = 0U;
   if (cdnaend == FIVE) {
     while (count < INDEX1PART && (c = Reader_getc(reader,cdnaend)) != '\0') {
-      switch (toupper(c)) {
+      switch (c) {
       case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
       case 'C': *forward <<= 2; *forward |= RIGHT_C; 
 	*revcomp >>= 2; *revcomp |= LEFT_G;  break;
@@ -76,7 +75,7 @@ Oligo_read (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp,
     }
   } else {
     while (count < INDEX1PART && (c = Reader_getc(reader,cdnaend)) != '\0') {
-      switch (toupper(c)) {
+      switch (c) {
       case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
       case 'C': *forward >>= 2; *forward |= LEFT_C; 
 	*revcomp <<= 2; *revcomp |= RIGHT_G;  break;
@@ -127,7 +126,7 @@ Oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcom
 	  );
     return DONE;
   } else if (cdnaend == FIVE) {
-    switch (toupper((int) c)) {
+    switch (c) {
     case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
     case 'C': *forward <<= 2; *forward |= RIGHT_C; 
       *revcomp >>= 2; *revcomp |= LEFT_G; break;
@@ -145,7 +144,7 @@ Oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcom
     return VALID;
 
   } else {
-    switch (toupper((int) c)) {
+    switch (c) {
     case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
     case 'C': *forward >>= 2; *forward |= LEFT_C; 
       *revcomp <<= 2; *revcomp |= RIGHT_G; break;

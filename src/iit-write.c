@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.20 2005/07/08 07:58:32 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.21 2005/10/19 03:51:03 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -86,8 +86,8 @@ FNode_free (FNode_T *old) {
 #define T IIT_T
 
 /* Note: This procedure differs from the one in iit-read.c */
-void
-IIT_free (T *old) {
+static void
+IIT_write_free (T *old) {
   if (*old) {
     FREE((*old)->sigmas);
     FREE((*old)->omegas);
@@ -537,7 +537,7 @@ IIT_write (char *iitfile, List_T intervallist, List_T typelist, List_T labellist
     iit = IIT_build(&root,intervallist);
     IIT_output(fp,iit,root,typelist,labellist,annotlist,annot_strlen_list);
     Node_gc(&root);
-    IIT_free(&iit);
+    IIT_write_free(&iit);
     fclose(fp);
     return;
   }

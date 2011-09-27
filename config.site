@@ -57,7 +57,10 @@
 ## Path ('-L') and any other miscellaneous options for the linker.
 ## '-L' options set here will be prepended to LD_LIBRARY_PATH (or its
 ## system equivalent) at run time.
+## For systems with shared libraries:
 ## LDFLAGS='-L/usr/local/lib -rpath /usr/local/lib'
+## For most other systems, including the gcc compiler
+## LDFLAGS='-L/usr/local/lib'
 
 
 ## Special flags (in addition to CFLAGS and LIBS) that may be needed

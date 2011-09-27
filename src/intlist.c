@@ -1,10 +1,11 @@
-static char rcsid[] = "$Id: intlist.c,v 1.9 2005/07/08 07:58:33 twu Exp $";
+static char rcsid[] = "$Id: intlist.c,v 1.12 2005/10/14 19:03:05 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "intlist.h"
 #include <stdlib.h>
+#include <string.h>		/* For strlen */
 #include "mem.h"
 
 #define T Intlist_T
@@ -175,3 +176,48 @@ Intlist_index (T this, int index) {
   return this->first;
 }
 
+T
+Intlist_from_string (char *string) {
+  T this = NULL;
+  char *p = string;
+  int x;
+
+  while (sscanf(p,"%d",&x) > 0) {
+    this = Intlist_push(this,x);
+    while (*p != '\0' && *p != ',') {
+      p++;
+    }
+    if (*p == ',') {
+      p++;
+    }
+  }
+  return Intlist_reverse(this);
+}
+
+char *
+Intlist_to_string (T this) {
+  char *string, Buffer[256];
+  T p;
+  int n, i, strlength;
+
+  n = Intlist_length(this);
+
+  strlength = 0;
+  for (i = 0, p = this; i < n-1; i++, p = Intlist_next(p)) {
+    sprintf(Buffer,"%d,",Intlist_head(p));
+    strlength += strlen(Buffer);
+  }
+  sprintf(Buffer,"%d",Intlist_head(p));
+  strlength += strlen(Buffer);
+
+  string = (char *) CALLOC(strlength + 1,sizeof(char));
+  string[0] = '\0';
+  for (i = 0, p = this; i < n-1; i++, p = Intlist_next(p)) {
+    sprintf(Buffer,"%d,",Intlist_head(p));
+    strcat(string,Buffer);
+  }
+  sprintf(Buffer,"%d",Intlist_head(p));
+  strcat(string,Buffer);
+
+  return string;
+}

@@ -1,4 +1,4 @@
-/* $Id: sequence.h,v 1.28 2005/07/08 14:42:24 twu Exp $ */
+/* $Id: sequence.h,v 1.31 2005/10/01 05:03:05 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -13,6 +13,8 @@ extern char *
 Sequence_fullpointer (T this);
 extern char *
 Sequence_trimpointer (T this);
+extern int
+Sequence_ntlength (T this);
 extern int
 Sequence_fulllength (T this);
 extern int
@@ -32,6 +34,8 @@ extern T
 Sequence_read (int *nextchar, FILE *input);
 extern T
 Sequence_read_unlimited (FILE *input);
+extern T
+Sequence_convert_to_nucleotides (T this);
 extern int
 Sequence_count_bad (T this, int pos, int max, int direction);
 
@@ -39,6 +43,12 @@ extern T
 Sequence_subsequence (T this, int start, int end);
 extern T
 Sequence_revcomp (T this);
+extern T
+Sequence_uppercase (T this);
+extern T
+Sequence_alias (T this);
+
+
 extern void
 Sequence_print_digest (T this);
 extern void

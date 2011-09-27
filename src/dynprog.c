@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c,v 1.117 2005/07/13 19:26:51 twu Exp $";
+static char rcsid[] = "$Id: dynprog.c,v 1.124 2005/10/14 19:34:29 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,10 +7,10 @@ static char rcsid[] = "$Id: dynprog.c,v 1.117 2005/07/13 19:26:51 twu Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>		/* For toupper */
 #include <math.h>		/* For ceil, log, pow */
 #include "bool.h"
 #include "mem.h"
+#include "comp.h"
 #include "pair.h"
 #include "pairdef.h"
 #include "boyer-moore.h"
@@ -36,6 +36,13 @@ static char rcsid[] = "$Id: dynprog.c,v 1.117 2005/07/13 19:26:51 twu Exp $";
 #define debug3(x)
 #endif
 
+/* Codon instantiation */
+#ifdef DEBUG4
+#define debug4(x) x
+#else
+#define debug4(x)
+#endif
+
 /*
 #define RIGHTANGLE 1
 */
@@ -50,6 +57,7 @@ static char rcsid[] = "$Id: dynprog.c,v 1.117 2005/07/13 19:26:51 twu Exp $";
 #define MIN_NONINTRON 50
 
 #define FULLMATCH 3
+#define HALFMATCH 1
 #define AMBIGUOUS 0
 
 typedef enum {HIGHQ, MEDQ, LOWQ, END} Mismatchtype_T;
@@ -243,8 +251,10 @@ Matrix_print (int **matrix, int length1, int length2, char *sequence1, char *seq
     printf("\n");
   }
   printf("\n");
+
   return;
 }
+
 
 /************************************************************************/
 /*  Directions  */
@@ -265,14 +275,14 @@ Directions_alloc (int length1, int length2, Direction_T **ptrs, Direction_T *spa
   /* Clear memory only around the band, but may not work with Gotoh
      method */
   /*
-  for (r = 0; r <= length1; r++) {
+    for (r = 0; r <= length1; r++) {
     if ((clo = r - lband - 1) >= 0) {
-      directions[r][clo] = STOP;
+    directions[r][clo] = STOP;
     }
     if ((chigh = r + rband + 1) <= length2) {
-      directions[r][chigh] = STOP;
+    directions[r][chigh] = STOP;
     }
-  }
+    }
   */
   memset(space,0,(length1+1)*(length2+1)*sizeof(Direction_T));
 
@@ -404,8 +414,113 @@ Dynprog_free (T *old) {
 
 /************************************************************************/
 
+#ifdef PMAP
+
+static int aa_index_table[128] =
+  { -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  /*     *                                  */
+    -1, 20, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1,
+
+  /* A,  B,  C,  D,  E,  F,  G,  H,  I,  J, */
+     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
+
+  /* K,  L,  M,  N,  O,  P,  Q,  R,  S,  T  */
+     8,  9, 10, 11, -1, 12, 13, 14, 15, 16,
+
+  /* U,  V,  W,  X,  Y,  Z  */
+    21, 17, 18, -1, 19, -1,
+
+    -1, -1, -1, -1, -1, -1,
+
+  /* a,  b,  c,  d,  e,  f,  g,  h,  i,  j, */
+     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
+
+  /* k,  l,  m,  n,  o,  p,  q,  r,  s,  t  */
+     8,  9, 10, 11, -1, 12, 13, 14, 15, 16,
+
+  /* u,  v,  w,  x,  y,  z  */
+    21, 17, 18, -1, 19, -1,
+
+    -1, -1, -1, -1, -1};
+
+
+static char *iupac_table[21+1] =
+  {"GCN",			/* A */
+   "TGY",			/* C */
+   "GAY",			/* D */
+   "GAR",			/* E */
+   "TTY",			/* F */
+   "GGN",			/* G */
+   "CAY",			/* H */
+   "ATH",			/* I */
+   "AAR",			/* K */
+   "YTN",			/* L */
+   "ATG",			/* M */
+   "AAY",			/* N */
+   "CCN",			/* P */
+   "CAR",			/* Q */
+   "MGN",			/* R */
+   "WSN",			/* S */
+   "ACN",			/* T */
+   "GTN",			/* V */
+   "TGG",			/* W */
+   "TAY",			/* Y */
+   "TRR",			/* STOP */
+   "TGA"};			/* U */
+
+
+static char aa_table[21+1] = "ACDEFGHIKLMNPQRSTVWY*U";
+
+/* both newntsequence and oldntsequence are offset, but aasequence starts from position 0 */
+static char *
+instantiate_codons (char *oldntsequence, char *aasequence, int offset, int ntlength) {
+  char *newntsequence;
+  int aapos, ntpos;
+  int index, frame;
+  char *codon, aa;
+
+  newntsequence = (char *) CALLOC(ntlength+1,sizeof(char));
+  strncpy(newntsequence,oldntsequence,ntlength);
+
+  for (ntpos = 0; ntpos < ntlength; ntpos++) {
+    if (oldntsequence[ntpos] == BACKTRANSLATE_CHAR) {
+      aapos = (offset+ntpos)/3;
+	
+      aa = aasequence[aapos];
+      index = aa_index_table[aa];
+      if (index < 0) {
+	newntsequence[ntpos] = 'N';
+      } else {
+	codon = iupac_table[index];
+
+	frame = (offset+ntpos) % 3;
+	newntsequence[ntpos] = codon[frame];
+      }
+    }
+  }
+  debug4(printf("New sequence: %s\n",newntsequence));
+  return newntsequence;
+}
+#endif
+
+
+/************************************************************************/
+
 
 static int **pairdistance_array[NMISMATCHTYPES];
+static bool **consistent_array;
+
+int
+Dynprog_pairdistance (int c1, int c2) {
+  return pairdistance_array[HIGHQ][c1][c2];
+}
 
 static void
 permute_cases (int NA1, int NA2, int score) {
@@ -415,6 +530,15 @@ permute_cases (int NA1, int NA2, int score) {
   na1 = tolower(NA1);
   na2 = tolower(NA2);
 
+  consistent_array[na1][na2] = true;
+  consistent_array[na1][NA2] = true;
+  consistent_array[NA1][na2] = true;
+  consistent_array[NA1][NA2] = true;
+
+  consistent_array[na2][na1] = true;
+  consistent_array[na2][NA1] = true;
+  consistent_array[NA2][na1] = true;
+  consistent_array[NA2][NA1] = true;
   for (i = 0; i < NMISMATCHTYPES; i++) {
     pairdistance_array[i][na1][na2] = score;
     pairdistance_array[i][na1][NA2] = score;
@@ -436,6 +560,10 @@ pairdistance_init () {
   int i, j;
   int c, c1, c2;
 
+  consistent_array = (bool **) CALLOC(128,sizeof(bool *));
+  for (j = 0; j < 128; j++) {
+    consistent_array[j] = (bool *) CALLOC(128,sizeof(bool));
+  }
   for (i = 0; i < NMISMATCHTYPES; i++) {
     pairdistance_array[i] = (int **) CALLOC(128,sizeof(int *));
     for (j = 0; j < 128; j++) {
@@ -452,23 +580,23 @@ pairdistance_init () {
     }
   }
 
-  permute_cases('R','A',AMBIGUOUS);
-  permute_cases('R','G',AMBIGUOUS);
+  permute_cases('R','A',HALFMATCH);
+  permute_cases('R','G',HALFMATCH);
 
-  permute_cases('Y','T',AMBIGUOUS);
-  permute_cases('Y','C',AMBIGUOUS);
+  permute_cases('Y','T',HALFMATCH);
+  permute_cases('Y','C',HALFMATCH);
 
-  permute_cases('W','A',AMBIGUOUS);
-  permute_cases('W','T',AMBIGUOUS);
+  permute_cases('W','A',HALFMATCH);
+  permute_cases('W','T',HALFMATCH);
 
-  permute_cases('S','G',AMBIGUOUS);
-  permute_cases('S','C',AMBIGUOUS);
+  permute_cases('S','G',HALFMATCH);
+  permute_cases('S','C',HALFMATCH);
 
-  permute_cases('M','A',AMBIGUOUS);
-  permute_cases('M','C',AMBIGUOUS);
+  permute_cases('M','A',HALFMATCH);
+  permute_cases('M','C',HALFMATCH);
 
-  permute_cases('K','G',AMBIGUOUS);
-  permute_cases('K','T',AMBIGUOUS);
+  permute_cases('K','G',HALFMATCH);
+  permute_cases('K','T',HALFMATCH);
 
   permute_cases('H','A',AMBIGUOUS);
   permute_cases('H','T',AMBIGUOUS);
@@ -485,6 +613,16 @@ pairdistance_init () {
   permute_cases('D','G',AMBIGUOUS);
   permute_cases('D','A',AMBIGUOUS);
   permute_cases('D','T',AMBIGUOUS);
+
+  permute_cases('N','T',AMBIGUOUS);
+  permute_cases('N','C',AMBIGUOUS);
+  permute_cases('N','A',AMBIGUOUS);
+  permute_cases('N','G',AMBIGUOUS);
+
+  permute_cases('X','T',AMBIGUOUS);
+  permute_cases('X','C',AMBIGUOUS);
+  permute_cases('X','A',AMBIGUOUS);
+  permute_cases('X','G',AMBIGUOUS);
 
   for (c = 'A'; c < 'Z'; c++) {
     permute_cases(c,c,FULLMATCH);
@@ -620,6 +758,10 @@ Dynprog_term (void) {
     }
     FREE(pairdistance_array[i]);
   }
+  for (j = 0; j < 128; j++) {
+    FREE(consistent_array[j]);
+  }
+  FREE(consistent_array);
 
   return;
 }
@@ -1028,27 +1170,27 @@ add_gap (List_T pairs, int bestr, int bestcL, int bestcR,
   int intronlength, genomicpos;
   int i;
 
+  intronlength = (revoffset2R-bestcR) - (offset2L+bestcL) + 1;
   switch (introntype) {
-  case GTAG_FWD: comp = '>'; break;
-  case GCAG_FWD: comp = ')'; break;
-  case ATAC_FWD: comp = ']'; break;
+  case GTAG_FWD: comp = FWD_CANONICAL_INTRON_COMP; break;
+  case GCAG_FWD: comp = FWD_GCAG_INTRON_COMP; break;
+  case ATAC_FWD: comp = FWD_ATAC_INTRON_COMP; break;
   case NONINTRON:
-    intronlength = (revoffset2R-bestcR) - (offset2L+bestcL) + 1;
     if (intronlength < MIN_NONINTRON) {
-      comp = '~';		/* Will be printed as '-', but need to score as '=' */
+      comp = SHORTGAP_COMP;	/* Will be printed as INDEL_COMP, but need to score as NONINTRON_COMP */
     } else {
-      comp = '=';
+      comp = NONINTRON_COMP;
     }
     break;
-  case ATAC_REV: comp = '['; break;
-  case GCAG_REV: comp = '('; break;
-  case GTAG_REV: comp = '<'; break;
+  case ATAC_REV: comp = REV_ATAC_INTRON_COMP; break;
+  case GCAG_REV: comp = REV_GCAG_INTRON_COMP; break;
+  case GTAG_REV: comp = REV_CANONICAL_INTRON_COMP; break;
   default: fprintf(stderr,"Unexpected intron type %d\n",introntype);
     exit(9);
   }
   debug(printf("Adding gap of type %c\n",comp));
 
-  if (comp == '~') {
+  if (comp == SHORTGAP_COMP) {
     /* Treat as an insertion rather than an intron */
     for (i = 0; i < intronlength; i++) {
       /* c2 = (bestcR+i < length2R) ? revsequence2R[-bestcR-i] : '?'; */
@@ -1057,20 +1199,28 @@ add_gap (List_T pairs, int bestr, int bestcL, int bestcR,
     }
   } else {
     genomicpos = revoffset2R-bestcR;
-    for (i = 0; i < ngap; i++) {
-      /* c2 = (bestcR+i < length2R) ? revsequence2R[-bestcR-i] : '?'; */
-      c2 = revsequence2R[-bestcR-i];
-      pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',comp,c2);
-    }
+    if (ngap + ngap + 3 > intronlength) {
+      for (i = 0; i < intronlength; i++) {
+	/* c2 = (bestcR+i < length2R) ? revsequence2R[-bestcR-i] : '?'; */
+	c2 = revsequence2R[-bestcR-i];
+	pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',comp,c2);
+      }
+    } else {
+      for (i = 0; i < ngap; i++) {
+	/* c2 = (bestcR+i < length2R) ? revsequence2R[-bestcR-i] : '?'; */
+	c2 = revsequence2R[-bestcR-i];
+	pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',comp,c2);
+      }
     
-    pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ','.','.');
-    pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ','.','.');
-    pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ','.','.');
+      pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+      pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+      pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
     
-    for (i = ngap-1; i >= 0; i--) {
-      /* c2 = (bestcL+i < length2L) ? sequence2L[bestcL+i] : '?'; */
-      c2 = sequence2L[bestcL+i];
-      pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',comp,c2);
+      for (i = ngap-1; i >= 0; i--) {
+	/* c2 = (bestcL+i < length2L) ? sequence2L[bestcL+i] : '?'; */
+	c2 = sequence2L[bestcL+i];
+	pairs = Pairpool_push(pairs,pairpool,offset1+bestr,genomicpos,' ',comp,c2);
+      }
     }
   }
 
@@ -1088,10 +1238,10 @@ add_gap (List_T pairs, int bestr, int bestcL, int bestcR,
 static List_T
 traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nindels,
 	   Direction_T **directions, int **jump, int r, int c, 
-	   char *sequence1, char *sequence2, int offset1, int offset2, 
-	   Pairpool_T pairpool, bool revp, int ngap, int cdna_direction) {
+	   char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
+	   int offset1, int offset2, Pairpool_T pairpool, 
+	   bool revp, int ngap, int cdna_direction) {
   char c1, c2;
-  char match = '*';
   int dist, j, genomicpos;
   char left1, left2, right2, right1, comp;
   int introntype, leftdi, rightdi;
@@ -1099,25 +1249,48 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 
   while (directions[r][c] != STOP) {
     if (directions[r][c] == DIAG) {
-      c1 = revp ? sequence1[-r+1] : sequence1[r-1];
-      c2 = revp ? sequence2[-c+1] : sequence2[c-1];
-      debug(printf("D%d: Pushing %d,%d (%c,%c)\n",jump[r][c],r,c,c1,c2));
-      if (toupper((int) c1) == toupper((int) c2)) {
-	*nmatches += 1;
-	if (revp) {
-	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,match,c2);
+      if (revp == true) {
+	c1 = sequence1[-r+1];
+	c2 = sequence2[-c+1];
+
+	if (sequenceuc1[-r+1] == sequenceuc2[-c+1]) {
+	  debug(printf("D%d: Pushing %d,%d (%c,%c) - match\n",jump[r][c],r,c,c1,c2));
+	  *nmatches += 1;
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,DYNPROG_MATCH_COMP,c2);
+
+	} else if (consistent_array[(int) c1][(int) c2] == true) {
+	  debug(printf("D%d: Pushing %d,%d (%c,%c) - ambiguous\n",jump[r][c],r,c,c1,c2));
+	  *nmatches += 1;
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,AMBIGUOUS_COMP,c2);
+
 	} else {
-	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,match,c2);
+	  debug(printf("D%d: Pushing %d,%d (%c,%c) - mismatch\n",jump[r][c],r,c,c1,c2));
+	  *nmismatches += 1;
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,MISMATCH_COMP,c2);
 	}
+
       } else {
-	*nmismatches += 1;
-	if (revp) {
-	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,' ',c2);
+	c1 = sequence1[r-1];
+	c2 = sequence2[c-1];
+
+	if (sequenceuc1[r-1] == sequenceuc2[c-1]) {
+	  debug(printf("D%d: Pushing %d,%d (%c,%c) - match\n",jump[r][c],r,c,c1,c2));
+	  *nmatches += 1;
+	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,DYNPROG_MATCH_COMP,c2);
+
+	} else if (consistent_array[(int) c1][(int) c2] == true) {
+	  debug(printf("D%d: Pushing %d,%d (%c,%c) - ambiguous\n",jump[r][c],r,c,c1,c2));
+	  *nmatches += 1;
+	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,AMBIGUOUS_COMP,c2);
+
 	} else {
-	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,' ',c2);
+	  debug(printf("D%d: Pushing %d,%d (%c,%c) - mismatch\n",jump[r][c],r,c,c1,c2));
+	  *nmismatches += 1;
+	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,MISMATCH_COMP,c2);
 	}
       }
       r--; c--;
+
     } else if (directions[r][c] == HORIZ) {
       debug(printf("H%d: ",jump[r][c]));
       if (ngap == 0 || (dist = jump[r][c]) < MICROINTRON_LENGTH) {
@@ -1125,16 +1298,16 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
       } else {
 	/* Check for intron */
 	if (revp == 1) {
-	  left1 = sequence2[-c+1];
-	  left2 = sequence2[-(c-1)+1];
-	  right2 = sequence2[-(c-(dist-2))+1];
-	  right1 = sequence2[-(c-(dist-1))+1];
+	  left1 = sequenceuc2[-c+1];
+	  left2 = sequenceuc2[-(c-1)+1];
+	  right2 = sequenceuc2[-(c-(dist-2))+1];
+	  right1 = sequenceuc2[-(c-(dist-1))+1];
 
 	} else {
-	  left1 = sequence2[(c-(dist-1))-1];
-	  left2 = sequence2[(c-(dist-2))-1];
-	  right2 = sequence2[(c-1)-1];
-	  right1 = sequence2[c-1];
+	  left1 = sequenceuc2[(c-(dist-1))-1];
+	  left2 = sequenceuc2[(c-(dist-2))-1];
+	  right2 = sequenceuc2[(c-1)-1];
+	  right1 = sequenceuc2[c-1];
 	}
 	
 	if (left1 == 'G' && left2 == 'T') {
@@ -1143,8 +1316,10 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	  leftdi = LEFT_GC;
 	} else if (left1 == 'A' && left2 == 'T') {
 	  leftdi = LEFT_AT;
+#ifndef PMAP
 	} else if (left1 == 'C' && left2 == 'T') {
 	  leftdi = LEFT_CT;
+#endif
 	} else {
 	  leftdi = 0x00;
 	}
@@ -1153,34 +1328,45 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	  rightdi = RIGHT_AG;
 	} else if (right2 == 'A' && right1 == 'C') {
 	  rightdi = RIGHT_AC;
+#ifndef PMAP
 	} else if (right2 == 'G' && right1 == 'C') {
 	  rightdi = RIGHT_GC;
 	} else if (right2 == 'A' && right1 == 'T') {
 	  rightdi = RIGHT_AT;
+#endif
 	} else {
 	  rightdi = 0x00;
 	}
 
 	introntype = leftdi & rightdi;
+#ifdef PMAP
+	switch (introntype) {
+	case GTAG_FWD: comp = FWD_CANONICAL_INTRON_COMP; break;
+	case GCAG_FWD: comp = FWD_GCAG_INTRON_COMP; break;
+	case ATAC_FWD: comp = FWD_ATAC_INTRON_COMP; break;
+	default: comp = NONINTRON_COMP;
+	}
+#else
 	if (cdna_direction > 0) {
 	  switch (introntype) {
-	  case GTAG_FWD: comp = '>'; break;
-	  case GCAG_FWD: comp = ')'; break;
-	  case ATAC_FWD: comp = ']'; break;
-	  default: comp = '=';
+	  case GTAG_FWD: comp = FWD_CANONICAL_INTRON_COMP; break;
+	  case GCAG_FWD: comp = FWD_GCAG_INTRON_COMP; break;
+	  case ATAC_FWD: comp = FWD_ATAC_INTRON_COMP; break;
+	  default: comp = NONINTRON_COMP;
 	  }
 	} else if (cdna_direction < 0) {
 	  switch(introntype) {
-	  case ATAC_REV: comp = '['; break;
-	  case GCAG_REV: comp = '('; break;
-	  case GTAG_REV: comp = '<'; break;
-	  default: comp = '=';
+	  case ATAC_REV: comp = REV_ATAC_INTRON_COMP; break;
+	  case GCAG_REV: comp = REV_GCAG_INTRON_COMP; break;
+	  case GTAG_REV: comp = REV_CANONICAL_INTRON_COMP; break;
+	  default: comp = NONINTRON_COMP;
 	  }
 	} else {
-	  comp = '=';
+	  comp = NONINTRON_COMP;
 	}
+#endif
 
-	if (comp == '=') {
+	if (comp == NONINTRON_COMP) {
 	  add_dashes_p = true;
 	} else {
 	  add_dashes_p = false;
@@ -1195,9 +1381,9 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	  c2 = revp ? sequence2[-c+1] : sequence2[c-1];
 	  debug(printf("Pushing %d,%d (-,%c),",r,c,c2));
 	  if (revp) {
-	    pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),' ','-',c2);
+	    pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),' ',INDEL_COMP,c2);
 	  } else {
-	    pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,' ','-',c2);
+	    pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,' ',INDEL_COMP,c2);
 	  }
 	  c--;
 	}
@@ -1211,9 +1397,9 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	    c2 = sequence2[-(c-j)+1];
 	    pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ',comp,c2);
 	  }
-	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ','.','.');
-	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ','.','.');
-	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ','.','.');
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
 
 	  c -= dist - 1;
 	  for (j = ngap-1; j >= 0; j--) {
@@ -1228,9 +1414,9 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	    c2 = sequence2[c-j-1];
 	    pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ',comp,c2);
 	  }
-	  pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ','.','.');
-	  pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ','.','.');
-	  pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ','.','.');
+	  pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+	  pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+	  pairs = Pairpool_push(pairs,pairpool,offset1+(r-1),genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
 
 	  c -= dist - 1;
 	  for (j = ngap-1; j >= 0; j--) {
@@ -1252,9 +1438,9 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	c1 = revp ? sequence1[-r+1] : sequence1[r-1];
 	debug(printf("Pushing %d,%d (%c,-), ",r,c,c1));
 	if (revp) {
-	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,'-',' ');
+	  pairs = Pairpool_push(pairs,pairpool,offset1-(r-1),offset2-(c-1),c1,INDEL_COMP,' ');
 	} else {
-	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,'-',' ');
+	  pairs = Pairpool_push(pairs,pairpool,offset1+r-1,offset2+c-1,c1,INDEL_COMP,' ');
 	}
 	r--;
       }
@@ -1270,16 +1456,16 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 static void
 countback (int *nmatches, int *nmismatches, int *nopens, int *nindels,
 	   Direction_T **directions, int **jump, int r, int c, 
-	   char *sequence1, char *sequence2, int offset1, int offset2, 
+	   char *sequenceuc1, char *sequenceuc2, int offset1, int offset2, 
 	   Pairpool_T pairpool, bool revp) {
-  char c1, c2;
+  char cuc1, cuc2;
   int dist;
 
   while (directions[r][c] != STOP) {
     if (directions[r][c] == DIAG) {
-      c1 = revp ? sequence1[-r+1] : sequence1[r-1];
-      c2 = revp ? sequence2[-c+1] : sequence2[c-1];
-      if (toupper((int) c1) == toupper((int) c2)) {
+      cuc1 = revp ? sequenceuc1[-r+1] : sequenceuc1[r-1];
+      cuc2 = revp ? sequenceuc2[-c+1] : sequenceuc2[c-1];
+      if (cuc1 == cuc2) {
 	*nmatches += 1;
       } else {
 	*nmismatches += 1;
@@ -1397,6 +1583,23 @@ static int
 intron_score (int *introntype, int leftdi, int rightdi, int cdna_direction, int canonical_reward, bool endp) {
   int scoreI;
 
+#ifdef PMAP
+  if ((*introntype = leftdi & rightdi) == NONINTRON) {
+    scoreI = 0.0;
+  } else {
+    switch (*introntype) {
+    case GTAG_FWD: scoreI = canonical_reward; break;
+    case GCAG_FWD: case ATAC_FWD: 
+      if (endp == true) {
+	*introntype = NONINTRON; scoreI = 0.0;
+      } else {
+	scoreI = ALTERNATE_INTRON;
+      }
+      break;
+    default: *introntype = NONINTRON; scoreI = 0.0;
+    }
+  }
+#else
   if ((*introntype = leftdi & rightdi) == NONINTRON) {
     scoreI = 0.0;
   } else if (cdna_direction > 0) {
@@ -1438,6 +1641,8 @@ intron_score (int *introntype, int leftdi, int rightdi, int cdna_direction, int 
     default: *introntype = NONINTRON; scoreI = 0.0;
     }
   }
+#endif
+
   return scoreI;
 }
 
@@ -1445,7 +1650,7 @@ intron_score (int *introntype, int leftdi, int rightdi, int cdna_direction, int 
 static void
 bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *bestcR, int *best_introntype, 
 		   int **matrixL, int **matrixR, Direction_T **directionsL, Direction_T **directionsR, 
-		   int **jumpL, int **jumpR,  char *sequence2L, char *revsequence2R, 
+		   int **jumpL, int **jumpR,  char *sequenceuc2L, char *revsequenceuc2R, 
 		   int length1, int length2L, int length2R,
 		   int cdna_direction, int extraband_paired, bool endp, int canonical_reward,
 		   int maxhorizjump, int maxvertjump, int leftoffset, int rightoffset) {
@@ -1461,8 +1666,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   rightdi = (int *) CALLOC(length2R+1,sizeof(int));
 
   for (cL = 0; cL < length2L - 1; cL++) {
-    left1 = sequence2L[cL];
-    left2 = sequence2L[cL+1];
+    left1 = sequenceuc2L[cL];
+    left2 = sequenceuc2L[cL+1];
     if (left1 == 'G' && left2 == 'T') {
       leftdi[cL] = LEFT_GT;
     } else if (left1 == 'G' && left2 == 'C') {
@@ -1478,8 +1683,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   leftdi[length2L-1] = leftdi[length2L] = 0x00;
 
   for (cR = 0; cR < length2R - 1; cR++) {
-    right2 = revsequence2R[-cR-1];
-    right1 = revsequence2R[-cR];
+    right2 = revsequenceuc2R[-cR-1];
+    right1 = revsequenceuc2R[-cR];
     if (right2 == 'A' && right1 == 'G') {
       rightdi[cR] = RIGHT_AG;
     } else if (right2 == 'A' && right1 == 'C') {
@@ -1590,10 +1795,16 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
 List_T
 Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
-		    T dynprog, char *sequence1, char *sequence2, 
+		    T dynprog, char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2,
+#ifdef PMAP
+		    char *queryaaseq,
+#endif
 		    Pairpool_T pairpool, int extraband_single, double defect_rate) {
   List_T pairs = NULL;
+#ifdef PMAP
+  char *instsequence1;
+#endif
   Mismatchtype_T mismatchtype;
   Jumptype_T jumptype;
   int **matrix, **jump, mismatch, open, extend;
@@ -1633,21 +1844,49 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
   if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
     dynprog = Dynprog_temp(length1,length2);
     allocp = true;
-    matrix = compute_scores(&directions,&jump,dynprog,sequence1,sequence2,
-			    /*revp*/false,length1,length2,mismatchtype,jumptype,
-			    mismatch,open,extend,extraband_single);
-  } else {
-    matrix = compute_scores_lookup(&directions,&jump,dynprog,sequence1,sequence2,
-				   /*revp*/false,length1,length2,mismatchtype,jumptype,
-				   extraband_single);
   }
 
+#ifdef PMAP
+  instsequence1 = instantiate_codons(sequence1,queryaaseq,offset1,length1);
+#endif
+  
+  if (allocp == true) {
+    matrix = compute_scores(&directions,&jump,dynprog,
+#ifdef PMAP
+			    instsequence1,sequence2,
+#else
+			    sequence1,sequence2,
+#endif
+			    /*revp*/false,length1,length2,
+			    mismatchtype,jumptype,
+			    mismatch,open,extend,extraband_single);
+  } else {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+#ifdef PMAP
+				   instsequence1,sequence2,
+#else
+				   sequence1,sequence2,
+#endif
+				   /*revp*/false,length1,length2,
+				   mismatchtype,jumptype,extraband_single);
+  }
   *finalscore = matrix[length1][length2];
+
   *nmatches = *nmismatches = *nopens = *nindels = 0;
   pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 		    directions,jump,length1,length2,
-		    sequence1,sequence2,offset1,offset2,pairpool,
+#ifdef PMAP
+		    instsequence1,instsequence1,sequence2,sequenceuc2,
+#else
+		    sequence1,sequenceuc1,sequence2,sequenceuc2,
+#endif
+		    offset1,offset2,pairpool,
 		    /*revp*/false,/*ngap*/0,/*cdna_direction*/0);
+
+
+#ifdef PMAP
+  FREE(instsequence1);
+#endif
 
   /*
   Directions_free(directions);
@@ -1667,13 +1906,21 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 /* Sequence 1L and 1R represent the two ends of the cDNA insertion */
 List_T
 Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR, 
-		  char *sequence1L, char *revsequence1R, char *sequence2,
+		  char *sequence1L, char *sequenceuc1L, 
+		  char *revsequence1R, char *revsequenceuc1R,
+		  char *sequence2, char *sequenceuc2,
 		  int length1L, int length1R, int length2,
 		  int offset1L, int revoffset1R, int offset2,
+#ifdef PMAP
+		  char *queryaaseq,
+#endif
 		  Pairpool_T pairpool, int extraband_paired, double defect_rate) {
   List_T pairs = NULL, p;
   Pair_T pair;
-  char *revsequence2;
+  char *revsequence2, *revsequenceuc2;
+#ifdef PMAP
+  char *instsequence1, *instsequence1L, *instrevsequence1R;
+#endif
   Mismatchtype_T mismatchtype;
   Jumptype_T jumptype;
   int **matrixL, **matrixR, **jumpL, **jumpR, mismatch, open, extend;
@@ -1691,6 +1938,7 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
 	printf("Aligning cdna gap\n");
 	printf("At query offset %d-%d, %.*s\n",offset1L,offset1L+length1L-1,length1L,sequence1L);
 	printf("At query offset %d-%d, %.*s\n",revoffset1R-length1R+1,revoffset1R,length1R,&(revsequence1R[-length1R+1]));
+	printf("Whole piece at query offset %d-%d, %.*s\n",offset1L,revoffset1R,revoffset1R-offset1L+1,sequence1L);
 	printf("At genomic offset %d-%d, %.*s\n",offset2,offset2+length2-1,length2,sequence2);
 	printf("\n");
 	);
@@ -1725,35 +1973,65 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
     extend = CDNA_EXTEND_LOWQ;
   }
 
-  /* Right side looks like 5' end */
-  /* Note: sequence 1 and 2 flipped, because 1 has extramaterial */
-  revsequence2 = &(sequence2[length2-1]);
-  revoffset2 = offset2+length2-1;
   if (length2 > dynprogR->maxlength1 || length1R > dynprogR->maxlength2) {
     dynprogR = Dynprog_temp(length2,length1R);
     allocRp = true;
-    matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
-			     revsequence2,revsequence1R,/*revp*/true,length2,length1R,
-			     mismatchtype,jumptype,mismatch,open,extend,extraband_paired);
-  } else {
-    matrixR = compute_scores_lookup(&directionsR,&jumpR,dynprogR,
-				    revsequence2,revsequence1R,/*revp*/true,length2,length1R,
-				    mismatchtype,jumptype,extraband_paired);
   }
-
-  /* Left side looks like 3' end */
-  /* Note: sequence 1 and 2 flipped, because 1 has extramaterial */
-  /* endp is false */
   if (length2 > dynprogL->maxlength1 || length1L > dynprogL->maxlength2) {
     dynprogL = Dynprog_temp(length2,length1L);
     allocLp = true;
+  }
+
+  /* Right side looks like 5' end */
+  /* Note: sequence 1 and 2 flipped, because 1 has extramaterial */
+  revsequence2 = &(sequence2[length2-1]);
+  revsequenceuc2 = &(sequenceuc2[length2-1]);
+  revoffset2 = offset2+length2-1;
+
+#ifdef PMAP
+  instsequence1 = instantiate_codons(sequence1L,queryaaseq,offset1L,revoffset1R-offset1L+1);
+  instsequence1L = instsequence1;
+  instrevsequence1R = &(instsequence1[revoffset1R-offset1L]);
+#endif
+
+  if (allocRp == true) {
+    matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
+#ifdef PMAP
+			     revsequence2,instrevsequence1R,
+#else
+			     revsequence2,revsequence1R,
+#endif
+			     /*revp*/true,length2,length1R,mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
+  } else {
+    matrixR = compute_scores_lookup(&directionsR,&jumpR,dynprogR,
+#ifdef PMAP
+				    revsequence2,instrevsequence1R,
+#else
+				    revsequence2,revsequence1R,
+#endif
+				    /*revp*/true,length2,length1R,mismatchtype,jumptype,
+				    extraband_paired);
+  }
+
+  if (allocLp == true) {
     matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
-			     sequence2,sequence1L,/*revp*/false,length2,length1L,
-			     mismatchtype,jumptype,mismatch,open,extend,extraband_paired);
+#ifdef PMAP
+			     sequence2,instsequence1L,
+#else
+			     sequence2,sequence1L,
+#endif
+			     /*revp*/false,length2,length1L,mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
   } else {
     matrixL = compute_scores_lookup(&directionsL,&jumpL,dynprogL,
-				    sequence2,sequence1L,/*revp*/false,length2,length1L,
-				    mismatchtype,jumptype,extraband_paired);
+#ifdef PMAP
+				    sequence2,instsequence1L,
+#else
+				    sequence2,sequence1L,
+#endif
+				    /*revp*/false,length2,length1L,mismatchtype,jumptype,
+				    extraband_paired);
   }
 
   bridge_cdna_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,matrixL,matrixR,
@@ -1763,8 +2041,12 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   nmatches = nmismatches = nopens = nindels = 0;
   pairs = traceback(NULL,&nmatches,&nmismatches,&nopens,&nindels,
 		    directionsR,jumpR,bestrR,bestcR,
-		    revsequence2,revsequence1R,revoffset2,revoffset1R,
-		    pairpool,/*revp*/true,/*ngap*/0,/*cdna_direction*/0);
+#ifdef PMAP
+		    revsequence2,revsequenceuc2,instrevsequence1R,instrevsequence1R,
+#else
+		    revsequence2,revsequenceuc2,revsequence1R,revsequenceuc1R,
+#endif
+		    revoffset2,revoffset1R,pairpool,/*revp*/true,/*ngap*/0,/*cdna_direction*/0);
   pairs = List_reverse(pairs);
 
   /* cDNA and genome are flipped here.  Use c instead of r.  Unflip later. */
@@ -1772,21 +2054,30 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   debug(printf("\n"));
   for (k = revoffset2-bestrR; k >= offset2+bestrL; k--) {
     debug(printf("genome insertion, Pushing %d (%c)\n",k+1,sequence2[k-offset2]));
-    pairs = Pairpool_push(pairs,pairpool,k,revoffset1R-bestcR+1,sequence2[k-offset2],'-',' ');
+    pairs = Pairpool_push(pairs,pairpool,k,revoffset1R-bestcR+1,sequence2[k-offset2],INDEL_COMP,' ');
   }
   debug(printf("\n"));
 
   /* Add cDNA insertion */
   for (k = revoffset1R-bestcR; k >= offset1L+bestcL; k--) {
+#ifdef PMAP
+    debug(printf("cDNA insertion, Pushing %d (%c)\n",k+1,instsequence1L[k-offset1L]));
+    pairs = Pairpool_push(pairs,pairpool,offset2+bestrL,k,' ',INDEL_COMP,instsequence1L[k-offset1L]);
+#else
     debug(printf("cDNA insertion, Pushing %d (%c)\n",k+1,sequence1L[k-offset1L]));
-    pairs = Pairpool_push(pairs,pairpool,offset2+bestrL,k,' ','-',sequence1L[k-offset1L]);
+    pairs = Pairpool_push(pairs,pairpool,offset2+bestrL,k,' ',INDEL_COMP,sequence1L[k-offset1L]);
+#endif
   }
   debug(printf("\n"));
 
   pairs = traceback(pairs,&nmatches,&nmismatches,&nopens,&nindels,
 		    directionsL,jumpL,bestrL,bestcL,
-		    sequence2,sequence1L,offset2,offset1L,pairpool,
-		    /*revp*/false,/*ngap*/0,/*cdna_direction*/0);
+#ifdef PMAP
+		    sequence2,sequenceuc2,instsequence1L,instsequence1L,
+#else
+		    sequence2,sequenceuc2,sequence1L,sequenceuc1L,
+#endif
+		    offset2,offset1L,pairpool,/*revp*/false,/*ngap*/0,/*cdna_direction*/0);
 
   /* Unflip cDNA and genome */
   for (p = pairs; p != NULL; p = List_next(p)) {
@@ -1800,6 +2091,10 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   Matrix_free(matrixR);
   Matrix_free(matrixL);
   */
+
+#ifdef PMAP
+  FREE(instsequence1);
+#endif
 
   if (allocLp == true) {
     Dynprog_free(&dynprogL);
@@ -1817,13 +2112,22 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
 List_T
 Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    int *exonhead, int *introntype, T dynprogL, T dynprogR, 
-		    char *sequence1, char *sequence2L, char *revsequence2R, 
+		    char *sequence1, char *sequenceuc1,
+		    char *sequence2L, char *sequenceuc2L,
+		    char *revsequence2R, char *revsequenceuc2R,
 		    int length1, int length2L, int length2R, 
-		    int offset1, int offset2L, int revoffset2R, int cdna_direction,
-		    int ngap, Pairpool_T pairpool, int extraband_paired,
+		    int offset1, int offset2L, int revoffset2R, 
+#ifdef PMAP
+		    char *queryaaseq,
+#endif
+		    int cdna_direction, int ngap, Pairpool_T pairpool, int extraband_paired,
 		    bool endp, double defect_rate, bool returnpairsp, bool addgapp) {
   List_T pairs = NULL;
-  char *revsequence1;
+#ifdef PMAP
+  char *instsequence1, *instrevsequence1;
+#else
+  char *revsequence1, *revsequenceuc1;
+#endif
   Mismatchtype_T mismatchtype;
   Jumptype_T jumptype;
   int **matrixL, **matrixR, **jumpL, **jumpR, mismatch, open, extend;
@@ -1884,62 +2188,118 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
   if (length1 > dynprogL->maxlength1 || length2L > dynprogL->maxlength2) {
     dynprogL = Dynprog_temp(length1,length2L);
     allocLp = true;
-    matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
-			     sequence1,sequence2L,/*revp*/false,length1,length2L,
-			     mismatchtype,jumptype,mismatch,open,extend,extraband_paired);
-  } else {
-    matrixL = compute_scores_lookup(&directionsL,&jumpL,dynprogL,
-				    sequence1,sequence2L,/*revp*/false,length1,length2L,
-				    mismatchtype,jumptype,extraband_paired);
   }
-
-  revsequence1 = &(sequence1[length1-1]);
-  revoffset1 = offset1+length1-1;
   if (length1 > dynprogR->maxlength1 || length2R > dynprogR->maxlength2) {
     dynprogR = Dynprog_temp(length1,length2R);
     allocRp = true;
+  }
+
+#ifdef PMAP
+  instsequence1 = instantiate_codons(sequence1,queryaaseq,offset1,length1);
+  instrevsequence1 = &(instsequence1[length1-1]);
+#else
+  revsequence1 = &(sequence1[length1-1]);
+  revsequenceuc1 = &(sequenceuc1[length1-1]);
+#endif
+  revoffset1 = offset1+length1-1;
+
+  if (allocLp == true) {
+    matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
+#ifdef PMAP
+			     instsequence1,sequence2L,
+#else
+			     sequence1,sequence2L,
+#endif
+			     /*revp*/false,length1,length2L,mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
+  } else {
+    matrixL = compute_scores_lookup(&directionsL,&jumpL,dynprogL,
+#ifdef PMAP
+				    instsequence1,sequence2L,
+#else
+				    sequence1,sequence2L,
+#endif
+				    /*revp*/false,length1,length2L,mismatchtype,jumptype,
+				    extraband_paired);
+  }
+
+  if (allocRp == true) {
     matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
-			     revsequence1,revsequence2R,/*revp*/true,length1,length2R,
-			     mismatchtype,jumptype,mismatch,open,extend,extraband_paired);
+#ifdef PMAP
+			     instrevsequence1,revsequence2R,
+#else
+			     revsequence1,revsequence2R,
+#endif
+			     /*revp*/true,length1,length2R,mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
   } else {
     matrixR = compute_scores_lookup(&directionsR,&jumpR,dynprogR,
-				    revsequence1,revsequence2R,/*revp*/true,length1,length2R,
-				    mismatchtype,jumptype,extraband_paired);
+#ifdef PMAP
+				    instrevsequence1,revsequence2R,
+#else
+				    revsequence1,revsequence2R,
+#endif
+				    /*revp*/true,length1,length2R,mismatchtype,jumptype,
+				    extraband_paired);
   }
 
   bridge_intron_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,&(*introntype),matrixL,matrixR,
-		    directionsL,directionsR,jumpL,jumpR,sequence2L,revsequence2R,
+		    directionsL,directionsR,jumpL,jumpR,sequenceuc2L,revsequenceuc2R,
 		    length1,length2L,length2R,cdna_direction,extraband_paired,endp,
 		    canonical_reward,maxhorizjump,maxvertjump,offset2L,revoffset2R);
-  debug(printf("Intron is between %d and %d\n",offset1+(bestrL-1),revoffset1-(bestrR-1)));
+
+
   *exonhead = revoffset1-(bestrR-1);
 
   *nmatches = *nmismatches = *nopens = *nindels = 0;
   if (returnpairsp == false) {
     countback(&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 	      directionsR,jumpR,bestrR,bestcR,
-	      revsequence1,revsequence2R,revoffset1,revoffset2R,
-	      pairpool,/*revp*/true);
+#ifdef PMAP
+	      instrevsequence1,revsequenceuc2R,
+#else
+	      revsequenceuc1,revsequenceuc2R,
+#endif
+	      revoffset1,revoffset2R,pairpool,/*revp*/true);
     countback(&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 	      directionsL,jumpL,bestrL,bestcL,
-	      sequence1,sequence2L,offset1,offset2L,pairpool,/*revp*/false);
+#ifdef PMAP
+	      instsequence1,sequenceuc2L,
+#else
+	      sequenceuc1,sequenceuc2L,
+#endif
+	      offset1,offset2L,pairpool,/*revp*/false);
 
   } else {
     pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 		      directionsR,jumpR,bestrR,bestcR,
-		      revsequence1,revsequence2R,revoffset1,revoffset2R,
-		      pairpool,/*revp*/true,ngap,cdna_direction);
+#ifdef PMAP
+		      instrevsequence1,instrevsequence1,revsequence2R,revsequenceuc2R,
+#else
+		      revsequence1,revsequenceuc1,revsequence2R,revsequenceuc2R,
+#endif
+		      revoffset1,revoffset2R,pairpool,/*revp*/true,ngap,cdna_direction);
     pairs = List_reverse(pairs);
     if (addgapp) {
-      pairs = add_gap(pairs,bestrL,bestcL,bestcR,sequence1,sequence2L,revsequence2R,
+      pairs = add_gap(pairs,bestrL,bestcL,bestcR,
+#ifdef PMAP
+		      instsequence1,sequence2L,revsequence2R,
+#else
+		      sequence1,sequence2L,revsequence2R,
+#endif
 		      length1,length2L,length2R,offset1,offset2L,revoffset2R,
 		      *introntype,ngap,pairpool);
     }
     pairs = traceback(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 		      directionsL,jumpL,bestrL,bestcL,
-		      sequence1,sequence2L,offset1,offset2L,pairpool,/*revp*/false,
-		      ngap,cdna_direction);
+#ifdef PMAP
+		      instsequence1,instsequence1,sequence2L,sequenceuc2L,
+#else
+		      sequence1,sequenceuc1,sequence2L,sequenceuc2L,
+#endif
+		      offset1,offset2L,pairpool,/*revp*/false,ngap,cdna_direction);
   }
+
 
   /*
   Directions_free(directionsR);
@@ -1947,6 +2307,10 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
   Matrix_free(matrixR);
   Matrix_free(matrixL);
   */
+
+#ifdef PMAP
+  FREE(instsequence1);
+#endif
 
   if (allocRp == true) {
     Dynprog_free(&dynprogR);
@@ -1960,12 +2324,20 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 
 
 List_T
-Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
-		  T dynprog, char *revsequence1, char *revsequence2,
+Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, 
+		  int *nopens, int *nindels, T dynprog, 
+		  char *revsequence1, char *revsequenceuc1,
+		  char *revsequence2, char *revsequenceuc2,
 		  int length1, int length2, int revoffset1, int revoffset2, 
+#ifdef PMAP
+		  char *queryaaseq,
+#endif
 		  Pairpool_T pairpool, int extraband_end, double defect_rate,
 		  int cdna_direction, int ngap, bool extend_mismatch_p) {
   List_T pairs = NULL;
+#ifdef PMAP
+  char *instsequence1, *instrevsequence1;
+#endif
   Pair_T pair;
   Mismatchtype_T mismatchtype;
   Jumptype_T jumptype;
@@ -2001,26 +2373,50 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
   if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
     dynprog = Dynprog_temp(length1,length2);
     allocp = true;
-    matrix = compute_scores(&directions,&jump,dynprog,
-			    revsequence1,revsequence2,/*revp*/true,length1,length2,
-			    mismatchtype,jumptype,mismatch,open,extend,extraband_end);
-  } else {
-    matrix = compute_scores_lookup(&directions,&jump,dynprog,
-				   revsequence1,revsequence2,/*revp*/true,length1,length2,
-				   mismatchtype,jumptype,extraband_end);
   }
 
+#ifdef PMAP
+  instsequence1 = instantiate_codons(&(revsequence1[-length1+1]),queryaaseq,revoffset1-length1+1,length1);
+  instrevsequence1 = &(instsequence1[length1-1]);
+#endif
+
+  if (allocp == true) {
+    matrix = compute_scores(&directions,&jump,dynprog,
+#ifdef PMAP
+			    instrevsequence1,revsequence2,
+#else
+			    revsequence1,revsequence2,
+#endif
+			    /*revp*/true,length1,length2,mismatchtype,jumptype,
+			    mismatch,open,extend,extraband_end);
+  } else {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+#ifdef PMAP
+				   instrevsequence1,revsequence2,
+#else
+				   revsequence1,revsequence2,
+#endif
+				   /*revp*/true,length1,length2,mismatchtype,jumptype,
+				   extraband_end);
+  }
   find_best_endpoint_onegap(&(*finalscore),&bestr,&bestc,matrix,length1,length2,
 			    extraband_end,extend_mismatch_p);
+
+
   *nmatches = *nmismatches = *nopens = *nindels = 0;
   pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 		    directions,jump,bestr,bestc,
-		    revsequence1,revsequence2,revoffset1,revoffset2,
-		    pairpool,/*revp*/true,ngap,cdna_direction);
+#ifdef PMAP
+		    instrevsequence1,instrevsequence1,revsequence2,revsequenceuc2,
+#else
+		    revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
+#endif
+		    revoffset1,revoffset2,pairpool,/*revp*/true,ngap,cdna_direction);
+
   if ((*nmatches + 1) >= *nmismatches) {
     /* Add 1 to count the match already in the alignment */
     pairs = List_reverse(pairs); /* Look at 5' end to remove excess gaps */
-    while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == '-') {
+    while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
       pairs = List_next(pairs);
     }
   } else {
@@ -2034,6 +2430,10 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
     Matrix_free(matrix);
   */
   
+#ifdef PMAP
+  FREE(instsequence1);
+#endif
+
   if (allocp == true) {
     Dynprog_free(&dynprog);
   }
@@ -2043,12 +2443,20 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
 
 
 List_T
-Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
-		  T dynprog, char *sequence1, char *sequence2,
+Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, 
+		  int *nopens, int *nindels, T dynprog, 
+		  char *sequence1, char *sequenceuc1,
+		  char *sequence2, char *sequenceuc2,
 		  int length1, int length2, int offset1, int offset2, 
+#ifdef PMAP
+		  char *queryaaseq,
+#endif
 		  Pairpool_T pairpool, int extraband_end, double defect_rate,
 		  int cdna_direction, int ngap, bool extend_mismatch_p) {
   List_T pairs = NULL;
+#ifdef PMAP
+  char *instsequence1;
+#endif
   Pair_T pair;
   Mismatchtype_T mismatchtype;
   Jumptype_T jumptype;
@@ -2085,27 +2493,49 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
   if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
     dynprog = Dynprog_temp(length1,length2);
     allocp = true;
+  }
+  
+#ifdef PMAP
+  instsequence1 = instantiate_codons(sequence1,queryaaseq,offset1,length1);
+#endif
+
+  if (allocp == true) {
     matrix = compute_scores(&directions,&jump,dynprog,
-			    sequence1,sequence2,/*revp*/false,length1,length2,
-			    mismatchtype,jumptype,mismatch,open,extend,extraband_end);
+#ifdef PMAP
+			    instsequence1,sequence2,
+#else
+			    sequence1,sequence2,
+#endif
+			    /*revp*/false,length1,length2,mismatchtype,jumptype,
+			    mismatch,open,extend,extraband_end);
   } else {
     matrix = compute_scores_lookup(&directions,&jump,dynprog,
-				   sequence1,sequence2,/*revp*/false,length1,length2,
-				   mismatchtype,jumptype,extraband_end);
+#ifdef PMAP
+				   instsequence1,sequence2,
+#else
+				   sequence1,sequence2,
+#endif
+				   /*revp*/false,length1,length2,mismatchtype,jumptype,
+				   extraband_end);
   }
-
   find_best_endpoint_onegap(&(*finalscore),&bestr,&bestc,matrix,length1,length2,
 			    extraband_end,extend_mismatch_p);
+
+
   *nmatches = *nmismatches = *nopens = *nindels = 0;
   pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
 		    directions,jump,bestr,bestc,
-		    sequence1,sequence2,offset1,offset2,pairpool,
-		    /*revp*/false,ngap,cdna_direction);
+#ifdef PMAP
+		    instsequence1,instsequence1,sequence2,sequenceuc2,
+#else
+		    sequence1,sequenceuc1,sequence2,sequenceuc2,
+#endif
+		    offset1,offset2,pairpool,/*revp*/false,ngap,cdna_direction);
 
   if ((*nmatches + 1) >= *nmismatches) {
     /* Add 1 to count the match already in the alignment */
     pairs = List_reverse(pairs); /* Look at 3' end to remove excess gaps */
-    while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == '-') {
+    while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
       pairs = List_next(pairs);
     }
   } else {
@@ -2118,6 +2548,10 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
     Directions_free(directions);
     Matrix_free(matrix);
   */
+
+#ifdef PMAP
+  FREE(instsequence1);
+#endif
 
   if (allocp == true) {
     Dynprog_free(&dynprog);
@@ -2132,20 +2566,23 @@ static List_T
 make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
 			     int offset2L, int offset2M, int offset2R,
 			     int lengthL, int lengthM, int lengthR,
-			     char *queryseq, char *genomicseg, 
+#ifdef PMAP
+			     char *queryaaseq,
+#endif
+			     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
 			     Pairpool_T pairpool, int ngap, char gapchar) {
   List_T pairs = NULL;
-  char match = '*', c1, c2;
+  char c1, c2;
   int i, j, k, genomicpos;
 
   /* Left segment */
   for (i = 0; i < lengthL; i++) {
     c1 = queryseq[offset1L+i];
     c2 = genomicseg[offset2L+i];
-    if (toupper((int) c1) == toupper((int) c2)) {
-      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,match,c2);
+    if (queryuc[offset1L+i] == genomicuc[offset2L+i]) {
+      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,DYNPROG_MATCH_COMP,c2);
     } else {
-      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,' ',c2);
+      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,MISMATCH_COMP,c2);
     }
   }
 
@@ -2157,9 +2594,9 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
     pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos--,' ',gapchar,c2);
   }
 
-  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ','.','.');
-  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ','.','.');
-  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ','.','.');
+  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
 
   for (j = ngap; j >= 1; j--) {
     c2 = genomicseg[offset2M-j];
@@ -2170,10 +2607,10 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
   for (i = 0; i < lengthM; i++) {
     c1 = queryseq[offset1M+i];
     c2 = genomicseg[offset2M+i];
-    if (toupper((int) c1) == toupper((int) c2)) {
-      pairs = Pairpool_push(pairs,pairpool,offset1M+i,offset2M+i,c1,match,c2);
+    if (queryuc[offset1M+i] == genomicuc[offset2M+i]) {
+      pairs = Pairpool_push(pairs,pairpool,offset1M+i,offset2M+i,c1,DYNPROG_MATCH_COMP,c2);
     } else {
-      pairs = Pairpool_push(pairs,pairpool,offset1M+i,offset2M+i,c1,' ',c2);
+      pairs = Pairpool_push(pairs,pairpool,offset1M+i,offset2M+i,c1,MISMATCH_COMP,c2);
     }
   }
 
@@ -2185,9 +2622,9 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
     pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos--,' ',gapchar,c2);
   }
 
-  pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos,' ','.','.');
-  pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos,' ','.','.');
-  pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos,' ','.','.');
+  pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+  pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+  pairs = Pairpool_push(pairs,pairpool,offset1M+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
 
   for (j = ngap; j >= 1; j--) {
     c2 = genomicseg[offset2R-j];
@@ -2198,10 +2635,10 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
   for (i = 0; i < lengthR; i++) {
     c1 = queryseq[offset1R+i];
     c2 = genomicseg[offset2R+i];
-    if (toupper((int) c1) == toupper((int) c2)) {
-      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,match,c2);
+    if (queryuc[offset1R+i] == genomicuc[offset2R+i]) {
+      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,DYNPROG_MATCH_COMP,c2);
     } else {
-      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,' ',c2);
+      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,MISMATCH_COMP,c2);
     }
   }
 
@@ -2213,20 +2650,23 @@ static List_T
 make_microexon_pairs_single (int offset1L, int offset1R,
 			     int offset2L, int offset2R,
 			     int lengthL, int lengthR,
-			     char *queryseq, char *genomicseg, 
+#ifdef PMAP
+			     char *queryaaseq,
+#endif
+			     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
 			     Pairpool_T pairpool, int ngap, char gapchar) {
   List_T pairs = NULL;
-  char match = '*', c1, c2;
+  char c1, c2;
   int i, j, k, genomicpos;
 
   /* Microexon */
   for (i = 0; i < lengthL; i++) {
     c1 = queryseq[offset1L+i];
     c2 = genomicseg[offset2L+i];
-    if (toupper((int) c1) == toupper((int) c2)) {
-      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,match,c2);
+    if (queryuc[offset1L+i] == genomicuc[offset2L+i]) {
+      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,DYNPROG_MATCH_COMP,c2);
     } else {
-      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,' ',c2);
+      pairs = Pairpool_push(pairs,pairpool,offset1L+i,offset2L+i,c1,MISMATCH_COMP,c2);
     }
   }
 
@@ -2238,9 +2678,9 @@ make_microexon_pairs_single (int offset1L, int offset1R,
     pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos--,' ',gapchar,c2);
   }
 
-  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ','.','.');
-  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ','.','.');
-  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ','.','.');
+  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
+  pairs = Pairpool_push(pairs,pairpool,offset1L+i,genomicpos,' ',INTRONGAP_COMP,INTRONGAP_CHAR);
 
   for (j = ngap; j >= 1; j--) {
     c2 = genomicseg[offset2R-j];
@@ -2251,10 +2691,10 @@ make_microexon_pairs_single (int offset1L, int offset1R,
   for (i = 0; i < lengthR; i++) {
     c1 = queryseq[offset1R+i];
     c2 = genomicseg[offset2R+i];
-    if (toupper((int) c1) == toupper((int) c2)) {
-      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,match,c2);
+    if (queryuc[offset1R+i] == genomicuc[offset2R+i]) {
+      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,DYNPROG_MATCH_COMP,c2);
     } else {
-      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,' ',c2);
+      pairs = Pairpool_push(pairs,pairpool,offset1R+i,offset2R+i,c1,MISMATCH_COMP,c2);
     }
   }
 
@@ -2262,10 +2702,16 @@ make_microexon_pairs_single (int offset1L, int offset1R,
 }
 
 List_T
-Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, char *revsequence2R,
+Dynprog_microexon_int (int *microintrontype,
+		       char *sequence1, char *sequenceuc1,
+		       char *sequence2L, char *sequenceuc2L,
+		       char *revsequence2R, char *revsequenceuc2R,
 		       int length1, int length2L, int length2R,
-		       int offset1, int offset2L, int revoffset2R,
-		       int cdna_direction, char *queryseq, char *genomicseg, 
+		       int offset1, int offset2L, int revoffset2R, int cdna_direction,
+#ifdef PMAP
+		       char *queryaaseq,
+#endif
+		       char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
 		       Pairpool_T pairpool, int ngap) {
   Intlist_T hits = NULL, p;
   int middlelength, cL, cR, mincR, maxcR, leftbound, rightbound, textleft, textright, candidate, i;
@@ -2273,23 +2719,32 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
   char left1, left2, right2, right1;
   char intron1, intron2, intron3, intron4, gapchar;
 
+#ifdef PMAP
+  intron1 = 'G';
+  intron2 = 'T';
+  intron3 = 'A';
+  intron4 = 'G';
+  gapchar = FWD_CANONICAL_INTRON_COMP;
+  *microintrontype = GTAG_FWD;
+#else
   if (cdna_direction > 0) {
     intron1 = 'G';
     intron2 = 'T';
     intron3 = 'A';
     intron4 = 'G';
-    gapchar = '>';
+    gapchar = FWD_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_FWD;
   } else if (cdna_direction < 0) {
     intron1 = 'C';
     intron2 = 'T';
     intron3 = 'A';
     intron4 = 'C';
-    gapchar = '<';
+    gapchar = REV_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_REV;
   } else {
     abort();
   }
+#endif
 
   debug(printf("Begin microexon search for %.*s and %.*s\n",
 	       length2L,sequence2L,length2R,&(revsequence2R[-length2R+1])));
@@ -2314,7 +2769,7 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
   leftbound = 0;
   nmismatches = 0;
   while (leftbound < length1 - 1 && nmismatches <= 1) {
-    if (sequence1[leftbound] != sequence2L[leftbound]) {
+    if (sequenceuc1[leftbound] != sequenceuc2L[leftbound]) {
       nmismatches++;
     }
     leftbound++;
@@ -2325,7 +2780,7 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
   i = length1-1;
   nmismatches = 0;
   while (i >= 0 && nmismatches <= 1) {
-    if (sequence1[i] != revsequence2R[-rightbound]) {
+    if (sequenceuc1[i] != revsequenceuc2R[-rightbound]) {
       nmismatches++;
     }
     rightbound++;
@@ -2337,8 +2792,8 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
 	       leftbound,rightbound));
 
   for (cL = 0; cL <= leftbound; cL++) {
-    left1 = sequence2L[cL];
-    left2 = sequence2L[cL+1];
+    left1 = sequenceuc2L[cL];
+    left2 = sequenceuc2L[cL+1];
     debug(printf("  %d: %c%c\n",cL,left1,left2));
     if (left1 == intron1 && left2 == intron2) {
       mincR = length1 - MAX_MICROEXON_LENGTH - cL;
@@ -2352,8 +2807,8 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
       debug(printf("  Found left GT at %d.  Scanning from %d - cL - (1-7), or %d to %d\n",
 		   cL,length1,mincR,maxcR));
       for (cR = mincR; cR <= maxcR; cR++) {
-	right2 = revsequence2R[-cR-1];
-	right1 = revsequence2R[-cR];
+	right2 = revsequenceuc2R[-cR-1];
+	right1 = revsequenceuc2R[-cR];
 	debug(printf("   Checking %d: %c%c\n",cR,right2,right1));
 	if (right2 == intron3 && right1 == intron4) {
 	  middlelength = length1 - cL - cR;
@@ -2362,19 +2817,23 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
 	  
 	  textleft = offset2L + cL + MICROINTRON_LENGTH;
 	  textright = revoffset2R - cR - MICROINTRON_LENGTH;
-	  hits = BoyerMoore(&(sequence1[cL]),middlelength,&(genomicseg[textleft]),textright-textleft);
+	  hits = BoyerMoore(&(sequenceuc1[cL]),middlelength,&(genomicuc[textleft]),textright-textleft);
 	  for (p = hits; p != NULL; p = Intlist_next(p)) {
 	    candidate = textleft + Intlist_head(p);
-	    if (genomicseg[candidate - 2] == intron3 &&
-		genomicseg[candidate - 1] == intron4 &&
-		genomicseg[candidate + middlelength] == intron1 &&
-		genomicseg[candidate + middlelength + 1] == intron2) {
+	    if (genomicuc[candidate - 2] == intron3 &&
+		genomicuc[candidate - 1] == intron4 &&
+		genomicuc[candidate + middlelength] == intron1 &&
+		genomicuc[candidate + middlelength + 1] == intron2) {
 	      debug(printf("  Successful microexon at %d,%d,%d\n",offset2L,candidate,revoffset2R-cR));
 	      
 	      Intlist_free(&hits);
 	      return make_microexon_pairs_double(offset1,offset1+cL,offset1+cL+middlelength,
 						 offset2L,candidate,revoffset2R-cR+1,
-						 cL,middlelength,cR,queryseq,genomicseg,
+						 cL,middlelength,cR,
+#ifdef PMAP
+						 queryaaseq,
+#endif
+						 queryseq,queryuc,genomicseg,genomicuc,
 						 pairpool,ngap,gapchar);
 	    }
 	  }
@@ -2424,32 +2883,45 @@ search_length (int endlength, int maxlength, bool end_microexons_p) {
 
 
 List_T
-Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequence1, char *revsequence2,
-		     int length1, int length2, int revoffset1, int revoffset2,
-		     int cdna_direction, char *queryseq, char *genomicseg, 
+Dynprog_microexon_5 (int *microintrontype, int *microexonlength,
+		     char *revsequence1, char *revsequenceuc1, char *revsequence2, char *revsequenceuc2,
+		     int length1, int length2, int revoffset1, int revoffset2, int cdna_direction,
+#ifdef PMAP
+		     char *queryaaseq,
+#endif
+		     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
 		     Pairpool_T pairpool, int ngap, bool end_microexons_p) {
   Intlist_T hits = NULL, p;
   int endlength, c, textleft, textright, candidate, nmismatches = 0;
   char right2, right1;
   char intron1, intron2, intron3, intron4, gapchar;
 
+#ifdef PMAP
+  intron1 = 'G';
+  intron2 = 'T';
+  intron3 = 'A';
+  intron4 = 'G';
+  gapchar = FWD_CANONICAL_INTRON_COMP;
+  *microintrontype = GTAG_FWD;
+#else
   if (cdna_direction > 0) {
     intron1 = 'G';
     intron2 = 'T';
     intron3 = 'A';
     intron4 = 'G';
-    gapchar = '>';
+    gapchar = FWD_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_FWD;
   } else if (cdna_direction < 0) {
     intron1 = 'C';
     intron2 = 'T';
     intron3 = 'A';
     intron4 = 'C';
-    gapchar = '<';
+    gapchar = REV_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_REV;
   } else {
     abort();
   }
+#endif
 
   debug(printf("Begin microexon search at 5' for %.*s\n",
 	       length2,&(revsequence2[-length2+1])));
@@ -2457,10 +2929,10 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequen
 
   *microexonlength = 0;
   for (c = 0; c < length1 - MIN_MICROEXON_LENGTH; c++) {
-    right2 = revsequence2[-c-1];
-    right1 = revsequence2[-c];
+    right2 = revsequenceuc2[-c-1];
+    right1 = revsequenceuc2[-c];
     debug(printf("   Checking %c%c\n",right2,right1));
-    if (c > 0 && revsequence1[-c+1] != revsequence2[-c+1]) {
+    if (c > 0 && revsequenceuc1[-c+1] != revsequenceuc2[-c+1]) {
       nmismatches++;
     }
     if (nmismatches > 1) {
@@ -2475,7 +2947,7 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequen
 
       textright = revoffset2 - c - MICROINTRON_LENGTH;
       textleft = textright - search_length(endlength,textright,end_microexons_p) + MICROINTRON_LENGTH;
-      hits = BoyerMoore(&(revsequence1[-c-endlength+1]),endlength,&(genomicseg[textleft]),textright-textleft);
+      hits = BoyerMoore(&(revsequenceuc1[-c-endlength+1]),endlength,&(genomicuc[textleft]),textright-textleft);
       for (p = hits; p != NULL; p = Intlist_next(p)) {
 	candidate = textleft + Intlist_head(p);
 	if (genomicseg[candidate + endlength] == intron1 &&
@@ -2485,8 +2957,11 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequen
 	  Intlist_free(&hits);
 	  *microexonlength = endlength;
 	  return make_microexon_pairs_single(revoffset1-c-endlength+1,revoffset1-c+1,
-					     candidate,revoffset2-c+1,
-					     endlength,c,queryseq,genomicseg,
+					     candidate,revoffset2-c+1,endlength,c,
+#ifdef PMAP
+					     queryaaseq,
+#endif
+					     queryseq,queryuc,genomicseg,genomicuc,
 					     pairpool,ngap,gapchar);
 	}
       }
@@ -2500,42 +2975,55 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequen
 
 
 List_T
-Dynprog_microexon_3 (int *microintrontype, int *microexonlength, char *sequence1, char *sequence2,
-		     int length1, int length2, int offset1, int offset2,
-		     int cdna_direction, char *queryseq, char *genomicseg, 
+Dynprog_microexon_3 (int *microintrontype, int *microexonlength, 
+		     char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
+		     int length1, int length2, int offset1, int offset2, int cdna_direction,
+#ifdef PMAP
+		     char *queryaaseq,
+#endif
+		     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
 		     int genomiclength, Pairpool_T pairpool, int ngap, bool end_microexons_p) {
   Intlist_T hits = NULL, p;
   int endlength, c, textleft, textright, candidate, nmismatches = 0;
   char left1, left2;
   char intron1, intron2, intron3, intron4, gapchar;
 
+#ifdef PMAP
+  intron1 = 'G';
+  intron2 = 'T';
+  intron3 = 'A';
+  intron4 = 'G';
+  gapchar = FWD_CANONICAL_INTRON_COMP;
+  *microintrontype = GTAG_FWD;
+#else
   if (cdna_direction > 0) {
     intron1 = 'G';
     intron2 = 'T';
     intron3 = 'A';
     intron4 = 'G';
-    gapchar = '>';
+    gapchar = FWD_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_FWD;
   } else if (cdna_direction < 0) {
     intron1 = 'C';
     intron2 = 'T';
     intron3 = 'A';
     intron4 = 'C';
-    gapchar = '<';
+    gapchar = REV_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_REV;
   } else {
     abort();
   }
+#endif
 
   debug(printf("Begin microexon search at 3' for %.*s\n",length2,sequence2));
   debug(printf("  Query sequence is %.*s\n",length1,sequence1));
 
   *microexonlength = 0;
   for (c = 0; c < length1 - MIN_MICROEXON_LENGTH; c++) {
-    left1 = sequence2[c];
-    left2 = sequence2[c+1];
+    left1 = sequenceuc2[c];
+    left2 = sequenceuc2[c+1];
     debug(printf("   Checking %c%c\n",left1,left2));
-    if (c > 0 && sequence1[c-1] != sequence2[c-1]) {
+    if (c > 0 && sequenceuc1[c-1] != sequenceuc2[c-1]) {
       nmismatches++;
     }
     if (nmismatches > 1) {
@@ -2550,7 +3038,7 @@ Dynprog_microexon_3 (int *microintrontype, int *microexonlength, char *sequence1
 
       textleft = offset2 + c;
       textright = textleft + search_length(endlength,genomiclength-textleft,end_microexons_p);
-      hits = BoyerMoore(&(sequence1[c]),endlength,&(genomicseg[textleft]),textright-textleft);
+      hits = BoyerMoore(&(sequenceuc1[c]),endlength,&(genomicuc[textleft]),textright-textleft);
       for (p = hits; p != NULL; p = Intlist_next(p)) {
 	candidate = textleft + Intlist_head(p);
 	if (genomicseg[candidate - 2] == intron3 &&
@@ -2560,8 +3048,11 @@ Dynprog_microexon_3 (int *microintrontype, int *microexonlength, char *sequence1
 	  Intlist_free(&hits);
 	  *microexonlength = endlength;
 	  return make_microexon_pairs_single(offset1,offset1+c,
-					     offset2,candidate,
-					     c,endlength,queryseq,genomicseg,
+					     offset2,candidate,c,endlength,
+#ifdef PMAP
+					     queryaaseq,
+#endif
+					     queryseq,queryuc,genomicseg,genomicuc,
 					     pairpool,ngap,gapchar);
 	}
       }

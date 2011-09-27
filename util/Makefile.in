@@ -132,22 +132,24 @@ target_alias = @target_alias@
 target_cpu = @target_cpu@
 target_os = @target_os@
 target_vendor = @target_vendor@
+@FULLDIST_FALSE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup md_coords fa_coords
 
-bin_SCRIPTS = gmap_compress gmap_uncompress gmap_setup md_coords fa_coords
+@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup pmap_setup md_coords fa_coords
+@FULLDIST_FALSE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup md_coords fa_coords
 
-CLEANFILES = gmap_compress gmap_uncompress gmap_setup md_coords fa_coords
+@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup pmap_setup md_coords fa_coords
 subdir = util
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = gmap_compress.pl gmap_uncompress.pl gmap_setup.pl \
-	md_coords.pl fa_coords.pl
+CONFIG_CLEAN_FILES = gmap_compress.pl gmap_uncompress.pl gmap_process.pl \
+	gmap_setup.pl md_coords.pl fa_coords.pl
 SCRIPTS = $(bin_SCRIPTS)
 
 DIST_SOURCES =
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am fa_coords.pl.in \
-	gmap_compress.pl.in gmap_setup.pl.in gmap_uncompress.pl.in \
-	md_coords.pl.in
+	gmap_compress.pl.in gmap_process.pl.in gmap_setup.pl.in \
+	gmap_uncompress.pl.in md_coords.pl.in
 all: all-am
 
 .SUFFIXES:
@@ -159,6 +161,8 @@ Makefile:  $(srcdir)/Makefile.in  $(top_builddir)/config.status
 gmap_compress.pl: $(top_builddir)/config.status gmap_compress.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_uncompress.pl: $(top_builddir)/config.status gmap_uncompress.pl.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+gmap_process.pl: $(top_builddir)/config.status gmap_process.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gmap_setup.pl: $(top_builddir)/config.status gmap_setup.pl.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
@@ -328,9 +332,17 @@ gmap_uncompress: gmap_uncompress.pl
 	cp gmap_uncompress.pl gmap_uncompress
 	chmod +x gmap_uncompress
 
+gmap_process: gmap_process.pl
+	cp gmap_process.pl gmap_process
+	chmod +x gmap_process
+
 gmap_setup: gmap_setup.pl
 	cp gmap_setup.pl gmap_setup
 	chmod +x gmap_setup
+
+pmap_setup: pmap_setup.pl
+	cp pmap_setup.pl pmap_setup
+	chmod +x pmap_setup
 
 md_coords: md_coords.pl
 	cp md_coords.pl md_coords

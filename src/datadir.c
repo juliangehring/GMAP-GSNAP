@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c,v 1.19 2005/07/08 07:58:28 twu Exp $";
+static char rcsid[] = "$Id: datadir.c,v 1.22 2005/10/14 19:33:03 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -228,3 +228,43 @@ Datadir_find_mapdir (char *user_mapdir, char *genomesubdir, char *fileroot) {
 }
 
 
+void
+Datadir_list_directory (FILE *fp, char *directory) {
+  char *filename;
+  struct dirent *entry;
+  DIR *dp;
+  int pos = 0;
+
+  if ((dp = opendir(directory)) == NULL) {
+    fprintf(stderr,"Unable to open directory %s\n",directory);
+    exit(9);
+  }
+  while ((entry = readdir(dp)) != NULL) {
+    filename = entry->d_name;
+    if (filename[0] != '.') {
+      if (pos == 0) {
+	fprintf(fp,"     ");
+	pos += strlen("     ");
+      } else {
+	fprintf(fp," ");
+	pos++;
+	while (pos % 10 != 0) {
+	  printf(" ");
+	  pos++;
+	}
+      }
+      fprintf(fp,"%s",filename);
+      pos += strlen(filename);
+      if (pos > 60) {
+	fprintf(fp,"\n");
+	pos = 0;
+      }
+    }
+  }
+  fprintf(fp,"\n");
+  if (closedir(dp) < 0) {
+    fprintf(stderr,"Unable to close directory %s\n",directory);
+  }
+
+  return;
+}

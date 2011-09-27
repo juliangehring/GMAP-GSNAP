@@ -1,3 +1,1177 @@
+2005-10-25 11:03  twu
+
+	* src/pair.c: Removed extraneous linefeed in compressed output
+
+2005-10-25 11:00  twu
+
+	* VERSION: Updated version number
+
+2005-10-25 10:58  twu
+
+	* src/pair.c: Fixed psl output
+
+2005-10-25 10:58  twu
+
+	* README: Clarified use of ./configure flags.  Added instructions
+	  for the -C flag in fa_coords.
+
+2005-10-25 10:07  twu
+
+	* util/gmap_setup.pl.in: Restored -W flag for writing directly to
+	  file
+
+2005-10-25 09:52  twu
+
+	* util/gmap_setup.pl.in: Added instructions for clean to Makefile
+
+2005-10-25 09:52  twu
+
+	* util/fa_coords.pl.in: Added -C flag to make each sequence a
+	  separate chromosome
+
+2005-10-25 09:50  twu
+
+	* src/: pair.c, pair.h, stage3.c: Added printing of cDNA direction
+	  in compressed output
+
+2005-10-25 09:49  twu
+
+	* src/: bigendian.h, mem.h: Added include of config.h.
+
+2005-10-21 10:37  twu
+
+	* VERSION: Updated version
+
+2005-10-21 09:56  twu
+
+	* README: Added instructions for running make after gmap_setup
+
+2005-10-21 09:55  twu
+
+	* MAINTAINER: Added reminder to check for DEBUG mode
+
+2005-10-21 09:51  twu
+
+	* src/pdldata.c: Fixed typo
+
+2005-10-21 09:50  twu
+
+	* src/: pair.c, pair.h, stage3.c, stage3.h: Restored printing of
+	  strain information
+
+2005-10-21 09:50  twu
+
+	* src/oligo-count.c: Using new interface to indexdb
+
+2005-10-21 09:49  twu
+
+	* src/gmap.c: Added error message if user tries to use strain
+	  information and file is not found
+
+2005-10-21 09:43  twu
+
+	* src/gmap.c: Restored printing of strain information.	Added
+	  conversion to upper case for altstrain sequence.
+
+2005-10-21 09:42  twu
+
+	* src/: genome.c, indexdb.c: Added printing of number of bytes
+
+2005-10-21 09:42  twu
+
+	* src/access.h: Added MAX32BIT
+
+2005-10-21 09:42  twu
+
+	* src/access.c: Added debugging statements
+
+2005-10-21 09:40  twu
+
+	* src/Makefile.am: Added needed files
+
+2005-10-18 21:11  twu
+
+	* configure.ac: Added warning message if mmap not available
+
+2005-10-18 21:11  twu
+
+	* util/fa_coords.pl.in: Added ability to read from stdin
+
+2005-10-18 21:10  twu
+
+	* tests/setup1.test.in: Added install command
+
+2005-10-18 21:10  twu
+
+	* src/: access.c, access.h: Made Access_filesize an external
+	  routine
+
+2005-10-18 21:09  twu
+
+	* src/: genuncompress.c, pdldata.c: Using routines from access.c
+
+2005-10-18 20:57  twu
+
+	* src/Makefile.am: Added access.c and access.h to programs with
+	  IIT_T object
+
+2005-10-18 20:56  twu
+
+	* src/chrsubset.c: Added include of config.h
+
+2005-10-18 20:55  twu
+
+	* src/gmapindex.c: Removing free of accsegmentpos_table, which
+	  fails on some computers
+
+2005-10-18 20:54  twu
+
+	* src/gmap.c: Reading user-provided genomic segment and reference
+	  sequence before FASTA query
+
+2005-10-18 20:53  twu
+
+	* src/: genome-write.c, genomeplot.c, get-genome.c, iit_dump.c,
+	  iit_get.c, pmapindex.c, segmentpos.c: Changed calls to IIT_free
+	  and IIT_annotation
+
+2005-10-18 20:51  twu
+
+	* src/: iit-write.c, iit-write.h: Made write version of IIT_free
+	  static and renamed it.
+
+2005-10-18 20:50  twu
+
+	* src/iit-read.h: Changed interface to IIT_annotation.
+
+2005-10-18 20:50  twu
+
+	* src/iit-read.c: Added FILEIO mode for reading IIT_T objects.
+	  Changed interface to IIT_annotation.
+
+2005-10-18 20:48  twu
+
+	* src/iitdef.h: Made mutex part of IIT_T object.  Added offset to
+	  IIT_T object for FILEIO mode.
+
+2005-10-18 20:47  twu
+
+	* src/indexdb.c: Made mutexes part of Indexdb_T object.  Changed
+	  calls to IIT_annotation.
+
+2005-10-18 20:43  twu
+
+	* src/genome.c: Made mutex part of Genome_T object
+
+2005-10-18 20:42  twu
+
+	* src/access.h: Added flag for randomp.  Added function for
+	  read/write mmap.
+
+2005-10-18 20:41  twu
+
+	* src/access.c: Moved file size determination to a separate
+	  function
+
+2005-10-14 13:25  twu
+
+	* src/gmap.c: Moved reading of input sequences to beginning
+
+2005-10-14 13:25  twu
+
+	* src/indexdb.c: Minor fixes
+
+2005-10-14 13:24  twu
+
+	* src/access.h: Returning length and time for Access_immediate
+
+2005-10-14 13:24  twu
+
+	* src/access.c: Returning length and time for Access_immediate.
+	  Forcing read of pages during pre-load.
+
+2005-10-14 12:36  twu
+
+	* src/gmap.c: Removed unused variables
+
+2005-10-14 12:35  twu
+
+	* src/result.c: Addressed compiler warning
+
+2005-10-14 12:35  twu
+
+	* src/pair.c: Fixed faulty print statement in pslformat_nt
+
+2005-10-14 12:35  twu
+
+	* src/indexdb.c: Added necessary include file.	Removed unnecessary
+	  variables.
+
+2005-10-14 12:34  twu
+
+	* src/: genome.c, stage3.c: Added necessary include file
+
+2005-10-14 12:34  twu
+
+	* src/dynprog.c: Applied type conversion for char to access array
+
+2005-10-14 12:33  twu
+
+	* src/datadir.c: Removed unused variables
+
+2005-10-14 12:06  twu
+
+	* src/Makefile.am: Added access.c and access.h
+
+2005-10-14 12:05  twu
+
+	* src/: blackboard.c, blackboard.h, gmap.c: Added nextchar to
+	  Blackboard_T object
+
+2005-10-14 12:05  twu
+
+	* src/gmap.c: Now reading first sequence in main thread, and using
+	  existence of a second sequence to determine whether to start
+	  threads and to pre-read offsets file for GMAP.  Conditioning some
+	  flags based on existence of mmap and threading support.
+
+2005-10-14 12:03  twu
+
+	* src/datadir.h: Removed unnecessary include
+
+2005-10-14 12:03  twu
+
+	* src/intlist.c: Minor fix to resolve gcc compiler warning
+
+2005-10-14 12:02  twu
+
+	* src/: access.c, access.h, genome.c, indexdb.c: Standardized file
+	  access routines and moved them to access.c
+
+2005-10-13 20:36  twu
+
+	* src/: genomeplot.c, plotdata.c, plotdata.h: Fixed ASCII printing
+	  of universal coordinates when a range is selected
+
+2005-10-13 20:36  twu
+
+	* src/matchpair.c: Fixed calculation of genome length for segment
+
+2005-10-13 20:35  twu
+
+	* src/sequence.c: Fixed Sequence_read_unlimited to handle sequences
+	  without a header line.
+
+2005-10-12 15:51  twu
+
+	* util/gmap_setup.pl.in: Changed program to generate a Makefile
+
+2005-10-12 15:50  twu
+
+	* util/: fa_coords.pl.in, md_coords.pl.in: Deleted comment about
+	  gmap_setup running time
+
+2005-10-12 15:50  twu
+
+	* util/gmap_process.pl.in: Initial import into CVS
+
+2005-10-12 15:49  twu
+
+	* util/Makefile.am: Added instructions for gmap_process
+
+2005-10-12 15:49  twu
+
+	* tests/setup1.test.in: Modified setup test for new interface to
+	  utility programs
+
+2005-10-12 15:48  twu
+
+	* tests/Makefile.am: Modified setup test to put binary files in
+	  tests directory
+
+2005-10-12 15:31  twu
+
+	* MAINTAINER: Minor note to self
+
+2005-10-12 11:02  twu
+
+	* src/Makefile.am: Made FULLDIST work for gmap sources
+
+2005-10-12 11:01  twu
+
+	* src/gmap.c: Made separate flags for batch for offsets and batch
+	  for positions file.  Simplified input thread.
+
+2005-10-12 11:00  twu
+
+	* src/indexdb.h: Made separate flags for batch for offsets and
+	  batch for positions file
+
+2005-10-12 11:00  twu
+
+	* src/indexdb.c: Added memory mapping for offsets files under PMAP.
+	  Made separate flags for batch for offsets and batch for
+	  positions file.
+
+2005-10-12 10:59  twu
+
+	* src/oligoindex.c: Removed stop codon from oligomers in stage 2
+
+2005-10-12 09:25  twu
+
+	* src/Makefile.am: Moved beta code for GMAP into a separate program
+
+2005-10-12 09:25  twu
+
+	* src/stage2.c: Moved PMAP conditionals out of debugging statements
+
+2005-10-11 15:10  twu
+
+	* src/Makefile.am: Removed conditional distribution of files
+
+2005-10-11 15:10  twu
+
+	* src/translation.c: Including comp.h header
+
+2005-10-11 15:10  twu
+
+	* src/oligop.c: Removed STOP from amino acid alphabet.
+
+2005-10-11 15:09  twu
+
+	* src/gmapindex.c: Generating chrsubset file at same time as
+	  chromosome file
+
+2005-10-11 15:09  twu
+
+	* src/: gmap.c, pmapindex.c: Changed PMAP indexing interval to be
+	  based on amino acids.
+
+2005-10-11 15:08  twu
+
+	* src/indexdb.h: Removed STOP from amino acid alphabet.  Changed
+	  PMAP interval to be based on amino acids.
+
+2005-10-11 15:08  twu
+
+	* src/indexdb.c: Simplified conversion of oligomer to amino acid
+	  index for PMAP.  Removed STOP from amino acid alphabet.
+	  Computing each protein frame separately.
+
+2005-10-11 10:38  twu
+
+	* configure.ac: Added large file support with AC_SYS_LARGEFILE.
+	  Removed setup test number 2.	Added gmap_process.
+
+2005-10-11 10:37  twu
+
+	* acinclude.m4: Removed macros for O_LARGEFILE
+
+2005-10-11 10:35  twu
+
+	* config/open-flags.m4: Removed file open-flags.m4
+
+2005-10-10 09:30  twu
+
+	* config/open-flags.m4, acinclude.m4: Added check for O_LARGEFILE
+	  in open
+
+2005-10-07 08:19  twu
+
+	* util/gmap_setup.pl.in: Restored -W flag and improved it
+
+2005-10-06 16:17  twu
+
+	* VERSION: Updated version
+
+2005-10-06 16:17  twu
+
+	* configure.ac: Added hook for pmap_setup.pl
+
+2005-10-06 16:16  twu
+
+	* README: Added explanation of full, uncompressed genome, and of
+	  batch modes
+
+2005-10-06 16:16  twu
+
+	* util/gmap_setup.pl.in: Added checks to make sure desired files
+	  are built.  Added printing of commands to stdout.
+
+2005-10-06 16:15  twu
+
+	* util/pmap_setup.pl.in: Added checks to make sure desired files
+	  are built
+
+2005-10-06 16:15  twu
+
+	* util/: gmap_compress.pl.in, gmap_uncompress.pl.in: Altered format
+	  of compressed output to indicate ambiguous matches
+
+2005-10-06 15:55  twu
+
+	* src/pair.c: Altered format of compressed output to indicate
+	  ambiguous matches
+
+2005-10-06 15:54  twu
+
+	* src/genome.c: Fixed batch loading of full genomes greater than 2
+	  gigabytes
+
+2005-10-06 13:44  twu
+
+	* src/gmap.c: Modified message about batch mode and multiple
+	  threads mode
+
+2005-10-06 13:43  twu
+
+	* src/stage2.c: Parameterized alignment characters and defined them
+	  centrally in comp.h.	Restored previous intron penalties based on
+	  length.
+
+2005-10-06 13:43  twu
+
+	* src/pair.c: Parameterized alignment characters and defined them
+	  centrally in comp.h.	Now printing ambiguous nucleotide matches.
+
+2005-10-06 13:42  twu
+
+	* src/dynprog.c: Parameterized alignment characters and defined
+	  them centrally in comp.h.  Added separate table for consistent
+	  nucleotide pairs.
+
+2005-10-06 13:42  twu
+
+	* src/: Makefile.am, comp.h, pairpool.c, stage3.c, translation.c:
+	  Parameterized alignment characters and defined them centrally in
+	  comp.h
+
+2005-10-05 17:01  twu
+
+	* src/gmap.c: Changed batch mode to be of two types: pre-loading of
+	  indices only, and pre-loading of both indices and genome.
+
+2005-10-05 14:05  twu
+
+	* src/gmap.c: Clarified various user messages
+
+2005-10-05 14:01  twu
+
+	* src/indexdb.c: Added an explicit check for a nonsensical offsets
+	  file
+
+2005-10-05 14:01  twu
+
+	* src/pair.c: Made margin width determined dynamically in printing
+	  the alignments
+
+2005-10-03 17:16  twu
+
+	* src/dynprog.c: Removed reverse intron possibilities from PMAP
+
+2005-10-03 17:16  twu
+
+	* src/gmapindex.c: Restored monitoring output for logging contigs
+
+2005-10-03 17:15  twu
+
+	* src/indexdb.c: Added fwd/rev to monitoring commands for indexing
+	  offsets and position files
+
+2005-10-03 17:15  twu
+
+	* src/compress.c: Added monitoring commands for compressing and
+	  uncompressing files
+
+2005-10-03 17:12  twu
+
+	* util/gmap_setup.pl.in: Clarified behavior and instructions for
+	  building a full (uncompressed) genome file
+
+2005-10-03 17:11  twu
+
+	* util/fa_coords.pl.in: Abbreviated monitoring output, with a
+	  parameter that controls which contigs to ignore
+
+2005-10-03 17:10  twu
+
+	* util/Makefile.am: Added make instructions for pmap_setup
+
+2005-10-03 17:09  twu
+
+	* util/pmap_setup.pl.in: Initial import into CVS
+
+2005-10-01 08:34  twu
+
+	* src/gmap.c: Performing translation of query sequence and genomic
+	  segment to upper case.  Turned off stage 1 for user-provided
+	  genomic segment in PMAP.  Provided -G flag for specifying full
+	  genome, if it exists.
+
+2005-10-01 08:32  twu
+
+	* src/genome.c: Turned warning into error, if user wishes to use a
+	  full genome and none exists
+
+2005-10-01 08:31  twu
+
+	* src/dynprog.c: Allowed intron gap parameter to be arbitrarily
+	  large
+
+2005-10-01 08:31  twu
+
+	* src/: pair.c, stage2.c, translation.c: Fixed handling of
+	  user-provided genomic segment with lower case characters for PMAP
+
+2005-10-01 08:30  twu
+
+	* src/stage1.c: Improved debugging statement
+
+2005-10-01 08:30  twu
+
+	* src/oligoindex.c: Minor formatting change
+
+2005-10-01 08:29  twu
+
+	* src/mem.c: Enhanced trap features
+
+2005-10-01 08:29  twu
+
+	* src/boyer-moore.c: Removed assertions
+
+2005-09-30 22:35  twu
+
+	* src/: boyer-moore.c, dynprog.c, dynprog.h, stage3.c, stage3.h:
+	  Made stage 3 use upper case for query sequence and genomic
+	  segment when needed, but original sequences for building
+	  alignment
+
+2005-09-30 22:13  twu
+
+	* src/: oligoindex.c, oligoindex.h, stage2.c, stage2.h: Made stage
+	  2 use upper case for query sequence and genomic segment for
+	  oligomer chaining, but original sequences for building alignment
+
+2005-09-30 22:06  twu
+
+	* src/: oligo.c, oligop.c, stage1.c, stage1.h: Made stage 1 assume
+	  upper case query sequence
+
+2005-09-30 22:04  twu
+
+	* src/pair.c: Removed call to toupper
+
+2005-09-30 22:03  twu
+
+	* src/: complement.h, sequence.c, sequence.h: Provided utilities
+	  for making uppercase and alias versions of sequences
+
+2005-09-30 22:02  twu
+
+	* src/compress.c: Added toupper as reason for including ctype.h
+
+2005-09-30 13:43  twu
+
+	* src/plotdata.c: Revised autoscale function
+
+2005-09-29 17:23  twu
+
+	* src/stage2.c: For PMAP, fixed bug where C terminus of query
+	  sequence was not aligned.  Eliminated computation of reverse
+	  intron direction for PMAP.
+
+2005-09-29 17:21  twu
+
+	* src/oligoindex.c: Modified comments
+
+2005-09-29 17:21  twu
+
+	* src/gmap.c: Removed Sequence_trim for PMAP, and reduced stage 2
+	  indexsize.
+
+2005-09-29 17:20  twu
+
+	* src/pair.c: Changed psl output to reflect definition of a block
+	  to be a region without indels or gaps, instead of an exon
+
+2005-09-22 06:39  twu
+
+	* src/oligoindex.c: Make amino acid index for stage 2 (with 21
+	  amino acids) distinct from that of stage 1 (with 16)
+
+2005-09-22 06:37  twu
+
+	* src/: indexdb.c, indexdb.h, oligop.c: Compressing 21 amino acids
+	  into 16 to allow offsets of amino acid 7-mers to fit into less
+	  than 2 GB
+
+2005-09-21 15:39  twu
+
+	* src/stage1.c: Parameterized size of oligomers for PMAP
+
+2005-09-21 15:38  twu
+
+	* src/: gmap.c, indexdb.h: Parameterized interval for stage 1 when
+	  user provides a genomic segment
+
+2005-09-21 15:35  twu
+
+	* src/pmapindex.c: Parameterized size of oligomers
+
+2005-09-21 15:35  twu
+
+	* src/matchpair.c: Turned off debugging
+
+2005-09-21 15:34  twu
+
+	* src/: indexdb.h, indexdb.c: Introduced indexing of 7-mers by PMAP
+
+2005-09-21 09:13  twu
+
+	* VERSION: Updated version
+
+2005-09-21 09:12  twu
+
+	* util/gmap_setup.pl.in: Commented out -W flag for forcing write to
+	  file.  Added option -G for making an uncompressed version of the
+	  genome (.genome file).
+
+2005-09-21 09:10  twu
+
+	* util/fa_coords.pl.in: Allowed both chr and Chr in parsing for
+	  chromosomal mapping
+
+2005-09-21 09:09  twu
+
+	* config.site: Clarified possible choices for LDFLAGS
+
+2005-09-21 09:08  twu
+
+	* src/matchpair.c: Penalizing clusters spread out in repetitive
+	  genomic regions
+
+2005-09-21 09:08  twu
+
+	* src/pdlimage.c: Made images in color
+
+2005-09-20 18:42  twu
+
+	* src/gmapindex.c: Commented out monitoring statement about logging
+	  contigs
+
+2005-09-20 18:40  twu
+
+	* src/stage1.c: Fixed a bug involving subtraction of two unsigned
+	  ints into a signed int, occurring for chromosomes greater than
+	  2^31 in length.
+
+2005-09-19 12:00  twu
+
+	* src/stage2.c: Fixed bug when stage 2 fails
+
+2005-09-19 11:59  twu
+
+	* src/pair.c: Fixed assessment of unknown bases for PMAP queries
+
+2005-09-19 11:59  twu
+
+	* src/matchpair.c: Fixed computation of stretch for PMAP protein
+	  queries
+
+2005-09-19 11:58  twu
+
+	* src/indexdb.c: Removed debugging flag
+
+2005-09-19 11:58  twu
+
+	* src/iit_get.c: Added termination message and flushing output when
+	  input coming from stdin
+
+2005-09-19 11:57  twu
+
+	* src/gmap.c: Added debugging messages
+
+2005-09-16 09:50  twu
+
+	* src/: Makefile.am, pdlimage.c: Initial addition of pdlimage to
+	  CVS.
+
+2005-09-08 10:49  twu
+
+	* src/: intlist.c, intlist.h: Added command for Intlist_to_string
+
+2005-09-08 10:49  twu
+
+	* src/: iit-read.c, iit-read.h, stage3.c: Added option to print
+	  levels of map results
+
+2005-09-08 10:48  twu
+
+	* src/gmap.c: Modified directory printing to go to a given file
+	  pointer.  Added information about default directory to
+	  print_version command.
+
+2005-09-08 10:48  twu
+
+	* src/: genomeplot.c, plotdata.c, plotdata.h: Changed format of
+	  positions file.  Changed title for summary genome plots.
+
+2005-09-08 10:46  twu
+
+	* src/: datadir.c, datadir.h, get-genome.c: Modified directory
+	  printing to go to a given file pointer
+
+2005-09-06 17:37  twu
+
+	* src/get-genome.c: Added ability to print levels of map contents.
+	  Fixed bug in interpreting an entire chromosome.
+
+2005-09-02 18:18  twu
+
+	* src/: genomeplot.c, pdldata.c, pdldata.h, plotdata.c, plotdata.h:
+	  Generalized variable for transform and added reciprocal
+
+2005-09-02 17:56  twu
+
+	* src/: genomeplot.c, plotdata.c, plotdata.h: Added option to
+	  autoscale
+
+2005-09-02 17:43  twu
+
+	* src/: genomeplot.c, pdldata.c, pdldata.h, plotdata.c, plotdata.h:
+	  Added options for computing summary of multiple samples
+
+2005-09-02 14:55  twu
+
+	* src/: plotdata.c, plotdata.h, genomeplot.c: Added functions for
+	  printing a threshold line, and for printing output in ascii
+	  format.
+
+2005-09-02 14:54  twu
+
+	* src/pdldata.c: Now removing line feeds from annotations.  If no
+	  annotations are available, using sample numbers.
+
+2005-08-29 13:23  twu
+
+	* src/: plotgenes.c, plotgenes.h: Improved display of genes
+
+2005-08-29 13:23  twu
+
+	* src/genomeplot.c: Made changes so PDL file is read only when
+	  necessary.  Added extra room for showing genes.
+
+2005-08-26 13:41  twu
+
+	* src/: genomeplot.c, plotdata.c, plotdata.h: Printing accession
+	  header only if one sample per page.  Reduced default number of
+	  genomes per page to 12.
+
+2005-08-26 12:43  twu
+
+	* src/: genomeplot.c, pdldata.c, pdldata.h, plotdata.c: Added
+	  ability to read sample identifiers from a separate file for PDL
+	  input
+
+2005-08-26 10:01  twu
+
+	* src/genomeplot.c: Added ability to plot a single page
+
+2005-08-23 17:22  twu
+
+	* src/: gmap.c, pair.c, pair.h, stage3.c, stage3.h: For PMAP,
+	  allowed PSL output in both nucleotide coordinates and protein
+	  coordinates
+
+2005-08-23 15:24  twu
+
+	* src/: genomeplot.c, plotgenes.c, plotgenes.h, Makefile.am: Added
+	  ability to plot genes
+
+2005-08-18 16:59  twu
+
+	* src/: plotdata.c, plotdata.h: Added options for printing dots and
+	  overlapping samples
+
+2005-08-18 16:59  twu
+
+	* src/: pair.c, pair.h: Added option for printing coordinates.
+	  Trying to fix PSL output for PMAP.
+
+2005-08-18 16:58  twu
+
+	* src/: gmap.c, stage3.c, stage3.h: Added option for printing
+	  coordinates
+
+2005-08-18 16:58  twu
+
+	* src/genomeplot.c: Added option for printing dots and overlapping
+	  samples
+
+2005-08-18 16:57  twu
+
+	* src/: color.c, color.h: Added color brewer palette
+
+2005-08-18 13:46  twu
+
+	* src/plotdata.c: Prevented printing of empty strings
+
+2005-08-16 07:30  twu
+
+	* src/: plotdata.c, plotdata.h: Fixed bug when only a subset of
+	  genes is selected.  Added commands for gif output.
+
+2005-08-16 07:28  twu
+
+	* src/: get-genome.c, gmap.c: Showing available map files when
+	  valid one is not entered
+
+2005-08-16 07:28  twu
+
+	* src/: datadir.c, datadir.h: Added function to list directory
+	  contents
+
+2005-08-16 07:27  twu
+
+	* src/genomeplot.c: Allowed user to specify a list of samples to
+	  plot
+
+2005-08-16 07:26  twu
+
+	* src/: intlist.c, intlist.h: Added function Intlist_from_string
+
+2005-08-16 07:26  twu
+
+	* src/stage3.c: Fixed mapping to account for cDNA direction
+
+2005-08-10 15:35  twu
+
+	* src/: Makefile.am, genomeplot.c, pdldata.c, pdldata.h,
+	  plotdata.c, plotdata.h: Allowed genomeplot to read PDL files
+
+2005-08-07 06:39  twu
+
+	* src/iit-read.c: Improved debugging statements
+
+2005-08-07 06:38  twu
+
+	* src/: gmap.c, stage3.c, stage3.h: Added option to map by exons
+
+2005-08-07 06:38  twu
+
+	* src/: pair.c, pair.h: Added function to retrieve exon bounds
+
+2005-08-04 07:51  twu
+
+	* src/gmap.c: Merged pmap main code into gmap.c
+
+2005-08-04 07:51  twu
+
+	* src/: sequence.c, sequence.h: Added functionality for pmap
+	  chimeras
+
+2005-08-04 07:50  twu
+
+	* src/: stage3.c, stage3.h: Changed function to take queryntlength
+	  instead of queryseq.	Made function work with both gmap and pmap.
+
+2005-08-04 07:49  twu
+
+	* src/: chimera.c, chimera.h: Changed functions to take
+	  queryntlength instead of queryseq
+
+2005-08-04 07:47  twu
+
+	* src/Makefile.am: Merged pmap main code into gmap.c
+
+2005-08-04 07:03  twu
+
+	* src/pair.c: Made PSL format for proteins print protein
+	  coordinates
+
+2005-08-03 19:31  twu
+
+	* src/: chimera.c, chimera.h, gmap.c: Changed chimera algorithm to
+	  potentially search both sides of an incomplete alignment
+
+2005-08-02 09:45  twu
+
+	* src/stage3.c: Increased size of merge length for chimeric
+	  exon-exon junctions
+
+2005-08-02 09:45  twu
+
+	* src/sequence.c: Restored trimming of subsequences
+
+2005-08-01 14:11  twu
+
+	* src/: stage3.c, stage3.h: Changed chimeric margin detection to
+	  work on both ends
+
+2005-08-01 14:10  twu
+
+	* src/stage1.c: Added debugging statements
+
+2005-08-01 14:10  twu
+
+	* src/: chimera.c, chimera.h, gmap.c: Changed chimeric search to
+	  work on both ends that fail to align
+
+2005-08-01 14:09  twu
+
+	* src/sequence.c: Turned trimming off for subsequences
+
+2005-08-01 14:09  twu
+
+	* src/: pair.c, pair.h: Added indel penalties at appropriate end
+	  for chimeric path scores
+
+2005-08-01 06:29  twu
+
+	* src/chimera.c: Tested code for checking if breakpoint is outside
+	  the alignment
+
+2005-08-01 06:28  twu
+
+	* src/: get-genome.c, Makefile.am: Allowed user to look up
+	  information in map iit files
+
+2005-07-29 12:53  twu
+
+	* src/: datum.c, datum.h, genomeplot.c, plotdata.c, plotdata.h:
+	  Allowed colors to be specified in input file
+
+2005-07-29 11:05  twu
+
+	* src/: plotdata.c, genomeplot.c, chrsubset.c, chrsubset.h:
+	  Implemented user-selected genomic range
+
+2005-07-28 10:04  twu
+
+	* src/plotdata.c: Allowed program to handle NaNQs
+
+2005-07-28 09:46  twu
+
+	* src/: genomeplot.c, plotdata.c, plotdata.h: Added log and signed
+	  cube root functions
+
+2005-07-28 05:05  twu
+
+	* src/: genomeplot.c, plotdata.c, plotdata.h: Added ability to
+	  print genome on a single line
+
+2005-07-27 16:49  twu
+
+	* src/genomeplot.c: Added ability to handle multiple samples
+
+2005-07-27 16:49  twu
+
+	* src/: plotdata.c, plotdata.h: Added ability to detect and read
+	  header lines.  Made code for starting and ending pages extern.
+
+2005-07-27 15:30  twu
+
+	* src/: plotdata.c, plotdata.h, genomeplot.c: Implemented printing
+	  of circular genome
+
+2005-07-26 21:17  twu
+
+	* src/pair.c: Corrected query coordinates of chimera in compressed
+	  mode
+
+2005-07-26 21:14  twu
+
+	* src/pairpool.c: Fixed problem where a gap was left at the 5' end
+	  of a bounded transfer.
+
+2005-07-26 13:41  twu
+
+	* src/: datum.c, datum.h, genomeplot.c, plotdata.c, plotdata.h:
+	  Added ability to read specified colors for each line
+
+2005-07-26 12:52  twu
+
+	* src/: datum.c, datum.h, genomeplot.c, plotdata.c, plotdata.h:
+	  Allowed printing of segments between chromosomes
+
+2005-07-25 11:00  twu
+
+	* src/: pmap.c, stage3.c, stage3.h: Allowed chimeric pieces to be
+	  merged over longer length if ends have strong splice sites
+
+2005-07-25 10:59  twu
+
+	* src/stage1.c: Restored reader overlap for longer sequences
+
+2005-07-25 10:59  twu
+
+	* src/: gmap.c, iit-read.c, iit-read.h: Added chromosomal positions
+	  to map information
+
+2005-07-25 10:58  twu
+
+	* src/: chrnum.c, chrnum.h: Added function to get offset for a
+	  chrnum
+
+2005-07-25 10:57  twu
+
+	* src/Makefile.am: Added chrsegment.h to sources for genomeplot
+
+2005-07-22 22:03  twu
+
+	* src/: gmap.c, pmap.c, stage3.c, stage3.h: Allowed two parts of
+	  chimera to merge if close on the genome
+
+2005-07-21 15:51  twu
+
+	* src/: stage3.c, stage3.h, translation.c, translation.h: Clarified
+	  code specific to PMAP and GMAP
+
+2005-07-21 15:50  twu
+
+	* src/sequence.c: Changed sequence header for PMAP to refer to
+	  amino acids
+
+2005-07-21 15:50  twu
+
+	* src/: pair.c, pair.h: Added ability to print inferred nucleotide
+	  sequence for PMAP
+
+2005-07-21 15:50  twu
+
+	* src/oligop.c: Clarified meaning of INDEX1PART to be number of
+	  amino acids
+
+2005-07-21 15:49  twu
+
+	* src/pmapindex.c: Clarified meaning of INDEX1PART to be number of
+	  nucleotides
+
+2005-07-21 15:49  twu
+
+	* src/oligo-count.c: Using new interface for Reader_new
+
+2005-07-21 15:48  twu
+
+	* src/: indexdb.c, indexdb.h: Clarified meaning of INDEX1PART to be
+	  number of nucleotides for PMAP.
+
+2005-07-21 15:48  twu
+
+	* src/pmap.c: Removed -q flag for specifying stage 1 interval, and
+	  removed -T flag for truncating sequence at full-length protein.
+	  Specified -Q flag to be printing of inferred nucleotide sequence.
+
+2005-07-21 15:46  twu
+
+	* src/gmap.c: Removed -q flag
+
+2005-07-21 15:46  twu
+
+	* src/Makefile.am: Added beta source files for pmap
+
+2005-07-21 15:45  twu
+
+	* src/stage1.c: Introduced min intron length.  Clarified meaning of
+	  INDEX1PART to be number of amino acids.  Added debugging
+	  statements.
+
+2005-07-21 15:44  twu
+
+	* src/: reader.c, reader.h: Allowed crossover of start pointer and
+	  end pointer so that middle oligomers will be read.  Should help
+	  in mapping of short sequences.
+
+2005-07-21 10:08  twu
+
+	* src/: translation.c, translation.h: Moved combinatorial testing
+	  of codons to translation step
+
+2005-07-21 10:07  twu
+
+	* src/stage3.h: Performing protein translation only when necessary.
+
+2005-07-21 10:07  twu
+
+	* src/stage3.c: Considering only forward intron directions for
+	  pmap.  Performing protein translation only when necessary.
+
+2005-07-21 10:06  twu
+
+	* src/stage2.c: Considering only forward intron directions for pmap
+
+2005-07-21 10:05  twu
+
+	* src/sequence.c: Changed header line for pmap
+
+2005-07-21 10:05  twu
+
+	* src/pair.c: Made further changes to accommodate plus sign in
+	  alignment
+
+2005-07-21 09:59  twu
+
+	* src/pair.c: Introduced plus sign in alignment
+
+2005-07-21 09:59  twu
+
+	* src/oligoindex.c: Improved efficiency of analyzing genomic
+	  segment, by storing indices for each frame
+
+2005-07-21 09:56  twu
+
+	* src/genome.c: Added debugging statements
+
+2005-07-21 09:55  twu
+
+	* src/: dynprog.c, dynprog.h: Changed combinatorial instantiation
+	  of codons to a single instantiation
+
+2005-07-21 09:54  twu
+
+	* src/: Makefile.am, params.c, params.h, pmap.c: Gave pmap the same
+	  overall behavior as gmap, including multi-threading and flag
+	  options
+
+2005-07-19 10:54  twu
+
+	* src/: Makefile.am, block.c, block.h, dynprog.c, dynprog.h,
+	  gmap.c, indexdb.c, indexdb.h, oligoindex.c, oligop.c, oligop.h,
+	  pair.c, pmap.c, pmapindex.c, sequence.c, sequence.h, stage1.c,
+	  stage1.h, stage2.c, stage2.h, stage3.c, stage3.h, translation.c,
+	  translation.h: Introduced pmap and pmapindex
+
+2005-07-15 13:54  twu
+
+	* src/get-genome.c: Added range format to allow negative lengths
+
+2005-07-15 13:54  twu
+
+	* src/genome.c: Added exception when requested length exceeds
+	  allocated buffer length
+
+2005-07-15 13:53  twu
+
+	* src/except.c: Added printing of exception message
+
+2005-07-15 13:53  twu
+
+	* src/chimera.c: Fixed problem when donor or acceptor length
+	  exceeded allocated buffer length
+
+2005-07-15 13:52  twu
+
+	* src/Makefile.am: Fixed handling of non-distributed source code
+
+2005-07-15 13:51  twu
+
+	* tests/align.test.ok: Changed genomic coordinate to match new
+	  computation of coordinates in gaps
+
+2005-07-15 13:51  twu
+
+	* VERSION: Updated version number
+
 2005-07-13 12:26  twu
 
 	* src/dynprog.c: Made genomic positions on left and right ends of

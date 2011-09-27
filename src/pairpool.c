@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.26 2005/07/12 16:35:46 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.28 2005/10/06 20:42:05 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,7 @@ static char rcsid[] = "$Id: pairpool.c,v 1.26 2005/07/12 16:35:46 twu Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include "mem.h"
+#include "comp.h"
 #include "pairdef.h"
 #include "listdef.h"
 
@@ -139,9 +140,9 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->genome = genome;
   pair->shortexonp = false;
   switch (comp) {
-  case '>': case '<': case '=': case '.': case ')': case '(': case ']': case '[': case '#':
-    pair->gapp = true; break;
-  default: pair->gapp = false;
+  case MATCH_COMP: case DYNPROG_MATCH_COMP: case AMBIGUOUS_COMP: case MISMATCH_COMP: case INDEL_COMP: case SHORTGAP_COMP:
+    pair->gapp = false; break;
+  default: pair->gapp = true;
   }
 
   debug(
@@ -266,14 +267,27 @@ Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
 	  );
     pair = List_head(p);
     next = p->rest;
-    if (pair->querypos >= minpos && pair->querypos <= maxpos) {
+    if (pair->querypos == minpos) {
+      if (dest != NULL) {
+	/* Pop last querypos off the stack, because we want only one of them */
+	dest = dest->rest;
+      }
+      p->rest = dest;
+      dest = p;
+    } else if (pair->querypos == maxpos) {
+      p->rest = dest;
+      dest = p;
+      p = NULL;			/* Terminate transfer */
+    } else if (pair->querypos > minpos && pair->querypos < maxpos) {
       p->rest = dest;
       dest = p;
     }
   }
+
   return dest;
 }
 
+#if 0
 List_T
 Pairpool_transfer_copy_bounded (List_T dest, List_T source, T this, int minpos, int maxpos) {
   Pair_T pair;
@@ -288,5 +302,6 @@ Pairpool_transfer_copy_bounded (List_T dest, List_T source, T this, int minpos, 
   }
   return dest;
 }
+#endif
 
 

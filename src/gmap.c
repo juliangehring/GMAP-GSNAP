@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c,v 1.262 2005/07/13 19:24:09 twu Exp $";
+static char rcsid[] = "$Id: gmap.c,v 1.290 2005/10/21 16:49:56 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -55,6 +55,12 @@ static char rcsid[] = "$Id: gmap.c,v 1.262 2005/07/13 19:24:09 twu Exp $";
 #define CHIMERA_PVALUE 0.01
 #define CHIMERA_FVALUE 6.634897	/* qnorm(CHIMERA_PVALUE/2)^2 */
 #define CHIMERA_HANDICAP 10	/* points, for minor alignment differences based on different defect rates */
+#ifdef PMAP
+#define CHIMERA_SLOP 7
+#else
+#define CHIMERA_SLOP 20
+#endif
+
 
 #ifdef DEBUG
 #define debug(x) x
@@ -91,17 +97,25 @@ static char *user_chrsubsetfile = NULL;
 
 
 /* Compute options */
-static bool batchp = false;
+static bool batch_offsets_p = false;
+static bool batch_positions_p = false;
+static bool batch_genome_p = false;
 static int maxintronlen_bound = 1200000;
 static int chimera_margin = -1;
 static bool maponlyp = false;
+#ifdef PMAP
+static bool userstage1p = false; /* Apply stage 1 for user-provided genomic segments */
+#else
 static bool userstage1p = true;	/* Apply stage 1 for user-provided genomic segments */
-static int index1interval = 6;	/* Stage 1 interval if user provides a genomic segment */
+#endif
+static int index1interval = INDEX1INTERVAL; /* Stage 1 interval if user provides a genomic segment */
 static bool crossspeciesp = false;
 static char *mutationref = NULL;
 static bool literalrefp = false;
 static bool altstrainp = false;
+#ifdef HAVE_PTHREAD
 static int nworkers = 1;	/* (int) sysconf(_SC_NPROCESSORS_ONLN) */
+#endif
 static bool extend_mismatch_p = false;
 static bool end_microexons_p = false;
 static char *user_chrsubsetname = NULL;
@@ -113,21 +127,33 @@ static bool showalignp = false;
 static bool continuousp = false;
 static bool diagnosticp = false;
 static int maxpaths = 5;	/* 0 means 1 if nonchimeric, 2 if chimeric */
-static bool psloutputp = false;
+static bool psloutput_nt_p = false;
+#ifdef PMAP
+static bool psloutput_pro_p = false;
+#else
+static bool print_coordinates_p = false;
+#endif
 static bool compressoutp = false;
 static bool orderedp = false;
 static bool checksump = false;
 static char *user_mapdir = NULL;
 static char *map_iitfile = NULL;
+static bool map_exons_p = false;
 static bool map_bothstrands_p = false;
 static int chimera_overlap = 0;
 
 /* Alignment options */
 static bool cdna_exons_p = false;
+#ifdef PMAP
+static bool nucleotide_cdna_p = false;
+#else
 static bool protein_cdna_p = false;
+#endif
 static bool protein_genomic_p = false;
 static bool fulllengthp = false;
+#ifndef PMAP
 static bool truncatep = false;
+#endif
 static int proteinmode = 1;
 static bool uncompressedp = false;
 static bool nointronlenp = false;
@@ -135,26 +161,33 @@ static int invertmode = 0;
 static int ngap = 3;
 static int wraplength = 50;
 
-/* Used alphabetically: 1359ABbCcDdEeFfgIiLlMmNnOoPQqRSsTtUVwXxZ */
+#ifdef PMAP
+/* Used alphabetically: 1359ABbCcDdEeFfGgIiLlMmNnOoPQRSstUVwXxZ */
+#else
+/* Used alphabetically: 1359ABbCcDdEeFfGgIiLlMmNnOoPQRSsTtUVwXxZ */
+#endif
 
 static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'},	/* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"genomefull", no_argument, 0, 'G'}, /* uncompressedp */
   {"rel", required_argument, 0, 'R'}, /* releasestring */
   {"gseg", required_argument, 0, 'g'}, /* user_genomicseg */
 
   /* Compute options */
-  {"batch", no_argument, 0, 'B'}, /* batchp */
+#ifdef HAVE_MMAP
+  {"batch", required_argument, 0, 'B'}, /* batch_offsets_p, batch_positions_p, batch_genome_p */
+#endif
   {"length", required_argument, 0, 'L'}, /* maxintronlen_bound */
   {"chimera_margin", required_argument, 0, 'x'}, /* chimera_margin */
   {"maponly", no_argument, 0, '1'}, /* maponlyp */
-  {"indexinterval", required_argument, 0, 'q'},	/* index1interval */
   {"cross", no_argument, 0, 'X'}, /* crossspeciesp */
   {"mutationref", required_argument, 0, 'w'},	/* mutationref */
+#ifdef HAVE_PTHREAD
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
+#endif
   {"altstrain", no_argument, 0, 's'},	/* altstrainp */
-  {"extend", no_argument, 0, 'e'}, /* extend_mismatch_p */
   {"chrsubsetfile", required_argument, 0, 'C'}, /* user_chrsubsetfile */
   {"chrsubset", required_argument, 0, 'c'}, /* user_chrsubsetname */
   {"endmicro", no_argument, 0, 'U'}, /* end_microexons_p */
@@ -165,19 +198,25 @@ static struct option long_options[] = {
   {"continuous", no_argument, 0, '3'}, /* continuousp */
   {"diagnostic", no_argument, 0, '9'}, /* diagnosticp */
   {"npaths", required_argument, 0, 'n'}, /* maxpaths */
-  {"foreign", required_argument, 0, 'f'}, /* psloutputp, ... */
+  {"format", required_argument, 0, 'f'}, /* psloutput_nt_p, psloutput_pro_p, print_coordinates_p */
   {"compress", no_argument, 0, 'Z'}, /* compressoutp */
   {"ordered", no_argument, 0, 'O'}, /* orderedp */
   {"md5", no_argument, 0, '5'}, /* checksump */
   {"mapdir", required_argument, 0, 'M'}, /* user_mapdir */
   {"map", required_argument, 0, 'm'},	/* map_iitfile */
+  {"mapexons", no_argument, 0, 'e'}, /* map_exons_p */
   {"mapboth", no_argument, 0, 'b'}, /* map_bothstrands_p */
   {"chimera_overlap", required_argument, 0, 'o'}, /* chimera_overlap */
 
   /* Alignment options */
   {"exons", no_argument, 0, 'E'}, /* cdna_exons_p */
+#ifdef PMAP
+  {"protein_gen", no_argument, 0, 'P'}, /* protein_genomic_p */
+  {"nucleotide", no_argument, 0, 'Q'}, /* nucleotide_cdna_p */
+#else
   {"protein_dna", no_argument, 0, 'P'}, /* protein_cdna_p */
   {"protein_gen", no_argument, 0, 'Q'}, /* protein_genomic_p */
+#endif
   {"fulllength", no_argument, 0, 'F'}, /* fulllengthp */
   {"truncate", no_argument, 0, 'T'}, /* truncatep */
   {"nolengths", no_argument, 0, 'N'},	/* nointronlenp */
@@ -195,7 +234,11 @@ static struct option long_options[] = {
 static void
 print_program_version () {
   fprintf(stdout,"\n");
+#ifdef PMAP
+  fprintf(stdout,"PMAP: Protein Mapping and Alignment Program\n");
+#else
   fprintf(stdout,"GMAP: Genomic Mapping and Alignment Program\n");
+#endif
   fprintf(stdout,"Part of GMAP package, version %s\n",PACKAGE_VERSION);
   fprintf(stdout,"Features: ");
 #ifdef HAVE_PTHREAD
@@ -213,7 +256,12 @@ print_program_version () {
 #else
   fprintf(stdout,"littleendian\n");
 #endif
+  fprintf(stdout,"Default gmap directory: %s\n",GMAPDB);
+#ifdef PMAP
+  fprintf(stdout,"Thomas D. Wu, Genentech, Inc.\n");
+#else
   fprintf(stdout,"Thomas D. Wu and Colin K. Watanabe, Genentech, Inc.\n");
+#endif
   fprintf(stdout,"Contact: twu@gene.com\n");
   fprintf(stdout,"\n");
   return;
@@ -232,45 +280,86 @@ Usage: gmap [OPTIONS...] <FASTA file>, or\n\
 Input options (must include -d or -g)\n\
   -D, --dir=directory            Genome directory\n\
   -d, --db=STRING                Genome database\n\
+  -G, --genomefull               Use full genome (all ASCII chars allowed;\n\
+                                   built explicitly during setup), not\n\
+                                   compressed version\n\
   -g, --gseg=filename            User-suppled genomic segment\n\
 \n\
-Computation options\n\
-  -B, --batch                    Batch mode (pre-loads genomic index files)\n\
+");
+    fprintf(stdout,"Computation options\n");
+#ifdef HAVE_MMAP
+    fprintf(stdout,"\
+  -B, --batch=INT                Batch mode (1 = pre-load only indices;\n\
+                                   2 = pre-load both indices and genome)\n\
+");
+#endif
+    fprintf(stdout,"\
   -L, --length                   Max total intron length (default 1200000)\n\
   -x, --chimera_margin=INT       Amount of unaligned sequence that triggers\n\
-                                 search for a chimera (default off)\n\
+                                   search for a chimera (default off)\n\
   -1, --maponly                  Report stage 1 only (genomic mapping only)\n\
   -X, --cross                    Cross-species mode (changes parameters)\n\
   -w, --mutationref=filename     Mutation reference\n\
+");
+#ifdef HAVE_PTHREAD
+    fprintf(stdout,"\
   -t, --nthreads=INT             Number of worker threads\n\
+");
+#endif
+    fprintf(stdout,"\
   -s, --altstrain                Search alternate strains in addition\n\
-  -e, --extend                   Extend alignment to show mismatch at end\n\
   -C, --chrsubsetfile=filename   User-suppled chromosome subset file\n\
   -c, --chrsubset=string         Chromosome subset to search\n\
   -U, --endmicro                 Allow end microexons with arbitrarily long introns\n\
 \n\
+");
+    fprintf(stdout,"\
 Output options\n\
   -S, --summary                  Show summary of alignments only\n\
   -A, --align                    Show alignments\n\
   -3, --continuous               Show alignment in three continuous lines\n\
   -9, --diagnostic               Show diagnostics (alignment with *'s for\n\
-                                 stage 3)\n\
+                                   stage 3)\n\
   -n, --npaths=INT               Maximum number of paths to show.  If set to 0,\n \
                                  prints two paths if chimera detected, else one.\n\
-  -f, --foreign=INT              Foreign output format (1 = PSL (BLAT) format)\n\
   -Z, --compress                 Print output in compressed format\n\
   -O, --ordered                  Print output in same order as input (relevant\n\
-                                 only if there is more than worker thread)\n\
+                                   only if there is more than worker thread)\n\
   -5, --md5                      Print MD5 checksum for each query sequence\n\
   -M, --mapdir=directory         Map directory\n\
   -m, --map=iitfile              Map file\n\
+  -e, --mapexons                 Map each exon separately\n\
   -b, --mapboth                  Map both strands of genome\n\
   -o, --chimera_overlap          Overlap to show, if any, at chimera breakpoint\n\
-\n\
+");
+#ifdef PMAP
+    fprintf(stdout,"\
+  -f, --format=INT               Format for output (1 = PSL format in protein coords,\n\
+                                   2 = PSL format in nucleotide coords)\n\
+");
+#else
+    fprintf(stdout,"\
+  -f, --format=INT               Format for output (1 = PSL (BLAT) format, 2 = coords\n\
+                                   in table format)\n\
+");
+#endif
+    fprintf(stdout,"\n");
+    fprintf(stdout,"\
 Alignment output options\n\
   -E, --exons                    Print cDNA exons\n\
+");
+#ifdef PMAP    
+    fprintf(stdout,"\
+  -P, --protein_gen              Print protein sequence (genomic)\n\
+  -Q, --nucleotide               Print inferred nucleotide sequence from protein\n\
+");
+#else
+    fprintf(stdout,"\
   -P, --protein_dna              Print protein sequence (cDNA)\n\
   -Q, --protein_gen              Print protein sequence (genomic)\n\
+");
+#endif
+    fprintf(stdout,"\
   -F, --fulllength               Assume full-length protein, starting with Met\n\
   -T, --truncate                 Truncate full-length protein, from Met to Stop\n\
                                  Implies -F flag.\n\
@@ -278,7 +367,7 @@ Alignment output options\n\
   -I, --invertmode=INT           Mode for alignments to (-) strand: 1=Invert\n\
                                  and print sense (-) strand; 2=Invert and\n\
                                  print antisense (+) strand.\n\
-  -i, --introngap=INT            Nucleotides to show on each end of intron\n\
+  -i, --introngap=INT            Nucleotides to show on each end of intron (default=3)\n\
   -l, --wraplength=INT           Wrap length for alignment (default=50)\n\
 \n\
 Help options\n\
@@ -292,9 +381,10 @@ Help options\n\
 
 
 
+/* Called by output thread so queryaauc not available */
 static void
-print_path_summaries (Stage3_T *stage3array, int npaths, Failure_T failuretype,
-		      IIT_T chromosome_iit, IIT_T contig_iit, 
+print_path_summaries (Stage3_T *stage3array, int npaths, Sequence_T queryaaseq, Failure_T failuretype,
+		      IIT_T chromosome_iit, IIT_T contig_iit, IIT_T altstrain_iit,
 		      char *dbversion, int maxpaths, Chimera_T chimera, bool zerobasedp) {
   int pathnum;
 
@@ -317,20 +407,32 @@ print_path_summaries (Stage3_T *stage3array, int npaths, Failure_T failuretype,
     if (maxpaths == 0) {
       /* Special mode */
       if (npaths > 0) {
+#ifdef PMAP
+	stage3array[0] = Stage3_translate_cdna(stage3array[0],queryaaseq);
+#else
 	stage3array[0] = Stage3_translate_genomic(stage3array[0],fulllengthp,truncatep);
+#endif
 	Stage3_print_pathsummary(stage3array[0],/*pathnum*/1,chromosome_iit,contig_iit,
-				 dbversion,zerobasedp);
+				 altstrain_iit,dbversion,zerobasedp);
 	if (chimera != NULL && npaths > 1) {
+#ifdef PMAP
+	  stage3array[1] = Stage3_translate_cdna(stage3array[1],queryaaseq);
+#else
 	  stage3array[1] = Stage3_translate_genomic(stage3array[1],fulllengthp,truncatep);
+#endif
 	  Stage3_print_pathsummary(stage3array[1],/*pathnum*/2,chromosome_iit,contig_iit,
-				   dbversion,zerobasedp);
+				   altstrain_iit,dbversion,zerobasedp);
 	}
       }
     } else {
       for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+#ifdef PMAP
+	stage3array[pathnum-1] = Stage3_translate_cdna(stage3array[pathnum-1],queryaaseq);
+#else
 	stage3array[pathnum-1] = Stage3_translate_genomic(stage3array[pathnum-1],fulllengthp,truncatep);
+#endif
 	Stage3_print_pathsummary(stage3array[pathnum-1],pathnum,chromosome_iit,contig_iit,
-				 dbversion,zerobasedp);
+				 altstrain_iit,dbversion,zerobasedp);
       }
     }
   }
@@ -346,15 +448,12 @@ input_thread (void *data) {
   FILE *input = Blackboard_input(blackboard);
   Sequence_T queryseq, usersegment;
   Request_T request;
-  int inputid = 0;
-  int nextchar;
+  int inputid = 1;		/* Initial queryseq already handled by main() */
+  int nextchar = Blackboard_nextchar(blackboard);
 
   debug(printf("input_thread: Starting\n"));
   usersegment = Blackboard_usersegment(blackboard);
   while ((queryseq = Sequence_read(&nextchar,input)) != NULL) {
-    if (inputid == 0 && nextchar == '>' && batchp == false) {
-      fprintf(stderr,"Note: batch mode (-B) is strongly recommended for large runs.\n");
-    }
     debug(printf("input_thread: Putting request id %d\n",inputid));
     request = Request_new(inputid++,queryseq,usersegment);
     Blackboard_put_request(blackboard,request);
@@ -399,7 +498,12 @@ print_result (Result_T result, Request_T request, Params_T params) {
 
   queryseq = Request_queryseq(request);
   if (compressoutp == false && cdna_exons_p == false &&
-      protein_cdna_p == false && protein_genomic_p == false && psloutputp == false) {
+#ifdef PMAP
+      nucleotide_cdna_p == false && psloutput_pro_p == false &&
+#else
+      protein_cdna_p == false && print_coordinates_p == false &&
+#endif
+      protein_genomic_p == false && psloutput_nt_p == false) {
     Sequence_print_header(queryseq,checksump);
   }
 
@@ -413,8 +517,13 @@ print_result (Result_T result, Request_T request, Params_T params) {
       }
       printf("\n\n");
     } else {
-      matchlist = Stage1_matchlist(stage1,Params_indexdb(params),Params_chromosome_iit(params),
-				   Params_chrsubset(params));
+      matchlist = Stage1_matchlist(stage1,
+#ifdef PMAP
+				   Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				   Params_indexdb(params),
+#endif
+				   Params_chromosome_iit(params),Params_chrsubset(params));
       npaths = List_length(matchlist);
       if (npaths == 0) {
 	printf("Paths (0):\n\n");
@@ -442,16 +551,20 @@ print_result (Result_T result, Request_T request, Params_T params) {
     if (maxpaths == 0) {
       /* Special mode */
       if (npaths > 0) {
+#ifndef PMAP
 	if (truncatep == true) {
 	  stage3array[0] = Stage3_truncate_fulllength(stage3array[0],/*translatep*/true);
 	}
+#endif
 	Stage3_print_compressed(stage3array[0],queryseq,Params_chromosome_iit(params),
 				dbversion,/*pathnum*/1,npaths,checksump,chimerapos,chimeraequivpos,
 				donor_prob,acceptor_prob,chimera_cdna_direction,/*zerobasedp*/false);
 	if (chimera != NULL && npaths > 1) {
+#ifndef PMAP
 	  if (truncatep == true) {
 	    stage3array[1] = Stage3_truncate_fulllength(stage3array[1],/*translatep*/true);
 	  }
+#endif
 	  Stage3_print_compressed(stage3array[1],queryseq,Params_chromosome_iit(params),
 				  dbversion,/*pathnum*/2,npaths,checksump,chimerapos,chimeraequivpos,
 				  donor_prob,acceptor_prob,chimera_cdna_direction,/*zerobasedp*/false);
@@ -459,9 +572,11 @@ print_result (Result_T result, Request_T request, Params_T params) {
       }
     } else {
       for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+#ifndef PMAP
 	if (truncatep == true) {
 	  stage3array[pathnum-1] = Stage3_truncate_fulllength(stage3array[pathnum-1],/*translatep*/true);
 	}
+#endif
 	Stage3_print_compressed(stage3array[pathnum-1],queryseq,Params_chromosome_iit(params),
 				dbversion,pathnum,npaths,checksump,chimerapos,chimeraequivpos,
 				donor_prob,acceptor_prob,chimera_cdna_direction,/*zerobasedp*/false);
@@ -474,7 +589,7 @@ print_result (Result_T result, Request_T request, Params_T params) {
       printf("\n\n\n");
     } else {
       stage3 = stage3array[0];
-      Stage3_print_alignment(stage3,Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
+      Stage3_print_alignment(stage3,queryseq,Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
 			     /*zerobasedp*/false,continuousp,diagnosticp,/*flipgenomep*/true,
 			     proteinmode,invertmode,nointronlenp,wraplength,ngap);
     }
@@ -484,25 +599,44 @@ print_result (Result_T result, Request_T request, Params_T params) {
     Sequence_print_header(queryseq,checksump);
     Stage3_print_cdna_exons(stage3array[0],wraplength);
 
+#ifdef PMAP
+  } else if (nucleotide_cdna_p == true) {
+#else
   } else if (protein_cdna_p == true) {
+#endif
     stage3array = Result_array(&npaths,result);
     if (maxpaths == 0) {
       /* Special mode */
       if (npaths > 0) {
 	Sequence_print_header(queryseq,checksump);
+#ifdef PMAP
+	stage3array[0] = Stage3_translate_cdna(stage3array[0],queryseq);
+	Stage3_print_nucleotide_cdna(stage3array[0],wraplength);
+#else
 	stage3array[0] = Stage3_translate_genomic(stage3array[0],fulllengthp,truncatep);
 	Stage3_print_protein_cdna(stage3array[0],wraplength);
+#endif
 	if (Result_chimera(result) != NULL && npaths > 1) {
 	  Sequence_print_header(queryseq,checksump);
+#ifdef PMAP
+	  stage3array[1] = Stage3_translate_cdna(stage3array[1],queryseq);
+	  Stage3_print_nucleotide_cdna(stage3array[1],wraplength);
+#else
 	  stage3array[1] = Stage3_translate_genomic(stage3array[1],fulllengthp,truncatep);
 	  Stage3_print_protein_cdna(stage3array[1],wraplength);
+#endif
 	}
       }
     } else {
       for (pathnum = 0; pathnum < npaths && pathnum < maxpaths; pathnum++) {
 	Sequence_print_header(queryseq,checksump);
+#ifdef PMAP
+	stage3array[pathnum] = Stage3_translate_cdna(stage3array[pathnum],queryseq);
+	Stage3_print_nucleotide_cdna(stage3array[pathnum],wraplength);
+#else
 	stage3array[pathnum] = Stage3_translate_genomic(stage3array[pathnum],fulllengthp,truncatep);
 	Stage3_print_protein_cdna(stage3array[pathnum],wraplength);
+#endif
       }
     }
 
@@ -512,37 +646,76 @@ print_result (Result_T result, Request_T request, Params_T params) {
       /* Special mode */
       if (npaths > 0) {
 	Sequence_print_header(queryseq,checksump);
+#ifdef PMAP
+	stage3array[0] = Stage3_translate_cdna(stage3array[0],queryseq);
+#else
 	stage3array[0] = Stage3_translate_genomic(stage3array[0],fulllengthp,truncatep);
+#endif
 	Stage3_print_protein_genomic(stage3array[0],wraplength);
 	if (Result_chimera(result) != NULL && npaths > 1) {
 	  Sequence_print_header(queryseq,checksump);
+#ifdef PMAP
+	  stage3array[1] = Stage3_translate_cdna(stage3array[1],queryseq);
+#else
 	  stage3array[1] = Stage3_translate_genomic(stage3array[1],fulllengthp,truncatep);
+#endif
 	  Stage3_print_protein_genomic(stage3array[1],wraplength);
 	}
       }
     } else {
       for (pathnum = 0; pathnum < npaths && pathnum < maxpaths; pathnum++) {
 	Sequence_print_header(queryseq,checksump);
+#ifdef PMAP
+	stage3array[pathnum] = Stage3_translate_cdna(stage3array[pathnum],queryseq);
+#else
 	stage3array[pathnum] = Stage3_translate_genomic(stage3array[pathnum],fulllengthp,truncatep);
+#endif
 	Stage3_print_protein_genomic(stage3array[pathnum],wraplength);
       }
     }
 
-  } else if (psloutputp == true) {
+  } else if (psloutput_nt_p == true) {
     stage3array = Result_array(&npaths,result);
     if (maxpaths == 0) {
       /* Special mode */
       if (npaths > 0) {
-	Stage3_print_pslformat(stage3array[0],/*pathnum*/1,Params_chromosome_iit(params),queryseq);
+	Stage3_print_pslformat_nt(stage3array[0],/*pathnum*/1,Params_chromosome_iit(params),queryseq);
 	if (Result_chimera(result) != NULL && npaths > 1) {
-	  Stage3_print_pslformat(stage3array[1],/*pathnum*/2,Params_chromosome_iit(params),queryseq);
+	  Stage3_print_pslformat_nt(stage3array[1],/*pathnum*/2,Params_chromosome_iit(params),queryseq);
 	}
       }
     } else {
       for (pathnum = 0; pathnum < npaths && pathnum < maxpaths; pathnum++) {
-	Stage3_print_pslformat(stage3array[pathnum],/*pathnum*/pathnum+1,Params_chromosome_iit(params),queryseq);
+	Stage3_print_pslformat_nt(stage3array[pathnum],/*pathnum*/pathnum+1,Params_chromosome_iit(params),queryseq);
       }
     }
+
+#ifdef PMAP
+  } else if (psloutput_pro_p == true) {
+    stage3array = Result_array(&npaths,result);
+    if (maxpaths == 0) {
+      /* Special mode */
+      if (npaths > 0) {
+	Stage3_print_pslformat_pro(stage3array[0],/*pathnum*/1,Params_chromosome_iit(params),queryseq);
+	if (Result_chimera(result) != NULL && npaths > 1) {
+	  Stage3_print_pslformat_pro(stage3array[1],/*pathnum*/2,Params_chromosome_iit(params),queryseq);
+	}
+      }
+    } else {
+      for (pathnum = 0; pathnum < npaths && pathnum < maxpaths; pathnum++) {
+	Stage3_print_pslformat_pro(stage3array[pathnum],/*pathnum*/pathnum+1,Params_chromosome_iit(params),queryseq);
+      }
+    }
+#else
+  } else if (print_coordinates_p == true) {
+    stage3array = Result_array(&npaths,result);
+    Sequence_print_header(queryseq,checksump);
+    /* For PMAP coordinates */
+    /* stage3array[0] = Stage3_translate_cdna(stage3array[0],queryseq); */
+    stage3array[0] = Stage3_translate_genomic(stage3array[0],fulllengthp,truncatep);
+    Stage3_print_coordinates(stage3array[0],queryseq,Params_chromosome_iit(params),
+			     /*zerobasedp*/false,invertmode);
+#endif
 
   } else {
     /* Usual output */
@@ -557,39 +730,23 @@ print_result (Result_T result, Request_T request, Params_T params) {
       printf("\n\n");
     } else {
       chimera = Result_chimera(result);
-      print_path_summaries(stage3array,npaths,Result_failuretype(result),
+      print_path_summaries(stage3array,npaths,queryseq,Result_failuretype(result),
 			   Params_chromosome_iit(params),Params_contig_iit(params),
-			   dbversion,maxpaths,chimera,/*zerobasedp*/false);
+			   Params_altstrain_iit(params),dbversion,maxpaths,chimera,
+			   /*zerobasedp*/false);
     
-      if (Params_map_iit(params) != NULL) {
-	printf("Maps:\n");
-	if (maxpaths == 0) {
-	  /* Special mode */
-	  if (npaths > 0) {
-	    Stage3_print_map(stage3array[0],Params_map_iit(params),/*pathnum*/1,map_bothstrands_p);
-	    if (chimera != NULL && npaths > 1) {
-	      Stage3_print_map(stage3array[1],Params_map_iit(params),/*pathnum*/2,map_bothstrands_p);
-	    }
-	  }
-	} else {
-	  for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
-	    Stage3_print_map(stage3array[pathnum-1],Params_map_iit(params),pathnum,map_bothstrands_p);
-	  }
-	}
-      }
-
       if (summaryonlyp == true || showalignp == true) {
 	printf("Alignments:\n");
 	if (maxpaths == 0) {
 	  /* Special mode */
 	  if (npaths > 0) {
 	    printf("  Alignment for path 1:\n\n");
-	    Stage3_print_alignment(stage3array[0],Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
+	    Stage3_print_alignment(stage3array[0],queryseq,Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
 				   /*zerobasedp*/false,continuousp,diagnosticp,
 				   /*flipgenomep*/true,proteinmode,invertmode,nointronlenp,wraplength,ngap);
 	    if (chimera != NULL && npaths > 1) {
 	      printf("  Alignment for path 2:\n\n");
-	      Stage3_print_alignment(stage3array[1],Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
+	      Stage3_print_alignment(stage3array[1],queryseq,Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
 				     /*zerobasedp*/false,continuousp,diagnosticp,
 				     /*flipgenomep*/true,proteinmode,invertmode,nointronlenp,wraplength,ngap);
 	    }
@@ -597,12 +754,33 @@ print_result (Result_T result, Request_T request, Params_T params) {
 	} else {
 	  for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
 	    printf("  Alignment for path %d:\n\n",pathnum);
-	    Stage3_print_alignment(stage3array[pathnum-1],Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
+	    Stage3_print_alignment(stage3array[pathnum-1],queryseq,Params_chromosome_iit(params),summaryonlyp,/*universalp*/false,
 				   /*zerobasedp*/false,continuousp,diagnosticp,
 				   /*flipgenomep*/true,proteinmode,invertmode,nointronlenp,wraplength,ngap);
 	  }
 	}
       }
+
+      if (Params_map_iit(params) != NULL) {
+	printf("Maps:\n");
+	if (maxpaths == 0) {
+	  /* Special mode */
+	  if (npaths > 0) {
+	    Stage3_print_map(stage3array[0],Params_map_iit(params),Params_chromosome_iit(params),
+			     /*pathnum*/1,map_exons_p,map_bothstrands_p);
+	    if (chimera != NULL && npaths > 1) {
+	      Stage3_print_map(stage3array[1],Params_map_iit(params),Params_chromosome_iit(params),
+			       /*pathnum*/2,map_exons_p,map_bothstrands_p);
+	    }
+	  }
+	} else {
+	  for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths; pathnum++) {
+	    Stage3_print_map(stage3array[pathnum-1],Params_map_iit(params),Params_chromosome_iit(params),
+			     pathnum,map_exons_p,map_bothstrands_p);
+	  }
+	}
+      }
+
     }
   }
 
@@ -699,17 +877,15 @@ output_thread_ordered (void *data) {
   return (void *) NULL;
 }
 
-#else
+#endif
     
 static void
 output_one (Result_T result, Request_T request, Params_T params) {
   print_result(result,request,params);
   Result_free(&result);
-  Request_free(&request);
   return;
 }
 
-#endif
 
 static Stage3_T *
 stage3array_from_list (int *npaths, List_T stage3list) {
@@ -759,13 +935,17 @@ stage3array_from_list (int *npaths, List_T stage3list) {
 
 
 static List_T
-update_stage3list (List_T stage3list, Sequence_T queryseq, Sequence_T genomicseg, 
+update_stage3list (List_T stage3list, Sequence_T queryseq, Sequence_T queryuc, Sequence_T genomicseg, 
 		   Matchpair_T matchpair, Oligoindex_T oligoindex, int indexsize, Pairpool_T pairpool, 
-		   int sufflookback, int nsufflookback, int badoligos, Chrnum_T chrnum,
-		   Genomicpos_T chroffset, Genomicpos_T chrpos, bool watsonp, int maxpeelback, int nullgap,
-		   int extramaterial_end, int extramaterial_paired, int extraband_single, int extraband_end, 
-		   int extraband_paired, int ngap, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		   IIT_T altstrain_iit) {
+		   int sufflookback, int nsufflookback, int badoligos, int straintype, char *strain,
+		   Chrnum_T chrnum,  Genomicpos_T chroffset, Genomicpos_T chrpos, bool watsonp, int maxpeelback, 
+		   int nullgap, int extramaterial_end, int extramaterial_paired, 
+		   int extraband_single, int extraband_end, int extraband_paired, int ngap, 
+		   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR, IIT_T altstrain_iit) {
+#ifdef PMAP
+  Sequence_T queryntseq;
+#endif
+  Sequence_T genomicuc;
   Stage2_T stage2;
   Stage3_T stage3;
   Matchpairend_T matchpairend;
@@ -776,27 +956,56 @@ update_stage3list (List_T stage3list, Sequence_T queryseq, Sequence_T genomicseg
     debug1(printf("support: %d/%d\n",Matchpair_support(matchpair),Sequence_trimlength(queryseq)));
     debug1(printf("stretch: %f\n",Matchpair_stretch(matchpair)));
     if ((double) Matchpair_support(matchpair)/(double) Sequence_trimlength(queryseq) < MIN_STAGE1_SUPPORT) {
-      /* Insufficient coverage of the query sequence */
+      debug1(printf("Insufficient coverage of the query sequence\n"));
       return stage3list;
     } else if (Matchpair_stretch(matchpair) > MAX_STAGE1_STRETCH) {
-      /* Genomic region is too large relative to matching cDNA region */
+      debug1(printf("Genomic region is too large relative to matching cDNA region\n"));
       return stage3list;
     } else {
       matchpairend = Matchpair_matchpairend(matchpair);
     }
   }
 
-  if ((stage2 = Stage2_compute(queryseq,genomicseg,oligoindex,indexsize,
-			       pairpool,sufflookback,nsufflookback,badoligos,crossspeciesp)) != NULL) {
-    if ((stage3 = Stage3_compute(stage2,queryseq,genomicseg,matchpairend,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,
+#ifdef PMAP
+  queryntseq = Sequence_convert_to_nucleotides(queryseq);
+#endif
+
+  if (user_genomicseg == NULL && uncompressedp == false && straintype == 0) {
+    genomicuc = Sequence_alias(genomicseg);
+  } else {
+    genomicuc = Sequence_uppercase(genomicseg);
+  }
+  if ((stage2 = Stage2_compute(queryseq,queryuc,
+#ifdef PMAP
+			       queryntseq,
+#endif
+			       genomicseg,genomicuc,oligoindex,indexsize,
+			       pairpool,sufflookback,nsufflookback,badoligos,crossspeciesp)) == NULL) {
+#ifdef PMAP
+    Sequence_free(&queryntseq);
+#endif
+  } else {
+    if ((stage3 = Stage3_compute(stage2,
+#ifdef PMAP
+				 queryseq,queryntseq,queryntseq,
+#else
+				 queryseq,queryuc,
+#endif
+				 genomicseg,genomicuc,matchpairend,straintype,strain,chrnum,chroffset,
 				 chrpos,watsonp,maxpeelback,nullgap,extramaterial_end,extramaterial_paired,
 				 extraband_single,extraband_end,extraband_paired,
 				 ngap,extend_mismatch_p,end_microexons_p,pairpool,dynprogL,dynprogM,dynprogR,
-				 altstrain_iit)) != NULL) {
+				 altstrain_iit)) == NULL) {
+#ifdef PMAP
+      Sequence_free(&queryntseq);
+#endif
+    } else {
       stage3list = List_push(stage3list,stage3);
     }
     Stage2_free(&stage2);
   }
+  Sequence_free(&genomicuc);
+
   return stage3list;
 }
 
@@ -836,7 +1045,8 @@ index_compare (const void *a, const void *b) {
 
 
 static Stage3_T *
-stage3_from_usersegment (int *npaths, Sequence_T queryseq, Sequence_T usersegment, Params_T params, 
+stage3_from_usersegment (int *npaths, Sequence_T queryseq, Sequence_T queryuc,
+			 Sequence_T usersegment, Params_T params, 
 			 int maxpeelback, int sufflookback, int nsufflookback, 
 			 int badoligos, int nullgap, 
 			 Oligoindex_T oligoindex, Pairpool_T pairpool, 
@@ -857,18 +1067,18 @@ stage3_from_usersegment (int *npaths, Sequence_T queryseq, Sequence_T usersegmen
   chroffset = chrpos = 0U;
   watsonp = true;
 
-  stage3list = update_stage3list(stage3list,queryseq,usersegment,(Matchpair_T) NULL,
-				 oligoindex,indexsize,pairpool,
-				 sufflookback,nsufflookback,badoligos,chrnum,chroffset,chrpos,
+  stage3list = update_stage3list(stage3list,queryseq,queryuc,usersegment,(Matchpair_T) NULL,
+				 oligoindex,indexsize,pairpool,sufflookback,nsufflookback,badoligos,
+				 /*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
 				 watsonp,maxpeelback,nullgap,extramaterial_end,extramaterial_paired,
 				 extraband_single,extraband_end,extraband_paired,
 				 ngap,dynprogL,dynprogM,dynprogR,altstrain_iit);
 	
   revcomp = Sequence_revcomp(usersegment);
   watsonp = false;
-  stage3list = update_stage3list(stage3list,queryseq,revcomp,(Matchpair_T) NULL,
-				 oligoindex,indexsize,pairpool,
-				 sufflookback,nsufflookback,badoligos,chrnum,chroffset,chrpos,
+  stage3list = update_stage3list(stage3list,queryseq,queryuc,revcomp,(Matchpair_T) NULL,
+				 oligoindex,indexsize,pairpool,sufflookback,nsufflookback,badoligos,
+				 /*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
 				 watsonp,maxpeelback,nullgap,extramaterial_end,extramaterial_paired,
 				 extraband_single,extraband_end,extraband_paired,
 				 ngap,dynprogL,dynprogM,dynprogR,altstrain_iit);
@@ -885,7 +1095,8 @@ stage3_from_usersegment (int *npaths, Sequence_T queryseq, Sequence_T usersegmen
 
 static Stage3_T *
 stage3_from_matchlist (int *npaths, Stage3_T *oldstage3array, Stage1_T stage1,
-		       List_T matchlist, Sequence_T queryseq, Sequence_T usersegment, Params_T params, 
+		       List_T matchlist, Sequence_T queryseq, Sequence_T queryuc,
+		       Sequence_T usersegment, Params_T params, 
 		       int maxpeelback, int sufflookback, int nsufflookback, 
 		       int badoligos, int nullgap, 
 		       Oligoindex_T oligoindex, Pairpool_T pairpool, 
@@ -907,8 +1118,7 @@ stage3_from_matchlist (int *npaths, Stage3_T *oldstage3array, Stage1_T stage1,
   int extraband_paired = Params_extraband_paired(params);
   IIT_T altstrain_iit = Params_altstrain_iit(params);
   IIT_T chromosome_iit = Params_chromosome_iit(params);
-  Interval_T interval;
-  int index, *indexarray, nindices, type, i, j;
+  int *indexarray, nindices, straintype, i, j;
 		    
   for (i = 0; i < *npaths; i++) {
     stage3list = List_push(stage3list,(void *) oldstage3array[i]);
@@ -931,10 +1141,8 @@ stage3_from_matchlist (int *npaths, Stage3_T *oldstage3array, Stage1_T stage1,
       strain = NULL;
 
     } else {
-      index = IIT_get_one(chromosome_iit,Match_position(start),Match_position(start));
-      interval = IIT_interval(chromosome_iit,index);
-      chrlength = Interval_length(interval);
-      chroffset = Interval_low(interval);
+      chrlength = Chrnum_length(chrnum,chromosome_iit);
+      chroffset = Chrnum_offset(chrnum,chromosome_iit);
       Matchpair_get_coords(&chrpos,&genomicstart,&genomiclength,&watsonp,matchpair,stage1,
 			   chrlength,Params_maxextension(params));
       genomicseg = Genome_get_segment(Params_genome(params),genomicstart,genomiclength,!watsonp,
@@ -946,9 +1154,9 @@ stage3_from_matchlist (int *npaths, Stage3_T *oldstage3array, Stage1_T stage1,
       }
     }
 
-    stage3list = update_stage3list(stage3list,queryseq,genomicseg,matchpair,
-				   oligoindex,indexsize,pairpool,
-				   sufflookback,nsufflookback,badoligos,chrnum,chroffset,chrpos,
+    stage3list = update_stage3list(stage3list,queryseq,queryuc,genomicseg,matchpair,
+				   oligoindex,indexsize,pairpool,sufflookback,nsufflookback,badoligos,
+				   /*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
 				   watsonp,maxpeelback,nullgap,extramaterial_end,extramaterial_paired,
 				   extraband_single,extraband_end,extraband_paired,
 				   ngap,dynprogL,dynprogM,dynprogR,altstrain_iit);
@@ -963,18 +1171,18 @@ stage3_from_matchlist (int *npaths, Stage3_T *oldstage3array, Stage1_T stage1,
 	j = 0;
 	while (j < nindices) {
 	  i = j++;
-	  type = Interval_type(IIT_interval(altstrain_iit,indexarray[i]));
-	  strain = IIT_typestring(altstrain_iit,type);
-	  while (j < nindices && Interval_type(IIT_interval(altstrain_iit,indexarray[j])) == type) {
+	  straintype = Interval_type(IIT_interval(altstrain_iit,indexarray[i]));
+	  strain = IIT_typestring(altstrain_iit,straintype);
+	  while (j < nindices && Interval_type(IIT_interval(altstrain_iit,indexarray[j])) == straintype) {
 	    j++;
 	  }
 	  /* Patch from i to j */
 	  genomicseg = Genome_patch_strain(&(indexarray[i]),j-i,altstrain_iit,
 					   genomicstart,genomiclength,!watsonp,
 					   gbuffer1,gbuffer2,gbuffer3,gbufferlen);
-	  stage3list = update_stage3list(stage3list,queryseq,genomicseg,matchpair,
-					 oligoindex,indexsize,pairpool,
-					 sufflookback,nsufflookback,badoligos,chrnum,chroffset,chrpos,
+	  stage3list = update_stage3list(stage3list,queryseq,queryuc,genomicseg,matchpair,
+					 oligoindex,indexsize,pairpool,sufflookback,nsufflookback,badoligos,
+					 straintype,strain,chrnum,chroffset,chrpos,
 					 watsonp,maxpeelback,nullgap,extramaterial_end,extramaterial_paired,
 					 extraband_single,extraband_end,extraband_paired,
 					 ngap,dynprogL,dynprogM,dynprogR,altstrain_iit);
@@ -996,8 +1204,8 @@ stage3_from_matchlist (int *npaths, Stage3_T *oldstage3array, Stage1_T stage1,
 
 #ifdef BETATEST
 static Stage3_T *
-check_for_chimera (Chimera_T *chimera, int *npaths, int breakpoint, Stage3_T nonchimericbest, 
-		   Stage3_T *stage3array, Sequence_T queryseq, Sequence_T usersegment, 
+check_for_chimera (Chimera_T *chimera, int *npaths, int newstart, int newend, Stage3_T nonchimericbest, 
+		   Stage3_T *stage3array, Sequence_T queryseq, Sequence_T queryuc, Sequence_T usersegment, 
 		   Params_T params, int maxpeelback, int sufflookback, int nsufflookback, int badoligos, int nullgap,
 		   Oligoindex_T oligoindex, Pairpool_T pairpool,
 		   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
@@ -1005,133 +1213,354 @@ check_for_chimera (Chimera_T *chimera, int *npaths, int breakpoint, Stage3_T non
   int substart, subend;
   Stage1_T stage1sub;
   List_T matchlist = NULL;
-  Stage3_T *stage3array_sub, stage3, best0, best1;
-  Sequence_T querysubseq1 = NULL, querysubseq2 = NULL;
-  int chimerapos, chimeraequivpos;
-  int npaths_sub, bestfrom, bestto, matches0, matches1;
-  int newj, oldj, j, querylength;
+  Stage3_T *newstage3array, *stage3array_sub1 = NULL, *stage3array_sub2 = NULL, *stage3array_sub,stage3, best0, best1, bestnew;
+  Sequence_T querysubseq = NULL, querysubuc = NULL;
+  int chimerapos, chimeraequivpos, chimerapos5, chimeraequivpos5, chimerapos3, chimeraequivpos3;
+  int bestfrom, bestto, bestfrom5, bestto5, bestfrom3, bestto3;
+  int five_margin, three_margin, five_score = 0, three_score = 0, main_score;
+  cDNAEnd_T bestside;
+  int chimeric_goodness;
+  int npaths_sub1 = 0, npaths_sub2 = 0, npaths_sub, npaths_new, bestold, matches0, matches1;
+  int newj, oldj, j, queryntlength;
   double donor_prob, acceptor_prob;
 
   substart = Sequence_trim_start(queryseq);
   subend = Sequence_trim_end(queryseq);
+  queryntlength = Sequence_ntlength(queryseq);
 
-  /* printf("%d %d %d\n",substart,breakpoint,subend); */
+  debug2(printf("substart %d, subend %d => newstart %d, newend %d\n",substart,subend,newstart,newend));
+
+  *chimera = (Chimera_T) NULL;
 
   /* Need to check both margins */
-  if (breakpoint - substart < chimera_margin ||
-      subend - breakpoint < chimera_margin ||
-      (querysubseq1 = Sequence_subsequence(queryseq,substart,breakpoint)) == NULL ||
-      (querysubseq2 = Sequence_subsequence(queryseq,breakpoint,subend)) == NULL) {
+  five_margin = newstart - substart;
+  three_margin = subend - newend;
+
+  if (five_margin < chimera_margin && three_margin < chimera_margin) {
     debug2(printf("Insufficient margins\n"));
-    *chimera = (Chimera_T) NULL;
-    if (querysubseq1 != NULL) {
-      Sequence_free(&querysubseq1);
-    }
-    /* The following should not be necessary; if we got here, then querysubseq2 is NULL */
-    if (querysubseq2 != NULL) {
-      Sequence_free(&querysubseq2);
+  } else if (five_margin > three_margin) {
+    if ((querysubseq = Sequence_subsequence(queryseq,0,newstart+CHIMERA_SLOP)) != NULL) {
+      if ((querysubuc = Sequence_subsequence(queryuc,0,newstart+CHIMERA_SLOP)) != NULL) {
+	debug2(printf("5 margin > 3 margin.  "));
+	debug2(printf("subsequence 1 (%d..%d):\n",0,newstart+CHIMERA_SLOP));
+	debug2(Sequence_print(querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
+	stage1sub = Stage1_compute(querysubuc,
+#ifdef PMAP
+				   Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				   Params_indexdb(params),
+#endif
+				   Params_chromosome_iit(params),
+				   Params_chrsubset(params),maxintronlen_bound,Params_stuttercycles(params),
+				   Params_stutterhits(params),crossspeciesp);
+	matchlist = Stage1_matchlist(stage1sub,
+#ifdef PMAP
+				     Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				     Params_indexdb(params),
+#endif
+				     Params_chromosome_iit(params),Params_chrsubset(params));
+	stage3array_sub1 = stage3_from_matchlist(&npaths_sub1,(Stage3_T *) NULL,stage1sub,matchlist,querysubseq,
+						 querysubuc,usersegment,params,maxpeelback,sufflookback,nsufflookback,
+						 badoligos,nullgap,
+						 oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
+						 gbuffer3,gbufferlen);
+	Stage1_free(&stage1sub);
+	Sequence_free(&querysubuc);
+      }
+      Sequence_free(&querysubseq);
     }
 
+    if (npaths_sub1 == 0) {
+      debug2(printf("No matches on 5 margin\n"));
+    } else {
+      Chimera_bestpath(&five_score,&main_score,&chimerapos,&chimeraequivpos,&bestfrom,&bestto,
+		       stage3array_sub1,npaths_sub1,stage3array,*npaths,queryntlength);
+      debug2(printf("Score on 5 margin is %d\n",five_score));
+    }
+    if (five_score >= three_margin) {
+      debug2(printf("Score on 5 margin dominates 3 margin %d\n",three_score));
+      bestside = FIVE;
+    } else if (three_margin < chimera_margin) {
+      debug2(printf("3 margin is too short\n"));
+      bestside = FIVE;
+    } else {
+      /* Check short side */
+      chimerapos5 = chimerapos;
+      chimeraequivpos5 = chimeraequivpos;
+      bestfrom5 = bestfrom;
+      bestto5 = bestto;
+
+      if ((querysubseq = Sequence_subsequence(queryseq,newend-CHIMERA_SLOP,queryntlength)) != NULL) {
+	if ((querysubuc = Sequence_subsequence(queryuc,newend-CHIMERA_SLOP,queryntlength)) != NULL) {
+	  debug2(printf("subsequence 2 (%d..%d):\n",newend-CHIMERA_SLOP,queryntlength));
+	  debug2(Sequence_print(querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
+	  stage1sub = Stage1_compute(querysubuc,
+#ifdef PMAP
+				     Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				     Params_indexdb(params),
+#endif
+				     Params_chromosome_iit(params),
+				     Params_chrsubset(params),maxintronlen_bound,Params_stuttercycles(params),
+				     Params_stutterhits(params),crossspeciesp);
+	  matchlist = Stage1_matchlist(stage1sub,
+#ifdef PMAP
+				       Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				       Params_indexdb(params),
+#endif
+				       Params_chromosome_iit(params),Params_chrsubset(params));
+	  stage3array_sub2 = stage3_from_matchlist(&npaths_sub2,(Stage3_T *) NULL,stage1sub,matchlist,querysubseq,
+						   querysubuc,usersegment,params,maxpeelback,sufflookback,nsufflookback,
+						   badoligos,nullgap,
+						   oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
+						   gbuffer3,gbufferlen);
+	  Stage1_free(&stage1sub);
+	  Sequence_free(&querysubuc);
+	}
+	Sequence_free(&querysubseq);
+      }
+
+      if (npaths_sub2 > 0) {
+	Chimera_bestpath(&main_score,&three_score,&chimerapos3,&chimeraequivpos3,&bestfrom3,&bestto3,
+			 stage3array,*npaths,stage3array_sub2,npaths_sub2,queryntlength);
+      }
+      if (five_score > three_score) {
+	bestside = FIVE;
+	chimerapos = chimerapos5;
+	chimeraequivpos = chimeraequivpos5;
+	bestfrom = bestfrom5;
+	bestto = bestto5;
+      } else {
+	bestside = THREE;
+	chimerapos = chimerapos3;
+	chimeraequivpos = chimeraequivpos3;
+	bestfrom = bestfrom3;
+	bestto = bestto3;
+      }
+    }
+  } else {			/* three_margin > five_margin */
+    if ((querysubseq = Sequence_subsequence(queryseq,newend-CHIMERA_SLOP,queryntlength)) != NULL) {
+      if ((querysubuc = Sequence_subsequence(queryuc,newend-CHIMERA_SLOP,queryntlength)) != NULL) {
+	debug2(printf("3 margin > 5 margin.  "));
+	debug2(printf("subsequence 2 (%d..%d):\n",newend-CHIMERA_SLOP,queryntlength));
+	debug2(Sequence_print(querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
+	stage1sub = Stage1_compute(querysubuc,
+#ifdef PMAP
+				   Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				   Params_indexdb(params),
+#endif
+				   Params_chromosome_iit(params),
+				   Params_chrsubset(params),maxintronlen_bound,Params_stuttercycles(params),
+				   Params_stutterhits(params),crossspeciesp);
+	matchlist = Stage1_matchlist(stage1sub,
+#ifdef PMAP
+				     Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				     Params_indexdb(params),
+#endif
+				     Params_chromosome_iit(params),Params_chrsubset(params));
+	stage3array_sub2 = stage3_from_matchlist(&npaths_sub2,(Stage3_T *) NULL,stage1sub,matchlist,querysubseq,
+						 querysubuc,usersegment,params,maxpeelback,sufflookback,nsufflookback,
+						 badoligos,nullgap,
+						 oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
+						 gbuffer3,gbufferlen);
+	Stage1_free(&stage1sub);
+	Sequence_free(&querysubuc);
+      }
+      Sequence_free(&querysubseq);
+    }
+
+    if (npaths_sub2 > 0) {
+      Chimera_bestpath(&main_score,&three_score,&chimerapos,&chimeraequivpos,&bestfrom,&bestto,
+		       stage3array,*npaths,stage3array_sub2,npaths_sub2,queryntlength);
+      debug2(printf("Score on 3 margin is %d\n",three_score));
+    }
+    if (three_score >= five_margin) {
+      debug2(printf("Score on 3 margin dominates 5 margin %d\n",five_score));
+      bestside = THREE;
+    } else if (five_margin < chimera_margin) {
+      debug2(printf("5 margin is too short\n"));
+      bestside = THREE;
+    } else {
+      /* Check short side */
+      chimerapos3 = chimerapos;
+      chimeraequivpos3 = chimeraequivpos;
+      bestfrom3 = bestfrom;
+      bestto3 = bestto;
+
+      if ((querysubseq = Sequence_subsequence(queryseq,0,newstart+CHIMERA_SLOP)) != NULL) {
+	if ((querysubuc = Sequence_subsequence(queryuc,0,newstart+CHIMERA_SLOP)) != NULL) {
+	  debug2(printf("subsequence 1 (%d..%d):\n",0,newstart+CHIMERA_SLOP));
+	  debug2(Sequence_print(querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
+	  stage1sub = Stage1_compute(querysubuc,
+#ifdef PMAP
+				     Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				     Params_indexdb(params),
+#endif
+				     Params_chromosome_iit(params),
+				     Params_chrsubset(params),maxintronlen_bound,Params_stuttercycles(params),
+				     Params_stutterhits(params),crossspeciesp);
+	  matchlist = Stage1_matchlist(stage1sub,
+#ifdef PMAP
+				       Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				       Params_indexdb(params),
+#endif
+				       Params_chromosome_iit(params),Params_chrsubset(params));
+	  stage3array_sub1 = stage3_from_matchlist(&npaths_sub1,(Stage3_T *) NULL,stage1sub,matchlist,querysubseq,
+						   querysubuc,usersegment,params,maxpeelback,sufflookback,nsufflookback,
+						   badoligos,nullgap,
+						   oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
+						   gbuffer3,gbufferlen);
+	  Stage1_free(&stage1sub);
+	  Sequence_free(&querysubuc);
+	}
+	Sequence_free(&querysubseq);
+      }
+      
+      if (npaths_sub1 > 0) {
+	Chimera_bestpath(&five_score,&main_score,&chimerapos5,&chimeraequivpos5,&bestfrom5,&bestto5,
+			 stage3array_sub1,npaths_sub1,stage3array,*npaths,queryntlength);
+      }
+
+      if (three_score > five_score) {
+	bestside = THREE;
+	chimerapos = chimerapos3;
+	chimeraequivpos = chimeraequivpos3;
+	bestfrom = bestfrom3;
+	bestto = bestto3;
+      } else {
+	bestside = FIVE;
+	chimerapos = chimerapos5;
+	chimeraequivpos = chimeraequivpos5;
+	bestfrom = bestfrom5;
+	bestto = bestto5;
+      }
+    }
+  }
+
+  if (npaths_sub1 == 0 && npaths_sub2 == 0) {
+    debug2(printf("Both sides failed to align\n"));
+    *chimera = (Chimera_T) NULL;
+  } else if (five_score <= 0 && three_score <= 0) {
+    debug2(printf("Both sides failed to score\n"));
+    *chimera = (Chimera_T) NULL;
   } else {
-    debug2(Sequence_print(querysubseq1,/*uppercasep*/true,wraplength,/*trimmedp*/true));
-    debug2(Sequence_print(querysubseq2,/*uppercasep*/true,wraplength,/*trimmedp*/true));
-
-    *chimera = (Chimera_T) NULL;
-    npaths_sub = 0;
-
-    stage1sub = Stage1_compute(querysubseq1,Params_indexdb(params),Params_chromosome_iit(params),
-			       Params_chrsubset(params),maxintronlen_bound,Params_stuttercycles(params),
-			       Params_stutterhits(params),crossspeciesp);
-    matchlist = Stage1_matchlist(stage1sub,Params_indexdb(params),Params_chromosome_iit(params),
-				 Params_chrsubset(params));
-    stage3array_sub = stage3_from_matchlist(&npaths_sub,(Stage3_T *) NULL,stage1sub,matchlist,querysubseq1,
-					    usersegment,params,maxpeelback,sufflookback,nsufflookback,
-					    badoligos,nullgap,
-					    oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
-					    gbuffer3,gbufferlen);
-    Stage1_free(&stage1sub);
-    Sequence_free(&querysubseq1);
-
-    stage1sub = Stage1_compute(querysubseq2,Params_indexdb(params),Params_chromosome_iit(params),
-			       Params_chrsubset(params),maxintronlen_bound,Params_stuttercycles(params),
-			       Params_stutterhits(params),crossspeciesp);
-    matchlist = Stage1_matchlist(stage1sub,Params_indexdb(params),Params_chromosome_iit(params),
-				 Params_chrsubset(params));
-    stage3array_sub = stage3_from_matchlist(&npaths_sub,stage3array_sub,stage1sub,matchlist,querysubseq2,
-					    usersegment,params,maxpeelback,sufflookback,nsufflookback,
-					    badoligos,nullgap,
-					    oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
-					    gbuffer3,gbufferlen);
-    Stage1_free(&stage1sub);
-    Sequence_free(&querysubseq2);
-
-    if (npaths_sub == 0) {
-      debug2(printf("npaths_sub == 0\n"));
+    if (bestside == FIVE) {
+      debug2(printf("bestside = 5' with score %d\n",five_score));
+      stage3array_sub = stage3array_sub1;
+      npaths_sub = npaths_sub1;
+      chimeric_goodness = Stage3_chimeric_goodness(&matches0,&matches1,stage3array_sub1[bestfrom],stage3array[bestto],
+						   chimerapos,queryntlength);
+      
+    } else if (bestside == THREE) {
+      debug2(printf("bestside = 3' with score %d\n",three_score));
+      stage3array_sub = stage3array_sub2;
+      npaths_sub = npaths_sub2;
+      chimeric_goodness = Stage3_chimeric_goodness(&matches0,&matches1,stage3array[bestfrom],stage3array_sub2[bestto],
+						   chimerapos,queryntlength);
+    } else {
+      abort();
+    }
+    
+    if (chimeric_goodness <= Stage3_goodness(nonchimericbest) + CHIMERA_HANDICAP ||
+	matches0 < chimera_margin || matches1 < chimera_margin) {
+      debug2(printf("bestfrom = %d, bestto = %d\n",bestfrom,bestto));
       *chimera = (Chimera_T) NULL;
-
-    } else if (npaths_sub == 1) {
-      debug2(printf("npaths_sub == 1\n"));
-      *chimera = (Chimera_T) NULL;
-      stage3 = stage3array_sub[0];
-      Stage3_free(&stage3);
-      FREE(stage3array_sub);
 
     } else {
-      querylength = Sequence_fulllength(queryseq);
-      Chimera_bestpath(&chimerapos,&chimeraequivpos,&bestfrom,&bestto,stage3array_sub,npaths_sub,querylength);
+      *chimera = Chimera_new(nonchimericbest,chimerapos,chimeraequivpos);
       
-      if (bestfrom == bestto || 
-	  Stage3_chimeric_goodness(&matches0,&matches1,stage3array_sub[bestfrom],stage3array_sub[bestto],
-				   chimerapos,querylength) <= Stage3_goodness(nonchimericbest) + CHIMERA_HANDICAP ||
-	  matches0 < chimera_margin ||
-	  matches1 < chimera_margin) {
-	debug2(printf("bestfrom = %d, bestto = %d\n",bestfrom,bestto));
-	*chimera = (Chimera_T) NULL;
-	for (j = 0; j < npaths_sub; j++) {
-	  stage3 = stage3array_sub[j];
-	  Stage3_free(&stage3);
-	}
-	FREE(stage3array_sub);
-
+      if (bestside == FIVE) {
+	bestnew = best0 = stage3array_sub1[bestfrom];
+	stage3array_sub[bestfrom] = (Stage3_T) NULL;
+	best1 = stage3array[bestto];
+	bestold = bestto;
+	
       } else {
+	best0 = stage3array[bestfrom];
+	bestnew = best1 = stage3array_sub2[bestto];
+	stage3array_sub2[bestto] = (Stage3_T) NULL;
+	bestold = bestfrom;
+      }
 
-	*chimera = Chimera_new(nonchimericbest,chimerapos,chimeraequivpos);
-	    
-	best0 = stage3array_sub[bestfrom];
-	best1 = stage3array_sub[bestto];
+      Chimera_find_exonexon(*chimera,best0,best1,Params_genome(params));
+      chimerapos = Chimera_pos(*chimera);	
+      chimeraequivpos = Chimera_equivpos(*chimera);
+      
+      npaths_new = *npaths + 1;
+      for (oldj = 0; oldj < *npaths; oldj++) {
+	if (oldj != bestold) {
+	  stage3 = stage3array[oldj];
+	  if (Stage3_overlap(stage3,bestnew) == true) {
+	    Stage3_free(&stage3);
+	    stage3array[oldj] = (Stage3_T) NULL;
+	    npaths_new -= 1;
+	  }
+	}
+      }
 
-	Chimera_find_exonexon(*chimera,best0,best1,Params_genome(params));
-	chimerapos = Chimera_pos(*chimera);	
-	chimeraequivpos = Chimera_equivpos(*chimera);
-
-	for (oldj = npaths_sub-1, newj = npaths_sub-1; oldj >= 0; oldj--) {
-	  if (oldj != bestfrom && oldj != bestto) {
-	    /* fprintf(stderr,"Assigning old %d to new %d\n",oldj,newj); */
-	    stage3array_sub[newj] = stage3array_sub[oldj];
+      newstage3array = (Stage3_T *) CALLOC(npaths_new,sizeof(Stage3_T));
+      for (oldj = *npaths-1, newj = npaths_new-1; oldj >= 0; oldj--) {
+	if (oldj != bestold) {
+	  if (stage3array[oldj] != NULL) {
+	    debug2(printf("Assigning old %d to new %d\n",oldj,newj));
+	    newstage3array[newj] = stage3array[oldj];
 	    newj--;
 	  }
 	}
-	if ((stage3array_sub[0] = Stage3_copy_bounded(best0,0,chimeraequivpos+chimera_overlap)) == NULL) {
-	  stage3array_sub[0] = best0;
-	} else {
-	  Stage3_free(&best0);
-	}
-	if ((stage3array_sub[1] = Stage3_copy_bounded(best1,chimerapos+1-chimera_overlap,querylength)) == NULL) {
-	  stage3array_sub[1] = best1;
-	} else {
-	  Stage3_free(&best1);
-	}
-	
-	for (j = 0; j < *npaths; j++) {
-	  stage3 = stage3array[j];
-	  Stage3_free(&stage3);
-	}
-	FREE(stage3array);
-	
-	stage3array = stage3array_sub;
-	*npaths = npaths_sub;
       }
+      if ((newstage3array[0] = Stage3_copy_bounded(best0,0,chimeraequivpos+chimera_overlap)) == NULL) {
+	newstage3array[0] = best0;
+      } else {
+	Stage3_free(&best0);
+      }
+      if ((newstage3array[1] = Stage3_copy_bounded(best1,chimerapos+1-chimera_overlap,queryntlength)) == NULL) {
+	newstage3array[1] = best1;
+      } else {
+	Stage3_free(&best1);
+      }
+	
+      FREE(stage3array);
+      stage3array = newstage3array;
+      *npaths = npaths_new;
+
+      /* Check to see if we can merge chimeric parts */
+      if (Stage3_append(stage3array[0],stage3array[1],Chimera_cdna_direction(*chimera),
+			Chimera_donor_prob(*chimera),Chimera_acceptor_prob(*chimera),
+			pairpool,Params_genome(params),ngap) == true) {
+	best1 = stage3array[1];
+	Stage3_free(&best1);
+	for (j = 2; j < *npaths; j++) {
+	  stage3array[j-1] = stage3array[j];
+	}
+	stage3array[(*npaths)-1] = (Stage3_T) NULL;
+	*npaths -= 1;
+	Chimera_free(&(*chimera));
+      }
+    } /* Chimera created */
+  } /* At least one side scored */
+
+  for (j = 0; j < npaths_sub1; j++) {
+    if ((stage3 = stage3array_sub1[j]) != NULL) {
+      Stage3_free(&stage3);
     }
+  }
+  if (stage3array_sub1 != NULL) {
+    FREE(stage3array_sub1);
+  }
+
+  for (j = 0; j < npaths_sub2; j++) {
+    if ((stage3 = stage3array_sub2[j]) != NULL) {
+      Stage3_free(&stage3);
+    }
+  }
+  if (stage3array_sub2 != NULL) {
+    FREE(stage3array_sub2);
   }
 
   return stage3array;
@@ -1140,22 +1569,29 @@ check_for_chimera (Chimera_T *chimera, int *npaths, int breakpoint, Stage3_T non
 
 
 static Stage3_T *
-apply_stage3 (Chimera_T *chimera, int *npaths, Stage1_T stage1, Sequence_T queryseq, Sequence_T usersegment, 
-	      Params_T params, int maxpeelback, int sufflookback, int nsufflookback,
+apply_stage3 (Chimera_T *chimera, int *npaths, Stage1_T stage1, Sequence_T queryseq, Sequence_T queryuc,
+	      Sequence_T usersegment, Params_T params, int maxpeelback, int sufflookback, int nsufflookback,
 	      int badoligos, int nullgap, Oligoindex_T oligoindex, Pairpool_T pairpool, 
 	      Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 	      char *gbuffer1, char *gbuffer2, char *gbuffer3, int gbufferlen) {
   Stage3_T *stage3array = NULL, nonchimericbest;
   List_T matchlist = NULL;
   bool testchimerap = false;
-  int breakpoint = -1, margin;
+#ifdef BETATEST
+  int newstart, newend;
+#endif
   
   *npaths = 0;
   *chimera = NULL;
 
-  matchlist = Stage1_matchlist(stage1,Params_indexdb(params),Params_chromosome_iit(params),
-			       Params_chrsubset(params));
-  stage3array = stage3_from_matchlist(&(*npaths),stage3array,stage1,matchlist,queryseq,
+  matchlist = Stage1_matchlist(stage1,
+#ifdef PMAP
+			       Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+			       Params_indexdb(params),
+#endif
+			       Params_chromosome_iit(params),Params_chrsubset(params));
+  stage3array = stage3_from_matchlist(&(*npaths),stage3array,stage1,matchlist,queryseq,queryuc,
 				      usersegment,params,maxpeelback,sufflookback,nsufflookback,
 				      badoligos,nullgap,
 				      oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
@@ -1178,20 +1614,17 @@ apply_stage3 (Chimera_T *chimera, int *npaths, Stage1_T stage1, Sequence_T query
       testchimerap = false;
 
     } else if (Stage3_fracidentity(nonchimericbest) < CHIMERA_IDENTITY &&
-	       (breakpoint = Chimera_detect(&margin,nonchimericbest,queryseq,CHIMERA_FVALUE)) >= 0 &&
-	       margin >= chimera_margin) {
-      debug2(printf("break in alignment quality at %d and margin %d\n",breakpoint,margin));
+	       Chimera_detect(&newstart,&newend,nonchimericbest,Sequence_ntlength(queryseq),CHIMERA_FVALUE) >= chimera_margin
+	       ) {
+      debug2(printf("break in alignment quality at %d..%d\n",newstart,newend));
       testchimerap = true;
 
-    } else if (Stage3_largemargin(&breakpoint,nonchimericbest,queryseq) >= chimera_margin) {
-      debug2(printf("large margin of %d: breakpoint = %d\n",
-		    Stage3_largemargin(&breakpoint,nonchimericbest,queryseq),breakpoint));
+    } else if (Stage3_largemargin(&newstart,&newend,nonchimericbest,Sequence_ntlength(queryseq)) >= chimera_margin) {
+      debug2(printf("large margin at %d..%d\n",newstart,newend));
       testchimerap = true;
 
     } else {
-      debug2(printf("good alignment with identity %f and margin %d\n",
-		    Stage3_fracidentity(nonchimericbest),
-		    Stage3_largemargin(&breakpoint,nonchimericbest,queryseq)));
+      debug2(printf("good alignment with identity %f\n",Stage3_fracidentity(nonchimericbest)));
       testchimerap = false;
 #endif
 
@@ -1199,8 +1632,8 @@ apply_stage3 (Chimera_T *chimera, int *npaths, Stage1_T stage1, Sequence_T query
 
     if (testchimerap == true) {
 #ifdef BETATEST
-      stage3array = check_for_chimera(&(*chimera),&(*npaths),breakpoint,nonchimericbest,stage3array,
-				      queryseq,usersegment,params,
+      stage3array = check_for_chimera(&(*chimera),&(*npaths),newstart,newend,nonchimericbest,stage3array,
+				      queryseq,queryuc,usersegment,params,
 				      maxpeelback,sufflookback,nsufflookback,badoligos,nullgap,
 				      oligoindex,pairpool,dynprogL,dynprogM,dynprogR,
 				      gbuffer1,gbuffer2,gbuffer3,gbufferlen);
@@ -1212,56 +1645,160 @@ apply_stage3 (Chimera_T *chimera, int *npaths, Stage1_T stage1, Sequence_T query
 }
 
 
-
-
-#ifdef HAVE_PTHREAD
-static void *
-worker_thread (void *data)
-#else
 static void
-single_thread (FILE *input, Params_T params, Sequence_T usersegment)
-#endif
-{
-  Oligoindex_T oligoindex;
-  int badoligos;
-  Dynprog_T dynprogL, dynprogM, dynprogR;
-  char *gbuffer1 = NULL, *gbuffer2 = NULL, *gbuffer3 = NULL; /* Individual space for reading genome sequence,
-								revcomp, and strain calculations */
-  int trim_start, trim_end;
-  int gbufferlen = 0,
-    stuttercycles, stutterhits, 
-    maxpeelback, sufflookback, nsufflookback, nullgap;
-  int extramaterial_end, extramaterial_paired;
-  List_T matchlist;
-  Pairpool_T pairpool;
-  Request_T request;
-  Sequence_T queryseq;
+handle_request (Request_T request, Pairpool_T pairpool, Oligoindex_T oligoindex, Params_T params,
+		char *gbuffer1, char *gbuffer2, char *gbuffer3, int gbufferlen, 
+		Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR, Reqpost_T reqpost) {
+  int jobid;
+  Sequence_T queryseq, queryuc, usersegment;
+  int badoligos, trim_start, trim_end;
   Chimera_T chimera = NULL;
-  int jobid = 0;
+  List_T matchlist;
 
   Stage1_T stage1;
   Stage3_T *stage3array;
   int npaths;
 
+  int stuttercycles = Params_stuttercycles(params);
+  int stutterhits = Params_stutterhits(params);
+  int maxpeelback = Params_maxpeelback(params);
+  int sufflookback = Params_sufflookback(params);
+  int nsufflookback = Params_nsufflookback(params);
+  int nullgap = Params_nullgap(params);
+
+  jobid = Request_id(request);
+  usersegment = Request_usersegment(request);
+  debug(printf("worker_thread: Got request id\n",jobid));
+  queryseq = Request_queryseq(request);
+  Pairpool_reset(pairpool);
+
+  debug1(printf("oligo depth: %f\n",Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryseq)));
+  debug1(printf("badoligos: %d/%d\n",badoligos,Sequence_fulllength(queryseq)));
+  debug1(printf("trimstart: %d\n",trim_start));
+  debug1(printf("trimend: %d\n",trim_end));
+
+  if (Sequence_fulllength(queryseq) <= 0) {
+    if (reqpost == NULL) {
+      output_one(Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,EMPTY_SEQUENCE),request,params);
+    } else {
 #ifdef HAVE_PTHREAD
-  Reqpost_T reqpost = (Reqpost_T) data;
-  Params_T params = Reqpost_params(reqpost);
-  Sequence_T usersegment;
+      Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,EMPTY_SEQUENCE));
+#endif
+    }
+      
+  } else {			/* Sequence_fulllength(queryseq) > 0 */
+    queryuc = Sequence_uppercase(queryseq);
+#ifdef PMAP
+    Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryuc);
 #else
-  int nextchar;
+    if (!maponlyp && ((Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryuc) > MAX_OLIGO_DEPTH &&
+		       crossspeciesp == false &&
+		       Sequence_fulllength(queryseq) < OLIGO_DEPTH_SEQLENGTH) ||
+		      (double) badoligos/(double) Sequence_fulllength(queryseq) > MAX_BADOLIGOS)) {
+      /* Sequence is repetitive or poor */
+      if (reqpost == NULL) {
+	output_one(Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,REPETITIVE),request,params);
+      } else {
+#ifdef HAVE_PTHREAD
+	Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,REPETITIVE));
+#endif
+      }
+
+    } else {			/* Sequence is not repetitive */
 #endif
 
-  debug(printf("worker_thread: Starting\n"));
-  
-  /* Thread-specific data and storage */
-  stuttercycles = Params_stuttercycles(params);
-  stutterhits = Params_stutterhits(params);
-  maxpeelback = Params_maxpeelback(params);
-  sufflookback = Params_sufflookback(params);
-  nsufflookback = Params_nsufflookback(params);
-  nullgap = Params_nullgap(params);
-  extramaterial_end = Params_extramaterial_end(params);
-  extramaterial_paired = Params_extramaterial_paired(params);
+      if (usersegment != NULL && userstage1p == false) {
+	stage3array = stage3_from_usersegment(&npaths,queryseq,queryuc,usersegment,params,
+					      maxpeelback,sufflookback,nsufflookback,
+					      badoligos,nullgap,
+					      oligoindex,pairpool,dynprogL,dynprogM,dynprogR);
+	if (reqpost == NULL) {
+	  output_one(Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE),request,params);
+	} else {
+#ifdef HAVE_PTHREAD
+	  Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE));
+#endif
+	}
+    
+      } else if (maponlyp == true) {
+	/* Sequence_trim(queryseq,trim_start,trim_end); */
+	stage1 = Stage1_compute(queryuc,
+#ifdef PMAP
+				Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				Params_indexdb(params),
+#endif
+				Params_chromosome_iit(params),Params_chrsubset(params),maxintronlen_bound,
+				stuttercycles,stutterhits,crossspeciesp);
+	matchlist = Stage1_matchlist(stage1,
+#ifdef PMAP
+				     Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				     Params_indexdb(params),
+#endif
+				     Params_chromosome_iit(params),Params_chrsubset(params));
+	npaths = List_length(matchlist);
+	if (reqpost == NULL) {
+	  output_one(Result_new(jobid,(Chimera_T) NULL,stage1,(Stage3_T *) NULL,npaths,NO_FAILURE),request,params);
+	} else {
+#ifdef HAVE_PTHREAD
+	  Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,stage1,(Stage3_T *) NULL,npaths,NO_FAILURE));
+#endif
+	}
+	  
+      } else {		/* Not user segment and not maponly */
+#ifndef PMAP
+	  Sequence_trim(queryseq,trim_start,trim_end);
+	  Sequence_trim(queryuc,trim_start,trim_end);
+#endif
+	  stage1 = Stage1_compute(queryuc,
+#ifdef PMAP
+				  Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+				  Params_indexdb(params),
+#endif
+				  Params_chromosome_iit(params),Params_chrsubset(params),maxintronlen_bound,
+				  stuttercycles,stutterhits,crossspeciesp);
+	  stage3array = apply_stage3(&chimera,&npaths,stage1,queryseq,queryuc,usersegment,params,
+				     maxpeelback,sufflookback,nsufflookback,badoligos,nullgap,
+				     oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
+				     gbuffer3,gbufferlen);
+	  Stage1_free(&stage1);
+	  if (reqpost == NULL) {
+	    output_one(Result_new(jobid,chimera,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE),request,params);
+	  } else {
+#ifdef HAVE_PTHREAD
+	  Reqpost_put_result(reqpost,Result_new(jobid,chimera,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE));
+#endif
+	  }
+      } /* Matches not user segment and not maponly */
+
+#ifndef PMAP
+    }	/* Matches sequence not repetitive */
+#endif
+
+    Sequence_free(&queryuc);
+  } /* Matches sequence length > 0 */
+
+  return;
+}
+
+
+static void
+single_thread (FILE *input, int nextchar, Sequence_T queryseq, Params_T params, Sequence_T usersegment) {
+  Oligoindex_T oligoindex;
+  Dynprog_T dynprogL, dynprogM, dynprogR;
+  char *gbuffer1 = NULL, *gbuffer2 = NULL, *gbuffer3 = NULL; /* Individual space for reading genome sequence,
+								revcomp, and strain calculations */
+  int gbufferlen = 0;
+  Pairpool_T pairpool;
+  Request_T request;
+  int jobid = 0;
+
+  int nullgap = Params_nullgap(params);
+  int maxpeelback = Params_maxpeelback(params);
+  int extramaterial_end = Params_extramaterial_end(params);
+  int extramaterial_paired = Params_extramaterial_paired(params);
 
   oligoindex = Oligoindex_new();
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
@@ -1274,105 +1811,22 @@ single_thread (FILE *input, Params_T params, Sequence_T usersegment)
   gbuffer3 = (char *) CALLOC(gbufferlen+1,sizeof(char));
   pairpool = Pairpool_new();
 
-#ifdef HAVE_PTHREAD
-  while ((request = Reqpost_get_request(reqpost))) {
-#else
-  while ((queryseq = Sequence_read(&nextchar,input)) != NULL) {
-    if (jobid == 0 && nextchar == '>' && batchp == false) {
-      fprintf(stderr,"Note: batch mode (-B) is strongly recommended for large runs.\n");
-    }
-#endif
-
-#ifdef HAVE_PTHREAD
-#else
+  while (jobid == 0 || (queryseq = Sequence_read(&nextchar,input)) != NULL) {
     request = Request_new(jobid++,queryseq,usersegment);
-#endif
-    jobid = Request_id(request);
-    usersegment = Request_usersegment(request);
-    debug(printf("worker_thread: Got request id\n",jobid));
-    queryseq = Request_queryseq(request);
-    Pairpool_reset(pairpool);
-
-    debug1(printf("oligo depth: %f\n",Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryseq)));
-    debug1(printf("badoligos: %d/%d\n",badoligos,Sequence_fulllength(queryseq)));
-    debug1(printf("trimstart: %d\n",trim_start));
-    debug1(printf("trimend: %d\n",trim_end));
-
-    if (Sequence_fulllength(queryseq) <= 0) {
-#ifdef HAVE_PTHREAD
-      Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,EMPTY_SEQUENCE));
-#else
-      output_one(Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,EMPTY_SEQUENCE),request,params);
-#endif
-      
-    } else if (!maponlyp && ((Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryseq) > MAX_OLIGO_DEPTH &&
-			      crossspeciesp == false &&
-			      Sequence_fulllength(queryseq) < OLIGO_DEPTH_SEQLENGTH) ||
-			     (double) badoligos/(double) Sequence_fulllength(queryseq) > MAX_BADOLIGOS)) {
-      /* Sequence is repetitive or poor */
-#ifdef HAVE_PTHREAD
-      Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,REPETITIVE));
-#else
-      output_one(Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,(Stage3_T *) NULL,0,REPETITIVE),request,params);
-#endif
-
-    } else {
-
 TRY
-
-      if (usersegment != NULL && userstage1p == false) {
-	stage3array = stage3_from_usersegment(&npaths,queryseq,usersegment,params,
-					      maxpeelback,sufflookback,nsufflookback,
-					      badoligos,nullgap,
-					      oligoindex,pairpool,dynprogL,dynprogM,dynprogR);
-#ifdef HAVE_PTHREAD
-	Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE));
-#else
-	output_one(Result_new(jobid,(Chimera_T) NULL,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE),request,params);
-#endif
-
-      } else if (maponlyp == true) {
-	/* Sequence_trim(queryseq,trim_start,trim_end); */
-	stage1 = Stage1_compute(queryseq,Params_indexdb(params),Params_chromosome_iit(params),
-				Params_chrsubset(params),maxintronlen_bound,stuttercycles,
-				stutterhits,crossspeciesp);
-	matchlist = Stage1_matchlist(stage1,Params_indexdb(params),Params_chromosome_iit(params),
-				     Params_chrsubset(params));
-	npaths = List_length(matchlist);
-#ifdef HAVE_PTHREAD
-	Reqpost_put_result(reqpost,Result_new(jobid,(Chimera_T) NULL,stage1,(Stage3_T *) NULL,npaths,NO_FAILURE));
-#else
-	output_one(Result_new(jobid,(Chimera_T) NULL,stage1,(Stage3_T *) NULL,npaths,NO_FAILURE),request,params);
-#endif
-
-      } else {	
-	Sequence_trim(queryseq,trim_start,trim_end);
-	stage1 = Stage1_compute(queryseq,Params_indexdb(params),Params_chromosome_iit(params),
-				Params_chrsubset(params),maxintronlen_bound,stuttercycles,
-				stutterhits,crossspeciesp);
-	stage3array = apply_stage3(&chimera,&npaths,stage1,queryseq,usersegment,params,
-				   maxpeelback,sufflookback,nsufflookback,badoligos,nullgap,
-				   oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
-				   gbuffer3,gbufferlen);
-	Stage1_free(&stage1);
-#ifdef HAVE_PTHREAD
-	Reqpost_put_result(reqpost,Result_new(jobid,chimera,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE));
-#else
-	output_one(Result_new(jobid,chimera,(Stage1_T) NULL,stage3array,npaths,NO_FAILURE),request,params);
-#endif
-      }
-
+    handle_request(request,pairpool,oligoindex,params,gbuffer1,gbuffer2,gbuffer3,gbufferlen,
+		   dynprogL,dynprogM,dynprogR,(Reqpost_T) NULL);
 ELSE
-  if (Sequence_accession(queryseq) == NULL) {
-    fprintf(stderr,"Problem with unnamed sequence (%d bp)\n",Sequence_fulllength(queryseq));
-  } else {
-    fprintf(stderr,"Problem with sequence %s (%d bp)\n",
-	    Sequence_accession(queryseq),Sequence_fulllength(queryseq));
-  }
+    if (Sequence_accession(queryseq) == NULL) {
+      fprintf(stderr,"Problem with unnamed sequence (%d bp)\n",Sequence_fulllength(queryseq));
+    } else {
+      fprintf(stderr,"Problem with sequence %s (%d bp)\n",
+	      Sequence_accession(queryseq),Sequence_fulllength(queryseq));
+    }
   RERAISE;
 END_TRY;
-
-    }
+    Request_free(&request);
+   /* Don't free queryseq; done by Request_free */
   }
 
   Pairpool_free(&pairpool);
@@ -1383,22 +1837,82 @@ END_TRY;
   Dynprog_free(&dynprogM);
   Dynprog_free(&dynprogL);
   Oligoindex_free(&oligoindex);
-#ifdef HAVE_PTHREAD
-  return (void *) NULL;
-#else
+
   return;
-#endif
 }
 
 
+#ifdef HAVE_PTHREAD
+static void *
+worker_thread (void *data) {
+  Oligoindex_T oligoindex;
+  Dynprog_T dynprogL, dynprogM, dynprogR;
+  char *gbuffer1 = NULL, *gbuffer2 = NULL, *gbuffer3 = NULL; /* Individual space for reading genome sequence,
+								revcomp, and strain calculations */
+  int gbufferlen = 0;
+  Pairpool_T pairpool;
+  Request_T request;
+  Sequence_T queryseq;
+
+  Reqpost_T reqpost = (Reqpost_T) data;
+  Params_T params = Reqpost_params(reqpost);
+
+  int nullgap = Params_nullgap(params);
+  int maxpeelback = Params_maxpeelback(params);
+  int extramaterial_end = Params_extramaterial_end(params);
+  int extramaterial_paired = Params_extramaterial_paired(params);
+
+  /* Thread-specific data and storage */
+  oligoindex = Oligoindex_new();
+  dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  gbufferlen = MAXSEQLEN + maxintronlen_bound + 2*Params_maxextension(params) + 
+    1000;			/* Add extra 1000 just to be sure */
+  gbuffer1 = (char *) CALLOC(gbufferlen+1,sizeof(char));
+  gbuffer2 = (char *) CALLOC(gbufferlen+1,sizeof(char));
+  gbuffer3 = (char *) CALLOC(gbufferlen+1,sizeof(char));
+  pairpool = Pairpool_new();
+
+  while ((request = Reqpost_get_request(reqpost))) {
+TRY
+    handle_request(request,pairpool,oligoindex,params,gbuffer1,gbuffer2,gbuffer3,gbufferlen,
+	  	   dynprogL,dynprogM,dynprogR,reqpost);
+ELSE
+    queryseq = Request_queryseq(request);
+    if (Sequence_accession(queryseq) == NULL) {
+      fprintf(stderr,"Problem with unnamed sequence (%d bp)\n",Sequence_fulllength(queryseq));
+    } else {
+      fprintf(stderr,"Problem with sequence %s (%d bp)\n",
+	      Sequence_accession(queryseq),Sequence_fulllength(queryseq));
+    }
+  RERAISE;
+END_TRY;
+   /* Don't free request; done by output thread */
+   /* Don't free queryseq; done by Request_free */
+  }
+
+  Pairpool_free(&pairpool);
+  FREE(gbuffer3);
+  FREE(gbuffer2);
+  FREE(gbuffer1);
+  Dynprog_free(&dynprogR);
+  Dynprog_free(&dynprogM);
+  Dynprog_free(&dynprogL);
+  Oligoindex_free(&oligoindex);
+
+  return (void *) NULL;
+}
+#endif
+
+
 static void
-align_mutations (FILE *input, Sequence_T mutationrefseq, Params_T params) {
+align_mutations (FILE *input, int nextchar, Sequence_T queryseq, Params_T params, Sequence_T mutationrefseq) {
   Oligoindex_T oligoindex;
   int badoligos;
   Dynprog_T dynprogL, dynprogM, dynprogR;
   char *gbuffer1 = NULL, *gbuffer2 = NULL, *gbuffer3 = NULL; /* Individual space for reading genome sequence,
 								revcomp, and strain calculations */
-  int nextchar;
   int trim_start, trim_end;
   int gbufferlen = 0,
     stuttercycles, stutterhits, 
@@ -1406,7 +1920,7 @@ align_mutations (FILE *input, Sequence_T mutationrefseq, Params_T params) {
   int extramaterial_end, extramaterial_paired;
   Pairpool_T pairpool;
   Genomicpos_T genomicstart, genomiclength;
-  Sequence_T genomicseg, queryseq;
+  Sequence_T genomicseg, queryuc, mutationrefuc;
   int jobid = 0;
 
   Chimera_T chimera = NULL;
@@ -1436,12 +1950,21 @@ align_mutations (FILE *input, Sequence_T mutationrefseq, Params_T params) {
 
   Pairpool_reset(pairpool);
 
-  Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,mutationrefseq);
+  mutationrefuc = Sequence_uppercase(mutationrefseq);
+  Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,mutationrefuc);
+#ifndef PMAP
   Sequence_trim(mutationrefseq,trim_start,trim_end);
-  stage1 = Stage1_compute(mutationrefseq,Params_indexdb(params),Params_chromosome_iit(params),
+#endif
+  stage1 = Stage1_compute(mutationrefuc,
+#ifdef PMAP
+			  Params_indexdb_fwd(params),Params_indexdb_rev(params),
+#else
+			  Params_indexdb(params),
+#endif
+			  Params_chromosome_iit(params),
 			  Params_chrsubset(params),maxintronlen_bound,stuttercycles,stutterhits,
 			  crossspeciesp);
-  stage3array = apply_stage3(&chimera,&npaths,stage1,mutationrefseq,/*usersegment*/NULL,params,
+  stage3array = apply_stage3(&chimera,&npaths,stage1,mutationrefseq,mutationrefuc,/*usersegment*/NULL,params,
 			     maxpeelback,sufflookback,nsufflookback,badoligos,nullgap,
 			     oligoindex,pairpool,dynprogL,dynprogM,dynprogR,gbuffer1,gbuffer2,
 			     gbuffer3,gbufferlen);
@@ -1452,50 +1975,64 @@ align_mutations (FILE *input, Sequence_T mutationrefseq, Params_T params) {
   }
   if (npaths > 0) {
     stage3ref = stage3array[0];
+#ifdef PMAP
+    stage3ref = Stage3_translate_cdna(stage3ref,queryseq);
+#else
     stage3ref = Stage3_translate_genomic(stage3ref,/*fulllengthp*/true,/*truncatep*/false);
+#endif
     FREE(stage3array);
 
     Stage3_genomicbounds(&genomicstart,&genomiclength,stage3ref);
     genomicseg = Genome_get_segment(Params_genome(params),genomicstart,genomiclength,/*revcomp*/false,
 				    gbuffer1,gbuffer2,gbufferlen);
 
-    while ((queryseq = Sequence_read(&nextchar,input)) != NULL) {
-      if (jobid == 0 && nextchar == '>' && batchp == false) {
-        fprintf(stderr,"Note: batch mode (-B) is strongly recommended for large runs.\n");
-      }
-
+    while (jobid == 0 || (queryseq = Sequence_read(&nextchar,input)) != NULL) {
       Pairpool_reset(pairpool);
 
       Sequence_print_header(queryseq,checksump);
       if (Sequence_fulllength(queryseq) <= 0) {
 	printf("Paths (0): *** Empty sequence ***\n");
 
-      } else if ((Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryseq) > MAX_OLIGO_DEPTH &&
-		  crossspeciesp == false &&
-		  Sequence_fulllength(queryseq) < OLIGO_DEPTH_SEQLENGTH) ||
-		 (double) badoligos/(double) Sequence_fulllength(queryseq) > MAX_BADOLIGOS) {
-	printf("Paths (0): *** Repetitive sequence ***\n");
-
       } else {
-	stage3array = stage3_from_usersegment(&npaths,queryseq,genomicseg,params,
-					      maxpeelback,sufflookback,nsufflookback,
-					      badoligos,nullgap,
-					      oligoindex,pairpool,dynprogL,dynprogM,dynprogR);
-	if (npaths == 0) {
-	  printf("Paths (0):\n");
+	queryuc = Sequence_uppercase(queryseq);
+
+#ifdef PMAP
+	Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryuc);
+#else
+	if ((Oligoindex_set_inquery(&badoligos,&trim_start,&trim_end,oligoindex,queryuc) > MAX_OLIGO_DEPTH &&
+	     crossspeciesp == false &&
+	     Sequence_fulllength(queryseq) < OLIGO_DEPTH_SEQLENGTH) ||
+	    (double) badoligos/(double) Sequence_fulllength(queryseq) > MAX_BADOLIGOS) {
+	  printf("Paths (0): *** Repetitive sequence ***\n");
 	} else {
-	  printf("Paths (1):\n");
-	  Stage3_translate_cdna(stage3array[0],stage3ref,literalrefp);
-	  Stage3_fix_cdna_direction(stage3array[0],stage3ref);
-	  Stage3_print_mutations(stage3array[0],stage3ref,Params_chromosome_iit(params),
-				 dbversion,showalignp,/*zerobasedp*/false,continuousp,diagnosticp,proteinmode,
-				 invertmode,nointronlenp,wraplength,ngap);
-	  for (i = 0; i < npaths; i++) {
-	    stage3 = stage3array[i];
-	    Stage3_free(&stage3);
+#endif
+	  stage3array = stage3_from_usersegment(&npaths,queryseq,queryuc,genomicseg,params,
+						maxpeelback,sufflookback,nsufflookback,
+						badoligos,nullgap,
+						oligoindex,pairpool,dynprogL,dynprogM,dynprogR);
+	  if (npaths == 0) {
+	    printf("Paths (0):\n");
+	  } else {
+	    printf("Paths (1):\n");
+#ifndef PMAP
+	    Stage3_translate_cdna_via_reference(stage3array[0],stage3ref,literalrefp);
+#endif
+	    Stage3_fix_cdna_direction(stage3array[0],stage3ref);
+	    Stage3_print_mutations(stage3array[0],stage3ref,Params_chromosome_iit(params),
+				   dbversion,showalignp,/*zerobasedp*/false,continuousp,diagnosticp,proteinmode,
+				   invertmode,nointronlenp,wraplength,ngap);
+	    for (i = 0; i < npaths; i++) {
+	      stage3 = stage3array[i];
+	      Stage3_free(&stage3);
+	    }
+	    FREE(stage3array);
+
 	  }
-	  FREE(stage3array);
+#ifndef PMAP
 	}
+#endif
+
+	Sequence_free(&queryuc);
       }
       Sequence_free(&queryseq);
       jobid++;
@@ -1532,11 +2069,15 @@ int
 main (int argc, char *argv[]) {
   IIT_T chromosome_iit = NULL, contig_iit = NULL, altstrain_iit = NULL, map_iit = NULL;
   Chrsubset_T chrsubset = NULL;
+#ifdef PMAP
+  Indexdb_T indexdb_fwd = NULL, indexdb_rev = NULL;
+#else
   Indexdb_T indexdb = NULL;
+#endif
   Genome_T genome = NULL;
-  Sequence_T usersegment = NULL, mutationrefseq = NULL;
+  Sequence_T queryseq, usersegment = NULL, mutationrefseq = NULL;
   char *genomesubdir = NULL, *mapdir = NULL, *iitfile = NULL, *olddbroot, *fileroot = NULL;
-  FILE *input, *mutation_fp = NULL;
+  FILE *input;
   Params_T params;
 
   int 
@@ -1553,13 +2094,15 @@ main (int argc, char *argv[]) {
     extraband_single,
     extraband_end,
     extraband_paired;
-  bool showcontigp = true;
+  bool showcontigp = true, multiple_sequences_p = false;
+  int nextchar;
 
 #ifdef HAVE_PTHREAD
   int ret, i;
   pthread_t input_thread_id, output_thread_id, worker_thread_id;
   pthread_attr_t thread_attr_detach, thread_attr_join;
   Blackboard_T blackboard;
+  Request_T request;
 #endif
 
   int opt;
@@ -1567,7 +2110,12 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:R:g:C:BL:x:1q:Xw:t:sec:USA39n:f:ZO5M:m:bo:EPQFTNI:i:l:V?",
+  while ((opt = getopt_long(argc,argv,
+#ifdef PMAP
+			    "D:d:R:Gg:C:B:L:x:1Xw:t:sc:USA39n:f:ZO5M:m:ebo:EPQFNI:i:l:V?",
+#else
+			    "D:d:R:Gg:C:B:L:x:1Xw:t:sc:USA39n:f:ZO5M:m:ebo:EPQFTNI:i:l:V?",
+#endif
 			    long_options, &long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -1576,26 +2124,36 @@ main (int argc, char *argv[]) {
       strcpy(dbroot,optarg);
       break;
     case 'R': releasestring = optarg; break;
+    case 'G': uncompressedp = true; break;
     case 'g': user_genomicseg = optarg; break;
     case 'C': user_chrsubsetfile = optarg; break;
 
-    case 'B': batchp = true; break;
-    case 'L': maxintronlen_bound = atoi(optarg); break;
-    case 'x': chimera_margin = atoi(optarg); break;
-    case '1': maponlyp = true; break;
-    case 'q': 
-      index1interval = atoi(optarg);
-      if (INDEX1PART % index1interval != 0) {
-	fprintf(stderr,"Selected indexing interval %d is not evenly divisible into the size of the oligomer %d\n",
-		index1interval,INDEX1PART);
+    case 'B': switch (atoi(optarg)) {
+      case 1: batch_offsets_p = true; batch_positions_p = true; batch_genome_p = false; break;
+      case 2: batch_offsets_p = true; batch_positions_p = true; batch_genome_p = true; break;
+      default: fprintf(stderr,"Batch mode %s not recognized.\n",optarg);
+	fprintf(stderr,"Mode 1 preloads indices only; mode 2 preloads both indices and genome\n");
 	exit(9);
       }
       break;
+    case 'L': maxintronlen_bound = atoi(optarg); break;
+    case 'x': 
+#ifdef PMAP
+      chimera_margin = atoi(optarg)/3; 
+#else
+      chimera_margin = atoi(optarg); 
+#endif
+      if (chimera_margin < CHIMERA_SLOP) {
+	chimera_margin = CHIMERA_SLOP;
+      }
+      break;
+    case '1': maponlyp = true; break;
     case 'X': crossspeciesp = true; break;
     case 'w': mutationref = optarg; break;
+#ifdef HAVE_PTHREAD
     case 't': nworkers = atoi(optarg); break;
+#endif
     case 's': altstrainp = true; break;
-    case 'e': extend_mismatch_p = true; break;
     case 'c': user_chrsubsetname = optarg; break;
     case 'U': end_microexons_p = true; break;
 
@@ -1605,8 +2163,14 @@ main (int argc, char *argv[]) {
     case '9': diagnosticp = true; break;
     case 'n': maxpaths = atoi(optarg); break;
     case 'f': switch (atoi(optarg)) {
-      case 1: psloutputp = true; break;
-      default: fprintf(stderr,"Foreign output format %d not recognized\n",atoi(optarg)); exit(9);
+#ifdef PMAP
+      case 1: psloutput_pro_p = true; break;
+      case 2: psloutput_nt_p = true; break;
+#else
+      case 1: psloutput_nt_p = true; break;
+      case 2: print_coordinates_p = true; break;
+#endif
+      default: fprintf(stderr,"Output format %s not recognized\n",optarg); exit(9);
       }
       break;
     case 'Z': compressoutp = true; break;
@@ -1614,14 +2178,22 @@ main (int argc, char *argv[]) {
     case '5': checksump = true; break;
     case 'M': user_mapdir = optarg; break;
     case 'm': map_iitfile = optarg; break;
+    case 'e': map_exons_p = true; break;
     case 'b': map_bothstrands_p = true; break;
     case 'o': chimera_overlap = atoi(optarg); break;
 
     case 'E': cdna_exons_p = true; break;
+#ifdef PMAP
+    case 'P': protein_genomic_p = true; break;
+    case 'Q': nucleotide_cdna_p = true; break; 
+#else
     case 'P': protein_cdna_p = true; break;
     case 'Q': protein_genomic_p = true; break;
+#endif
     case 'F': fulllengthp = true; break;
+#ifndef PMAP
     case 'T': truncatep = true; fulllengthp = true; break;
+#endif
     case 'N': nointronlenp = true; break;
     case 'I': invertmode = atoi(optarg); break;
     case 'i': ngap = atoi(optarg); break;
@@ -1636,12 +2208,21 @@ main (int argc, char *argv[]) {
   argv += optind;
       
   if (crossspeciesp == false) {
+#ifdef PMAP
+    indexsize = 12;		/* Needs to be a multiple of 3 */
+    maxpeelback = 9;		/* Needs to be at least indexsize
+				   because stage 2 jumps by indexsize.
+				   Also should exceed length of
+				   repeated nucleotides (e.g., a
+				   string of consecutive T's) */
+#else
     indexsize = 8;
     maxpeelback = 11;		/* Needs to be at least indexsize
 				   because stage 2 jumps by indexsize.
 				   Also should exceed length of
 				   repeated nucleotides (e.g., a
 				   string of consecutive T's) */
+#endif
 
     if (sufflookback == 0) {
       sufflookback = 60;
@@ -1676,13 +2257,9 @@ main (int argc, char *argv[]) {
   maxlookback += lookback_safety;
   */
 
-  /* Complement_init(); */
-  Oligoindex_init(indexsize);
-  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  if (user_genomicseg != NULL) {
-    /* Map against user-provided genomic segment */
-    showcontigp = false;
 
+  /* Read user segment before rest of sequences, because of shared usage of sequence.c */
+  if (user_genomicseg != NULL) {
     if ((input = fopen(user_genomicseg,"r")) == NULL) {
       fprintf(stderr,"Can't open file %s\n",user_genomicseg);
       exit(9);
@@ -1692,18 +2269,70 @@ main (int argc, char *argv[]) {
       exit(9);
     }
     fclose(input);
+  }
+
+  /* Read mutationref before rest of sequences, because of shared usage of sequence.c */
+  if (mutationref != NULL) {
+    if ((input = fopen(mutationref,"r")) == NULL) {
+      fprintf(stderr,"Can't open file %s\n",mutationref);
+      exit(9);
+    }
+    if ((mutationrefseq = Sequence_read_unlimited(input)) == NULL) {
+      fprintf(stderr,"File %s is empty\n",mutationref);
+      exit(9);
+    }
+    fclose(input);
+  }
+
+
+  /* Open query stream */
+  if (argc == 0) {
+    input = stdin;
+  } else if ((input = fopen(argv[0],"r")) == NULL) {
+    fprintf(stderr,"Can't open file %s\n",argv[0]);
+    exit(9);
+  }
+
+  /* Read first query sequence */
+  if ((queryseq = Sequence_read(&nextchar,input)) == NULL) {
+    fprintf(stderr,"No input detected\n");
+    exit(9);
+  } else if (nextchar == '>') {
+    multiple_sequences_p = true;
+#ifdef HAVE_MMAP
+    if (batch_offsets_p == false && batch_positions_p == false) {
+      fprintf(stderr,"Note: >1 sequence detected.  To speed up very large runs, try batch mode (-B 1 or -B 2)\n");
+      fprintf(stderr,"  if you have sufficient RAM.");
+#ifdef HAVE_PTHREAD
+      fprintf(stderr,"  For more speed, also try multiple threads (-t <int>),\n");
+      fprintf(stderr,"  if you have multiple processors.");
+#endif
+      fprintf(stderr,"\n");
+    }
+#endif
+#ifndef PMAP
+    batch_offsets_p = true;	/* Results in pre-reading of offsets file */
+#endif
+  }
+
+  /* Complement_init(); */
+  Oligoindex_init(indexsize);
+  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+
+  if (usersegment != NULL) {
+    /* Map against user-provided genomic segment */
+    showcontigp = false;
+    maxpaths = 1;
 
     genome = (Genome_T) NULL;
     dbversion = (char *) NULL;
     if (userstage1p == true) {
+#ifdef PMAP
+      indexdb_fwd = Indexdb_new_segment(Sequence_fullpointer(usersegment),/*watsonp*/true,index1interval);
+      indexdb_rev = Indexdb_new_segment(Sequence_fullpointer(usersegment),/*watsonp*/false,index1interval);
+#else
       indexdb = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1interval);
-    }
-
-    if (argc == 0) {
-      input = stdin;
-    } else if ((input = fopen(argv[0],"r")) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",argv[0]);
-      exit(9);
+#endif
     }
 
   } else if (dbroot == NULL) {
@@ -1721,13 +2350,6 @@ main (int argc, char *argv[]) {
     }
     genomesubdir = Datadir_find_genomesubdir(&fileroot,&dbversion,user_genomedir,dbroot);
 
-    if (argc == 0) {
-      input = stdin;
-    } else if ((input = fopen(argv[0],"r")) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",argv[0]);
-      exit(9);
-    }
-    
     iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
@@ -1751,8 +2373,9 @@ main (int argc, char *argv[]) {
 				strlen(map_iitfile)+strlen(".iit")+1,sizeof(char));
       sprintf(iitfile,"%s/%s.iit",mapdir,map_iitfile);
       if ((map_iit = IIT_read(iitfile,map_iitfile,true)) == NULL) {
-	fprintf(stderr,"Map file %s.iit not found in %s\n",map_iitfile,mapdir);
-	fprintf(stderr,"Either install that file or specify a full directory path\n");
+	fprintf(stderr,"Map file %s.iit not found in %s.  Available files:\n",map_iitfile,mapdir);
+	Datadir_list_directory(stderr,mapdir);
+	fprintf(stderr,"Either install file %s or specify a full directory path\n",map_iitfile);
 	fprintf(stderr,"using the -M flag to gmap.\n");
 	exit(9);
       }
@@ -1760,14 +2383,25 @@ main (int argc, char *argv[]) {
       FREE(mapdir);
     }
 
-    indexdb = Indexdb_new_genome(genomesubdir,fileroot,batchp);
-    genome = Genome_new(genomesubdir,fileroot,uncompressedp,batchp);
+#ifdef PMAP
+    indexdb_fwd = Indexdb_new_genome(genomesubdir,fileroot,/*watsonp*/true,
+				     batch_offsets_p,batch_positions_p);
+    indexdb_rev = Indexdb_new_genome(genomesubdir,fileroot,/*watsonp*/false,
+				     batch_offsets_p,batch_positions_p);
+#else
+    indexdb = Indexdb_new_genome(genomesubdir,fileroot,batch_offsets_p,batch_positions_p);
+#endif
+    genome = Genome_new(genomesubdir,fileroot,uncompressedp,batch_genome_p);
 
     if (altstrainp == true) {
       iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 				strlen(fileroot)+strlen(".altstrain.iit")+1,sizeof(char));
       sprintf(iitfile,"%s/%s.altstrain.iit",genomesubdir,fileroot);
       global_altstrain_iit = altstrain_iit = IIT_read(iitfile,NULL,true);
+      if (altstrain_iit == NULL) {
+	fprintf(stderr,"Unable to find file %s.  Include strain information during gmap_setup process, or run gmap without the -s flag.\n",iitfile);
+	exit(9);
+      }
       FREE(iitfile);
     }
 
@@ -1776,92 +2410,108 @@ main (int argc, char *argv[]) {
     FREE(dbroot);
   }
 
-  params = Params_new(genome,altstrain_iit,indexdb,chromosome_iit,chrsubset,
+  params = Params_new(genome,altstrain_iit,
+#ifdef PMAP
+		      indexdb_fwd,indexdb_rev,
+#else
+		      indexdb,
+#endif
+		      chromosome_iit,chrsubset,
 		      contig_iit,map_iit,maxextension,stuttercycles,stutterhits,
 		      indexsize,maxpeelback,sufflookback,nsufflookback,nullgap,
 		      extramaterial_end,extramaterial_paired,
 		      extraband_single,extraband_end,extraband_paired);
 
-  if (mutationref != NULL) {
-    /* Mutation analysis */
-    if ((mutation_fp = fopen(mutationref,"r")) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",mutationref);
-      exit(9);
-    } else {
-      mutationrefseq = Sequence_read_unlimited(mutation_fp);
-      chimera_margin = -1;
-      align_mutations(input,mutationrefseq,params);
-      fclose(mutation_fp);
-      Sequence_free(&mutationrefseq);
-      Params_free(&params);
-    }
+  if (mutationrefseq != NULL) {
+    chimera_margin = -1;
+    align_mutations(input,nextchar,queryseq,params,mutationrefseq);
+    Sequence_free(&mutationrefseq);
 
   } else {
-
-    /* Make blackboard and threads */
-#ifdef HAVE_PTHREAD
-    blackboard = Blackboard_new(input,usersegment,nworkers,params);
-    pthread_attr_init(&thread_attr_detach);
-    if ((ret = pthread_attr_setdetachstate(&thread_attr_detach,PTHREAD_CREATE_DETACHED)) != 0) {
-      fprintf(stderr,"ERROR: pthread_attr_setdetachstate\n");
-      exit(1);
-    }
-    pthread_attr_init(&thread_attr_join);
-    if ((ret = pthread_attr_setdetachstate(&thread_attr_join,PTHREAD_CREATE_JOINABLE)) != 0) {
-      fprintf(stderr,"ERROR: pthread_attr_setdetachstate\n");
-      exit(1);
-    }
-    
-    for (i = 0; i < nworkers; i++) {
-      pthread_create(&worker_thread_id,&thread_attr_detach,worker_thread,
-		     (void *) Blackboard_get_reqpost(blackboard,i));
-    }
-    if (orderedp == true) {
-      pthread_create(&output_thread_id,&thread_attr_join,output_thread_ordered,
-		     (void *) blackboard);
+#ifndef HAVE_PTHREAD
+    single_thread(input,nextchar,queryseq,params,usersegment);
+#else
+    if (multiple_sequences_p == false) {
+      single_thread(input,nextchar,queryseq,params,usersegment);
     } else {
-      pthread_create(&output_thread_id,&thread_attr_join,output_thread_anyorder,
-		     (void *) blackboard);
-    }
-    pthread_create(&input_thread_id,&thread_attr_detach,input_thread,(void *) blackboard);
+      /* Make blackboard and threads */
+      blackboard = Blackboard_new(input,nextchar,usersegment,nworkers,params);
+      debug(printf("input_thread: Putting request id 0\n"));
+      request = Request_new(0,queryseq,usersegment);
+      Blackboard_put_request(blackboard,request);
+
+      pthread_attr_init(&thread_attr_detach);
+      if ((ret = pthread_attr_setdetachstate(&thread_attr_detach,PTHREAD_CREATE_DETACHED)) != 0) {
+	fprintf(stderr,"ERROR: pthread_attr_setdetachstate\n");
+	exit(1);
+      }
+      pthread_attr_init(&thread_attr_join);
+      if ((ret = pthread_attr_setdetachstate(&thread_attr_join,PTHREAD_CREATE_JOINABLE)) != 0) {
+	fprintf(stderr,"ERROR: pthread_attr_setdetachstate\n");
+	exit(1);
+      }
     
-    pthread_join(output_thread_id,NULL);
-    Params_free(&params);
-    Blackboard_free(&blackboard);
-
-#else  /* HAVE_PTHREAD */
-
-    single_thread(input,params,usersegment);
-    Params_free(&params);
+      for (i = 0; i < nworkers; i++) {
+	pthread_create(&worker_thread_id,&thread_attr_detach,worker_thread,
+		       (void *) Blackboard_get_reqpost(blackboard,i));
+      }
+      if (orderedp == true) {
+	pthread_create(&output_thread_id,&thread_attr_join,output_thread_ordered,
+		       (void *) blackboard);
+      } else {
+	pthread_create(&output_thread_id,&thread_attr_join,output_thread_anyorder,
+		       (void *) blackboard);
+      }
+      pthread_create(&input_thread_id,&thread_attr_detach,input_thread,(void *) blackboard);
+    
+      pthread_join(output_thread_id,NULL);
+      Blackboard_free(&blackboard);
+    }
 
 #endif /* HAVE_PTHREAD */
   }
+
+  Params_free(&params);
   
+  if (usersegment != NULL) {
+    Sequence_free(&usersegment);
+  }
+
   Dynprog_term();
 
   if (argc > 0) {
     fclose(input);
   }
+
+#ifdef PMAP
+ if (indexdb_rev != NULL) {
+    Indexdb_free(&indexdb_rev);
+  }
+  if (indexdb_fwd != NULL) {
+    Indexdb_free(&indexdb_fwd);
+  }
+#else
   if (indexdb != NULL) {
     Indexdb_free(&indexdb);
   }
+#endif
   if (dbversion != NULL) {
     FREE(dbversion);
   }
   if (altstrain_iit != NULL) {
-    IIT_free_mmapped(&altstrain_iit);
+    IIT_free(&altstrain_iit);
   }
   if (genome != NULL) {
     Genome_free(&genome);
   }
   if (map_iit != NULL) {
-    IIT_free_mmapped(&map_iit);
+    IIT_free(&map_iit);
   }
   if (contig_iit != NULL) {
-    IIT_free_mmapped(&contig_iit);
+    IIT_free(&contig_iit);
   }
   if (chromosome_iit != NULL) {
-    IIT_free_mmapped(&chromosome_iit);
+    IIT_free(&chromosome_iit);
   }
   if (chrsubset != NULL) {
     Chrsubset_free(&chrsubset);

@@ -1,4 +1,4 @@
-/* $Id: stage1.h,v 1.47 2005/07/08 14:42:52 twu Exp $ */
+/* $Id: stage1.h,v 1.49 2005/10/01 05:06:42 twu Exp $ */
 #ifndef STAGE1_INCLUDED
 #define STAGE1_INCLUDED
 #include "bool.h"
@@ -14,7 +14,14 @@
 typedef struct T *T;
 
 extern List_T
-Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset);
+Stage1_matchlist (T this,
+#ifdef PMAP
+		  Indexdb_T indexdb_fwd,
+		  Indexdb_T indexdb_rev,
+#else
+		  Indexdb_T indexdb,
+#endif
+		  IIT_T chromosome_iit, Chrsubset_T chrsubset);
 
 extern void
 Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this, 
@@ -22,9 +29,16 @@ Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T th
 
 extern void
 Stage1_free (T *old);
+
 extern T
-Stage1_compute (Sequence_T queryseq, Indexdb_T indexdb, IIT_T chromosome_iit, 
-		Chrsubset_T chrsubset, int maxintronlen_bound, int stuttercycles, 
+Stage1_compute (Sequence_T queryuc, 
+#ifdef PMAP
+		Indexdb_T indexdb_fwd,
+		Indexdb_T indexdb_rev,
+#else
+		Indexdb_T indexdb,
+#endif
+		IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen_bound, int stuttercycles, 
 		int stutterhits, bool crossspeciesp);
 
 #undef T

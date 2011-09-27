@@ -22,6 +22,7 @@ AC_CONFIG_AUX_DIR([config])
 # For autotest: AC_CONFIG_TESTDIR([tests],[tests:src:util])
 
 AC_CANONICAL_SYSTEM
+AC_SYS_LARGEFILE
 AC_ARG_PROGRAM
 
 #AM_INIT_AUTOMAKE([no-dependencies])
@@ -167,14 +168,15 @@ AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([util/Makefile])
 AC_CONFIG_FILES([util/gmap_compress.pl])
 AC_CONFIG_FILES([util/gmap_uncompress.pl])
+AC_CONFIG_FILES([util/gmap_process.pl])
 AC_CONFIG_FILES([util/gmap_setup.pl])
+#AC_CONFIG_FILES([util/pmap_setup.pl])
 AC_CONFIG_FILES([util/md_coords.pl])
 AC_CONFIG_FILES([util/fa_coords.pl])
 AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/align.test],[chmod +x tests/align.test])
 AC_CONFIG_FILES([tests/coords1.test],[chmod +x tests/coords1.test])
 AC_CONFIG_FILES([tests/setup1.test],[chmod +x tests/setup1.test])
-AC_CONFIG_FILES([tests/setup2.test],[chmod +x tests/setup2.test])
 AC_CONFIG_FILES([tests/map.test],[chmod +x tests/map.test])
 AC_CONFIG_FILES([tests/iit_store.test],[chmod +x tests/iit_store.test])
 AC_CONFIG_FILES([tests/iit_get.test],[chmod +x tests/iit_get.test])
@@ -203,6 +205,17 @@ PTHREAD_CFLAGS, and PTHREAD_LIBS in the config.site file and run
 configure again.  Otherwise, you may proceed with the rest of the
 installation.
 ])
+fi
 
+if test x"$ac_cv_func_mmap_fixed_mapped" != xyes; then
+  AC_MSG_WARN([
+
+WARNING: You don't seem to have memory mapping (mmap function).
+GMAP will work without this, but the program can run faster if
+memory mapping is available.  If you wish to enable memory mapping,
+please specify the appropriate values for CC, PTHREAD_CFLAGS, and
+PTHREAD_LIBS in the config.site file and run configure again.
+Otherwise, you may proceed with the rest of the installation.
+])
 fi
 

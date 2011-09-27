@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrnum.c,v 1.19 2005/07/07 23:57:41 twu Exp $";
+static char rcsid[] = "$Id: chrnum.c,v 1.20 2005/07/25 17:58:09 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,6 +8,7 @@ static char rcsid[] = "$Id: chrnum.c,v 1.19 2005/07/07 23:57:41 twu Exp $";
 #include <string.h>
 #include <ctype.h>		/* for isalpha */
 #include "mem.h"
+#include "interval.h"
 
 char *
 Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit) {
@@ -39,3 +40,13 @@ unsigned int
 Chrnum_length (Chrnum_T chrnum, IIT_T chromosome_iit) {
   return IIT_length(chromosome_iit,chrnum);
 }
+
+/* Can use Chrom_string_from_position instead */
+unsigned int
+Chrnum_offset (Chrnum_T chrnum, IIT_T chromosome_iit) {
+  Interval_T interval;
+
+  interval = IIT_interval(chromosome_iit,chrnum);
+  return Interval_low(interval);
+}
+

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_dump.c,v 1.9 2005/07/08 07:58:32 twu Exp $";
+static char rcsid[] = "$Id: iit_dump.c,v 1.10 2005/10/19 03:53:07 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -59,7 +59,7 @@ main (int argc, char *argv[]) {
       exit(9);
     }
     IIT_dump(iit);
-    IIT_free_mmapped(&iit);
+    IIT_free(&iit);
   }
 
   return 0;

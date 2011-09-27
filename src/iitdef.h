@@ -1,9 +1,18 @@
-/* $Id: iitdef.h,v 1.10 2005/07/08 19:16:53 twu Exp $ */
+/* $Id: iitdef.h,v 1.11 2005/10/19 03:48:58 twu Exp $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
-#include <sys/types.h>
-#include "interval.h"
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
+#ifdef HAVE_SYS_TYPES_H
+# include <sys/types.h>		/* Needed to define pthread_t on Solaris */
+#endif
+#ifdef HAVE_PTHREAD
+#include <pthread.h>
+#endif
+#include "access.h"
+#include "interval.h"
 
 typedef struct FNode_T *FNode_T;
 struct FNode_T {
@@ -18,9 +27,15 @@ struct FNode_T {
 struct T {
   char *name;			/* Name of IIT (optional) */
 
+  Access_T access;		/* access type */
+
   int fd;			/* file descriptor */
   char *finfo;			/* result of mmap command */
-  off_t flength;		/* mmap length */
+  size_t flength;		/* mmap length (mmap uses size_t, not off_t) */
+  off_t offset;			/* used only for fileio */
+#ifdef HAVE_PTHREAD
+  pthread_mutex_t read_mutex;
+#endif
 
   int nintervals;
   int ntypes;

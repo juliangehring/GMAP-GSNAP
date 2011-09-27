@@ -24,6 +24,12 @@ following GNU commands
     make check
     make install
 
+Note: Instead of editing the config.site file in step 1, you may type
+everything on the command line for the ./configure script in step 2,
+like this
+
+    ./configure --prefix=/your/usr/local/path --with-gmapdb=/path/to/gmapdb
+
 
 Downloading a GMAP database
 ===========================
@@ -84,6 +90,7 @@ the chromosome, in one of these forms
     /chromosome=2 /alignment=(88840247-88864134) /orientation=rev        [Celera format]
     chr1:217281..257582
     chr1
+    Chr1
 
 If only the chromosome is specified, without coordinates, the program
 will assign chromosomal coordinates by concatenating the contigs within
@@ -96,70 +103,146 @@ In summary, then, here are the steps for building a GMAP DB file:
     a.  md_coords seq_contig.md
     b.  fa_coords <fasta_file>...
 
-2.  Run gmap_setup -d <db_name> <fasta_file>...
+2.  Run:  gmap_setup -d <genome> <fasta_file>...
 
-The notation <fasta_file>... indicates that multiple files can be
-listed.  The files can be in any order, and the contigs can be in any
-order within these files.  The program will assemble the contigs and
-chromosomes into their appropriate order.
+    This command creates a file called Makefile.<genome>
+
+3.  Execute the commands in the Makefile, by running
+
+    make -f Makefile.<genome> all
+    make -f Makefile.<genome> install
+
+The notation <fasta_file>... above indicates that multiple files can
+be listed.  The files can be in any order, and the contigs can be in
+any order within these files.  The program will assemble the contigs
+and chromosomes into their appropriate order.
 
 
 Advanced notes:
 
-1.  If you need to do pre-processing of FASTA files before using these
+1.  If your FASTA files contain separate sequences without any
+chromosomal information, you can treat each sequence as its own
+"chromosome" by using the -C flag, like this:
+
+    fa_coords -C <fasta_file>...
+
+
+2.  If you need to do pre-processing of FASTA files before using these
 programs, perhaps because you need to insert chromosomal information
 in the header lines, you can specify a command instead of multiple
 fasta_files, like this:
 
     fa_coords -E 'cat *.fa | ./my-processing-program.pl'
-    gmap_setup -d <db_name> -E 'cat *.fa | ./my-processing-program.pl'
+    gmap_setup -d <genome> -E 'cat *.fa | ./my-processing-program.pl'
 
 
-2.  After creating coords.txt, you may edit it directly if you want to
+3.  After creating coords.txt, you may edit it directly if you want to
 make changes.  You may delete lines or comment them out with a '#'
 character, which will effectively omit those contigs from your genome
 build.  You may also change chromosomal assignments (in column 2) or
 assign contigs to alternative strains (in column 3).
 
 
+4.  If your genomic FASTA files have lower-case characters or
+non-standard characters (other than A, C, G, T, N, or X), and you
+wish to make these available in the alignment, you may run gmap_setup
+with the -G flag.  You can specify -G either in the initial run, or
+run gmap_setup a second time with the -G flag.  
+
+Normally, gmap_setup creates only a compressed version of the genome,
+in the file <genome>.genomecomp, which can hold only the standard,
+upper-case A, C, G, T, N, and X characters.  If you want the genome to
+contain lower-case or other non-standard characters, you can create a
+full, uncompressed version of the genome by specifying the -G flag,
+which then creates another file called <genome>.genome, which can
+represent all ASCII characters.
+
+This full genome can then be used by GMAP instead of the compressed
+genome by specifying the -G flag to GMAP.  Note that a full genome
+file has a size equal to the total genome length, and some computers
+cannot handle files larger than 2 gigabytes.  In such cases, only the
+standard compressed genome will work.
+
+Note, however, that the full genome does not affect the mapping stage
+of GMAP, and generally does not affect the final alignment result.
+(It affects the alignment only if you have non-standard characters,
+those other than a, c, g, or t, which GMAP will then use for
+alignment.)  Using the -G flag to GMAP affects only the printed
+representation of the alignment when you specify the -A flag to GMAP,
+which will then contain the lower-case or non-standard characters.
+
+
+
 Running GMAP
 ============
 
 To see the full set of options, type "gmap --help".  The following are
-some common examples of usage.  For each of the examples, we assume
-that you have installed a genome database called NHGD_R35 in your GMAPDB
-directory.  (If your database is located elsewhere, you can specify
-the -D flag to gmap or set the environment variable GMAPDB to point to
-that directory.)
+some common examples of usage.  For more examples, see the document
+available at http://www.gene.com/share/gmap/paper/demo-slides.pdf
+
+For each of the examples below, we assume that you have installed a
+genome database called NHGD_R35 in your GMAPDB directory.  (If your
+database is located elsewhere, you can specify the -D flag to gmap or
+set the environment variable GMAPDB to point to that directory.)
 
 * Mapping only: To map one or more cDNAs in a FASTA file onto a
   genome, run GMAP as follows:
 
     gmap -d NHGD_R35 <cdna_file>
 
+
 * Mapping and alignment: If you want to map and align the cDNAs, add
   the -A flag:
 
     gmap -d NHGD_R35 -A <cdna_file>
 
+
 * Alignment only: To align one or more cDNAs in a FASTA file onto a
   given genomic segment (also in a FASTA file), use the -g flag
   instead of the -d flag:
 
-    gmap -g <genome_file> -A <cdna_file>
+    gmap -g <genome_segment> -A <cdna_file>
+
 
 * Batch mode: If you have a large number of cDNAs to run, and you have
-  sufficient RAM (about 2 gigabytes for the human genome) to run in
-  batch mode, add the -B flag, with the number of worker threads
-  specified with the -t flag:
+  sufficient RAM (see below for guidelines) to run in batch mode, 
+  add the "-B 1" or "-B 2" option:
 
-    gmap -d NHGD_R35 -BA -t <nthreads> <cdna_file>
+    gmap -d NHGD_R35 -B 1 -A <cdna_file>
+
+  The "-B 1" option pre-loads the genomic indices only into RAM.
+  The "-B 2" option pre-loads both the indices and genome into RAM.
+  For increased speed, the genomic indices are far more important
+  than the genome for pre-loading into RAM.
+
+  Guidelines: The "-B 1" option pre-loads the <genome>.idxpositions
+  file.  The "-B 2" option pre-loads that file, plus the 
+  <genome>.genomecomp file.  Look at the sizes of these files to
+  determine if you have enough RAM to hold them in memory continuously.
+  Note that other programs running on your computer also need RAM.
+
+
+* Multithreaded mode: If your machine has several processors, you can
+  make batch mode run even faster by specifying multiple threads with
+  the -t flag:
+
+    gmap -d NHGD_R35 -B 1 -A -t <nthreads> <cdna_file>
 
   Note that with multiple threads, the output results will appear in
   random order, depending on which thread finishes its computation
   first.  If you wish your output to be in the same order as the 
   input cDNA file, add the '-O' (letter O, not the number 0) flag
   to get ordered output.
+
+  Guidelines: The -t flag specifies the number of computational
+  threads.  In addition, if your machine supports threads, GMAP
+  also uses one thread for reading the input query sequences, and
+  one thread for printing the output results.  Therefore, the
+  total number of threads will be 2 plus the number you specify.
+  The program will work optimally if it uses one thread per
+  available processor.  Note that other programs running on your
+  computer also need processors.
+
 
 * Compressed output: If you want to store the alignment results in a
   compressed format, use the -Z flag.  You can uncompress the results

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.10 2005/07/08 14:38:04 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.12 2005/10/04 00:15:10 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,13 +7,15 @@ static char rcsid[] = "$Id: compress.c,v 1.10 2005/07/08 14:38:04 twu Exp $";
 
 #include <stdlib.h>
 #include <stddef.h>
-#include <ctype.h>		/* For isalpha */
+#include <ctype.h>		/* For isalpha, toupper */
 #ifdef WORDS_BIGENDIAN
 #include "bigendian.h"
 #else
 #include "littleendian.h"
 #endif
 
+/* Another MONITOR_INTERVAL is in indexdb.c */
+#define MONITOR_INTERVAL 10000000 /* 10 million nt */
 
 
 /* We use int *, rather than char *, because we eventually return an int,
@@ -147,6 +149,9 @@ Compress_compress (FILE *fp) {
       }
     }
     position++;
+    if (position % MONITOR_INTERVAL == 0) {
+      fprintf(stderr,"Compressing position %u\n",position);
+    }
   }
 
   if (in_counter > 0) {
@@ -182,6 +187,10 @@ Compress_uncompress (FILE *fp, int wraplength) {
     while ((c = Compress_get_char(fp,position,/*uncompressedp*/false)) != EOF) {
       printf("%c",c);
       position++;
+
+      if (position % MONITOR_INTERVAL == 0) {
+	fprintf(stderr,"Uncompressing position %u\n",position);
+      }
     }
   } else {
     while ((c = Compress_get_char(fp,position,/*uncompressedp*/false)) != EOF) {
@@ -189,6 +198,9 @@ Compress_uncompress (FILE *fp, int wraplength) {
       position++;
       if (position % wraplength == 0) {
 	printf("\n");
+      }
+      if (position % MONITOR_INTERVAL == 0) {
+	fprintf(stderr,"Uncompressing position %u\n",position);
       }
     }
     if (position % wraplength != 0) {

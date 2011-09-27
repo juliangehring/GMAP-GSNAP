@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_compress.pl.in,v 1.16 2005/05/04 19:11:08 twu Exp $
+# $Id: gmap_compress.pl.in,v 1.17 2005/10/06 23:15:13 twu Exp $
 
 # Need to call gmap with -AF (A is to show alignment, and F is to flip
 # genomic sequence to be first)
@@ -267,8 +267,15 @@ sub parse_agreement {
 	($lasttoken,$tokencount,$firsttokenp) = print_token($token,$lasttoken,$tokencount,$firsttokenp);
 	$runlength = 0;
 	
+      } elsif ($agreement[$i] eq ':') {
+	$token = "$runlength" . ":$sequence2[$i]";
+	($lasttoken,$tokencount,$firsttokenp) = print_token($token,$lasttoken,$tokencount,$firsttokenp);
+	$runlength = 0;
+
       } elsif ($agreement[$i] eq ' ') {
 	# Mismatch, possibly due to unknown in either sequence
+	# As of 2005-10-06, all but the last of these cases are outdated,
+	# now that we have the ':' character
 	if ($sequence1[$i] eq 'N' && $sequence2[$i] eq 'N') {
 	  $token = "$runlength" . "?";
 	} elsif ($sequence1[$i] eq 'N') {

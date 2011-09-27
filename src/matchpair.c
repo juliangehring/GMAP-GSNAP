@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpair.c,v 1.29 2005/07/13 19:24:53 twu Exp $";
+static char rcsid[] = "$Id: matchpair.c,v 1.33 2005/10/14 03:36:01 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,6 +6,7 @@ static char rcsid[] = "$Id: matchpair.c,v 1.29 2005/07/13 19:24:53 twu Exp $";
 #include "matchpair.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "mem.h"
 #include "list.h"
 #include "listdef.h"
@@ -91,9 +92,17 @@ Matchpair_stretch (T this) {
     position5 = Match_position(this->bound5);
     position3 = Match_position(this->bound3);
     if (position3 > position5) {
+#ifdef PMAP
+      return (double) (position3 - position5)/(double) (querypos3 - querypos5)/3.0;
+#else
       return (double) (position3 - position5)/(double) (querypos3 - querypos5);
+#endif
     } else {
+#ifdef PMAP
+      return (double) (position5 - position3)/(double) (querypos3 - querypos5)/3.0;
+#else
       return (double) (position5 - position3)/(double) (querypos3 - querypos5);
+#endif
     }
   }
 }
@@ -371,7 +380,7 @@ Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicp
   }
 
   *genomicstart = genomicpos1;
-  *genomiclength = genomicpos2 - genomicpos1;
+  *genomiclength = genomicpos2 - genomicpos1 + 1U;
   *chrpos = chrpos1;
   debug(printf("Coordinates are %u, length %u\n",*genomicstart,*genomiclength));
 
@@ -387,7 +396,7 @@ static T
 find_best_path (int *size, Match_T *matches, int n, int matchsize, int minsize, 
 		Match_T prevstart, Match_T prevend, bool plusp) {
   T matchpair;
-  int *prev, *score, j, i, bestj, besti, bestscore;
+  int *prev, *score, j, i, bestj, besti, bestscore, width;
   bool fivep = false, threep = false;
   Matchpairend_T matchpairend;
   Genomicpos_T endpos;
@@ -467,31 +476,44 @@ find_best_path (int *size, Match_T *matches, int n, int matchsize, int minsize,
       threep = true;
     }
   }
+
   debug1(printf("Best path is %d to %d, size=%d\n",besti,bestj,bestscore+1));
 
   if ((*size = bestscore + 1) < minsize) {
     debug1(printf("Size is smaller than minsize of %d.  Discarding.\n",minsize));
     matchpair = NULL;
-  } else if (matches[besti] == prevstart && matches[bestj] == prevend) {
-    debug1(printf("Path equal to previous one.  Discarding.\n"));
-    matchpair = NULL;
   } else {
-    if (fivep == true && threep == true) {
-      matchpairend = MIXED;
-    } else if (fivep == true) {
-      matchpairend = FIVEONLY;
-    } else if (threep == true) {
-      matchpairend = THREEONLY;
-    } else {
-      abort();
+    width = bestj - besti + 1;
+    if (width > 2*bestscore) {
+      /* Penalize for finding a path in a repetitive region */
+      debug1(printf("Bestscore being penalized because of width %d from %d to ",width,bestscore));
+      bestscore -= (int) sqrt((double) (width - bestscore));
+      debug1(printf("%d\n",bestscore));
     }
-    if (plusp == true) {
-      matchpair = Matchpair_new(matches[besti],matches[bestj],matchsize,bestscore+1,matchpairend);
+    if (matches[besti] == prevstart && matches[bestj] == prevend) {
+      debug1(printf("Path equal to previous one.  Discarding.\n"));
+      matchpair = NULL;
+    } else if ((*size = bestscore + 1) < minsize) {
+      debug1(printf("Size is smaller than minsize of %d.  Discarding.\n",minsize));
+      matchpair = NULL;
     } else {
-      matchpair = Matchpair_new(matches[bestj],matches[besti],matchsize,bestscore+1,matchpairend);
+      if (fivep == true && threep == true) {
+	matchpairend = MIXED;
+      } else if (fivep == true) {
+	matchpairend = FIVEONLY;
+      } else if (threep == true) {
+	matchpairend = THREEONLY;
+      } else {
+	abort();
+      }
+      if (plusp == true) {
+	matchpair = Matchpair_new(matches[besti],matches[bestj],matchsize,bestscore+1,matchpairend);
+      } else {
+	matchpair = Matchpair_new(matches[bestj],matches[besti],matchsize,bestscore+1,matchpairend);
+      }
     }
+    debug1(printf("\n"));
   }
-  debug1(printf("\n"));
 
   FREE(score);
   FREE(prev);

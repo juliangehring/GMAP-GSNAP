@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.52 2005/07/08 14:42:23 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.60 2005/10/14 03:35:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,7 +15,6 @@ static char rcsid[] = "$Id: sequence.c,v 1.52 2005/07/08 14:42:23 twu Exp $";
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>		/* For rindex */
-#include <ctype.h>		/* For toupper */
 #include "mem.h"
 #include "complement.h"
 #include "intlist.h"
@@ -68,6 +67,15 @@ Sequence_trimpointer (T this) {
 }
 
 int
+Sequence_ntlength (T this) {
+#ifdef PMAP
+  return 3*this->fulllength;
+#else
+  return this->fulllength;
+#endif
+}
+
+int
 Sequence_fulllength (T this) {
   return this->fulllength;
 }
@@ -110,6 +118,23 @@ Sequence_free (T *old) {
     FREE(*old);
   }
   return;
+}
+
+T
+Sequence_convert_to_nucleotides (T this) {
+  T new = (T) MALLOC(sizeof(*new));
+  int i;
+
+  new->fulllength = this->fulllength*3;
+  new->contents = (char *) CALLOC(new->fulllength+1,sizeof(char));
+  for (i = 0; i < new->fulllength; i++) {
+    new->contents[i] = '?';
+  }
+  new->trimstart = 0;
+  new->trimend = new->fulllength;
+  new->free_contents_p = true;
+
+  return new;
 }
 
 
@@ -432,16 +457,26 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
   return;
 }
 
+/************************************************************************
+ *  Original:
+ *   TTTTTT ACGT ...... ACGT AAAAAA
+ *          ^trimstart     ^trimend
+ *   ^contents
+ ************************************************************************
+ *  Subsequence:
+ *       ^start                ^end
+ *          ^trimstart     ^trimend
+ *       ^contents
+ ************************************************************************/
+
 T
 Sequence_subsequence (T this, int start, int end) {
   T new;
 
-  if (start < this->trimstart) {
-    start = this->trimstart;
-  }
-  if (end > this->trimend) {
-    end = this->trimend;
-  }
+#ifdef PMAP
+  start /= 3;
+  end /= 3;
+#endif
 
   if (end <= start) {
     return NULL;
@@ -450,10 +485,14 @@ Sequence_subsequence (T this, int start, int end) {
 
     new->acc = (char *) NULL;
     new->restofheader = (char *) NULL;
-    new->contents = this->contents;
-    new->fulllength = this->fulllength;
-    new->trimstart = start;
-    new->trimend = end;
+    new->contents = &(this->contents[start]); 
+    new->fulllength = end - start;
+    if ((new->trimstart = this->trimstart - start) < 0) {
+      new->trimstart = 0;
+    }
+    if ((new->trimend = this->trimend - start) > new->fulllength) {
+      new->trimend = new->fulllength;
+    }
     new->free_contents_p = false;
     return new;
   }
@@ -473,6 +512,50 @@ Sequence_revcomp (T this) {
   new->free_contents_p = true;
   return new;
 }
+
+static char *
+make_uppercase (char *sequence, unsigned int length) {
+  char *uppercase;
+  char uppercaseCode[128] = UPPERCASE;
+  int i;
+
+  uppercase = (char *) CALLOC(length+1,sizeof(char));
+  for (i = 0; i < length; i++) {
+    uppercase[i] = uppercaseCode[(int) sequence[i]];
+  }
+  uppercase[length] = '\0';
+  return uppercase;
+}
+
+
+T
+Sequence_uppercase (T this) {
+  T new = (T) MALLOC(sizeof(*new));
+
+  new->acc = (char *) NULL;
+  new->restofheader = (char *) NULL;
+  new->contents = make_uppercase(this->contents,this->fulllength);
+  new->fulllength = this->fulllength;
+  new->trimstart = this->trimstart;
+  new->trimend = this->trimend;
+  new->free_contents_p = true;
+  return new;
+}
+
+T
+Sequence_alias (T this) {
+  T new = (T) MALLOC(sizeof(*new));
+
+  new->acc = (char *) NULL;
+  new->restofheader = (char *) NULL;
+  new->contents = this->contents;
+  new->fulllength = this->fulllength;
+  new->trimstart = this->trimstart;
+  new->trimend = this->trimend;
+  new->free_contents_p = false;
+  return new;
+}
+
 
 /*
 void
@@ -533,7 +616,7 @@ Sequence_read_unlimited (FILE *input) {
   T new;
   Intlist_T intlist = NULL;
   char *p;
-  int length;
+  int length, startpos = 1, maxseqlen = MAXSEQLEN;
   bool eolnp;
 
   if (feof(input)) {
@@ -549,6 +632,8 @@ Sequence_read_unlimited (FILE *input) {
   }
   if (Initc != '>') {
     blank_header(new);
+    Sequence[startpos++] = Initc;
+    maxseqlen--;
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
      return NULL;
@@ -556,7 +641,7 @@ Sequence_read_unlimited (FILE *input) {
   /* Don't touch Sequence[0], because subsequent calls to
      Sequence_read depend on it being '\0'. */
   eolnp = true;
-  while (fgets(&(Sequence[1]),MAXSEQLEN,input) != NULL &&
+  while (fgets(&(Sequence[startpos]),maxseqlen,input) != NULL &&
 	 (eolnp == false || Sequence[1] != '>')) {
     for (p = &(Sequence[1]); *p != '\n' && *p != '\0'; p++) {
       if (!iscntrl((int) *p)) {
@@ -568,6 +653,8 @@ Sequence_read_unlimited (FILE *input) {
     } else {
       eolnp = false;
     }
+    startpos = 1;
+    maxseqlen = MAXSEQLEN;
   }
   intlist = Intlist_reverse(intlist);
   new->contents = Intlist_to_char_array(&length,intlist);
@@ -601,7 +688,11 @@ Sequence_print_digest (T this) {
 void
 Sequence_print_header (T this, bool checksump) {
 
+#ifdef PMAP
+  printf(">%s (%d aa) %s",this->acc,this->fulllength,this->restofheader);
+#else
   printf(">%s (%d bp) %s",this->acc,this->fulllength,this->restofheader);
+#endif
   if (checksump == true) {
     printf(" md5:");
     Sequence_print_digest(this);
@@ -613,6 +704,7 @@ Sequence_print_header (T this, bool checksump) {
 void
 Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
   int i = 0, pos, start, end;
+  char uppercaseCode[128] = UPPERCASE;
 
   if (trimmedp == true) {
     start = this->trimstart;
@@ -624,7 +716,7 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
 
   if (uppercasep == true) {
     for (pos = start; pos < end; pos++, i++) {
-      printf("%c",toupper((int) (this->contents[i])));
+      printf("%c",uppercaseCode[(int) (this->contents[i])]);
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }

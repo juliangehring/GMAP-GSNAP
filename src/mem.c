@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.13 2005/07/13 19:25:15 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.14 2005/10/01 15:29:45 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,10 +15,7 @@ static char rcsid[] = "$Id: mem.c,v 1.13 2005/07/13 19:25:15 twu Exp $";
 #define debug(x)
 #endif
 
-/*
-#define TRAP
-*/
-
+/* #define TRAP */
 #ifdef TRAP
 static void *trap_contents;
 static void **trap_location;
@@ -60,6 +57,9 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   debug(printf("Alloc of %d bytes requested from %s:%d => %p\n",nbytes,file,line,ptr));
 
 #ifdef TRAP
+  if (ptr == trap_location) {
+    printf("Trap: Alloc of location %p by %s:%d\n",ptr,file,line);
+  }
   if (startp > 0 && *trap_location != trap_contents) {
       printf("Value changed at location %p.  Old value was %p.  New value is %p.  Observed during malloc at %s:%d\n",
 	     trap_location,trap_contents,*trap_location,file,line);
@@ -102,6 +102,10 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   ptr = calloc(count,nbytes);
 
 #ifdef TRAP
+  if (ptr == trap_location) {
+    printf("Trap: Calloc of location %p by %s:%d\n",ptr,file,line);
+  }
+
   if (startp > 0 && *trap_location != trap_contents) {
       printf("Value changed at location %p.  Old value is %p.  New value is %p.  Observed during calloc at %s:%d\n",
 	     trap_location,trap_contents,*trap_location,file,line);
@@ -141,9 +145,14 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 void 
 Mem_free (void *ptr, const char *file, int line) {
 
-  debug(printf("Location %p freed at %s:%d\n",ptr,file,line));
+#ifdef TRAP
+  if (ptr == trap_location) {
+    printf("Trap: Location %p freed at %s:%d\n",ptr,file,line);
+  }
+#endif
 
   if (ptr) {
+    debug(printf("Location %p freed at %s:%d\n",ptr,file,line));
     free(ptr);
   }
 

@@ -1,4 +1,4 @@
-/* $Id: intlist.h,v 1.8 2005/06/21 18:37:57 twu Exp $ */
+/* $Id: intlist.h,v 1.10 2005/09/08 17:49:33 twu Exp $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
 
@@ -35,6 +35,10 @@ extern int
 Intlist_last_value (T this);
 extern int 
 Intlist_index (T this, int index);
+extern T
+Intlist_from_string (char *string);
+extern char *
+Intlist_to_string (T this);
 
 #undef T
 #endif

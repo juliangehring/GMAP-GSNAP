@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_uncompress.pl.in,v 1.14 2005/07/08 07:59:12 twu Exp $
+# $Id: gmap_uncompress.pl.in,v 1.15 2005/10/06 23:15:13 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -307,6 +307,12 @@ sub uncompress {
 	$gpos++;
 	push @sequence1,$ {$gsequence}[$g++];
 	push @agreement,' ';
+	push @sequence2,$1;
+	$cpos++;
+      } elsif ($adj =~ /:(.)/) {
+	$gpos++;
+	push @sequence1,$ {$gsequence}[$g++];
+	push @agreement,':';
 	push @sequence2,$1;
 	$cpos++;
       } else {

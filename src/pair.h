@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.78 2005/07/13 19:23:54 twu Exp $ */
+/* $Id: pair.h,v 1.85 2005/10/25 16:50:15 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -7,6 +7,8 @@
 #include "list.h"
 #include "iit-read.h"
 #include "sequence.h"
+#include "reader.h"		/* For cDNAEnd_T */
+#include "uintlist.h"
 
 #define T Pair_T
 typedef struct T *T;
@@ -58,7 +60,8 @@ Pair_debug_alignment (List_T list, int ngap);
 
 extern void
 Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos_T chrpos,
-			Genomicpos_T chroffset, IIT_T chromosome_iit, bool referencealignp, char *strain, 
+			Genomicpos_T chroffset, IIT_T chromosome_iit, bool referencealignp, 
+			IIT_T altstrain_iit, char *strain, 
 			IIT_T contig_iit, char *dbversion, Genomicpos_T genomiclength,
 			int nexons, double coverage, int matches, int unknowns, int mismatches, 
 			int qopens, int qindels, int topens, int tindels, int goodness,
@@ -70,6 +73,11 @@ Pair_print_mutation (struct T *pairs, int npairs, int cdna_direction,
 		     int translation_frame, int translation_start, int translation_end,
 		     Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp, 
 		     bool zerobasedp, Genomicpos_T mutposition, char *change);
+
+extern void
+Pair_print_coordinates (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
+			Genomicpos_T chroffset, IIT_T chromosome_iit, Genomicpos_T genomiclength, 
+			bool watsonp, bool zerobasedp, int invertmode);
 
 extern void
 Pair_dump_one (T this, bool zerobasedp);
@@ -95,21 +103,38 @@ Pair_print_exonsummary (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
 			Genomicpos_T chroffset, IIT_T chromosome_iit, Genomicpos_T genomiclength,
 			bool watsonp, bool universalp, bool zerobasedp, bool genomefirstp, 
 			int invertmode);
+extern Uintlist_T
+Pair_exonbounds (struct T *pairs, int npairs, Genomicpos_T chrpos,
+		 Genomicpos_T chroffset, Genomicpos_T genomiclength, bool watsonp);
 extern void
-Pair_print_pslformat (struct T *pairs, int npairs, T start, T end,
-		      Sequence_T queryseq, Chrnum_T chrnum, Genomicpos_T chrpos,
-		      IIT_T chromosome_iit, Genomicpos_T genomiclength,
-		      int nexons, int matches, int unknowns, int mismatches, 
-		      int qopens, int qindels, int topens, int tindels,
-		      bool watsonp, int cdna_direction);
+Pair_print_pslformat_nt (struct T *pairs, int npairs, T start, T end,
+			 Sequence_T queryseq, Chrnum_T chrnum, Genomicpos_T chrpos,
+			 IIT_T chromosome_iit, Genomicpos_T genomiclength,
+			 int nexons, int matches, int unknowns, int mismatches, 
+			 int qopens, int qindels, int topens, int tindels,
+			 bool watsonp, int cdna_direction);
+
+
+extern void
+Pair_print_pslformat_pro (struct T *pairs, int npairs, T start, T end,
+			  Sequence_T queryseq, Chrnum_T chrnum, Genomicpos_T chrpos,
+			  IIT_T chromosome_iit, Genomicpos_T genomiclength,
+			  int nexons, int matches, int unknowns, int mismatches, 
+			  int qopens, int qindels, int topens, int tindels,
+			  bool watsonp, int cdna_direction);
 
 extern void
 Pair_print_cdna_exons (struct T *pairs, int npairs, int wraplength);
 
 extern void
 Pair_print_protein_genomic (struct T *ptr, int npairs, int wraplength);
+#ifdef PMAP
+extern void
+Pair_print_nucleotide_cdna (struct T *ptr, int npairs, int wraplength);
+#else
 extern void
 Pair_print_protein_cdna (struct T *ptr, int npairs, int wraplength);
+#endif
 
 extern void
 Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npaths, 
@@ -118,7 +143,7 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       Genomicpos_T chroffset, IIT_T chromosome_iit,
 		       Genomicpos_T genomiclength, bool checksump, 
 		       int chimerapos, int chimeraequivpos, double donor_prob, double acceptor_prob,
-		       int chimera_cdna_direction, char *strain, bool watsonp, bool zerobasedp);
+		       int chimera_cdna_direction, char *strain, bool watsonp, int cdna_direction, bool zerobasedp);
 
 extern void
 Pair_fracidentity (int *matches, int *unknowns, int *mismatches, 
@@ -136,7 +161,7 @@ Pair_matchscores (struct T *ptr, int npairs,
 		  int cdna_direction, int querylength);
 extern void
 Pair_pathscores (int *pathscores, struct T *ptr, int npairs, 
-		 int cdna_direction, int querylength);
+		 int cdna_direction, int querylength, cDNAEnd_T cdnaend);
 
 extern int
 Pair_cdna_direction (List_T pairs);

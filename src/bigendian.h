@@ -1,6 +1,11 @@
-/* $Id: bigendian.h,v 1.6 2005/02/14 13:02:12 twu Exp $ */
+/* $Id: bigendian.h,v 1.7 2005/10/25 16:49:21 twu Exp $ */
 #ifndef BIGENDIAN_INCLUDED
 #define BIGENDIAN_INCLUDED
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <stddef.h>
 

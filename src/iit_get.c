@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c,v 1.31 2005/07/08 07:58:32 twu Exp $";
+static char rcsid[] = "$Id: iit_get.c,v 1.33 2005/10/19 03:53:07 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -48,7 +48,7 @@ main (int argc, char *argv[]) {
   int *matches, nmatches, i;
   IIT_T iit;
   Interval_T interval;
-  bool skipp;
+  bool skipp, allocp;
   
   int c;
   extern int optind;
@@ -109,30 +109,35 @@ main (int argc, char *argv[]) {
       }
 	
       if (skipp == false) {
-	printf(">>%s\n",Buffer);
+	fprintf(stdout,"# Query: %s\n",Buffer);
 	for (i = 0; i < nmatches; i++) {
 	  index = matches[i];
       
 	  if (annotationonlyp == false) {
-	    printf(">%s",IIT_label(iit,index));
+	    fprintf(stdout,">%s",IIT_label(iit,index));
 
 	    interval = IIT_interval(iit,index);
-	    printf(" %u %u",Interval_low(interval),Interval_high(interval));
+	    fprintf(stdout," %u %u",Interval_low(interval),Interval_high(interval));
 	    if (Interval_type(interval) > 0) {
-	      printf(" %s",IIT_typestring(iit,Interval_type(interval)));
+	      fprintf(stdout," %s",IIT_typestring(iit,Interval_type(interval)));
 	    }
-	    printf("\n");
+	    fprintf(stdout,"\n");
 	  }
-	  annotation = IIT_annotation(iit,index);
+	  annotation = IIT_annotation(iit,index,&allocp);
 	  if (strlen(annotation) == 0) {
 	  } else if (annotation[strlen(annotation)-1] == '\n') {
-	    printf("%s",annotation);
+	    fprintf(stdout,"%s",annotation);
 	  } else {
-	    printf("%s\n",annotation);
+	    fprintf(stdout,"%s\n",annotation);
+	  }
+	  if (allocp == true) {
+	    FREE(annotation);
 	  }
 	}
       }
       FREE(matches);
+      fprintf(stdout,"# End\n");
+      fflush(stdout);
     }
 
   } else {
@@ -178,18 +183,21 @@ main (int argc, char *argv[]) {
 	}
 	printf("\n");
       }
-      annotation = IIT_annotation(iit,index);
+      annotation = IIT_annotation(iit,index,&allocp);
       if (strlen(annotation) == 0) {
       } else if (annotation[strlen(annotation)-1] == '\n') {
 	printf("%s",annotation);
       } else {
 	printf("%s\n",annotation);
       }
+      if (allocp == true) {
+	FREE(annotation);
+      }
     }
     FREE(matches);
   }
 
-  IIT_free_mmapped(&iit);
+  IIT_free(&iit);
 
   return 0;
 }

@@ -1,4 +1,4 @@
-/* $Id: iit-read.h,v 1.29 2005/06/16 14:05:59 twu Exp $ */
+/* $Id: iit-read.h,v 1.32 2005/10/19 03:50:22 twu Exp $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -32,7 +32,9 @@ IIT_typeint (T this, char *typestring);
 extern char *
 IIT_label (T this, int index);
 extern char *
-IIT_annotation (T this, int index);
+IIT_annotation (T this, int index, bool *allocp);
+extern char
+IIT_annotation_firstchar (T this, int index);
 extern unsigned int
 IIT_annotation_strlen (T this, int index);
 
@@ -46,7 +48,7 @@ extern void
 IIT_dump_formatted (T this, bool directionalp);
 
 extern void
-IIT_free_mmapped (T *old);
+IIT_free (T *old);
 extern T
 IIT_read (char *filename, char *name, bool readonlyp);
 
@@ -66,7 +68,8 @@ IIT_get_typed (int *ntypematches, T this, unsigned int x, unsigned int y, int ty
 extern int
 IIT_get_exact (T this, unsigned int x, unsigned int y, int type);
 extern void
-IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p);
+IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p,
+	   T chromosome_iit, int *levels);
 
 extern List_T
 IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this);

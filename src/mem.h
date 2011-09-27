@@ -1,6 +1,11 @@
-/* $Id: mem.h,v 1.7 2005/07/13 19:25:15 twu Exp $ */
+/* $Id: mem.h,v 1.8 2005/10/25 16:49:55 twu Exp $ */
 #ifndef MEM_INCLUDED
 #define MEM_INCLUDED
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stddef.h>
 #include "except.h"
 

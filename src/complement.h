@@ -1,4 +1,4 @@
-/* $Id: complement.h,v 1.6 2005/02/15 01:50:55 twu Exp $ */
+/* $Id: complement.h,v 1.7 2005/10/01 05:03:04 twu Exp $ */
 #ifndef COMPLEMENT_INCLUDED
 #define COMPLEMENT_INCLUDED
 
@@ -25,6 +25,10 @@
                     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~@
 */
 
+/* Don't translate double quotation, because it is interpreted as end of string */
+/* Don't translate backslash, because it is interpreted as an escape character */
 #define COMPLEMENT "???????????????????????????????? ??#$%&')(*+,-./0123456789:;>=<??TVGHEFCDIJMLKNOPQYSAUBWXRZ]?[^_`tvghefcdijmlknopqysaubwxrz}|{~?"
+
+#define UPPERCASE  "???????????????????????????????? ??#$%&'()*+,-./0123456789:;<=>??ABCDEFGHIJKLMNOPQRSTUVWXYZ[?]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~?"
 
 #endif

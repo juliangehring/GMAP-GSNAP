@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c,v 1.100 2005/07/12 18:01:17 twu Exp $";
+static char rcsid[] = "$Id: stage1.c,v 1.108 2005/10/01 15:30:17 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,6 +14,11 @@ static char rcsid[] = "$Id: stage1.c,v 1.100 2005/07/12 18:01:17 twu Exp $";
 #include "chrsubset.h"
 
 
+#ifdef PMAP
+#define INDEX1PART INDEX1PART_AA
+#endif
+
+#define MININTRONLEN 20
 #define VERYSHORTSEQLEN 40
 #define SHORTSEQLEN 80
 
@@ -63,6 +68,13 @@ static char rcsid[] = "$Id: stage1.c,v 1.100 2005/07/12 18:01:17 twu Exp $";
 #define debug4(x)
 #endif
 
+/* connectable_p */
+#ifdef DEBUG5
+#define debug5(x) x
+#else
+#define debug5(x)
+#endif
+
 
 
 #define T Stage1_T
@@ -93,7 +105,8 @@ struct T {
 
 
 static T
-Stage1_new (Sequence_T queryseq, int maxintronlen, int stage1size, int maxentries) {
+Stage1_new (Sequence_T queryuc, int maxintronlen, int stage1size, int maxentries, 
+	    int reader_overlap) {
   T new = (T) MALLOC(sizeof(*new));
   
   new->maxintronlen = maxintronlen;
@@ -102,13 +115,14 @@ Stage1_new (Sequence_T queryseq, int maxintronlen, int stage1size, int maxentrie
   new->stage1size = stage1size;
   new->interval = stage1size - INDEX1PART;
 
-  new->querylength = Sequence_fulllength(queryseq);
-  new->querystart = Sequence_trim_start(queryseq);
-  new->queryend = Sequence_trim_end(queryseq);
+  new->querylength = Sequence_fulllength(queryuc);
+  new->querystart = Sequence_trim_start(queryuc);
+  new->queryend = Sequence_trim_end(queryuc);
 
   new->matchpairlist = NULL;
   new->matchbestlist = NULL;
-  new->reader = Reader_new(Sequence_fullpointer(queryseq),new->querystart,new->queryend);
+  new->reader = Reader_new(Sequence_fullpointer(queryuc),new->querystart,new->queryend,reader_overlap);
+  debug(Sequence_print(queryuc,/*uppercasep*/true,/*wraplength*/50,/*trimmedp*/true));
   new->block5 = Block_new(FIVE,new->reader);
   new->block3 = Block_new(THREE,new->reader);
   new->matches5 = NULL;
@@ -186,44 +200,58 @@ Stage1_free (T *old) {
 static bool
 connectable_p (Match_T match5, Match_T match3, int maxintronlen, int interval) {
   Genomicpos_T position5, position3;
-  int querypos5, querypos3, exonlen, intronlen;
+  int querypos5, querypos3, exonlen;
   bool forwardp5, forwardp3;
 
+  debug5(printf("Comparing #%d:%u at querypos %d with #%d:%u at querypos %d\n",
+		Match_chrnum(match5),Match_chrpos(match5),Match_querypos(match5),
+		Match_chrnum(match3),Match_chrpos(match3),Match_querypos(match3)));
+
   if (Match_chrnum(match5) != Match_chrnum(match3)) {
-    /* debug(printf("No, different chromosomes\n\n")); */
+    debug5(printf("No, different chromosomes\n\n"));
     return false;
   } else {
     querypos5 = Match_querypos(match5);
     querypos3 = Match_querypos(match3);
     exonlen = querypos3 - querypos5;
     if (exonlen < interval) {
-      /* debug(printf("No, exonlen == 0\n\n")); */
+      debug5(printf("No, exonlen == 0\n\n"));
       return false;
     } else {
       position5 = Match_position(match5);
       position3 = Match_position(match3);
       /* intronlen = abs(position3 - position5) - exonlen; -- shouldn't subtract unsigned ints */
       if (position3 > position5) {
-	intronlen = position3 - position5 - exonlen;
+	/* intronlen = position3 - position5 - exonlen; -- Don't subtract into a signed int */
+	/* The check below is equivalent to intronlen > maxintronlen */
+	if (position3 > (Genomicpos_T) maxintronlen + position5 + (Genomicpos_T) exonlen) {
+	  debug5(printf("No, intron too long (%u > %u + %u + %u)\n\n",
+			position3,maxintronlen,position5,exonlen));
+	  return false;
+	}
       } else {
-	intronlen = position5 - position3 - exonlen;
+	/* intronlen = position5 - position3 - exonlen; -- Don't subtract into a signed int */
+	/* The check below is equivalent to intronlen > maxintronlen */
+	if (position5 > (Genomicpos_T) maxintronlen + position3 + (Genomicpos_T) exonlen) {
+	  debug5(printf("No, intron too long (%u > %u + %u + %u)\n\n",
+			position5,maxintronlen,position3,exonlen));
+	  return false;
+	}
       }
       forwardp5 = Match_forwardp(match5);
       forwardp3 = Match_forwardp(match3);
 
-      if (intronlen > maxintronlen) {
-	/* debug(printf("No, intron too long\n\n")); */
-	return false;
-      } else if (forwardp5 != forwardp3) {
-	/* debug(printf("No, forwardp different\n\n")); */
+      if (forwardp5 != forwardp3) {
+	debug5(printf("No, forwardp different\n\n"));
 	return false;
       } else if (forwardp5 == true && position3 < position5) {
-	/* debug(printf("No, forwardp true, but positions wrong\n\n")); */
+	debug5(printf("No, forwardp true, but positions wrong\n\n"));
 	return false;
       } else if (forwardp5 == false && position5 < position3) {
-	/* debug(printf("No, forwardp false, but positions wrong\n\n")); */
+	debug5(printf("No, forwardp false, but positions wrong\n\n"));
 	return false;
       } else {
+	debug5(printf("Yes\n\n"));
 	return true;
       }
     }
@@ -784,10 +812,11 @@ find_5prime_matches (bool *newp, List_T matches5, T this, Genomicpos_T **plus_po
   bool newplusp = false, newminusp = false, overflowp;
 
   if ((prevpos = querystart - interval) <= 0) {
+    debug3(printf("Quitting because %d - %d <= 0\n",querystart,interval));
     *newp = false;
   } else {
-    debug3(printf("Identifying 5' matches for 12-mer at %d and 12-mer at %d.  maxentries=%d.\n",
-		  prevpos,querystart,maxentries));
+    debug3(printf("Identifying 5' matches for %d-mer at %d and %d-mer at %d.  maxentries=%d.\n",
+		  INDEX1PART,prevpos,INDEX1PART,querystart,maxentries));
 
     debug3(printf("  Previous status of plus_matchedp at %d is %d\n",querystart,this->plus_matchedp[querystart]));
     if (pairedp == true || this->plus_matchedp[querystart] == false) {
@@ -826,8 +855,8 @@ find_3prime_matches (bool *newp, List_T matches3, T this, Genomicpos_T **plus_po
   if ((prevpos = queryend + interval) >= querylength) {
     *newp = false;
   } else {
-    debug3(printf("Identifying 3' matches for 12-mer at %d and 12-mer at %d.  maxentries=%d\n",
-		  queryend,prevpos,maxentries));
+    debug3(printf("Identifying 3' matches for %d-mer at %d and %d-mer at %d.  maxentries=%d\n",
+		  INDEX1PART,queryend,INDEX1PART,prevpos,maxentries));
 
     /* If maxentries > 0, then we are working on pairs.  Otherwise, check for a successful previous check */
     debug3(printf("  Previous status of plus_matchedp at %d is %d\n",prevpos,this->plus_matchedp[prevpos]));
@@ -904,7 +933,14 @@ check_fraction_paired (List_T matches5, List_T matches3) {
 */
 
 static void
-stutter (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen, 
+stutter (T this, 
+#ifdef PMAP
+	 Indexdb_T indexdb_fwd,
+	 Indexdb_T indexdb_rev,
+#else
+	 Indexdb_T indexdb, 
+#endif
+	 IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen, 
 	 int stuttercycles, int stutterhits, int stage1size, int maxentries) {
   List_T newmatches5 = NULL, newmatches3 = NULL;
   int stutterdist5 = 0, stutterdist3 = 0, maxbases, start5, start3, n5hits = 0, n3hits = 0;
@@ -923,9 +959,15 @@ stutter (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
 	 (stutterdist5 < maxbases || n5hits < stutterhits)) {
     this->querystart = Block_querypos(this->block5);
     /* For stutter, shouldn't need to check for prior this->processedp */
+#ifdef PMAP
+    Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
+			&(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
+			this->block5,indexdb_fwd,indexdb_rev);
+#else
     Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
 			&(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
 			this->block5,indexdb);
+#endif
     this->processedp[this->querystart] = true;
     newmatches5 = find_5prime_matches(&newp,newmatches5,this,this->plus_positions,this->plus_npositions,
 				      this->minus_positions,this->minus_npositions,
@@ -943,9 +985,15 @@ stutter (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
 	 (stutterdist3 < maxbases || n3hits < stutterhits)) {
     this->queryend = Block_querypos(this->block3);
     /* For stutter, shouldn't need to check for prior this->processedp */
+#ifdef PMAP
+    Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
+			&(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
+			this->block3,indexdb_fwd,indexdb_rev);
+#else
     Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
 			&(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
 			this->block3,indexdb);
+#endif
     this->processedp[this->queryend] = true;
     newmatches3 = find_3prime_matches(&newp,newmatches3,this,this->plus_positions,this->plus_npositions,
 				      this->minus_positions,this->minus_npositions,
@@ -979,8 +1027,14 @@ stutter (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
 
 /* Tries to find matches on the 5' end to unpaired hits from the 3' end */
 static void
-fill_in_5 (T this, List_T dangling3, Indexdb_T indexdb, IIT_T chromosome_iit, 
-	   Chrsubset_T chrsubset, int maxintronlen, int maxentries) {
+fill_in_5 (T this, List_T dangling3,
+#ifdef PMAP
+	   Indexdb_T indexdb_fwd,
+	   Indexdb_T indexdb_rev,
+#else
+	   Indexdb_T indexdb, 
+#endif
+	   IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen, int maxentries) {
   List_T newmatches5 = NULL;
   int fillindist5 = 0, maxbases, start5;
   bool newp, foundpairp = false;
@@ -996,9 +1050,15 @@ fill_in_5 (T this, List_T dangling3, Indexdb_T indexdb, IIT_T chromosome_iit,
   while (Block_next(this->block5) == true && 
 	 fillindist5 < maxbases && foundpairp == false) {
     this->querystart = Block_querypos(this->block5);
+#ifdef PMAP
+    Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
+			&(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
+			this->block5,indexdb_fwd,indexdb_rev);
+#else
     Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
 			&(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
 			this->block5,indexdb);
+#endif
     this->processedp[this->querystart] = true;
     newmatches5 = find_5prime_matches(&newp,newmatches5,this,this->plus_positions,this->plus_npositions,
 				      this->minus_positions,this->minus_npositions,
@@ -1029,8 +1089,14 @@ fill_in_5 (T this, List_T dangling3, Indexdb_T indexdb, IIT_T chromosome_iit,
 
 /* Tries to find matches on the 5' end to unpaired hits from the 3' end */
 static void
-fill_in_3 (T this, List_T dangling5, Indexdb_T indexdb, IIT_T chromosome_iit, 
-	   Chrsubset_T chrsubset, int maxintronlen, int maxentries) {
+fill_in_3 (T this, List_T dangling5, 
+#ifdef PMAP
+	   Indexdb_T indexdb_fwd,
+	   Indexdb_T indexdb_rev,
+#else
+	   Indexdb_T indexdb,
+#endif
+	   IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen, int maxentries) {
   List_T newmatches3 = NULL;
   int fillindist3 = 0, maxbases, start3;
   bool newp, foundpairp = false;
@@ -1047,9 +1113,15 @@ fill_in_3 (T this, List_T dangling5, Indexdb_T indexdb, IIT_T chromosome_iit,
 	 fillindist3 < maxbases && foundpairp == false) {
     this->queryend = Block_querypos(this->block3);
     /* For stutter, shouldn't need to check for prior this->processedp */
+#ifdef PMAP
+    Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
+			&(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
+			this->block3,indexdb_fwd,indexdb_rev);
+#else
     Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
 			&(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
 			this->block3,indexdb);
+#endif
     this->processedp[this->queryend] = true;
     newmatches3 = find_3prime_matches(&newp,newmatches3,this,this->plus_positions,this->plus_npositions,
 				      this->minus_positions,this->minus_npositions,
@@ -1080,7 +1152,14 @@ fill_in_3 (T this, List_T dangling5, Indexdb_T indexdb, IIT_T chromosome_iit,
 
 
 static void
-sample (T this, int nskip, int maxentries2, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset) {
+sample (T this, int nskip, int maxentries2, 
+#ifdef PMAP
+	Indexdb_T indexdb_fwd,
+	Indexdb_T indexdb_rev,
+#else
+	Indexdb_T indexdb,
+#endif
+	IIT_T chromosome_iit, Chrsubset_T chrsubset) {
   List_T newmatches5 = NULL, newmatches3 = NULL;
   int n5hits = 0, n3hits = 0;
   bool donep = false, newp;
@@ -1096,9 +1175,15 @@ sample (T this, int nskip, int maxentries2, Indexdb_T indexdb, IIT_T chromosome_
       } else {
 	this->querystart = Block_querypos(this->block5);
 	if (this->processedp[this->querystart] == false) {
+#ifdef PMAP
+	  Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
+			      &(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
+			      this->block5,indexdb_fwd,indexdb_rev);
+#else
 	  Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
 			      &(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
 			      this->block5,indexdb);
+#endif
 	  this->processedp[this->querystart] = true;
 	}
 	newmatches5 = find_5prime_matches(&newp,newmatches5,this,this->plus_positions,this->plus_npositions,
@@ -1121,9 +1206,15 @@ sample (T this, int nskip, int maxentries2, Indexdb_T indexdb, IIT_T chromosome_
       } else {
 	this->queryend = Block_querypos(this->block3);
 	if (this->processedp[this->queryend] == false) {
+#ifdef PMAP
+	  Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
+			      &(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
+			      this->block3,indexdb_fwd,indexdb_rev);
+#else
 	  Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
 			      &(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
 			      this->block3,indexdb);
+#endif
 	  this->processedp[this->queryend] = true;
 	}
 	newmatches3 = find_3prime_matches(&newp,newmatches3,this,this->plus_positions,this->plus_npositions,
@@ -1234,14 +1325,22 @@ Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T th
 
 
 static bool
-find_first_pair (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
-		 int maxintronlen, int maxentries) {
+find_first_pair (T this, 
+#ifdef PMAP
+		 Indexdb_T indexdb_fwd,
+		 Indexdb_T indexdb_rev,
+#else
+		 Indexdb_T indexdb,
+#endif
+		 IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen, int maxentries) {
   List_T newmatches5 = NULL, newmatches3 = NULL;
   Match_T match;
   bool donep = false, newp, foundpairp = false;
   double n5hits = 0.0, n3hits = 0.0;
 
   debug(printf("*** Starting stage1 ***\n"));
+  debug(printf("Reader querystart is %d and queryend is %d\n",
+	       Reader_querystart(this->reader),Reader_queryend(this->reader)));
   while (!donep && foundpairp == false) {
     if (n5hits <= n3hits) {
       if (Block_next(this->block5) == false) {
@@ -1249,9 +1348,15 @@ find_first_pair (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T ch
       } else {
 	this->querystart = Block_querypos(this->block5);
 	/* For initial scan, shouldn't need to check for prior this->processedp */
+#ifdef PMAP
+	Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
+			    &(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
+			    this->block5,indexdb_fwd,indexdb_rev);
+#else
 	Block_process_oligo(&(this->plus_positions[this->querystart]),&(this->plus_npositions[this->querystart]),
 			    &(this->minus_positions[this->querystart]),&(this->minus_npositions[this->querystart]),
 			    this->block5,indexdb);
+#endif
 	this->processedp[this->querystart] = true;
 	newmatches5 = find_5prime_matches(&newp,NULL,this,this->plus_positions,this->plus_npositions,
 					  this->minus_positions,this->minus_npositions,chromosome_iit,
@@ -1274,9 +1379,15 @@ find_first_pair (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T ch
       } else {
 	this->queryend = Block_querypos(this->block3);
 	/* For initial scan, shouldn't need to check for prior this->processedp */
+#ifdef PMAP
+	Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
+			    &(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
+			    this->block3,indexdb_fwd,indexdb_rev);
+#else
 	Block_process_oligo(&(this->plus_positions[this->queryend]),&(this->plus_npositions[this->queryend]),
 			    &(this->minus_positions[this->queryend]),&(this->minus_npositions[this->queryend]),
 			    this->block3,indexdb);
+#endif
 	this->processedp[this->queryend] = true;
 	newmatches3 = find_3prime_matches(&newp,NULL,this,this->plus_positions,this->plus_npositions,
 					  this->minus_positions,this->minus_npositions,
@@ -1361,7 +1472,14 @@ get_dangling (List_T matches) {
 
 
 List_T
-Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset) {
+Stage1_matchlist (T this,
+#ifdef PMAP
+		  Indexdb_T indexdb_fwd,
+		  Indexdb_T indexdb_rev,
+#else
+		  Indexdb_T indexdb,
+#endif
+		  IIT_T chromosome_iit, Chrsubset_T chrsubset) {
   List_T clusterlist = NULL;
   int querystart, queryend;
   int nsamples, prevnskip, nskip;
@@ -1383,7 +1501,11 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
     /* Sample exhaustively on short sequences */
     nskip = 0;
     debug1(printf("***Beginning terminal sampling.  nskip = %d\n",nskip));
+#ifdef PMAP
+    sample(this,nskip,2*this->maxentries,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset);
+#else
     sample(this,nskip,2*this->maxentries,indexdb,chromosome_iit,chrsubset);
+#endif
     clusterlist = Matchpair_find_clusters(this->matches5,this->matches3,this->interval+INDEX1PART,
 					  this->maxintronlen,1,SIZEBOUND,MOVING_THRESHOLD);
     debug1(printf("***Ending terminal sampling.  Got %d clusters\n",List_length(clusterlist)));
@@ -1397,7 +1519,11 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
 
     while (nskip > 0 && clusterlist == NULL) {
       debug1(printf("***Beginning sampling.  nsamples = %d, nskip = %d\n",nsamples,nskip));
+#ifdef PMAP
+      sample(this,nskip,2*this->maxentries,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset);
+#else
       sample(this,nskip,2*this->maxentries,indexdb,chromosome_iit,chrsubset);
+#endif
       clusterlist = Matchpair_find_clusters(this->matches5,this->matches3,this->interval+INDEX1PART,
 					    this->maxintronlen,2,SIZEBOUND,BY_CANDIDATES);
       debug1(printf("***Ending sampling.  Got %d clusters\n",List_length(clusterlist)));
@@ -1419,7 +1545,11 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
 
 #if 0
       debug1(printf("***Beginning terminal sampling.  nsamples = %d, nskip = %d\n",nsamples,nskip));
+#ifdef PMAP
+      sample(this,nskip,2*this->maxentries,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset);
+#else
       sample(this,nskip,2*this->maxentries,indexdb,chromosome_iit,chrsubset);
+#endif
       clusterlist = Matchpair_find_clusters(this->matches5,this->matches3,this->interval+INDEX1PART,
 					    this->maxintronlen,1,SIZEBOUND,MOVING_THRESHOLD);
       debug1(printf("***Ending terminal sampling.  Got %d clusters\n",List_length(clusterlist)));
@@ -1433,48 +1563,80 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
 
 
 T
-Stage1_compute (Sequence_T queryseq, Indexdb_T indexdb, IIT_T chromosome_iit, 
-		Chrsubset_T chrsubset, int maxintronlen_bound, int stuttercycles, 
+Stage1_compute (Sequence_T queryuc, 
+#ifdef PMAP
+		Indexdb_T indexdb_fwd,
+		Indexdb_T indexdb_rev,
+#else
+		Indexdb_T indexdb,
+#endif
+		IIT_T chromosome_iit, Chrsubset_T chrsubset, int maxintronlen_bound, int stuttercycles, 
 		int stutterhits, bool crossspeciesp) {
   T this;
-  int trimlength, stage1size, maxentries, maxintronlen;
+  int trimlength, stage1size, maxentries, maxintronlen, reader_overlap;
   double dangling5_pct, dangling3_pct;
   List_T dangling5, dangling3;
   bool foundpairp = false;
 
-  trimlength = Sequence_trimlength(queryseq);
+  trimlength = Sequence_trimlength(queryuc);
+#ifdef PMAP
+  stage1size = INDEX1PART;	/* 7-mer */
+  maxentries = 100;
+  maxintronlen = 20 + EXPANSION*(trimlength*3 - SHORTSEQLEN);
+  if (trimlength*3 <= VERYSHORTSEQLEN) {
+    reader_overlap = INDEX1PART;
+  } else {
+    reader_overlap = 0;
+  }
+#else
   if (trimlength <= VERYSHORTSEQLEN) {
     stage1size = 12;
     maxentries = 250;
-    maxintronlen = 10;		/* Essentially, we don't want to find any introns */
+    maxintronlen = MININTRONLEN; /* Essentially, we don't want to find any introns */
+    reader_overlap = INDEX1PART;
   } else if (trimlength <= SHORTSEQLEN) {
     stage1size = 18;
     maxentries = 100;
-    maxintronlen = 20;		/* Essentially, we don't want to find any introns */
+    maxintronlen = MININTRONLEN; /* Essentially, we don't want to find any introns */
+    reader_overlap = 0;
   } else if (crossspeciesp == true) {
     stage1size = 18;
     maxentries = 250;
     maxintronlen = 20 + EXPANSION*(trimlength - SHORTSEQLEN);
+    reader_overlap = 0;
   } else {
     stage1size = 24;
     maxentries = 40;
     maxintronlen = 20 + EXPANSION*(trimlength - SHORTSEQLEN);
+    reader_overlap = 0;
   }
+#endif
 
   if (maxintronlen > maxintronlen_bound) {
     maxintronlen = maxintronlen_bound;
+  } else if (maxintronlen < MININTRONLEN) {
+    maxintronlen = MININTRONLEN;
   }
 
-  this = Stage1_new(queryseq,maxintronlen,stage1size,maxentries);
+  this = Stage1_new(queryuc,maxintronlen,stage1size,maxentries,reader_overlap);
+#ifdef PMAP
+  foundpairp = find_first_pair(this,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset,maxintronlen,maxentries);
+#else
   foundpairp = find_first_pair(this,indexdb,chromosome_iit,chrsubset,maxintronlen,maxentries);
+#endif
 
   if (foundpairp == false) {
     debug(printf("*** No pair found ***\n"));
     this->matchpairlist = NULL;
   } else {
     debug(printf("*** Found pair ***\n"));
+#ifdef PMAP
+    stutter(this,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset,maxintronlen,
+	    stuttercycles,stutterhits,stage1size,maxentries);
+#else
     stutter(this,indexdb,chromosome_iit,chrsubset,maxintronlen,
 	    stuttercycles,stutterhits,stage1size,maxentries);
+#endif
 
     dangling5_pct = dangling_pct(this->matches5);
     dangling3_pct = dangling_pct(this->matches3);
@@ -1485,12 +1647,20 @@ Stage1_compute (Sequence_T queryseq, Indexdb_T indexdb, IIT_T chromosome_iit,
 
     if (dangling5_pct > MAX_DANGLING_PCT) {
       dangling5 = get_dangling(this->matches5);
+#ifdef PMAP
+      fill_in_3(this,dangling5,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset,maxintronlen,maxentries);
+#else
       fill_in_3(this,dangling5,indexdb,chromosome_iit,chrsubset,maxintronlen,maxentries);
+#endif
       List_free(&dangling5);
     }
     if (dangling3_pct > MAX_DANGLING_PCT) {
       dangling3 = get_dangling(this->matches3);
+#ifdef PMAP
+      fill_in_5(this,dangling3,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset,maxintronlen,maxentries);
+#else
       fill_in_5(this,dangling3,indexdb,chromosome_iit,chrsubset,maxintronlen,maxentries);
+#endif
       List_free(&dangling3);
     }
 

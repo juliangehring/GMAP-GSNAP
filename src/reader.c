@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reader.c,v 1.14 2005/05/04 18:04:24 twu Exp $";
+static char rcsid[] = "$Id: reader.c,v 1.15 2005/07/21 22:44:39 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,6 +17,7 @@ static char rcsid[] = "$Id: reader.c,v 1.14 2005/05/04 18:04:24 twu Exp $";
 struct T {
   int querystart;
   int queryend;
+  int blocksize;
 
   char *startinit;
   char *startptr;
@@ -57,11 +58,12 @@ Reader_reset_ends (T this) {
 
 
 T
-Reader_new (char *sequence, int querystart, int queryend) {
+Reader_new (char *sequence, int querystart, int queryend, int blocksize) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->querystart = querystart;
   new->queryend = queryend;
+  new->blocksize = blocksize;
 
   new->startinit = sequence;
   new->startptr = &(sequence[querystart]);
@@ -81,7 +83,7 @@ char
 Reader_getc (T this, cDNAEnd_T cdnaend) {
   debug(fprintf(stderr,"Read_getc has startptr %d and endptr %d\n",
 		this->startptr-this->startinit,this->endptr-this->startinit));
-  if (this->startptr >= this->endptr) {
+  if (this->startptr - this->endptr >= this->blocksize) {
     return '\0';
   } else if (cdnaend == FIVE) {
     return *(this->startptr++);

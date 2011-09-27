@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.74 2005/07/15 20:54:05 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.81 2005/10/21 16:42:55 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,24 +15,12 @@ static char rcsid[] = "$Id: genome.c,v 1.74 2005/07/15 20:54:05 twu Exp $";
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>		/* For munmap */
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>		/* For mmap on Linux and for lseek, and getpagesize */
+#include <unistd.h>		/* For lseek and close */
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>		/* For mmap and off_t */
-#endif
-#include <sys/mman.h>		/* For mmap */
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>		/* For open */
-#endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>		/* For open and fstat */
-#endif
-/* Not sure why this was included
-#include <errno.h>
-*/
-#ifdef PAGESIZE_VIA_SYSCTL
-#include <sys/sysctl.h>
+#include <sys/types.h>		/* For off_t */
 #endif
 
 #ifdef HAVE_PTHREAD
@@ -42,7 +30,7 @@ static char rcsid[] = "$Id: genome.c,v 1.74 2005/07/15 20:54:05 twu Exp $";
 #include "assert.h"
 #include "mem.h"
 #include "types.h"
-#include "stopwatch.h"
+#include "access.h"
 #include "complement.h"
 #include "interval.h"
 
@@ -52,7 +40,6 @@ static char rcsid[] = "$Id: genome.c,v 1.74 2005/07/15 20:54:05 twu Exp $";
 #include "littleendian.h"
 #endif
 
-#define PAGESIZE 1024*4
 
 #ifdef DEBUG
 #define debug(x) x
@@ -71,32 +58,41 @@ static char rcsid[] = "$Id: genome.c,v 1.74 2005/07/15 20:54:05 twu Exp $";
 
 #define T Genome_T
 struct T {
+  Access_T access;
   int fd;
   size_t len;
+
   char *chars;
   UINT4 *blocks;
   bool compressedp;
+
+#ifdef HAVE_PTHREAD
+  pthread_mutex_t read_mutex;
+#endif
 };
 
 
 void
 Genome_free (T *old) {
   if (*old) {
-    if ((*old)->compressedp == true) {
+    if ((*old)->access == ALLOCATED) {
+      abort();
 #ifdef HAVE_MMAP
-      if ((*old)->blocks != NULL) {
+    } else if ((*old)->access == MMAPPED) {
+      if ((*old)->compressedp == true) {
 	munmap((void *) (*old)->blocks,(*old)->len);
-      }
-#endif
-      close((*old)->fd);
-    } else {
-#ifdef HAVE_MMAP
-      if ((*old)->chars != NULL) {
+      } else {
 	munmap((void *) (*old)->chars,(*old)->len);
       }
+      close((*old)->fd);
+#endif
+    } else if ((*old)->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_destroy(&(*old)->read_mutex);
 #endif
       close((*old)->fd);
     }
+
     FREE(*old);
   }
   return;
@@ -107,213 +103,89 @@ T
 Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp) {
   T new = (T) MALLOC(sizeof(*new));
   char *filename;
-  struct stat sb;
-  int pagesize, indicesperpage, totalindices;
-  size_t i;
-  int nzero = 0, npos = 0;
   bool compressedp = !uncompressedp;
+  int npages;
+  double seconds;
 
-#ifdef HAVE_CADDR_T
-  caddr_t region;
-#else
-  void *region;
-#endif
-
-#ifdef PAGESIZE_VIA_SYSCTL
-  size_t len;
-  int mib[2];
-#endif
-
-  /* batchp = false; */
+  new->compressedp = compressedp;
 
   if (compressedp == true) {
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".genomecomp")+1,sizeof(char));
     sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
-    if ((new->fd = open(filename,O_RDONLY,0764)) < 0) {
-      fprintf(stderr,"Warning: can't open file %s.  Trying uncompressed genome.\n",filename);
-      compressedp = false;
-      FREE(filename);
-      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".genome")+1,sizeof(char));
-      sprintf(filename,"%s/%s.genome",genomesubdir,fileroot);
-      if ((new->fd = open(filename,O_RDONLY,0764)) < 0) {
-	fprintf(stderr,"Error: can't open file %s.\n",filename);
-	exit(9);
-      }
-    }
-    FREE(filename);
   } else {
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".genome")+1,sizeof(char));
     sprintf(filename,"%s/%s.genome",genomesubdir,fileroot);
-    if ((new->fd = open(filename,O_RDONLY,0764)) < 0) {
-      fprintf(stderr,"Warning: can't open file %s.  Trying compressed genome.\n",filename);
-      compressedp = true;
-      FREE(filename);
-      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".genomecomp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
-      if ((new->fd = open(filename,O_RDONLY,0764)) < 0) {
-	fprintf(stderr,"Error: can't open file %s.\n",filename);
-	exit(9);
-      }
-    }
-    FREE(filename);
-  }
-  fstat(new->fd,&sb);
-  new->len = sb.st_size;
-
-  new->compressedp = compressedp;
-  if (batchp == true) {
-#ifdef __STRICT_ANSI__
-    pagesize = PAGESIZE;
-#elif defined(HAVE_GETPAGESIZE)
-    pagesize = getpagesize();
-#elif defined(PAGESIZE_VIA_SYSCONF)
-    pagesize = sysconf(_SC_PAGESIZE);
-#elif defined(PAGESIZE_VIA_SYSCTL)
-    len = sizeof(pagesize);
-    mib[0] = CTL_HW;
-    mib[1] = HW_PAGESIZE;
-    sysctl(mib,2,&pagesize,&len,NULL,0);
-#else
-    pagesize = PAGESIZE;
-#endif
   }
 
   if (compressedp == true) {
     new->chars = (char *) NULL;
 #ifndef HAVE_MMAP
-    new->blocks = NULL;
+    new->blocks = (UINT4 *) NULL;
+    new->fd = Access_fileio(filename);
+    new->access = FILEIO;
 #else
-    new->blocks = (UINT4 *) mmap(NULL,sb.st_size,PROT_READ,0
-#ifdef HAVE_MMAP_MAP_SHARED
-					|MAP_SHARED
-#endif
-#ifdef HAVE_MMAP_MAP_FILE
-					|MAP_FILE
-#endif
-#ifdef HAVE_MMAP_MAP_VARIABLE
-					|MAP_VARIABLE
-#endif
-					,new->fd,0);
-    if (new->blocks == MAP_FAILED) {
-      new->blocks = NULL;
+    if (batchp == true) {
+      fprintf(stderr,"Pre-loading uncompressed genome...");
+      new->blocks = (UINT4 *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
+						      filename,sizeof(UINT4));
+      if (new->blocks == NULL) {
+	fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+	new->access = FILEIO;
+      } else {
+	fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
+		new->len,npages,seconds);
+	new->access = MMAPPED;
+      }
+    } else {
+      new->blocks = (UINT4 *) Access_mmap(&new->fd,&new->len,filename,sizeof(UINT4),/*randomp*/false);
+      if (new->blocks == NULL) {
+	new->access = FILEIO;
+      } else {
+	new->access = MMAPPED;
+      }
     }
-#ifdef HAVE_CADDR_T
-    region = (caddr_t) new->blocks;
-#else
-    region = (void *) new->blocks;
-#endif
-
 #endif /* HAVE_MMAP */
 
   } else {
     new->blocks = (UINT4 *) NULL;
+
 #ifndef HAVE_MMAP
-    new->chars = NULL;
+    new->chars = (char *) NULL;
+    new->fd = Access_fileio(filename);
+    new->access = FILEIO;
 #else
-    new->chars = (char *) mmap(NULL,sb.st_size,PROT_READ,0
-#ifdef HAVE_MMAP_MAP_SHARED
-			       |MAP_SHARED
-#endif
-#ifdef HAVE_MMAP_MAP_FILE
-			       |MAP_FILE
-#endif
-#ifdef HAVE_MMAP_MAP_VARIABLE
-			       |MAP_VARIABLE
-#endif
-			       ,new->fd,0);
-    if (new->chars == MAP_FAILED) {
-       new->chars = NULL;
+    if (batchp == true) {
+      fprintf(stderr,"Pre-loading compressed genome...");
+      new->chars = (char *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
+						    filename,sizeof(char));
+      if (new->chars == NULL) {
+	fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+	new->access = FILEIO;
+      } else {
+	fprintf(stderr,"done (%lu bytes, %d pages, %.2f sec)\n",
+		new->len,npages,seconds);
+	new->access = MMAPPED;
+      }
+    } else {
+      new->chars = (char *) Access_mmap(&new->fd,&new->len,filename,sizeof(char),/*randomp*/false);
+      if (new->chars == NULL) {
+	new->access = FILEIO;
+      } else {
+	new->access = MMAPPED;
+      }
     }
-#ifdef HAVE_CADDR_T
-    region = (caddr_t) new->chars;
-#else
-    region = (void *) new->chars;
-#endif
-
 #endif /* HAVE_MMAP */
-
   }
 
-#ifdef HAVE_MMAP
-  if (batchp == false) {
-    if (region != NULL) {
-#ifdef HAVE_MADVISE
-#ifdef HAVE_MADVISE_MADV_DONTNEED
-      madvise(region,new->len,MADV_DONTNEED);
-#endif
-#endif
-    }
-  } else if (region == NULL) {
-    if (compressedp == true) {
-      indicesperpage = pagesize/sizeof(UINT4);
-      fprintf(stderr,"Pre-loading genome (compressed) every %d indices/page...",
-	      indicesperpage);
-      fprintf(stderr,"insufficient memory (will use disk file instead)\n");
-    } else {
-      indicesperpage = pagesize/sizeof(char);
-      fprintf(stderr,"Pre-loading genome (full) every %d indices/page...",
-	      indicesperpage);
-      fprintf(stderr,"insufficient memory (will use disk file instead)\n");
-    }
-  } else {
-    /* Touch all pages */
-
-    if (compressedp == true) {
-      indicesperpage = pagesize/sizeof(UINT4);
-      totalindices = new->len/sizeof(UINT4);
-      fprintf(stderr,"Pre-loading genome (compressed) every %d indices/page...",
-	      indicesperpage);
-      Stopwatch_start();
-
-#ifdef HAVE_MADVISE
-#ifdef HAVE_MADVISE_MADV_WILLNEED
-      madvise(region,new->len,MADV_WILLNEED);
-#endif
-#endif
-      for (i = 0; i < totalindices; i += indicesperpage) {
-	/* memcpy(temp,region + i,pagesize); */
-	if (new->blocks[i] == 0U) {
-	  nzero++;
-	} else {
-	  npos++;
-	}
-	if (i % 10000 == 0) {
-	  fprintf(stderr,".");
-	}
-      }
-
-    } else {
-      indicesperpage = pagesize/sizeof(char);
-      totalindices = new->len/sizeof(char);
-      fprintf(stderr,"Pre-loading genome (full) every %d indices/page...",
-	      indicesperpage);
-      Stopwatch_start();
-
-#ifdef HAVE_MADVISE
-#ifdef HAVE_MADVISE_MADV_WILLNEED
-      madvise(region,new->len,MADV_WILLNEED);
-#endif
-#endif
-      for (i = 0; i < totalindices; i += indicesperpage) {
-	/* memcpy(temp,region + i,pagesize); */
-	if (new->chars[i] == '0') {
-	  nzero++;
-	} else {
-	  npos++;
-	}
-	if (i % 10000 == 0) {
-	  fprintf(stderr,".");
-	}
-      }
-    }
-
-    fprintf(stderr,"done (%d pages, %.2f sec)\n",nzero+npos, Stopwatch_stop());
+#ifdef HAVE_PTHREAD
+  if (new->access == FILEIO) {
+    pthread_mutex_init(&new->read_mutex,NULL);
   }
 #endif
+
+  FREE(filename);
 
   return new;
 }
@@ -374,8 +246,8 @@ Genome_replace_x (void) {
 
 
 static void
-uncompress_without_mmap (char *gbuffer1, T this, Genomicpos_T startpos, 
-			 Genomicpos_T endpos) {
+uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos, 
+		   Genomicpos_T endpos) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
@@ -581,11 +453,6 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
   return;
 }
 
-#ifdef HAVE_PTHREAD
-static pthread_mutex_t genome_read_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
-
 static const Except_T gbufferlen_error = { "Insufficient allocation" };
 
 Sequence_T
@@ -599,10 +466,9 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
   }
 
   if (this->compressedp == false) {
-    if (this->chars == NULL) {
-      /* non-mmap procedure, uncompressed genome */
+    if (this->access == FILEIO) {
 #ifdef HAVE_PTHREAD
-      pthread_mutex_lock(&genome_read_mutex);
+      pthread_mutex_lock(&this->read_mutex);
 #endif
       if (lseek(this->fd,left,SEEK_SET) < 0) {
 	perror("Error in gmap, Genome_get_segment");
@@ -610,32 +476,34 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
       }
       read(this->fd,gbuffer1,length);
 #ifdef HAVE_PTHREAD
-      pthread_mutex_unlock(&genome_read_mutex);
+      pthread_mutex_unlock(&this->read_mutex);
 #endif
 
     } else {
-      /* mmap procedure, uncompressed genome */
       memcpy(gbuffer1,&(this->chars[left]),length*sizeof(char));
     }
-  } else if (this->blocks == NULL) {
-    /* non-mmap procedure, compressed genome */
-#ifdef HAVE_PTHREAD
-    pthread_mutex_lock(&genome_read_mutex);
-#endif
-    uncompress_without_mmap(gbuffer1,this,left,left+length);
-#ifdef HAVE_PTHREAD
-    pthread_mutex_unlock(&genome_read_mutex);
-#endif
+
   } else {
-    /* mmap procedure, compressed genome */
-    uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer1,this,left,left+length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+    }
   }
   gbuffer1[length] = '\0';
 
   if (revcomp == true) {
+    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
     make_complement_buffered(gbuffer2,gbuffer1,length);
     return Sequence_genomic_new(gbuffer2,length);
   } else {
+    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
     return Sequence_genomic_new(gbuffer1,length);
   }
 }
@@ -654,6 +522,7 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
   Interval_T interval;
   char *dest, *src, *matbuffer, *shiftdest, *shiftsrc;
   int index, i, matlen, patchlen, shiftlen, expansion;
+  bool allocp;
   
   assert(reflen <= gbuffer3len);
   refR = refL + reflen;
@@ -667,7 +536,7 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
     interval = IIT_interval(altstrain_iit,index);
     srcL = Interval_low(interval);
     srcR = Interval_high(interval) + 1;	/* Intervals are inclusive */
-    matbuffer = IIT_annotation(altstrain_iit,index);
+    matbuffer = IIT_annotation(altstrain_iit,index,&allocp);
     matlen = IIT_annotation_strlen(altstrain_iit,index);
     matR = srcL + matlen;
 
@@ -689,6 +558,9 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
       dest = &(gbuffer3[srcL-refL]);
       src = &(matbuffer[0]);
       patchlen = matR - srcL;
+    }
+    if (allocp == true) {
+      FREE(matbuffer);
     }
     debug1(printf("srcL=%u matR=%u srcR=%u matlen=%u patchlen=%d expansion=%d\n",
 		  srcL,matR,srcR,matlen,patchlen,expansion));

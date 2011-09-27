@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: params.c,v 1.61 2005/03/04 20:48:09 twu Exp $";
+static char rcsid[] = "$Id: params.c,v 1.62 2005/07/21 16:54:49 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,7 +11,12 @@ static char rcsid[] = "$Id: params.c,v 1.61 2005/03/04 20:48:09 twu Exp $";
 struct T {
   Genome_T genome;
   IIT_T altstrain_iit;
+#ifdef PMAP
+  Indexdb_T indexdb_fwd;
+  Indexdb_T indexdb_rev;
+#else
   Indexdb_T indexdb;
+#endif
   IIT_T chromosome_iit;
   Chrsubset_T chrsubset;
   IIT_T contig_iit;
@@ -48,10 +53,22 @@ Params_refstrain (T this) {
   return IIT_typestring(this->altstrain_iit,0);
 }
 
+#ifdef PMAP
+Indexdb_T
+Params_indexdb_fwd (T this) {
+  return this->indexdb_fwd;
+}
+
+Indexdb_T
+Params_indexdb_rev (T this) {
+  return this->indexdb_rev;
+}
+#else
 Indexdb_T
 Params_indexdb (T this) {
   return this->indexdb;
 }
+#endif
 
 IIT_T
 Params_chromosome_iit (T this) {
@@ -140,7 +157,13 @@ Params_extraband_paired (T this) {
 
 
 T
-Params_new (Genome_T genome, IIT_T altstrain_iit, Indexdb_T indexdb, 
+Params_new (Genome_T genome, IIT_T altstrain_iit, 
+#ifdef PMAP
+	    Indexdb_T indexdb_fwd,
+	    Indexdb_T indexdb_rev,
+#else
+	    Indexdb_T indexdb, 
+#endif
 	    IIT_T chromosome_iit, Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T map_iit, 
 	    int maxextension, int stuttercycles, int stutterhits, int indexsize,
 	    int maxpeelback, int sufflookback, int nsufflookback, int nullgap, 
@@ -150,7 +173,12 @@ Params_new (Genome_T genome, IIT_T altstrain_iit, Indexdb_T indexdb,
 
   new->genome = genome;
   new->altstrain_iit = altstrain_iit;
+#ifdef PMAP
+  new->indexdb_fwd = indexdb_fwd;
+  new->indexdb_rev = indexdb_rev;
+#else
   new->indexdb = indexdb;
+#endif
   new->chromosome_iit = chromosome_iit;
   new->contig_iit = contig_iit;
   new->chrsubset = chrsubset;

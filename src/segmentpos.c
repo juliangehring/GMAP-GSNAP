@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c,v 1.55 2005/07/08 14:41:50 twu Exp $";
+static char rcsid[] = "$Id: segmentpos.c,v 1.56 2005/10/19 03:55:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -184,7 +184,7 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
   Genomicpos_T contig_start, contig_length;
   int relstart, relend;		/* Need to be signed int, not long or unsigned long */
   int index, contig_straintype, i = 0;
-  char *comma1, *comma2, *annotation;
+  char *comma1, *comma2, firstchar;
   int *indices, nindices, j;
   Interval_T interval;
   bool printreferencep, printaltp, firstprintp = false;
@@ -224,15 +224,15 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 
       comma1 = Genomicpos_commafmt((Genomicpos_T) (relstart + !zerobasedp));
       comma2 = Genomicpos_commafmt((Genomicpos_T) (relend + !zerobasedp));
-      annotation = IIT_annotation(contig_iit,index);
-
+      firstchar = IIT_annotation_firstchar(contig_iit,index);
+      
       if (firstprintp == true) {
 	printf("; ");
       } else {
 	firstprintp = true;
       }
 
-      if (annotation[0] == '-') {
+      if (firstchar == '-') {
 	printf("[-]");
       }
       printf("%s",IIT_label(contig_iit,index));

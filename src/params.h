@@ -1,4 +1,4 @@
-/* $Id: params.h,v 1.62 2005/07/08 07:58:34 twu Exp $ */
+/* $Id: params.h,v 1.63 2005/07/21 16:54:49 twu Exp $ */
 #ifndef PARAMS_INCLUDED
 #define PARAMS_INCLUDED
 #include "bool.h"
@@ -16,8 +16,15 @@ extern IIT_T
 Params_altstrain_iit (T this);
 extern char *
 Params_refstrain (T this);
+#ifdef PMAP
+extern Indexdb_T
+Params_indexdb_fwd (T this);
+extern Indexdb_T
+Params_indexdb_rev (T this);
+#else
 extern Indexdb_T
 Params_indexdb (T this);
+#endif
 extern IIT_T
 Params_chromosome_iit (T this);
 extern Chrsubset_T
@@ -53,8 +60,14 @@ Params_extraband_end (T this);
 extern int
 Params_extraband_paired (T this);
 extern T
-Params_new (Genome_T genome, IIT_T altstrain_iit, Indexdb_T indexdb, 
-	    IIT_T chromosome_iit, Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T map_iit,
+Params_new (Genome_T genome, IIT_T altstrain_iit, 
+#ifdef PMAP
+	    Indexdb_T indexdb_fwd,
+	    Indexdb_T indexdb_rev,
+#else
+	    Indexdb_T indexdb, 
+#endif
+	    IIT_T chromosome_iit, Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T map_iit, 
 	    int maxextension, int stuttercycles, int stutterhits, 
 	    int indexsize, int maxpeelback, int sufflookback, int nsufflookback, int nullgap, 
 	    int extramaterial_end, int extramaterial_paired,

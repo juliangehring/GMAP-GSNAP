@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_setup.pl.in,v 1.19 2005/05/06 21:50:48 twu Exp $
+# $Id: gmap_setup.pl.in,v 1.20 2005/05/10 02:19:03 twu Exp $
 
 $gmapdb = "@GMAPDB@";
 $GMAPINDEX = "@BINDIR@/gmapindex";
@@ -8,7 +8,7 @@ $GMAPINDEX = "@BINDIR@/gmapindex";
 use IO::File;
 use Getopt::Std;
 
-# Usage: gmap_setup [-D <path>] -d <db> [-c <coord_file>] [-I] [-q <interval>] <fasta_files>
+# Usage: gmap_setup [-D <path>] -d <db> [-c <coord_file>] [-I] [-q <interval>] [-E] <fasta_files or command>
 
 undef($opt_9);			# debug
 undef($opt_B);			# bindir (needed for "make check")
@@ -19,7 +19,9 @@ undef($opt_s);			# name for reference strain
 undef($opt_W);			# writefilep (for debugging)
 undef($opt_I);			# install flag
 undef($opt_q);			# interval for indexing 12-mers
-getopts("9B:D:d:c:s:WIq:");
+undef($opt_E);			# interpret argument as a command
+
+getopts("9B:D:d:c:s:WIq:E");
 
 #print STDOUT <<TEXT1;
 #
@@ -42,7 +44,10 @@ if (!defined($coord_file = $opt_c)) {
     die "Must specify coordinate file (created by md_coords or fa_coords) with -c flag."
   }
 }
-if (!defined($genome_name = $opt_d)) {
+
+if (defined($opt_9)) {
+  $genome_name = "";
+} elsif (!defined($genome_name = $opt_d)) {
   die "Must specify genome database name with -d flag.";
 } elsif ($opt_d =~ /(\S+)\/(\S+)/) {
   $genome_name = $2;
@@ -75,7 +80,11 @@ if (defined($opt_q)) {
 }
 
 
-$fastafiles = join(" ",@ARGV);
+if (defined($opt_E)) {
+  $incommand = $ARGV[0];
+} else {
+  $incommand = "cat " . join(" ",@ARGV);
+}
 
 $startwatch = localtime time;
 
@@ -84,7 +93,9 @@ $startwatch = localtime time;
 ########################################################################
 
 $FP = new IO::File($coord_file) or die "Cannot open coord file $coord_file";
-print STDOUT "Reading coordinates from file $coord_file\n";
+if (!defined($opt_9)) {
+  print STDOUT "Reading coordinates from file $coord_file\n";
+}
 while (defined($line = <$FP>)) {
   if ($line =~ /^#/) {
     # Skip
@@ -113,7 +124,7 @@ close($FP);
 
 if (defined($opt_9)) {
   $OUT = new IO::File(">&STDOUT");
-  $IN = new IO::File("cat $fastafiles |");
+  $IN = new IO::File("$incommand |");
   process_fasta($IN,$OUT);
   exit;
 }
@@ -121,9 +132,9 @@ if (defined($opt_9)) {
 ########################################################################
 
 print STDOUT "Making contig files...\n";
-$command = "| $GMAPINDEX -d $genome_name -s $refstrain -A";
-$OUT = new IO::File($command);
-$IN = new IO::File("cat $fastafiles |");
+$outcommand = "| $GMAPINDEX -d $genome_name -s $refstrain -A";
+$OUT = new IO::File($outcommand);
+$IN = new IO::File("$incommand |");
 
 process_fasta($IN,$OUT);
 
@@ -133,12 +144,12 @@ close($OUT);
 ########################################################################
 
 print STDOUT "Making genome file...\n";
-$command = "| $GMAPINDEX -d $genome_name -G";
+$outcommand = "| $GMAPINDEX -d $genome_name -G";
 if (defined($opt_W)) {
-  $command .= " -W";
+  $outcommand .= " -W";
 }
-$OUT = new IO::File($command);
-$IN = new IO::File("cat $fastafiles |");
+$OUT = new IO::File($outcommand);
+$IN = new IO::File("$incommand |");
 
 process_fasta($IN,$OUT);
 
@@ -226,8 +237,6 @@ sub process_fasta {
   my ($IN, $OUT) = @_;
 
   my $printp = 0;
-  my $revcompp = 0;
-  my $revsequence = "";
 
   while (defined($line = <$IN>)) {
     if ($line !~ /\S/) {
@@ -238,33 +247,17 @@ sub process_fasta {
 	print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
 	$printp = 0;
       } else {
-	($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;
-	if ($chrpos2 >= $chrpos1) {
-	  $revcompp = 0;
-	  $coords = $coords{$contig};
-	} else {
-	  $revcompp = 1;
-	  # Send coords reversed to gmapindex to indicate contig is revcomp,
-	  # even though sequence is changed here to be forward
-	  #$coords = "$chr:$chrpos2..$chrpos1";
-	  $coords = $coords{$contig};
-	}
 
-	if ($revsequence ne "") {
-	  print_segmented($OUT,revcomp($revsequence));
-	  $revsequence = "";
-	}
+	# ($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;
+	# If $chrpos2 < $chrpos1, then contig needs to be reverse complement.
+	# However, gmapindex knows how to handle this
 
-	printf $OUT (">%s\t%s\t%s\n",$contig,$coords,$strain{$contig});
+	printf $OUT (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
 	$printp = 1;
+
       }
     } elsif ($printp == 1) {
-      if ($revcompp == 0) {
-	print $OUT $line;
-      } else {
-	chop $line;
-	$revsequence .= $line;
-      }
+      print $OUT $line;
     }
   }
   return;
@@ -324,13 +317,6 @@ sub input_yn {
   }
 }
 
-
-sub revcomp {
-  my ($seq) = @_;
-
-  $seq =~ tr/ACGTacgt/TGCAtgca/;
-  return join('',reverse(split '',$seq));
-}
 
 sub print_segmented {
   my ($FP, $seq) = @_;

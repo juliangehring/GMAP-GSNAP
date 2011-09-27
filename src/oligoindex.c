@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c,v 1.41 2005/05/06 16:59:59 twu Exp $";
+static char rcsid[] = "$Id: oligoindex.c,v 1.42 2005/05/20 17:40:36 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -225,7 +225,7 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
     return 1000000.0;
   } else {
     trimlength = *trim_end - *trim_start;
-    oligodepth = (double) (trimlength-indexsize+1)/(double) nunique;
+    oligodepth = (double) noligos/(double) nunique;
     return oligodepth;
   }
 }

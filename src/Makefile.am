@@ -33,7 +33,11 @@ GMAP_SOURCES = bool.h types.h separator.h \
  getopt.c getopt1.c getopt.h gmap.c
 
 gmap_CC = $(PTHREAD_CC)
+if FULLDIST
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
+else
 gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+endif
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
 dist_gmap_SOURCES = $(GMAP_SOURCES)
@@ -50,9 +54,10 @@ GET_GENOME_SOURCES = bool.h types.h separator.h \
  genomicpos.c genomicpos.h chrom.c chrom.h \
  datadir.c datadir.h getopt.c getopt1.c getopt.h get-genome.c
 
-get_genome_CFLAGS = $(AM_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
-get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
-get_genome_LDADD = 
+get_genome_CC = $(PTHREAD_CC)
+get_genome_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+get_genome_LDADD = $(PTHREAD_LIBS)
 dist_get_genome_SOURCES = $(GET_GENOME_SOURCES)
 
 
@@ -65,6 +70,7 @@ IIT_STORE_SOURCES = bool.h types.h \
  tableint.c tableint.h iit_store.c
 iit_store_CFLAGS = $(AM_CFLAGS)
 iit_store_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+iit_store_LDADD =
 dist_iit_store_SOURCES = $(IIT_STORE_SOURCES)
 
 
@@ -91,6 +97,7 @@ IIT_DUMP_SOURCES = bool.h types.h \
 
 iit_dump_CFLAGS = $(AM_CFLAGS)
 iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+iit_dump_LDADD =
 dist_iit_dump_SOURCES = $(IIT_DUMP_SOURCES)
 
 
@@ -105,8 +112,11 @@ OLIGO_COUNT_SOURCES = bool.h types.h \
  compress.c compress.h indexdb.c indexdb.h oligo.c oligo.h \
  block.c block.h \
  oligo-count.c
-oligo_count_CFLAGS = $(AM_CFLAGS)
-oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+
+oligo_count_CC = $(PTHREAD_CC)
+oligo_count_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+oligo_count_LDADD = $(PTHREAD_LIBS)
 nodist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
 
 
@@ -117,6 +127,7 @@ MD5_COMPUTE_SOURCES = bool.h types.h \
  md5-compute.c
 md5_compute_CFLAGS = $(AM_CFLAGS)
 md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+md5_compute_LDADD =
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
 
 
@@ -133,8 +144,10 @@ GMAPINDEX_SOURCES = bool.h types.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  gmapindex.c
 
-gmapindex_CFLAGS = $(AM_CFLAGS)
-gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+gmapindex_CC = $(PTHREAD_CC)
+gmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+gmapindex_LDADD = $(PTHREAD_LIBS)
 dist_gmapindex_SOURCES = $(GMAPINDEX_SOURCES)
 
 

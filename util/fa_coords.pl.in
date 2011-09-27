@@ -1,16 +1,16 @@
 #! @PERL@ -w
-# $Id: fa_coords.pl.in,v 1.6 2005/05/06 20:33:15 twu Exp $
+# $Id: fa_coords.pl.in,v 1.7 2005/05/10 02:18:14 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
 use IO::File;
 undef($opt_o);			# Output file
+undef($opt_E);			# Interpret argument as a command
 use Getopt::Std;
-getopts("o:");
+getopts("o:E");
 
-# Usage: fa_coords [-o <output>] <fastafiles>
+# Usage: fa_coords [-o <output>] [-E] <fastafiles or command>
 
-@fastafiles = @ARGV;
 if (!defined($outfile = $opt_o)) {
   $outfile = "coords.txt";
 }
@@ -20,8 +20,18 @@ $flags .= "-o $outfile";
 
 $OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
 print $OUT "#contig" . "\t" . "coordinates" . "\t" . "altstrain\n";
-parse_fa_files($OUT,\@fastafiles);
+$skipped = parse_fa_files($OUT,\@ARGV);
 close($OUT);
+
+if ($#$skipped >= 0) {
+  printf "\n";
+  printf STDOUT ("*** %d contigs had no recognizable chromosomal assignment, and\n",$#$skipped + 1);
+  print STDOUT   "    were concatenated into a chromosome called \"NA\" ***\n";
+  print STDOUT "If you do not wish to include these contigs, please remove them from $outfile,\n";
+  print STDOUT "or comment them out with the # character at the beginning of each line.\n";
+  print "\n";
+}
+
 
 @errors = ();
 foreach $chr (keys %lowest) {
@@ -29,7 +39,6 @@ foreach $chr (keys %lowest) {
     push @errors,"  First contig in chromosome $chr starts at position $lowest{$chr}";
   }
 }
-
 
 if ($#errors >= 0) {
   print STDOUT "\n";
@@ -75,68 +84,120 @@ exit;
 
 
 sub parse_fa_files {
-  my ($OUT, $fastafiles) = @_;
+  my ($OUT, $argv) = @_;
   my ($FP, $line, $strain);
+  my @skipped = ();
   my $seglength;
 
-  foreach $file (@ {$fastafiles}) {
-    printf STDERR "Opening file $file\n";
-    $FP = new IO::File("$file") or die "Can't open file $file";
+  foreach $arg (@ {$argv}) {
+    if (defined($opt_E)) {
+      printf STDERR "Executing command $arg\n";
+      $FP = new IO::File("$arg |") or die "Can't execute $arg";
+    } else {
+      printf STDERR "Opening file $arg\n";
+      $FP = new IO::File("$arg") or die "Can't open file $arg";
+    }
     $seglength = 0;
+    undef($orientation);
     while (defined($line = <$FP>)) {
       chop $line;
       if ($line !~ /\S/) {
 	# Skip blank lines
+
       } elsif ($line !~ /^>/) {
-	$seglength += length($line);
+	if (defined($chr)) {
+	  $seglength += length($line);
+	}
+
       } else {
+	# Handle previous contig
 	if ($seglength > 0) {
-	  printf STDERR ("%d (length = %d nt)\n",$chrpos{$chr}+$seglength-1,$seglength);
-	  printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+	  printf STDERR ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
+	  if (defined($orientation) && $orientation eq "rev") {
+	    printf STDERR (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	  }
+	  print STDERR "\n";
+
+	  if (defined($orientation) && $orientation eq "rev") {
+	    printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	  } else {
+	    printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+	  }
 	  if (!defined($lowest{$chr})) {
 	    $lowest{$chr} = $chrpos{$chr};
 	  } elsif ($chrpos{$chr} < $lowest{$chr}) {
 	    $lowest{$chr} = $chrpos{$chr};
 	  }
-	  $chrpos{$chr} += $seglength;
+	  $chrpos{$chr} += $seglength; # Used only when a header doesn't have a chrpos for this chr
 	}
 
+	# Handle current header
 	print STDERR "  Header line: $line\n";
 	$seglength = 0;
 	($contig) = $line =~ /^>(\S+)/;
+	undef $orientation;
 	if ($line =~ /\/chr=(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+
 	} elsif ($line =~ /\/chr=(\S+)/) {
 	  $chr = $1;
+
 	} elsif ($line =~ /chromosome:[^:]+:([^:]+):(\d+)/) {
 	  # Ensembl format: chromosome:NCBI35:22:1:49554710:1
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+
+	  if ($chr =~ /(\S+?)_N\D_\d+/) {
+	    # Ensembl notation for unmapped contig
+	    $chr = $1 . "U";
+	  }
+
+	} elsif ($line =~ /\/chromosome=\S+/) {
+	  # Celera format
+	  ($chr) = $line =~ /\/chromosome=(\S+)/;
+	  if ($line =~ /\/alignment=\((\d+)-\d+\)/) {
+	    ($chrpos{$chr}) = $1;
+	    $chrpos{$chr} += 1;	# Because Celera uses 0-based coordinates
+	  }
+	  if ($line =~ /\/orientation=rev/) {
+	    $orientation = "rev";
+	  }
+
 	} elsif ($line =~ /chr(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
+
 	} elsif ($line =~ /chr(\S+)/) {
 	  $chr = $1;
-	} else {
-	  die "Can't find chromosome in header $line";
-	}
 
-	if ($chr =~ /(\S+?)_N\D_\d+/) {
-	  # Ensembl notation for unmapped contig
-	  $chr = $1 . "U";
+	} else {
+	  print STDERR "  Can't find chromosome in header.  Assigning to chromosome NA instead.";
+	  $chr = "NA";
+	  push @skipped,$contig;
 	}
 
 	if (!defined($chrpos{$chr})) {
-	  $chrpos{$chr} = 1;
+	  $chrpos{$chr} = 1;	# Start this contig at beginning of chromosome
 	}
 	printf STDERR ("  Processing contig %s at chromosomal coordinates %s:%d..",
 		       $contig,$chr,$chrpos{$chr});
       }
     }
+
+    # Handle last contig in the file
     if ($seglength > 0) {
-      printf STDERR ("%d (length = %d nt)\n",$chrpos{$chr}+$seglength-1,$seglength);
-      printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+      printf STDERR ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
+      if (defined($orientation) && $orientation eq "rev") {
+	printf STDERR (" (revcomp => %s:%d..%d)",$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+      }
+      print STDERR "\n";
+
+      if (defined($orientation) && $orientation eq "rev") {
+	printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+      } else {
+	printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+      }
       if (!defined($lowest{$chr})) {
 	$lowest{$chr} = $chrpos{$chr};
       } elsif ($chrpos{$chr} < $lowest{$chr}) {
@@ -146,7 +207,7 @@ sub parse_fa_files {
     close($FP);
   }
 
-  return;
+  return \@skipped;
 }
 
 

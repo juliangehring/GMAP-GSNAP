@@ -1,4 +1,4 @@
-/* $Id: stage3.h,v 1.74 2005/05/06 18:44:34 twu Exp $ */
+/* $Id: stage3.h,v 1.76 2005/05/20 17:42:21 twu Exp $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 #include "bool.h"
@@ -39,7 +39,9 @@ Stage3_querystart (T this);
 extern int
 Stage3_queryend (T this);
 extern int
-Stage3_margin (int *chimerapos, T this, Sequence_T queryseq);
+Stage3_domain (T this);
+extern int
+Stage3_largemargin (int *chimerapos, T this, Sequence_T queryseq);
 
 extern double
 Stage3_fracidentity (T this);
@@ -92,7 +94,8 @@ Stage3_print_protein_genomic (T this, int wraplength, bool fulllengthp);
 extern void
 Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 char *version, int pathnum, int npaths,
-			 bool checksump, int chimerapos, bool zerobasedp);
+			 bool checksump, int chimerapos, int chimeraequivpos,
+			 bool zerobasedp);
 
 extern T
 Stage3_copy (T old, Pairpool_T pairpool);
@@ -106,7 +109,7 @@ Stage3_compute (Stage2_T stage2, Sequence_T queryseq, Sequence_T genomicseg,
 		bool watsonp, int maxpeelback, int maxlookback, 
 		int extramaterial_end, int extramaterial_paired,
 		int extraband_single, int extraband_end, int extraband_paired, int ngap,
-		bool extend_mismatch_p, Pairpool_T pairpool, 
+		bool extend_mismatch_p, bool end_microexons_p, Pairpool_T pairpool, 
 		Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		IIT_T altstrain_iit);
 

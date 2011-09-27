@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.62 2005/05/06 21:20:09 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.63 2005/05/10 02:14:52 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -43,6 +43,10 @@ static char rcsid[] = "$Id: indexdb.c,v 1.62 2005/05/06 21:20:09 twu Exp $";
 #include "mem.h"
 #include "stopwatch.h"
 #include "compress.h"
+
+#ifdef HAVE_PTHREAD
+#include <pthread.h>		/* sys/types.h already included above */
+#endif
 
 #define PAGESIZE 1024*4
 
@@ -275,7 +279,9 @@ positions_read_backwards (T this) {
   return value;
 }
 
-
+#ifdef HAVE_PTHREAD
+static pthread_mutex_t indexdb_read_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 /*                 87654321 */
 #define LOW12MER 0x00FFFFFF
@@ -331,10 +337,16 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
     positions = (Genomicpos_T *) CALLOC(*nentries,sizeof(Genomicpos_T));
     if (this->positions == NULL) {
       /* non-mmap procedures */
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&indexdb_read_mutex);
+#endif
       positions_move_absolute(this,ptr0);
       for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
 	positions[i] = positions_read_current(this);
       }
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&indexdb_read_mutex);
+#endif
     } else {
       /* mmap procedures */
 #ifdef WORDS_BIGENDIAN

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c,v 1.5 2005/05/06 21:20:07 twu Exp $";
+static char rcsid[] = "$Id: genome-write.c,v 1.6 2005/05/09 22:28:39 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,6 +21,7 @@ static char rcsid[] = "$Id: genome-write.c,v 1.5 2005/05/06 21:20:07 twu Exp $";
 #include "interval.h"
 #include "compress.h"
 #include "iit-write.h"
+#include "complement.h"
 
 #ifdef DEBUG
 #define debug(x) x
@@ -36,10 +37,12 @@ static char rcsid[] = "$Id: genome-write.c,v 1.5 2005/05/06 21:20:07 twu Exp $";
    unsigned int has the flags */
 
 static void
-find_positions (Genomicpos_T *startposition, Genomicpos_T *endposition, Genomicpos_T *truelength,
+find_positions (bool *revcompp, Genomicpos_T *leftposition, Genomicpos_T *rightposition,
+		Genomicpos_T *startposition, Genomicpos_T *endposition, Genomicpos_T *truelength,
 		int *contigtype, char *accession, IIT_T contig_iit) {
   int index;
   Interval_T interval;
+  char *annotation;
 
   if ((index = IIT_find_one(contig_iit,accession)) == -1) {
     fprintf(stderr,"Can't find accession %s in contig IIT file\n",
@@ -47,10 +50,25 @@ find_positions (Genomicpos_T *startposition, Genomicpos_T *endposition, Genomicp
     exit(9);
   } else {	
     interval = IIT_interval(contig_iit,index);
-    *startposition = Interval_low(interval);
-    *endposition = Interval_high(interval);
+
+    *leftposition = Interval_low(interval);
+    *rightposition = Interval_high(interval);
+
+    annotation = IIT_annotation(contig_iit,index);
+    if (annotation[0] == '-') {
+      *revcompp = true;
+      *startposition = Interval_high(interval) + 1U;
+      *endposition = Interval_low(interval) + 1U;
+    } else {
+      *revcompp = false;
+      *startposition = Interval_low(interval);
+      *endposition = Interval_high(interval);
+    }
+
     *truelength = Interval_length(interval);
     *contigtype = Interval_type(interval);
+    debug(printf("revcompp = %d, leftposition = %d, rightposition = %d, startposition = %d, endposition = %d\n",
+		 *revcompp,*leftposition,*rightposition,*startposition,*endposition));
     return;
   }
 }
@@ -112,24 +130,44 @@ parse_accession (char *Header) {
   return accession;
 }
 
+static void
+make_complement_buffered (char *complement, char *sequence, unsigned int length) {
+  char complCode[128] = COMPLEMENT;
+  int i, j;
+
+  /* complement = (char *) CALLOC(length+1,sizeof(char)); */
+  for (i = length-1, j = 0; i >= 0; i--, j++) {
+    complement[j] = complCode[sequence[i]];
+  }
+  complement[length] = '\0';
+  return;
+}
 
 /* Puts reference genome into refgenome_fp (potentially compressed!),
    and puts alternate strain sequences into altstrain_iit. */
 static void
 genome_write_file (FILE *refgenome_fp, FILE *input, 
 		   IIT_T contig_iit, IIT_T altstrain_iit, bool uncompressedp) {
-  char Buffer[BUFFERSIZE];
+  char Buffer[BUFFERSIZE], Complement[BUFFERSIZE], *segment;
   char *accession, *p;
-  Genomicpos_T startposition, endposition, truelength, maxposition = 0, currposition = 0, i;
+  Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
+    maxposition = 0, currposition = 0, i;
   int altstrain_index, altstrain_offset, contigtype, rc;
+  bool revcompp;
 
   while (fgets(Buffer,BUFFERSIZE,input) != NULL) {
     if (Buffer[0] == '>') {
       /* HEADER */
       accession = parse_accession(Buffer);
-      find_positions(&startposition,&endposition,&truelength,&contigtype,accession,contig_iit);
-      fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
-	      accession,startposition+1U,endposition+1U);
+      find_positions(&revcompp,&leftposition,&rightposition,&startposition,&endposition,
+		     &truelength,&contigtype,accession,contig_iit);
+      if (revcompp == true) {
+	fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
+		accession,startposition,endposition);
+      } else {
+	fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
+		accession,startposition+1U,endposition+1U);
+      }
       if (contigtype > 0) {
 	fprintf(stderr," (alternate strain %s)",IIT_typestring(altstrain_iit,contigtype));
       }
@@ -137,16 +175,26 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
       FREE(accession);
 
       if (contigtype > 0) {
-	/* Set file pointer for alternate strain */
-	altstrain_index = IIT_get_exact(altstrain_iit,startposition,endposition,contigtype);
-	altstrain_offset = 0;
+	/* Initialize file pointer for alternate strain */
+	altstrain_index = IIT_get_exact(altstrain_iit,leftposition,rightposition,contigtype);
+	if (revcompp == true) {
+	  altstrain_offset = rightposition + 1U - leftposition;
+	} else {
+	  altstrain_offset = 0;
+	}
+	debug(printf("Setting altstrain_offset to be %d\n",altstrain_offset));
       }
 
       /* Handles case where true length is greater than provided
          coordinates.  This needs to be after call to IIT_get_exact */
-      if (startposition + truelength > endposition) {
+      if (leftposition + truelength - 1U > rightposition) {
 	debug(fprintf(stderr,"Extending endposition for truelength of %u\n",truelength));
-	endposition = startposition + truelength;
+	rightposition = leftposition + truelength;
+	if (revcompp == true) {
+	  endposition = startposition - truelength;
+	} else {
+	  endposition = startposition + truelength;
+	}
       }
 
       /* In both cases, set file pointer for reference strain,
@@ -155,23 +203,24 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
          with sufficient X's. */
       if (startposition > maxposition) {
 	/* Start beyond end of file */
-	debug(printf("Filling with X's from %u to %u\n",maxposition,startposition));
+	debug(printf("Filling with X's from %u to %u-1\n",maxposition,startposition));
 	fill_x(refgenome_fp,maxposition,startposition,uncompressedp);
 	  
 	if (contigtype > 0) {
-	  fill_x(refgenome_fp,startposition,endposition + 1,uncompressedp);
-	  maxposition = currposition = endposition + 1;
+	  fill_x(refgenome_fp,leftposition,rightposition + 1,uncompressedp);
+	  maxposition = currposition = rightposition + 1;
 	} else {
-	  maxposition = currposition = startposition;
+	  maxposition = rightposition;
+	  currposition = startposition;
 	}
 
       } else {
 	/* Start within file */
 	if (contigtype > 0) {
-	  if (endposition + 1 > maxposition) {
-	    debug(printf("Filling with X's from %u to %u\n",maxposition,endposition+1));
-	    fill_x(refgenome_fp,maxposition,endposition + 1,uncompressedp);
-	    maxposition = currposition = endposition + 1;
+	  if (rightposition + 1 > maxposition) {
+	    debug(printf("Filling with X's from %u to %u-1\n",maxposition,rightposition+1));
+	    fill_x(refgenome_fp,maxposition,rightposition + 1,uncompressedp);
+	    maxposition = currposition = rightposition + 1;
 	  }
 	} else {
 	  debug(printf("Moving to %u\n",startposition));
@@ -187,22 +236,45 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
       if ((p = rindex(Buffer,'\n')) != NULL) {
 	*p = '\0';
       }
+      if (revcompp == true) {
+	make_complement_buffered(Complement,Buffer,strlen(Buffer));
+	segment = Complement;
+      } else {
+	segment = Buffer;
+      }
+
       if (contigtype > 0) {
 	/* Write alternate strain */
-	debug(printf("Writing alternate strain at %u\n",altstrain_offset));
-	IIT_backfill_sequence(altstrain_iit,altstrain_index,altstrain_offset,Buffer);
-	altstrain_offset += strlen(Buffer);
+	if (revcompp == true) {
+	  altstrain_offset -= strlen(segment);
+	  debug(printf("Writing alternate strain at %u\n",altstrain_offset));
+	  IIT_backfill_sequence(altstrain_iit,altstrain_index,altstrain_offset,segment);
+	} else {
+	  debug(printf("Writing alternate strain at %u\n",altstrain_offset));
+	  IIT_backfill_sequence(altstrain_iit,altstrain_index,altstrain_offset,segment);
+	  altstrain_offset += strlen(segment);
+	}
       } else {
 	/* Write reference strain */
-	debug(printf("Filling with sequence from %u to %u\n",currposition,currposition+strlen(Buffer)));
-	if (uncompressedp == true) {
-	  fwrite(Buffer,sizeof(char),strlen(Buffer),refgenome_fp);
+	if (revcompp == true) {
+	  debug(printf("Filling with sequence from %u-1 to %u\n",currposition,currposition-strlen(segment)));
+	  currposition -= strlen(segment);
+	  if (uncompressedp == true) {
+	    fwrite(segment,sizeof(char),strlen(segment),refgenome_fp);
+	  } else {
+	    Compress_update_file(refgenome_fp,segment,currposition,currposition+strlen(segment));
+	  }
 	} else {
-	  Compress_update_file(refgenome_fp,Buffer,currposition,currposition+strlen(Buffer));
-	}
-	currposition += strlen(Buffer);
-	if (currposition > maxposition) {
-	  maxposition = currposition;
+	  debug(printf("Filling with sequence from %u to %u-1\n",currposition,currposition+strlen(segment)));
+	  if (uncompressedp == true) {
+	    fwrite(segment,sizeof(char),strlen(segment),refgenome_fp);
+	  } else {
+	    Compress_update_file(refgenome_fp,segment,currposition,currposition+strlen(segment));
+	  }
+	  currposition += strlen(segment);
+	  if (currposition > maxposition) {
+	    maxposition = currposition;
+	  }
 	}
       }
     }
@@ -218,18 +290,26 @@ static void
 genome_write_memory (FILE *refgenome_fp, FILE *input, 
 		     IIT_T contig_iit, IIT_T altstrain_iit, UINT4 *genomecomp,
 		     unsigned int nuint4) {
-  char Buffer[BUFFERSIZE];
+  char Buffer[BUFFERSIZE], Complement[BUFFERSIZE], *segment;
   char *accession, *p;
-  Genomicpos_T startposition, endposition, truelength, maxposition = 0, currposition = 0, i;
+  Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
+    maxposition = 0, currposition = 0, i;
   int altstrain_index, altstrain_offset, contigtype, rc;
+  bool revcompp;
 
   while (fgets(Buffer,BUFFERSIZE,input) != NULL) {
     if (Buffer[0] == '>') {
       /* HEADER */
       accession = parse_accession(Buffer);
-      find_positions(&startposition,&endposition,&truelength,&contigtype,accession,contig_iit);
-      fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
-	      accession,startposition+1U,endposition+1U);
+      find_positions(&revcompp,&leftposition,&rightposition,&startposition,&endposition,
+		     &truelength,&contigtype,accession,contig_iit);
+      if (revcompp == true) {
+	fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
+		accession,startposition,endposition);
+      } else {
+	fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
+		accession,startposition+1U,endposition+1U);
+      }
       if (contigtype > 0) {
 	fprintf(stderr," (alternate strain %s)",IIT_typestring(altstrain_iit,contigtype));
       }
@@ -237,16 +317,26 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
       FREE(accession);
 
       if (contigtype > 0) {
-	/* Set file pointer for alternate strain */
-	altstrain_index = IIT_get_exact(altstrain_iit,startposition,endposition,contigtype);
-	altstrain_offset = 0;
+	/* Initialize file pointer for alternate strain */
+	altstrain_index = IIT_get_exact(altstrain_iit,leftposition,rightposition,contigtype);
+	if (revcompp == true) {
+	  altstrain_offset = rightposition + 1U - leftposition;
+	} else {
+	  altstrain_offset = 0;
+	}
+	debug(printf("Setting altstrain_offset to be %d\n",altstrain_offset));
       }
 
       /* Handles case where true length is greater than provided
          coordinates.  This needs to be after call to IIT_get_exact */
-      if (startposition + truelength > endposition) {
+      if (leftposition + truelength - 1U > rightposition) {
 	debug(fprintf(stderr,"Extending endposition for truelength of %u\n",truelength));
-	endposition = startposition + truelength;
+	rightposition = leftposition + truelength;
+	if (revcompp == true) {
+	  endposition = startposition - truelength;
+	} else {
+	  endposition = startposition + truelength;
+	}
       }
 
       /* In both cases, set file pointer for reference strain,
@@ -255,23 +345,24 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
          with sufficient X's. */
       if (startposition > maxposition) {
 	/* Start beyond end of file */
-	debug(printf("Filling with X's from %u to %u\n",maxposition,startposition));
+	debug(printf("Filling with X's from %u to %u-1\n",maxposition,startposition));
 	fill_x_memory(genomecomp,maxposition,startposition);
 	  
 	if (contigtype > 0) {
-	  fill_x_memory(genomecomp,startposition,endposition + 1);
-	  maxposition = currposition = endposition + 1;
+	  fill_x_memory(genomecomp,leftposition,rightposition + 1);
+	  maxposition = currposition = rightposition + 1;
 	} else {
-	  maxposition = currposition = startposition;
+	  maxposition = rightposition;
+	  currposition = startposition;
 	}
 
       } else {
 	/* Start within file */
 	if (contigtype > 0) {
-	  if (endposition + 1 > maxposition) {
-	    debug(printf("Filling with X's from %u to %u\n",maxposition,endposition+1));
-	    fill_x_memory(genomecomp,maxposition,endposition + 1);
-	    maxposition = currposition = endposition + 1;
+	  if (rightposition + 1 > maxposition) {
+	    debug(printf("Filling with X's from %u to %u-1\n",maxposition,rightposition+1));
+	    fill_x_memory(genomecomp,maxposition,rightposition + 1);
+	    maxposition = currposition = rightposition + 1;
 	  }
 	} else {
 	  debug(printf("Moving to %u\n",startposition));
@@ -284,18 +375,37 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
       if ((p = rindex(Buffer,'\n')) != NULL) {
 	*p = '\0';
       }
+      if (revcompp == true) {
+	make_complement_buffered(Complement,Buffer,strlen(Buffer));
+	segment = Complement;
+      } else {
+	segment = Buffer;
+      }
+
       if (contigtype > 0) {
 	/* Write alternate strain */
-	debug(printf("Writing alternate strain at %u\n",altstrain_offset));
-	IIT_backfill_sequence(altstrain_iit,altstrain_index,altstrain_offset,Buffer);
-	altstrain_offset += strlen(Buffer);
+	if (revcompp == true) {
+	  altstrain_offset -= strlen(segment);
+	  debug(printf("Writing alternate strain at %u\n",altstrain_offset));
+	  IIT_backfill_sequence(altstrain_iit,altstrain_index,altstrain_offset,segment);
+	} else {
+	  debug(printf("Writing alternate strain at %u\n",altstrain_offset));
+	  IIT_backfill_sequence(altstrain_iit,altstrain_index,altstrain_offset,segment);
+	  altstrain_offset += strlen(segment);
+	}
       } else {
 	/* Write reference strain */
-	debug(printf("Filling with sequence from %u to %u\n",currposition,currposition+strlen(Buffer)));
-	Compress_update_memory(genomecomp,Buffer,currposition,currposition+strlen(Buffer));
-	currposition += strlen(Buffer);
-	if (currposition > maxposition) {
-	  maxposition = currposition;
+	if (revcompp == true) {
+	  debug(printf("Filling with sequence from %u-1 to %u\n",currposition,currposition-strlen(segment)));
+	  currposition -= strlen(segment);
+	  Compress_update_memory(genomecomp,segment,currposition,currposition+strlen(segment));
+	} else {
+	  debug(printf("Filling with sequence from %u to %u-1\n",currposition,currposition+strlen(segment)));
+	  Compress_update_memory(genomecomp,segment,currposition,currposition+strlen(segment));
+	  currposition += strlen(segment);
+	  if (currposition > maxposition) {
+	    maxposition = currposition;
+	  }
 	}
       }
     }

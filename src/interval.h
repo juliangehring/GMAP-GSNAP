@@ -1,4 +1,4 @@
-/* $Id: interval.h,v 1.13 2005/02/07 23:56:56 twu Exp $ */
+/* $Id: interval.h,v 1.14 2005/05/09 22:33:33 twu Exp $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
 #include "bool.h"
@@ -32,9 +32,9 @@ extern unsigned int
 Interval_array_high (struct T *intervals, int index);
 
 extern bool
-Interval_is_contained (struct T *intervals, unsigned int x, int index);
+Interval_is_contained (unsigned int x, struct T *intervals, int index);
 extern bool
-Interval_overlap_p (struct T *intervals, unsigned int x, unsigned int y, int index);
+Interval_overlap_p (unsigned int x, unsigned int y, struct T *intervals, int index);
 
 extern void
 Interval_qsort_by_sigma (int *table, int i, int j, struct T *intervals);

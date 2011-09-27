@@ -79,7 +79,9 @@ the chromosome, in one of these forms
 
     /chr=1:217281..257582
     /chr=1
-    chromosome:NCBI35:22:1:49554710:1
+    chromosome:NCBI35:22:1:49554710:1                                    [Ensembl format]
+    /chromosome=2
+    /chromosome=2 /alignment=(88840247-88864134) /orientation=rev        [Celera format]
     chr1:217281..257582
     chr1
 
@@ -100,6 +102,24 @@ The notation <fasta_file>... indicates that multiple files can be
 listed.  The files can be in any order, and the contigs can be in any
 order within these files.  The program will assemble the contigs and
 chromosomes into their appropriate order.
+
+
+Advanced notes:
+
+1.  If you need to do pre-processing of FASTA files before using these
+programs, perhaps because you need to insert chromosomal information
+in the header lines, you can specify a command instead of multiple
+fasta_files, like this:
+
+    fa_coords -E 'cat *.fa | ./my-processing-program.pl'
+    gmap_setup -d <db_name> -E 'cat *.fa | ./my-processing-program.pl'
+
+
+2.  After creating coords.txt, you may edit it directly if you want to
+make changes.  You may delete lines or comment them out with a '#'
+character, which will effectively omit those contigs from your genome
+build.  You may also change chromosomal assignments (in column 2) or
+assign contigs to alternative strains (in column 3).
 
 
 Running GMAP

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: interval.c,v 1.13 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: interval.c,v 1.14 2005/05/09 22:33:28 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -73,7 +73,7 @@ Interval_array_high (struct T *intervals, int index) {
 
 /* Have to subtract 1 because intervals array is zero-based */
 bool
-Interval_is_contained (struct T *intervals, unsigned int x, int index) {
+Interval_is_contained (unsigned int x, struct T *intervals, int index) {
   unsigned int low = intervals[index-1].low;
   unsigned int high = intervals[index-1].high;
 
@@ -86,7 +86,7 @@ Interval_is_contained (struct T *intervals, unsigned int x, int index) {
 
 /* Have to subtract 1 because intervals array is zero-based */
 bool
-Interval_overlap_p (struct T *intervals, unsigned int x, unsigned int y, int index) {
+Interval_overlap_p (unsigned int x, unsigned int y, struct T *intervals, int index) {
   unsigned int low = intervals[index-1].low;
   unsigned int high = intervals[index-1].high;
 

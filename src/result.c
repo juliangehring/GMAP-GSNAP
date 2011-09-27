@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c,v 1.43 2005/05/06 18:44:03 twu Exp $";
+static char rcsid[] = "$Id: result.c,v 1.44 2005/05/09 22:34:09 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -12,6 +12,7 @@ static char rcsid[] = "$Id: result.c,v 1.43 2005/05/06 18:44:03 twu Exp $";
 struct T {
   int id;
   int chimerapos;		/* -1 indicates not a chimera */
+  int chimeraequivpos;
   int nonchimera_matches;
   int nonchimera_mismatches;
   int nonchimera_indels;
@@ -30,6 +31,11 @@ Result_id (T this) {
 int
 Result_chimerapos (T this) {
   return this->chimerapos;
+}
+
+int
+Result_chimeraequivpos (T this) {
+  return this->chimeraequivpos;
 }
 
 int
@@ -63,12 +69,14 @@ Result_array (int *npaths, T this) {
 
 
 T
-Result_new (int id, int chimerapos, int nonchimera_matches, int nonchimera_mismatches,
-	    int nonchimera_indels, Stage1_T stage1, Stage3_T *array, int npaths) {
+Result_new (int id, int chimerapos, int chimeraequivpos, int nonchimera_matches, 
+	    int nonchimera_mismatches, int nonchimera_indels, Stage1_T stage1, 
+	    Stage3_T *array, int npaths) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
   new->chimerapos = chimerapos;
+  new->chimeraequivpos = chimeraequivpos;
   new->nonchimera_matches = nonchimera_matches;
   new->nonchimera_mismatches = nonchimera_mismatches;
   new->nonchimera_indels = nonchimera_indels;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.69 2005/05/03 16:49:08 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.70 2005/05/10 02:14:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -33,6 +33,10 @@ static char rcsid[] = "$Id: genome.c,v 1.69 2005/05/03 16:49:08 twu Exp $";
 */
 #ifdef PAGESIZE_VIA_SYSCTL
 #include <sys/sysctl.h>
+#endif
+
+#ifdef HAVE_PTHREAD
+#include <pthread.h>		/* sys/types.h already included above */
 #endif
 
 #include "assert.h"
@@ -553,6 +557,11 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
   return;
 }
 
+#ifdef HAVE_PTHREAD
+static pthread_mutex_t genome_read_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+
 Sequence_T
 Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, 
 		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
@@ -567,17 +576,34 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
   if (this->compressedp == false) {
     /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
     if (this->chars == NULL) {
+      /* non-mmap procedure, uncompressed genome */
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&genome_read_mutex);
+#endif
       if (lseek(this->fd,left,SEEK_SET) < 0) {
 	perror("Error in gmap, Genome_get_segment");
 	exit(9);
       }
       read(this->fd,gbuffer1,length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&genome_read_mutex);
+#endif
+
     } else {
+      /* mmap procedure, uncompressed genome */
       memcpy(gbuffer1,&(this->chars[left]),length*sizeof(char));
     }
   } else if (this->blocks == NULL) {
+    /* non-mmap procedure, compressed genome */
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&genome_read_mutex);
+#endif
     uncompress_without_mmap(gbuffer1,this,left,left+length);
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&genome_read_mutex);
+#endif
   } else {
+    /* mmap procedure, compressed genome */
     uncompress_mmap(gbuffer1,this->blocks,left,left+length);
   }
   gbuffer1[length] = '\0';

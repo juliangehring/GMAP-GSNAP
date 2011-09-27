@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.92 2005/05/03 17:25:24 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.93 2005/05/09 22:29:52 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,7 @@ static char rcsid[] = "$Id: gmapindex.c,v 1.92 2005/05/03 17:25:24 twu Exp $";
 #include <string.h>
 #include <strings.h>		/* For rindex */
 #include "bool.h"
+#include "assert.h"
 #include "mem.h"
 #include "table.h"
 #include "tableint.h"
@@ -99,26 +100,37 @@ store_accession (Table_T accsegmentpos_table, Tableint_T chrlength_table,
 }
 
 
-static int
+/* We assume that header has already been read.  We need to check each
+   new line for a new header */
+static int 
 count_sequence () {
   int c;
   int seglength = 0;
+  char Buffer[BUFFERSIZE], *p;
+  bool newline = true;
 
-  while ((c = getc(stdin)) != EOF) {
-    if (c == '>') {
-      return seglength;
-    } else if (c == '\n') {
-      c = getc(stdin);
-      if (c == EOF || c == '>') {
+  while (1) {
+    /* Start of new line */
+    if (newline == true) {
+      if ((c = getc(stdin)) == EOF || c == '>') {
 	return seglength;
       } else {
-	seglength++;
+	seglength += 1;
       }
+    }
+
+    if (fgets(Buffer,BUFFERSIZE,stdin) == NULL) {
+      return seglength;
     } else {
-      seglength++;
+      if ((p = rindex(Buffer,'\n')) != NULL) {
+	*p = '\0';
+	newline = true;
+      } else {
+	newline = false;
+      }
+      seglength += strlen(Buffer);
     }
   }
-  return seglength;
 }
 
 
@@ -140,7 +152,7 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
     fprintf(stderr,"Can't parse line %s\n",Buffer);
     exit(1);
   } else {
-    fprintf(stderr,"Processing contig %s at %s\n",accession_p,chrpos_string);
+    fprintf(stderr,"Logging contig %s at %s\n",accession_p,chrpos_string);
     if (!index(chrpos_string,':')) {
       fprintf(stderr,"Can't parse chromosomal coordinates %s\n",chrpos_string);
       exit(1);
@@ -195,6 +207,7 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
       }
     }
 
+    /* The '>' character was already stripped off by the last call to count_sequence() */
     accession = (char *) CALLOC(strlen(accession_p)+1,sizeof(char));
     strcpy(accession,accession_p);
   }
@@ -248,6 +261,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   for (i = 0; i < n; i++) {
     chrlength = (Genomicpos_T) Tableint_get(chrlength_table,chroms[i]);
     chr_string = Chrom_to_string(chroms[i]);
+    assert(chroffset < chroffset+chrlength-1);
     fprintf(stderr,"Chromosome %s has universal coordinates %u..%u\n",
 	    chr_string,chroffset+1,chroffset+1+chrlength-1);
 
@@ -509,6 +523,7 @@ remove_slashes (char *buffer) {
 int 
 main (int argc, char *argv[]) {
   int contigtype;
+  int ncontigs;
   Table_T accsegmentpos_table;
   Tableint_T chrlength_table;
   Tableint_T contigtype_table;
@@ -583,8 +598,14 @@ main (int argc, char *argv[]) {
     typestring = (char *) CALLOC(sizeof(refstrain)+1,sizeof(char));
     strcpy(typestring,refstrain);
     contigtypelist = List_push(NULL,typestring);
+    ncontigs = 0;
     while (process_sequence_aux(&contigtypelist,accsegmentpos_table,contigtype_table,
 				chrlength_table) == true) {
+      ncontigs++;
+    }
+    if (ncontigs == 0) {
+      fprintf(stderr,"No contig information was provided to gmapindex\n");
+      exit(9);
     }
 
     contigtypelist = List_reverse(contigtypelist);

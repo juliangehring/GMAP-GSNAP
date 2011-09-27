@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c,v 1.127 2005/05/06 18:44:53 twu Exp $";
+static char rcsid[] = "$Id: pair.c,v 1.129 2005/05/20 17:41:03 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1488,11 +1488,14 @@ Pair_matchscores (struct T *ptr, int npairs,
 		  int cdna_direction, int querylength) {
   int *matchscores;
   int querypos;
-  bool in_intron = false;
   T this;
   int i;
 
   matchscores = (int *) CALLOC(querylength,sizeof(int));
+  /* Make default to be a match, so any sequence oddity shows up as a mismatch */
+  for (i = 0; i < querylength; i++) {
+    matchscores[i] = 1;
+  }
 
   for (i = 0; i < npairs; i++) {
     this = ptr++;
@@ -1503,28 +1506,9 @@ Pair_matchscores (struct T *ptr, int npairs,
       RAISE(Array_bounds_error);
     }
 
-    if (this->gapp) {
-      if (!in_intron) {
-	/* no effect on matchscores[querypos] */
-	in_intron = true;
-      }
-    } else {
-      if (in_intron) {
-	in_intron = false;
-      }
-      if (this->comp == '-') {
-	matchscores[querypos] = 0;
-      } else if (this->comp == '~') {
-	/* Do nothing */
-      } else if (unknown_base(this->cdna) || unknown_base(this->genome)) {
-	/* (*unknowns)++; */
-      } else if (this->comp == '|' || this->comp == '*') {
-	matchscores[querypos] = 1; /* For match */
-      } else if (this->comp == ' ') {
-	matchscores[querypos] = 0;
-      } else {
-	fprintf(stderr,"Can't parse comp %c, gapp %d\n",this->comp,this->gapp);
-	abort();
+    if (!this->gapp) {
+      if (this->comp != '|' && this->comp != '*') {
+	matchscores[querypos] = 0; /* For mismatch */
       }
     }
   }
@@ -1966,7 +1950,8 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		       Genomicpos_T chroffset, IIT_T chromosome_iit, 
 		       Genomicpos_T genomiclength, bool checksump,
-		       int chimerapos, char *strain, bool watsonp, bool zerobasedp) {
+		       int chimerapos, int chimeraequivpos, char *strain, bool watsonp, 
+		       bool zerobasedp) {
   Genomicpos_T chrpos1, chrpos2, position1, position2;
   char *chrstring = NULL;
 
@@ -2025,7 +2010,11 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
   }
 
   if (chimerapos >= 0) {
-    printf(" chimera:%d",chimerapos);
+    if (chimeraequivpos == chimerapos) {
+      printf(" chimera:%d",chimerapos);
+    } else {
+      printf(" chimera:%d..%d",chimerapos,chimeraequivpos);
+    }
   }
 
   if (strain != NULL) {

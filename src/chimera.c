@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c,v 1.7 2005/05/06 17:03:03 twu Exp $";
+static char rcsid[] = "$Id: chimera.c,v 1.9 2005/05/20 17:37:37 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,6 +11,7 @@ static char rcsid[] = "$Id: chimera.c,v 1.7 2005/05/06 17:03:03 twu Exp $";
 #include "nmath.h"
 
 
+/* Chimera assembly */
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -28,8 +29,9 @@ static char rcsid[] = "$Id: chimera.c,v 1.7 2005/05/06 17:03:03 twu Exp $";
 
 #define NPSEUDO 10.0
 
-double
-Chimera_detect (int *breakpoint, int *margin, Stage3_T stage3, Sequence_T queryseq) {
+int
+Chimera_detect (int *margin, Stage3_T stage3, Sequence_T queryseq, double fthreshold) {
+  int breakpoint;
   double pvalue = 1.0;
   int *matchscores;
   int querylength, leftmargin, rightmargin;
@@ -37,7 +39,7 @@ Chimera_detect (int *breakpoint, int *margin, Stage3_T stage3, Sequence_T querys
   /* x signifies nmatches, y signifies nmismatches, x + y = n */
   int start, end, pos, x = 0, y, n, x_left, y_left, x_right, y_right, n_left, n_right;
   double theta, x_pseudo, theta_left, theta_right, rss, rss_left, rss_right, rss_sep;
-  double fscore, tstat, min_rss_sep, best_pos = -1;
+  double fscore, min_rss_sep, best_pos = -1;
 
   /*
   start = Sequence_trim_start(queryseq);
@@ -60,9 +62,9 @@ Chimera_detect (int *breakpoint, int *margin, Stage3_T stage3, Sequence_T querys
   /* when rss_sep == rss, fscore == 0 */
   min_rss_sep = rss = (double) x * (double) y/(double) n;
   if (rss == 0.0) {
-    *breakpoint = -1;
+    *margin = 0;
     FREE(matchscores);
-    return 1.0;
+    return -1;
   }
 
   theta = (double) x/(double) n;
@@ -118,40 +120,36 @@ Chimera_detect (int *breakpoint, int *margin, Stage3_T stage3, Sequence_T querys
       }
     }
   }
-
-  *breakpoint = best_pos;
-  *margin = 0;
-
-  fscore = ((double) (n - 2))*(rss - min_rss_sep)/min_rss_sep;
-  tstat = sqrt(fscore);
-  pvalue = 2*Nmath_pnormc(tstat); /* Two-sided */
-  if (pvalue > 1.0) {
-    pvalue = 1.0;
-  }
-  if ((leftmargin = *breakpoint - Sequence_trim_start(queryseq)) < 0) {
-    leftmargin = 0;
-  }
-  if ((rightmargin = Sequence_trim_end(queryseq) - *breakpoint) < 0) {
-    rightmargin = 0;
-  }
-
-  /* Return smaller margin */
-  if (leftmargin < rightmargin) {
-    *margin = leftmargin;
-  } else {
-    *margin = rightmargin;
-  }
-
   FREE(matchscores);
 
-  debug1(printf("at %d (margin = %d), tstat = %f, pvalue = %g\n",*breakpoint,*margin,tstat,pvalue));
-  return pvalue;
+  fscore = ((double) (n - 2))*(rss - min_rss_sep)/min_rss_sep;
+  if (fscore < fthreshold) {
+    *margin = 0;
+    return -1;
+  } else {
+    breakpoint = best_pos;
+    if ((leftmargin = breakpoint - Sequence_trim_start(queryseq)) < 0) {
+      leftmargin = 0;
+    }
+    if ((rightmargin = Sequence_trim_end(queryseq) - breakpoint) < 0) {
+      rightmargin = 0;
+    }
+
+    /* Return smaller margin */
+    if (leftmargin < rightmargin) {
+      *margin = leftmargin;
+    } else {
+      *margin = rightmargin;
+    }
+    debug1(printf("at %d (margin = %d), fscore = %f\n",breakpoint,*margin,fscore));
+    return breakpoint;
+  }
 }
 
 
 
 void
-Chimera_bestpath (int *bestfrom, int *bestto, int *bestpos,
+Chimera_bestpath (int *bestfrom, int *bestto, int *bestpos, int *equivpos,
 		  int *fromscore_3, int *toscore_5,
 		  Stage3_T *stage3array, int npaths, int querylength) {
   int **matrix, *from, *to, *bestscoreatpos, i, j, pos, score, 
@@ -197,9 +195,11 @@ Chimera_bestpath (int *bestfrom, int *bestto, int *bestpos,
   for (pos = 0; pos < querylength; pos++) {
     if (bestscoreatpos[pos] > bestscore) {
       bestscore = bestscoreatpos[pos];
-      *bestpos = pos;
+      *bestpos = *equivpos = pos;
       *bestfrom = from[pos];
       *bestto = to[pos];
+    } else if (bestscoreatpos[pos] == bestscore) {
+      *equivpos = pos;
     }
   }
 

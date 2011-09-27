@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.72 2005/05/06 18:44:53 twu Exp $ */
+/* $Id: pair.h,v 1.73 2005/05/09 22:33:57 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -106,7 +106,8 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		       Genomicpos_T chroffset, IIT_T chromosome_iit,
 		       Genomicpos_T genomiclength, bool checksump, 
-		       int chimerapos, char *strain, bool watsonp, bool zerobasedp);
+		       int chimerapos, int chimeraequivpos, char *strain, bool watsonp, 
+		       bool zerobasedp);
 
 extern void
 Pair_fracidentity (int *matches, int *unknowns, int *mismatches, 

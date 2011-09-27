@@ -163,7 +163,8 @@ GMAP_SOURCES = bool.h types.h separator.h \
 
 
 gmap_CC = $(PTHREAD_CC)
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+@FULLDIST_FALSE@gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+@FULLDIST_TRUE@gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
 dist_gmap_SOURCES = $(GMAP_SOURCES)
@@ -180,9 +181,10 @@ GET_GENOME_SOURCES = bool.h types.h separator.h \
  datadir.c datadir.h getopt.c getopt1.c getopt.h get-genome.c
 
 
-get_genome_CFLAGS = $(AM_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
-get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
-get_genome_LDADD = 
+get_genome_CC = $(PTHREAD_CC)
+get_genome_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+get_genome_LDADD = $(PTHREAD_LIBS)
 dist_get_genome_SOURCES = $(GET_GENOME_SOURCES)
 
 IIT_STORE_SOURCES = bool.h types.h \
@@ -195,6 +197,7 @@ IIT_STORE_SOURCES = bool.h types.h \
 
 iit_store_CFLAGS = $(AM_CFLAGS)
 iit_store_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+iit_store_LDADD = 
 dist_iit_store_SOURCES = $(IIT_STORE_SOURCES)
 
 IIT_GET_SOURCES = bool.h types.h \
@@ -221,6 +224,7 @@ IIT_DUMP_SOURCES = bool.h types.h \
 
 iit_dump_CFLAGS = $(AM_CFLAGS)
 iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+iit_dump_LDADD = 
 dist_iit_dump_SOURCES = $(IIT_DUMP_SOURCES)
 
 OLIGO_COUNT_SOURCES = bool.h types.h \
@@ -235,8 +239,11 @@ OLIGO_COUNT_SOURCES = bool.h types.h \
  block.c block.h \
  oligo-count.c
 
-oligo_count_CFLAGS = $(AM_CFLAGS)
-oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+
+oligo_count_CC = $(PTHREAD_CC)
+oligo_count_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+oligo_count_LDADD = $(PTHREAD_LIBS)
 nodist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
 
 MD5_COMPUTE_SOURCES = bool.h types.h \
@@ -247,6 +254,7 @@ MD5_COMPUTE_SOURCES = bool.h types.h \
 
 md5_compute_CFLAGS = $(AM_CFLAGS)
 md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+md5_compute_LDADD = 
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
 
 GMAPINDEX_SOURCES = bool.h types.h \
@@ -262,8 +270,10 @@ GMAPINDEX_SOURCES = bool.h types.h \
  gmapindex.c
 
 
-gmapindex_CFLAGS = $(AM_CFLAGS)
-gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+gmapindex_CC = $(PTHREAD_CC)
+gmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+gmapindex_LDADD = $(PTHREAD_LIBS)
 dist_gmapindex_SOURCES = $(GMAPINDEX_SOURCES)
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -330,7 +340,6 @@ am__objects_3 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-segmentpos.$(OBJEXT) gmapindex-gmapindex.$(OBJEXT)
 dist_gmapindex_OBJECTS = $(am__objects_3)
 gmapindex_OBJECTS = $(dist_gmapindex_OBJECTS)
-gmapindex_LDADD = $(LDADD)
 gmapindex_DEPENDENCIES =
 am__objects_4 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-mem.$(OBJEXT) iit_dump-bigendian.$(OBJEXT) \
@@ -339,7 +348,6 @@ am__objects_4 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-iit-read.$(OBJEXT) iit_dump-iit_dump.$(OBJEXT)
 dist_iit_dump_OBJECTS = $(am__objects_4)
 iit_dump_OBJECTS = $(dist_iit_dump_OBJECTS)
-iit_dump_LDADD = $(LDADD)
 iit_dump_DEPENDENCIES =
 am__objects_5 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-mem.$(OBJEXT) iit_get-intlist.$(OBJEXT) \
@@ -357,7 +365,6 @@ am__objects_6 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-iit_store.$(OBJEXT)
 dist_iit_store_OBJECTS = $(am__objects_6)
 iit_store_OBJECTS = $(dist_iit_store_OBJECTS)
-iit_store_LDADD = $(LDADD)
 iit_store_DEPENDENCIES =
 am__objects_7 = md5_compute-except.$(OBJEXT) \
 	md5_compute-assert.$(OBJEXT) md5_compute-mem.$(OBJEXT) \
@@ -366,7 +373,6 @@ am__objects_7 = md5_compute-except.$(OBJEXT) \
 	md5_compute-md5-compute.$(OBJEXT)
 nodist_md5_compute_OBJECTS = $(am__objects_7)
 md5_compute_OBJECTS = $(nodist_md5_compute_OBJECTS)
-md5_compute_LDADD = $(LDADD)
 md5_compute_DEPENDENCIES =
 am__objects_8 = oligo_count-except.$(OBJEXT) \
 	oligo_count-assert.$(OBJEXT) oligo_count-mem.$(OBJEXT) \
@@ -380,7 +386,6 @@ am__objects_8 = oligo_count-except.$(OBJEXT) \
 	oligo_count-block.$(OBJEXT) oligo_count-oligo-count.$(OBJEXT)
 nodist_oligo_count_OBJECTS = $(am__objects_8)
 oligo_count_OBJECTS = $(nodist_oligo_count_OBJECTS)
-oligo_count_LDADD = $(LDADD)
 oligo_count_DEPENDENCIES =
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I.

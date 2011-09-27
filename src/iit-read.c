@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.60 2005/05/03 16:49:08 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.61 2005/05/09 22:32:48 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -387,7 +387,7 @@ IIT_debug (char *filename) {
   }
 #endif
   printf("intervals:\n");
-  for (i = 0; i < new->nnodes; i++) {
+  for (i = 0; i < new->nintervals; i++) {
     printf(" low:%u high:%u type:%d\n",
 	   new->intervals[i].low,new->intervals[i].high,new->intervals[i].type);
   }
@@ -625,7 +625,7 @@ fnode_query_aux (int *min, int *max, T this, int nodeindex, unsigned int x) {
     for (lambda = node->a; lambda <= node->b; lambda++) {
       debug(printf("Looking at lambda %d, segment %d\n",
 		   lambda,this->sigmas[lambda]));
-      if (Interval_is_contained(this->intervals,x,this->sigmas[lambda]) == true) {
+      if (Interval_is_contained(x,this->intervals,this->sigmas[lambda]) == true) {
 	if (lambda > *max) {
 	  *max = lambda;
 	}
@@ -644,7 +644,7 @@ fnode_query_aux (int *min, int *max, T this, int nodeindex, unsigned int x) {
     for (lambda = node->b; lambda >= node->a; lambda--) {
       debug(printf("Looking at lambda %d, segment %d\n",
 		   lambda,this->omegas[lambda]));
-      if (Interval_is_contained(this->intervals,x,this->omegas[lambda]) == true) {
+      if (Interval_is_contained(x,this->intervals,this->omegas[lambda]) == true) {
 	if (lambda < *min) {
 	  *min = lambda;
 	}
@@ -801,13 +801,13 @@ IIT_get (int *nmatches, T this, unsigned int x, unsigned int y) {
     neval = (max2 - min1 + 1) + (max2 - min1 + 1);
     matches = (int *) CALLOC(neval,sizeof(int));
     for (lambda = min1, i = 0; lambda <= max2; lambda++, i++) {
-      if (Interval_overlap_p(this->intervals,x,y,this->sigmas[lambda]) == true) {
+      if (Interval_overlap_p(x,y,this->intervals,this->sigmas[lambda]) == true) {
 	matches[i] = this->sigmas[lambda];
 	debug(printf("Pushing %d\n",this->sigmas[lambda]));
       }
     }
     for (lambda = min1; lambda <= max2; lambda++, i++) {
-      if (Interval_overlap_p(this->intervals,x,y,this->omegas[lambda]) == true) {
+      if (Interval_overlap_p(x,y,this->intervals,this->omegas[lambda]) == true) {
 	matches[i] = this->omegas[lambda];
 	debug(printf("Pushing %d\n",this->omegas[lambda]));
       }
@@ -862,12 +862,12 @@ IIT_get_one (T this, unsigned int x, unsigned int y) {
 
   if (max2 >= min1) {
     for (lambda = min1; lambda <= max2; lambda++) {
-      if (Interval_overlap_p(this->intervals,x,y,this->sigmas[lambda]) == true) {
+      if (Interval_overlap_p(x,y,this->intervals,this->sigmas[lambda]) == true) {
 	return this->sigmas[lambda];
       }
     }
     for (lambda = min1; lambda <= max2; lambda++) {
-      if (Interval_overlap_p(this->intervals,x,y,this->omegas[lambda]) == true) {
+      if (Interval_overlap_p(x,y,this->intervals,this->omegas[lambda]) == true) {
 	return this->omegas[lambda];
       }
     }
@@ -1027,9 +1027,10 @@ IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this) {
       /* Annotation may be negative to indicate contig is reverse complement */
       annotation = IIT_annotation(this,i+1);
       if (annotation[0] == '-') {
-	annotation += 1;
+	seglength = (unsigned int) strtoul(&(annotation[1]),NULL,10);
+      } else {
+	seglength = (unsigned int) strtoul(annotation,NULL,10);
       }
-      seglength = (unsigned int) strtoul(annotation,NULL,10);
       *seglength_list = Uintlist_push(*seglength_list,seglength);
     }
   }

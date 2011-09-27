@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.18 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.19 2005/05/09 22:33:12 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -105,7 +105,7 @@ is_right_split (int i, int j, int r, unsigned int value, int *sigmas,
 
   iota = 0;
   for (lambda = i; lambda <= j; lambda++) {
-    if (Interval_is_contained(intervals,value,sigmas[lambda]) == true) {
+    if (Interval_is_contained(value,intervals,sigmas[lambda]) == true) {
       iota = lambda;
     }
   }
@@ -144,8 +144,9 @@ is_valid_input (int i, int j, int *sigmas, int *omegas, struct Interval_T *inter
   assert(is_empty (omegas, i, j));
   for (lambda = i; lambda <= j; lambda++) {
     iota = sigmas[lambda];
-    assert(Interval_is_contained(intervals,Interval_array_low(intervals,iota),iota)
-	    || Interval_is_contained(intervals,Interval_array_high(intervals,iota),iota));
+    assert(Interval_is_contained(Interval_array_low(intervals,iota),intervals,iota)
+	   || Interval_is_contained(Interval_array_high(intervals,iota),intervals,iota));
+	   
   }
   return true;
 }
@@ -163,15 +164,15 @@ Node_is_valid_output (Node_T node, int i, int j, int *sigmas, int *omegas,
   assert(is_right_split (i, j, node->b, node->value, sigmas, intervals));
 
   for (lambda = node->a; lambda <= node->b; lambda++) {
-    assert(Interval_is_contained(intervals,node->value,sigmas[lambda])
-            && Interval_is_contained(intervals,node->value,omegas[lambda]));
+    assert(Interval_is_contained(node->value,intervals,sigmas[lambda])
+	   && Interval_is_contained(node->value,intervals,omegas[lambda]));
   }
 
   for (lambda = i; lambda <= node->a - 1; lambda++) {
-    assert(Interval_is_contained(intervals,node->value,sigmas[lambda]) == false);
+    assert(Interval_is_contained(node->value,intervals,sigmas[lambda]) == false);
   }
   for (lambda = node->b + 1; lambda <= j; lambda++) {
-    assert(Interval_is_contained(intervals,node->value,sigmas[lambda]) == false);
+    assert(Interval_is_contained(node->value,intervals,sigmas[lambda]) == false);
   }
 
   return true;
@@ -191,13 +192,13 @@ node_select (int *index, unsigned int *value, int i, int j,
     r ++;
   }
 
-  if (Interval_is_contained(intervals,k,sigmas[r]) == false) {
+  if (Interval_is_contained(k,intervals,sigmas[r]) == false) {
     /* adjust r to the left for "open" intervals */
-    while ((r > i) && (Interval_is_contained(intervals,k,sigmas[r-1]) == false)) {
+    while ((r > i) && (Interval_is_contained(k,intervals,sigmas[r-1]) == false)) {
       r --;
       printf(" basic_iit: (-)\n");
     }
-    if (Interval_is_contained(intervals,k,sigmas[r]) == false) {
+    if (Interval_is_contained(k,intervals,sigmas[r]) == false) {
       r --;
       printf(" basic_iit: [-]\n");
       assert(r == i - 1);
@@ -231,7 +232,7 @@ Node_make (int *nnodes, int i, int j, int *sigmas, int *omegas, struct Interval_
     /* mark "contains" intervals in sigma[i..r] to omega[i<q+1..r] */
     q = r;
     for (lambda = r; lambda >= i; lambda--) {
-      if (Interval_is_contained(intervals,node->value,sigmas[lambda]) == true) {
+      if (Interval_is_contained(node->value,intervals,sigmas[lambda]) == true) {
 	omegas[q] = sigmas[lambda];
 	sigmas[lambda] = 0;
 	q --;

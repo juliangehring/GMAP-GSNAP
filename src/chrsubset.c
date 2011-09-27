@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.5 2005/05/04 18:49:01 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.6 2005/05/20 17:38:41 twu Exp $";
 
 #include "chrsubset.h"
 #include <stdio.h>
@@ -50,7 +50,9 @@ Chrsubset_free (T *old) {
     if ((*old)->name != NULL) {
       FREE((*old)->name);
     }
-    FREE((*old)->includep);
+    if ((*old)->includep != NULL) {
+      FREE((*old)->includep);
+    }
     FREE(*old);
   }
   return;

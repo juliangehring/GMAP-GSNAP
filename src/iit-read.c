@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.61 2005/05/09 22:32:48 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.64 2005/06/16 14:05:59 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -76,6 +76,15 @@ int
 IIT_ntypes (T this) {
   return this->ntypes;
 }
+
+unsigned int
+IIT_length (T this, int index) {
+  Interval_T interval;
+
+  interval = &(this->intervals[index-1]);
+  return Interval_length(interval);
+}
+
 
 unsigned int
 IIT_totallength (T this) {
@@ -274,13 +283,10 @@ IIT_dump_formatted (T this, bool directionalp) {
 
 void
 IIT_free_mmapped (T *old) {
-  if (*old) {
+  if (*old != NULL) {
     if ((*old)->name != NULL) {
       FREE((*old)->name);
     }
-
-    munmap((void *) (*old)->finfo,(*old)->flength);
-    close((*old)->fd);
 
     /* Annotations is mmapped, so don't free. */
     FREE((*old)->annotpointers);
@@ -293,8 +299,14 @@ IIT_free_mmapped (T *old) {
     FREE((*old)->nodes);
     FREE((*old)->omegas);
     FREE((*old)->sigmas);
+
+    munmap((void *) (*old)->finfo,(*old)->flength);
+    close((*old)->fd);
+
     FREE(*old);
+
   }
+  return;
 }
 
 /* This procedure leaks memory, but used only for debugging */

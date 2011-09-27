@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c,v 1.7 2005/02/07 23:56:56 twu Exp $";
+static char rcsid[] = "$Id: intlist.c,v 1.8 2005/06/21 18:37:57 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -36,6 +36,14 @@ Intlist_pop (T list, int *x) {
   }
 }
   
+void
+Intlist_delete (T prev, T this) {
+  prev->rest = this->rest;
+  FREE(this);
+  return;
+}
+
+
 int
 Intlist_head (T list) {
   return list->first;

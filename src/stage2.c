@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c,v 1.134 2005/05/06 17:00:36 twu Exp $";
+static char rcsid[] = "$Id: stage2.c,v 1.136 2005/06/23 22:49:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,7 +6,6 @@ static char rcsid[] = "$Id: stage2.c,v 1.134 2005/05/06 17:00:36 twu Exp $";
 #include "stage2.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "bool.h"
 #include "mem.h"
 #include "pair.h"
 #include "pairdef.h"
@@ -279,15 +278,66 @@ gap_score (int prev_querypos, int querypos, int prevposition, int position,
 */  
 
 
-/* These are defined as macros because they are called frequently */
-/* >> 10 is same as dividing by 1024 */
-#define distpenalty_consistent(intronlength,max_intronlength,querydistance) (querydistance*intronlength/max_intronlength + intronlength >> 10)
-#define distpenalty_unknown(intronlength,max_intronlength,querydistance) (querydistance*intronlength/max_intronlength + intronlength >> 10)
-#define distpenalty_inconsistent(intronlength,max_intronlength,querydistance) (querydistance*intronlength/max_intronlength + intronlength >> 10)
+static int
+distpenalty_consistent (int intronlength, int max_intronlength, int querydistance, bool crossspeciesp) {
+  if (crossspeciesp == true) {
+    return querydistance*intronlength/max_intronlength + intronlength >> 9;
+  } else {
+    return querydistance*intronlength/max_intronlength + intronlength >> 10;
+  }
+}
 
-#define distpenalty_dead(intronlength,max_intronlength,querydistance) (querydistance*intronlength/max_intronlength + intronlength >> 15)
+static int
+distpenalty_unknown (int intronlength, int max_intronlength, int querydistance, bool crossspeciesp) {
+  if (crossspeciesp == true) {
+    return querydistance*intronlength/max_intronlength + intronlength >> 6;
+  } else {
+    return querydistance*intronlength/max_intronlength + intronlength >> 10;
+  }
+}
 
-#define querydist_mismatch_penalty(querydistance) (querydistance <= 24 ? (querydistance+7)/8 : (querydistance <= 40 ? (querydistance+7)/4 : (querydistance <= 56) ? (querydistance+7)/2 : (querydistance+7)*3/4))
+static int
+distpenalty_inconsistent (int intronlength, int max_intronlength, int querydistance, bool crossspeciesp) {
+  if (crossspeciesp == true) {
+    return querydistance*intronlength/max_intronlength + intronlength >> 6;
+  } else {
+    return querydistance*intronlength/max_intronlength + intronlength >> 10;
+  }
+}
+
+static int
+distpenalty_dead (int intronlength, int max_intronlength, int querydistance, bool crossspeciesp) {
+  if (crossspeciesp == true) {
+    return querydistance*intronlength/max_intronlength + intronlength >> 13;
+  } else {
+    return querydistance*intronlength/max_intronlength + intronlength >> 15;
+  }
+}
+
+static int
+querydist_mismatch_penalty (int querydistance, bool crossspeciesp) {
+  if (crossspeciesp == true) {
+    if (querydistance <= 24) {
+      return (querydistance+7)/4;
+    } else if (querydistance <= 40) {
+      return (querydistance+7)/2;
+    } else if (querydistance <= 56) {
+      return (querydistance+7);
+    } else {
+      return (querydistance+7)*3/2;
+    }
+  } else {
+    if (querydistance <= 24) {
+      return (querydistance+7)/8;
+    } else if (querydistance <= 40) {
+      return (querydistance+7)/4;
+    } else if (querydistance <= 56) {
+      return (querydistance+7)/2;
+    } else {
+      return (querydistance+7)*3/4;
+    }
+  }
+}
 
 
 /*
@@ -461,7 +511,8 @@ static void
 score_querypos (Link_T currlink, int querypos, unsigned int position, char acceptor1, char acceptor2,
 		struct Link_T **links, unsigned int **mappings, int *npositions, 
 		int *fwd_restrict_hit, int *rev_restrict_hit,
-		char *genomicseg_ptr, int indexsize, int sufflookback, int nsufflookback, bool deadp) {
+		char *genomicseg_ptr, int indexsize, int sufflookback, int nsufflookback, bool deadp,
+		bool crossspeciesp) {
   Link_T prevlink;
   int best_fwd_score = 0, best_rev_score = 0, fwd_score, rev_score;
   int best_consecutive = 0, save_consecutive;
@@ -536,17 +587,23 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	  /* Penalty for introns. */
 	  gendistance = position - prevposition;
 	  if (deadp == true) {
-	    fwd_gendistance_penalty = rev_gendistance_penalty = distpenalty_dead(gendistance,max_intronlength,querydistance) + INTRON_PENALTY_UNKNOWN + DEAD_PENALTY;
+	    fwd_gendistance_penalty = rev_gendistance_penalty = 
+	      distpenalty_dead(gendistance,max_intronlength,querydistance,crossspeciesp) + INTRON_PENALTY_UNKNOWN + DEAD_PENALTY;
 	  } else {
 	    if (canonicalsgn == 0) {
 	      /* Extra penalty for known non-canonical intron */
-	      fwd_gendistance_penalty = rev_gendistance_penalty = distpenalty_unknown(gendistance,max_intronlength,querydistance) + INTRON_PENALTY_UNKNOWN;
+	      fwd_gendistance_penalty = rev_gendistance_penalty = 
+		distpenalty_unknown(gendistance,max_intronlength,querydistance,crossspeciesp) + INTRON_PENALTY_UNKNOWN;
 	    } else if (canonicalsgn == +1) {
-	      fwd_gendistance_penalty = distpenalty_consistent(gendistance,max_intronlength,querydistance) + INTRON_PENALTY_CONSISTENT;
-	      rev_gendistance_penalty = distpenalty_inconsistent(gendistance,max_intronlength,querydistance) + INTRON_PENALTY_INCONSISTENT;
+	      fwd_gendistance_penalty = 
+		distpenalty_consistent(gendistance,max_intronlength,querydistance,crossspeciesp) + INTRON_PENALTY_CONSISTENT;
+	      rev_gendistance_penalty = 
+		distpenalty_inconsistent(gendistance,max_intronlength,querydistance,crossspeciesp) + INTRON_PENALTY_INCONSISTENT;
 	    } else if (canonicalsgn == -1) {
-	      fwd_gendistance_penalty = distpenalty_inconsistent(gendistance,max_intronlength,querydistance) + INTRON_PENALTY_INCONSISTENT;
-	      rev_gendistance_penalty = distpenalty_consistent(gendistance,max_intronlength,querydistance) + INTRON_PENALTY_CONSISTENT;
+	      fwd_gendistance_penalty = 
+		distpenalty_inconsistent(gendistance,max_intronlength,querydistance,crossspeciesp) + INTRON_PENALTY_INCONSISTENT;
+	      rev_gendistance_penalty = 
+		distpenalty_consistent(gendistance,max_intronlength,querydistance,crossspeciesp) + INTRON_PENALTY_CONSISTENT;
 	    }
 	  }
 	  fwd_score -= fwd_gendistance_penalty;
@@ -644,16 +701,16 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	    if (querydistance < INTRON_DEFN) {
 	      fwd_score += querydistance;
 	    } else if (diffdistance < EQUAL_DISTANCE) {
-	      fwd_score += querydistance - querydist_mismatch_penalty(querydistance);
+	      fwd_score += querydistance - querydist_mismatch_penalty(querydistance,crossspeciesp);
 	    } else if (diffdistance < INTRON_DEFN) {
-	      fwd_score -= querydist_mismatch_penalty(querydistance);
+	      fwd_score -= querydist_mismatch_penalty(querydistance,crossspeciesp);
 	    } else {
-	      fwd_score -= querydist_mismatch_penalty(querydistance) + NINTRON_PENALTY_MISMATCH;
+	      fwd_score -= querydist_mismatch_penalty(querydistance,crossspeciesp) + NINTRON_PENALTY_MISMATCH;
 	    }
 	    if (deadp == true) {
-	      fwd_score -= distpenalty_dead(diffdistance,max_intronlength,querydistance) + DEAD_PENALTY;
+	      fwd_score -= distpenalty_dead(diffdistance,max_intronlength,querydistance,crossspeciesp) + DEAD_PENALTY;
 	    } else {
-	      fwd_score -= distpenalty_unknown(diffdistance,max_intronlength,querydistance);
+	      fwd_score -= distpenalty_unknown(diffdistance,max_intronlength,querydistance,crossspeciesp);
 	    }
 
 	    debug(printf("\tFwd mismatch qpos %d,%d at %u (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d)",
@@ -730,16 +787,16 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	    if (querydistance < INTRON_DEFN) {
 	      rev_score += querydistance;
 	    } else if (diffdistance < EQUAL_DISTANCE) {
-	      fwd_score += querydistance - querydist_mismatch_penalty(querydistance);
+	      fwd_score += querydistance - querydist_mismatch_penalty(querydistance,crossspeciesp);
 	    } else if (diffdistance < INTRON_DEFN) {
-	      rev_score -= querydist_mismatch_penalty(querydistance);
+	      rev_score -= querydist_mismatch_penalty(querydistance,crossspeciesp);
 	    } else {
-	      rev_score -= querydist_mismatch_penalty(querydistance) + NINTRON_PENALTY_MISMATCH;
+	      rev_score -= querydist_mismatch_penalty(querydistance,crossspeciesp) + NINTRON_PENALTY_MISMATCH;
 	    }
 	    if (deadp == true) {
-	      rev_score -= distpenalty_dead(diffdistance,max_intronlength,querydistance) + DEAD_PENALTY;
+	      rev_score -= distpenalty_dead(diffdistance,max_intronlength,querydistance,crossspeciesp) + DEAD_PENALTY;
 	    } else {
-	      rev_score -= distpenalty_unknown(diffdistance,max_intronlength,querydistance);
+	      rev_score -= distpenalty_unknown(diffdistance,max_intronlength,querydistance,crossspeciesp);
 	    }
 	    
 	    debug(printf("\tRev mismatch qpos %d,%d at %u (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d)",
@@ -798,7 +855,7 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 static void
 align_compute_scores (Link_T *termlink, bool *fwdp, struct Link_T **links,
 		      unsigned int **mappings, int *npositions, Sequence_T queryseq, Sequence_T genomicseg,
-		      int indexsize, int sufflookback, int nsufflookback) {
+		      int indexsize, int sufflookback, int nsufflookback, bool crossspeciesp) {
   int querystart, queryend;
   Link_T prevlink, currlink;
   int best_overall, fwd_score, rev_score;
@@ -846,14 +903,14 @@ align_compute_scores (Link_T *termlink, bool *fwdp, struct Link_T **links,
 
       score_querypos(currlink,querypos,position,acceptor1,acceptor2,
 		     links,mappings,npositions,fwd_restrict_hit,rev_restrict_hit,genomicseg_ptr,
-		     indexsize,sufflookback,nsufflookback,/*deadp*/false);
+		     indexsize,sufflookback,nsufflookback,/*deadp*/false,crossspeciesp);
 
       if (currlink->fwd_score <= 0 || currlink->rev_score <= 0) {
 	debug(printf("Redoing link at querypos %d,%d at %u, without gendistance penalty\n",querypos,hit,position));
 
 	score_querypos(currlink,querypos,position,acceptor1,acceptor2,
 		       links,mappings,npositions,fwd_restrict_hit,rev_restrict_hit,genomicseg_ptr,
-		       indexsize,sufflookback,nsufflookback,/*deadp*/true);
+		       indexsize,sufflookback,nsufflookback,/*deadp*/true,crossspeciesp);
       }
     }
 
@@ -941,7 +998,8 @@ static List_T
 align_compute (double *defect_rate, int *nfwdintrons, int *nrevintrons, int *nunkintrons,
 	       unsigned int **mappings, int *npositions, 
 	       int totalpositions, Sequence_T queryseq, Sequence_T genomicseg, 
-	       int indexsize, int sufflookback, int nsufflookback, Pairpool_T pairpool) {
+	       int indexsize, int sufflookback, int nsufflookback, Pairpool_T pairpool,
+	       bool crossspeciesp) {
   List_T path = NULL;
   struct Link_T **links;
   Link_T termlink;
@@ -960,7 +1018,7 @@ align_compute (double *defect_rate, int *nfwdintrons, int *nrevintrons, int *nun
   links = Linkmatrix_new(querylength,npositions,totalpositions);
 
   align_compute_scores(&termlink,&fwdp,links,mappings,npositions,queryseq,genomicseg,
-		       indexsize,sufflookback,nsufflookback);
+		       indexsize,sufflookback,nsufflookback,crossspeciesp);
   if (termlink != NULL) {
     if (fwdp) {
       termpos = termlink->fwd_pos;
@@ -1126,7 +1184,8 @@ convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
 T
 Stage2_compute (Sequence_T queryseq, Sequence_T genomicseg,
 		Oligoindex_T oligoindex, int indexsize, Pairpool_T pairpool, 
-		int sufflookback, int nsufflookback, int badoligos) {
+		int sufflookback, int nsufflookback, int badoligos,
+		bool crossspeciesp) {
   T stage2;
   List_T path, pairs;
   unsigned int **mappings;
@@ -1146,7 +1205,8 @@ Stage2_compute (Sequence_T queryseq, Sequence_T genomicseg,
     }
     path = align_compute(&defect_rate,&nfwdintrons,&nrevintrons,&nunkintrons,
 			 mappings,npositions,totalpositions,
-			 queryseq,genomicseg,indexsize,sufflookback,nsufflookback,pairpool);
+			 queryseq,genomicseg,indexsize,sufflookback,nsufflookback,pairpool,
+			 crossspeciesp);
   }
   Oligoindex_cleanup(oligoindex,queryseq);
 

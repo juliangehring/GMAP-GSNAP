@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.63 2005/05/10 02:14:52 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.64 2005/06/10 23:59:06 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1021,6 +1021,10 @@ Indexdb_new_segment (char *genomicseg, int index1interval) {
   }
 
   totalcounts = new->offsets[oligospace];
+  if (totalcounts == 0) {
+    fprintf(stderr,"Error: user-provided genomic segment has no valid oligomers of size %d\n",INDEX1PART);
+    exit(9);
+  }
   new->positions = (Genomicpos_T *) CALLOC(totalcounts,sizeof(Genomicpos_T));
 
   p = genomicseg;

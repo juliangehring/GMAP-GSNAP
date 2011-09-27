@@ -134,7 +134,7 @@ target_os = @target_os@
 target_vendor = @target_vendor@
 @FULLDIST_FALSE@bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump 
 
-@FULLDIST_TRUE@bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump oligo-count md5-compute
+@FULLDIST_TRUE@bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump oligo-count md5-compute genomeplot
 
 GMAP_SOURCES = bool.h types.h separator.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -155,19 +155,23 @@ GMAP_SOURCES = bool.h types.h separator.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
  mutation.c mutation.h translation.c translation.h \
- nmath.c nmath.h chimera.c chimera.h stage3.c stage3.h \
+ stage3.c stage3.h \
  request.c request.h reqpost.c reqpost.h \
  result.c result.h blackboard.c blackboard.h \
  params.c params.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
 
+# In front of stage3
+GMAP_SOURCES_BETA = nmath.c nmath.h maxent.c maxent.h chimera.c chimera.h 
+
 gmap_CC = $(PTHREAD_CC)
 @FULLDIST_FALSE@gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 @FULLDIST_TRUE@gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
-dist_gmap_SOURCES = $(GMAP_SOURCES)
+@FULLDIST_FALSE@dist_gmap_SOURCES = $(GMAP_SOURCES)
+@FULLDIST_TRUE@dist_gmap_SOURCES = $(GMAP_SOURCES) $(GMAP_SOURCES_BETA)
 
 GET_GENOME_SOURCES = bool.h types.h separator.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -257,6 +261,22 @@ md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 md5_compute_LDADD = 
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
 
+GENOMEPLOT_SOURCES = bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ listdef.h list.c list.h interval.c interval.h \
+ uintlist.c uintlist.h iitdef.h iit-read.c iit-read.h \
+ chrsubset.c chrsubset.h color.c color.h \
+ doublelist.c doublelist.h datum.c datum.h plotdata.c plotdata.h \
+ intlist.c intlist.h nr-x.c nr-x.h chrsegment.c \
+ datadir.c datadir.h \
+ getopt.c getopt1.c getopt.h genomeplot.c
+
+
+genomeplot_CFLAGS = $(AM_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+genomeplot_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+genomeplot_LDADD = 
+nodist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
+
 GMAPINDEX_SOURCES = bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
@@ -283,13 +303,27 @@ CONFIG_CLEAN_FILES =
 @FULLDIST_TRUE@bin_PROGRAMS = gmap$(EXEEXT) get-genome$(EXEEXT) \
 @FULLDIST_TRUE@	gmapindex$(EXEEXT) iit_store$(EXEEXT) \
 @FULLDIST_TRUE@	iit_get$(EXEEXT) iit_dump$(EXEEXT) \
-@FULLDIST_TRUE@	oligo-count$(EXEEXT) md5-compute$(EXEEXT)
+@FULLDIST_TRUE@	oligo-count$(EXEEXT) md5-compute$(EXEEXT) \
+@FULLDIST_TRUE@	genomeplot$(EXEEXT)
 @FULLDIST_FALSE@bin_PROGRAMS = gmap$(EXEEXT) get-genome$(EXEEXT) \
 @FULLDIST_FALSE@	gmapindex$(EXEEXT) iit_store$(EXEEXT) \
 @FULLDIST_FALSE@	iit_get$(EXEEXT) iit_dump$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS)
 
-am__objects_1 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
+am__objects_1 = genomeplot-except.$(OBJEXT) genomeplot-assert.$(OBJEXT) \
+	genomeplot-mem.$(OBJEXT) genomeplot-list.$(OBJEXT) \
+	genomeplot-interval.$(OBJEXT) genomeplot-uintlist.$(OBJEXT) \
+	genomeplot-iit-read.$(OBJEXT) genomeplot-chrsubset.$(OBJEXT) \
+	genomeplot-color.$(OBJEXT) genomeplot-doublelist.$(OBJEXT) \
+	genomeplot-datum.$(OBJEXT) genomeplot-plotdata.$(OBJEXT) \
+	genomeplot-intlist.$(OBJEXT) genomeplot-nr-x.$(OBJEXT) \
+	genomeplot-chrsegment.$(OBJEXT) genomeplot-datadir.$(OBJEXT) \
+	genomeplot-getopt.$(OBJEXT) genomeplot-getopt1.$(OBJEXT) \
+	genomeplot-genomeplot.$(OBJEXT)
+nodist_genomeplot_OBJECTS = $(am__objects_1)
+genomeplot_OBJECTS = $(nodist_genomeplot_OBJECTS)
+genomeplot_DEPENDENCIES =
+am__objects_2 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
 	get_genome-mem.$(OBJEXT) get_genome-intlist.$(OBJEXT) \
 	get_genome-list.$(OBJEXT) get_genome-bigendian.$(OBJEXT) \
 	get_genome-interval.$(OBJEXT) get_genome-uintlist.$(OBJEXT) \
@@ -299,10 +333,28 @@ am__objects_1 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
 	get_genome-chrom.$(OBJEXT) get_genome-datadir.$(OBJEXT) \
 	get_genome-getopt.$(OBJEXT) get_genome-getopt1.$(OBJEXT) \
 	get_genome-get-genome.$(OBJEXT)
-dist_get_genome_OBJECTS = $(am__objects_1)
+dist_get_genome_OBJECTS = $(am__objects_2)
 get_genome_OBJECTS = $(dist_get_genome_OBJECTS)
 get_genome_DEPENDENCIES =
-am__objects_2 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
+am__dist_gmap_SOURCES_DIST = bool.h types.h separator.h except.c \
+	except.h assert.c assert.h mem.c mem.h intlist.c intlist.h \
+	listdef.h list.c list.h littleendian.h bigendian.c bigendian.h \
+	interval.c interval.h uintlist.c uintlist.h iitdef.h iit-read.c \
+	iit-read.h md5.c md5.h complement.h sequence.c sequence.h \
+	reader.c reader.h stopwatch.c stopwatch.h genomicpos.c \
+	genomicpos.h compress.c compress.h genome.c genome.h indexdb.c \
+	indexdb.h oligo.c oligo.h block.c block.h chrom.c chrom.h \
+	segmentpos.c segmentpos.h chrnum.c chrnum.h matchdef.h match.c \
+	match.h matchpair.c matchpair.h chrsubset.c chrsubset.h \
+	stage1.c stage1.h oligoindex.c oligoindex.h scores.h intron.c \
+	intron.h pairdef.h pair.c pair.h pairpool.c pairpool.h stage2.c \
+	stage2.h smooth.c smooth.h boyer-moore.c boyer-moore.h \
+	dynprog.c dynprog.h mutation.c mutation.h translation.c \
+	translation.h stage3.c stage3.h request.c request.h reqpost.c \
+	reqpost.h result.c result.h blackboard.c blackboard.h params.c \
+	params.h datadir.c datadir.h getopt.c getopt1.c getopt.h gmap.c \
+	nmath.c nmath.h maxent.c maxent.h chimera.c chimera.h
+am__objects_3 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-mem.$(OBJEXT) gmap-intlist.$(OBJEXT) gmap-list.$(OBJEXT) \
 	gmap-bigendian.$(OBJEXT) gmap-interval.$(OBJEXT) \
 	gmap-uintlist.$(OBJEXT) gmap-iit-read.$(OBJEXT) \
@@ -319,16 +371,18 @@ am__objects_2 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
 	gmap-boyer-moore.$(OBJEXT) gmap-dynprog.$(OBJEXT) \
 	gmap-mutation.$(OBJEXT) gmap-translation.$(OBJEXT) \
-	gmap-nmath.$(OBJEXT) gmap-chimera.$(OBJEXT) \
 	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
 	gmap-reqpost.$(OBJEXT) gmap-result.$(OBJEXT) \
 	gmap-blackboard.$(OBJEXT) gmap-params.$(OBJEXT) \
 	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
 	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
-dist_gmap_OBJECTS = $(am__objects_2)
+am__objects_4 = gmap-nmath.$(OBJEXT) gmap-maxent.$(OBJEXT) \
+	gmap-chimera.$(OBJEXT)
+@FULLDIST_TRUE@dist_gmap_OBJECTS = $(am__objects_3) $(am__objects_4)
+@FULLDIST_FALSE@dist_gmap_OBJECTS = $(am__objects_3)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
 gmap_DEPENDENCIES =
-am__objects_3 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
+am__objects_5 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-mem.$(OBJEXT) gmapindex-intlist.$(OBJEXT) \
 	gmapindex-list.$(OBJEXT) gmapindex-bigendian.$(OBJEXT) \
 	gmapindex-interval.$(OBJEXT) gmapindex-uintlist.$(OBJEXT) \
@@ -338,43 +392,43 @@ am__objects_3 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-indexdb.$(OBJEXT) gmapindex-table.$(OBJEXT) \
 	gmapindex-tableint.$(OBJEXT) gmapindex-chrom.$(OBJEXT) \
 	gmapindex-segmentpos.$(OBJEXT) gmapindex-gmapindex.$(OBJEXT)
-dist_gmapindex_OBJECTS = $(am__objects_3)
+dist_gmapindex_OBJECTS = $(am__objects_5)
 gmapindex_OBJECTS = $(dist_gmapindex_OBJECTS)
 gmapindex_DEPENDENCIES =
-am__objects_4 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
+am__objects_6 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-mem.$(OBJEXT) iit_dump-bigendian.$(OBJEXT) \
 	iit_dump-intlist.$(OBJEXT) iit_dump-list.$(OBJEXT) \
 	iit_dump-interval.$(OBJEXT) iit_dump-uintlist.$(OBJEXT) \
 	iit_dump-iit-read.$(OBJEXT) iit_dump-iit_dump.$(OBJEXT)
-dist_iit_dump_OBJECTS = $(am__objects_4)
+dist_iit_dump_OBJECTS = $(am__objects_6)
 iit_dump_OBJECTS = $(dist_iit_dump_OBJECTS)
 iit_dump_DEPENDENCIES =
-am__objects_5 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
+am__objects_7 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-mem.$(OBJEXT) iit_get-intlist.$(OBJEXT) \
 	iit_get-list.$(OBJEXT) iit_get-bigendian.$(OBJEXT) \
 	iit_get-interval.$(OBJEXT) iit_get-uintlist.$(OBJEXT) \
 	iit_get-iit-read.$(OBJEXT) iit_get-iit_get.$(OBJEXT)
-dist_iit_get_OBJECTS = $(am__objects_5)
+dist_iit_get_OBJECTS = $(am__objects_7)
 iit_get_OBJECTS = $(dist_iit_get_OBJECTS)
 iit_get_DEPENDENCIES =
-am__objects_6 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
+am__objects_8 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-mem.$(OBJEXT) iit_store-intlist.$(OBJEXT) \
 	iit_store-list.$(OBJEXT) iit_store-bigendian.$(OBJEXT) \
 	iit_store-interval.$(OBJEXT) iit_store-uintlist.$(OBJEXT) \
 	iit_store-iit-write.$(OBJEXT) iit_store-tableint.$(OBJEXT) \
 	iit_store-iit_store.$(OBJEXT)
-dist_iit_store_OBJECTS = $(am__objects_6)
+dist_iit_store_OBJECTS = $(am__objects_8)
 iit_store_OBJECTS = $(dist_iit_store_OBJECTS)
 iit_store_DEPENDENCIES =
-am__objects_7 = md5_compute-except.$(OBJEXT) \
+am__objects_9 = md5_compute-except.$(OBJEXT) \
 	md5_compute-assert.$(OBJEXT) md5_compute-mem.$(OBJEXT) \
 	md5_compute-intlist.$(OBJEXT) md5_compute-md5.$(OBJEXT) \
 	md5_compute-sequence.$(OBJEXT) \
 	md5_compute-md5-compute.$(OBJEXT)
-nodist_md5_compute_OBJECTS = $(am__objects_7)
+nodist_md5_compute_OBJECTS = $(am__objects_9)
 md5_compute_OBJECTS = $(nodist_md5_compute_OBJECTS)
 md5_compute_DEPENDENCIES =
-am__objects_8 = oligo_count-except.$(OBJEXT) \
+am__objects_10 = oligo_count-except.$(OBJEXT) \
 	oligo_count-assert.$(OBJEXT) oligo_count-mem.$(OBJEXT) \
 	oligo_count-intlist.$(OBJEXT) oligo_count-list.$(OBJEXT) \
 	oligo_count-interval.$(OBJEXT) oligo_count-uintlist.$(OBJEXT) \
@@ -384,14 +438,33 @@ am__objects_8 = oligo_count-except.$(OBJEXT) \
 	oligo_count-stopwatch.$(OBJEXT) oligo_count-compress.$(OBJEXT) \
 	oligo_count-indexdb.$(OBJEXT) oligo_count-oligo.$(OBJEXT) \
 	oligo_count-block.$(OBJEXT) oligo_count-oligo-count.$(OBJEXT)
-nodist_oligo_count_OBJECTS = $(am__objects_8)
+nodist_oligo_count_OBJECTS = $(am__objects_10)
 oligo_count_OBJECTS = $(nodist_oligo_count_OBJECTS)
 oligo_count_DEPENDENCIES =
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I.
 depcomp = $(SHELL) $(top_srcdir)/config/depcomp
 am__depfiles_maybe = depfiles
-@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/get_genome-assert.Po \
+@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/genomeplot-assert.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-chrsegment.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-chrsubset.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-color.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-datadir.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-datum.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-doublelist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-except.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-genomeplot.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-getopt.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-getopt1.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-iit-read.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-interval.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-intlist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-list.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-mem.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-nr-x.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-plotdata.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-uintlist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/get_genome-assert.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-bigendian.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-chrom.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-datadir.Po \
@@ -435,7 +508,8 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-intron.Po ./$(DEPDIR)/gmap-list.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-match.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-matchpair.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/gmap-md5.Po ./$(DEPDIR)/gmap-mem.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-maxent.Po ./$(DEPDIR)/gmap-md5.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-mem.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-mutation.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-nmath.Po ./$(DEPDIR)/gmap-oligo.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-oligoindex.Po \
@@ -538,11 +612,11 @@ LTCOMPILE = $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) \
 CCLD = $(CC)
 LINK = $(LIBTOOL) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
-DIST_SOURCES = $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) \
+DIST_SOURCES = $(dist_get_genome_SOURCES) $(am__dist_gmap_SOURCES_DIST) \
 	$(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) \
 	$(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES)
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am config.h.in
-SOURCES = $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) $(nodist_md5_compute_SOURCES) $(nodist_oligo_count_SOURCES)
+SOURCES = $(nodist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) $(nodist_md5_compute_SOURCES) $(nodist_oligo_count_SOURCES)
 
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -600,6 +674,9 @@ clean-binPROGRAMS:
 	  echo " rm -f $$p $$f"; \
 	  rm -f $$p $$f ; \
 	done
+genomeplot$(EXEEXT): $(genomeplot_OBJECTS) $(genomeplot_DEPENDENCIES) 
+	@rm -f genomeplot$(EXEEXT)
+	$(LINK) $(genomeplot_LDFLAGS) $(genomeplot_OBJECTS) $(genomeplot_LDADD) $(LIBS)
 get-genome$(EXEEXT): $(get_genome_OBJECTS) $(get_genome_DEPENDENCIES) 
 	@rm -f get-genome$(EXEEXT)
 	$(LINK) $(get_genome_LDFLAGS) $(get_genome_OBJECTS) $(get_genome_LDADD) $(LIBS)
@@ -631,6 +708,25 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-chrsegment.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-chrsubset.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-color.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-datadir.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-datum.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-doublelist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-except.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-genomeplot.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-getopt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-getopt1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-iit-read.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-interval.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-intlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-list.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-mem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-nr-x.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-plotdata.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-uintlist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-chrom.Po@am__quote@
@@ -676,6 +772,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-match.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-matchpair.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-maxent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mutation.Po@am__quote@
@@ -807,6 +904,633 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/$*.Plo' tmpdepfile='$(DEPDIR)/$*.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LTCOMPILE) -c -o $@ `test -f '$<' || echo '$(srcdir)/'`$<
+
+genomeplot-except.o: except.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-except.o -MD -MP -MF "$(DEPDIR)/genomeplot-except.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-except.Tpo" "$(DEPDIR)/genomeplot-except.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-except.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='genomeplot-except.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-except.Po' tmpdepfile='$(DEPDIR)/genomeplot-except.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
+
+genomeplot-except.obj: except.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-except.obj -MD -MP -MF "$(DEPDIR)/genomeplot-except.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-except.Tpo" "$(DEPDIR)/genomeplot-except.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-except.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='genomeplot-except.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-except.Po' tmpdepfile='$(DEPDIR)/genomeplot-except.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`
+
+genomeplot-except.lo: except.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-except.lo -MD -MP -MF "$(DEPDIR)/genomeplot-except.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-except.lo `test -f 'except.c' || echo '$(srcdir)/'`except.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-except.Tpo" "$(DEPDIR)/genomeplot-except.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-except.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='genomeplot-except.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-except.Plo' tmpdepfile='$(DEPDIR)/genomeplot-except.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-except.lo `test -f 'except.c' || echo '$(srcdir)/'`except.c
+
+genomeplot-assert.o: assert.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-assert.o -MD -MP -MF "$(DEPDIR)/genomeplot-assert.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-assert.Tpo" "$(DEPDIR)/genomeplot-assert.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-assert.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='genomeplot-assert.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-assert.Po' tmpdepfile='$(DEPDIR)/genomeplot-assert.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
+
+genomeplot-assert.obj: assert.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-assert.obj -MD -MP -MF "$(DEPDIR)/genomeplot-assert.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-assert.Tpo" "$(DEPDIR)/genomeplot-assert.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-assert.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='genomeplot-assert.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-assert.Po' tmpdepfile='$(DEPDIR)/genomeplot-assert.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`
+
+genomeplot-assert.lo: assert.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-assert.lo -MD -MP -MF "$(DEPDIR)/genomeplot-assert.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-assert.lo `test -f 'assert.c' || echo '$(srcdir)/'`assert.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-assert.Tpo" "$(DEPDIR)/genomeplot-assert.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-assert.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='genomeplot-assert.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-assert.Plo' tmpdepfile='$(DEPDIR)/genomeplot-assert.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-assert.lo `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
+
+genomeplot-mem.o: mem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-mem.o -MD -MP -MF "$(DEPDIR)/genomeplot-mem.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-mem.Tpo" "$(DEPDIR)/genomeplot-mem.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-mem.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='genomeplot-mem.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-mem.Po' tmpdepfile='$(DEPDIR)/genomeplot-mem.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+
+genomeplot-mem.obj: mem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-mem.obj -MD -MP -MF "$(DEPDIR)/genomeplot-mem.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-mem.Tpo" "$(DEPDIR)/genomeplot-mem.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-mem.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='genomeplot-mem.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-mem.Po' tmpdepfile='$(DEPDIR)/genomeplot-mem.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`
+
+genomeplot-mem.lo: mem.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-mem.lo -MD -MP -MF "$(DEPDIR)/genomeplot-mem.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-mem.lo `test -f 'mem.c' || echo '$(srcdir)/'`mem.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-mem.Tpo" "$(DEPDIR)/genomeplot-mem.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-mem.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='genomeplot-mem.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-mem.Plo' tmpdepfile='$(DEPDIR)/genomeplot-mem.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-mem.lo `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+
+genomeplot-list.o: list.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-list.o -MD -MP -MF "$(DEPDIR)/genomeplot-list.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-list.Tpo" "$(DEPDIR)/genomeplot-list.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-list.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='genomeplot-list.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-list.Po' tmpdepfile='$(DEPDIR)/genomeplot-list.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
+
+genomeplot-list.obj: list.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-list.obj -MD -MP -MF "$(DEPDIR)/genomeplot-list.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-list.Tpo" "$(DEPDIR)/genomeplot-list.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-list.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='genomeplot-list.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-list.Po' tmpdepfile='$(DEPDIR)/genomeplot-list.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
+
+genomeplot-list.lo: list.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-list.lo -MD -MP -MF "$(DEPDIR)/genomeplot-list.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-list.lo `test -f 'list.c' || echo '$(srcdir)/'`list.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-list.Tpo" "$(DEPDIR)/genomeplot-list.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-list.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='genomeplot-list.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-list.Plo' tmpdepfile='$(DEPDIR)/genomeplot-list.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-list.lo `test -f 'list.c' || echo '$(srcdir)/'`list.c
+
+genomeplot-interval.o: interval.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-interval.o -MD -MP -MF "$(DEPDIR)/genomeplot-interval.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-interval.Tpo" "$(DEPDIR)/genomeplot-interval.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-interval.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='genomeplot-interval.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-interval.Po' tmpdepfile='$(DEPDIR)/genomeplot-interval.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
+
+genomeplot-interval.obj: interval.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-interval.obj -MD -MP -MF "$(DEPDIR)/genomeplot-interval.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-interval.Tpo" "$(DEPDIR)/genomeplot-interval.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-interval.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='genomeplot-interval.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-interval.Po' tmpdepfile='$(DEPDIR)/genomeplot-interval.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`
+
+genomeplot-interval.lo: interval.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-interval.lo -MD -MP -MF "$(DEPDIR)/genomeplot-interval.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-interval.lo `test -f 'interval.c' || echo '$(srcdir)/'`interval.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-interval.Tpo" "$(DEPDIR)/genomeplot-interval.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-interval.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='genomeplot-interval.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-interval.Plo' tmpdepfile='$(DEPDIR)/genomeplot-interval.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-interval.lo `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
+
+genomeplot-uintlist.o: uintlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-uintlist.o -MD -MP -MF "$(DEPDIR)/genomeplot-uintlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-uintlist.Tpo" "$(DEPDIR)/genomeplot-uintlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-uintlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='genomeplot-uintlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-uintlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-uintlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
+
+genomeplot-uintlist.obj: uintlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-uintlist.obj -MD -MP -MF "$(DEPDIR)/genomeplot-uintlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-uintlist.Tpo" "$(DEPDIR)/genomeplot-uintlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-uintlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='genomeplot-uintlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-uintlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-uintlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`
+
+genomeplot-uintlist.lo: uintlist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-uintlist.lo -MD -MP -MF "$(DEPDIR)/genomeplot-uintlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-uintlist.lo `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-uintlist.Tpo" "$(DEPDIR)/genomeplot-uintlist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-uintlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='genomeplot-uintlist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-uintlist.Plo' tmpdepfile='$(DEPDIR)/genomeplot-uintlist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-uintlist.lo `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
+
+genomeplot-iit-read.o: iit-read.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-iit-read.o -MD -MP -MF "$(DEPDIR)/genomeplot-iit-read.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-iit-read.Tpo" "$(DEPDIR)/genomeplot-iit-read.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-iit-read.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='genomeplot-iit-read.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-iit-read.Po' tmpdepfile='$(DEPDIR)/genomeplot-iit-read.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
+
+genomeplot-iit-read.obj: iit-read.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-iit-read.obj -MD -MP -MF "$(DEPDIR)/genomeplot-iit-read.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-iit-read.Tpo" "$(DEPDIR)/genomeplot-iit-read.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-iit-read.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='genomeplot-iit-read.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-iit-read.Po' tmpdepfile='$(DEPDIR)/genomeplot-iit-read.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`
+
+genomeplot-iit-read.lo: iit-read.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-iit-read.lo -MD -MP -MF "$(DEPDIR)/genomeplot-iit-read.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-iit-read.lo `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-iit-read.Tpo" "$(DEPDIR)/genomeplot-iit-read.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-iit-read.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='genomeplot-iit-read.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-iit-read.Plo' tmpdepfile='$(DEPDIR)/genomeplot-iit-read.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-iit-read.lo `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
+
+genomeplot-chrsubset.o: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-chrsubset.o -MD -MP -MF "$(DEPDIR)/genomeplot-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-chrsubset.Tpo" "$(DEPDIR)/genomeplot-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='genomeplot-chrsubset.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-chrsubset.Po' tmpdepfile='$(DEPDIR)/genomeplot-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+genomeplot-chrsubset.obj: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-chrsubset.obj -MD -MP -MF "$(DEPDIR)/genomeplot-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-chrsubset.Tpo" "$(DEPDIR)/genomeplot-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='genomeplot-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-chrsubset.Po' tmpdepfile='$(DEPDIR)/genomeplot-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+
+genomeplot-chrsubset.lo: chrsubset.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-chrsubset.lo -MD -MP -MF "$(DEPDIR)/genomeplot-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-chrsubset.Tpo" "$(DEPDIR)/genomeplot-chrsubset.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='genomeplot-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-chrsubset.Plo' tmpdepfile='$(DEPDIR)/genomeplot-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+genomeplot-color.o: color.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-color.o -MD -MP -MF "$(DEPDIR)/genomeplot-color.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-color.o `test -f 'color.c' || echo '$(srcdir)/'`color.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-color.Tpo" "$(DEPDIR)/genomeplot-color.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-color.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='color.c' object='genomeplot-color.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-color.Po' tmpdepfile='$(DEPDIR)/genomeplot-color.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-color.o `test -f 'color.c' || echo '$(srcdir)/'`color.c
+
+genomeplot-color.obj: color.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-color.obj -MD -MP -MF "$(DEPDIR)/genomeplot-color.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-color.obj `if test -f 'color.c'; then $(CYGPATH_W) 'color.c'; else $(CYGPATH_W) '$(srcdir)/color.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-color.Tpo" "$(DEPDIR)/genomeplot-color.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-color.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='color.c' object='genomeplot-color.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-color.Po' tmpdepfile='$(DEPDIR)/genomeplot-color.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-color.obj `if test -f 'color.c'; then $(CYGPATH_W) 'color.c'; else $(CYGPATH_W) '$(srcdir)/color.c'; fi`
+
+genomeplot-color.lo: color.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-color.lo -MD -MP -MF "$(DEPDIR)/genomeplot-color.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-color.lo `test -f 'color.c' || echo '$(srcdir)/'`color.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-color.Tpo" "$(DEPDIR)/genomeplot-color.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-color.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='color.c' object='genomeplot-color.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-color.Plo' tmpdepfile='$(DEPDIR)/genomeplot-color.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-color.lo `test -f 'color.c' || echo '$(srcdir)/'`color.c
+
+genomeplot-doublelist.o: doublelist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-doublelist.o -MD -MP -MF "$(DEPDIR)/genomeplot-doublelist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-doublelist.o `test -f 'doublelist.c' || echo '$(srcdir)/'`doublelist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-doublelist.Tpo" "$(DEPDIR)/genomeplot-doublelist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-doublelist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='doublelist.c' object='genomeplot-doublelist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-doublelist.Po' tmpdepfile='$(DEPDIR)/genomeplot-doublelist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-doublelist.o `test -f 'doublelist.c' || echo '$(srcdir)/'`doublelist.c
+
+genomeplot-doublelist.obj: doublelist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-doublelist.obj -MD -MP -MF "$(DEPDIR)/genomeplot-doublelist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-doublelist.obj `if test -f 'doublelist.c'; then $(CYGPATH_W) 'doublelist.c'; else $(CYGPATH_W) '$(srcdir)/doublelist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-doublelist.Tpo" "$(DEPDIR)/genomeplot-doublelist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-doublelist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='doublelist.c' object='genomeplot-doublelist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-doublelist.Po' tmpdepfile='$(DEPDIR)/genomeplot-doublelist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-doublelist.obj `if test -f 'doublelist.c'; then $(CYGPATH_W) 'doublelist.c'; else $(CYGPATH_W) '$(srcdir)/doublelist.c'; fi`
+
+genomeplot-doublelist.lo: doublelist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-doublelist.lo -MD -MP -MF "$(DEPDIR)/genomeplot-doublelist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-doublelist.lo `test -f 'doublelist.c' || echo '$(srcdir)/'`doublelist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-doublelist.Tpo" "$(DEPDIR)/genomeplot-doublelist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-doublelist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='doublelist.c' object='genomeplot-doublelist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-doublelist.Plo' tmpdepfile='$(DEPDIR)/genomeplot-doublelist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-doublelist.lo `test -f 'doublelist.c' || echo '$(srcdir)/'`doublelist.c
+
+genomeplot-datum.o: datum.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-datum.o -MD -MP -MF "$(DEPDIR)/genomeplot-datum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-datum.o `test -f 'datum.c' || echo '$(srcdir)/'`datum.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-datum.Tpo" "$(DEPDIR)/genomeplot-datum.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-datum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datum.c' object='genomeplot-datum.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-datum.Po' tmpdepfile='$(DEPDIR)/genomeplot-datum.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-datum.o `test -f 'datum.c' || echo '$(srcdir)/'`datum.c
+
+genomeplot-datum.obj: datum.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-datum.obj -MD -MP -MF "$(DEPDIR)/genomeplot-datum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-datum.obj `if test -f 'datum.c'; then $(CYGPATH_W) 'datum.c'; else $(CYGPATH_W) '$(srcdir)/datum.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-datum.Tpo" "$(DEPDIR)/genomeplot-datum.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-datum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datum.c' object='genomeplot-datum.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-datum.Po' tmpdepfile='$(DEPDIR)/genomeplot-datum.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-datum.obj `if test -f 'datum.c'; then $(CYGPATH_W) 'datum.c'; else $(CYGPATH_W) '$(srcdir)/datum.c'; fi`
+
+genomeplot-datum.lo: datum.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-datum.lo -MD -MP -MF "$(DEPDIR)/genomeplot-datum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-datum.lo `test -f 'datum.c' || echo '$(srcdir)/'`datum.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-datum.Tpo" "$(DEPDIR)/genomeplot-datum.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-datum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datum.c' object='genomeplot-datum.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-datum.Plo' tmpdepfile='$(DEPDIR)/genomeplot-datum.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-datum.lo `test -f 'datum.c' || echo '$(srcdir)/'`datum.c
+
+genomeplot-plotdata.o: plotdata.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-plotdata.o -MD -MP -MF "$(DEPDIR)/genomeplot-plotdata.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-plotdata.o `test -f 'plotdata.c' || echo '$(srcdir)/'`plotdata.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-plotdata.Tpo" "$(DEPDIR)/genomeplot-plotdata.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-plotdata.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='plotdata.c' object='genomeplot-plotdata.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-plotdata.Po' tmpdepfile='$(DEPDIR)/genomeplot-plotdata.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-plotdata.o `test -f 'plotdata.c' || echo '$(srcdir)/'`plotdata.c
+
+genomeplot-plotdata.obj: plotdata.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-plotdata.obj -MD -MP -MF "$(DEPDIR)/genomeplot-plotdata.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-plotdata.obj `if test -f 'plotdata.c'; then $(CYGPATH_W) 'plotdata.c'; else $(CYGPATH_W) '$(srcdir)/plotdata.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-plotdata.Tpo" "$(DEPDIR)/genomeplot-plotdata.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-plotdata.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='plotdata.c' object='genomeplot-plotdata.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-plotdata.Po' tmpdepfile='$(DEPDIR)/genomeplot-plotdata.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-plotdata.obj `if test -f 'plotdata.c'; then $(CYGPATH_W) 'plotdata.c'; else $(CYGPATH_W) '$(srcdir)/plotdata.c'; fi`
+
+genomeplot-plotdata.lo: plotdata.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-plotdata.lo -MD -MP -MF "$(DEPDIR)/genomeplot-plotdata.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-plotdata.lo `test -f 'plotdata.c' || echo '$(srcdir)/'`plotdata.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-plotdata.Tpo" "$(DEPDIR)/genomeplot-plotdata.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-plotdata.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='plotdata.c' object='genomeplot-plotdata.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-plotdata.Plo' tmpdepfile='$(DEPDIR)/genomeplot-plotdata.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-plotdata.lo `test -f 'plotdata.c' || echo '$(srcdir)/'`plotdata.c
+
+genomeplot-intlist.o: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.o -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+genomeplot-intlist.obj: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.obj -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
+
+genomeplot-intlist.lo: intlist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.lo -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Plo' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+genomeplot-nr-x.o: nr-x.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-nr-x.o -MD -MP -MF "$(DEPDIR)/genomeplot-nr-x.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-nr-x.o `test -f 'nr-x.c' || echo '$(srcdir)/'`nr-x.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-nr-x.Tpo" "$(DEPDIR)/genomeplot-nr-x.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-nr-x.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nr-x.c' object='genomeplot-nr-x.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-nr-x.Po' tmpdepfile='$(DEPDIR)/genomeplot-nr-x.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-nr-x.o `test -f 'nr-x.c' || echo '$(srcdir)/'`nr-x.c
+
+genomeplot-nr-x.obj: nr-x.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-nr-x.obj -MD -MP -MF "$(DEPDIR)/genomeplot-nr-x.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-nr-x.obj `if test -f 'nr-x.c'; then $(CYGPATH_W) 'nr-x.c'; else $(CYGPATH_W) '$(srcdir)/nr-x.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-nr-x.Tpo" "$(DEPDIR)/genomeplot-nr-x.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-nr-x.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nr-x.c' object='genomeplot-nr-x.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-nr-x.Po' tmpdepfile='$(DEPDIR)/genomeplot-nr-x.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-nr-x.obj `if test -f 'nr-x.c'; then $(CYGPATH_W) 'nr-x.c'; else $(CYGPATH_W) '$(srcdir)/nr-x.c'; fi`
+
+genomeplot-nr-x.lo: nr-x.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-nr-x.lo -MD -MP -MF "$(DEPDIR)/genomeplot-nr-x.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-nr-x.lo `test -f 'nr-x.c' || echo '$(srcdir)/'`nr-x.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-nr-x.Tpo" "$(DEPDIR)/genomeplot-nr-x.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-nr-x.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nr-x.c' object='genomeplot-nr-x.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-nr-x.Plo' tmpdepfile='$(DEPDIR)/genomeplot-nr-x.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-nr-x.lo `test -f 'nr-x.c' || echo '$(srcdir)/'`nr-x.c
+
+genomeplot-chrsegment.o: chrsegment.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-chrsegment.o -MD -MP -MF "$(DEPDIR)/genomeplot-chrsegment.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-chrsegment.o `test -f 'chrsegment.c' || echo '$(srcdir)/'`chrsegment.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-chrsegment.Tpo" "$(DEPDIR)/genomeplot-chrsegment.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-chrsegment.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsegment.c' object='genomeplot-chrsegment.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-chrsegment.Po' tmpdepfile='$(DEPDIR)/genomeplot-chrsegment.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-chrsegment.o `test -f 'chrsegment.c' || echo '$(srcdir)/'`chrsegment.c
+
+genomeplot-chrsegment.obj: chrsegment.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-chrsegment.obj -MD -MP -MF "$(DEPDIR)/genomeplot-chrsegment.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-chrsegment.obj `if test -f 'chrsegment.c'; then $(CYGPATH_W) 'chrsegment.c'; else $(CYGPATH_W) '$(srcdir)/chrsegment.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-chrsegment.Tpo" "$(DEPDIR)/genomeplot-chrsegment.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-chrsegment.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsegment.c' object='genomeplot-chrsegment.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-chrsegment.Po' tmpdepfile='$(DEPDIR)/genomeplot-chrsegment.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-chrsegment.obj `if test -f 'chrsegment.c'; then $(CYGPATH_W) 'chrsegment.c'; else $(CYGPATH_W) '$(srcdir)/chrsegment.c'; fi`
+
+genomeplot-chrsegment.lo: chrsegment.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-chrsegment.lo -MD -MP -MF "$(DEPDIR)/genomeplot-chrsegment.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-chrsegment.lo `test -f 'chrsegment.c' || echo '$(srcdir)/'`chrsegment.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-chrsegment.Tpo" "$(DEPDIR)/genomeplot-chrsegment.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-chrsegment.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsegment.c' object='genomeplot-chrsegment.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-chrsegment.Plo' tmpdepfile='$(DEPDIR)/genomeplot-chrsegment.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-chrsegment.lo `test -f 'chrsegment.c' || echo '$(srcdir)/'`chrsegment.c
+
+genomeplot-datadir.o: datadir.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-datadir.o -MD -MP -MF "$(DEPDIR)/genomeplot-datadir.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-datadir.Tpo" "$(DEPDIR)/genomeplot-datadir.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-datadir.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='genomeplot-datadir.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-datadir.Po' tmpdepfile='$(DEPDIR)/genomeplot-datadir.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+genomeplot-datadir.obj: datadir.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-datadir.obj -MD -MP -MF "$(DEPDIR)/genomeplot-datadir.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-datadir.Tpo" "$(DEPDIR)/genomeplot-datadir.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-datadir.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='genomeplot-datadir.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-datadir.Po' tmpdepfile='$(DEPDIR)/genomeplot-datadir.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
+
+genomeplot-datadir.lo: datadir.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-datadir.lo -MD -MP -MF "$(DEPDIR)/genomeplot-datadir.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-datadir.lo `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-datadir.Tpo" "$(DEPDIR)/genomeplot-datadir.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-datadir.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='genomeplot-datadir.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-datadir.Plo' tmpdepfile='$(DEPDIR)/genomeplot-datadir.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-datadir.lo `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+genomeplot-getopt.o: getopt.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-getopt.o -MD -MP -MF "$(DEPDIR)/genomeplot-getopt.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-getopt.Tpo" "$(DEPDIR)/genomeplot-getopt.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-getopt.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='genomeplot-getopt.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-getopt.Po' tmpdepfile='$(DEPDIR)/genomeplot-getopt.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
+
+genomeplot-getopt.obj: getopt.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-getopt.obj -MD -MP -MF "$(DEPDIR)/genomeplot-getopt.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-getopt.Tpo" "$(DEPDIR)/genomeplot-getopt.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-getopt.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='genomeplot-getopt.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-getopt.Po' tmpdepfile='$(DEPDIR)/genomeplot-getopt.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`
+
+genomeplot-getopt.lo: getopt.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-getopt.lo -MD -MP -MF "$(DEPDIR)/genomeplot-getopt.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-getopt.lo `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-getopt.Tpo" "$(DEPDIR)/genomeplot-getopt.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-getopt.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='genomeplot-getopt.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-getopt.Plo' tmpdepfile='$(DEPDIR)/genomeplot-getopt.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-getopt.lo `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
+
+genomeplot-getopt1.o: getopt1.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-getopt1.o -MD -MP -MF "$(DEPDIR)/genomeplot-getopt1.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-getopt1.Tpo" "$(DEPDIR)/genomeplot-getopt1.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-getopt1.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='genomeplot-getopt1.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-getopt1.Po' tmpdepfile='$(DEPDIR)/genomeplot-getopt1.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
+
+genomeplot-getopt1.obj: getopt1.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-getopt1.obj -MD -MP -MF "$(DEPDIR)/genomeplot-getopt1.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-getopt1.Tpo" "$(DEPDIR)/genomeplot-getopt1.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-getopt1.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='genomeplot-getopt1.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-getopt1.Po' tmpdepfile='$(DEPDIR)/genomeplot-getopt1.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`
+
+genomeplot-getopt1.lo: getopt1.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-getopt1.lo -MD -MP -MF "$(DEPDIR)/genomeplot-getopt1.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-getopt1.lo `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-getopt1.Tpo" "$(DEPDIR)/genomeplot-getopt1.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-getopt1.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='genomeplot-getopt1.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-getopt1.Plo' tmpdepfile='$(DEPDIR)/genomeplot-getopt1.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-getopt1.lo `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
+
+genomeplot-genomeplot.o: genomeplot.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-genomeplot.o -MD -MP -MF "$(DEPDIR)/genomeplot-genomeplot.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-genomeplot.o `test -f 'genomeplot.c' || echo '$(srcdir)/'`genomeplot.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-genomeplot.Tpo" "$(DEPDIR)/genomeplot-genomeplot.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-genomeplot.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomeplot.c' object='genomeplot-genomeplot.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-genomeplot.Po' tmpdepfile='$(DEPDIR)/genomeplot-genomeplot.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-genomeplot.o `test -f 'genomeplot.c' || echo '$(srcdir)/'`genomeplot.c
+
+genomeplot-genomeplot.obj: genomeplot.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-genomeplot.obj -MD -MP -MF "$(DEPDIR)/genomeplot-genomeplot.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-genomeplot.obj `if test -f 'genomeplot.c'; then $(CYGPATH_W) 'genomeplot.c'; else $(CYGPATH_W) '$(srcdir)/genomeplot.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-genomeplot.Tpo" "$(DEPDIR)/genomeplot-genomeplot.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-genomeplot.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomeplot.c' object='genomeplot-genomeplot.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-genomeplot.Po' tmpdepfile='$(DEPDIR)/genomeplot-genomeplot.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-genomeplot.obj `if test -f 'genomeplot.c'; then $(CYGPATH_W) 'genomeplot.c'; else $(CYGPATH_W) '$(srcdir)/genomeplot.c'; fi`
+
+genomeplot-genomeplot.lo: genomeplot.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-genomeplot.lo -MD -MP -MF "$(DEPDIR)/genomeplot-genomeplot.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-genomeplot.lo `test -f 'genomeplot.c' || echo '$(srcdir)/'`genomeplot.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-genomeplot.Tpo" "$(DEPDIR)/genomeplot-genomeplot.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-genomeplot.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomeplot.c' object='genomeplot-genomeplot.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-genomeplot.Plo' tmpdepfile='$(DEPDIR)/genomeplot-genomeplot.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-genomeplot.lo `test -f 'genomeplot.c' || echo '$(srcdir)/'`genomeplot.c
 
 get_genome-except.o: except.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-except.o -MD -MP -MF "$(DEPDIR)/get_genome-except.Tpo" \
@@ -2623,72 +3347,6 @@ gmap-translation.lo: translation.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-translation.lo `test -f 'translation.c' || echo '$(srcdir)/'`translation.c
 
-gmap-nmath.o: nmath.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.o -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Po' tmpdepfile='$(DEPDIR)/gmap-nmath.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
-
-gmap-nmath.obj: nmath.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.obj -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Po' tmpdepfile='$(DEPDIR)/gmap-nmath.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`
-
-gmap-nmath.lo: nmath.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.lo -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Plo' tmpdepfile='$(DEPDIR)/gmap-nmath.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
-
-gmap-chimera.o: chimera.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.o -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Po' tmpdepfile='$(DEPDIR)/gmap-chimera.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
-
-gmap-chimera.obj: chimera.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.obj -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Po' tmpdepfile='$(DEPDIR)/gmap-chimera.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
-
-gmap-chimera.lo: chimera.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.lo -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Plo' tmpdepfile='$(DEPDIR)/gmap-chimera.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
-
 gmap-stage3.o: stage3.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-stage3.o -MD -MP -MF "$(DEPDIR)/gmap-stage3.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o gmap-stage3.o `test -f 'stage3.c' || echo '$(srcdir)/'`stage3.c; \
@@ -3018,6 +3676,105 @@ gmap-gmap.lo: gmap.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-gmap.Plo' tmpdepfile='$(DEPDIR)/gmap-gmap.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-gmap.lo `test -f 'gmap.c' || echo '$(srcdir)/'`gmap.c
+
+gmap-nmath.o: nmath.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.o -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Po' tmpdepfile='$(DEPDIR)/gmap-nmath.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
+
+gmap-nmath.obj: nmath.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.obj -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Po' tmpdepfile='$(DEPDIR)/gmap-nmath.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`
+
+gmap-nmath.lo: nmath.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.lo -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Plo' tmpdepfile='$(DEPDIR)/gmap-nmath.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
+
+gmap-maxent.o: maxent.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent.o -MD -MP -MF "$(DEPDIR)/gmap-maxent.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-maxent.Tpo" "$(DEPDIR)/gmap-maxent.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-maxent.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gmap-maxent.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-maxent.Po' tmpdepfile='$(DEPDIR)/gmap-maxent.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+
+gmap-maxent.obj: maxent.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent.obj -MD -MP -MF "$(DEPDIR)/gmap-maxent.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-maxent.Tpo" "$(DEPDIR)/gmap-maxent.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-maxent.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gmap-maxent.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-maxent.Po' tmpdepfile='$(DEPDIR)/gmap-maxent.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
+
+gmap-maxent.lo: maxent.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent.lo -MD -MP -MF "$(DEPDIR)/gmap-maxent.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-maxent.lo `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-maxent.Tpo" "$(DEPDIR)/gmap-maxent.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-maxent.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gmap-maxent.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-maxent.Plo' tmpdepfile='$(DEPDIR)/gmap-maxent.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.lo `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+
+gmap-chimera.o: chimera.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.o -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Po' tmpdepfile='$(DEPDIR)/gmap-chimera.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
+
+gmap-chimera.obj: chimera.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.obj -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Po' tmpdepfile='$(DEPDIR)/gmap-chimera.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
+
+gmap-chimera.lo: chimera.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.lo -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Plo' tmpdepfile='$(DEPDIR)/gmap-chimera.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
 
 gmapindex-except.o: except.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-except.o -MD -MP -MF "$(DEPDIR)/gmapindex-except.Tpo" \

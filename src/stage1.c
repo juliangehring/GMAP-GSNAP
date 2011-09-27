@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c,v 1.93 2005/05/05 23:44:57 twu Exp $";
+static char rcsid[] = "$Id: stage1.c,v 1.96 2005/06/21 18:37:01 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -25,7 +25,8 @@ static char rcsid[] = "$Id: stage1.c,v 1.93 2005/05/05 23:44:57 twu Exp $";
 #define EXTRA_LONGEND  30000	/* Should exceed INDEX1PART */
 #define EXTRA_SHORTEND 10000	/* Should exceed INDEX1PART */
 #define SIZEBOUND 0.7
-#define MAXMATCHPAIRS 20
+#define MAXMATCHPAIRS_PREUNIQUE 50
+#define MAXMATCHPAIRS_POSTUNIQUE 20
 
 /* Debugging of scanning for 24-mers */
 #ifdef DEBUG
@@ -279,11 +280,22 @@ pair_up (bool *foundpairp, List_T matchpairlist, List_T newmatches5, List_T newm
 
   if (newmatchpairs == NULL) {
     *foundpairp = false;
+
+  } else if (List_length(newmatchpairs) > MAXMATCHPAIRS_PREUNIQUE) {
+    debug(printf("Too many matching pairs before unique (%d > %d)\n",
+		 List_length(newmatchpairs),MAXMATCHPAIRS_PREUNIQUE));
+    *foundpairp = false;
+    for (p = newmatchpairs; p != NULL; p = p->rest) {
+      matchpair = (Matchpair_T) List_head(p);
+      Matchpair_free(&matchpair);
+    }
+    List_free(&newmatchpairs);
+
   } else {
     newmatchpairs = Matchpair_filter_unique(newmatchpairs);
-    if (List_length(newmatchpairs) > MAXMATCHPAIRS) {
+    if (List_length(newmatchpairs) > MAXMATCHPAIRS_POSTUNIQUE) {
       debug(printf("Too many matching pairs (%d > %d)\n",
-		   List_length(newmatchpairs),MAXMATCHPAIRS));
+		   List_length(newmatchpairs),MAXMATCHPAIRS_POSTUNIQUE));
       
       *foundpairp = false;
       for (p = newmatchpairs; p != NULL; p = p->rest) {
@@ -1419,7 +1431,8 @@ get_dangling (List_T matches) {
 
 
 List_T
-Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset) {
+Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
+		  bool crossspeciesp) {
   List_T clusterlist = NULL;
   int querystart, queryend;
   int nsamples, prevnskip, nskip;
@@ -1515,7 +1528,7 @@ Stage1_compute (Sequence_T queryseq, Indexdb_T indexdb, IIT_T chromosome_iit,
     maxintronlen = 20;		/* Essentially, we don't want to find any introns */
   } else if (crossspeciesp == true) {
     stage1size = 18;
-    maxentries = 100;
+    maxentries = 250;
     maxintronlen = 20 + EXPANSION*(trimlength - SHORTSEQLEN);
   } else {
     stage1size = 24;

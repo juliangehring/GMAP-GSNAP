@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c,v 1.44 2005/05/09 22:34:09 twu Exp $";
+static char rcsid[] = "$Id: result.c,v 1.46 2005/06/23 22:47:42 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,14 +11,11 @@ static char rcsid[] = "$Id: result.c,v 1.44 2005/05/09 22:34:09 twu Exp $";
 #define T Result_T
 struct T {
   int id;
-  int chimerapos;		/* -1 indicates not a chimera */
-  int chimeraequivpos;
-  int nonchimera_matches;
-  int nonchimera_mismatches;
-  int nonchimera_indels;
+  Chimera_T chimera;		/* NULL indicates not a chimera */
   Stage1_T stage1;
   Stage3_T *array;
   int npaths;
+  Failure_T failuretype;
 };
 
 
@@ -28,31 +25,10 @@ Result_id (T this) {
 }
 
 
-int
-Result_chimerapos (T this) {
-  return this->chimerapos;
+Chimera_T
+Result_chimera (T this) {
+  return this->chimera;
 }
-
-int
-Result_chimeraequivpos (T this) {
-  return this->chimeraequivpos;
-}
-
-int
-Result_nonchimera_matches (T this) {
-  return this->nonchimera_matches;
-}
-
-int
-Result_nonchimera_mismatches (T this) {
-  return this->nonchimera_mismatches;
-}
-
-int
-Result_nonchimera_indels (T this) {
-  return this->nonchimera_indels;
-}
-
 
 
 Stage1_T
@@ -68,31 +44,39 @@ Result_array (int *npaths, T this) {
 }
 
 
+Failure_T
+Result_failuretype (T this) {
+  return this->failuretype;
+}
+
+
 T
-Result_new (int id, int chimerapos, int chimeraequivpos, int nonchimera_matches, 
-	    int nonchimera_mismatches, int nonchimera_indels, Stage1_T stage1, 
-	    Stage3_T *array, int npaths) {
+Result_new (int id, Chimera_T chimera, Stage1_T stage1, 
+	    Stage3_T *array, int npaths, Failure_T failuretype) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
-  new->chimerapos = chimerapos;
-  new->chimeraequivpos = chimeraequivpos;
-  new->nonchimera_matches = nonchimera_matches;
-  new->nonchimera_mismatches = nonchimera_mismatches;
-  new->nonchimera_indels = nonchimera_indels;
+  new->chimera = chimera;
   new->stage1 = stage1;
   new->array = array;
   new->npaths = npaths;
+  new->failuretype = failuretype;
   return new;
 }
 
 void
 Result_free (T *old) {
+  Chimera_T chimera;
   Stage1_T stage1;
   Stage3_T stage3;
   int i;
 
   if (*old) {
+#ifdef BETATEST    
+    if ((chimera = (*old)->chimera) != NULL) {
+      Chimera_free(&chimera);
+    }
+#endif
     if ((stage1 = (*old)->stage1) != NULL) {
       Stage1_free(&stage1);
     }

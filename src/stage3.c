@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c,v 1.168 2005/05/20 17:42:18 twu Exp $";
+static char rcsid[] = "$Id: stage3.c,v 1.172 2005/06/03 20:12:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -143,6 +143,12 @@ Stage3_watsonp (T this) {
 }
 
 int
+Stage3_cdna_direction (T this) {
+  return this->cdna_direction;
+}
+
+
+int
 Stage3_straintype (T this) {
   return this->straintype;
 }
@@ -194,6 +200,17 @@ Stage3_queryend (T this) {
 }
   
 int
+Stage3_translation_start (T this) {
+  return this->translation_start;
+}
+
+int
+Stage3_translation_end (T this) {
+  return this->translation_end;
+}
+
+
+int
 Stage3_domain (T this) {
   int querystart, queryend;
 
@@ -240,6 +257,19 @@ Stage3_fracidentity (T this) {
     return (double) this->matches/(double) den;
   }
 }
+
+Genomicpos_T
+Stage3_genomicpos (T this, int querypos, bool headp) {
+  Genomicpos_T genomicpos;
+
+  genomicpos = Pair_genomicpos(this->pairs,this->npairs,querypos,headp);
+  if (this->watsonp) {
+    return this->chroffset + this->chrpos + genomicpos;
+  } else {
+    return this->chroffset + this->chrpos + (this->genomiclength - 1) - genomicpos;
+  }
+}
+
 
 int *
 Stage3_matchscores (T this, int querylength) {
@@ -504,8 +534,35 @@ Stage3_genomicbounds (Genomicpos_T *genomicstart, Genomicpos_T *genomiclength, T
   return;
 }
 
-void
-Stage3_translate_genomic (T this, bool fulllengthp) {
+Stage3_T
+Stage3_truncate_fulllength (Stage3_T old, bool translatep) {
+  Stage3_T new;
+
+  if (translatep == true) {
+    if (old->cdna_direction < 0) {
+      Translation_via_genomic(&old->translation_start,&old->translation_end,&old->translation_length,
+			      &old->relaastart,&old->relaaend,
+			      old->pairs,old->npairs,/*backwardsp*/true,/*revcompp*/true,/*fulllengthp*/true);
+    } else {
+      Translation_via_genomic(&old->translation_start,&old->translation_end,&old->translation_length,
+			      &old->relaastart,&old->relaaend,
+			      old->pairs,old->npairs,/*backwardsp*/false,/*revcompp*/false,/*fulllengthp*/true);
+    }
+  }
+
+  if ((new = Stage3_copy_bounded(old,Stage3_translation_start(old),
+				 Stage3_translation_end(old))) == NULL) {
+    return old;
+  } else {
+    Stage3_free(&old);
+    return new;
+  }
+}
+
+Stage3_T
+Stage3_translate_genomic (T this, bool fulllengthp, bool truncatep) {
+  Stage3_T new;
+
   if (this->cdna_direction < 0) {
     Translation_via_genomic(&this->translation_start,&this->translation_end,&this->translation_length,
 			    &this->relaastart,&this->relaaend,
@@ -515,7 +572,21 @@ Stage3_translate_genomic (T this, bool fulllengthp) {
 			    &this->relaastart,&this->relaaend,
 			    this->pairs,this->npairs,/*backwardsp*/false,/*revcompp*/false,fulllengthp);
   }
-  return;
+  if (truncatep == false) {
+    return this;
+  } else {
+    new = Stage3_truncate_fulllength(this,/*translatep*/false);
+    if (new->cdna_direction < 0) {
+      Translation_via_genomic(&new->translation_start,&new->translation_end,&new->translation_length,
+			      &new->relaastart,&new->relaaend,
+			      new->pairs,new->npairs,/*backwardsp*/true,/*revcompp*/true,fulllengthp);
+    } else {
+      Translation_via_genomic(&new->translation_start,&new->translation_end,&new->translation_length,
+			      &new->relaastart,&new->relaaend,
+			      new->pairs,new->npairs,/*backwardsp*/false,/*revcompp*/false,fulllengthp);
+    }
+    return new;
+  }
 }
 
 void
@@ -574,13 +645,12 @@ Stage3_fix_cdna_direction (T this, T reference) {
 
 void
 Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit, 
-			  char *dbversion, bool zerobasedp, bool fulllengthp) {
+			  char *dbversion, bool zerobasedp) {
   Pair_T start, end;
   bool referencealignp;
 
   start = &(this->pairs[0]);
   end = &(this->pairs[this->npairs-1]);
-  Stage3_translate_genomic(this,fulllengthp);
   referencealignp = this->straintype == 0 ? true : false;
   Pair_print_pathsummary(pathnum,start,end,this->chrnum,this->chrpos,this->chroffset,
 			 chromosome_iit,referencealignp,this->strain,contig_iit,
@@ -728,15 +798,13 @@ Stage3_print_cdna_exons (T this, int wraplength) {
 
 
 void
-Stage3_print_protein_cdna (T this, int wraplength, bool fulllengthp) {
-  Stage3_translate_genomic(this,fulllengthp);
+Stage3_print_protein_cdna (T this, int wraplength) {
   Pair_print_protein_cdna(this->pairs,this->npairs,wraplength);
   return;
 }
 
 void
-Stage3_print_protein_genomic (T this, int wraplength, bool fulllengthp) {
-  Stage3_translate_genomic(this,fulllengthp);
+Stage3_print_protein_genomic (T this, int wraplength) {
   Pair_print_protein_genomic(this->pairs,this->npairs,wraplength);
   return;
 }
@@ -746,12 +814,14 @@ void
 Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 char *version, int pathnum, int npaths,
 			 bool checksump, int chimerapos, int chimeraequivpos,
-			 bool zerobasedp) {
+			 double donor_prob, double acceptor_prob, 
+			 int chimera_cdna_direction, bool zerobasedp) {
   Pair_print_compressed(queryseq,version,pathnum,npaths,
 			this->nexons,this->coverage,Stage3_fracidentity(this),
 			this->pairs,this->npairs,this->chrnum,this->chrpos,this->chroffset,
 			chromosome_iit,this->genomiclength,checksump,
-			chimerapos,chimeraequivpos,this->strain,this->watsonp,zerobasedp);
+			chimerapos,chimeraequivpos,donor_prob,acceptor_prob,
+			chimera_cdna_direction,this->strain,this->watsonp,zerobasedp);
   return;
 }
 
@@ -1438,49 +1508,41 @@ try_ending5_extend (int *finalscore, List_T *pairs,
 					 extraband_end,defect_rate,cdna_direction,ngap,extend_mismatch_p);
   continuous_goodness = nmatches + MISMATCH*nmismatches + QOPEN*nopens + QINDEL*nindels;
 
-  if (end_microexons_p == false) {
-    if (continuous_goodness > 0) {
-      return continuous_gappairs;
-    } else {
-      return NULL;
-    }
+  /* Try to find microexons on 5' end */
+  if (continuous_gappairs == NULL) {
+    nmissed = querydp3;
+    debug(printf("  => %d missed\n",nmissed));
   } else {
-    /* Try to find microexons on 5' end */
-    if (continuous_gappairs == NULL) {
-      nmissed = querydp3;
-      debug(printf("  => %d missed\n",nmissed));
-    } else {
-      for (p = continuous_gappairs; p != NULL; p = p->rest) {
-	lastpair = p->first;
-      }
-      nmissed = lastpair->querypos;
-      debug(printf("  => %d missed and %d mismatches\n",nmissed,nmismatches));
+    for (p = continuous_gappairs; p != NULL; p = p->rest) {
+      lastpair = p->first;
     }
+    nmissed = lastpair->querypos;
+    debug(printf("  => %d missed and %d mismatches\n",nmissed,nmismatches));
+  }
 
-    acceptable_nmismatches = 2;
+  acceptable_nmismatches = 2;
 
-    if (defect_rate > DEFECT_HIGHQ || introndir != cdna_direction || nmissed + nmismatches <= acceptable_nmismatches) {
-      debug(printf("Continuous is acceptable\n"));
+  if (defect_rate > DEFECT_HIGHQ || introndir != cdna_direction || nmissed + nmismatches <= acceptable_nmismatches) {
+    debug(printf("Continuous is acceptable\n"));
+    return continuous_gappairs;
+  } else {
+    /* If we are sure about the intron direction, try to find microexon */
+    debug(printf("Trying to find microexon at 5' end:\n"));
+    intron_gappairs = Dynprog_microexon_5(&microintrontype,&microexonlength,
+					  &(queryseq_ptr[querydp3]),&(genomicseg_ptr[genomedp3]),
+					  queryjump,genomejump,querydp3,genomedp3,cdna_direction,
+					  queryseq_ptr,genomicseg_ptr,pairpool,ngap,end_microexons_p);
+    if (intron_gappairs == NULL) {
+      debug(printf("Continuous wins by default: %d\n",continuous_goodness));
       return continuous_gappairs;
     } else {
-      /* If we are sure about the intron direction, try to find microexon */
-      debug(printf("Trying to find microexon at 5' end:\n"));
-      intron_gappairs = Dynprog_microexon_5(&microintrontype,&microexonlength,
-					    &(queryseq_ptr[querydp3]),&(genomicseg_ptr[genomedp3]),
-					    queryjump,genomejump,querydp3,genomedp3,cdna_direction,
-					    queryseq_ptr,genomicseg_ptr,pairpool,ngap);
-      if (intron_gappairs == NULL) {
-	debug(printf("Continuous wins by default: %d\n",continuous_goodness));
-	return continuous_gappairs;
+      intron_goodness = microexonlength;
+      if (intron_goodness > continuous_goodness + acceptable_nmismatches) {
+	debug(printf("Microexon wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
+	return intron_gappairs;
       } else {
-	intron_goodness = microexonlength;
-	if (intron_goodness > continuous_goodness + acceptable_nmismatches) {
-	  debug(printf("Microexon wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
-	  return intron_gappairs;
-	} else {
-	  debug(printf("Continuous wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
-	  return continuous_gappairs;
-	}
+	debug(printf("Continuous wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
+	return continuous_gappairs;
       }
     }
   }
@@ -1522,7 +1584,7 @@ try_ending3_extend (int *finalscore, List_T *pairs,
     genomedp3 = genomiclength - 1;
     genomejump = genomedp3 - genomedp5 + 1;
   }
-  debug(printf("Stage 3: Dynamic programming at end: querydp5 = %d, querydp3 = %d, genomedp5 = %d, genomedp3 = %d\n",
+  debug(printf("Stage 3: Dynamic programming at 3' end: querydp5 = %d, querydp3 = %d, genomedp5 = %d, genomedp3 = %d\n",
 	       querydp5,querydp3,genomedp5,genomedp3));
 
   debug(printf("Trying to extend 3' end:\n"));
@@ -1532,47 +1594,40 @@ try_ending3_extend (int *finalscore, List_T *pairs,
 					 extraband_end,defect_rate,cdna_direction,ngap,extend_mismatch_p);
   continuous_goodness = nmatches + MISMATCH*nmismatches + QOPEN*nopens + QINDEL*nindels;
 
-  if (end_microexons_p == false) {
-    if (continuous_goodness > 0) {
-      return List_reverse(continuous_gappairs);
-    } else {
-      return NULL;
-    }
+  /* Try to find microexons on 3' end */
+  if (continuous_gappairs == NULL) {
+    nmissed = querylength - 1 - querydp5;
+    debug(printf("  => %d missed\n",nmissed));
   } else {
-    /* Try to find microexons on 3' end */
-    if (continuous_gappairs == NULL) {
-      nmissed = querylength - 1 - querydp5;
-      debug(printf("  => %d missed\n",nmissed));
-    } else {
-      firstpair = continuous_gappairs->first;
-      nmissed = querylength - 1 - firstpair->querypos;
-      debug(printf("  => %d missed and %d mismatches\n",nmissed,nmismatches));
-    }
+    firstpair = continuous_gappairs->first;
+    nmissed = querylength - 1 - firstpair->querypos;
+    debug(printf("  => %d missed and %d mismatches\n",nmissed,nmismatches));
+  }
 
-    acceptable_nmismatches = 2;
-
-    if (defect_rate > DEFECT_HIGHQ || introndir != cdna_direction || nmissed + nmismatches <= acceptable_nmismatches) {
-      debug(printf("Continuous is acceptable\n"));
+  acceptable_nmismatches = 2;
+  
+  if (defect_rate > DEFECT_HIGHQ || introndir != cdna_direction || nmissed + nmismatches <= acceptable_nmismatches) {
+    debug(printf("Continuous is acceptable\n"));
+    return List_reverse(continuous_gappairs);
+  } else {
+    /* If we are sure about the intron direction, try to find microexon. */
+    debug(printf("Trying to find microexon at 3' end:\n"));
+    intron_gappairs = Dynprog_microexon_3(&microintrontype,&microexonlength,
+					  &(queryseq_ptr[querydp5]),&(genomicseg_ptr[genomedp5]),
+					  queryjump,genomejump,querydp5,genomedp5,cdna_direction,
+					  queryseq_ptr,genomicseg_ptr,genomiclength,pairpool,ngap,
+					  end_microexons_p);
+    if (intron_gappairs == NULL) {
+      debug(printf("Continuous wins by default: %d\n",continuous_goodness));
       return List_reverse(continuous_gappairs);
     } else {
-      /* If we are sure about the intron direction, try to find microexon. */
-      debug(printf("Trying to find microexon at 3' end:\n"));
-      intron_gappairs = Dynprog_microexon_3(&microintrontype,&microexonlength,
-					    &(queryseq_ptr[querydp5]),&(genomicseg_ptr[genomedp5]),
-					    queryjump,genomejump,querydp5,genomedp5,cdna_direction,
-					    queryseq_ptr,genomicseg_ptr,genomiclength,pairpool,ngap);
-      if (intron_gappairs == NULL) {
-	debug(printf("Continuous wins by default: %d\n",continuous_goodness));
-	return List_reverse(continuous_gappairs);
+      intron_goodness = microexonlength;
+      if (intron_goodness > continuous_goodness + acceptable_nmismatches) {
+	debug(printf("Microexon wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
+	return List_reverse(intron_gappairs);
       } else {
-	intron_goodness = microexonlength;
-	if (intron_goodness > continuous_goodness + acceptable_nmismatches) {
-	  debug(printf("Microexon wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
-	  return List_reverse(intron_gappairs);
-	} else {
-	  debug(printf("Continuous wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
-	  return List_reverse(continuous_gappairs);
-	}
+	debug(printf("Continuous wins: intron %d, continuous %d\n",intron_goodness,continuous_goodness));
+	return List_reverse(continuous_gappairs);
       }
     }
   }
@@ -2388,11 +2443,11 @@ Stage3_copy (T old, Pairpool_T pairpool) {
 }
 
 T
-Stage3_copy_bounded (T old, Pairpool_T pairpool, int minpos, int maxpos) {
+Stage3_copy_bounded (T old, int minpos, int maxpos) {
   List_T pairs_fwd, pairs_rev;
 
-  pairs_fwd = Pairpool_transfer_copy_bounded(NULL,old->pairs_fwd,pairpool,minpos,maxpos);
-  pairs_rev = Pairpool_transfer_copy_bounded(NULL,old->pairs_rev,pairpool,minpos,maxpos);
+  pairs_fwd = Pairpool_transfer_bounded(NULL,old->pairs_fwd,minpos,maxpos);
+  pairs_rev = Pairpool_transfer_bounded(NULL,old->pairs_rev,minpos,maxpos);
 
   pairs_fwd = List_reverse(pairs_fwd);
   pairs_rev = List_reverse(pairs_rev);
@@ -2403,7 +2458,6 @@ Stage3_copy_bounded (T old, Pairpool_T pairpool, int minpos, int maxpos) {
 		    old->querylength,old->genomiclength,
 		    old->watsonp,old->defect_rate,/*ngap*/-1);
 }
-
 
 /* Introndir shows whether we are certain about the intron direction.
    However, we try both directions anyway, using cdna_direction */

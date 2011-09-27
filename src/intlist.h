@@ -1,4 +1,4 @@
-/* $Id: intlist.h,v 1.7 2005/02/07 23:56:56 twu Exp $ */
+/* $Id: intlist.h,v 1.8 2005/06/21 18:37:57 twu Exp $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
 
@@ -9,6 +9,8 @@ extern T
 Intlist_push (T list, int x);
 extern T 
 Intlist_pop (T list, int *x);
+extern void
+Intlist_delete (T prev, T this);
 extern int 
 Intlist_head (T list);
 extern T 

@@ -1,6 +1,6 @@
 
 if FULLDIST
-bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump oligo-count md5-compute
+bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump oligo-count md5-compute genomeplot
 else
 bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump 
 endif
@@ -26,11 +26,14 @@ GMAP_SOURCES = bool.h types.h separator.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
  mutation.c mutation.h translation.c translation.h \
- nmath.c nmath.h chimera.c chimera.h stage3.c stage3.h \
+ stage3.c stage3.h \
  request.c request.h reqpost.c reqpost.h \
  result.c result.h blackboard.c blackboard.h \
  params.c params.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
+
+# In front of stage3
+GMAP_SOURCES_BETA = nmath.c nmath.h maxent.c maxent.h chimera.c chimera.h 
 
 gmap_CC = $(PTHREAD_CC)
 if FULLDIST
@@ -40,7 +43,11 @@ gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 endif
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
+if FULLDIST
+dist_gmap_SOURCES = $(GMAP_SOURCES) $(GMAP_SOURCES_BETA)
+else
 dist_gmap_SOURCES = $(GMAP_SOURCES)
+endif
 
 
 GET_GENOME_SOURCES = bool.h types.h separator.h \
@@ -131,6 +138,22 @@ md5_compute_LDADD =
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
 
 
+GENOMEPLOT_SOURCES = bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ listdef.h list.c list.h interval.c interval.h \
+ uintlist.c uintlist.h iitdef.h iit-read.c iit-read.h \
+ chrsubset.c chrsubset.h color.c color.h \
+ doublelist.c doublelist.h datum.c datum.h plotdata.c plotdata.h \
+ intlist.c intlist.h nr-x.c nr-x.h chrsegment.c \
+ datadir.c datadir.h \
+ getopt.c getopt1.c getopt.h genomeplot.c
+
+genomeplot_CFLAGS = $(AM_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+genomeplot_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+genomeplot_LDADD =
+nodist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
+
+
 
 GMAPINDEX_SOURCES = bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -149,6 +172,4 @@ gmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmapindex_LDADD = $(PTHREAD_LIBS)
 dist_gmapindex_SOURCES = $(GMAPINDEX_SOURCES)
-
-
 

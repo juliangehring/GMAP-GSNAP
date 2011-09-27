@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.39 2005/05/06 16:59:19 twu Exp $ */
+/* $Id: dynprog.h,v 1.40 2005/06/03 00:28:41 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -82,13 +82,13 @@ extern List_T
 Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequence1, char *revsequence2,
 		     int length1, int length2, int revoffset1, int revoffset2,
 		     int cdna_direction, char *queryseq, char *genomicseg, 
-		     Pairpool_T pairpool, int ngap);
+		     Pairpool_T pairpool, int ngap, bool end_microexons_p);
 
 extern List_T
 Dynprog_microexon_3 (int *microintrontype, int *microexonlength, char *sequence1, char *sequence2,
 		     int length1, int length2, int offset1, int offset2,
 		     int cdna_direction, char *queryseq, char *genomicseg, 
-		     int genomiclength, Pairpool_T pairpool, int ngap);
+		     int genomiclength, Pairpool_T pairpool, int ngap, bool end_microexons_p);
 
 #undef T
 #endif

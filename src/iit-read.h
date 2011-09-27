@@ -1,4 +1,4 @@
-/* $Id: iit-read.h,v 1.28 2005/04/19 15:50:22 twu Exp $ */
+/* $Id: iit-read.h,v 1.29 2005/06/16 14:05:59 twu Exp $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -19,6 +19,8 @@ extern int
 IIT_nintervals (T this);
 extern int
 IIT_ntypes (T this);
+extern unsigned int
+IIT_length (T this, int index);
 extern unsigned int
 IIT_totallength (T this);
 extern Interval_T

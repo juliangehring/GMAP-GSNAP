@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.73 2005/05/09 22:33:57 twu Exp $ */
+/* $Id: pair.h,v 1.75 2005/06/03 20:12:18 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -77,6 +77,8 @@ extern void
 Pair_dump_array (struct T *pairs, int npairs, bool zerobasedp);
 extern void
 Pair_dump_aapos (struct T *pairs, int npairs, int aapos, int cdna_direction);
+extern Genomicpos_T
+Pair_genomicpos (struct T *pairs, int npairs, int querypos, bool headp);
 extern int
 Pair_codon_changepos (struct T *pairs, int npairs, int aapos, int cdna_direction);
 
@@ -106,8 +108,8 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		       Genomicpos_T chroffset, IIT_T chromosome_iit,
 		       Genomicpos_T genomiclength, bool checksump, 
-		       int chimerapos, int chimeraequivpos, char *strain, bool watsonp, 
-		       bool zerobasedp);
+		       int chimerapos, int chimeraequivpos, double donor_prob, double acceptor_prob,
+		       int chimera_cdna_direction, char *strain, bool watsonp, bool zerobasedp);
 
 extern void
 Pair_fracidentity (int *matches, int *unknowns, int *mismatches, 

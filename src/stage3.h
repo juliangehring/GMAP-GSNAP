@@ -1,4 +1,4 @@
-/* $Id: stage3.h,v 1.76 2005/05/20 17:42:21 twu Exp $ */
+/* $Id: stage3.h,v 1.79 2005/06/03 20:12:35 twu Exp $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 #include "bool.h"
@@ -21,6 +21,8 @@ typedef struct T *T;
 extern bool
 Stage3_watsonp (T this);
 extern int
+Stage3_cdna_direction (T this);
+extern int
 Stage3_straintype (T this);
 extern int
 Stage3_goodness (T this);
@@ -39,12 +41,18 @@ Stage3_querystart (T this);
 extern int
 Stage3_queryend (T this);
 extern int
+Stage3_translation_start (T this);
+extern int
+Stage3_translation_end (T this);
+extern int
 Stage3_domain (T this);
 extern int
 Stage3_largemargin (int *chimerapos, T this, Sequence_T queryseq);
 
 extern double
 Stage3_fracidentity (T this);
+extern Genomicpos_T
+Stage3_genomicpos (T this, int querypos, bool headp);
 extern int *
 Stage3_matchscores (T this, int querylength);
 extern void
@@ -62,15 +70,17 @@ Stage3_free (T *old);
 
 extern void
 Stage3_genomicbounds (Genomicpos_T *genomicstart, Genomicpos_T *genomiclength, T this);
-extern void
-Stage3_translate_genomic (T this, bool fulllengthp);
+extern Stage3_T
+Stage3_truncate_fulllength (Stage3_T old, bool translatep);
+extern Stage3_T
+Stage3_translate_genomic (T this, bool fulllengthp, bool truncatep);
 extern void
 Stage3_translate_cdna (T this, T reference, bool literalrefp);
 extern void
 Stage3_fix_cdna_direction (T this, T reference);
 extern void
 Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit,
-			  char *dbversion, bool zerobasedp, bool fulllengthp);
+			  char *dbversion, bool zerobasedp);
 extern void
 Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion,
 			bool showalignp, bool zerobasedp, 
@@ -87,20 +97,21 @@ Stage3_print_alignment (T this, IIT_T chromosome_iit,
 extern void
 Stage3_print_cdna_exons (T this, int wraplength);
 extern void
-Stage3_print_protein_cdna (T this, int wraplength, bool fulllengthp);
+Stage3_print_protein_cdna (T this, int wraplength);
 extern void
-Stage3_print_protein_genomic (T this, int wraplength, bool fulllengthp);
+Stage3_print_protein_genomic (T this, int wraplength);
 
 extern void
 Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 char *version, int pathnum, int npaths,
 			 bool checksump, int chimerapos, int chimeraequivpos,
-			 bool zerobasedp);
+			 double donor_prob, double acceptor_prob, 
+			 int chimera_cdna_direction, bool zerobasedp);
 
 extern T
 Stage3_copy (T old, Pairpool_T pairpool);
 extern T
-Stage3_copy_bounded (T old, Pairpool_T pairpool, int minpos, int maxpos);
+Stage3_copy_bounded (T old, int minpos, int maxpos);
 
 extern T
 Stage3_compute (Stage2_T stage2, Sequence_T queryseq, Sequence_T genomicseg, 

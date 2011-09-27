@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c,v 1.113 2005/05/06 16:59:19 twu Exp $";
+static char rcsid[] = "$Id: dynprog.c,v 1.114 2005/06/03 00:28:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2459,18 +2459,30 @@ Dynprog_microexon_int (int *microintrontype, char *sequence1, char *sequence2L, 
    1-(1-p1)^L, where p1 is 4^n.  We determine L so chance probability
    is less than ENDSEQUENCE_PVALUE */
 static int
-search_length (int endlength, int maxlength) {
+search_length (int endlength, int maxlength, bool end_microexons_p) {
   double p1;
-  int result;
+  int effective_maxlength, extrant, result;
 
-  if (endlength > 8) {
-    return maxlength;
+  if (end_microexons_p == true) {
+    extrant = 4;		/* Count the four nucleotides at the intron bounds */
+    effective_maxlength = maxlength;
   } else {
-    p1 = 1.0/pow(4.0,(double) (endlength+4));
+    extrant = 0;		/* Don't count the four nucleotides */
+    effective_maxlength = 5000;
+    if (maxlength < effective_maxlength) {
+      effective_maxlength = maxlength;
+    }
+  }
+
+  if (endlength + extrant > 12) {
+    debug(printf("  Search length for endlength of %d is maxlength %d\n",endlength,effective_maxlength));
+    return effective_maxlength;
+  } else {
+    p1 = 1.0/pow(4.0,(double) (endlength + extrant));
     result = (int) (log(1.0-ENDSEQUENCE_PVALUE)/log(1-p1));
-    debug(printf("  Search length for endlength of %d is %d\n",endlength,result));
-    if (result > maxlength) {
-      return maxlength;
+    debug(printf("  Search length for endlength of %d plus extra nt of %d is %d\n",endlength,extrant,result));
+    if (result > effective_maxlength) {
+      return effective_maxlength;
     } else {
       return result;
     }
@@ -2482,7 +2494,7 @@ List_T
 Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequence1, char *revsequence2,
 		     int length1, int length2, int revoffset1, int revoffset2,
 		     int cdna_direction, char *queryseq, char *genomicseg, 
-		     Pairpool_T pairpool, int ngap) {
+		     Pairpool_T pairpool, int ngap, bool end_microexons_p) {
   Intlist_T hits = NULL, p;
   int endlength, c, textleft, textright, candidate, nmismatches = 0;
   char left1, left2, right2, right1;
@@ -2529,7 +2541,7 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength, char *revsequen
 		       c,endlength,endlength,&(revsequence1[-endlength+1])));
 
       textright = revoffset2 - c - MICROINTRON_LENGTH;
-      textleft = textright - search_length(endlength,textright) + MICROINTRON_LENGTH;
+      textleft = textright - search_length(endlength,textright,end_microexons_p) + MICROINTRON_LENGTH;
       hits = BoyerMoore(&(revsequence1[-c-endlength+1]),endlength,&(genomicseg[textleft]),textright-textleft);
       for (p = hits; p != NULL; p = Intlist_next(p)) {
 	candidate = textleft + Intlist_head(p);
@@ -2558,7 +2570,7 @@ List_T
 Dynprog_microexon_3 (int *microintrontype, int *microexonlength, char *sequence1, char *sequence2,
 		     int length1, int length2, int offset1, int offset2,
 		     int cdna_direction, char *queryseq, char *genomicseg, 
-		     int genomiclength, Pairpool_T pairpool, int ngap) {
+		     int genomiclength, Pairpool_T pairpool, int ngap, bool end_microexons_p) {
   Intlist_T hits = NULL, p;
   int endlength, c, textleft, textright, candidate, nmismatches = 0;
   char left1, left2, right2, right1;
@@ -2604,7 +2616,7 @@ Dynprog_microexon_3 (int *microintrontype, int *microexonlength, char *sequence1
 		   c,endlength,endlength,&(sequence1[c])));
 
       textleft = offset2 + c;
-      textright = textleft + search_length(endlength,genomiclength-textleft);
+      textright = textleft + search_length(endlength,genomiclength-textleft,end_microexons_p);
       hits = BoyerMoore(&(sequence1[c]),endlength,&(genomicseg[textleft]),textright-textleft);
       for (p = hits; p != NULL; p = Intlist_next(p)) {
 	candidate = textleft + Intlist_head(p);

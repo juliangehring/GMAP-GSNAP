@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uintlist.c,v 1.2 2005/02/07 23:56:57 twu Exp $";
+static char rcsid[] = "$Id: uintlist.c,v 1.3 2005/06/14 21:43:28 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -89,7 +89,7 @@ Uintlist_length (T list) {
 }
 
 unsigned int *
-Uintist_to_array (int *n, T list) {
+Uintlist_to_array (int *n, T list) {
   unsigned int *array;
   int i;
 

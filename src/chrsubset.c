@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.6 2005/05/20 17:38:41 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.9 2005/06/23 22:46:24 twu Exp $";
 
 #include "chrsubset.h"
 #include <stdio.h>
@@ -18,7 +18,10 @@ static char rcsid[] = "$Id: chrsubset.c,v 1.6 2005/05/20 17:38:41 twu Exp $";
 #define T Chrsubset_T
 struct T {
   char *name;
+  int nincluded;
   bool *includep;
+  int *newindices;
+  int *oldindices;
 };
 
 
@@ -28,6 +31,15 @@ Chrsubset_print (T this) {
     printf("    Chromosome subset: %s\n",this->name);
   }
   return;
+}
+
+int
+Chrsubset_nincluded (T this, IIT_T chromosome_iit) {
+  if (this == NULL) {
+    return IIT_nintervals(chromosome_iit);
+  } else {
+    return this->nincluded;
+  }
 }
 
 
@@ -44,6 +56,26 @@ Chrsubset_includep (T this, Genomicpos_T position, IIT_T chromosome_iit) {
 }
 
 
+/* index here is 1-based */
+int
+Chrsubset_newindex (T this, int index) {
+  if (this == NULL) {
+    return index;
+  } else {
+    return this->newindices[index-1];
+  }
+}
+
+int
+Chrsubset_oldindex (T this, int index) {
+  if (this == NULL) {
+    return index;
+  } else {
+    return this->oldindices[index-1];
+  }
+}
+
+
 void
 Chrsubset_free (T *old) {
   if (*old != NULL) {
@@ -52,6 +84,12 @@ Chrsubset_free (T *old) {
     }
     if ((*old)->includep != NULL) {
       FREE((*old)->includep);
+    }
+    if ((*old)->newindices != NULL) {
+      FREE((*old)->newindices);
+    }
+    if ((*old)->oldindices != NULL) {
+      FREE((*old)->oldindices);
     }
     FREE(*old);
   }
@@ -232,6 +270,49 @@ process_list (FILE *fp, char *filename, char *subsetname, IIT_T chromosome_iit) 
   }
 }
 
+static int
+compute_nincluded (bool *includep, int nchromosomes) {
+  int nincluded = 0, i;
+
+  for (i = 0; i < nchromosomes; i++) {
+    if (includep[i] == true) {
+      nincluded++;
+    }
+  }
+  return nincluded;
+}
+
+static int *
+compute_new_indices (bool *includep, int nchromosomes) {
+  int *newindices;
+  int i, newi = 1;		/* Because index is 1-based */
+
+  newindices = (int *) CALLOC(nchromosomes,sizeof(int));
+  for (i = 0; i < nchromosomes; i++) {
+    if (includep[i] == true) {
+      newindices[i] = newi++;
+    } else {
+      newindices[i] = -1;	/* Actually, this could be 0 */
+    }
+  }
+
+  return newindices;
+}
+
+static int *
+compute_old_indices (bool *includep, int nincluded, int nchromosomes) {
+  int *oldindices;
+  int i, j = 0;
+
+  oldindices = (int *) CALLOC(nincluded,sizeof(int));
+  for (i = 0; i < nchromosomes; i++) {
+    if (includep[i] == true) {
+      oldindices[j++] = i + 1;
+    }
+  }
+
+  return oldindices;
+}
 
 
 T
@@ -279,6 +360,9 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
       new = (T) MALLOC(sizeof(*new));
       new->name = subsetname;
       new->includep = includep;
+      new->nincluded = compute_nincluded(includep,IIT_nintervals(chromosome_iit));
+      new->newindices = compute_new_indices(includep,IIT_nintervals(chromosome_iit));
+      new->oldindices = compute_old_indices(includep,new->nincluded,IIT_nintervals(chromosome_iit));
     }
 
     fclose(fp);
@@ -303,6 +387,9 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
       new = (T) MALLOC(sizeof(*new));
       new->name = subsetname;
       new->includep = includep;
+      new->nincluded = compute_nincluded(includep,IIT_nintervals(chromosome_iit));
+      new->newindices = compute_new_indices(includep,IIT_nintervals(chromosome_iit));
+      new->oldindices = compute_old_indices(includep,new->nincluded,IIT_nintervals(chromosome_iit));
     }
     fclose(fp);
   }

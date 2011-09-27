@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.22 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.23 2005/05/25 06:39:21 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -244,6 +244,30 @@ Pairpool_transfer_copy (List_T dest, List_T source, T this) {
   return dest;
 }
 
+
+List_T
+Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
+  List_T p, next;
+  Pair_T pair;
+
+  for (p = source; p != NULL; p = next) {
+    debug(
+	  pair = List_head(p);
+	  if (pair->cdna == '\0' || pair->genome == '\0') {
+	    abort();
+	  }
+	  printf("Transferring: %d %d %c %c %c\n",
+		 pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	  );
+    pair = List_head(p);
+    next = p->rest;
+    if (pair->querypos >= minpos && pair->querypos <= maxpos) {
+      p->rest = dest;
+      dest = p;
+    }
+  }
+  return dest;
+}
 
 List_T
 Pairpool_transfer_copy_bounded (List_T dest, List_T source, T this, int minpos, int maxpos) {

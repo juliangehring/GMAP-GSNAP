@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c,v 1.9 2005/05/20 17:37:37 twu Exp $";
+static char rcsid[] = "$Id: chimera.c,v 1.13 2005/06/14 17:06:40 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,6 +9,7 @@ static char rcsid[] = "$Id: chimera.c,v 1.9 2005/05/20 17:37:37 twu Exp $";
 #include <math.h>		/* For sqrt */
 #include "mem.h"
 #include "nmath.h"
+#include "maxent.h"
 
 
 /* Chimera assembly */
@@ -25,6 +26,106 @@ static char rcsid[] = "$Id: chimera.c,v 1.9 2005/05/20 17:37:37 twu Exp $";
 #define debug1(x)
 #endif
 
+/* Exon-exon boundary detection */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
+#endif
+
+
+
+#define T Chimera_T
+struct T {
+  int nonchimera_matches;
+  int nonchimera_mismatches;
+  int nonchimera_indels;
+
+  int chimerapos;
+  int equivpos;
+
+  int cdna_direction;
+  int exonexonpos;
+  double donor_prob;
+  double acceptor_prob;
+};
+
+
+int 
+Chimera_pos (T this) {
+  return this->chimerapos;
+}
+
+int
+Chimera_equivpos (T this) {
+  return this->equivpos;
+}
+
+int
+Chimera_cdna_direction (T this) {
+  return this->cdna_direction;
+}
+
+double
+Chimera_donor_prob (T this) {
+  if (this->exonexonpos < 0) {
+    return 0.0;
+  } else {
+    return this->donor_prob;
+  }
+}
+
+double
+Chimera_acceptor_prob (T this) {
+  if (this->exonexonpos < 0) {
+    return 0.0;
+  } else {
+    return this->acceptor_prob;
+  }
+}
+
+
+T
+Chimera_new (Stage3_T nonchimericbest, int chimerapos, int chimeraequivpos) {
+  T new = (T) MALLOC(sizeof(*new));
+
+  new->nonchimera_matches = Stage3_matches(nonchimericbest);
+  new->nonchimera_mismatches = Stage3_mismatches(nonchimericbest);
+  new->nonchimera_indels = Stage3_indels(nonchimericbest);
+  new->chimerapos = chimerapos;
+  new->equivpos = chimeraequivpos;
+
+  return new;
+}
+
+void
+Chimera_free (T *old) {
+  FREE(*old);
+  return;
+}
+
+
+void
+Chimera_print (T this) {
+  if (this->exonexonpos >= 0) {
+    printf(" *** Possible chimera with exon-exon boundary");
+    if (this->cdna_direction > 0) {
+      printf(" (sense)");
+    } else if (this->cdna_direction < 0) {
+      printf(" (antisense)");
+    }
+    printf(" at %d (donor_prob = %.3f, acceptor_prob = %.3f)",
+	   this->exonexonpos+1,this->donor_prob,this->acceptor_prob);
+  } else if (this->equivpos == this->chimerapos) {
+    printf(" *** Possible chimera with breakpoint at %d",this->chimerapos+1);
+  } else {
+    printf(" *** Possible chimera with breakpoint at %d..%d",this->chimerapos+1,this->equivpos+1);
+  }
+
+  printf(" -- alternative has %d matches, %d mismatches, %d indels ***",
+	 this->nonchimera_matches,this->nonchimera_mismatches,this->nonchimera_indels);
+  return;
+}
 
 
 #define NPSEUDO 10.0
@@ -149,11 +250,11 @@ Chimera_detect (int *margin, Stage3_T stage3, Sequence_T queryseq, double fthres
 
 
 void
-Chimera_bestpath (int *bestfrom, int *bestto, int *bestpos, int *equivpos,
-		  int *fromscore_3, int *toscore_5,
+Chimera_bestpath (int *chimerapos, int *chimeraequivpos, int *bestfrom, int *bestto, 
 		  Stage3_T *stage3array, int npaths, int querylength) {
   int **matrix, *from, *to, *bestscoreatpos, i, j, pos, score, 
     bestscore;
+  int fromscore_3, toscore_5;
 
   matrix = (int **) CALLOC(npaths,sizeof(int *));
   for (i = 0; i < npaths; i++) {
@@ -195,20 +296,21 @@ Chimera_bestpath (int *bestfrom, int *bestto, int *bestpos, int *equivpos,
   for (pos = 0; pos < querylength; pos++) {
     if (bestscoreatpos[pos] > bestscore) {
       bestscore = bestscoreatpos[pos];
-      *bestpos = *equivpos = pos;
+      *chimerapos = *chimeraequivpos = pos;
       *bestfrom = from[pos];
       *bestto = to[pos];
     } else if (bestscoreatpos[pos] == bestscore) {
-      *equivpos = pos;
+      *chimeraequivpos = pos;
     }
   }
 
-  *fromscore_3 = matrix[*bestfrom][querylength-1] - matrix[*bestfrom][*bestpos];
-  *toscore_5 = matrix[*bestto][*bestpos];
 
-  debug(printf("From path %d to path %d at pos %d.  Score = %d.  Fromscore_3 = %d, Toscore_5 = %d\n",
-	       *bestfrom,*bestto,*bestpos,bestscore,*fromscore_3,*toscore_5));
-
+  debug(
+	fromscore_3 = matrix[*bestfrom][querylength-1] - matrix[*bestfrom][*chimerapos];
+	toscore_5 = matrix[*bestto][*chimerapos];
+	printf("From path %d to path %d at pos %d.  Score = %d.  Fromscore_3 = %d, Toscore_5 = %d\n",
+	       *bestfrom,*bestto,*bestpos,bestscore,*fromscore_3,*toscore_5);
+	);
 
   FREE(bestscoreatpos);
   FREE(to);
@@ -218,6 +320,229 @@ Chimera_bestpath (int *bestfrom, int *bestto, int *bestpos, int *equivpos,
     FREE(matrix[i]);
   }
   FREE(matrix);
+
+  return;
+}
+
+
+static double
+find_exonexon_fwd (int *exonexonpos, double *donor_prob, double *acceptor_prob,
+		   Stage3_T left_part, Stage3_T right_part, Genome_T genome,
+		   int breakpoint_start, int breakpoint_end) {
+  Sequence_T donor_genomicseg, acceptor_genomicseg;
+  char gbuffer1[512], gbuffer2[512], gbuffer3[512], gbuffer4[512], *donor_ptr, *acceptor_ptr;
+  int i, j;
+  Genomicpos_T left, right, donor_length, acceptor_length;
+  bool revcomp;
+  double donor_prob_1, acceptor_prob_1, bestproduct = 0.0, product;
+
+  *exonexonpos = -1;
+
+  donor_length = breakpoint_end - breakpoint_start + DONOR_MODEL_LEFT_MARGIN + DONOR_MODEL_RIGHT_MARGIN;
+  left = Stage3_genomicpos(left_part,breakpoint_start,/*headp*/false);
+  if (Stage3_watsonp(left_part) == true) {
+    left -= DONOR_MODEL_LEFT_MARGIN;
+    revcomp = false;
+  } else {
+    left += DONOR_MODEL_LEFT_MARGIN;
+    left -= donor_length;
+    revcomp = true;
+  }
+  donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
+					gbuffer1,gbuffer2,/*gbufferlen*/512);
+  donor_ptr = Sequence_fullpointer(donor_genomicseg);
+  debug2(
+	 for (i = 0; i < ACCEPTOR_MODEL_LEFT_MARGIN - DONOR_MODEL_LEFT_MARGIN; i++) {
+	   printf(" ");
+	 }
+	 Sequence_print(donor_genomicseg,/*uppercasep*/true,/*wraplength*/50,/*trimmedp*/false);
+	 );
+
+  acceptor_length = breakpoint_end - breakpoint_start + ACCEPTOR_MODEL_LEFT_MARGIN + ACCEPTOR_MODEL_RIGHT_MARGIN;
+  left = Stage3_genomicpos(right_part,breakpoint_end+1,/*headp*/true);
+  if (Stage3_watsonp(right_part) == true) {
+    left += ACCEPTOR_MODEL_RIGHT_MARGIN;
+    left -= acceptor_length;
+    revcomp = false;
+  } else {
+    left -= ACCEPTOR_MODEL_RIGHT_MARGIN;
+    revcomp = true;
+  }
+  acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
+					   gbuffer3,gbuffer4,/*gbufferlen*/512);
+  acceptor_ptr = Sequence_fullpointer(acceptor_genomicseg);
+  debug2(
+	 for (i = 0; i < DONOR_MODEL_LEFT_MARGIN - ACCEPTOR_MODEL_LEFT_MARGIN; i++) {
+	   printf(" ");
+	 }
+	 Sequence_print(acceptor_genomicseg,/*uppercasep*/true,/*wraplength*/50,/*trimmedp*/false);
+	 );
+
+  *donor_prob = 0.0;
+  *acceptor_prob = 0.0;
+  for (i = DONOR_MODEL_LEFT_MARGIN, j = ACCEPTOR_MODEL_LEFT_MARGIN; 
+       i <= donor_length - DONOR_MODEL_RIGHT_MARGIN && 
+	 j <= acceptor_length - ACCEPTOR_MODEL_RIGHT_MARGIN;
+       i++, j++) {
+    debug2(printf("%c%c %c%c\n",donor_ptr[i+1],donor_ptr[i+2],acceptor_ptr[j-2],acceptor_ptr[j-1]));
+    if (donor_ptr[i+1] == 'G' && donor_ptr[i+2] == 'T' &&
+	acceptor_ptr[j-2] == 'A' && acceptor_ptr[j-1] == 'G') {
+      donor_prob_1 = Maxent_donor_prob(&(donor_ptr[i+1-DONOR_MODEL_LEFT_MARGIN]));
+      acceptor_prob_1 = Maxent_acceptor_prob(&(acceptor_ptr[j-ACCEPTOR_MODEL_LEFT_MARGIN]));
+      if ((product = donor_prob_1*acceptor_prob_1) > bestproduct) {
+	bestproduct = product;
+	*donor_prob = donor_prob_1;
+	*acceptor_prob = acceptor_prob_1;
+	*exonexonpos = breakpoint_start - DONOR_MODEL_LEFT_MARGIN + i;
+	debug2(printf("%f %f %d\n",donor_prob_1,acceptor_prob_1,*exonexonpos));
+      }
+    }
+  }
+
+  Sequence_free(&acceptor_genomicseg);
+  Sequence_free(&donor_genomicseg);
+
+  return bestproduct;
+}
+
+static double
+find_exonexon_rev (int *exonexonpos, double *donor_prob, double *acceptor_prob,
+		   Stage3_T left_part, Stage3_T right_part, Genome_T genome,
+		   int breakpoint_start, int breakpoint_end) {
+  Sequence_T donor_genomicseg, acceptor_genomicseg;
+  char gbuffer1[512], gbuffer2[512], gbuffer3[512], gbuffer4[512], *donor_ptr, *acceptor_ptr;
+  int i, j;
+  Genomicpos_T left, right, donor_length, acceptor_length;
+  bool revcomp;
+  double donor_prob_1, acceptor_prob_1, bestproduct = 0.0, product;
+
+  *exonexonpos = -1;
+
+  donor_length = breakpoint_end - breakpoint_start + DONOR_MODEL_LEFT_MARGIN + DONOR_MODEL_RIGHT_MARGIN;
+  left = Stage3_genomicpos(right_part,breakpoint_end+1,/*headp*/true);
+  if (Stage3_watsonp(right_part) == true) {
+    left += DONOR_MODEL_LEFT_MARGIN;
+    left -= donor_length;
+    revcomp = true;
+  } else {
+    left -= DONOR_MODEL_LEFT_MARGIN;
+    revcomp = false;
+  }
+  donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
+					gbuffer1,gbuffer2,/*gbufferlen*/512);
+  donor_ptr = Sequence_fullpointer(donor_genomicseg);
+  debug2(
+	 for (i = 0; i < ACCEPTOR_MODEL_LEFT_MARGIN - DONOR_MODEL_LEFT_MARGIN; i++) {
+	   printf(" ");
+	 }
+	 Sequence_print(donor_genomicseg,/*uppercasep*/true,/*wraplength*/50,/*trimmedp*/false);
+	 );
+
+  acceptor_length = breakpoint_end - breakpoint_start + ACCEPTOR_MODEL_LEFT_MARGIN + ACCEPTOR_MODEL_RIGHT_MARGIN;
+  left = Stage3_genomicpos(left_part,breakpoint_start,/*headp*/false);
+  if (Stage3_watsonp(left_part) == true) {
+    left -= ACCEPTOR_MODEL_RIGHT_MARGIN;
+    revcomp = true;
+  } else {
+    left += ACCEPTOR_MODEL_RIGHT_MARGIN;
+    left -= acceptor_length;
+    revcomp = false;
+  }
+  acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
+					   gbuffer3,gbuffer4,/*gbufferlen*/512);
+  acceptor_ptr = Sequence_fullpointer(acceptor_genomicseg);
+  debug2(
+	 for (i = 0; i < DONOR_MODEL_LEFT_MARGIN - ACCEPTOR_MODEL_LEFT_MARGIN; i++) {
+	   printf(" ");
+	 }
+	 Sequence_print(acceptor_genomicseg,/*uppercasep*/true,/*wraplength*/50,/*trimmedp*/false);
+	 );
+
+  *donor_prob = 0.0;
+  *acceptor_prob = 0.0;
+  for (i = DONOR_MODEL_LEFT_MARGIN, j = ACCEPTOR_MODEL_LEFT_MARGIN; 
+       i <= donor_length - DONOR_MODEL_RIGHT_MARGIN && 
+	 j <= acceptor_length - ACCEPTOR_MODEL_RIGHT_MARGIN;
+       i++, j++) {
+    debug2(printf("%c%c %c%c\n",donor_ptr[i+1],donor_ptr[i+2],acceptor_ptr[j-2],acceptor_ptr[j-1]));
+    if (donor_ptr[i+1] == 'G' && donor_ptr[i+2] == 'T' &&
+	acceptor_ptr[j-2] == 'A' && acceptor_ptr[j-1] == 'G') {
+      donor_prob_1 = Maxent_donor_prob(&(donor_ptr[i+1-DONOR_MODEL_LEFT_MARGIN]));
+      acceptor_prob_1 = Maxent_acceptor_prob(&(acceptor_ptr[j-ACCEPTOR_MODEL_LEFT_MARGIN]));
+      if ((product = donor_prob_1*acceptor_prob_1) > bestproduct) {
+	bestproduct = product;
+	*donor_prob = donor_prob_1;
+	*acceptor_prob = acceptor_prob_1;
+	*exonexonpos = breakpoint_end + DONOR_MODEL_LEFT_MARGIN - i;
+	debug2(printf("%f %f %d\n",donor_prob_1,acceptor_prob_1,*exonexonpos));
+      }
+    }
+  }
+
+  Sequence_free(&acceptor_genomicseg);
+  Sequence_free(&donor_genomicseg);
+
+  return bestproduct;
+}
+
+
+void
+Chimera_find_exonexon (T this, Stage3_T left_part, Stage3_T right_part,
+		       Genome_T genome) {
+  int breakpoint_start, breakpoint_end, exonexonpos_fwd, exonexonpos_rev;
+  double bestproduct_fwd, bestproduct_rev, donor_prob_fwd, donor_prob_rev, acceptor_prob_fwd, acceptor_prob_rev;
+  int left_cdna_direction, right_cdna_direction, try_direction;
+
+  breakpoint_start = this->chimerapos;
+  breakpoint_end = this->equivpos;
+
+  left_cdna_direction = Stage3_cdna_direction(left_part);
+  right_cdna_direction = Stage3_cdna_direction(right_part);
+
+  if (left_cdna_direction == 0 && right_cdna_direction == 0) {
+    try_direction = 0;
+  } else if (left_cdna_direction >= 0 && right_cdna_direction >= 0) {
+    try_direction = +1;
+  } else if (left_cdna_direction <= 0 && right_cdna_direction <= 0) {
+    try_direction = -1;
+  } else {
+    try_direction = 0;
+  }
+
+  if (try_direction == +1) {
+    this->cdna_direction = +1;
+    find_exonexon_fwd(&this->exonexonpos,&this->donor_prob,&this->acceptor_prob,left_part,right_part,genome,
+		      breakpoint_start,breakpoint_end);
+  } else if (try_direction == -1) {
+    this->cdna_direction = -1;
+    find_exonexon_rev(&this->exonexonpos,&this->donor_prob,&this->acceptor_prob,left_part,right_part,genome,
+		      breakpoint_start,breakpoint_end);
+  } else {
+    bestproduct_fwd = find_exonexon_fwd(&exonexonpos_fwd,&donor_prob_fwd,&acceptor_prob_fwd,
+					left_part,right_part,genome,breakpoint_start,breakpoint_end);
+    bestproduct_rev = find_exonexon_rev(&exonexonpos_rev,&donor_prob_rev,&acceptor_prob_rev,
+					left_part,right_part,genome,breakpoint_start,breakpoint_end);
+    if (bestproduct_fwd == 0.0 && bestproduct_rev == 0.0) {
+      this->cdna_direction = 0;
+      this->exonexonpos = -1;
+      this->donor_prob = 0.0;
+      this->acceptor_prob = 0.0;
+    } else if (bestproduct_fwd >= bestproduct_rev) {
+      this->cdna_direction = +1;
+      this->exonexonpos = exonexonpos_fwd;
+      this->donor_prob = donor_prob_fwd;
+      this->acceptor_prob = acceptor_prob_fwd;
+    } else {
+      this->cdna_direction = -1;
+      this->exonexonpos = exonexonpos_rev;
+      this->donor_prob = donor_prob_rev;
+      this->acceptor_prob = acceptor_prob_rev;
+    }
+  }
+
+  if (this->exonexonpos >= 0) {
+    this->chimerapos = this->equivpos = this->exonexonpos;
+  }
 
   return;
 }

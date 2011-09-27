@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_uncompress.pl.in,v 1.13 2005/05/06 19:08:05 twu Exp $
+# $Id: gmap_uncompress.pl.in,v 1.14 2005/07/08 07:59:12 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -32,7 +32,7 @@ while (defined($line = <>)) {
   chop $line;
   if ($line =~ /^>/) {
     if ($#coordinates >= 0) {
-      process_one($header,\@coordinates,\@agreements,\@intronends,\@intronlengths);
+      process_one($header,\@coordinates,\@agreements,\@intronlengths,\@intronends);
     }
     $line =~ s/^>//;
     $header = $line;

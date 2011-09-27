@@ -1,4 +1,4 @@
-/* $Id: chrsubset.h,v 1.4 2005/06/23 22:46:24 twu Exp $ */
+/* $Id: chrsubset.h,v 1.5 2005/07/08 07:58:28 twu Exp $ */
 #ifndef CHRSUBSET_INCLUDED
 #define CHRSUBSET_INCLUDED
 #include "bool.h"
@@ -7,6 +7,9 @@
 
 #define T Chrsubset_T
 typedef struct T *T;
+
+extern void
+Chrsubset_free (T *old);
 
 extern void
 Chrsubset_print (T this);

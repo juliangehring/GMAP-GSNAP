@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c,v 1.29 2005/05/06 17:00:56 twu Exp $";
+static char rcsid[] = "$Id: translation.c,v 1.30 2005/07/08 07:58:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -44,7 +44,7 @@ static char rcsid[] = "$Id: translation.c,v 1.29 2005/05/06 17:00:56 twu Exp $";
 #define debug3(x)
 #endif
 
-typedef enum {FRAME0, FRAME1, FRAME2, NOFRAME, ANYFRAME} Frame_T;
+typedef enum {FRAME0, FRAME1, FRAME2, NOFRAME} Frame_T;
 
 #define T Translation_T
 struct T {
@@ -52,14 +52,6 @@ struct T {
   Frame_T frame;
 };
 
-static char
-Translation_aa (struct T *translation, int i, Frame_T frame) {
-  if (frame == ANYFRAME || translation[i].frame == frame) {
-    return translation[i].aa;
-  } else {
-    return ' ';
-  }
-}
 
 static struct T *
 Translation_array_new (int translationlen) {
@@ -490,8 +482,8 @@ find_bounds_backward (int *translation_frame, int *translation_start,
 static struct Translation_T *
 translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
   struct T *translation;
-  struct Pair_T *ptr, *tester, *pair;
-  int i, j, deletionlen, jumplen, gpos = 0;
+  struct Pair_T *ptr, *pair;
+  int i, gpos = 0;
   char codon, nt2 = 'X', nt1 = 'X', nt0 = 'X';
   char complCode[128] = COMPLEMENT;
 
@@ -508,7 +500,7 @@ translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
     } else {
       nt2 = nt1;
       nt1 = nt0;
-      nt0 = revcompp ? complCode[toupper(pair->genome)] : toupper(pair->genome);
+      nt0 = revcompp ? complCode[toupper((int) pair->genome)] : toupper((int) pair->genome);
 
       codon = get_codon(nt0,nt1,nt2);
       if (gpos < 2 && codon == 'X') {
@@ -531,8 +523,8 @@ translate_pairs_forward (struct Pair_T *pairs, int npairs, bool revcompp) {
 static struct Translation_T *
 translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
   struct T *translation;
-  struct Pair_T *ptr, *tester, *pair;
-  int i, j, deletionlen, jumplen, gpos = 0;
+  struct Pair_T *ptr, *pair;
+  int i, gpos = 0;
   char codon, nt2 = 'X', nt1 = 'X', nt0 = 'X';
   char complCode[128] = COMPLEMENT;
 
@@ -549,7 +541,7 @@ translate_pairs_backward (struct Pair_T *pairs, int npairs, bool revcompp) {
     } else {
       nt2 = nt1;
       nt1 = nt0;
-      nt0 = revcompp ? complCode[toupper(pair->genome)] : toupper(pair->genome);
+      nt0 = revcompp ? complCode[toupper((int) pair->genome)] : toupper((int) pair->genome);
 
       codon = get_codon(nt0,nt1,nt2);
       if (gpos < 2 && codon == 'X') {
@@ -660,7 +652,7 @@ get_codon_forward (int *j, int aapos, struct Pair_T *pairs, int npairs, int star
     } else {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = revcompp ? complCode[toupper(pairs[*j].cdna)] : toupper(pairs[*j].cdna);
+      nt2 = revcompp ? complCode[toupper((int) pairs[*j].cdna)] : toupper((int) pairs[*j].cdna);
       number_aa++;
     }
     (*j)++;
@@ -765,7 +757,7 @@ get_codon_backward (int *j, int aapos, struct Pair_T *pairs, int start, int endi
     } else {
       nt0 = nt1;
       nt1 = nt2;
-      nt2 = revcompp ? complCode[toupper(pairs[*j].cdna)] : toupper(pairs[*j].cdna);
+      nt2 = revcompp ? complCode[toupper((int) pairs[*j].cdna)] : toupper((int) pairs[*j].cdna);
       number_aa++;
     }
     (*j)--;
@@ -785,7 +777,6 @@ translate_est_forward (struct Pair_T *pairs, int npairs, bool revcompp,
 		       int start, int end) {
   struct Pair_T *pair;
   int i, j, number_aa;
-  char aa_e;
   char complCode[128] = COMPLEMENT;
 
   debug2(printf("translate_est_forward called with %d %d\n",start,end));
@@ -924,11 +915,10 @@ void
 Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, int *translation_length,
 			 int *relaastart, int *relaaend,
 			 struct Pair_T *pairs, int npairs, bool backwardp, bool revcompp, bool fulllengthp) {
-  char *peptide, lastaa;
+  char lastaa;
   struct T *translation;
-  bool best0p, best1p, best2p, endstopp;
-  int bestncodons0, bestncodons1, bestncodons2,
-    beststart0, beststart1, beststart2, bestend0, bestend1, bestend2, maxorf, i, aapos = 0;
+  bool endstopp;
+  int i, aapos = 0;
   int translation_frame, translation_start = 0, translation_end = 0;
   int minpos, maxpos;
 
@@ -1072,7 +1062,7 @@ static void
 bound_via_reference (int *start, int *end, struct Pair_T *pairs, int npairs, bool watsonp, 
 		     struct Pair_T *refpairs, int nrefpairs, bool refwatsonp,
 		     int genomiclength) {
-  int i, j, k, aapos = 0;
+  int i, j, aapos = 0;
   int refquerypos, genomepos, refgenomepos;
 
   debug(Pair_dump_array(refpairs,nrefpairs,false));
@@ -1263,8 +1253,7 @@ Translation_via_reference (int *relaastart, int *relaaend,
 			   struct Pair_T *refpairs, int nrefpairs, bool refwatsonp, int genomiclength,
 			   bool fixshiftp) {
   struct T *translation;
-  int start, end, i, aapos = 0, firstaapos, lastaapos, frame;
-  bool stopp = false;
+  int start, end, i;
 
   for (i = 0; i < npairs; i++) {
     pairs[i].aa_g = pairs[i].aa_e = ' ';
@@ -1350,8 +1339,8 @@ Translation_compare (struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, 
 		     int cdna_direction, int relaastart, int relaaend) {
   List_T mutations = NULL, newmutations, p, q;
   Mutation_T x, y, z, *array;
-  int i, c;
-  int initialaa, finalaa, lastaa, nmutations;
+  int i;
+  int lastaa, nmutations;
   bool changep = true;
   char aa1, aa2;
   

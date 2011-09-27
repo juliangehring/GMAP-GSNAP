@@ -1,4 +1,4 @@
-/* $Id: genome.h,v 1.21 2005/02/07 23:56:55 twu Exp $ */
+/* $Id: genome.h,v 1.22 2005/07/08 14:39:01 twu Exp $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 #include "bool.h"
@@ -14,7 +14,7 @@ Genome_free (T *old);
 extern T
 Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp);
 extern void
-Genome_replace_x ();
+Genome_replace_x (void);
 extern Sequence_T
 Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, 
 		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen);

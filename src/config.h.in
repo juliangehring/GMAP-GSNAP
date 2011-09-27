@@ -1,5 +1,8 @@
 /* src/config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* Define to 1 if the system has the type `caddr_t'. */
+#undef HAVE_CADDR_T
+
 /* Define to 1 if you have the `ceil' function. */
 #undef HAVE_CEIL
 
@@ -33,6 +36,15 @@
 
 /* Define to 1 if you have the `madvise' function. */
 #undef HAVE_MADVISE
+
+/* Define to 1 if MADV_DONTNEED available for madvise. */
+#undef HAVE_MADVISE_MADV_DONTNEED
+
+/* Define to 1 if MADV_RANDOM available for madvise */
+#undef HAVE_MADVISE_MADV_RANDOM
+
+/* Define to 1 if MADV_WILLNEED available for madvise. */
+#undef HAVE_MADVISE_MADV_WILLNEED
 
 /* Define to 1 if you have the `memcpy' function. */
 #undef HAVE_MEMCPY

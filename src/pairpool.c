@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.23 2005/05/25 06:39:21 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.26 2005/07/12 16:35:46 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -89,7 +89,7 @@ add_new_listcellchunk (T this) {
 }
 
 T
-Pairpool_new () {
+Pairpool_new (void) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->npairs = 0;
@@ -173,10 +173,14 @@ Pairpool_push_existing (List_T list, T this, Pair_T pair) {
   int n;
 
   debug(
-	printf("Pushing: %d %d %c %c %c\n",
+	printf("Pushing: %d %d %c %c %c",
 	       pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	if (pair->gapp == true) {
+	  printf(" (gap)");
+	}
+	printf("\n");
 	);
-
+  
   if (this->listcellctr >= this->nlistcells) {
     this->listcellptr = add_new_listcellchunk(this);
   } else if ((this->listcellctr % CHUNKSIZE) == 0) {
@@ -212,7 +216,9 @@ Pairpool_pop (List_T list, Pair_T *x) {
 List_T
 Pairpool_transfer (List_T dest, List_T source) {
   List_T p, next;
+#ifdef DEBUG
   Pair_T pair;
+#endif
 
   for (p = source; p != NULL; p = next) {
     debug(
@@ -232,7 +238,6 @@ Pairpool_transfer (List_T dest, List_T source) {
 
 List_T
 Pairpool_transfer_copy (List_T dest, List_T source, T this) {
-  List_T p, next;
   Pair_T pair;
 
   while (source != NULL) {
@@ -271,7 +276,6 @@ Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
 
 List_T
 Pairpool_transfer_copy_bounded (List_T dest, List_T source, T this, int minpos, int maxpos) {
-  List_T p, next;
   Pair_T pair;
 
   while (source != NULL) {

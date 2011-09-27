@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.64 2005/06/16 14:05:59 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.66 2005/07/08 14:39:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,7 @@ static char rcsid[] = "$Id: iit-read.c,v 1.64 2005/06/16 14:05:59 twu Exp $";
 #include <stdlib.h>		/* For qsort */
 #include <string.h>		/* For memset */
 #include <strings.h>
+#include <ctype.h>		/* For isspace */
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For mmap on Linux */
 #endif
@@ -30,7 +31,7 @@ static char rcsid[] = "$Id: iit-read.c,v 1.64 2005/06/16 14:05:59 twu Exp $";
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>		/* For open and fstat */
 #endif
-#include <sys/mman.h>		/* For mmap */
+#include <sys/mman.h>		/* For mmap and madvise */
 #include "assert.h"
 #include "mem.h"
 
@@ -199,8 +200,7 @@ void
 IIT_dump (T this) {
   int i;
   Interval_T interval;
-  int start;
-  char *typestring, *annotation;
+  char *annotation;
 
   for (i = 0; i < this->nintervals; i++) {
     printf(">%s",IIT_label(this,i+1));
@@ -314,7 +314,8 @@ void
 IIT_debug (char *filename) {
   T new;
   FILE *fp;
-  int offset = 0, i, stringlen, prot, oflag, mapflags;
+  off_t offset = 0;
+  int i, stringlen;
 
   if ((fp = fopen(filename,"r")) == NULL) {
     fprintf(stderr,"Can't open file %s\n",filename);
@@ -409,7 +410,7 @@ IIT_debug (char *filename) {
   offset += sizeof(int)*FREAD_UINTS(new->typepointers,new->ntypes+1,fp);
   printf("typepointers:");
   for (i = 0; i < new->ntypes+1; i++) {
-    printf(" %d",new->typepointers[i]);
+    printf(" %u",new->typepointers[i]);
   }
   printf("\n");
 
@@ -435,7 +436,7 @@ IIT_debug (char *filename) {
   offset += sizeof(int)*FREAD_UINTS(new->labelpointers,new->nintervals+1,fp);
   printf("labelpointers:");
   for (i = 0; i < new->nintervals+1; i++) {
-    printf(" %d",new->labelpointers[i]);
+    printf(" %u",new->labelpointers[i]);
   }
   printf("\n");
   
@@ -467,7 +468,8 @@ IIT_read (char *filename, char *name, bool readonlyp) {
   T new;
   FILE *fp;
   struct stat sb;
-  int offset = 0, i, stringlen, prot, oflag, mapflags;
+  off_t offset = 0;
+  int i, stringlen, prot, oflag, mapflags;
 
   if ((fp = fopen(filename,"r")) == NULL) {
     return NULL;
@@ -599,7 +601,13 @@ IIT_read (char *filename, char *name, bool readonlyp) {
     return NULL;
   }
 #ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_RANDOM
+#ifdef HAVE_CADDR_T
   madvise((caddr_t) new->finfo,new->flength,MADV_RANDOM);
+#else
+  madvise((void *) new->finfo,new->flength,MADV_RANDOM);
+#endif
+#endif
 #endif
   new->annotations = (char *) &(new->finfo[offset]);
 
@@ -744,7 +752,7 @@ IIT_find_linear (T this, char *label) {
 
   for (i = 0; i < this->nintervals; i++) {
     p = &(this->labels[this->labelpointers[i]]);
-    while (isspace(*p)) {
+    while (isspace((int) *p)) {
       p++;
     }
     if (!strcmp(label,p)) {
@@ -890,9 +898,9 @@ IIT_get_one (T this, unsigned int x, unsigned int y) {
   return -1;
 }
 
-
 /* Generally called where intervals don't overlap, like chromosomes,
    and where x == y. */
+/*
 int
 IIT_get_one_safe (T this, unsigned int x, unsigned int y) {
   int index;
@@ -908,6 +916,7 @@ IIT_get_one_safe (T this, unsigned int x, unsigned int y) {
   FREE(matches);
   return index;
 }
+*/
 
 int *
 IIT_get_typed (int *ntypematches, T this, unsigned int x, unsigned int y, int type) {

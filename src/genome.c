@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.70 2005/05/10 02:14:32 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.74 2005/07/15 20:54:05 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,7 +16,7 @@ static char rcsid[] = "$Id: genome.c,v 1.70 2005/05/10 02:14:32 twu Exp $";
 #include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>		/* For mmap on Linux and for lseek */
+#include <unistd.h>		/* For mmap on Linux and for lseek, and getpagesize */
 #endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>		/* For mmap and off_t */
@@ -45,6 +45,12 @@ static char rcsid[] = "$Id: genome.c,v 1.70 2005/05/10 02:14:32 twu Exp $";
 #include "stopwatch.h"
 #include "complement.h"
 #include "interval.h"
+
+#ifdef WORDS_BIGENDIAN
+#include "bigendian.h"
+#else
+#include "littleendian.h"
+#endif
 
 #define PAGESIZE 1024*4
 
@@ -101,14 +107,22 @@ T
 Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp) {
   T new = (T) MALLOC(sizeof(*new));
   char *filename;
-  FILE *fp;
   struct stat sb;
-  caddr_t region;
   int pagesize, indicesperpage, totalindices;
-  size_t len, i;
+  size_t i;
   int nzero = 0, npos = 0;
-  int mib[2];
   bool compressedp = !uncompressedp;
+
+#ifdef HAVE_CADDR_T
+  caddr_t region;
+#else
+  void *region;
+#endif
+
+#ifdef PAGESIZE_VIA_SYSCTL
+  size_t len;
+  int mib[2];
+#endif
 
   /* batchp = false; */
 
@@ -152,11 +166,13 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 
   new->compressedp = compressedp;
   if (batchp == true) {
-#ifdef HAVE_GETPAGESIZE
+#ifdef __STRICT_ANSI__
+    pagesize = PAGESIZE;
+#elif defined(HAVE_GETPAGESIZE)
     pagesize = getpagesize();
-#elif PAGESIZE_VIA_SYSCONF
+#elif defined(PAGESIZE_VIA_SYSCONF)
     pagesize = sysconf(_SC_PAGESIZE);
-#elif PAGESIZE_VIA_SYSCTL
+#elif defined(PAGESIZE_VIA_SYSCTL)
     len = sizeof(pagesize);
     mib[0] = CTL_HW;
     mib[1] = HW_PAGESIZE;
@@ -185,7 +201,11 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
     if (new->blocks == MAP_FAILED) {
       new->blocks = NULL;
     }
+#ifdef HAVE_CADDR_T
     region = (caddr_t) new->blocks;
+#else
+    region = (void *) new->blocks;
+#endif
 
 #endif /* HAVE_MMAP */
 
@@ -208,7 +228,11 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
     if (new->chars == MAP_FAILED) {
        new->chars = NULL;
     }
+#ifdef HAVE_CADDR_T
     region = (caddr_t) new->chars;
+#else
+    region = (void *) new->chars;
+#endif
 
 #endif /* HAVE_MMAP */
 
@@ -218,7 +242,9 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
   if (batchp == false) {
     if (region != NULL) {
 #ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(region,new->len,MADV_DONTNEED);
+#endif
 #endif
     }
   } else if (region == NULL) {
@@ -244,7 +270,9 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
       Stopwatch_start();
 
 #ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_WILLNEED
       madvise(region,new->len,MADV_WILLNEED);
+#endif
 #endif
       for (i = 0; i < totalindices; i += indicesperpage) {
 	/* memcpy(temp,region + i,pagesize); */
@@ -266,7 +294,9 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
       Stopwatch_start();
 
 #ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_WILLNEED
       madvise(region,new->len,MADV_WILLNEED);
+#endif
 #endif
       for (i = 0; i < totalindices; i += indicesperpage) {
 	/* memcpy(temp,region + i,pagesize); */
@@ -285,8 +315,6 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
   }
 #endif
 
-  FREE(filename);
-  
   return new;
 }
 
@@ -297,7 +325,7 @@ make_complement_buffered (char *complement, char *sequence, Genomicpos_T length)
   int i, j;
 
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return;
@@ -340,7 +368,7 @@ genomecomp_read_current (T this) {
 static char translate[8] = {'A','C','G','T','N','?','?','X'};
 
 void
-Genome_replace_x () {
+Genome_replace_x (void) {
   translate[7] = 'N';
 }
 
@@ -348,14 +376,12 @@ Genome_replace_x () {
 static void
 uncompress_without_mmap (char *gbuffer1, T this, Genomicpos_T startpos, 
 			 Genomicpos_T endpos) {
-  char *sequence;
-  Genomicpos_T length;
+  /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
   char Buffer[32];
-  int i, j, k = 0;
+  int i, k = 0;
 
-  length = endpos - startpos;
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
   ptr = startblock = startpos/32U*3;
@@ -449,14 +475,12 @@ uncompress_without_mmap (char *gbuffer1, T this, Genomicpos_T startpos,
 static void
 uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
 		 Genomicpos_T endpos) {
-  char *sequence;
-  Genomicpos_T length;
+  /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
   char Buffer[32];
-  int i, j, k = 0;
+  int i, k = 0;
 
-  length = endpos - startpos;
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
   ptr = startblock = startpos/32U*3;
@@ -562,19 +586,19 @@ static pthread_mutex_t genome_read_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 
+static const Except_T gbufferlen_error = { "Insufficient allocation" };
+
 Sequence_T
 Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, 
 		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
-  char *sequence, *complement;
   
   if (length > gbufferlen) {
-    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %d)\n",
+    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
 	    gbufferlen,length);
-    abort();
+    Except_raise(&gbufferlen_error,__FILE__,__LINE__);
   }
 
   if (this->compressedp == false) {
-    /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
     if (this->chars == NULL) {
       /* non-mmap procedure, uncompressed genome */
 #ifdef HAVE_PTHREAD
@@ -610,8 +634,6 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
 
   if (revcomp == true) {
     make_complement_buffered(gbuffer2,gbuffer1,length);
-    /* FREE(sequence); */
-
     return Sequence_genomic_new(gbuffer2,length);
   } else {
     return Sequence_genomic_new(gbuffer1,length);

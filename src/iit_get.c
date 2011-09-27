@@ -1,10 +1,13 @@
-static char rcsid[] = "$Id: iit_get.c,v 1.30 2005/05/01 14:51:14 twu Exp $";
+static char rcsid[] = "$Id: iit_get.c,v 1.31 2005/07/08 07:58:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>		/* For getopt */
+#endif
 #include <string.h>
 #include <strings.h>		/* For rindex */
 #include <ctype.h>
@@ -23,13 +26,17 @@ isnumberp (char *string) {
   char *p = string;
 
   while (*p != '\0') {
-    if (!isdigit(*p)) {
+    if (!isdigit((int) *p)) {
       return false;
     }
     p++;
   }
   return true;
 }
+
+#ifdef __STRICT_ANSI__
+int getopt (int argc, char *const argv[], const char *optstring);
+#endif
 
 int 
 main (int argc, char *argv[]) {

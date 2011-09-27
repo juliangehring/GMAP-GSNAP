@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: md5.c,v 1.9 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: md5.c,v 1.10 2005/07/08 07:58:33 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -251,7 +251,7 @@ finish (UINT4 count[], UINT4 state[]) {
 
 unsigned char *
 MD5_compute (unsigned char *input, int input_len) {
-  unsigned char *digest, *p;
+  unsigned char *p;
   UINT4 state[4];
   UINT4 count[2];
   int i;

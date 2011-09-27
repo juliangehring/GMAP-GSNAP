@@ -1,4 +1,4 @@
-/* $Id: matchpair.h,v 1.17 2005/05/05 23:43:17 twu Exp $ */
+/* $Id: matchpair.h,v 1.18 2005/07/08 14:40:25 twu Exp $ */
 #ifndef MATCHPAIR_INCLUDED
 #define MATCHPAIR_INCLUDED
 #include "bool.h"
@@ -43,8 +43,7 @@ extern List_T
 Matchpair_filter_unique (List_T matchpairlist);
 extern void
 Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
-		      bool *watsonp, T this, Stage1_T stage1, Sequence_T queryseq, Genomicpos_T chrlength,
-		      int maxextension);
+		      bool *watsonp, T this, Stage1_T stage1, Genomicpos_T chrlength, int maxextension);
 
 extern List_T
 Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size, 

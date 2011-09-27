@@ -1,4 +1,4 @@
-/* $Id: oligoindex.h,v 1.21 2005/05/06 17:00:00 twu Exp $ */
+/* $Id: oligoindex.h,v 1.22 2005/07/08 14:41:00 twu Exp $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"
@@ -10,7 +10,7 @@ typedef struct T *T;
 extern void
 Oligoindex_init (int indexsize0);
 extern T
-Oligoindex_new ();
+Oligoindex_new (void);
 extern double
 Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, Sequence_T queryseq);
 extern void

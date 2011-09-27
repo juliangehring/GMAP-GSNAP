@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.40 2005/06/03 00:28:41 twu Exp $ */
+/* $Id: dynprog.h,v 1.41 2005/07/08 14:38:32 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -30,7 +30,7 @@ extern void
 Dynprog_free (T *old);
 
 extern void
-Dynprog_term ();
+Dynprog_term (void);
 extern void
 Dynprog_init (int maxlookback, int extraquerygap, int maxpeelback,
 	      int extramaterial_end, int extramaterial_paired);

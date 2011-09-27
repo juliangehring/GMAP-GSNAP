@@ -1,4 +1,4 @@
-/* $Id: sequence.h,v 1.27 2005/05/06 18:44:53 twu Exp $ */
+/* $Id: sequence.h,v 1.28 2005/07/08 14:42:24 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -39,8 +39,6 @@ extern T
 Sequence_subsequence (T this, int start, int end);
 extern T
 Sequence_revcomp (T this);
-extern void
-Sequence_endstream ();
 extern void
 Sequence_print_digest (T this);
 extern void

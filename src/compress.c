@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.8 2005/04/20 18:06:49 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.10 2005/07/08 14:38:04 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,7 +20,7 @@ static char rcsid[] = "$Id: compress.c,v 1.8 2005/04/20 18:06:49 twu Exp $";
    and we see problems converting from char to int */
 static void
 fill_buffer (int *Buffer, UINT4 high, UINT4 low, UINT4 flags) {
-  int i, j;
+  int i;
 
   /* printf("%08X %08X %08X => ",high,low,flags); */
   for (i = 0; i < 16; i++) {
@@ -44,7 +44,7 @@ fill_buffer (int *Buffer, UINT4 high, UINT4 low, UINT4 flags) {
     high >>= 2;
   }
   for (i = 0; i < 32; i++) {
-    if (flags & 1U == 1U) {
+    if ((flags & 1U) == 1U) {
       if (Buffer[i] == 'A') {
 	Buffer[i] = 'N';
       } else if (Buffer[i] == 'T') {
@@ -269,7 +269,7 @@ write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
     case 3U: low |= LEFT_T; break;
     }
 
-    switch (toupper(Buffer[i])) {
+    switch (toupper((int) Buffer[i])) {
     case 'A': break;
     case 'C': high |= LEFT_C; break;
     case 'G': high |= LEFT_G; break;
@@ -308,7 +308,7 @@ put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
     case 3U: low |= LEFT_T; break;
     }
 
-    switch (toupper(Buffer[i])) {
+    switch (toupper((int) Buffer[i])) {
     case 'A': break;
     case 'C': high |= LEFT_C; break;
     case 'G': high |= LEFT_G; break;
@@ -337,13 +337,11 @@ static char translate[8] = {'A','C','G','T','N','?','?','X'};
 void
 Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
 		      Genomicpos_T endpos) {
-  Genomicpos_T length;
+  /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
   char Buffer[32];
-  int i, j, k = 0;
-
-  length = endpos - startpos;
+  int i, k = 0;
 
   ptr = startblock = startpos/32U*3;
   endblock = endpos/32U*3;
@@ -430,13 +428,11 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
 void
 Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
 			Genomicpos_T endpos) {
-  Genomicpos_T length;
+  /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
   char Buffer[32];
-  int i, j, k = 0;
-
-  length = endpos - startpos;
+  int i, k = 0;
 
   ptr = startblock = startpos/32U*3;
   endblock = endpos/32U*3;

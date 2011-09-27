@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c,v 1.42 2005/05/20 17:40:36 twu Exp $";
+static char rcsid[] = "$Id: oligoindex.c,v 1.45 2005/07/08 22:46:53 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,6 +13,7 @@ static char rcsid[] = "$Id: oligoindex.c,v 1.42 2005/05/20 17:40:36 twu Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>		/* For memcpy and memset */
+#include <ctype.h>		/* For toupper */
 #include "bool.h"
 #include "mem.h"
 #include "types.h"
@@ -74,7 +75,7 @@ Oligoindex_init (int indexsize0) {
 }
 
 T
-Oligoindex_new () {
+Oligoindex_new (void) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->overabundant = (bool *) CALLOC(oligospace,sizeof(bool));
@@ -119,19 +120,14 @@ shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
 }
 
 
-#define POLY_A 0x0000
-#define POLY_C 0x5555
-#define POLY_G 0xAAAA
-#define POLY_T 0xFFFF
-
 double
 Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, Sequence_T queryseq) {
   double oligodepth;
-  int nunique = 0, querylength, trimlength;
+  int nunique = 0, querylength;
   int i = 0, noligos = 0;
   int in_counter = 0, querypos;
   Shortoligomer_T oligo = 0U, masked;
-  char *p, *nt;
+  char *p;
   bool prevunique = false;
 
   memset((void *) this->inquery,0,oligospace*sizeof(bool));
@@ -141,7 +137,7 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
   for (i = 0, p = Sequence_fullpointer(queryseq); i < querylength; i++, p++) {
     in_counter++;
 
-    switch (toupper(*p)) {
+    switch (toupper((int) *p)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
@@ -180,7 +176,7 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
     in_counter++;
     querypos++;
 
-    switch (toupper(*p)) {
+    switch (toupper((int) *p)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
@@ -224,7 +220,7 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
   if (nunique == 0) {
     return 1000000.0;
   } else {
-    trimlength = *trim_end - *trim_start;
+    /* trimlength = *trim_end - *trim_start; */
     oligodepth = (double) noligos/(double) nunique;
     return oligodepth;
   }
@@ -239,10 +235,12 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
 		 int *counts, char *sequence, int seqlength) {
   int i = 0, sequencepos = -indexsize;
   int in_counter = 0, count;
-  Genomicpos_T oldposition, *ptr;
   Shortoligomer_T oligo = 0U, masked;
-  char *p, *nt;
+  char *p;
   int availslot = 0;
+#if MAXHITS_GT_ALLOCSIZE
+  Genomicpos_T *ptr;
+#endif
 
   for (i = 0, p = sequence; i < seqlength; i++, p++) {
     in_counter++;
@@ -250,7 +248,7 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
 
     debug(printf("At genomicpos %u, char is %c\n",sequencepos,*p));
 
-    switch (toupper(*p)) {
+    switch (toupper((int) *p)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
@@ -337,10 +335,10 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
   return;
 }
 
+#if MAXHITS_GT_ALLOCSIZE
 /* Run queryseq through this procedure */
 static void
 clear_positions (Genomicpos_T **positions, int *counts, char *sequence, int seqlength) {
-  List_T list;
   int i = 0;
   int in_counter = 0;
   Shortoligomer_T oligo = 0U, masked;
@@ -349,7 +347,7 @@ clear_positions (Genomicpos_T **positions, int *counts, char *sequence, int seql
   for (i = 0, p = sequence; i < seqlength; i++, p++) {
     in_counter++;
 
-    switch (toupper(*p)) {
+    switch (toupper((int) *p)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
@@ -369,6 +367,14 @@ clear_positions (Genomicpos_T **positions, int *counts, char *sequence, int seql
 
   return;
 }
+#endif
+
+
+#define POLY_A 0x0000
+#define POLY_C 0x5555
+#define POLY_G 0xAAAA
+#define POLY_T 0xFFFF
+
 
 /* First, we count occurrences of each oligo in queryseq.  This allows
  * us to scan genomicseg intelligently, because then we know whether
@@ -377,17 +383,16 @@ clear_positions (Genomicpos_T **positions, int *counts, char *sequence, int seql
 /* Returns true if the sequence is repetitive */
 void
 Oligoindex_tally (T this, Sequence_T queryseq, Sequence_T genomicseg) {
-  int nunique;
   int trimlength;
 
   memset((void *) this->counts,0,oligospace*sizeof(int));
   memset((void *) this->overabundant,0,oligospace*sizeof(bool));
 
   /* These values will prevent oligoindex from getting mappings later */
-  this->overabundant[POLY_A] = true;
-  this->overabundant[POLY_C] = true;
-  this->overabundant[POLY_G] = true;
-  this->overabundant[POLY_T] = true;
+  this->overabundant[POLY_A & mask] = true;
+  this->overabundant[POLY_C & mask] = true;
+  this->overabundant[POLY_G & mask] = true;
+  this->overabundant[POLY_T & mask] = true;
 
   trimlength = Sequence_trimlength(queryseq);
   store_positions(this->positions,this->data,this->overabundant,this->inquery,
@@ -422,8 +427,6 @@ Oligoindex_free (T *old) {
 
 static Genomicpos_T *
 lookup (int *nhits, T this, Shortoligomer_T oligo) {
-  List_T p;
-  int i;
 
   oligo = oligo & mask;
 
@@ -445,18 +448,17 @@ lookup (int *nhits, T this, Shortoligomer_T oligo) {
 unsigned int **
 Oligoindex_get_mappings (int **npositions, int *totalpositions, T this, 
 			 Sequence_T queryseq) {
-  unsigned int **mappings, *positions;
-  int nhits, k, i;
-  int querylength, trimlength, trim_start, trim_end;
+  unsigned int **mappings;
+  int nhits, i;
+  int querylength, trimlength, trim_start;
 
   char *p;
-  int in_counter = 0, querypos, left_querypos, right_querypos;
+  int in_counter = 0, querypos;
   Shortoligomer_T oligo = 0U;
 
   querylength = Sequence_fulllength(queryseq);
   trimlength = Sequence_trimlength(queryseq);
   trim_start = Sequence_trim_start(queryseq);
-  trim_end = Sequence_trim_end(queryseq);
   mappings = (unsigned int **) CALLOC(querylength,sizeof(unsigned int *));
   *npositions = (int *) CALLOC(querylength,sizeof(int));
   *totalpositions = 0;
@@ -466,7 +468,7 @@ Oligoindex_get_mappings (int **npositions, int *totalpositions, T this,
     in_counter++;
     querypos++;
     
-    switch (toupper(*p)) {
+    switch (toupper((int) *p)) {
     case 'A': oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;

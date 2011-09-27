@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.9 2005/06/23 22:46:24 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.10 2005/07/08 07:58:27 twu Exp $";
 
 #include "chrsubset.h"
 #include <stdio.h>
@@ -104,7 +104,7 @@ read_header (FILE *fp, char *filename) {
 
   Buffer[0] = '\0';
 
-  while (Buffer[0] == '\0' || isspace(Buffer[0])) {
+  while (Buffer[0] == '\0' || isspace((int) Buffer[0])) {
     /* Read past all empty lines */
     if (fgets(Buffer,BUFSIZE,fp) == NULL) {
       return NULL;
@@ -115,12 +115,12 @@ read_header (FILE *fp, char *filename) {
     exit(9);
   } else {
     p = &(Buffer[1]);
-    if (*p == '\0' || isspace(*p)) {
+    if (*p == '\0' || isspace((int) *p)) {
       fprintf(stderr,"The '>' line in chromosome subset file %s is invalid\n",filename);
       exit(9);
     } else {
       start = p;
-      while (*p != '\0' && !isspace(*p)) {
+      while (*p != '\0' && !isspace((int) *p)) {
 	p++;
       }
       end = p;
@@ -145,6 +145,7 @@ skip_list (FILE *fp, char *filename, char *subsetname) {
 }
 
 
+/*
 static bool *
 include_all (IIT_T chromosome_iit) {
   bool *includep;
@@ -157,14 +158,14 @@ include_all (IIT_T chromosome_iit) {
   }
   return includep;
 }
-
+*/
 
 static char *
 get_next_token (char **string) {
   char *token, *start, *end, *p;
 
   p = *string;
-  while (*p != '\0' && (isspace(*p) || *p == ',')) {
+  while (*p != '\0' && (isspace((int) *p) || *p == ',')) {
     p++;
   }
   if (*p == '\0') {
@@ -174,7 +175,7 @@ get_next_token (char **string) {
     start = p;
   }
 
-  while (*p != '\0' && !isspace(*p) && *p != ',') {
+  while (*p != '\0' && !isspace((int) *p) && *p != ',') {
     p++;
   }
   end = p;
@@ -234,7 +235,6 @@ process_exclusions (char *string, IIT_T chromosome_iit) {
 
 static bool *
 process_list (FILE *fp, char *filename, char *subsetname, IIT_T chromosome_iit) {
-  bool *includep;
   char Buffer[BUFSIZE], *p;
 
   if (fgets(Buffer,BUFSIZE,fp) == NULL) {
@@ -242,7 +242,7 @@ process_list (FILE *fp, char *filename, char *subsetname, IIT_T chromosome_iit) 
     exit(9);
   } else {
     p = Buffer;
-    while (*p != '\0' && isspace(*p)) {
+    while (*p != '\0' && isspace((int) *p)) {
       p++;
     }
     if (*p == '\0') {
@@ -257,7 +257,7 @@ process_list (FILE *fp, char *filename, char *subsetname, IIT_T chromosome_iit) 
     } else if (*p == '-') {
       /* Skip blanks */
       p++;
-      while (*p != '\0' && !isspace(*p)) {
+      while (*p != '\0' && !isspace((int) *p)) {
 	p++;
       }
       return process_exclusions(p,chromosome_iit);

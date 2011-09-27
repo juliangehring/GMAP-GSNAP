@@ -1,4 +1,4 @@
-/* $Id: params.h,v 1.61 2005/03/04 20:48:09 twu Exp $ */
+/* $Id: params.h,v 1.62 2005/07/08 07:58:34 twu Exp $ */
 #ifndef PARAMS_INCLUDED
 #define PARAMS_INCLUDED
 #include "bool.h"
@@ -26,6 +26,8 @@ extern IIT_T
 Params_contig_iit (T this);
 extern IIT_T
 Params_map_iit (T this);
+extern int
+Params_maxextension (T this);
 extern int
 Params_stuttercycles (T this);
 extern int

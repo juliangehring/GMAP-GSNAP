@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.75 2005/06/03 20:12:18 twu Exp $ */
+/* $Id: pair.h,v 1.78 2005/07/13 19:23:54 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -46,13 +46,13 @@ extern void
 Pair_print_continuous (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		       Genomicpos_T chroffset, Genomicpos_T genomiclength,
 		       bool watsonp, int cdna_direction, bool universalp, bool zerobasedp, bool diagnosticp, 
-		       bool genomefirstp, int invertmode, bool nointronlenp);
+		       bool genomefirstp, int invertmode, bool nointronlenp, int ngap);
 
 extern void
 Pair_print_alignment (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		      Genomicpos_T chroffset, IIT_T chromosome_iit, Genomicpos_T genomiclength, 
 		      bool watsonp, int cdna_direction, bool universalp, bool zerobasedp, bool diagnosticp, 
-		      bool genomicprop, int invertmode, bool nointronlenp, int wraplength);
+		      bool genomicprop, int invertmode, bool nointronlenp, int wraplength, int ngap);
 extern void
 Pair_debug_alignment (List_T list, int ngap);
 
@@ -71,6 +71,8 @@ Pair_print_mutation (struct T *pairs, int npairs, int cdna_direction,
 		     Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp, 
 		     bool zerobasedp, Genomicpos_T mutposition, char *change);
 
+extern void
+Pair_dump_one (T this, bool zerobasedp);
 extern void
 Pair_dump_list (List_T pairs, bool zerobasedp);
 extern void
@@ -93,6 +95,13 @@ Pair_print_exonsummary (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
 			Genomicpos_T chroffset, IIT_T chromosome_iit, Genomicpos_T genomiclength,
 			bool watsonp, bool universalp, bool zerobasedp, bool genomefirstp, 
 			int invertmode);
+extern void
+Pair_print_pslformat (struct T *pairs, int npairs, T start, T end,
+		      Sequence_T queryseq, Chrnum_T chrnum, Genomicpos_T chrpos,
+		      IIT_T chromosome_iit, Genomicpos_T genomiclength,
+		      int nexons, int matches, int unknowns, int mismatches, 
+		      int qopens, int qindels, int topens, int tindels,
+		      bool watsonp, int cdna_direction);
 
 extern void
 Pair_print_cdna_exons (struct T *pairs, int npairs, int wraplength);

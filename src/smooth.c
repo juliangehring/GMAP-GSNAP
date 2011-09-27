@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c,v 1.17 2005/02/15 01:58:51 twu Exp $";
+static char rcsid[] = "$Id: smooth.c,v 1.18 2005/07/08 07:58:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -29,11 +29,11 @@ typedef enum {KEEP, DELETE, MARK} Exonstatus_T;
 
 static Intlist_T
 get_exonlengths (List_T pairs) {
-  Intlist_T exonlengths = NULL, l;
+  Intlist_T exonlengths = NULL;
   List_T p;
   Pair_T firstpair, pair;
   int exonlen = 0;
-  int lastquerypos, lastgenomepos, delta, queryjump, genomejump;
+  int lastquerypos, lastgenomepos, queryjump, genomejump;
 
   /* Initialize */
   firstpair = List_head(pairs);
@@ -74,10 +74,10 @@ get_exonlengths (List_T pairs) {
 
 static Intlist_T
 get_intronlengths (List_T pairs) {
-  Intlist_T intronlengths = NULL, l;
+  Intlist_T intronlengths = NULL;
   List_T p;
   Pair_T firstpair, pair;
-  int lastquerypos, lastgenomepos, delta, queryjump, genomejump;
+  int lastquerypos, lastgenomepos, queryjump, genomejump;
 
   /* Initialize */
   firstpair = List_head(pairs);
@@ -135,11 +135,6 @@ short_end_exon (int exonlen, int intronlen) {
 static Intlist_T
 get_exonstatus (int *nshortexons, bool *deletep, List_T pairs) {
   Intlist_T exonstatus = NULL, exonlengths, intronlengths, q, l, k;
-  Pair_T firstpair, pair;
-  int lastquerypos, lastgenomepos, delta;
-  bool seenp = false, longp = false;
-  int firstexonlen = 0, lastexonlen, exonlen = 0, firstintronlen = -1, lastintronlen = -1, 
-    nintrons = 0;
 
   *deletep = false;
 
@@ -241,7 +236,7 @@ Smooth_pairs (int *nshortexons, List_T pairs, Pairpool_T pairpool) {
   Intlist_T exonstatus, q;
   Pair_T pair, firstpair;
   int currstatus;
-  int lastquerypos, lastgenomepos, delta, queryjump, genomejump;
+  int lastquerypos, lastgenomepos, queryjump, genomejump;
   bool deletep;
 
   exonstatus = get_exonstatus(&(*nshortexons),&deletep,pairs);

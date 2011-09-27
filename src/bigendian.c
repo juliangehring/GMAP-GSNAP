@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bigendian.c,v 1.7 2005/02/08 00:00:51 twu Exp $";
+static char rcsid[] = "$Id: bigendian.c,v 1.8 2005/07/08 07:58:26 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -49,7 +49,6 @@ Bigendian_fwrite_int (int value, FILE *fp) {
 
 size_t
 Bigendian_fwrite_ints (int *array, int n, FILE *fp) {
-  size_t nitems = 0;
   char buf[4];
   int value, i;
 

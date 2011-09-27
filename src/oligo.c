@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c,v 1.36 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: oligo.c,v 1.38 2005/07/08 14:37:40 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -34,8 +34,7 @@ static char rcsid[] = "$Id: oligo.c,v 1.36 2005/02/15 01:58:50 twu Exp $";
 
 /* Note: positions is allocated by system malloc() */
 int
-Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo, 
-	      cDNAEnd_T cdnaend, bool revcompp) {
+Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo) {
   int nentries;
   
   debug(printf("Oligo on entry = %06X",storedoligo));
@@ -128,7 +127,7 @@ Oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcom
 	  );
     return DONE;
   } else if (cdnaend == FIVE) {
-    switch (toupper(c)) {
+    switch (toupper((int) c)) {
     case 'A': *forward <<= 2; *revcomp >>= 2; *revcomp |= LEFT_T; break;
     case 'C': *forward <<= 2; *forward |= RIGHT_C; 
       *revcomp >>= 2; *revcomp |= LEFT_G; break;
@@ -146,7 +145,7 @@ Oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcom
     return VALID;
 
   } else {
-    switch (toupper(c)) {
+    switch (toupper((int) c)) {
     case 'A': *forward >>= 2; *revcomp <<= 2; *revcomp |= RIGHT_T; break;
     case 'C': *forward >>= 2; *forward |= LEFT_C; 
       *revcomp <<= 2; *revcomp |= RIGHT_G; break;

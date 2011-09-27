@@ -1,10 +1,13 @@
-static char rcsid[] = "$Id: iit_dump.c,v 1.8 2005/02/07 23:56:56 twu Exp $";
+static char rcsid[] = "$Id: iit_dump.c,v 1.9 2005/07/08 07:58:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>		/* For getopt */
+#endif
 #include "bool.h"
 #include "iit-read.h"
 #include "list.h"
@@ -12,6 +15,7 @@ static char rcsid[] = "$Id: iit_dump.c,v 1.8 2005/02/07 23:56:56 twu Exp $";
 
 static bool debugp = false;
 
+/*
 static void
 show_types (IIT_T iit) {
   List_T typelist, p;
@@ -22,6 +26,11 @@ show_types (IIT_T iit) {
   }
   return;
 }
+*/
+
+#ifdef __STRICT_ANSI__
+int getopt (int argc, char *const argv[], const char *optstring);
+#endif
 
 int
 main (int argc, char *argv[]) {
@@ -30,7 +39,7 @@ main (int argc, char *argv[]) {
   
   int opt;
   extern int optind;
-  extern char *optarg;
+  /* extern char *optarg; */
 
   while ((opt = getopt(argc,argv,"D")) != -1) {
     switch (opt) {

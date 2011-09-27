@@ -1,4 +1,4 @@
-/* $Id: match.h,v 1.36 2005/02/15 01:58:50 twu Exp $ */
+/* $Id: match.h,v 1.37 2005/07/08 00:00:37 twu Exp $ */
 #ifndef MATCH_INCLUDED
 #define MATCH_INCLUDED
 #include "bool.h"
@@ -29,7 +29,7 @@ extern int
 Match_cmp (const void *a, const void *b);
 
 extern T
-Match_new (int querypos, bool forwardp, bool fivep, 
+Match_new (int querypos, bool forwardp, bool fivep,
 	   Genomicpos_T position, IIT_T chromosome_iit);
 extern T
 Match_copy (T this);

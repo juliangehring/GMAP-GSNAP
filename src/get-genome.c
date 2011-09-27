@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.50 2005/05/04 18:04:51 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.53 2005/07/15 20:54:30 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -94,9 +94,9 @@ Usage: get-genome [OPTIONS...] -d genome [genome:]range, or\n\
        get-genome [OPTIONS...] -d genome chromosome:range, or\n\
        get-genome [OPTIONS...] -d genome contig[:range]\n\
 where\n\
-   range is startposition\n\
-         or startposition-endposition\n\
-         or startposition+length\n\
+   range is startposition..endposition (endpos < startpos means - strand)\n\
+         or startposition+length (+ strand)\n\
+         or startposition+-length (- strand)\n\
 \n\
 Input options\n\
   -D, --dir=STRING        Data directory\n\
@@ -112,7 +112,6 @@ Output options\n\
   -l, --wraplength=INT    Wrap length for sequence (default=60)\n\
   -G, --fullgenome        Use full (uncompressed) version of genome\n\
   -h, --header=STRING     Desired header line\n\
-  --version               Show version\n\
 \n\
 Dump options\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
@@ -136,7 +135,7 @@ isnumberp (unsigned int *result, char *string) {
   while (*p != '\0') {
     if (*p == ',') {
       /* Skip commas */
-    } else if (!isdigit(*p)) {
+    } else if (!isdigit((int) *p)) {
       return false;
     } else {
       *result = (*result) * 10 + (*p - '0');
@@ -175,6 +174,25 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
       result = true;
     }
 
+  } else if (index(copy,'+')) {
+    startstring = strtok(copy,"+");
+    endstring = strtok(NULL,"+");
+    if (!isnumberp(&start,startstring)) {
+      result = false;
+    } else if (endstring[0] == '-' && isnumberp(&(*length),&(endstring[1]))) {
+      *left = start - (*length);
+      *revcomp = true;
+      debug(printf("(-) "));
+      result = true;
+    } else if (!isnumberp(&(*length),endstring)) {
+      result = false;
+    } else {
+      *left = start - 1;
+      *revcomp = false;
+      debug(printf("(+) "));
+      result = true;
+    }
+
   } else if (index(copy,'-')) {
     /* Old notation */
     startstring = strtok(copy,"--");
@@ -192,19 +210,6 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
       *left = end - 1;
       *revcomp = true;
       debug(printf("(--) "));
-      result = true;
-    }
-
-  } else if (index(copy,'+')) {
-    startstring = strtok(copy,"+");
-    endstring = strtok(NULL,"+");
-    if (!isnumberp(&start,startstring) || !isnumberp(&end,endstring)) {
-      result = false;
-    } else {
-      *left = start - 1;
-      *length = end;
-      *revcomp = false;
-      debug(printf("(+) "));
       result = true;
     }
 
@@ -464,7 +469,7 @@ index_compare (const void *a, const void *b) {
 int
 main (int argc, char *argv[]) {
   char *iitfile;
-  Genomicpos_T genomicstart, genomiclength, sourcelength, maxextra, extra;
+  Genomicpos_T genomicstart, genomiclength, sourcelength, extra;
   char *genomesubdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL;
   char *gbuffer1, *gbuffer2, *gbuffer3;
   Sequence_T genomicseg;
@@ -472,7 +477,7 @@ main (int argc, char *argv[]) {
   IIT_T chromosome_iit, contig_iit, altstrain_iit = NULL;
   Interval_T interval;
   char *strain;
-  int user_type = -1, type, *indexarray, nindices, index, i, j;
+  int user_type = -1, type, *indexarray, nindices, i, j;
 
   int opt;
   extern int optind;

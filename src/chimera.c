@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c,v 1.13 2005/06/14 17:06:40 twu Exp $";
+static char rcsid[] = "$Id: chimera.c,v 1.14 2005/07/15 20:53:26 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,6 +11,8 @@ static char rcsid[] = "$Id: chimera.c,v 1.13 2005/06/14 17:06:40 twu Exp $";
 #include "nmath.h"
 #include "maxent.h"
 
+
+#define GBUFFERLEN 1024
 
 /* Chimera assembly */
 #ifdef DEBUG
@@ -330,10 +332,11 @@ find_exonexon_fwd (int *exonexonpos, double *donor_prob, double *acceptor_prob,
 		   Stage3_T left_part, Stage3_T right_part, Genome_T genome,
 		   int breakpoint_start, int breakpoint_end) {
   Sequence_T donor_genomicseg, acceptor_genomicseg;
-  char gbuffer1[512], gbuffer2[512], gbuffer3[512], gbuffer4[512], *donor_ptr, *acceptor_ptr;
+  char gbuffer1[GBUFFERLEN], gbuffer2[GBUFFERLEN], gbuffer3[GBUFFERLEN], gbuffer4[GBUFFERLEN], 
+    *gbuffer1aux, *gbuffer2aux, *gbuffer3aux, *gbuffer4aux, *donor_ptr, *acceptor_ptr;
   int i, j;
   Genomicpos_T left, right, donor_length, acceptor_length;
-  bool revcomp;
+  bool revcomp, allocate12p, allocate34p;
   double donor_prob_1, acceptor_prob_1, bestproduct = 0.0, product;
 
   *exonexonpos = -1;
@@ -348,8 +351,18 @@ find_exonexon_fwd (int *exonexonpos, double *donor_prob, double *acceptor_prob,
     left -= donor_length;
     revcomp = true;
   }
-  donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
-					gbuffer1,gbuffer2,/*gbufferlen*/512);
+
+  if (donor_length >= GBUFFERLEN) {
+    allocate12p = true;
+    gbuffer1aux = (char *) CALLOC(donor_length+1,sizeof(char));
+    gbuffer2aux = (char *) CALLOC(donor_length+1,sizeof(char));
+    donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
+					  gbuffer1aux,gbuffer2aux,donor_length+1);
+  } else {
+    allocate12p = false;
+    donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
+					  gbuffer1,gbuffer2,/*gbufferlen*/GBUFFERLEN);
+  }
   donor_ptr = Sequence_fullpointer(donor_genomicseg);
   debug2(
 	 for (i = 0; i < ACCEPTOR_MODEL_LEFT_MARGIN - DONOR_MODEL_LEFT_MARGIN; i++) {
@@ -368,8 +381,18 @@ find_exonexon_fwd (int *exonexonpos, double *donor_prob, double *acceptor_prob,
     left -= ACCEPTOR_MODEL_RIGHT_MARGIN;
     revcomp = true;
   }
-  acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
-					   gbuffer3,gbuffer4,/*gbufferlen*/512);
+
+  if (acceptor_length >= GBUFFERLEN) {
+    allocate34p = true;
+    gbuffer3aux = (char *) CALLOC(acceptor_length+1,sizeof(char));
+    gbuffer4aux = (char *) CALLOC(acceptor_length+1,sizeof(char));
+    acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
+					     gbuffer3aux,gbuffer4aux,acceptor_length+1);
+  } else {
+    allocate34p = false;
+    acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
+					     gbuffer3,gbuffer4,/*gbufferlen*/GBUFFERLEN);
+  }
   acceptor_ptr = Sequence_fullpointer(acceptor_genomicseg);
   debug2(
 	 for (i = 0; i < DONOR_MODEL_LEFT_MARGIN - ACCEPTOR_MODEL_LEFT_MARGIN; i++) {
@@ -401,6 +424,14 @@ find_exonexon_fwd (int *exonexonpos, double *donor_prob, double *acceptor_prob,
 
   Sequence_free(&acceptor_genomicseg);
   Sequence_free(&donor_genomicseg);
+  if (allocate34p == true) {
+    FREE(gbuffer4aux);
+    FREE(gbuffer3aux);
+  }
+  if (allocate12p == true) {
+    FREE(gbuffer2aux);
+    FREE(gbuffer1aux);
+  }
 
   return bestproduct;
 }
@@ -410,10 +441,11 @@ find_exonexon_rev (int *exonexonpos, double *donor_prob, double *acceptor_prob,
 		   Stage3_T left_part, Stage3_T right_part, Genome_T genome,
 		   int breakpoint_start, int breakpoint_end) {
   Sequence_T donor_genomicseg, acceptor_genomicseg;
-  char gbuffer1[512], gbuffer2[512], gbuffer3[512], gbuffer4[512], *donor_ptr, *acceptor_ptr;
+  char gbuffer1[GBUFFERLEN], gbuffer2[GBUFFERLEN], gbuffer3[GBUFFERLEN], gbuffer4[GBUFFERLEN], 
+    *gbuffer1aux, *gbuffer2aux, *gbuffer3aux, *gbuffer4aux, *donor_ptr, *acceptor_ptr;
   int i, j;
   Genomicpos_T left, right, donor_length, acceptor_length;
-  bool revcomp;
+  bool revcomp, allocate12p, allocate34p;
   double donor_prob_1, acceptor_prob_1, bestproduct = 0.0, product;
 
   *exonexonpos = -1;
@@ -428,8 +460,18 @@ find_exonexon_rev (int *exonexonpos, double *donor_prob, double *acceptor_prob,
     left -= DONOR_MODEL_LEFT_MARGIN;
     revcomp = false;
   }
-  donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
-					gbuffer1,gbuffer2,/*gbufferlen*/512);
+
+  if (donor_length >= GBUFFERLEN) {
+    allocate12p = true;
+    gbuffer1aux = (char *) CALLOC(donor_length+1,sizeof(char));
+    gbuffer2aux = (char *) CALLOC(donor_length+1,sizeof(char));
+    donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
+					  gbuffer1aux,gbuffer2aux,donor_length+1);
+  } else {
+    allocate12p = false;
+    donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,revcomp,
+					  gbuffer1,gbuffer2,/*gbufferlen*/GBUFFERLEN);
+  }
   donor_ptr = Sequence_fullpointer(donor_genomicseg);
   debug2(
 	 for (i = 0; i < ACCEPTOR_MODEL_LEFT_MARGIN - DONOR_MODEL_LEFT_MARGIN; i++) {
@@ -448,8 +490,18 @@ find_exonexon_rev (int *exonexonpos, double *donor_prob, double *acceptor_prob,
     left -= acceptor_length;
     revcomp = false;
   }
-  acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
-					   gbuffer3,gbuffer4,/*gbufferlen*/512);
+
+  if (acceptor_length >= GBUFFERLEN) {
+    allocate34p = true;
+    gbuffer3aux = (char *) CALLOC(acceptor_length+1,sizeof(char));
+    gbuffer4aux = (char *) CALLOC(acceptor_length+1,sizeof(char));
+    acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
+					     gbuffer3aux,gbuffer4aux,acceptor_length+1);
+  } else {
+    allocate34p = false;
+    acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,revcomp,
+					     gbuffer3,gbuffer4,/*gbufferlen*/GBUFFERLEN);
+  }
   acceptor_ptr = Sequence_fullpointer(acceptor_genomicseg);
   debug2(
 	 for (i = 0; i < DONOR_MODEL_LEFT_MARGIN - ACCEPTOR_MODEL_LEFT_MARGIN; i++) {
@@ -481,6 +533,14 @@ find_exonexon_rev (int *exonexonpos, double *donor_prob, double *acceptor_prob,
 
   Sequence_free(&acceptor_genomicseg);
   Sequence_free(&donor_genomicseg);
+  if (allocate34p == true) {
+    FREE(gbuffer4aux);
+    FREE(gbuffer3aux);
+  }
+  if (allocate12p == true) {
+    FREE(gbuffer2aux);
+    FREE(gbuffer1aux);
+  }
 
   return bestproduct;
 }

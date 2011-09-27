@@ -1,4 +1,4 @@
-/* $Id: segmentpos.h,v 1.26 2005/03/09 19:25:14 twu Exp $ */
+/* $Id: segmentpos.h,v 1.27 2005/07/08 07:58:34 twu Exp $ */
 #ifndef SEGMENTPOS_INCLUDED
 #define SEGMENTPOS_INCLUDED
 #include <stdio.h>
@@ -18,6 +18,8 @@ extern Genomicpos_T
 Segmentpos_chrpos2 (T this);
 extern Genomicpos_T
 Segmentpos_length (T this);
+extern int
+Segmentpos_type (T this);
 extern bool
 Segmentpos_revcompp (T this);
 extern T

@@ -1,4 +1,4 @@
-/* $Id: stage1.h,v 1.46 2005/06/01 22:16:05 twu Exp $ */
+/* $Id: stage1.h,v 1.47 2005/07/08 14:42:52 twu Exp $ */
 #ifndef STAGE1_INCLUDED
 #define STAGE1_INCLUDED
 #include "bool.h"
@@ -14,8 +14,7 @@
 typedef struct T *T;
 
 extern List_T
-Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
-		  bool crossspeciesp);
+Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset);
 
 extern void
 Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this, 

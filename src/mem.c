@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.11 2005/04/19 15:48:13 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.13 2005/07/13 19:25:15 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,15 +19,32 @@ static char rcsid[] = "$Id: mem.c,v 1.11 2005/04/19 15:48:13 twu Exp $";
 #define TRAP
 */
 
-
 #ifdef TRAP
 static void *trap_contents;
 static void **trap_location;
+static int startp = 0;
 
 void
-Mem_trap_start (void **location) {
-  trap_location = location;
-  trap_contents = * (void **) location;
+Mem_trap_start (void **location, const char *file, int line) {
+  if (startp == 0) {
+    trap_location = location;
+    trap_contents = * (void **) location;
+    startp = 1;
+    printf("Initial value at location %p is %p from %s:%d\n",
+	   trap_location,trap_contents,file,line);
+    fflush(stdout);
+  }
+  return;
+}
+
+void
+Mem_trap_check (const char *file, int line) {
+  if (startp > 0 && *trap_location != trap_contents) {
+      printf("Value changed at location %p.  Old value was %p.  New value is %p.  Observed during check at %s:%d\n",
+	     trap_location,trap_contents,*trap_location,file,line);
+      fflush(stdout);
+      trap_contents = * (void **) trap_location;
+  }
   return;
 }
 #endif
@@ -43,11 +60,11 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   debug(printf("Alloc of %d bytes requested from %s:%d => %p\n",nbytes,file,line,ptr));
 
 #ifdef TRAP
-  if (*trap_location != trap_contents) {
-    printf("Trap violation in malloc at %p (%d bytes).  Location %p contains %p\n",
-	   ptr,nbytes,*trap_location,trap_contents);
-    fflush(stdout);
-    abort();
+  if (startp > 0 && *trap_location != trap_contents) {
+      printf("Value changed at location %p.  Old value was %p.  New value is %p.  Observed during malloc at %s:%d\n",
+	     trap_location,trap_contents,*trap_location,file,line);
+      fflush(stdout);
+      trap_contents = * (void **) trap_location;
   }
 #endif
 
@@ -81,17 +98,20 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
     }
   }
   assert(nbytes > 0);
-  ptr = calloc(count, nbytes);
-  debug(printf("Calloc of %d x %d bytes requested from %s:%d => %p\n",count,nbytes,file,line,ptr));
+
+  ptr = calloc(count,nbytes);
 
 #ifdef TRAP
-  if (*trap_location != trap_contents) {
-    printf("Trap violation in malloc at %p (%d bytes).  Location %p contains %p\n",
-	   ptr,nbytes,*trap_location,trap_contents);
-    fflush(stdout);
-    abort();
+  if (startp > 0 && *trap_location != trap_contents) {
+      printf("Value changed at location %p.  Old value is %p.  New value is %p.  Observed during calloc at %s:%d\n",
+	     trap_location,trap_contents,*trap_location,file,line);
+      fflush(stdout);
+      trap_contents = * (void **) trap_location;
   }
 #endif
+
+  debug(printf("Calloc of %d x %d bytes requested from %s:%d => %p\n",count,nbytes,file,line,ptr));
+
   if (ptr == NULL) {
     if (file == NULL) {
       RAISE(Mem_Failed);
@@ -123,18 +143,20 @@ Mem_free (void *ptr, const char *file, int line) {
 
   debug(printf("Location %p freed at %s:%d\n",ptr,file,line));
 
-#ifdef TRAP
-  if (*trap_location != trap_contents) {
-    printf("Trap violation in free at %p.  Location %p contains %p\n",
-	   ptr,*trap_location,trap_contents);
-    fflush(stdout);
-    abort();
-  }
-#endif
-
   if (ptr) {
     free(ptr);
   }
+
+#ifdef TRAP
+  if (startp > 0 && *trap_location != trap_contents) {
+      printf("Value changed at location %p.  Old value was %p.  New value is %p.  Observed during free at %s:%d\n",
+	     trap_location,trap_contents,*trap_location,file,line);
+      fflush(stdout);
+      trap_contents = * (void **) trap_location;
+  }
+#endif
+
+  return;
 }
 
 void *

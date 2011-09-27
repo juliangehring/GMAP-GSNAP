@@ -124,7 +124,11 @@ oligo_count_CC = $(PTHREAD_CC)
 oligo_count_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 oligo_count_LDADD = $(PTHREAD_LIBS)
+if FULLDIST
+dist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
+else
 nodist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
+endif
 
 
 MD5_COMPUTE_SOURCES = bool.h types.h \
@@ -135,7 +139,11 @@ MD5_COMPUTE_SOURCES = bool.h types.h \
 md5_compute_CFLAGS = $(AM_CFLAGS)
 md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 md5_compute_LDADD =
+if FULLDIST
+dist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
+else
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
+endif
 
 
 GENOMEPLOT_SOURCES = bool.h types.h \
@@ -151,8 +159,11 @@ GENOMEPLOT_SOURCES = bool.h types.h \
 genomeplot_CFLAGS = $(AM_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 genomeplot_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 genomeplot_LDADD =
+if FULLDIST
+dist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
+else
 nodist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
-
+endif
 
 
 GMAPINDEX_SOURCES = bool.h types.h \

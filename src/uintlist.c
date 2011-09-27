@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uintlist.c,v 1.3 2005/06/14 21:43:28 twu Exp $";
+static char rcsid[] = "$Id: uintlist.c,v 1.4 2005/07/08 07:58:35 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -60,7 +60,7 @@ void
 Uintlist_free (T *list) {
   T prev;
 
-  while (prev = *list) {
+  while ((prev = *list) != NULL) {
     *list = (*list)->rest;
     FREE(prev);
   }

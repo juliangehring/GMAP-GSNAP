@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c,v 1.21 2005/02/16 18:44:29 twu Exp $";
+static char rcsid[] = "$Id: iit_store.c,v 1.22 2005/07/08 07:58:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -64,7 +64,6 @@ string_compare (const void *x, const void *y) {
 static unsigned int
 string_hash (const void *x) {
   unsigned int h = 0U;
-  char *a = (char *) x;
   const char *p;
   
   for (p = x; *p != '\0'; p++) {
@@ -89,18 +88,18 @@ scan_header (List_T typelist, Tableint_T typetable,
     strcpy(*label,Buffer);
 
     p = header;
-    while (!isspace(*p)) { p++; } /* First word */
-    while (isspace(*p)) { p++; } /* First space */
-    while (!isspace(*p)) { p++; } /* Second word */
-    while (isspace(*p)) { p++; } /* Second space */
-    while (!isspace(*p)) { p++; } /* Third word */
-    while (*p != '\0' && isspace(*p)) { p++; } /* Third space */
+    while (!isspace((int) *p)) { p++; } /* First word */
+    while (isspace((int) *p)) { p++; } /* First space */
+    while (!isspace((int) *p)) { p++; } /* Second word */
+    while (isspace((int) *p)) { p++; } /* Second space */
+    while (!isspace((int) *p)) { p++; } /* Third word */
+    while (*p != '\0' && isspace((int) *p)) { p++; } /* Third space */
     
     if (*p == '\0') {
       *type = 0;		/* Empty type string */
     } else {
       if ((ptr = rindex(p,'\n')) != NULL) {
-	while (isspace(*ptr)) { ptr--; } /* Erase empty space */
+	while (isspace((int) *ptr)) { ptr--; } /* Erase empty space */
 	ptr++;
 	*ptr = '\0';
       }
@@ -118,11 +117,14 @@ scan_header (List_T typelist, Tableint_T typetable,
   return typelist;
 }
 
+#ifdef __STRICT_ANSI__
+int getopt (int argc, char *const argv[], const char *optstring);
+#endif
+
 int 
 main (int argc, char *argv[]) {
-  int ret;
   char *inputfile = NULL, *outputfile = NULL, *iitfile, 
-    *tempstring, *typestring, *label, *p, *ptr;
+    *tempstring, *typestring, *label, *p;
   char Buffer[8192];
   List_T lines = NULL, l, intervallist = NULL, typelist = NULL, labellist = NULL, annotlist = NULL;
   FILE *fp;
@@ -130,7 +132,7 @@ main (int argc, char *argv[]) {
   int content_size;
   Interval_T interval;
   Tableint_T typetable;
-  int type, ntypes = 0;
+  int type;
 
   int c;
   extern int optind;

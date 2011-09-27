@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reqpost.c,v 1.17 2005/02/16 18:44:48 twu Exp $";
+static char rcsid[] = "$Id: reqpost.c,v 1.18 2005/07/08 07:58:34 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -55,8 +55,6 @@ Reqpost_new (Blackboard_T blackboard, int id, Params_T params) {
 
 void
 Reqpost_free (T *old) {
-  int i;
-
   pthread_cond_destroy(&(*old)->request_ready_p);
   pthread_mutex_destroy(&(*old)->lock);
   FREE(*old);

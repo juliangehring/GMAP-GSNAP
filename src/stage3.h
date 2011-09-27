@@ -1,4 +1,4 @@
-/* $Id: stage3.h,v 1.79 2005/06/03 20:12:35 twu Exp $ */
+/* $Id: stage3.h,v 1.81 2005/07/13 19:26:04 twu Exp $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 #include "bool.h"
@@ -82,17 +82,19 @@ extern void
 Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit,
 			  char *dbversion, bool zerobasedp);
 extern void
+Stage3_print_pslformat (T this, int pathnum, IIT_T chromosome_iit, Sequence_T queryseq);
+extern void
 Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion,
 			bool showalignp, bool zerobasedp, 
 			bool continuousp, bool diagnosticp, int proteinmode,
-			int invertmode, bool nointronlenp, int wraplength);
+			int invertmode, bool nointronlenp, int wraplength, int ngap);
 extern void
 Stage3_print_map (T this, IIT_T map_iit, int pathnum, bool map_bothstrands_p);
 extern void
 Stage3_print_alignment (T this, IIT_T chromosome_iit,
 			bool alignsummaryonlyp, bool universalp, bool zerobasedp,
 			bool continuousp, bool diagnosticp, bool genomefirstp, int proteinmode,
-			int invertmode, bool nointronlenp, int wraplength);
+			int invertmode, bool nointronlenp, int wraplength, int ngap);
 
 extern void
 Stage3_print_cdna_exons (T this, int wraplength);

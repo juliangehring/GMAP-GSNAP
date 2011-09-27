@@ -1,10 +1,11 @@
-static char rcsid[] = "$Id: segmentpos.c,v 1.53 2005/04/19 15:50:23 twu Exp $";
+static char rcsid[] = "$Id: segmentpos.c,v 1.55 2005/07/08 14:41:50 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "segmentpos.h"
 #include <stdio.h>
+#include <string.h>		/* For strcmp */
 #include "mem.h"
 #include "intlist.h"
 #include "separator.h"
@@ -180,10 +181,10 @@ void
 Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 			     Genomicpos_T position2, bool referencealignp, 
                              char *align_strain, bool zerobasedp) {
-  Genomicpos_T contig_start, contig_end, contig_length;
+  Genomicpos_T contig_start, contig_length;
   int relstart, relend;		/* Need to be signed int, not long or unsigned long */
   int index, contig_straintype, i = 0;
-  char *comma1, *comma2, *annotation, *contig_strain;
+  char *comma1, *comma2, *annotation;
   int *indices, nindices, j;
   Interval_T interval;
   bool printreferencep, printaltp, firstprintp = false;
@@ -238,7 +239,7 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
       if (referencealignp == false && contig_straintype == 0) {
 	printf("[reference strain]");
       }
-      printf(":%s%s%s (out of %d bp)",comma1,SEPARATOR,comma2,contig_length);
+      printf(":%s%s%s (out of %u bp)",comma1,SEPARATOR,comma2,contig_length);
 
       FREE(comma2);
       FREE(comma1);

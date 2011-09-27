@@ -1,4 +1,4 @@
-/* $Id: interval.h,v 1.14 2005/05/09 22:33:33 twu Exp $ */
+/* $Id: interval.h,v 1.15 2005/07/08 07:58:32 twu Exp $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
 #include "bool.h"
@@ -25,6 +25,8 @@ extern unsigned int
 Interval_high (T this);
 extern unsigned int
 Interval_length (T this);
+extern int
+Interval_type (T this);
 
 extern unsigned int
 Interval_array_low (struct T *intervals, int index);

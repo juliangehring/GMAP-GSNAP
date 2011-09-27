@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.64 2005/06/10 23:59:06 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.67 2005/07/08 14:39:48 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,6 +21,7 @@ static char rcsid[] = "$Id: indexdb.c,v 1.64 2005/06/10 23:59:06 twu Exp $";
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>		/* For memset */
+#include <ctype.h>		/* For toupper */
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For mmap on Linux and for lseek */
 #endif
@@ -105,11 +106,14 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, bool batchp) {
   FILE *fp;
   int offsets_fd;
   struct stat sb;
-  int oligospace;
   int pagesize, indicesperpage, totalindices;
-  size_t len, i;
+  size_t i;
   int nzero = 0, npos = 0;
+
+#ifdef PAGESIZE_VIA_SYSCTL
+  size_t len;
   int mib[2];
+#endif
 
   new->user_provided_p = false;
   new->batchp = batchp;
@@ -156,7 +160,9 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, bool batchp) {
 
   if (batchp == true) {
 
-#ifdef HAVE_GETPAGESIZE
+#ifdef __STRICT_ANSI__
+    pagesize = PAGESIZE;
+#elif defined(HAVE_GETPAGESIZE)
     pagesize = getpagesize();
 #elif defined(PAGESIZE_VIA_SYSCONF)
     pagesize = (int) sysconf(_SC_PAGESIZE);
@@ -194,12 +200,24 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, bool batchp) {
     }
   } else if (batchp == false) {
 #ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_RANDOM
+#ifdef HAVE_CADDR_T
     madvise((caddr_t) new->positions,new->positions_len,MADV_RANDOM);
+#else
+    madvise((void *) new->positions,new->positions_len,MADV_RANDOM);
+#endif
+#endif
 #endif
   } else {
     /* Touch all pages */
 #ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_WILLNEED
+#ifdef HAVE_CADDR_T
     madvise((caddr_t) new->positions,new->positions_len,MADV_WILLNEED);
+#else
+    madvise((void *) new->positions,new->positions_len,MADV_WILLNEED);
+#endif
+#endif
 #endif
     totalindices = new->positions_len/sizeof(Genomicpos_T);
     for (i = 0; i < totalindices; i += indicesperpage) {
@@ -288,12 +306,14 @@ static pthread_mutex_t indexdb_read_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 Genomicpos_T *
 Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
-  Genomicpos_T *positions, position0, expected1, position1;
+  Genomicpos_T *positions;
   Positionsptr_T ptr, ptr0, end0;
   int i;
   Storedoligomer_T part0;
-  char byte1, byte2, byte3;
+#ifdef WORDS_BIGENDIAN
   int bigendian, littleendian;
+  char byte1, byte2, byte3;
+#endif
 
   debug(printf("%06X\n",oligo));
   part0 = oligo & LOW12MER;
@@ -402,7 +422,7 @@ power (int base, int exponent) {
 }
 
 
-#define MONITOR_INTERVAL 1000000
+#define MONITOR_INTERVAL 10000000 /* 10 million nt */
 
 void
 Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
@@ -476,7 +496,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 	in_counter++;
 	position++;
 
-	switch (toupper(b)) {
+	switch (toupper((int) b)) {
 	case 'A': oligo = (oligo << 2); break;
 	case 'C': oligo = (oligo << 2) | 1; break;
 	case 'G': oligo = (oligo << 2) | 2; break;
@@ -538,39 +558,6 @@ positionsfile_move_absolute (FILE *fp, Positionsptr_T ptr) {
   return;
 }
 
-static Genomicpos_T
-positionsfile_read_current (FILE *fp) {
-  Genomicpos_T value;
-  char buffer[4];
-
-  fread(buffer,sizeof(char),4,fp);
-
-  value = (buffer[3] & 0xff);
-  value <<= 8;
-  value |= (buffer[2] & 0xff);
-  value <<= 8;
-  value |= (buffer[1] & 0xff);
-  value <<= 8;
-  value |= (buffer[0] & 0xff);
-
-  return value;
-}
-
-/* This doesn't seem to work */
-/*
-static void
-positionsfile_move_relative (FILE *fp, int dist) {
-  long int offset = (long int) (dist*sizeof(Genomicpos_T));
-
-  if (fseek(fp,offset,SEEK_CUR) < 0) {
-    fprintf(stderr,"Input to positionsfile_move_relative: %d\n",dist);
-    perror("Error in gmapindex, positionsfile_move_relative");
-    exit(9);
-  }
-  return;
-}
-*/
-
 
 static bool
 need_to_sort_p (Genomicpos_T *positions, int length) {
@@ -595,7 +582,7 @@ static void
 compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T *offsets,
 			   FILE *sequence_fp, IIT_T altstrain_iit, int index1interval,
 			   bool uncompressedp) {
-  Positionsptr_T block_start, block_end, totalcounts;
+  Positionsptr_T block_start, block_end;
   Genomicpos_T *positions_for_block, position = 0, adjposition, prevpos;
   char *p, b;
   int c, oligospace, index, i, npositions, nbadvals, j, k;
@@ -664,7 +651,7 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	in_counter++;
 	position++;
 
-	switch (toupper(b)) {
+	switch (toupper((int) b)) {
 	case 'A': oligo = (oligo << 2); break;
 	case 'C': oligo = (oligo << 2) | 1; break;
 	case 'G': oligo = (oligo << 2) | 2; break;
@@ -819,7 +806,7 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 	in_counter++;
 	position++;
 
-	switch (toupper(b)) {
+	switch (toupper((int) b)) {
 	case 'A': oligo = (oligo << 2); break;
 	case 'C': oligo = (oligo << 2) | 1; break;
 	case 'G': oligo = (oligo << 2) | 2; break;
@@ -918,7 +905,7 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
     fclose(positions_fp);
 
   } else {
-    fprintf(stderr,"Trying to allocate %d*%d bytes of memory...",totalcounts,sizeof(Genomicpos_T));
+    fprintf(stderr,"Trying to allocate %u*%u bytes of memory...",totalcounts,(unsigned int) sizeof(Genomicpos_T));
     positions = (Genomicpos_T *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(Genomicpos_T));
     if (positions == NULL) {
       fprintf(stderr,"failed.  Building positions in file.\n");

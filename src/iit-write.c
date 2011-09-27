@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.19 2005/05/09 22:33:12 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.20 2005/07/08 07:58:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -362,7 +362,6 @@ get_labelorder (List_T labellist, int nintervals) {
   int *labelorder, recno, i;
   struct Sortitem_T *sortitems;
   List_T p;
-  char *label;
 
   labelorder = (int *) CALLOC(nintervals,sizeof(int));
   sortitems = (struct Sortitem_T *) CALLOC(nintervals,sizeof(struct Sortitem_T));
@@ -429,7 +428,6 @@ IIT_output (FILE *fp, T this, Node_T root, List_T typelist, List_T labellist, Li
   unsigned int pointer = 0U, count;
   char *type, *label, *annot, X[1], endofstring[1];
   int i;
-  Interval_T interval;
   int *labelorder;
 
   this->ntypes = List_length(typelist);

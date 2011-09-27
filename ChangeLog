@@ -1,3 +1,277 @@
+2005-07-13 12:26  twu
+
+	* src/dynprog.c: Made genomic positions on left and right ends of
+	  gap constant, to avoid problems in stage 3 computations
+
+2005-07-13 12:26  twu
+
+	* src/memchk.c: Made procedures thread-safe
+
+2005-07-13 12:26  twu
+
+	* src/: stage3.c, stage3.h: Fixed genomic positions on left and
+	  right ends of gap.  Removing gaps at 5' end, possibly introduced
+	  by smoothing.
+
+2005-07-13 12:25  twu
+
+	* src/: mem.c, mem.h: Improved memory trap procedures
+
+2005-07-13 12:24  twu
+
+	* src/matchpair.c: Added check before freeing some possibly null
+	  structures
+
+2005-07-13 12:24  twu
+
+	* src/genome.c: Removed duplicate FREE of filename
+
+2005-07-13 12:24  twu
+
+	* src/gmap.c: Fixed genomic positions on left and right ends of
+	  gap.	Fixed bug when chimera was not reset to NULL.
+
+2005-07-13 12:23  twu
+
+	* src/: pair.c, pair.h: Fixed genomic positions on left and right
+	  ends of gap
+
+2005-07-12 11:02  twu
+
+	* src/stage3.c: Fixed bugs in computing dual introns, dealing with
+	  previously computed gaps, and returning coordinates for empty
+	  peelbacks.
+
+2005-07-12 11:01  twu
+
+	* src/stage1.c: Increased parameters for maximum number of matching
+	  pairs considered
+
+2005-07-12 09:35  twu
+
+	* src/pairpool.c: Enhanced debugging output
+
+2005-07-12 09:35  twu
+
+	* src/: pair.c, pair.h: Added procedure for printing a single pair
+
+2005-07-12 09:35  twu
+
+	* src/mutation.c: Changed unnamed unions to named unions
+
+2005-07-08 15:48  twu
+
+	* src/stage3.c: Added extra check to make sure pairs is non-empty
+
+2005-07-08 15:47  twu
+
+	* src/gmap.c: Initialized chimera to be NULL
+
+2005-07-08 15:46  twu
+
+	* src/oligoindex.c: Fixed bug caused by writing to a random
+	  location when indexsize < 8.
+
+2005-07-08 15:45  twu
+
+	* src/mem.c: Improved trap code
+
+2005-07-08 15:42  twu
+
+	* src/memchk.c: Changed types to be consistent with regular version
+	  of memory manager
+
+2005-07-08 12:52  twu
+
+	* src/memchk.c: Added checking implementation of memory manager
+
+2005-07-08 12:20  twu
+
+	* src/stage3.c: Fixed a segmentation fault bug.
+
+2005-07-08 12:19  twu
+
+	* src/stage2.c: Changed distpenalty to ignore query distance and
+	  max_intronlength, and simplified computation.  These values were
+	  probably not affecting previous computation anyway.
+
+2005-07-08 12:17  twu
+
+	* src/mutation.c: Fixed problem caused by removal of unnamed union
+
+2005-07-08 12:16  twu
+
+	* src/iitdef.h: Included header file for off_t type.
+
+2005-07-08 12:16  twu
+
+	* src/gmap.c: Changed maxpeelback for cross-species mode back to
+	  previous value
+
+2005-07-08 07:45  twu
+
+	* VERSION: Updated version
+
+2005-07-08 07:44  twu
+
+	* configure.ac: Added check for caddr_t type.  Added check for
+	  madvise flags.
+
+2005-07-08 07:43  twu
+
+	* src/gmap.c: Removed unnecessary variables and arguments.  Changed
+	  variable type of nworkers.
+
+2005-07-08 07:43  twu
+
+	* src/stage2.c: Removed unnecessary variables
+
+2005-07-08 07:42  twu
+
+	* src/: stage1.c, stage1.h: Removed unnecessary arguments
+
+2005-07-08 07:42  twu
+
+	* src/: sequence.c, sequence.h: Added formal void argument.
+	  Changed some variable types.
+
+2005-07-08 07:41  twu
+
+	* src/pair.c: Added static specification to some functions
+
+2005-07-08 07:41  twu
+
+	* src/: oligoindex.h, pairpool.c, pairpool.h, stopwatch.c,
+	  stopwatch.h: Added formal void argument
+
+2005-07-08 07:39  twu
+
+	* src/: indexdb.c, match.c, segmentpos.c: Changed print statement
+
+2005-07-08 07:39  twu
+
+	* src/: iit-read.c, iitdef.h: Changed some variable types
+
+2005-07-08 07:38  twu
+
+	* src/: compress.c, genome.c, genome.h, matchpair.c, oligoindex.c:
+	  Removed unnecessary variables
+
+2005-07-08 07:37  twu
+
+	* src/: block.c, oligo.c, oligo.h, boyer-moore.c, dynprog.c,
+	  dynprog.h, matchpair.h: Removed unnecessary arguments
+
+2005-07-08 01:00  twu
+
+	* src/indexdb.c: Increased interval of monitoring output from 1
+	  million nt to 10 million nt
+
+2005-07-08 00:59  twu
+
+	* util/gmap_uncompress.pl.in: Fixed bug in argument list
+
+2005-07-08 00:58  twu
+
+	* src/: bigendian.c, boyer-moore.c, chrom.c, chrsubset.c,
+	  chrsubset.h, compress.c, datadir.c, dynprog.c, except.c,
+	  genome-write.c, genome.c, get-genome.c, gmap.c, gmapindex.c,
+	  iit-read.c, iit-write.c, iit_dump.c, iit_get.c, iit_store.c,
+	  indexdb.c, interval.h, intlist.c, list.c, match.c, matchpair.c,
+	  md5-compute.c, md5.c, mutation.c, oligo-count.c, oligo.c,
+	  oligoindex.c, pair.c, pairpool.c, params.h, reqpost.c,
+	  segmentpos.c, segmentpos.h, sequence.c, smooth.c, stage1.c,
+	  stage2.c, stage3.c, translation.c, uintlist.c: Made changes to
+	  satisfy pedantic gcc compiler warnings and to comply with ANSI C
+
+2005-07-08 00:56  twu
+
+	* acinclude.m4: Added autoconf macro for madvise flags
+
+2005-07-08 00:55  twu
+
+	* MAINTAINER: Added comment about strict compiler checking
+
+2005-07-08 00:55  twu
+
+	* config/madvise-flags.m4: Initial import into CVS
+
+2005-07-07 19:34  twu
+
+	* src/gmap.c: Changed parameters to prevent segmentation fault in
+	  cross-species mode
+
+2005-07-07 17:01  twu
+
+	* src/: stage3.c, stage3.h: Added psl output format
+
+2005-07-07 17:01  twu
+
+	* src/stage1.c: Increased matchpairs allowed at pre-unique stage
+
+2005-07-07 17:00  twu
+
+	* src/: match.c, match.h: Trivial formatting change
+
+2005-07-07 16:59  twu
+
+	* src/gmapindex.c: Removed some unused variables
+
+2005-07-07 16:59  twu
+
+	* src/get-genome.c: Changed usage statement for coordinate interval
+
+2005-07-07 16:58  twu
+
+	* src/datadir.c: Added error message when genome subdirectory is
+	  not readable
+
+2005-07-07 16:57  twu
+
+	* src/: chrnum.c, chrnum.h: Added Chrnum_length command, needed for
+	  psl output format
+
+2005-07-07 16:56  twu
+
+	* src/gmap.c: Added psl output format
+
+2005-07-07 16:33  twu
+
+	* src/: pair.c, pair.h: Added psl output format
+
+2005-06-23 16:14  twu
+
+	* VERSION: Updated version for release
+
+2005-06-23 15:49  twu
+
+	* src/stage2.c: Increased cross-species penalty for intron length
+
+2005-06-23 15:49  twu
+
+	* src/gmap.c: Added other constraints on using oligo depth.
+	  Reporting failure type.  Separated out beta source files from
+	  gmap.
+
+2005-06-23 15:47  twu
+
+	* src/: result.c, result.h: Added failure type
+
+2005-06-23 15:47  twu
+
+	* src/genomeplot.c: Added getopt to genomeplot.  Added mode for
+	  printing segments.
+
+2005-06-23 15:46  twu
+
+	* src/: chrsubset.c, chrsubset.h, plotdata.c: Added checks if
+	  chrsubset is NULL.
+
+2005-06-23 15:46  twu
+
+	* src/Makefile.am: Added getopt to genomeplot.	Separated out beta
+	  source files from gmap.
+
 2005-06-21 11:50  twu
 
 	* src/: genomeplot.c, plotdata.c, plotdata.h: Fixed coloring of raw

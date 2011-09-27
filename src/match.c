@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c,v 1.63 2005/03/09 19:23:05 twu Exp $";
+static char rcsid[] = "$Id: match.c,v 1.66 2005/07/08 14:39:55 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -81,7 +81,7 @@ Match_cmp (const void *a, const void *b) {
 }
 
 T
-Match_new (int querypos, bool forwardp, bool fivep, 
+Match_new (int querypos, bool forwardp, bool fivep,
 	   Genomicpos_T position, IIT_T chromosome_iit) {
   T new = (T) MALLOC(sizeof(*new));
   int index;
@@ -119,8 +119,6 @@ Match_copy (T this) {
 
 void
 Match_free (T *old) {
-  int h, i;
-
   if (*old) {
     FREE(*old);
   }
@@ -140,7 +138,7 @@ Match_print_two (int pathnum, T start, T end, IIT_T chromosome_iit, IIT_T contig
 
   printf("  Path %d: ",pathnum);
 
-  printf("query %d%s%d (%d bp) => ",
+  printf("query %u%s%u (%u bp) => ",
 	 querypos1 + !zerobasedp,SEPARATOR,querypos2 + !zerobasedp,querypos2-querypos1+1);
   
   chrstring = Chrnum_to_string(start->chrnum,chromosome_iit);
@@ -154,7 +152,7 @@ Match_print_two (int pathnum, T start, T end, IIT_T chromosome_iit, IIT_T contig
     
   comma1 = Genomicpos_commafmt(chrpos1 + !zerobasedp);
   comma2 = Genomicpos_commafmt(chrpos2 + !zerobasedp);
-  printf("chr %s:%s%s%s (%d bp)\n",
+  printf("chr %s:%s%s%s (%u bp)\n",
 	 chrstring,comma1,SEPARATOR,comma2,chrpos2-chrpos1+1);
   FREE(comma2);
   FREE(comma1);

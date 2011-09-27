@@ -1,6 +1,7 @@
-/* $Id: iitdef.h,v 1.8 2005/02/15 01:55:34 twu Exp $ */
+/* $Id: iitdef.h,v 1.10 2005/07/08 19:16:53 twu Exp $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
+#include <sys/types.h>
 #include "interval.h"
 
 
@@ -19,7 +20,7 @@ struct T {
 
   int fd;			/* file descriptor */
   char *finfo;			/* result of mmap command */
-  unsigned int flength;		/* mmap length */
+  off_t flength;		/* mmap length */
 
   int nintervals;
   int ntypes;

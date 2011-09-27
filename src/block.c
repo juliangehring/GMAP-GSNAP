@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c,v 1.44 2005/05/04 18:03:46 twu Exp $";
+static char rcsid[] = "$Id: block.c,v 1.45 2005/07/08 14:37:40 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -128,8 +128,8 @@ int
 Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits, Genomicpos_T **revpositions, int *nrevhits,
 		     T this, Indexdb_T indexdb) {
 
-  *nfwdhits = Oligo_lookup(&(*fwdpositions),indexdb,this->forward,this->cdnaend,false);
-  *nrevhits = Oligo_lookup(&(*revpositions),indexdb,this->revcomp,this->cdnaend,true);
+  *nfwdhits = Oligo_lookup(&(*fwdpositions),indexdb,this->forward);
+  *nrevhits = Oligo_lookup(&(*revpositions),indexdb,this->revcomp);
 
   return this->last_querypos;
 }

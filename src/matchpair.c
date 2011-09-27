@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpair.c,v 1.26 2005/05/05 23:43:13 twu Exp $";
+static char rcsid[] = "$Id: matchpair.c,v 1.29 2005/07/13 19:24:53 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -102,7 +102,7 @@ T
 Matchpair_new (Match_T bound5, Match_T bound3, int matchsize, int clustersize,
 	       Matchpairend_T matchpairend) {
   T new = (T) MALLOC(sizeof(*new));
-  unsigned int position_x1, position_x2, position_y1, position_y2, temp;
+  unsigned int temp;
 
   new->matchsize = matchsize;
   new->bound5 = bound5;
@@ -201,7 +201,7 @@ List_T
 Matchpair_filter_duplicates (List_T matchpairlist) {
   List_T unique = NULL, p, q;
   T x, y, matchpair;
-  int n, i, j, cmp;
+  int n, i, j;
   bool *eliminate;
 
   n = List_length(matchpairlist);
@@ -320,10 +320,9 @@ Matchpair_filter_unique (List_T matchpairlist) {
 
 void
 Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
-		      bool *watsonp, T this, Stage1_T stage1, Sequence_T queryseq, Genomicpos_T chrlength, 
-		      int maxextension) {
+		      bool *watsonp, T this, Stage1_T stage1, Genomicpos_T chrlength, int maxextension) {
   Match_T match1, match2;
-  Genomicpos_T chrpos1, chrpos2, genomicpos1, genomicpos2, left, right;
+  Genomicpos_T chrpos1, genomicpos1, genomicpos2, left, right;
 
   if (Match_position(this->bound3) > Match_position(this->bound5)) {
     *watsonp = true;
@@ -362,12 +361,12 @@ Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicp
   if (Match_chrpos(match2) + right >= chrlength) {
     debug(printf("Proposed right is too high: %u + %u >= %u.  Problem!\n",
 		 Match_chrpos(match2),right,chrlength));
-    chrpos2 = chrlength - 1;	/* Match_chrpos(match2) + (chrlength - 1 - Match_chrpos(match2)); */
+    /* chrpos2 = chrlength - 1; */  /* Match_chrpos(match2) + (chrlength - 1 - Match_chrpos(match2)); */
     genomicpos2 = Match_position(match2) + (chrlength - 1 - Match_chrpos(match2));
   } else {
     debug(printf("Proposed right is not too high: %u + %u < %u.  Okay.\n",
 		 Match_chrpos(match2),right,chrlength));
-    chrpos2 = Match_chrpos(match2) + right;
+    /* chrpos2 = Match_chrpos(match2) + right; */
     genomicpos2 = Match_position(match2) + right;
   }
 
@@ -716,11 +715,9 @@ Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size,
 			 int maxintronlen, int minclustersize, double sizebound, 
 			 Boundmethod_T boundmethod) {
   List_T boundedlist = NULL, clusterlist = NULL, p;
-  Match_T *plus_matches = NULL, *minus_matches = NULL, match, start;
-  T matchpair, *matchpairarray;
-  Genomicpos_T startpos;
-  int plus_npositions, minus_npositions, i = 0, j = 0, 
-    nmatchpairs, minbestsize, bestsize = 0;
+  Match_T *plus_matches = NULL, *minus_matches = NULL;
+  T matchpair;
+  int plus_npositions, minus_npositions, bestsize = 0;
 
   separate_strands(&plus_matches,&plus_npositions,&minus_matches,&minus_npositions,matches5,matches3);
 
@@ -734,8 +731,12 @@ Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size,
 				     stage1size,minclustersize,sizebound,false);
   }
 	
-  FREE(plus_matches);
-  FREE(minus_matches);
+  if (plus_matches != NULL) {
+    FREE(plus_matches);
+  }
+  if (minus_matches != NULL) {
+    FREE(minus_matches);
+  }
 
   if (boundmethod == NO_BOUND) {
     return clusterlist;

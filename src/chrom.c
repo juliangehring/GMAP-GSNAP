@@ -1,10 +1,11 @@
-static char rcsid[] = "$Id: chrom.c,v 1.4 2005/02/15 01:26:21 twu Exp $";
+static char rcsid[] = "$Id: chrom.c,v 1.5 2005/07/08 07:58:27 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "chrom.h"
 #include <stdio.h>
+#include <stdlib.h>		/* For atoi */
 #include <string.h>
 #include "mem.h"
 #include "interval.h"

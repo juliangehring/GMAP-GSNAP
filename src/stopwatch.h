@@ -1,11 +1,11 @@
-/* $Id: stopwatch.h,v 1.4 2005/02/07 23:56:57 twu Exp $ */
+/* $Id: stopwatch.h,v 1.5 2005/07/08 14:43:19 twu Exp $ */
 #ifndef STOPWATCH_INCLUDED
 #define STOPWATCH_INCLUDED
 
 extern void
-Stopwatch_start ();
+Stopwatch_start (void);
 extern double 
-Stopwatch_stop ();
+Stopwatch_stop (void);
 
 #endif
 

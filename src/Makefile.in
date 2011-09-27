@@ -248,7 +248,8 @@ oligo_count_CC = $(PTHREAD_CC)
 oligo_count_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 oligo_count_LDADD = $(PTHREAD_LIBS)
-nodist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
+@FULLDIST_TRUE@dist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
+@FULLDIST_FALSE@nodist_oligo_count_SOURCES = $(OLIGO_COUNT_SOURCES)
 
 MD5_COMPUTE_SOURCES = bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -259,7 +260,8 @@ MD5_COMPUTE_SOURCES = bool.h types.h \
 md5_compute_CFLAGS = $(AM_CFLAGS)
 md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 md5_compute_LDADD = 
-nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
+@FULLDIST_TRUE@dist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
+@FULLDIST_FALSE@nodist_md5_compute_SOURCES = $(MD5_COMPUTE_SOURCES)
 
 GENOMEPLOT_SOURCES = bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -275,7 +277,8 @@ GENOMEPLOT_SOURCES = bool.h types.h \
 genomeplot_CFLAGS = $(AM_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
 genomeplot_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 genomeplot_LDADD = 
-nodist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
+@FULLDIST_TRUE@dist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
+@FULLDIST_FALSE@nodist_genomeplot_SOURCES = $(GENOMEPLOT_SOURCES)
 
 GMAPINDEX_SOURCES = bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -310,6 +313,13 @@ CONFIG_CLEAN_FILES =
 @FULLDIST_FALSE@	iit_get$(EXEEXT) iit_dump$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS)
 
+am__dist_genomeplot_SOURCES_DIST = bool.h types.h except.c except.h \
+	assert.c assert.h mem.c mem.h listdef.h list.c list.h \
+	interval.c interval.h uintlist.c uintlist.h iitdef.h iit-read.c \
+	iit-read.h chrsubset.c chrsubset.h color.c color.h doublelist.c \
+	doublelist.h datum.c datum.h plotdata.c plotdata.h intlist.c \
+	intlist.h nr-x.c nr-x.h chrsegment.c datadir.c datadir.h \
+	getopt.c getopt1.c getopt.h genomeplot.c
 am__objects_1 = genomeplot-except.$(OBJEXT) genomeplot-assert.$(OBJEXT) \
 	genomeplot-mem.$(OBJEXT) genomeplot-list.$(OBJEXT) \
 	genomeplot-interval.$(OBJEXT) genomeplot-uintlist.$(OBJEXT) \
@@ -320,8 +330,10 @@ am__objects_1 = genomeplot-except.$(OBJEXT) genomeplot-assert.$(OBJEXT) \
 	genomeplot-chrsegment.$(OBJEXT) genomeplot-datadir.$(OBJEXT) \
 	genomeplot-getopt.$(OBJEXT) genomeplot-getopt1.$(OBJEXT) \
 	genomeplot-genomeplot.$(OBJEXT)
-nodist_genomeplot_OBJECTS = $(am__objects_1)
-genomeplot_OBJECTS = $(nodist_genomeplot_OBJECTS)
+@FULLDIST_TRUE@dist_genomeplot_OBJECTS = $(am__objects_1)
+@FULLDIST_FALSE@nodist_genomeplot_OBJECTS = $(am__objects_1)
+genomeplot_OBJECTS = $(dist_genomeplot_OBJECTS) \
+	$(nodist_genomeplot_OBJECTS)
 genomeplot_DEPENDENCIES =
 am__objects_2 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
 	get_genome-mem.$(OBJEXT) get_genome-intlist.$(OBJEXT) \
@@ -420,14 +432,27 @@ am__objects_8 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 dist_iit_store_OBJECTS = $(am__objects_8)
 iit_store_OBJECTS = $(dist_iit_store_OBJECTS)
 iit_store_DEPENDENCIES =
+am__dist_md5_compute_SOURCES_DIST = bool.h types.h except.c except.h \
+	assert.c assert.h mem.c mem.h intlist.c intlist.h md5.c md5.h \
+	complement.h sequence.c sequence.h md5-compute.c
 am__objects_9 = md5_compute-except.$(OBJEXT) \
 	md5_compute-assert.$(OBJEXT) md5_compute-mem.$(OBJEXT) \
 	md5_compute-intlist.$(OBJEXT) md5_compute-md5.$(OBJEXT) \
 	md5_compute-sequence.$(OBJEXT) \
 	md5_compute-md5-compute.$(OBJEXT)
-nodist_md5_compute_OBJECTS = $(am__objects_9)
-md5_compute_OBJECTS = $(nodist_md5_compute_OBJECTS)
+@FULLDIST_TRUE@dist_md5_compute_OBJECTS = $(am__objects_9)
+@FULLDIST_FALSE@nodist_md5_compute_OBJECTS = $(am__objects_9)
+md5_compute_OBJECTS = $(dist_md5_compute_OBJECTS) \
+	$(nodist_md5_compute_OBJECTS)
 md5_compute_DEPENDENCIES =
+am__dist_oligo_count_SOURCES_DIST = bool.h types.h except.c except.h \
+	assert.c assert.h mem.c mem.h intlist.c intlist.h listdef.h \
+	list.c list.h interval.c interval.h uintlist.c uintlist.h \
+	iitdef.h iit-read.c iit-read.h md5.c md5.h complement.h \
+	sequence.c sequence.h reader.c reader.h genomicpos.c \
+	genomicpos.h stopwatch.c stopwatch.h compress.c compress.h \
+	indexdb.c indexdb.h oligo.c oligo.h block.c block.h \
+	oligo-count.c
 am__objects_10 = oligo_count-except.$(OBJEXT) \
 	oligo_count-assert.$(OBJEXT) oligo_count-mem.$(OBJEXT) \
 	oligo_count-intlist.$(OBJEXT) oligo_count-list.$(OBJEXT) \
@@ -438,8 +463,10 @@ am__objects_10 = oligo_count-except.$(OBJEXT) \
 	oligo_count-stopwatch.$(OBJEXT) oligo_count-compress.$(OBJEXT) \
 	oligo_count-indexdb.$(OBJEXT) oligo_count-oligo.$(OBJEXT) \
 	oligo_count-block.$(OBJEXT) oligo_count-oligo-count.$(OBJEXT)
-nodist_oligo_count_OBJECTS = $(am__objects_10)
-oligo_count_OBJECTS = $(nodist_oligo_count_OBJECTS)
+@FULLDIST_TRUE@dist_oligo_count_OBJECTS = $(am__objects_10)
+@FULLDIST_FALSE@nodist_oligo_count_OBJECTS = $(am__objects_10)
+oligo_count_OBJECTS = $(dist_oligo_count_OBJECTS) \
+	$(nodist_oligo_count_OBJECTS)
 oligo_count_DEPENDENCIES =
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I.
@@ -612,11 +639,14 @@ LTCOMPILE = $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) \
 CCLD = $(CC)
 LINK = $(LIBTOOL) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
-DIST_SOURCES = $(dist_get_genome_SOURCES) $(am__dist_gmap_SOURCES_DIST) \
+DIST_SOURCES = $(am__dist_genomeplot_SOURCES_DIST) \
+	$(dist_get_genome_SOURCES) $(am__dist_gmap_SOURCES_DIST) \
 	$(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) \
-	$(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES)
+	$(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) \
+	$(am__dist_md5_compute_SOURCES_DIST) \
+	$(am__dist_oligo_count_SOURCES_DIST)
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am config.h.in
-SOURCES = $(nodist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) $(nodist_md5_compute_SOURCES) $(nodist_oligo_count_SOURCES)
+SOURCES = $(dist_genomeplot_SOURCES) $(nodist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) $(dist_md5_compute_SOURCES) $(nodist_md5_compute_SOURCES) $(dist_oligo_count_SOURCES) $(nodist_oligo_count_SOURCES)
 
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am

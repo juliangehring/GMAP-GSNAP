@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.93 2005/05/09 22:29:52 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.95 2005/07/08 07:58:31 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -77,12 +77,8 @@ store_accession (Table_T accsegmentpos_table, Tableint_T chrlength_table,
 		 char *accession, char *chr_string, Genomicpos_T chrpos1, 
 		 Genomicpos_T chrpos2, bool revcompp, Genomicpos_T seglength, 
 		 int contigtype) {
-  int ret;
   Chrom_T chrom;
-  Genomicpos_T segend;
   Segmentpos_T segmentpos;
-  char *p;
-  int subaccessioni;
 
   chrom = Chrom_from_string(chr_string);
 
@@ -183,16 +179,16 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
     }
 
     p = Buffer;
-    while (*p != '\0' && !isspace(*p)) { p++; } /* Skip to first space */
-    while (*p != '\0' && isspace(*p)) { p++; } /* Skip past first space */
-    while (*p != '\0' && !isspace(*p)) { p++; } /* Skip to second space */
-    while (*p != '\0' && isspace(*p)) { p++; } /* Skip past second space */
+    while (*p != '\0' && !isspace((int) *p)) { p++; } /* Skip to first space */
+    while (*p != '\0' && isspace((int) *p)) { p++; } /* Skip past first space */
+    while (*p != '\0' && !isspace((int) *p)) { p++; } /* Skip to second space */
+    while (*p != '\0' && isspace((int) *p)) { p++; } /* Skip past second space */
 
     if (*p == '\0') {
       contigtype = 0;		/* Empty type string */
     } else {
       if ((ptr = rindex(p,'\n')) != NULL) {
-	while (isspace(*ptr)) { ptr--; } /* Erase empty space */
+	while (isspace((int) *ptr)) { ptr--; } /* Erase empty space */
 	ptr++;
 	*ptr = '\0';
       }
@@ -233,9 +229,9 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
 static void
 write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_table) {
   FILE *textfp;
-  char *textfile, *iitfile, *chr_string, *typestring, emptystring[1];
-  int n, i, j;
-  Chrom_T *chroms, chrom;
+  char *textfile, *iitfile, *chr_string, emptystring[1];
+  int n, i;
+  Chrom_T *chroms;
   Genomicpos_T chroffset = 0, chrlength;
   List_T intervallist = NULL, chrtypelist = NULL, labellist = NULL, annotlist = NULL, p;
   Interval_T interval;
@@ -326,7 +322,7 @@ write_contig_file (char *genomesubdir, char *fileroot,
   void **keys;
   int *values;
   int naccessions, ntypes, i, j;
-  char **accessions, **contigtypes, *accession;
+  char **accessions, **contigtypes;
   Segmentpos_T segmentpos;
   Chrom_T chrom;
   Genomicpos_T chroffset, universalpos1, universalpos2;
@@ -520,9 +516,12 @@ remove_slashes (char *buffer) {
 }
 
 
+#ifdef __STRICT_ANSI__
+int getopt (int argc, char *const argv[], const char *optstring);
+#endif
+
 int 
 main (int argc, char *argv[]) {
-  int contigtype;
   int ncontigs;
   Table_T accsegmentpos_table;
   Tableint_T chrlength_table;
@@ -530,13 +529,12 @@ main (int argc, char *argv[]) {
   List_T altintervallist = NULL, contigtypelist = NULL, labellist = NULL;
   Uintlist_T seglength_list = NULL;
   IIT_T chromosome_iit, contig_iit, altstrain_iit;
-  void **pairs;
-  int c, i;
   unsigned int genomelength;
   char *chromosomefile, *iitfile, *iittypefile, *offsetsfile, *positionsfile,
-    *typestring, *copy;
+    *typestring;
   FILE *offsets_fp, *fp;
 
+  int c;
   extern int optind;
   extern char *optarg;
 

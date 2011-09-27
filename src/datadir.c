@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c,v 1.17 2005/05/03 16:48:19 twu Exp $";
+static char rcsid[] = "$Id: datadir.c,v 1.19 2005/07/08 07:58:28 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -72,7 +72,10 @@ find_fileroot (char *genomesubdir) {
   struct dirent *entry;
   DIR *dp;
 
-  dp = opendir(genomesubdir);
+  if ((dp = opendir(genomesubdir)) == NULL) {
+    fprintf(stderr,"Unable to open directory %s\n",genomesubdir);
+    exit(9);
+  }
   while ((entry = readdir(dp)) != NULL) {
     filename = entry->d_name;
     if ((p = rindex(filename,'.')) != NULL) {
@@ -109,7 +112,7 @@ get_dbversion (char *filename) {
     fclose(fp);
     return NULL;
   } else {
-    if (p = rindex(Buffer,'\n')) {
+    if ((p = rindex(Buffer,'\n')) != NULL) {
       *p = '\0';
     }
     fclose(fp);
@@ -210,7 +213,7 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
 
 char *
 Datadir_find_mapdir (char *user_mapdir, char *genomesubdir, char *fileroot) {
-  char *mapdir, *p;
+  char *mapdir;
 
   if (user_mapdir != NULL) {
     mapdir = (char *) CALLOC(strlen(user_mapdir)+1,sizeof(char));

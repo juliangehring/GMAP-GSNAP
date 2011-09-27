@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrnum.c,v 1.18 2005/02/07 23:56:55 twu Exp $";
+static char rcsid[] = "$Id: chrnum.c,v 1.19 2005/07/07 23:57:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -35,3 +35,7 @@ Chrnum_to_string_signed (Chrnum_T chrnum, IIT_T chromosome_iit, bool watsonp) {
   return string;
 }
 
+unsigned int
+Chrnum_length (Chrnum_T chrnum, IIT_T chromosome_iit) {
+  return IIT_length(chromosome_iit,chrnum);
+}

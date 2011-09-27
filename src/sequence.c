@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.50 2005/05/06 18:44:53 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.52 2005/07/08 14:42:23 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -174,7 +174,7 @@ blank_header (T this) {
 
 static char *
 input_header (FILE *fp, T this) {
-  char *acc, *rest, *p;
+  char *p;
   size_t length;
 
   if (feof(fp)) {
@@ -193,7 +193,7 @@ input_header (FILE *fp, T this) {
   }
 
   p = &(Header[0]);
-  while (*p != '\0' && !isspace(*p)) {
+  while (*p != '\0' && !isspace((int) *p)) {
     p++;
   }
   if (*p == '\0') {
@@ -219,7 +219,7 @@ input_header (FILE *fp, T this) {
 static void
 print_contents (char *p, int length) {
   int i;
-
+	
   fprintf(stderr,"\"");
   for (i = 0; i < length; i++) {
     if (*p == '\0') {
@@ -233,17 +233,18 @@ print_contents (char *p, int length) {
   return;
 }
 
+
 /* Returns 1 if done reading sequence, 0 if not */
 static bool
 read_one_sequence (int *nextchar, bool *eolnp, FILE *fp) {
-  size_t remainder;
+  int remainder;
   char *sequence;
   char *p;
   int c;
 
   sequence = &(Sequence[1]);
   if (Initc != '>') {
-    *sequence++ = Initc;
+    *sequence++ = (char) Initc;
   }
   remainder = (&(Sequence[SEQUENCELEN]) - sequence)/sizeof(char);
 
@@ -272,7 +273,7 @@ read_one_sequence (int *nextchar, bool *eolnp, FILE *fp) {
 	*eolnp = true;
 	debug(fprintf(stderr,"c == NULL.  Continuing\n"));
       } else {
-	*sequence++ = c;
+	*sequence++ = (char) c;
 	remainder--;
 	*eolnp = false;
 	debug(fprintf(stderr,"c == sth.  Continuing\n"));
@@ -311,7 +312,7 @@ read_one_sequence (int *nextchar, bool *eolnp, FILE *fp) {
 static int
 discard_one_sequence (int *nextchar, bool eolnp, FILE *fp) {
   int ncycles = 0;
-  size_t remainder;
+  int remainder;
   char *discard;
   char *p;
   int c;
@@ -340,10 +341,9 @@ discard_one_sequence (int *nextchar, bool eolnp, FILE *fp) {
       } else if (iscntrl(c)) {
 	debug(fprintf(stderr,"c == control char.  Continuing\n"));
       } else if (isspace(c)) {
-	eolnp == true;
 	debug(fprintf(stderr,"c == NULL.  Continuing\n"));
       } else {
-	*discard++ = c;
+	*discard++ = (char) c;
 	remainder--;
 	eolnp = false;
 	debug(fprintf(stderr,"c == sth.  Continuing\n"));
@@ -378,8 +378,6 @@ discard_one_sequence (int *nextchar, bool eolnp, FILE *fp) {
 static int
 input_sequence (int *nextchar, int *length, int *skiplength, FILE *fp) {
   bool eolnp = true;
-  int ncycles;
-  char *p, *q, c;
 
   if (read_one_sequence(&(*nextchar),&eolnp,fp) == true) {
     *skiplength = 0;
@@ -415,7 +413,7 @@ make_complement (char *sequence, unsigned int length) {
 
   complement = (char *) CALLOC(length+1,sizeof(char));
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return complement;
@@ -428,7 +426,7 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 
   /* complement = (char *) CALLOC(length+1,sizeof(char)); */
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return;
@@ -476,11 +474,13 @@ Sequence_revcomp (T this) {
   return new;
 }
 
+/*
 void
 Sequence_endstream () {
   Initc = '\0';
   return;
 }
+*/
 
 T
 Sequence_read (int *nextchar, FILE *input) {
@@ -532,7 +532,7 @@ T
 Sequence_read_unlimited (FILE *input) {
   T new;
   Intlist_T intlist = NULL;
-  char *p, *array;
+  char *p;
   int length;
   bool eolnp;
 
@@ -624,7 +624,7 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
 
   if (uppercasep == true) {
     for (pos = start; pos < end; pos++, i++) {
-      printf("%c",toupper(this->contents[i]));
+      printf("%c",toupper((int) (this->contents[i])));
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }
@@ -647,7 +647,7 @@ T
 Sequence_substring (T usersegment, unsigned int left, unsigned int length, 
 		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
   if (length > gbufferlen) {
-    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %d)\n",
+    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
 	    gbufferlen,length);
     abort();
   }

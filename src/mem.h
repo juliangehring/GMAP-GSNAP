@@ -1,11 +1,16 @@
-/* $Id: mem.h,v 1.6 2005/02/07 23:56:56 twu Exp $ */
+/* $Id: mem.h,v 1.7 2005/07/13 19:25:15 twu Exp $ */
 #ifndef MEM_INCLUDED
 #define MEM_INCLUDED
 #include <stddef.h>
 #include "except.h"
 
 extern const Except_T Mem_Failed;
-extern void Mem_trap_start (void **location);
+
+extern void
+Mem_trap_start (void **location, const char *file, int line);
+extern void
+Mem_trap_check (const char *file, int line);
+
 extern void *Mem_alloc (size_t nbytes,
 			const char *file, int line);
 extern void *Mem_alloc_no_exception (size_t nbytes,
@@ -18,6 +23,10 @@ extern void Mem_free (void *ptr,
 		      const char *file, int line);
 extern void *Mem_resize (void *ptr, size_t nbytes,
 			 const char *file, int line);
+
+#define MTRAP(location) Mem_trap_start((location), __FILE__, __LINE__)
+#define MCHECK() Mem_trap_check(__FILE__, __LINE__)
+
 #define MALLOC(nbytes) \
 	Mem_alloc((nbytes), __FILE__, __LINE__)
 #define MALLOC_NO_EXCEPTION(nbytes) \

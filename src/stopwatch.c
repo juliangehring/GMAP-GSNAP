@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stopwatch.c,v 1.8 2005/02/15 01:58:51 twu Exp $";
+static char rcsid[] = "$Id: stopwatch.c,v 1.9 2005/07/08 14:43:19 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,7 +19,7 @@ static clock_t start_elapsed;
 static clock_t stop_elapsed;
 
 void
-Stopwatch_start () {
+Stopwatch_start (void) {
   start_elapsed = times(&start);
 }
 
@@ -27,7 +27,7 @@ Stopwatch_start () {
 /* struct tms is defined in <sys/times.h> (see man times); tms values are
    in "clock ticks per second", CLK_TCK */
 double 
-Stopwatch_stop () {
+Stopwatch_stop (void) {
   long clk_tck = sysconf(_SC_CLK_TCK);
 
   stop_elapsed = times(&stop);

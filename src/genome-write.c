@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c,v 1.6 2005/05/09 22:28:39 twu Exp $";
+static char rcsid[] = "$Id: genome-write.c,v 1.7 2005/07/08 07:58:29 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,8 @@ static char rcsid[] = "$Id: genome-write.c,v 1.6 2005/05/09 22:28:39 twu Exp $";
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>		/* For rindex */
+#include <ctype.h>		/* For isspace */
 
 #include "mem.h"
 #include "types.h"
@@ -75,7 +77,6 @@ find_positions (bool *revcompp, Genomicpos_T *leftposition, Genomicpos_T *rightp
 
 static void
 seek (FILE *fp, long int offset) {
-  int rc;
 
   if (fseek(fp,offset,SEEK_SET) < 0) {
     perror("Error in gmapindex, seek");
@@ -119,7 +120,7 @@ parse_accession (char *Header) {
   int strlength;
 
   p = &(Header[1]);		/* First character is '>' */
-  while (*p != '\0' && *p != '\n' && !isspace(*p)) {
+  while (*p != '\0' && *p != '\n' && !isspace((int) *p)) {
     p++;
   }
   *p = '\0';
@@ -137,7 +138,7 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 
   /* complement = (char *) CALLOC(length+1,sizeof(char)); */
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return;
@@ -151,8 +152,8 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
   char Buffer[BUFFERSIZE], Complement[BUFFERSIZE], *segment;
   char *accession, *p;
   Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
-    maxposition = 0, currposition = 0, i;
-  int altstrain_index, altstrain_offset, contigtype, rc;
+    maxposition = 0, currposition = 0;
+  int altstrain_index, altstrain_offset, contigtype;
   bool revcompp;
 
   while (fgets(Buffer,BUFFERSIZE,input) != NULL) {
@@ -293,8 +294,8 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
   char Buffer[BUFFERSIZE], Complement[BUFFERSIZE], *segment;
   char *accession, *p;
   Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
-    maxposition = 0, currposition = 0, i;
-  int altstrain_index, altstrain_offset, contigtype, rc;
+    maxposition = 0, currposition = 0;
+  int altstrain_index, altstrain_offset, contigtype;
   bool revcompp;
 
   while (fgets(Buffer,BUFFERSIZE,input) != NULL) {
@@ -460,7 +461,7 @@ Genome_write (char *genomesubdir, char *fileroot, FILE *input,
     sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
 
     nuint4 = ((genomelength + 31)/32U)*3;
-    fprintf(stderr,"Trying to allocate %d*%d bytes of memory...",nuint4,sizeof(UINT4));
+    fprintf(stderr,"Trying to allocate %d*%u bytes of memory...",nuint4,(unsigned int) sizeof(UINT4));
     genomecomp = (UINT4 *) CALLOC_NO_EXCEPTION(nuint4,sizeof(UINT4));
     if (genomecomp == NULL) {
       fprintf(stderr,"failed.  Building genome in file.\n");

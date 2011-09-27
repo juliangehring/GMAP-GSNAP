@@ -13,21 +13,21 @@ cp ${top_builddir}/util/gmap_process.pl gmap_process
 chmod +x gmap_process	
 cp ${top_builddir}/src/gmapindex gmapindex
 chmod +x gmapindex
-./gmap_setup -B . -D . -d chr17test ${srcdir}/ss.chr17test
+./gmap_setup -B . -D ./chr17test -d chr17test ${srcdir}/ss.chr17test
 make -f Makefile.chr17test coords
 make -f Makefile.chr17test gmapdb
 make -f Makefile.chr17test install
 
-if diff chr17test.genomecomp ${srcdir}/setup.genomecomp.ok; then
+if diff chr17test/chr17test.genomecomp ${srcdir}/setup.genomecomp.ok; then
     :
 else
     echo "Difference found between chr17test.genomecomp and setup.genomecomp.ok" >& 2
     exit 1
 fi
-if diff chr17test.idxpositions ${srcdir}/setup.idxpositions.ok; then
+if diff chr17test/chr17test.ref3positions ${srcdir}/setup.ref3positions.ok; then
     :
 else
-    echo "Difference found between chr17test.idxpositions and setup.idxpositions.ok" >& 2
+    echo "Difference found between chr17test.ref3positions and setup.ref3positions.ok" >& 2
     exit 1
 fi
 

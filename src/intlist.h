@@ -1,12 +1,15 @@
-/* $Id: intlist.h,v 1.10 2005/09/08 17:49:33 twu Exp $ */
+/* $Id: intlist.h,v 1.14 2008/12/17 22:10:55 twu Exp $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
+#include "bool.h"
 
 #define T Intlist_T
 typedef struct T *T;
 
 extern T 
 Intlist_push (T list, int x);
+extern T
+Intlist_insert_second (T list, int x);
 extern T 
 Intlist_pop (T list, int *x);
 extern void
@@ -23,6 +26,10 @@ extern T
 Intlist_reverse (T list);
 extern int 
 Intlist_length (T list);
+extern int
+Intlist_max (T list);
+extern bool
+Intlist_exists_p (T list, int x);
 extern int *
 Intlist_to_array (int *n, T list);
 extern char *
@@ -39,6 +46,14 @@ extern T
 Intlist_from_string (char *string);
 extern char *
 Intlist_to_string (T this);
+extern int *
+Intlist_array_ascending_by_key (int *n, T this, T key);
+extern T
+Intlist_list_ascending_by_key (T this, T key);
+extern T
+Intlist_list_descending_by_key (T this, T key);
+extern T
+Intlist_sort_ascending (T this);
 
 #undef T
 #endif

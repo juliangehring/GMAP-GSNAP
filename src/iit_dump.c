@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_dump.c,v 1.13 2006/08/03 21:12:42 twu Exp $";
+static char rcsid[] = "$Id: iit_dump.c,v 1.15 2009/01/21 21:22:33 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -116,25 +116,28 @@ main (int argc, char *argv[]) {
   iitfile = argv[0];
   if (debugp == true) {
     IIT_debug(iitfile);
-  } else {
-    iit = IIT_read(iitfile,NULL,true);
-    if (iit == NULL) {
-      fprintf(stderr,"Unable to open or parse IIT file %s\n",iitfile);
-      exit(9);
-    }
-    if (tagsp == true) {
-      for (type = 1; type < IIT_ntypes(iit); type++) {
-	printf("%s\n",IIT_typestring(iit,type));
-      }
-    } else if (countsp == true) {
-      IIT_dump_counts(iit,/*alphabetizep*/true);
-
-    } else {
-      IIT_dump(iit,annotationonlyp);
-    }
-
-    IIT_free(&iit);
+    return 0;
+  } else if ((iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+			     /*divstring*/NULL,/*add_iit_p*/true,/*labels_read_p*/true)) == NULL) {
+    fprintf(stderr,"Unable to open or parse IIT file %s\n",iitfile);
+    exit(9);
   }
+
+  if (tagsp == true) {
+    for (type = 1; type < IIT_ntypes(iit); type++) {
+      printf("%s\n",IIT_typestring(iit,type));
+    }
+  } else if (countsp == true) {
+    fprintf(stderr,"Flag -C not implemented\n");
+#if 0
+    IIT_dump_counts(iit,/*alphabetizep*/true);
+#endif
+
+  } else {
+    IIT_dump(iit,annotationonlyp);
+  }
+
+  IIT_free(&iit);
 
   return 0;
 }

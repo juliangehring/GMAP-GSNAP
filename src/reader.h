@@ -1,13 +1,16 @@
-/* $Id: reader.h,v 1.13 2006/05/19 17:14:14 twu Exp $ */
+/* $Id: reader.h,v 1.14 2009/08/29 00:37:29 twu Exp $ */
 #ifndef READER_INCLUDED
 #define READER_INCLUDED
 #include <stdio.h>
+#include "bool.h"
 
 typedef enum {FIVE, THREE, MIDDLE} cDNAEnd_T;
 
 #define T Reader_T
 typedef struct T *T;
 
+extern bool
+Reader_dibasep (T this);
 extern int
 Reader_querystart (T this);
 extern int
@@ -24,7 +27,7 @@ extern void
 Reader_reset_ends (T this);
 
 extern T
-Reader_new (char *sequence, int querystart, int queryend, int blocksize);
+Reader_new (char *sequence, int querystart, int queryend, int blocksize, bool dibasep);
 extern void
 Reader_free (T *old);
 extern char

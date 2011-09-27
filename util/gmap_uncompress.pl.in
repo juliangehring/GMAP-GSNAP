@@ -1,5 +1,7 @@
-#! @PERL@ -w
+#! @PERL@
 # $Id: gmap_uncompress.pl.in,v 1.20 2007/08/24 00:27:41 twu Exp $
+
+use warnings;
 
 use IO::File;
 use Getopt::Std;

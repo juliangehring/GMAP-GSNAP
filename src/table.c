@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: table.c,v 1.12 2007/09/28 22:47:15 twu Exp $";
+static char rcsid[] = "$Id: table.c,v 1.14 2010/02/03 18:18:40 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,8 @@ static char rcsid[] = "$Id: table.c,v 1.12 2007/09/28 22:47:15 twu Exp $";
 #include <stdio.h>
 #include <limits.h>
 #include <stddef.h>
+#include <stdlib.h>		/* For qsort */
+#include <string.h>		/* For strcmp */
 #include "mem.h"
 #include "assert.h"
 
@@ -35,6 +37,28 @@ static unsigned int
 hashatom (const void *key) {
   return (unsigned long)key>>2;
 }
+
+int
+Table_string_compare (const void *x, const void *y) {
+  char *a = (char *) x;
+  char *b = (char *) y;
+
+  return strcmp(a,b);
+}
+
+/* This is the X31 hash function */
+unsigned int
+Table_string_hash (const void *x) {
+  unsigned int h = 0U;
+  const char *p;
+  
+  for (p = x; *p != '\0'; p++) {
+    h = (h << 5) - h + *p;
+  }
+  return h;
+}
+
+
 
 T 
 Table_new (int hint,

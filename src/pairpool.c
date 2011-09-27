@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.40 2007/06/21 03:19:27 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.41 2009/11/18 18:41:44 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -383,6 +383,34 @@ Pairpool_transfer (List_T dest, List_T source) {
 #endif
 
   for (p = source; p != NULL; p = next) {
+    debug(
+	  pair = List_head(p);
+	  if (pair->cdna == '\0' || pair->genome == '\0') {
+	    abort();
+	  }
+	  if (pair->gapp) {
+	    printf("Transferring gap %p: queryjump=%d, genomejump=%d\n",
+		   pair,pair->queryjump,pair->genomejump);
+	  } else {
+	    printf("Transferring %p: %d %d %c %c %c\n",
+		   pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	  }
+	  );
+    next = p->rest;
+    p->rest = dest;
+    dest = p;
+  }
+  return dest;
+}
+
+List_T
+Pairpool_transfer_n (List_T dest, List_T source, int n) {
+  List_T p, next;
+#ifdef DEBUG
+  Pair_T pair;
+#endif
+
+  for (p = source; p != NULL && --n >= 0; p = next) {
     debug(
 	  pair = List_head(p);
 	  if (pair->cdna == '\0' || pair->genome == '\0') {

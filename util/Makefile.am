@@ -1,9 +1,9 @@
 
 
 if FULLDIST
-bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_update md_coords fa_coords
+bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
 else
-bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_update md_coords fa_coords
+bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
 endif
 
 gmap_compress: gmap_compress.pl
@@ -26,6 +26,10 @@ gmap_update: gmap_update.pl
 	cp gmap_update.pl gmap_update
 	chmod +x gmap_update
 
+gmap_reassemble: gmap_reassemble.pl
+	cp gmap_reassemble.pl gmap_reassemble
+	chmod +x gmap_reassemble
+
 md_coords: md_coords.pl
 	cp md_coords.pl md_coords
 	chmod +x md_coords
@@ -35,8 +39,8 @@ fa_coords: fa_coords.pl
 	chmod +x fa_coords
 
 if FULLDIST
-CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_update md_coords fa_coords
+CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
 else
-CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_update md_coords fa_coords
+CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_reassemble md_coords fa_coords
 endif
 

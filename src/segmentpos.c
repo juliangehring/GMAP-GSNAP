@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c,v 1.58 2007/06/25 18:58:37 twu Exp $";
+static char rcsid[] = "$Id: segmentpos.c,v 1.61 2008/04/15 20:00:49 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -86,11 +86,7 @@ Segmentpos_free (T *old) {
 
 void
 Segmentpos_print (FILE *fp, T this, char *acc, Genomicpos_T offset) {
-  char *chrstring;
-
-  chrstring = Chrom_to_string(this->chrom);
-  fprintf(fp,"%s\t%u\t%s\t%u\t%u\n",acc,offset+this->chrpos1,chrstring,this->chrpos1,this->length);
-  FREE(chrstring);
+  fprintf(fp,"%s\t%u\t%s\t%u\t%u\n",acc,offset+this->chrpos1,Chrom_string(this->chrom),this->chrpos1,this->length);
   return;
 }
 
@@ -184,14 +180,14 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
   Genomicpos_T contig_start, contig_length;
   int relstart, relend;		/* Need to be signed int, not long or unsigned long */
   int index, contig_straintype, i = 0;
-  char *comma1, *comma2, firstchar;
+  char *label, *comma1, *comma2, firstchar;
   int *indices, nindices, j;
   Interval_T interval;
-  bool printreferencep, printaltp, firstprintp = false;
+  bool printreferencep, printaltp, firstprintp = false, allocp;
 
   printf("    Accessions: ");
 
-  indices = IIT_get(&nindices,contig_iit,position1,position2,/*sortp*/false);
+  indices = IIT_get(&nindices,contig_iit,/*divstring*/NULL,position1,position2,/*sortp*/false);
   if (referencealignp == true) {
     printreferencep = true;
     printaltp = false;
@@ -241,7 +237,13 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 	  printf("[-]");
 	}
       }
-      printf("%s",IIT_label(contig_iit,index));
+
+      label = IIT_label(contig_iit,index,&allocp);
+      printf("%s",label);
+      if (allocp == true) {
+	FREE(label);
+      }
+
       if (referencealignp == false && contig_straintype == 0) {
 	printf("[reference strain]");
       }

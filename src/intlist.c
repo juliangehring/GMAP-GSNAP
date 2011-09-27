@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c,v 1.14 2007/02/05 07:13:21 twu Exp $";
+static char rcsid[] = "$Id: intlist.c,v 1.20 2010/02/03 18:09:54 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,6 +19,16 @@ Intlist_push (T list, int x) {
   new->first = x;
   new->rest = list;
   return new;
+}
+
+T
+Intlist_insert_second (T list, int x) {
+  T new = (T) MALLOC(sizeof(*new));
+  
+  new->first = x;
+  new->rest = list->rest;
+  list->rest = new;
+  return list;
 }
 
 T
@@ -93,6 +103,31 @@ Intlist_length (T list) {
     n++;
   }
   return n;
+}
+
+int
+Intlist_max (T list) {
+  int m = 0;
+
+  while (list) {
+    if (list->first > m) {
+      m = list->first;
+    }
+    list = list->rest;
+  }
+
+  return m;
+}
+
+bool
+Intlist_exists_p (T list, int x) {
+  while (list) {
+    if (list->first == x) {
+      return true;
+    }
+    list = list->rest;
+  }
+  return false;
 }
 
 int *
@@ -198,24 +233,176 @@ Intlist_to_string (T this) {
   T p;
   int n, i, strlength;
 
-  n = Intlist_length(this);
-
-  strlength = 0;
-  for (i = 0, p = this; i < n-1; i++, p = Intlist_next(p)) {
-    sprintf(Buffer,"%d,",Intlist_head(p));
+  if ((n = Intlist_length(this)) == 0) {
+    string = (char *) CALLOC(1,sizeof(char));
+    string[0] = '\0';
+  } else {
+    strlength = 0;
+    for (i = 0, p = this; i < n-1; i++, p = Intlist_next(p)) {
+      sprintf(Buffer,"%d,",Intlist_head(p));
+      strlength += strlen(Buffer);
+    }
+    sprintf(Buffer,"%d",Intlist_head(p));
     strlength += strlen(Buffer);
-  }
-  sprintf(Buffer,"%d",Intlist_head(p));
-  strlength += strlen(Buffer);
 
-  string = (char *) CALLOC(strlength + 1,sizeof(char));
-  string[0] = '\0';
-  for (i = 0, p = this; i < n-1; i++, p = Intlist_next(p)) {
-    sprintf(Buffer,"%d,",Intlist_head(p));
+    string = (char *) CALLOC(strlength + 1,sizeof(char));
+    string[0] = '\0';
+    for (i = 0, p = this; i < n-1; i++, p = Intlist_next(p)) {
+      sprintf(Buffer,"%d,",Intlist_head(p));
+      strcat(string,Buffer);
+    }
+    sprintf(Buffer,"%d",Intlist_head(p));
     strcat(string,Buffer);
   }
-  sprintf(Buffer,"%d",Intlist_head(p));
-  strcat(string,Buffer);
 
   return string;
 }
+
+
+struct Cell_T {
+  int elt;
+  int keyvalue;
+};
+
+static int
+cell_ascending (const void *a, const void *b) {
+  struct Cell_T *x = (struct Cell_T *) a;
+  struct Cell_T *y = (struct Cell_T *) b;
+
+  if (x->keyvalue < y->keyvalue) {
+    return -1;
+  } else if (y->keyvalue < x->keyvalue) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+static int
+cell_descending (const void *a, const void *b) {
+  struct Cell_T *x = (struct Cell_T *) a;
+  struct Cell_T *y = (struct Cell_T *) b;
+
+  if (x->keyvalue > y->keyvalue) {
+    return -1;
+  } else if (y->keyvalue > x->keyvalue) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+int *
+Intlist_array_ascending_by_key (int *n, T this, T key) {
+  int *sorted, i;
+  struct Cell_T *cells;
+  T p, q;
+
+  /* find length */
+  for (*n = 0, p = this; p; p = p->rest) {
+    (*n)++;
+  }
+
+  cells = (struct Cell_T *) CALLOC(*n,sizeof(struct Cell_T));
+  for (p = this, q = key, i = 0; p != NULL; p = p->rest, q = q->rest, i++) {
+    cells[i].elt = p->first;
+    cells[i].keyvalue = q->first;
+  }
+  qsort(cells,*n,sizeof(struct Cell_T),cell_ascending);
+
+  sorted = (int *) CALLOC(*n,sizeof(int));
+  for (i = 0; i < *n; i++) {
+    sorted[i] = cells[i].elt;
+  }
+
+  FREE(cells);
+  return sorted;
+}
+
+
+T
+Intlist_list_ascending_by_key (T this, T key) {
+  T sorted = NULL, p, q;
+  int n, i;
+  struct Cell_T *cells;
+
+  /* find length */
+  for (n = 0, p = this; p; p = p->rest) {
+    n++;
+  }
+
+  cells = (struct Cell_T *) CALLOC(n,sizeof(struct Cell_T));
+  for (p = this, q = key, i = 0; p != NULL; p = p->rest, q = q->rest, i++) {
+    cells[i].elt = p->first;
+    cells[i].keyvalue = q->first;
+  }
+  qsort(cells,n,sizeof(struct Cell_T),cell_descending);
+
+  for (i = 0; i < n; i++) {
+    sorted = Intlist_push(sorted,cells[i].elt);
+  }
+  /* No need to reverse list because we sorted by descending key */
+
+  FREE(cells);
+
+  return sorted;
+}
+
+
+T
+Intlist_list_descending_by_key (T this, T key) {
+  T sorted = NULL, p, q;
+  int n, i;
+  struct Cell_T *cells;
+
+  /* find length */
+  for (n = 0, p = this; p; p = p->rest) {
+    n++;
+  }
+
+  cells = (struct Cell_T *) CALLOC(n,sizeof(struct Cell_T));
+  for (p = this, q = key, i = 0; p != NULL; p = p->rest, q = q->rest, i++) {
+    cells[i].elt = p->first;
+    cells[i].keyvalue = q->first;
+  }
+  qsort(cells,n,sizeof(struct Cell_T),cell_ascending);
+
+  for (i = 0; i < n; i++) {
+    sorted = Intlist_push(sorted,cells[i].elt);
+  }
+  /* No need to reverse list because we sorted by ascending key */
+
+  FREE(cells);
+
+  return sorted;
+}
+
+
+T
+Intlist_sort_ascending (T this) {
+  T sorted = NULL, p;
+  int n, i;
+  struct Cell_T *cells;
+
+  /* find length */
+  for (n = 0, p = this; p; p = p->rest) {
+    n++;
+  }
+
+  cells = (struct Cell_T *) CALLOC(n,sizeof(struct Cell_T));
+  for (p = this, i = 0; p != NULL; p = p->rest, i++) {
+    cells[i].keyvalue = p->first;
+  }
+  qsort(cells,n,sizeof(struct Cell_T),cell_descending);
+
+  for (i = 0; i < n; i++) {
+    sorted = Intlist_push(sorted,cells[i].keyvalue);
+  }
+  /* No need to reverse list because we sorted by descending key */
+
+  FREE(cells);
+
+  return sorted;
+}
+
+

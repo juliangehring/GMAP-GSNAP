@@ -1,8 +1,8 @@
-/* $Id: separator.h,v 1.4 2005/03/04 20:47:39 twu Exp $ */
+/* $Id: separator.h,v 1.5 2008/12/17 22:11:14 twu Exp $ */
 #ifndef SEPARATOR_INCLUDED
 #define SEPARATOR_INCLUDED
 
-#define SEPARATOR "--"
+#define SEPARATOR ".."
 
 #endif
 

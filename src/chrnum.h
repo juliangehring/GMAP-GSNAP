@@ -1,18 +1,21 @@
-/* $Id: chrnum.h,v 1.13 2006/05/11 17:15:00 twu Exp $ */
+/* $Id: chrnum.h,v 1.15 2008/04/15 19:24:07 twu Exp $ */
 #ifndef CHRNUM_INCLUDED
 #define CHRNUM_INCLUDED
 #include "bool.h"
 #include "iit-read.h"
+#include "genomicpos.h"
 
 typedef int Chrnum_T;
 
 extern char *
-Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit, bool allocp);
+Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit);
 extern char *
 Chrnum_to_string_signed (Chrnum_T chrnum, IIT_T chromosome_iit, bool watsonp);
 extern unsigned int
 Chrnum_length (Chrnum_T chrnum, IIT_T chromosome_iit);
 extern unsigned int
 Chrnum_offset (Chrnum_T chrnum, IIT_T chromosome_iit);
+extern void
+Chrnum_print_position (Genomicpos_T position, IIT_T chromosome_iit);
 
 #endif

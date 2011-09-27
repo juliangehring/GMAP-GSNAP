@@ -1,4 +1,4 @@
-/* $Id: indexdb.h,v 1.33 2007/02/20 17:01:59 twu Exp $ */
+/* $Id: indexdb.h,v 1.52 2009/08/14 15:05:19 twu Exp $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -9,46 +9,28 @@
 
 
 #ifdef PMAP
-
-#define INDEX1PART_AA 6		/* In amino acids */
-
-#if INDEX1PART_AA == 5
-#define INDEX1PART_NT 15	/* In nucleotides */
-#define INDEX1INTERVAL 5	/* In amino acids */
-#elif INDEX1PART_AA == 6
-#define INDEX1PART_NT 18	/* In nucleotides */
-#define INDEX1INTERVAL 6	/* In amino acids */
-#elif INDEX1PART_AA == 7
-#define INDEX1PART_NT 21	/* In nucleotides */
-#define INDEX1INTERVAL 7	/* In amino acids */
-#elif INDEX1PART_AA == 8
-#define INDEX1PART_NT 24	/* In nucleotides */
-#define INDEX1INTERVAL 8	/* In amino acids */
+#define SUFFICIENT_SUPPORT 9
 #else
-#error The given value of INDEX1PART_AA is not supported by indexdb.h
+#define SUFFICIENT_SUPPORT 18
 #endif
 
+#ifdef PMAP
+
+#define FWD_FILESUFFIX "pf"
+#define REV_FILESUFFIX "pr"
+
+#define INDEX1PART_AA 6		/* In amino acids */
+#define INDEX1PART_NT 18	/* In nucleotides */
+
 #if INDEX1PART_AA == 5
-#define PFXOFFSETS "pf5offsets"
-#define PFXPOSITIONS "pf5positions"
-#define PRXOFFSETS "pr5offsets"
-#define PRXPOSITIONS "pr5positions"
 #define NAMINOACIDS 20
 #define MSB 160000		/* 20^(5-1) */
 
 #elif INDEX1PART_AA == 6
-#define PFXOFFSETS "pf6offsets"
-#define PFXPOSITIONS "pf6positions"
-#define PRXOFFSETS "pr6offsets"
-#define PRXPOSITIONS "pr6positions"
 #define NAMINOACIDS 20
 #define MSB 3200000		/* 20^(6-1) */
 
 #elif INDEX1PART_AA == 7
-#define PFXOFFSETS "pfxoffsets"
-#define PFXPOSITIONS "pfxpositions"
-#define PRXOFFSETS "prxoffsets"
-#define PRXPOSITIONS "prxpositions"
 #ifdef NOCOLLAPSE
 #define NAMINOACIDS 20
 #define MSB 64000000		/* 20^(7-1) */
@@ -58,10 +40,6 @@
 #endif
 
 #elif INDEX1PART_AA == 8
-#define PFXOFFSETS "pf8offsets"
-#define PFXPOSITIONS "pf8positions"
-#define PRXOFFSETS "pr8offsets"
-#define PRXPOSITIONS "pr8positions"
 #ifdef NOCOLLAPSE
 #define NAMINOACIDS 20
 #define MSB 1280000000		/* 20^(8-1) */
@@ -75,12 +53,12 @@
 #endif	/* INDEX1PART */
 
 #else  /* PMAP */
-#define IDXOFFSETS "idxoffsets"
-#define IDXPOSITIONS "idxpositions"
+#define IDX_FILESUFFIX "ref"
 #define INDEX1PART 12		/* In nucleotides */
-#define INDEX1INTERVAL 6
 #endif	/* PMAP */
 
+#define OFFSETS_FILESUFFIX "offsets"
+#define POSITIONS_FILESUFFIX "positions"
 
 
 /* Typically 12 nt or 24 bits, requiring 3 bytes */
@@ -91,12 +69,15 @@ typedef struct T *T;
 
 extern void
 Indexdb_free (T *old);
-extern T
-Indexdb_new_genome (char *genomesubdir, char *fileroot,
-#ifdef PMAP
-		    bool watsonp,
+#ifndef PMAP
+extern int
+Indexdb_interval (T this);
 #endif
-		    bool batch_offsets_p, bool batch_positions_p);
+extern double
+Indexdb_mean_size (T this, bool cmetp);
+extern T
+Indexdb_new_genome (char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+		    int required_interval, bool batch_offsets_p, bool batch_positions_p);
 extern T
 Indexdb_new_segment (char *genomicseg, int index1interval
 #ifdef PMAP
@@ -106,29 +87,38 @@ Indexdb_new_segment (char *genomicseg, int index1interval
 
 #ifdef PMAP
 extern Genomicpos_T *
-Indexdb_read (int *nentries, T this, Storedoligomer_T oligo);
+Indexdb_read (int *nentries, T this, unsigned int aaindex);
 #else
 extern Genomicpos_T *
-Indexdb_read (int *nentries, T this, unsigned int aaindex);
+Indexdb_read (int *nentries, T this, Storedoligomer_T oligo);
 extern Genomicpos_T *
 Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo);
 #endif
 
+extern Genomicpos_T *
+Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int diagterm);
+extern Genomicpos_T *
+Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T oligo, int diagterm,
+				      int size_threshold);
+
 extern void
-Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
+Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T chromosome_iit,
 		       int index1interval,
 #ifdef PMAP
 		       bool watsonp,
 #endif
-		       bool uncompressedp, char *fileroot);
+		       bool genome_lc_p, char *fileroot, bool mask_lowercase_p);
 
 extern void
 Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_fp, 
-			 IIT_T altstrain_iit, int index1interval, bool uncompressedp, 
+			 IIT_T chromosome_iit, int index1interval,
 #ifdef PMAP
 			 bool watsonp,
-#endif
-			 bool writefilep, char *fileroot);
+#endif	
+			 bool genome_lc_p, bool writefilep, char *fileroot, bool mask_lowercase_p);
+
+extern int
+Storedoligomer_compare (const void *a, const void *b);
 
 #undef T
 #endif

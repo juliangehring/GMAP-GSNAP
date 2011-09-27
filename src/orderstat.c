@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: orderstat.c,v 1.3 2007/10/11 22:06:41 twu Exp $";
+static char rcsid[] = "$Id: orderstat.c,v 1.5 2010/02/03 18:12:25 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,6 +11,8 @@ static char rcsid[] = "$Id: orderstat.c,v 1.3 2007/10/11 22:06:41 twu Exp $";
 #include <stdlib.h>
 #include <string.h>		/* For memcpy */
 
+
+#if 0
 static void
 dump_vector (double *vector, int n) {
   int i;
@@ -21,6 +23,7 @@ dump_vector (double *vector, int n) {
   printf("\n");
   return;
 }
+#endif
 
 
 static double
@@ -103,6 +106,46 @@ quickselect_int_aux (int *set, int n, int k) {
   }
 }
 
+static long int
+quickselect_long_int_aux (long int *set, int n, int k) {
+  long int x, elt;
+  int lowcount = 0, eqcount = 1, j = 0, i;
+
+  /*
+  printf("n = %d, k = %d: ",n,k);
+  dump_vector(set,n);
+  */
+
+  x = set[0];
+  for (i = 1; i < n; i++) {
+    if ((elt = set[i]) < x) {
+      lowcount++;
+    } else if (elt == x) {
+      eqcount++;
+    }
+  }
+
+  if (k <= lowcount) {
+    for (i = 1; i < n; i++) {
+      if (set[i] < x) {
+	set[j++] = set[i];
+      }
+    }
+    return quickselect_long_int_aux(set,j,k);
+
+  } else if (k > lowcount+eqcount) {
+    for (i = 1; i < n; i++) {
+      if (set[i] > x) {
+	set[j++] = set[i];
+      }
+    }
+    return quickselect_long_int_aux(set,j,k-lowcount-eqcount);
+
+  } else {
+    return x;
+  }
+}
+
 static double
 quickselect_double (double *vector, int n, int k) {
   double result;
@@ -126,6 +169,20 @@ quickselect_int (int *vector, int n, int k) {
   memcpy((void *) temp,vector,n*sizeof(int));
 
   result = quickselect_int_aux(temp,n,k);
+
+  free(temp);
+  return result;
+}
+
+static long int
+quickselect_long_int (long int *vector, int n, int k) {
+  long int result;
+  long int *temp;
+
+  temp = (long int *) calloc(n,sizeof(long int));
+  memcpy((void *) temp,vector,n*sizeof(long int));
+
+  result = quickselect_long_int_aux(temp,n,k);
 
   free(temp);
   return result;
@@ -163,6 +220,17 @@ Orderstat_int_pct (int *set, int length, double pct) {
     cutoff = length;
   }
   return quickselect_int(set,length,cutoff);
+}
+ 
+long int
+Orderstat_long_int_pct (long int *set, int length, double pct) {
+  int cutoff;
+
+  cutoff = (int) (pct*length+1);
+  if (cutoff > length) {
+    cutoff = length;
+  }
+  return quickselect_long_int(set,length,cutoff);
 }
 
 int

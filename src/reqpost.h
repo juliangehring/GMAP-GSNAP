@@ -1,22 +1,23 @@
-/* $Id: reqpost.h,v 1.13 2005/12/06 02:17:18 twu Exp $ */
+/* $Id: reqpost.h,v 1.15 2008/02/28 18:12:06 twu Exp $ */
 #ifndef REQPOST_INCLUDED
 #define REQPOST_INCLUDED
 #include "blackboard.h"
 #include "request.h"
+#ifdef GSNAP
+#include "resulthr.h"
+#else
 #include "result.h"
-#include "params.h"
+#endif
 
 #define T Reqpost_T
 typedef struct T *T;
 
 extern T
-Reqpost_new (Blackboard_T blackboard, int id, Params_T params);
+Reqpost_new (Blackboard_T blackboard, int id);
 extern void
 Reqpost_free (T *old);
 extern int
 Reqpost_id (T this);
-extern Params_T
-Reqpost_params (T this);
 
 extern void
 Reqpost_put_request (T this, Request_T request);

@@ -1,4 +1,4 @@
-/* $Id: chrsubset.h,v 1.8 2006/05/19 21:36:06 twu Exp $ */
+/* $Id: chrsubset.h,v 1.9 2007/11/03 00:44:24 twu Exp $ */
 #ifndef CHRSUBSET_INCLUDED
 #define CHRSUBSET_INCLUDED
 #include "bool.h"
@@ -30,6 +30,8 @@ extern int
 Chrsubset_newindex (T this, int index);
 extern int
 Chrsubset_oldindex (T this, int index);
+extern unsigned int *
+Chrsubset_transitions (int **signs, int *nedges, T this, IIT_T chromosome_iit);
 extern T
 Chrsubset_new_single (Chrnum_T chrnum, IIT_T chromosome_iit);
 extern T

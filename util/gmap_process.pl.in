@@ -1,5 +1,7 @@
-#! @PERL@ -w
-# $Id: gmap_process.pl.in,v 1.4 2006/11/30 17:22:50 twu Exp $
+#! @PERL@
+# $Id: gmap_process.pl.in,v 1.7 2010/02/10 16:55:45 twu Exp $
+
+use warnings;
 
 use IO::File;
 use Getopt::Std;
@@ -15,7 +17,14 @@ if (!defined($coord_file = $opt_c)) {
 }
 
 read_coords($coord_file);
-process_fasta();
+
+if ($#ARGV < 0) {
+    @streams = ();
+    push @streams,"<&STDIN";
+    process_fasta(\@streams);
+} else {
+    process_fasta(\@ARGV);
+}
 check_processed();
 
 exit;
@@ -44,14 +53,6 @@ sub read_coords {
       }
 
       $coords{$contig} = $fields[1];
-      # Also store information without version
-      if ($contig =~ /(\S+)\.\d+$/) {
-	$noversion = $1;
-	$coords{$noversion} = $fields[1];
-	if (!defined($strain{$noversion} = $fields[2])) {
-	  $strain{$noversion} = "";
-	}
-      }
 
     }
   }
@@ -66,7 +67,7 @@ sub find_contig_name {
   if ($contiginfo !~ /\|/) {
     if (defined($ {$coords}{$contiginfo})) {
       return $contiginfo;
-    } elsif ($contiginfo =~ /(\S+)\.\d+/ && defined($ {$coords}{$1})) {
+    } elsif ($contiginfo =~ /(\S+)/ && defined($ {$coords}{$1})) {
       return $1;
     } else {
       # Failed
@@ -77,7 +78,7 @@ sub find_contig_name {
     foreach $part (@parts) {
       if (defined($ {$coords}{$part})) {
 	return $part;
-      } elsif ($part =~ /(\S+)\.\d+/ && defined($ {$coords}{$1})) {
+      } elsif ($part =~ /(\S+)/ && defined($ {$coords}{$1})) {
 	return $1;
       }
     }
@@ -87,32 +88,41 @@ sub find_contig_name {
 }
 
 sub process_fasta {
+  my ($argv) = @_;
   my $printp = 0;
 
-  while (defined($line = <>)) {
-    if ($line !~ /\S/) {
-      # Skip blank lines
-    } elsif ($line =~ /^>(\S+)/) {
-      $contig = find_contig_name($1,\%coords);
-      if (!defined($coords{$contig})) {
-	print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
-	$printp = 0;
+  foreach $arg (@ {$argv}) {
+      $FP = new IO::File($arg) or die "Cannot open file $arg";
 
-      } else {
-
-	# ($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;
-	# If $chrpos2 < $chrpos1, then contig needs to be reverse complement.
-	# However, gmapindex knows how to handle this
-
-	$processedp{$contig} = 1;
-	printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
-	$printp = 1;
-
+      while (defined($line = <$FP>)) {
+	  chomp $line;
+	  if ($line !~ /\S/) {
+	      # Skip blank lines
+	  } elsif ($line =~ /^>(\S+)/) {
+	      $contig = find_contig_name($1,\%coords);
+	      if (!defined($coords{$contig})) {
+		  print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
+		  $printp = 0;
+		  
+	      } else {
+		  
+		  # ($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;
+		  # If $chrpos2 < $chrpos1, then contig needs to be reverse complement.
+		  # However, gmapindex knows how to handle this
+		  
+		  $processedp{$contig} = 1;
+		  printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
+		  $printp = 1;
+		  
+	      }
+	  } elsif ($printp == 1) {
+	      print $line . "\n";
+	  }
       }
-    } elsif ($printp == 1) {
-      print $line;
-    }
+
+      close($FP);
   }
+
   return;
 }
 
@@ -120,7 +130,7 @@ sub process_fasta {
 sub check_processed {
   $nwarnings = 0;
   foreach $contig (keys %coords) {
-    if (!defined($processedp{$contig})) {
+    if (!defined($processedp{$contig}) && !defined($noversionp{$contig})) {
       print STDERR "Warning!!  Contig $contig was listed in coords file, but not seen in a FASTA file\n";
       $nwarnings++;
     }

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: interval.c,v 1.16 2007/06/21 19:20:24 twu Exp $";
+static char rcsid[] = "$Id: interval.c,v 1.18 2010/02/03 18:08:28 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,13 @@ static char rcsid[] = "$Id: interval.c,v 1.16 2007/06/21 19:20:24 twu Exp $";
 #include <stdio.h>
 #include <stdlib.h>		/* For qsort */
 #include "mem.h"
+
+
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
 
 
 #define T Interval_T
@@ -187,15 +194,37 @@ Interval_cmp (const void *a, const void *b) {
   T x = * (T *) a;
   T y = * (T *) b;
 
+  debug(printf("Comparing %u..%u with %u..%u => ",x->low,x->high,y->low,y->high));
   if (x->low < y->low) {
+    debug(printf("-1\n"));
     return -1;
   } else if (x->low > y->low) {
+    debug(printf("+1\n"));
     return +1;
   } else if (x->high < y->high) {
+    debug(printf("-1\n"));
     return -1;
   } else if (x->high > y->high) {
+    debug(printf("+1\n"));
+    return +1;
+  } else if (x->type < y->type) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->type > y->type) {
+    debug(printf("-1\n"));
     return +1;
   } else {
+    debug(printf("0\n"));
     return 0;
   }
 }
+
+
+int
+Interval_windex_cmp (const void *a, const void *b) {
+  struct Interval_windex_T x = * (struct Interval_windex_T *) a;
+  struct Interval_windex_T y = * (struct Interval_windex_T *) b;
+
+  return Interval_cmp((void *) &x.interval,(void *) &y.interval);
+}
+

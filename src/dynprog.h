@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.54 2007/06/22 18:17:11 twu Exp $ */
+/* $Id: dynprog.h,v 1.55 2008/09/04 21:48:01 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -43,7 +43,8 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore,
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
-		    int cdna_direction, Pairpool_T pairpool, int extraband_single, double defect_rate);
+		    int cdna_direction, Pairpool_T pairpool, int extraband_single, double defect_rate,
+		    bool widebandp);
 
 extern List_T
 Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
@@ -94,6 +95,14 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *queryaaseq,
 #endif
 		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate);
+
+extern int
+Dynprog_internal_gap_stats (T dynprog, char *sequenceuc1, char *sequenceuc2,
+			    int length1, int length2, int offset1, int offset2, 
+#ifdef PMAP
+			    char *queryaaseq,
+#endif
+			    int cdna_direction, int extraband_end, double defect_rate);
 
 extern List_T
 Dynprog_dual_break (int *dynprogindex, int *finalscore, T dynprogL, T dynprogR, 

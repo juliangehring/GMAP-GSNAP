@@ -1,4 +1,4 @@
-/* $Id: access.h,v 1.6 2005/10/28 15:50:27 twu Exp $ */
+/* $Id: access.h,v 1.9 2008/05/09 16:33:28 twu Exp $ */
 #ifndef ACCESS_INCLUDED
 #define ACCESS_INCLUDED
 
@@ -18,6 +18,9 @@
 /* ALLOCATED implies bigendian conversion already done */
 typedef enum {ALLOCATED, MMAPPED, FILEIO} Access_T;
 #define MAX32BIT 4294967295U	/* 2^32 - 1 */
+
+extern bool
+Access_file_exists_p (char *filename);
 
 extern off_t
 Access_filesize (char *filename);
@@ -43,7 +46,21 @@ extern caddr_t
 #else
 extern void *
 #endif
+Access_mmap_offset (int *remainder, int fd, off_t offset, size_t length, size_t eltsize, bool randomp);
+
+#ifdef HAVE_CADDR_T
+extern caddr_t
+#else
+extern void *
+#endif
 Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp);
+
+#ifdef HAVE_CADDR_T
+extern caddr_t
+#else
+extern void *
+#endif
+Access_mmap_offset_rw (int *remainder, int fd, off_t offset, size_t length, size_t eltsize, bool randomp);
 
 #ifdef HAVE_CADDR_T
 extern caddr_t

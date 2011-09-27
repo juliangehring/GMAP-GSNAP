@@ -1,10 +1,15 @@
-/* $Id: table.h,v 1.11 2007/09/28 22:47:15 twu Exp $ */
+/* $Id: table.h,v 1.12 2008/04/15 20:01:19 twu Exp $ */
 #ifndef TABLE_INCLUDED
 #define TABLE_INCLUDED
 
 
 #define T Table_T
 typedef struct T *T;
+
+extern int
+Table_string_compare (const void *x, const void *y);
+extern unsigned int
+Table_string_hash (const void *x);
 
 extern T
 Table_new (int hint,

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intpool.c,v 1.1 2007/02/05 07:45:55 twu Exp $";
+static char rcsid[] = "$Id: intpool.c,v 1.2 2009/03/10 16:21:30 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -87,7 +87,6 @@ Intpool_reset (T this) {
 Intlist_T
 Intpool_push (Intlist_T intlist, T this, int integer) {
   Intlist_T intlistcell;
-  int *integerptr;
   List_T p;
   int n;
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: except.c,v 1.15 2006/11/01 22:27:57 twu Exp $";
+static char rcsid[] = "$Id: except.c,v 1.16 2010/02/03 02:10:07 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -44,18 +44,18 @@ Except_term_pthread () {
 
 void
 Except_stack_create () {
-  Except_Frame_T *stackptr;
+  Except_Frame_T stackptr;
 
-  stackptr = (Except_Frame_T *) malloc(sizeof(Except_Frame_T));
+  stackptr = (Except_Frame_T) malloc(sizeof(*stackptr));
   pthread_setspecific(global_except_key,stackptr);
   return;
 }
 
 void
 Except_stack_destroy () {
-  Except_Frame_T *stackptr;
+  Except_Frame_T stackptr;
 
-  stackptr = pthread_getspecific(global_except_key);
+  stackptr = (Except_Frame_T) pthread_getspecific(global_except_key);
   free(stackptr);
   return;
 }
@@ -64,7 +64,7 @@ Except_stack_destroy () {
 void
 Except_link_stack (Except_Frame_T frameptr) {
 #ifdef HAVE_PTHREAD
-  Except_Frame_T *stackptr;
+  Except_Frame_T stackptr;
 #endif
 
   if (threadedp == false) {
@@ -72,9 +72,9 @@ Except_link_stack (Except_Frame_T frameptr) {
     global_except_stack = frameptr;
   } else {
 #ifdef HAVE_PTHREAD
-    stackptr = pthread_getspecific(global_except_key);
-    frameptr->prev = *stackptr;
-    *stackptr = frameptr;
+    stackptr = (Except_Frame_T) pthread_getspecific(global_except_key);
+    frameptr->prev = stackptr;
+    stackptr = frameptr;
 #endif
   }
 
@@ -84,7 +84,7 @@ Except_link_stack (Except_Frame_T frameptr) {
 Except_Frame_T
 Except_advance_stack () {
 #ifdef HAVE_PTHREAD
-  Except_Frame_T *stackptr;
+  Except_Frame_T stackptr;
 #endif
 
   if (threadedp == false) {
@@ -92,9 +92,9 @@ Except_advance_stack () {
     return global_except_stack;
   } else {
 #ifdef HAVE_PTHREAD
-    stackptr = (Except_Frame_T *) pthread_getspecific(global_except_key);
-    *stackptr = (*stackptr)->prev;
-    return *stackptr;
+    stackptr = (Except_Frame_T) pthread_getspecific(global_except_key);
+    stackptr = (stackptr)->prev;
+    return stackptr;
 #endif
   }
 }
@@ -104,7 +104,7 @@ Except_raise (const Except_T *e, const char *file, int line) {
   Except_Frame_T frameptr;
   char message[512], piece[128];
 #ifdef HAVE_PTHREAD
-  Except_Frame_T *stackptr;
+  Except_Frame_T stackptr;
 #endif
 
   assert(e);
@@ -127,8 +127,8 @@ Except_raise (const Except_T *e, const char *file, int line) {
     frameptr = global_except_stack;
   } else {
 #ifdef HAVE_PTHREAD
-    stackptr = (Except_Frame_T *) pthread_getspecific(global_except_key);
-    frameptr = *stackptr;
+    stackptr = (Except_Frame_T) pthread_getspecific(global_except_key);
+    frameptr = stackptr;
 #endif    
   }
 

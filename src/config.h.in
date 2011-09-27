@@ -1,5 +1,17 @@
 /* src/config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* Define if building universal (internal helper macro) */
+#undef AC_APPLE_UNIVERSAL_BUILD
+
+/* Define to 1 if __builtin_clz works. */
+#undef HAVE_BUILTIN_CLZ
+
+/* Define to 1 if __builtin_ctz works. */
+#undef HAVE_BUILTIN_CTZ
+
+/* Define to 1 if __builtin_popcount works. */
+#undef HAVE_BUILTIN_POPCOUNT
+
 /* Define to 1 if the system has the type `caddr_t'. */
 #undef HAVE_CADDR_T
 
@@ -55,9 +67,6 @@
 /* Define to 1 if you have the `memmove' function. */
 #undef HAVE_MEMMOVE
 
-/* Define to 1 if you have the <memory.> header file. */
-#undef HAVE_MEMORY_
-
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
@@ -97,6 +106,9 @@
 /* Define to 1 if you have the `sigaction' function. */
 #undef HAVE_SIGACTION
 
+/* Define to 1 if you have the `stat64' function. */
+#undef HAVE_STAT64
+
 /* Define to 1 if you have the <stddef.h> header file. */
 #undef HAVE_STDDEF_H
 
@@ -114,6 +126,9 @@
 
 /* Define to 1 if you have the `strtoul' function. */
 #undef HAVE_STRTOUL
+
+/* have struct stat64 */
+#undef HAVE_STRUCT_STAT64
 
 /* Define to 1 if you have the `sysconf' function. */
 #undef HAVE_SYSCONF
@@ -138,6 +153,10 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR
+
 /* Define MAP_FAILED here if not available otherwise. */
 #undef MAP_FAILED
 
@@ -159,18 +178,21 @@
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
 
-/* pagesize available via sysconf */
+/* pagesize is available via sysconf */
 #undef PAGESIZE_VIA_SYSCONF
 
-/* pagesize available via sysctl */
+/* pagesize is available via sysctl */
 #undef PAGESIZE_VIA_SYSCTL
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
 
-/* The size of a `unsigned long', as computed by sizeof. */
+/* The size of `unsigned long', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_LONG
+
+/* The size of `unsigned long long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG_LONG
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
@@ -184,9 +206,17 @@
 /* Version number of package */
 #undef VERSION
 
-/* Define to 1 if your processor stores words with the most significant byte
-   first (like Motorola and SPARC, unlike Intel and VAX). */
-#undef WORDS_BIGENDIAN
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS
@@ -200,10 +230,10 @@
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const
 
-/* Define to `long' if <sys/types.h> does not define. */
+/* Define to `long int' if <sys/types.h> does not define. */
 #undef off_t
 
-/* Define to `unsigned' if <sys/types.h> does not define. */
+/* Define to `unsigned int' if <sys/types.h> does not define. */
 #undef size_t
 
 /* Define to empty if the keyword `volatile' does not work. Warning: valid

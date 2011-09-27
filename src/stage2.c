@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
+static char rcsid[] = "$Id: stage2.c,v 1.239 2010/02/03 18:16:55 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,17 +14,19 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 #include "pairdef.h"
 #include "listdef.h"
 #include "intlist.h"
+#include "diag.h"
 
 /* #define SQUARE 1 */
 
+#define SUFF_PCTCOVERAGE_OLIGOINDEX 0.90
 
-#ifdef PMAP
-#define LOCAL_LOOKBACK 40
-#else
-#define LOCAL_LOOKBACK 120
-#endif
+#define SUFF_PCTCOVERAGE_STAGE2 0.10
+#define SUFF_NCOVERED 200
+#define SUFF_MAXNCONSECUTIVE 20
 
-#define MAX_NACTIVE 1000	/* 100 is too low.  currently not used */
+#define MAX_NACTIVE 100	/* 100 previously considered too low, but may
+			   be okay in conjunction with
+			   diagonalization */
 #define MAX_GRAND_LOOKBACK 200
 
 /* Penalty for genomic distances */
@@ -32,7 +34,6 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 #define INTRON_PENALTY_UNKNOWN 8
 #define INTRON_PENALTY_INCONSISTENT 16
 
-#define NINTRON_PENALTY 8
 #define NINTRON_PENALTY_MISMATCH 8
 
 #define ENOUGH_CONSECUTIVE 32
@@ -42,11 +43,13 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 #ifdef PMAP
 #define EQUAL_DISTANCE 3
 #else
-#define EQUAL_DISTANCE 1	/* Making this too large can allow bad
-				   global alignment to beat good local
-				   alignment */
+#define EQUAL_DISTANCE 6	/* Should be allowance for indels. */
 #endif
+
+
 #define INTRON_DEFN 9		/* Cannot exceed 9 */
+#define EXON_DEFN 30
+#define MAX_SKIPPED 3
 
 #define SCORE_FOR_RESTRICT 10
 
@@ -61,11 +64,14 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 				   Means that we can find islands of
 				   9-mers */
 #define NT_PER_MATCH 1
+#define NT_PER_CODON 3
 #define CONSEC_POINTS_PER_MATCH 1 /* Possible increase to reward consecutiveness */
+#define CONSEC_POINTS_PER_CODON 3 /* Possible increase to reward consecutiveness */
 #endif
 
-/* Dynamic programming */
-/* Can also define debug(x) as: if (querypos == XX) x */
+#define SHIFT_EXTRA 10
+
+/* General */
 #ifdef DEBUG
 #define debug(x) x
 #else 
@@ -86,13 +92,6 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 #define debug1(x)
 #endif
 
-/* Result of maxconsecutive.  May want to turn on DEBUG2 in oligoindex.c. */
-#ifdef DEBUG2
-#define debug2(x) x
-#else 
-#define debug2(x)
-#endif
-
 /* For generating a graph */
 #ifdef DEBUG3
 #define debug3(x) x
@@ -100,17 +99,10 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 #define debug3(x)
 #endif
 
-/* For determining indexsize */
-#ifdef DEBUG4
-#define debug4(x) x
-#else 
-#define debug4(x)
-#endif
-
 /* Converting to nucleotides */
 #ifdef DEBUG5
 #define debug5(x) x
-#else 
+#else
 #define debug5(x)
 #endif
 
@@ -128,6 +120,15 @@ static char rcsid[] = "$Id: stage2.c,v 1.219 2007/09/17 20:35:53 twu Exp $";
 #define debug7(x)
 #endif
 
+/* Dynamic programming */
+/* Can also define debug9(x) as: if (querypos == XX) x */
+#ifdef DEBUG9
+#define debug9(x) x
+#else 
+#define debug9(x)
+#endif
+
+
 
 #define T Stage2_T
 struct T {
@@ -137,7 +138,8 @@ struct T {
   int nnoncanonical;
   int cdna_direction;
 
-  double runtime;
+  double diag_runtime;
+  double align_runtime;
   int indexsize;
 };
 
@@ -162,8 +164,13 @@ Stage2_cdna_direction (T this) {
 }
 
 double
-Stage2_runtime (T this) {
-  return this->runtime;
+Stage2_diag_runtime (T this) {
+  return this->diag_runtime;
+}
+
+double
+Stage2_align_runtime (T this) {
+  return this->align_runtime;
 }
 
 int
@@ -176,6 +183,7 @@ Stage2_pathlength (T this) {
   return List_length(this->path);
 }
 
+#if 0
 static T
 Stage2_new (List_T path, int nfwdintrons, int nrevintrons, int nunkintrons,
 	    int cdna_direction, int indexsize_nt) {
@@ -196,7 +204,8 @@ Stage2_new (List_T path, int nfwdintrons, int nrevintrons, int nunkintrons,
 
   return new;
 }
-	    
+#endif	    
+
 void
 Stage2_free (T *old) {
   if (*old) {
@@ -232,7 +241,7 @@ struct Link_T {
 /* lengths2 is has length1 entries.  Note that lengths2 may have
    negative entries */
 static struct Link_T **
-Linkmatrix_new (int length1, int *lengths2, int totallength) {
+Linkmatrix_1d_new (int length1, int *lengths2, int totallength) {
   struct Link_T **links;
   int i;
   
@@ -249,13 +258,45 @@ Linkmatrix_new (int length1, int *lengths2, int totallength) {
 }
 
 static void
-Linkmatrix_free (struct Link_T ***links) {
+Linkmatrix_1d_free (struct Link_T ***links) {
   FREE((*links)[0]);
   FREE(*links);
   return;
 }
 
 
+static struct Link_T **
+Linkmatrix_2d_new (int length1, int *lengths2) {
+  struct Link_T **links;
+  int i;
+  
+  links = (struct Link_T **) CALLOC(length1,sizeof(struct Link_T *));
+  for (i = 0; i < length1; i++) {
+    if (lengths2[i] <= 0) {
+      links[i] = (struct Link_T *) NULL;
+    } else {
+      links[i] = (struct Link_T *) CALLOC(lengths2[i],sizeof(struct Link_T));
+    }
+  }
+  return links;
+}
+
+static void
+Linkmatrix_2d_free (struct Link_T ***links, int length1) {
+  int i;
+
+  for (i = 0; i < length1; i++) {
+    if ((*links)[i]) {
+      FREE((*links)[i]);
+    }
+  }
+  FREE(*links);
+  return;
+}
+
+
+
+#ifdef DEBUG1
 /* For PMAP, indexsize is in aa */
 static void
 Linkmatrix_print_fwd (struct Link_T **links, unsigned int **mappings, int length1, int *npositions,
@@ -306,12 +347,13 @@ Linkmatrix_print_both (struct Link_T **links, unsigned int **mappings, int lengt
   return;
 }
 #endif
+#endif
 
 static void
 mappings_dump_R (unsigned int **mappings, int *npositions, int length1,
 		 int **active, int *firstactive, int indexsize, char *varname) {
   int querypos;
-  int i, j, lastpos, hit;
+  int lastpos, hit;
   bool printp = false;
 
   lastpos = length1 - indexsize;
@@ -327,7 +369,7 @@ mappings_dump_R (unsigned int **mappings, int *npositions, int length1,
 	  } else {
 	    printf(",\n");
 	  }
-	  printf("%d,%d",querypos,mappings[querypos][hit],
+	  printf("%d,%d,%d,%d",querypos,mappings[querypos][hit],
 		 hit,active[querypos][hit]);
 	  hit = active[querypos][hit];
 	}
@@ -339,7 +381,7 @@ mappings_dump_R (unsigned int **mappings, int *npositions, int length1,
 	} else {
 	  printf(",\n");
 	}
-	printf("%d,%d",querypos,mappings[querypos][hit],hit);
+	printf("%d,%d,%d",querypos,mappings[querypos][hit],hit);
       }
     }
   }
@@ -460,6 +502,7 @@ active_bounds_dump_R (unsigned int *minactive, unsigned int *maxactive,
 
 #define TEN_THOUSAND 10000.0
 #define HUNDRED_THOUSAND 100000.0
+#define ONE_MILLION 1000000.0
 
 static int
 gendist_penalty (unsigned int diffdistance, int querydistance) {
@@ -467,31 +510,34 @@ gendist_penalty (unsigned int diffdistance, int querydistance) {
 
   /* Add 1 to get effect of querydistance multiplier below */
   penalty = diffdistance/HUNDRED_THOUSAND + 1;
-  if (diffdistance < EQUAL_DISTANCE) {
-    return penalty;
+  if (diffdistance <= EQUAL_DISTANCE) {
+    return 0;			/* was penalty */
+#if 0
   } else if (querydistance < 8) {
     return penalty;
+#endif
   } else {
     penalty *= (querydistance/8) * (querydistance/8);
     return penalty;
   }
 }
 
-
 static int
-querydist_mismatch_penalty (int querydistance, bool crossspeciesp) {
-  return 0;
-  /* return (querydistance/8) * (querydistance/8); */
+diffdist_penalty (unsigned int diffdistance) {
+  int penalty;
 
-  if (querydistance <= 24) {
-    return (querydistance+7);
-  } else if (querydistance <= 40) {
-    return 2*(querydistance+7);
-  } else if (querydistance <= 56) {
-    return 2*(querydistance+7);
-  } else {
-    return (querydistance+7)*3;
-  }
+  penalty = diffdistance/TEN_THOUSAND + 1;
+  return penalty;
+}
+
+/* querydistance already has indexsize_nt subtracted */
+static int
+querydist_penalty (int querydistance) {
+#ifdef PMAP
+  return querydistance/2;
+#else
+  return 0;
+#endif
 }
 
 #if 0
@@ -638,31 +684,70 @@ find_canonical_dinucleotides (int *lastGT, int *lastAG,
 #endif
   }
 
+#ifdef SHIFT_EXTRA
+  /* Fill in rest */
+  pos++;
+  while (pos < genomiclength - 3 + SHIFT_EXTRA) {
+    lastGT[pos] = GT;
+    lastAG[pos+3] = AG;
+#ifndef PMAP
+    lastCT[pos] = CT;
+    lastAC[pos+3] = AC;
+#endif
+    pos++;
+  }
+#endif
+
   return;
 }
 
 
+/* Need this procedure because we are skipping some oligomers */
 static bool
 find_shifted_canonical (char *genomicuc_ptr, unsigned int prevposition, unsigned int position,
-			int querydistance, int indexsize_nt, int *last_leftdi, int *last_rightdi) {
+			int querydistance, int genomiclength, int indexsize_nt, int *last_leftdi, int *last_rightdi,
+			bool skip_repetitive_p) {
   unsigned int leftpos, rightpos;
   int shift, leftmiss, rightmiss;
 
-  leftpos = prevposition + querydistance - 1;
+  leftpos = prevposition + querydistance + indexsize_nt - 1;
   rightpos = position;
-  if (leftpos > rightpos) {
+
+  debug7(printf("Looking for shifted canonical at prevposition %d to position %d\n",prevposition,position));
+  debug7(printf("leftpos = %u, rightpos = %u\n",leftpos,rightpos));
+
+  if (leftpos > genomiclength || rightpos > genomiclength) {
     return false;
   }
 
-  debug7(printf("Looking for shifted canonical at prevposition %d to position %d\n",prevposition,position));
+  if (skip_repetitive_p == false) {
+    return (leftpos == last_leftdi[leftpos] && rightpos == last_rightdi[rightpos]);
+  }
+
+#ifdef SHIFT_EXTRA
+  /* Allow canonical to be to right of match */
+  leftpos += SHIFT_EXTRA;
+  rightpos += SHIFT_EXTRA;
+  debug7(printf("after shift, leftpos = %u, rightpos = %u\n",leftpos,rightpos));
+#endif
+
   shift = 0;
-  while (shift <= querydistance - indexsize_nt) {
+  while (shift <= querydistance
+#ifdef SHIFT_EXTRA
+	 + SHIFT_EXTRA + SHIFT_EXTRA
+#endif
+	 ) {
+    if (leftpos > rightpos) {
+      return false;
+    }
+
     if (last_leftdi[leftpos] < 0) {
       debug7(printf("\n"));
       return false;
     } else {
       leftmiss = leftpos - last_leftdi[leftpos];
     }
+
     if (last_rightdi[rightpos] < 0) {
       debug7(printf("\n"));
       return false;
@@ -670,8 +755,8 @@ find_shifted_canonical (char *genomicuc_ptr, unsigned int prevposition, unsigned
       rightmiss = rightpos - last_rightdi[rightpos];
     }
 
-    debug7(printf("%d/L%d/R%d/%d/%d",shift,leftpos,rightpos,leftmiss,rightmiss));
-    if (leftmiss == 0 && rightmiss == 0) {
+    debug7(printf("shift %d/left %d (miss %d)/right %d (miss %d)\n",shift,leftpos,leftmiss,rightpos,rightmiss));
+    if (leftmiss == rightmiss) {  /* was leftmiss == 0 && rightmiss == 0, which doesn't allow for a shift */
       debug7(printf(" => Success\n\n"));
       return true;
     } else if (leftmiss >= rightmiss) {
@@ -703,27 +788,33 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
 #ifndef PMAP
 		int *lastCT, int *lastAC, 
 #endif
-		int indexsize, int sufflookback, int nsufflookback, int maxintronlen,
-		bool crossspeciesp) {
+		int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+		int genomiclength, bool localp, bool skip_repetitive_p) {
   Link_T prevlink;
   int best_fwd_consecutive = indexsize*NT_PER_MATCH;
+#if 0
   int best_fwd_score = indexsize*CONSEC_POINTS_PER_MATCH, fwd_score;
+#else
+  int best_fwd_score = 0, fwd_score;
+#endif
   int best_fwd_prevpos = -1, best_fwd_prevhit = -1;
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
 #ifndef PMAP
   int best_rev_consecutive = indexsize*NT_PER_MATCH;
+#if 0
   int best_rev_score = indexsize*CONSEC_POINTS_PER_MATCH, rev_score;
+#else
+  int best_rev_score = 0, rev_score;
+#endif
   int best_rev_prevpos = -1, best_rev_prevhit = -1;
   int best_rev_intronnfwd = 0, best_rev_intronnrev = 0, best_rev_intronnunk = 0;
 #endif
-  bool adjacentp = false;
-  int prev_querypos, intronpos_lower, intronpos_upper, prevhit, finalprevhit;
+  bool adjacentp = false, donep;
+  int prev_querypos, intronpos_lower, intronpos_upper, prevhit;
+  Intlist_T p;
   unsigned int prevposition, gendistance;
-  int querydistance, diffdistance, lookback, nlookback, sample_interval, nseen, indexsize_nt;
-  int canonicalsgn, mismatch_start, fwd_gendistance_penalty;
-#ifndef PMAP
-  int rev_gendistance_penalty;
-#endif
+  int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt;
+  int canonicalsgn;
   int enough_consecutive;
 
 #ifdef PMAP
@@ -732,560 +823,624 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
   indexsize_nt = indexsize;
 #endif
 
-  if (crossspeciesp == true) {
-    enough_consecutive = 56;
-  } else {
-    enough_consecutive = 32;
-  }
+  enough_consecutive = 32;
 
-  /* A. Evaluate adjacent position (at querypos - 1) */
-  prevhit = firstactive[querypos-1];
-  while (prevhit != -1 && (prevposition = mappings[querypos-1][prevhit]) + NT_PER_MATCH <= position) {
-    if (prevposition + NT_PER_MATCH == position) {
-      prevlink = &(links[querypos-1][prevhit]);
-      best_fwd_consecutive = prevlink->fwd_consecutive + NT_PER_MATCH;
-      best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
-#ifndef PMAP
-      best_rev_consecutive = prevlink->rev_consecutive + NT_PER_MATCH;
-      best_rev_score = prevlink->rev_score + CONSEC_POINTS_PER_MATCH;
-#endif
-
-      best_fwd_prevpos = 
-#ifndef PMAP
-	best_rev_prevpos = 
-#endif
-	querypos-1;
-      best_fwd_prevhit = 
-#ifndef PMAP
-	best_rev_prevhit = 
-#endif
-	prevhit;
-      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-      best_fwd_intronnrev = prevlink->fwd_intronnrev;
-      best_fwd_intronnunk = prevlink->fwd_intronnunk;
-#ifndef PMAP
-      best_rev_intronnfwd = prevlink->rev_intronnfwd;
-      best_rev_intronnrev = prevlink->rev_intronnrev;
-      best_rev_intronnunk = prevlink->rev_intronnunk;
-#endif
-      adjacentp = true;
+  /* A. Evaluate adjacent position (at last one processed) */
+  if (processed != NULL) {
+    prev_querypos = Intlist_head(processed);
 #ifdef PMAP
-      debug(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d, intr = %d-%d-%d)\n",
-		   querypos-1,prevhit,position - NT_PER_MATCH,active[querypos-1][prevhit],prevlink->fwd_score,
-		   best_fwd_score,best_fwd_consecutive,best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk));
+    querydistance = (querypos - prev_querypos)*3;
 #else
-      debug(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d/%d -> %d/%d, consec = %d/%d, intr = %d-%d-%d/%d-%d-%d)\n",
-		   querypos-1,prevhit,position - NT_PER_MATCH,active[querypos-1][prevhit],prevlink->fwd_score,prevlink->rev_score,
-		   best_fwd_score,best_rev_score,best_fwd_consecutive,best_rev_consecutive,
-		   best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-		   best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk));
+    querydistance = querypos - prev_querypos;
 #endif
-      prevhit = -1;		/* Exit loop */
-    } else {
-      prevhit = active[querypos-1][prevhit];
+    prevhit = firstactive[prev_querypos];
+    while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + querydistance <= position) {
+      if (prevposition + querydistance == position) {
+	prevlink = &(links[prev_querypos][prevhit]);
+	best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	best_fwd_score = prevlink->fwd_score + querydistance;
+#ifndef PMAP
+	best_rev_consecutive = prevlink->rev_consecutive + querydistance;
+	best_rev_score = prevlink->rev_score + querydistance;
+#endif
+
+	best_fwd_prevpos = 
+#ifndef PMAP
+	  best_rev_prevpos = 
+#endif
+	  prev_querypos;
+	best_fwd_prevhit = 
+#ifndef PMAP
+	  best_rev_prevhit = 
+#endif
+	  prevhit;
+	best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	best_fwd_intronnunk = prevlink->fwd_intronnunk;
+#ifndef PMAP
+	best_rev_intronnfwd = prevlink->rev_intronnfwd;
+	best_rev_intronnrev = prevlink->rev_intronnrev;
+	best_rev_intronnunk = prevlink->rev_intronnunk;
+#endif
+	adjacentp = true;
+#ifdef PMAP
+	debug9(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d, intr = %d-%d-%d)\n",
+		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],prevlink->fwd_score,
+		      best_fwd_score,best_fwd_consecutive,best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk));
+#else
+	debug9(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d/%d -> %d/%d, consec = %d/%d, intr = %d-%d-%d/%d-%d-%d)\n",
+		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],prevlink->fwd_score,prevlink->rev_score,
+		      best_fwd_score,best_rev_score,best_fwd_consecutive,best_rev_consecutive,
+		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+		      best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk));
+#endif
+	prevhit = -1;		/* Exit loop */
+      } else {
+	prevhit = active[prev_querypos][prevhit];
+      }
     }
   }
+
+#if 0
+  /* AA. Evaluate querypos - 3 (for wobble) */
+  if (adjacentp == false && querypos >= 3) {
+    prevhit = firstactive[querypos-3];
+    while (prevhit != -1 && (prevposition = mappings[querypos-3][prevhit]) + NT_PER_CODON <= position) {
+      if (prevposition + NT_PER_CODON == position) {
+	prevlink = &(links[querypos-3][prevhit]);
+	best_fwd_consecutive = prevlink->fwd_consecutive + NT_PER_CODON;
+	best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_CODON;
+	best_rev_consecutive = prevlink->rev_consecutive + NT_PER_CODON;
+	best_rev_score = prevlink->rev_score + CONSEC_POINTS_PER_CODON;
+
+	best_fwd_prevpos = best_rev_prevpos = querypos-3;
+	best_fwd_prevhit = best_rev_prevhit = prevhit;
+	best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	best_rev_intronnfwd = prevlink->rev_intronnfwd;
+	best_rev_intronnrev = prevlink->rev_intronnrev;
+	best_rev_intronnunk = prevlink->rev_intronnunk;
+	adjacentp = true;
+
+	debug9(printf("\tAA. Codon-adjacent qpos %d,%d at %u (scores = %d/%d -> %d/%d, consec = %d/%d, intr = %d-%d-%d/%d-%d-%d)\n",
+		     querypos-3,prevhit,position - NT_PER_CODON,prevlink->fwd_score,prevlink->rev_score,
+		     best_fwd_score,best_rev_score,best_fwd_consecutive,best_rev_consecutive,
+		     best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+		     best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk));
+	prevhit = -1; /* Exit loop */
+      } else {
+	prevhit = active[querypos-3][prevhit];
+      }
+    }
+  }
+#endif
+
 
   if (best_fwd_consecutive < enough_consecutive
 #ifndef PMAP
       || best_rev_consecutive < enough_consecutive
 #endif
       ) {
+
+#ifdef BLUETARP
+    /* It looks like case D can cover cases B and C */
+
     /* B. Evaluate for intron (at querypos - indexsize).  
        Don't update best_consecutive, because a reasonable alternative 
        might be a mismatch, regardless of the quality of the intron. */
 
 #ifdef PMAP
+    /* Use indexsize, not indexsize_nt */
     intronpos_lower = querypos - indexsize - 1;
     intronpos_upper = querypos - indexsize;
 #else
-    intronpos_lower = intronpos_upper = querypos - indexsize;
+    intronpos_lower = intronpos_upper = querypos - indexsize_nt;
 #endif
     if (intronpos_lower < 0) {
       intronpos_lower = 0;
     }
+
     for (prev_querypos = intronpos_upper; prev_querypos >= intronpos_lower; --prev_querypos) {
-      if (0 && nactive[prev_querypos] > MAX_NACTIVE) {
+      if (0 && skip_repetitive_p && nactive[prev_querypos] > MAX_NACTIVE) { /* Turn off.  If too many active, then firstactive will be -1 */
+	debug9(printf("Not evaluating for intron because nactive at prev_querypos %d is %d > max %d\n",
+		      prev_querypos,nactive[prev_querypos],MAX_NACTIVE));
 	prevhit = -1;
       } else {
 #ifdef PMAP
-	querydistance = (querypos - prev_querypos)*3;
+	querydistance = (querypos - prev_querypos)*3 - indexsize_nt
 #else
-	querydistance = querypos - prev_querypos;
+	querydistance = (querypos - prev_querypos) - indexsize_nt;
 #endif
 	prevhit = firstactive[prev_querypos];
       }
+
+      debug9(printf("Evaluating for intron at prev_querypos %d, prevhit %d\n",prev_querypos,prevhit));
       while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + indexsize_nt <= position) {
 	prevlink = &(links[prev_querypos][prevhit]);
-	gendistance = position - prevposition;
-	diffdistance = abs(gendistance - querydistance);
-	
-	if (diffdistance > maxintronlen) {
-	  canonicalsgn = 0;
-	} else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,indexsize_nt,
-					  lastGT,lastAG) == true) {
-	  canonicalsgn = +1;
+	if (prevlink->fwd_consecutive > EXON_DEFN
 #ifndef PMAP
-	} else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,indexsize_nt,
-					  lastCT,lastAC) == true) {
-	  canonicalsgn = -1;
+	    || prevlink->rev_consecutive > EXON_DEFN
 #endif
-	} else {
-	  canonicalsgn = 0;
-	}
+	    ) {
+	  gendistance = position - prevposition - indexsize_nt;
+	  diffdistance = abs(gendistance - querydistance);
+	
+	  if (diffdistance > maxintronlen) {
+	    canonicalsgn = 0;
+	  } else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,genomiclength,indexsize_nt,
+					    lastGT,lastAG,skip_repetitive_p) == true) {
+	    canonicalsgn = +1;
+#ifndef PMAP
+	  } else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,genomiclength,indexsize_nt,
+					    lastCT,lastAC,skip_repetitive_p) == true) {
+	    canonicalsgn = -1;
+#endif
+	  } else {
+	    canonicalsgn = 0;
+	  }
 
-	/* Need to both compensate for the oligomer lost across
-	   the intron and penalize for each additional intron */
+	  /* Need to both compensate for the oligomer lost across
+	     the intron and penalize for each additional intron */
 #ifdef PMAP
-	fwd_score = prevlink->fwd_score + querydistance - NINTRON_PENALTY;
+	  fwd_score = prevlink->fwd_score + querydistance + indexsize_nt;
 #else
-	fwd_score = prevlink->fwd_score + querydistance - NINTRON_PENALTY;
-	rev_score = prevlink->rev_score + querydistance - NINTRON_PENALTY;
+	  fwd_score = prevlink->fwd_score + querydistance + indexsize_nt;
+	  rev_score = prevlink->rev_score + querydistance + indexsize_nt;
 #endif
 	
-	/* Penalty for introns. */
-	if (diffdistance > maxintronlen) {
-	  fwd_gendistance_penalty = 
-#ifndef PMAP
-	    rev_gendistance_penalty = 
-#endif
-	    INFINITE;
-	} else {
-	  if (canonicalsgn == 0) {
-	    /* Extra penalty for known non-canonical intron */
+	  /* Penalty for introns. */
+	  if (diffdistance > maxintronlen) {
 	    fwd_gendistance_penalty = 
 #ifndef PMAP
 	      rev_gendistance_penalty = 
 #endif
-	      gendist_penalty(diffdistance,querydistance) + INTRON_PENALTY_UNKNOWN;
-	  } else if (canonicalsgn == +1) {
-	    fwd_gendistance_penalty = gendist_penalty(diffdistance,querydistance) /*- INTRON_REWARD_CONSISTENT*/;
+	      INFINITE;
+	  } else {
+	    if (canonicalsgn == 0) {
+	      /* Extra penalty for known non-canonical intron */
+	      fwd_gendistance_penalty = 
 #ifndef PMAP
-	    rev_gendistance_penalty = gendist_penalty(diffdistance,querydistance) + INTRON_PENALTY_INCONSISTENT;
+		rev_gendistance_penalty = 
+#endif
+		gendist_penalty(diffdistance,querydistance/*-indexsize_nt*/) + INTRON_PENALTY_UNKNOWN;
+	    } else if (canonicalsgn == +1) {
+	      /* Don't penalize for intron */
+	      fwd_gendistance_penalty = gendist_penalty(diffdistance,querydistance/*-indexsize_nt*/) /* - INTRON_REWARD_CONSISTENT*/;
+#ifndef PMAP
+	      rev_gendistance_penalty = gendist_penalty(diffdistance,querydistance/*-indexsize_nt*/) + INTRON_PENALTY_INCONSISTENT;
 #endif
 #ifndef PMAP
-	  } else if (canonicalsgn == -1) {
-	    fwd_gendistance_penalty = gendist_penalty(diffdistance,querydistance) + INTRON_PENALTY_INCONSISTENT;
-	    rev_gendistance_penalty = gendist_penalty(diffdistance,querydistance) /*- INTRON_REWARD_CONSISTENT*/;
+	    } else if (canonicalsgn == -1) {
+	      fwd_gendistance_penalty = gendist_penalty(diffdistance,querydistance) + INTRON_PENALTY_INCONSISTENT;
+	      /* Don't penalize for intron */
+	      rev_gendistance_penalty = gendist_penalty(diffdistance,querydistance) /* - INTRON_REWARD_CONSISTENT*/;
 #endif
+	    }
 	  }
-	}
-	fwd_score -= fwd_gendistance_penalty;
+	  fwd_score -= fwd_gendistance_penalty;
 #ifndef PMAP
-	rev_score -= rev_gendistance_penalty;
+	  rev_score -= rev_gendistance_penalty;
+#endif
+
+	  if (fwd_score > best_fwd_score) {
+	    best_fwd_consecutive = indexsize_nt;
+	    /* best_fwd_score = fwd_score; -- Put below so debug9 works */
+	    best_fwd_prevpos = prev_querypos;
+	    best_fwd_prevhit = prevhit;
+	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	    switch (canonicalsgn) {
+	    case 1: best_fwd_intronnfwd++; break;
+	    case -1: best_fwd_intronnrev++; break;
+	    case 0: best_fwd_intronnunk++; break;
+	    }
+	  }
+
+#ifndef PMAP
+	  if (rev_score > best_rev_score) {
+	    best_rev_consecutive = indexsize_nt;
+	    /* best_rev_score = rev_score; -- Put below so debug9 works */
+	    best_rev_prevpos = prev_querypos;
+	    best_rev_prevhit = prevhit;
+	    best_rev_intronnfwd = prevlink->rev_intronnfwd;
+	    best_rev_intronnrev = prevlink->rev_intronnrev;
+	    best_rev_intronnunk = prevlink->rev_intronnunk;
+	    switch (canonicalsgn) {
+	    case 1: best_rev_intronnfwd++; break;
+	    case -1: best_rev_intronnrev++; break;
+	    case 0: best_rev_intronnunk++; break;
+	    }
+	  }
 #endif
 
 #ifdef PMAP
-	debug(printf("\tB. Intron qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, pen %d)",
-		     prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-		     prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,
-		     best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-		     gendistance,fwd_gendistance_penalty));
+	  debug9(printf("\tB. Intron qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, pen %d)",
+			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,
+			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			gendistance,fwd_gendistance_penalty));
 #else
-	debug(printf("\tB. Intron qpos %d,%d at %ux%d (scores = %d/%d -> %d/%d, consec = %d/%d, intr = %d-%d-%d/%d-%d-%d, gendist %u, pen %d/%d)",
-		     prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-		     prevlink->fwd_score,prevlink->rev_score,fwd_score,rev_score,
-		     prevlink->fwd_consecutive,prevlink->rev_consecutive,
-		     best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-		     best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk,
-		     gendistance,fwd_gendistance_penalty,rev_gendistance_penalty));
+	  debug9(printf("\tB. Intron qpos %d,%d at %ux%d (scores = %d/%d -> %d/%d, consec = %d/%d, intr = %d-%d-%d/%d-%d-%d, gendist %u, pen %d/%d)",
+			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			prevlink->fwd_score,prevlink->rev_score,fwd_score,rev_score,
+			prevlink->fwd_consecutive,prevlink->rev_consecutive,
+			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk,
+			gendistance,fwd_gendistance_penalty,rev_gendistance_penalty));
 #endif
-	
-	debug(printf(" =>"));
+	  debug9({
+	    printf(" =>");
+	    if (fwd_score > best_fwd_score) {
+	      printf(" Best fwd at %d",fwd_score);
+	    } else {
+	      printf(" Fwd loses to %d",best_fwd_score);
+	    }
+#ifndef PMAP
+	    if (rev_score > best_rev_score) {
+	      printf(" Best rev at %d",rev_score);
+	    } else {
+	      printf(" Rev loses to %d\n",best_rev_score);
+	    }
+#endif
+	    printf("\n");
+	  });
+	}
+
+	/* Put these down here so debug9 works */
 	if (fwd_score > best_fwd_score) {
-#ifdef PMAP
-	  best_fwd_consecutive = indexsize*3;
-#else
-	  best_fwd_consecutive = indexsize;
-#endif
 	  best_fwd_score = fwd_score;
-	  best_fwd_prevpos = prev_querypos;
-	  best_fwd_prevhit = prevhit;
-	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	  switch (canonicalsgn) {
-	  case 1: best_fwd_intronnfwd++; break;
-	  case -1: best_fwd_intronnrev++; break;
-	  case 0: best_fwd_intronnunk++; break;
-	  }
-	  debug(printf(" Best fwd at %d",fwd_score));
 	}
-
 #ifndef PMAP
 	if (rev_score > best_rev_score) {
-	  best_rev_consecutive = indexsize;
 	  best_rev_score = rev_score;
-	  best_rev_prevpos = prev_querypos;
-	  best_rev_prevhit = prevhit;
-	  best_rev_intronnfwd = prevlink->rev_intronnfwd;
-	  best_rev_intronnrev = prevlink->rev_intronnrev;
-	  best_rev_intronnunk = prevlink->rev_intronnunk;
-	  switch (canonicalsgn) {
-	  case 1: best_rev_intronnfwd++; break;
-	  case -1: best_rev_intronnrev++; break;
-	  case 0: best_rev_intronnunk++; break;
-	  }
-	  debug(printf(" Best rev at %d",rev_score));
 	}
 #endif
-	debug(printf("\n"));
 	prevhit = active[prev_querypos][prevhit];
       }
     }
-    debug(printf("\n"));
+
+#endif /* bluetarp */
+
+
+#ifdef BLUETARP
+    /* It looks like case D can cover cases B and C */
 
     /* C (fwd). Look back at grand querypos and hit */
+    debug9(printf("\tGrand fwd querypos is %d,%d at position %u\n",
+		  grand_fwd_querypos,grand_fwd_hit,grand_fwd_hit >= 0 ? mappings[grand_fwd_querypos][grand_fwd_hit] : 0));
     if (grand_fwd_querypos > 0 && grand_fwd_querypos + indexsize_nt <= querypos &&
 	(prevposition = mappings[grand_fwd_querypos][grand_fwd_hit]) + indexsize_nt <= position) {
       prev_querypos = grand_fwd_querypos;
       prevhit = grand_fwd_hit;
 #ifdef PMAP
-      querydistance = (querypos - prev_querypos)*3;
+      querydistance = (querypos - prev_querypos) - indexsize_nt;
 #else
-      querydistance = querypos - prev_querypos;
+      querydistance = querypos - prev_querypos - indexsize_nt;
 #endif
       if (querydistance < MAX_GRAND_LOOKBACK) {
 	prevlink = &(links[prev_querypos][prevhit]);
-	
-	gendistance = position - prevposition;
-	diffdistance = abs(gendistance - querydistance);
+	if (1 || prevlink->fwd_consecutive > EXON_DEFN) {
+	  gendistance = position - prevposition - indexsize_nt;
+	  diffdistance = abs(gendistance - querydistance);
 
-	if (diffdistance > maxintronlen) {
-	  canonicalsgn = 0;
-	} else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,indexsize_nt,
-					  lastGT,lastAG) == true) {
-	  canonicalsgn = +1;
-	} else {
-	  canonicalsgn = 0;
-	}
-
-	fwd_score = prevlink->fwd_score;
-	if (diffdistance > maxintronlen) {
-	  fwd_score -= INFINITE;
-	} else if (diffdistance <= EQUAL_DISTANCE) {
-	  fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
-	} else if (diffdistance < INTRON_DEFN) {
-	  /* fwd_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-#ifdef PMAP
-	  if (diffdistance % 3 != 0) {
-	    fwd_score -= NONCODON_INDEL_PENALTY;
-	  }
-#endif
-	} else {
-	  /* fwd_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-	  fwd_gendistance_penalty = gendist_penalty(diffdistance,querydistance);
-	  fwd_score -= fwd_gendistance_penalty;
-	  if (0 && canonicalsgn == +1) {
-	    fwd_score += querydistance;
+	  if (diffdistance <= EQUAL_DISTANCE) {
+	    canonicalsgn = 9;
+	  } else if (diffdistance > maxintronlen) {
+	    canonicalsgn = 0;
+	  } else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,genomiclength,indexsize_nt,
+					    lastGT,lastAG,skip_repetitive_p) == true) {
+	    canonicalsgn = +1;
 	  } else {
+	    canonicalsgn = 0;
+	  }
+
+	  fwd_score = prevlink->fwd_score;
+	  if (diffdistance > maxintronlen) {
+	    fwd_score -= INFINITE;
+	  } else if (diffdistance <= EQUAL_DISTANCE) {
+	    fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
+	  } else if (diffdistance < INTRON_DEFN) {
+	    /* fwd_score -= querydist_mismatch_penalty(querydistance); */
+#ifdef PMAP
+	    if (diffdistance % 3 != 0) {
+	      fwd_score -= NONCODON_INDEL_PENALTY;
+	    }
+#endif
+	  } else if (canonicalsgn == +1) {
+	    /* Don't penalize for intron.  Don't penalize for querydistance to grand querypos. */
+	    /* fwd_score -= gendist_penalty(diffdistance,querydistance); */
+	    fwd_score -= diffdist_penalty(diffdistance);
+
+	  } else {
+	    /* fwd_score -= querydist_mismatch_penalty(querydistance); */
+	    /* fwd_gendistance_penalty = gendist_penalty(diffdistance,querydistance); */
+	    fwd_gendistance_penalty = diffdist_penalty(diffdistance);
+	    fwd_score -= fwd_gendistance_penalty;
 	    fwd_score -= NINTRON_PENALTY_MISMATCH;
 	  }
-	}
 
-	debug(printf("\tC+. Fwd grand qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-		     prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-		     prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,
-		     best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-		     gendistance,querydistance,canonicalsgn));
+	  debug9(printf("\tC+. Fwd grand qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,
+			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			gendistance,querydistance,canonicalsgn));
 	    
-	if (fwd_score > best_fwd_score) {
-	  if (diffdistance <= EQUAL_DISTANCE) {
-	    best_fwd_consecutive = prevlink->fwd_consecutive + NT_PER_MATCH;
+	  if (fwd_score > best_fwd_score) {
+	    if (diffdistance <= EQUAL_DISTANCE) {
+	      best_fwd_consecutive = prevlink->fwd_consecutive + NT_PER_MATCH;
+	    } else {
+	      best_fwd_consecutive = indexsize_nt;
+	    }
+	    best_fwd_score = fwd_score;
+	    best_fwd_prevpos = prev_querypos;
+	    best_fwd_prevhit = prevhit;
+	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	    switch (canonicalsgn) {
+	    case 1: best_fwd_intronnfwd++; break;
+	    case -1: best_fwd_intronnrev++; break;
+	    case 0: best_fwd_intronnunk++; break;
+	    }
+	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
 	  } else {
-#ifdef PMAP
-	    best_fwd_consecutive = indexsize*3;
-#else
-	    best_fwd_consecutive = indexsize;
-#endif
+	    debug9(printf(" => Loses to %d\n",best_fwd_score));
 	  }
-	  best_fwd_score = fwd_score;
-	  best_fwd_prevpos = prev_querypos;
-	  best_fwd_prevhit = prevhit;
-	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	  if (diffdistance > INTRON_DEFN) {
-	    best_fwd_intronnunk++;
-	  }
-	  debug(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	} else {
-	  debug(printf(" => Loses to %d\n",best_fwd_score));
 	}
       }
     }
 
 #ifndef PMAP
     /* C (rev). Look back at grand querypos and hit */
+    debug9(printf("\tGrand rev querypos is %d,%d at position %u\n",
+		  grand_rev_querypos,grand_rev_hit,grand_rev_hit >= 0 ? mappings[grand_rev_querypos][grand_rev_hit] : 0));
     if (grand_rev_querypos > 0 && grand_rev_querypos + indexsize_nt <= querypos &&
 	(prevposition = mappings[grand_rev_querypos][grand_rev_hit]) + indexsize_nt <= position) {
       prev_querypos = grand_rev_querypos;
       prevhit = grand_rev_hit;
-      querydistance = querypos - prev_querypos;
+#ifdef PMAP
+      querydistance = (querypos - prev_querypos)*3 - indexsize_nt;
+#else
+      querydistance = querypos - prev_querypos - indexsize_nt;
+#endif
       if (querydistance < MAX_GRAND_LOOKBACK) {
 	prevlink = &(links[prev_querypos][prevhit]);
+	if (1 || prevlink->rev_consecutive > EXON_DEFN) {
+	  gendistance = position - prevposition - indexsize_nt;
+	  diffdistance = abs(gendistance - querydistance);
 
-	gendistance = position - prevposition;
-	diffdistance = abs(gendistance - querydistance);
-
-	if (diffdistance > maxintronlen) {
-	  canonicalsgn = 0;
-	} else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,indexsize_nt,
-					  lastGT,lastAG) == true) {
-	  canonicalsgn = +1;
-	} else {
-	  canonicalsgn = 0;
-	}
-
-	rev_score = prevlink->rev_score;
-	if (diffdistance > maxintronlen) {
-	  rev_score -= INFINITE;
-	} else if (diffdistance <= EQUAL_DISTANCE) {
-	  rev_score = prevlink->rev_score + CONSEC_POINTS_PER_MATCH;
-	} else if (diffdistance < INTRON_DEFN) {
-	  /* rev_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-	} else {
-	  /* rev_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-	  rev_gendistance_penalty = gendist_penalty(diffdistance,querydistance);
-	  rev_score -= rev_gendistance_penalty;
-	  if (0 && canonicalsgn == +1) {
-	    rev_score += querydistance;
+	  if (diffdistance <= EQUAL_DISTANCE) {
+	    canonicalsgn = 9;
+	  } else if (diffdistance > maxintronlen) {
+	    canonicalsgn = 0;
+	  } else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,genomiclength,indexsize_nt,
+					    lastCT,lastAC,skip_repetitive_p) == true) {
+	    canonicalsgn = -1;
 	  } else {
+	    canonicalsgn = 0;
+	  }
+
+	  rev_score = prevlink->rev_score;
+	  if (diffdistance > maxintronlen) {
+	    rev_score -= INFINITE;
+	  } else if (diffdistance <= EQUAL_DISTANCE) {
+	    rev_score = prevlink->rev_score + CONSEC_POINTS_PER_MATCH;
+	  } else if (diffdistance < INTRON_DEFN) {
+	    /* rev_score -= querydist_mismatch_penalty(querydistance); */
+	  } else if (canonicalsgn == -1) {
+	    /* Don't penalize for intron.  Don't penalize for querydistance back to grand querypos. */
+	    /* rev_score -= gendist_penalty(diffdistance,querydistance); */
+	    rev_score -= diffdist_penalty(diffdistance);
+
+	  } else {
+	    /* rev_score -= querydist_mismatch_penalty(querydistance); */
+	    /* rev_gendistance_penalty = gendist_penalty(diffdistance,querydistance); */
+	    rev_gendistance_penalty = diffdist_penalty(diffdistance);
+	    rev_score -= rev_gendistance_penalty;
 	    rev_score -= NINTRON_PENALTY_MISMATCH;
 	  }
-	}
 
-	debug(printf("\tC-. Rev grand qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-		     prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-		     prevlink->rev_score,rev_score,prevlink->rev_consecutive,
-		     best_rev_intronnrev,best_rev_intronnrev,best_rev_intronnunk,
-		     gendistance,querydistance,canonicalsgn));
+	  debug9(printf("\tC-. Rev grand qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			prevlink->rev_score,rev_score,prevlink->rev_consecutive,
+			best_rev_intronnrev,best_rev_intronnrev,best_rev_intronnunk,
+			gendistance,querydistance,canonicalsgn));
 	    
-	if (rev_score > best_rev_score) {
-	  if (diffdistance <= EQUAL_DISTANCE) {
-	    best_rev_consecutive = prevlink->rev_consecutive + NT_PER_MATCH;
+	  if (rev_score > best_rev_score) {
+	    if (diffdistance <= EQUAL_DISTANCE) {
+	      best_rev_consecutive = prevlink->rev_consecutive + NT_PER_MATCH;
+	    } else {
+	      best_rev_consecutive = indexsize_nt;
+	    }
+	    best_rev_score = rev_score;
+	    best_rev_prevpos = prev_querypos;
+	    best_rev_prevhit = prevhit;
+	    best_rev_intronnfwd = prevlink->rev_intronnfwd;
+	    best_rev_intronnrev = prevlink->rev_intronnrev;
+	    best_rev_intronnunk = prevlink->rev_intronnunk;
+	    switch (canonicalsgn) {
+	    case 1: best_rev_intronnfwd++; break;
+	    case -1: best_rev_intronnrev++; break;
+	    case 0: best_rev_intronnunk++; break;
+	    }
+	    debug9(printf(" => Best rev at %d (consec = %d)\n",rev_score,best_rev_consecutive));
 	  } else {
-	    best_rev_consecutive = indexsize;
+	    debug9(printf(" => Loses to %d\n",best_rev_score));
 	  }
-	  best_rev_score = rev_score;
-	  best_rev_prevpos = prev_querypos;
-	  best_rev_prevhit = prevhit;
-	  best_rev_intronnfwd = prevlink->rev_intronnfwd;
-	  best_rev_intronnrev = prevlink->rev_intronnrev;
-	  best_rev_intronnunk = prevlink->rev_intronnunk;
-	  if (diffdistance > INTRON_DEFN) {
-	    best_rev_intronnunk++;
-	  }
-	  debug(printf(" => Best rev at %d (consec = %d)\n",rev_score,best_rev_consecutive));
-	} else {
-	  debug(printf(" => Loses to %d\n",best_rev_score));
 	}
       }
     }
 #endif
 
-    /* Use intronpos_upper instead of intronpos_lower because correct position is uncertain in PMAP */
-    mismatch_start = intronpos_upper - 1;
+#endif /* bluetarp */
+
 
     /* D (fwd). Evaluate for mismatches (all other previous querypos) */
     /* Set parameters */
     if (adjacentp == true) {
-      /* Sample at larger interval and not so far back */
+      /* Look not so far back */
       nlookback = 1;
       lookback = sufflookback/2;
-      sample_interval = indexsize;
     } else {
-      /* Sample at smaller interval and farther back */
+      /* Look farther back */
       nlookback = nsufflookback;
       lookback = sufflookback;
-      sample_interval = SAMPLE_INTERVAL;
     }
 
-    /*printf("        mismatch_start = %d, nlookback = %d, lookback = %d, sample_interval = %d\n",
-      mismatch_start,nlookback,lookback,sample_interval); */
-
-    /* The nseen check protects against occurrences of N's in
-       the sequences, by making sure we see at least some hits */
-    nseen = 0;
-    for (prev_querypos = mismatch_start;
-	 prev_querypos >= 0 && best_fwd_consecutive < enough_consecutive && 
-	   (nseen < nlookback || (querypos - prev_querypos) < lookback);
-	 prev_querypos -= sample_interval) {
-      if (0 && nactive[prev_querypos] > MAX_NACTIVE) {
-	prevhit = -1;
-      } else if ((prevhit = firstactive[prev_querypos]) != -1) {
-	nseen++;
+    donep = false;
+    for (p = processed, nseen = 0;
+	 p != NULL && best_fwd_consecutive < enough_consecutive && donep == false;
+	 p = Intlist_next(p), nseen++) {
+				  
+      prev_querypos = Intlist_head(p);
 #ifdef PMAP
-	querydistance = (querypos - prev_querypos)*3;
+      querydistance = (querypos - prev_querypos)*3 - indexsize_nt;
 #else
-	querydistance = querypos - prev_querypos;
+      querydistance = querypos - prev_querypos - indexsize_nt;
 #endif
+
+      if (nseen > nlookback && querydistance > lookback) {
+	donep = true;
       }
+
+      prevhit = firstactive[prev_querypos];
       while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + indexsize_nt <= position) {
 	prevlink = &(links[prev_querypos][prevhit]);
-	
-	gendistance = position - prevposition;
+
+	gendistance = position - prevposition - indexsize_nt;
 	diffdistance = abs(gendistance - querydistance);
 
-	if (diffdistance > maxintronlen) {
-	  canonicalsgn = 0;
-	} else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,indexsize_nt,
-					  lastGT,lastAG) == true) {
-	  canonicalsgn = +1;
-	} else {
-	  canonicalsgn = 0;
-	}
-
-	fwd_score = prevlink->fwd_score;
-	if (diffdistance > maxintronlen) {
-	  fwd_score -= INFINITE;
-	} else if (diffdistance <= EQUAL_DISTANCE) {
-	  fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
-	} else if (diffdistance < INTRON_DEFN) {
-	  /* fwd_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-#ifdef PMAP
-	  if (diffdistance % 3 != 0) {
-	    fwd_score -= NONCODON_INDEL_PENALTY;
-	  }
-#endif
-	} else {
-	  /* fwd_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-	  fwd_score -= gendist_penalty(diffdistance,querydistance);
-	  if (0 && canonicalsgn == +1) {
-	    fwd_score += querydistance;
-	  } else {
-	    fwd_score -= NINTRON_PENALTY_MISMATCH;
-	  }
-	}
-
-	debug(printf("\tD+. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-		     prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-		     prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,
-		     best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-		     gendistance,querydistance,canonicalsgn));
-	    
-	if (fwd_score > best_fwd_score) {
+	if (diffdistance < maxintronlen) {
 	  if (diffdistance <= EQUAL_DISTANCE) {
-	    best_fwd_consecutive = prevlink->fwd_consecutive + NT_PER_MATCH;
+	    canonicalsgn = 9;
+	    fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
+#ifdef PMAP
+	    if (diffdistance % 3 != 0) {
+	      fwd_score -= NONCODON_INDEL_PENALTY;
+	    }
+#endif
+	  } else if (prevlink->fwd_consecutive < EXON_DEFN) {
+	    canonicalsgn = 0;
+	    fwd_score = prevlink->fwd_score - diffdist_penalty(diffdistance) - querydist_penalty(querydistance) - NINTRON_PENALTY_MISMATCH;
+
+	  } else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,genomiclength,indexsize_nt,
+					    lastGT,lastAG,skip_repetitive_p) == true) {
+	    canonicalsgn = +1;
+	    fwd_score = prevlink->fwd_score - diffdist_penalty(diffdistance) - querydist_penalty(querydistance);
 	  } else {
-#ifdef PMAP
-	    best_fwd_consecutive = indexsize*3;
-#else
-	    best_fwd_consecutive = indexsize;
-#endif
+	    canonicalsgn = 0;
+	    fwd_score = prevlink->fwd_score - diffdist_penalty(diffdistance) - querydist_penalty(querydistance) - NINTRON_PENALTY_MISMATCH;
 	  }
-	  best_fwd_score = fwd_score;
-	  best_fwd_prevpos = prev_querypos;
-	  best_fwd_prevhit = prevhit;
-	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	  if (diffdistance > INTRON_DEFN) {
-	    best_fwd_intronnunk++;
+
+	  debug9(printf("\tD+. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,
+			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			gendistance,querydistance,canonicalsgn));
+	    
+	  if (fwd_score > best_fwd_score) {
+	    if (diffdistance <= EQUAL_DISTANCE) {
+	      best_fwd_consecutive = prevlink->fwd_consecutive + (querydistance + indexsize_nt);
+	    } else {
+	      best_fwd_consecutive = 0;
+	    }
+	    best_fwd_score = fwd_score;
+	    best_fwd_prevpos = prev_querypos;
+	    best_fwd_prevhit = prevhit;
+	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	    switch (canonicalsgn) {
+	    case 1: best_fwd_intronnfwd++; break;
+	    case -1: best_fwd_intronnrev++; break;
+	    case 0: best_fwd_intronnunk++; break;
+	    }
+	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	  } else {
+	    debug9(printf(" => Loses to %d\n",best_fwd_score));
 	  }
-#ifdef PMAP
-	  /* sample_interval = indexsize; */
-#else
-	  if (crossspeciesp == false) {
-	    sample_interval = indexsize;
-	  }
-#endif
-	  debug(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	} else {
-	  debug(printf(" => Loses to %d\n",best_fwd_score));
 	}
+
 	prevhit = active[prev_querypos][prevhit];
       }
     }
 
 #ifndef PMAP
     /* D (rev). Evaluate for mismatches (all other previous querypos) */
-    /* Set parameters */
-    if (adjacentp == true) {
-      /* Sample at larger interval and not so far back */
-      nlookback = 1;
-      lookback = sufflookback/2;
-      sample_interval = indexsize;
-    } else {
-      /* Sample at smaller interval and farther back */
-      nlookback = nsufflookback;
-      lookback = sufflookback;
-      sample_interval = SAMPLE_INTERVAL;
-    }
+    /* Parameters already set in D (fwd). */
 
-    /* The nseen check protects against occurrences of N's in
-       the sequences, by making sure we see at least some hits */
-    nseen = 0;
-    for (prev_querypos = mismatch_start;
-	 prev_querypos >= 0 && best_rev_consecutive < enough_consecutive && 
-	   (nseen < nlookback || (querypos - prev_querypos) < lookback);
-	 prev_querypos -= sample_interval) {
-      if (0 && nactive[prev_querypos] > MAX_NACTIVE) {
-	prevhit = -1;
-      } else if ((prevhit = firstactive[prev_querypos]) != -1) {
-	nseen++;
-	querydistance = querypos - prev_querypos;
+    donep = false;
+    for (p = processed, nseen = 0;
+	 p != NULL && best_rev_consecutive < enough_consecutive && donep == false;
+	 p = Intlist_next(p), nseen++) {
+
+      prev_querypos = Intlist_head(p);
+#ifdef PMAP
+      querydistance = (querypos - prev_querypos)*3 - indexsize_nt;
+#else
+      querydistance = querypos - prev_querypos - indexsize_nt;
+#endif
+
+      if (nseen > nlookback && querydistance > lookback) {
+	donep = true;
       }
+
+      prevhit = firstactive[prev_querypos];
       while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + indexsize_nt <= position) {
 	prevlink = &(links[prev_querypos][prevhit]);
-	  
-	gendistance = position - prevposition;
+
+	gendistance = position - prevposition - indexsize_nt;
 	diffdistance = abs(gendistance - querydistance);
 
-	if (diffdistance > maxintronlen) {
-	  canonicalsgn = 0;
-	} else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,indexsize_nt,
-					  lastCT,lastAC) == true) {
-	  canonicalsgn = -1;
-	} else {
-	  canonicalsgn = 0;
-	}
-	  
-	rev_score = prevlink->rev_score;
-	if (diffdistance > maxintronlen) {
-	  rev_score -= INFINITE;
-	} else if (diffdistance <= EQUAL_DISTANCE) {
-	  rev_score = prevlink->rev_score + CONSEC_POINTS_PER_MATCH;
-	} else if (diffdistance < INTRON_DEFN) {
-	  /* rev_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-	} else {
-	  /* rev_score -= querydist_mismatch_penalty(querydistance,crossspeciesp); */
-	  rev_score -= gendist_penalty(diffdistance,querydistance);
-	  if (0 && canonicalsgn == -1) {
-	    rev_score += querydistance;
+	if (diffdistance < maxintronlen) {
+	  if (diffdistance <= EQUAL_DISTANCE) {
+	    canonicalsgn = 9;
+	    rev_score = prevlink->rev_score + CONSEC_POINTS_PER_MATCH;
+
+	  } else if (prevlink->rev_consecutive < EXON_DEFN) {
+	    canonicalsgn = 0;
+	    rev_score = prevlink->rev_score - diffdist_penalty(diffdistance) - querydist_penalty(querydistance) - NINTRON_PENALTY_MISMATCH;
+
+	  } else if (find_shifted_canonical(genomicuc_ptr,prevposition,position,querydistance,genomiclength,indexsize_nt,
+					    lastCT,lastAC,skip_repetitive_p) == true) {
+	    canonicalsgn = -1;
+	    rev_score = prevlink->rev_score - diffdist_penalty(diffdistance) - querydist_penalty(querydistance);
 	  } else {
-	    rev_score -= NINTRON_PENALTY_MISMATCH;
+	    canonicalsgn = 0;
+	    rev_score = prevlink->rev_score - diffdist_penalty(diffdistance) - querydist_penalty(querydistance) - NINTRON_PENALTY_MISMATCH;
+	  }
+	  
+	  debug9(printf("\tD-. Rev mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			prevlink->rev_score,rev_score,prevlink->rev_consecutive,
+			best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk,
+			gendistance,querydistance,canonicalsgn));
+	    
+	  if (rev_score > best_rev_score) {
+	    if (diffdistance <= EQUAL_DISTANCE) {
+	      best_rev_consecutive = prevlink->rev_consecutive + (querydistance + indexsize_nt);
+	    } else {
+	      best_rev_consecutive = 0;
+	    }
+	    best_rev_score = rev_score;
+	    best_rev_prevpos = prev_querypos;
+	    best_rev_prevhit = prevhit;
+	    best_rev_intronnfwd = prevlink->rev_intronnfwd;
+	    best_rev_intronnrev = prevlink->rev_intronnrev;
+	    best_rev_intronnunk = prevlink->rev_intronnunk;
+	    switch (canonicalsgn) {
+	    case 1: best_rev_intronnfwd++; break;
+	    case -1: best_rev_intronnrev++; break;
+	    case 0: best_rev_intronnunk++; break;
+	    }
+	    debug9(printf(" => Best rev at %d (consec = %d)\n",rev_score,best_rev_consecutive));
+	  } else {
+	    debug9(printf(" => Loses to %d\n",best_rev_score));
 	  }
 	}
 
-	debug(printf("\tD-. Rev mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d, intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-		     prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-		     prevlink->rev_score,rev_score,prevlink->rev_consecutive,
-		     best_rev_intronnfwd,best_rev_intronnrev,best_rev_intronnunk,
-		     gendistance,querydistance,canonicalsgn));
-	    
-	if (rev_score > best_rev_score) {
-	  if (diffdistance <= EQUAL_DISTANCE) {
-	    best_rev_consecutive = prevlink->rev_consecutive + NT_PER_MATCH;
-	  } else {
-	    best_rev_consecutive = indexsize;
-	  }
-	  best_rev_score = rev_score;
-	  best_rev_prevpos = prev_querypos;
-	  best_rev_prevhit = prevhit;
-	  best_rev_intronnfwd = prevlink->rev_intronnfwd;
-	  best_rev_intronnrev = prevlink->rev_intronnrev;
-	  best_rev_intronnunk = prevlink->rev_intronnunk;
-	  if (diffdistance > INTRON_DEFN) {
-	    best_rev_intronnunk++;
-	  }
-	  if (crossspeciesp == false) {
-	    sample_interval = indexsize;
-	  }
-	  debug(printf(" => Best rev at %d (consec = %d)\n",rev_score,best_rev_consecutive));
-	} else {
-	  debug(printf(" => Loses to %d\n",best_rev_score));
-	}
 	prevhit = active[prev_querypos][prevhit];
       }
     }
@@ -1299,7 +1454,11 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
   currlink->fwd_consecutive = best_fwd_consecutive;
   currlink->fwd_pos = best_fwd_prevpos;
   currlink->fwd_hit = best_fwd_prevhit;
-  currlink->fwd_score = best_fwd_score;
+  if (localp && currlink->fwd_pos < 0) {
+    currlink->fwd_score = indexsize_nt;
+  } else {
+    currlink->fwd_score = best_fwd_score;
+  }
   currlink->fwd_intronnfwd = best_fwd_intronnfwd;
   currlink->fwd_intronnrev = best_fwd_intronnrev;
   currlink->fwd_intronnunk = best_fwd_intronnunk;
@@ -1309,17 +1468,21 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
   currlink->rev_consecutive = best_rev_consecutive;
   currlink->rev_pos = best_rev_prevpos;
   currlink->rev_hit = best_rev_prevhit;
-  currlink->rev_score = best_rev_score;
+  if (localp && currlink->rev_pos < 0) {
+    currlink->rev_score = indexsize_nt;
+  } else {
+    currlink->rev_score = best_rev_score;
+  }
   currlink->rev_intronnfwd = best_rev_intronnfwd;
   currlink->rev_intronnrev = best_rev_intronnrev;
   currlink->rev_intronnunk = best_rev_intronnunk;
 #endif
 
 #ifdef PMAP
-  debug(printf("\tChose %d,%d with score %d (fwd)\n",
+  debug9(printf("\tChose %d,%d with score %d (fwd)\n",
 	       currlink->fwd_pos,currlink->fwd_hit,currlink->fwd_score));
 #else
-  debug(printf("\tChose %d,%d with score %d (fwd) and %d,%d with score %d (rev)\n",
+  debug9(printf("\tChose %d,%d with score %d (fwd) and %d,%d with score %d (rev)\n",
 	       currlink->fwd_pos,currlink->fwd_hit,currlink->fwd_score,currlink->rev_pos,currlink->rev_hit,currlink->rev_score));
 #endif
   debug3(printf("%d %d  %d %d  1\n",querypos,hit,best_prevpos,best_prevhit));
@@ -1330,49 +1493,49 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, struct Lin
 static void
 revise_active (int **active, int *firstactive, int *nactive, 
 	       int low_hit, int high_hit, struct Link_T **links, int querypos) {
-  int best_fwd_score, best_rev_score, fwd_threshold, rev_threshold, score;
+  int best_score, threshold, score;
   int hit, *ptr;
 
   debug6(printf("Revising querypos %d from low_hit %d to high_hit %d.  Scores:\n",querypos,low_hit,high_hit));
   if ((hit = low_hit) >= high_hit) {
     firstactive[querypos] = -1;
   } else {
-    debug6(printf("At hit %d, fwd_score is %d\n",hit,links[querypos][hit].fwd_score));
-    best_fwd_score = links[querypos][hit].fwd_score;
+    debug6(printf("At hit %d, fwd_score is %d",hit,links[querypos][hit].fwd_score));
+    best_score = links[querypos][hit].fwd_score;
 #ifndef PMAP
-    best_rev_score = links[querypos][hit].rev_score;
+    debug6(printf(" and rev_score is %d",links[querypos][hit].rev_score));
+    if ((score = links[querypos][hit].rev_score) > best_score) {
+      best_score = score;
+    }
 #endif
+    debug6(printf("\n"));
+
     for (hit++; hit < high_hit; hit++) {
-      debug6(printf("At hit %d, fwd_score is %d\n",hit,links[querypos][hit].fwd_score));
-      if ((score = links[querypos][hit].fwd_score) > best_fwd_score) {
-	best_fwd_score = score;
+      debug6(printf("At hit %d, fwd_score is %d",hit,links[querypos][hit].fwd_score));
+      if ((score = links[querypos][hit].fwd_score) > best_score) {
+	best_score = score;
       }
 #ifndef PMAP
-      if ((score = links[querypos][hit].rev_score) > best_rev_score) {
-	best_rev_score = score;
+      debug6(printf(" and rev_score is %d",links[querypos][hit].rev_score));
+      if ((score = links[querypos][hit].rev_score) > best_score) {
+	best_score = score;
       }
 #endif
+      debug6(printf("\n"));
     }
 
-    fwd_threshold = best_fwd_score - SCORE_FOR_RESTRICT;
-    if (fwd_threshold < 0) {
-      fwd_threshold = 0;
+    threshold = best_score - SCORE_FOR_RESTRICT;
+    if (threshold < 0) {
+      threshold = 0;
     }
-
-#ifndef PMAP
-    rev_threshold = best_rev_score - SCORE_FOR_RESTRICT;
-    if (rev_threshold < 0) {
-      rev_threshold = 0;
-    }
-#endif
 
     nactive[querypos] = 0;
     ptr = &(firstactive[querypos]);
     hit = low_hit;
     while (hit < high_hit) {
-      while (hit < high_hit && links[querypos][hit].fwd_score <= fwd_threshold
+      while (hit < high_hit && links[querypos][hit].fwd_score <= threshold
 #ifndef PMAP
-	     && links[querypos][hit].rev_score <= rev_threshold
+	     && links[querypos][hit].rev_score <= threshold
 #endif
 	     ) {
 	hit++;
@@ -1401,7 +1564,7 @@ revise_active (int **active, int *firstactive, int *nactive,
 }
 
 static int **
-intmatrix_new (int length1, int *lengths2, int totallength) {
+intmatrix_1d_new (int length1, int *lengths2, int totallength) {
   int **matrix;
   int i;
   
@@ -1417,31 +1580,72 @@ intmatrix_new (int length1, int *lengths2, int totallength) {
   return matrix;
 }
 
+static void
+intmatrix_1d_free (int ***matrix) {
+  FREE((*matrix)[0]);
+  FREE(*matrix);
+  return;
+}
+
+
+static int **
+intmatrix_2d_new (int length1, int *lengths2) {
+  int **matrix;
+  int i;
+  
+  matrix = (int **) CALLOC(length1,sizeof(int *));
+  for (i = 0; i < length1; i++) {
+    if (lengths2[i] <= 0) {
+      matrix[i] = (int *) NULL;
+    } else {
+      matrix[i] = (int *) CALLOC(lengths2[i],sizeof(int));
+    }
+  }
+  return matrix;
+}
+
+static void
+intmatrix_2d_free (int ***matrix, int length1) {
+  int i;
+
+  for (i = 0; i < length1; i++) {
+    if ((*matrix)[i]) {
+      FREE((*matrix)[i]);
+    }
+  }
+  FREE(*matrix);
+  return;
+}
+
 
 
 /* For PMAP, indexsize is in aa. */
-static int
+static bool
 align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 		      struct Link_T **links, unsigned int **mappings, int *npositions, int totalpositions,
-		      unsigned int *minactive, unsigned int *maxactive, int querystart, int queryend,
-		      int querylength, Sequence_T genomicuc, int indexsize,
-		      int sufflookback, int nsufflookback, int maxintronlen, bool crossspeciesp,
-		      char *queryseq_ptr, bool debug_graphic_p) {
-  int result;
-  Link_T termlink = NULL, currlink, prevlink;
-  int querypos, indexsize_nt, hit, low_hit, high_hit, score;
+		      bool oned_matrix_p, unsigned int *minactive, unsigned int *maxactive,
+		      int querystart, int queryend, int querylength,
+		      char *genomicuc_ptr, int genomiclength, int indexsize,
+		      int sufflookback, int nsufflookback, int maxintronlen,
+		      char *queryseq_ptr, bool localp, bool skip_repetitive_p, bool debug_graphic_p) {
+  bool result;
+  Link_T currlink, prevlink;
+  int querypos, indexsize_nt, hit, low_hit, high_hit;
+  int nskipped, min_hits, specific_querypos, specific_low_hit, specific_high_hit, next_querypos;
+  Intlist_T processed = NULL;
   int grand_fwd_score, grand_fwd_querypos, grand_fwd_hit, best_fwd_hit, best_fwd_score;
+  int best_score;
 #ifndef PMAP
   int grand_rev_score, grand_rev_querypos, grand_rev_hit, best_rev_hit, best_rev_score;
 #endif
-  int **active, *firstactive, *nactive, genomiclength;
+  int **active, *firstactive, *nactive;
   unsigned int position, prevposition;
-  char *genomicuc_ptr;
   int *lastGT, *lastAG;
 #ifndef PMAP
   int *lastCT, *lastAC;
 #endif
-#ifdef DEBUG
+#ifdef DEBUG9
+  Link_T termlink = NULL;
   char *oligo;
 #endif
 
@@ -1451,14 +1655,17 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
   indexsize_nt = indexsize;
 #endif
 
-#ifdef DEBUG
+#ifdef DEBUG9
   oligo = (char *) CALLOC(indexsize+1,sizeof(char));
 #endif
-  debug0(printf("Querystart = %d, queryend = %d\n",querystart,queryend));
+  debug0(printf("Querystart = %d, queryend = %d, indexsize = %d\n",querystart,queryend,indexsize));
 
-  genomicuc_ptr = Sequence_fullpointer(genomicuc);
+  if (oned_matrix_p == true) {
+    active = intmatrix_1d_new(querylength,npositions,totalpositions);
+  } else {
+    active = intmatrix_2d_new(querylength,npositions);
+  }
 
-  active = intmatrix_new(querylength,npositions,totalpositions);
   firstactive = (int *) CALLOC(querylength,sizeof(int));
   nactive = (int *) CALLOC(querylength,sizeof(int));
 
@@ -1490,7 +1697,19 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
     revise_active(active,firstactive,nactive,0,npositions[querypos],links,querypos);
   }
 
-  genomiclength = Sequence_fulllength(genomicuc);
+#ifdef SHIFT_EXTRA
+#ifdef PMAP
+  lastGT = (int *) CALLOC(genomiclength+SHIFT_EXTRA+1,sizeof(int));
+  lastAG = (int *) CALLOC(genomiclength+SHIFT_EXTRA+1,sizeof(int));
+  find_canonical_dinucleotides(lastGT,lastAG,genomicuc_ptr,genomiclength);
+#else
+  lastGT = (int *) CALLOC(genomiclength+SHIFT_EXTRA+1,sizeof(int));
+  lastAG = (int *) CALLOC(genomiclength+SHIFT_EXTRA+1,sizeof(int));
+  lastCT = (int *) CALLOC(genomiclength+SHIFT_EXTRA+1,sizeof(int));
+  lastAC = (int *) CALLOC(genomiclength+SHIFT_EXTRA+1,sizeof(int));
+  find_canonical_dinucleotides(lastGT,lastAG,lastCT,lastAC,genomicuc_ptr,genomiclength);
+#endif
+#else
 #ifdef PMAP
   lastGT = (int *) CALLOC(genomiclength+1,sizeof(int));
   lastAG = (int *) CALLOC(genomiclength+1,sizeof(int));
@@ -1502,6 +1721,7 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
   lastAC = (int *) CALLOC(genomiclength+1,sizeof(int));
   find_canonical_dinucleotides(lastGT,lastAG,lastCT,lastAC,genomicuc_ptr,genomiclength);
 #endif
+#endif
 
   grand_fwd_score = 0;
   grand_fwd_querypos = -1;
@@ -1511,7 +1731,13 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
   grand_rev_querypos = -1;
   grand_rev_hit = -1;
 #endif
-  for (querypos++; querypos <= queryend - indexsize; querypos++) {
+
+  nskipped = 0;
+  min_hits = 1000000;
+  specific_querypos = -1;
+
+  querypos += 1;
+  while (querypos <= queryend - indexsize) {
     best_fwd_score = 0;
     best_fwd_hit = -1;
 #ifndef PMAP
@@ -1528,21 +1754,43 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
       hit++;
     }
     high_hit = hit;
-    debug(printf("Querypos %d has hit %d..%d out of %d (minactive = %u, maxactive = %u)\n",
+    debug9(printf("Querypos %d has hit %d..%d out of %d (minactive = %u, maxactive = %u)\n",
 		 querypos,low_hit,high_hit-1,npositions[querypos],minactive[querypos],maxactive[querypos]));
 
     /* Can't use nactive yet, so use high_hit - low_hit */
-    if (0 && high_hit - low_hit >= MAX_NACTIVE) {
+    if (skip_repetitive_p && high_hit - low_hit >= MAX_NACTIVE && nskipped <= MAX_SKIPPED) { /* Previously turned off */
       debug6(printf("Too many active (%d - %d) at querypos %d.  Setting firstactive to be -1\n",high_hit,low_hit,querypos));
       firstactive[querypos] = -1;
+      nskipped++;
+      debug9(printf("  %d skipped because of %d hits\n",nskipped,high_hit - low_hit + 1));
+
+      /* Store most specific querypos in section of skipped */
+      if (high_hit - low_hit < min_hits) {
+	min_hits = high_hit - low_hit;
+	specific_querypos = querypos;
+	specific_low_hit = low_hit;
+	specific_high_hit = high_hit;
+      }
+      querypos++;
+
     } else {
+      if (nskipped > MAX_SKIPPED) {
+	debug9(printf("Too many skipped.  Going back to specific querypos %d\n",specific_querypos));
+	next_querypos = querypos;
+	querypos = specific_querypos;
+	low_hit = specific_low_hit;
+	high_hit = specific_high_hit;
+      } else {
+	next_querypos = querypos + 1;
+      }
+
       for (hit = low_hit; hit < high_hit; hit++) {
 	currlink = &(links[querypos][hit]);
 	position = mappings[querypos][hit];
 
-	debug(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	debug(printf("Finding link at querypos %d,%d at %ux%d (%s)\n",
-		     querypos,hit,position,active[querypos][hit],oligo));
+	debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
+	debug9(printf("Finding link at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
+		      querypos,hit,position,active[querypos][hit],oligo,processed ? Intlist_head(processed) : -1));
 
 	score_querypos(currlink,querypos,position,links,mappings,npositions,active,firstactive,nactive,
 		       grand_fwd_querypos,grand_fwd_hit,
@@ -1553,7 +1801,9 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 #ifndef PMAP
 		       lastCT,lastAC,
 #endif
-		       indexsize,sufflookback,nsufflookback,maxintronlen,crossspeciesp);
+		       indexsize,processed,sufflookback,nsufflookback,maxintronlen,genomiclength,
+		       localp,skip_repetitive_p);
+
 	if (currlink->fwd_score > best_fwd_score) {
 	  best_fwd_score = currlink->fwd_score;
 	  best_fwd_hit = hit;
@@ -1565,9 +1815,17 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 	}
 #endif
       }
+      nskipped = 0;
+      min_hits = 1000000;
+      specific_querypos = -1;
       
-      debug(printf("Overall result at querypos %d yields best_fwd_hit %d and best_rev_hit %d\n",
+#ifdef PMAP
+      debug9(printf("Overall result at querypos %d yields best_fwd_hit %d\n",
+		   querypos,best_fwd_hit));
+#else
+      debug9(printf("Overall result at querypos %d yields best_fwd_hit %d and best_rev_hit %d\n",
 		   querypos,best_fwd_hit,best_rev_hit));
+#endif
 
       if (best_fwd_hit >= 0 && links[querypos][best_fwd_hit].fwd_hit < 0 && 
 	  grand_fwd_querypos >= 0 && querypos >= grand_fwd_querypos + indexsize_nt) {
@@ -1586,18 +1844,19 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 	      currlink->fwd_intronnunk = prevlink->fwd_intronnunk + 1;
 	    }
 	  }
-	  debug(printf("At querypos %d, setting all fwd hits to point back to grand_fwd %d,%d with a score of %d\n",
+	  debug9(printf("At querypos %d, setting all fwd hits to point back to grand_fwd %d,%d with a score of %d\n",
 		       querypos,grand_fwd_querypos,grand_fwd_hit,prevlink->fwd_score));
 	}
       }
 
       /* Use >= to favor longer path in case of ties */
-      if (best_fwd_hit >= 0 && best_fwd_score >= grand_fwd_score) {
+      if (best_fwd_hit >= 0 && best_fwd_score >= grand_fwd_score && 
+	  links[querypos][best_fwd_hit].fwd_consecutive > EXON_DEFN) {
 	grand_fwd_score = best_fwd_score;
 	grand_fwd_querypos = querypos;
 	grand_fwd_hit = best_fwd_hit;
-	debug(termlink = &(links[querypos][best_fwd_hit]));
-	debug(printf("At querypos %d, revising grand fwd to be hit %d with score of %d (pointing back to %d,%d)\n",
+	debug9(termlink = &(links[querypos][best_fwd_hit]));
+	debug9(printf("At querypos %d, revising grand fwd to be hit %d with score of %d (pointing back to %d,%d)\n",
 		     querypos,best_fwd_hit,best_fwd_score,termlink->fwd_pos,termlink->fwd_hit));
       }
 
@@ -1619,13 +1878,14 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 	      currlink->rev_intronnunk = prevlink->rev_intronnunk + 1;
 	    }
 	  }
-	  debug(printf("At querypos %d, setting all rev hits to point back to grand_rev %d,%d with a score of %d\n",
+	  debug9(printf("At querypos %d, setting all rev hits to point back to grand_rev %d,%d with a score of %d\n",
 		       querypos,grand_rev_querypos,grand_rev_hit,prevlink->rev_score));
 	}
       }
 
       /* Use >= to favor longer path in case of ties */
-      if (best_rev_hit >= 0 && best_rev_score >= grand_rev_score) {
+      if (best_rev_hit >= 0 && best_rev_score >= grand_rev_score &&
+	  links[querypos][best_rev_hit].rev_consecutive > EXON_DEFN) {
 	grand_rev_score = best_rev_score;
 	grand_rev_querypos = querypos;
 	grand_rev_hit = best_rev_hit;
@@ -1633,8 +1893,12 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 #endif
 
       revise_active(active,firstactive,nactive,low_hit,high_hit,links,querypos);
+      processed = Intlist_push(processed,querypos);
+      querypos = next_querypos;
     }
   }
+
+  Intlist_free(&processed);
 
 #ifndef PMAP
   FREE(lastAC);
@@ -1650,51 +1914,90 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 
   FREE(nactive);
   FREE(firstactive);
-  FREE(active[0]);
-  FREE(active);
+
+  if (oned_matrix_p == true) {
+    intmatrix_1d_free(&active);
+  } else {
+    intmatrix_2d_free(&active,querylength);
+  }
 
 
   /* Grand winner */
+  if (localp == false) {
+    /* Global */
+    querypos = queryend - indexsize;
+    while (querypos >= 0 && npositions[querypos] <= 0) {
+      querypos--;
+    }
+
+    if (querypos < 0) {
+      result = false;
+    } else {
+      result = true;
+      best_score = -1000000;
+      for (hit = 0; hit < npositions[querypos]; hit++) {
+	currlink = &(links[querypos][hit]);
+	if (currlink->fwd_score > best_score) {
+	  *fwdp = true;
+	  best_score = currlink->fwd_score;
+	  *grand_hit = hit;
+	}
+#ifndef PMAP
+	if (currlink->rev_score > best_score) {
+	  *fwdp = false;
+	  best_score = currlink->rev_score;
+	  *grand_hit = hit;
+	}
+#endif
+      }
+      *grand_querypos = querypos;
+    }
+
+  } else {
+    /* Local */
 #ifdef PMAP
-  if (grand_fwd_querypos < 0) {
-    result = 0;
-  } else {
-    result = 1;
-    *fwdp = true;
-    *grand_querypos = grand_fwd_querypos;
-    *grand_hit = grand_fwd_hit;
-    debug(printf("==> Found best score %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
-  }
-#else
-  if (grand_fwd_querypos < 0 && grand_rev_querypos < 0) {
-    result = 0;
-  } else {
-    result = 1;
-    if (best_fwd_score >= best_rev_score) {
+    if (grand_fwd_querypos < 0) {
+      result = false;
+    } else {
+      result = true;
       *fwdp = true;
       *grand_querypos = grand_fwd_querypos;
       *grand_hit = grand_fwd_hit;
-      debug(printf("==> Found best score (fwd) %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
-    } else {
-      *fwdp = false;
-      *grand_querypos = grand_rev_querypos;
-      *grand_hit = grand_rev_hit;
-      debug(printf("==> Found best score (rev) %d at %d,%d\n",grand_rev_score,grand_rev_querypos,grand_rev_hit));
+      debug9(printf("==> Found best score %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
     }
-  }
+#else
+    if (grand_fwd_querypos < 0 && grand_rev_querypos < 0) {
+      result = false;
+    } else {
+      result = true;
+      debug9(printf("==> Found best score (fwd) %d at %d,%d\n",grand_fwd_score,grand_fwd_querypos,grand_fwd_hit));
+      debug9(printf("==> Found best score (rev) %d at %d,%d\n",grand_rev_score,grand_rev_querypos,grand_rev_hit));
+      if (grand_fwd_score >= grand_rev_score) {
+	debug9(printf("Fwd wins\n"));
+	*fwdp = true;
+	*grand_querypos = grand_fwd_querypos;
+	*grand_hit = grand_fwd_hit;
+      } else {
+	debug9(printf("Rev wins\n"));
+	*fwdp = false;
+	*grand_querypos = grand_rev_querypos;
+	*grand_hit = grand_rev_hit;
+      }
+    }
 #endif
 
 #ifdef PMAP
-  if (grand_fwd_score > 3*querylength) {
-    abort();
-  }
+    if (grand_fwd_score > 3*querylength) {
+      abort();
+    }
 #else
-  if (grand_fwd_score > querylength) {
-    abort();
-  }
+    if (grand_fwd_score > querylength) {
+      abort();
+    }
 #endif
+  }
 
-  debug(FREE(oligo));
+  debug9(FREE(oligo));
 
   return result;
 }
@@ -1705,46 +2008,41 @@ align_compute_scores (bool *fwdp, int *grand_querypos, int *grand_hit,
 static List_T
 align_compute (int *start_querypos, int *end_querypos,
 	       int *nfwdintrons, int *nrevintrons, int *nunkintrons, int *cdna_direction,
-	       unsigned int **mappings, int *npositions, int totalpositions, unsigned int *minactive, unsigned int *maxactive,
-	       Sequence_T queryseq, Sequence_T genomicseg, Sequence_T genomicuc, int indexsize,
-	       int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool, bool crossspeciesp,
-	       bool debug_graphic_p) {
+	       unsigned int **mappings, int *npositions, int totalpositions, bool oned_matrix_p,
+	       unsigned int *minactive, unsigned int *maxactive,
+	       char *queryseq_ptr, int querylength, int queryseq_trim_start, int queryseq_trim_end,
+	       char *genomicseg_ptr, char *genomicuc_ptr, int genomiclength, int indexsize,
+	       int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool,
+	       bool localp, bool skip_repetitive_p, bool debug_graphic_p) {
   List_T path = NULL;
   struct Link_T **links;
   Link_T termlink;
   bool fwdp;
   int querypos, prev_querypos, hit, prevhit;
-  unsigned int position, prevposition;
-  int querystart, queryend, querylength;
-  char *queryseq_ptr, *genomicseg_ptr;
-#ifdef PMAP
-  char *genomicuc_ptr;
-#endif
+  unsigned int position;
+  int querystart, queryend;
   debug0(char *oligo);
 
   debug0(oligo = (char *) CALLOC(indexsize+1,sizeof(char)));
 
-  queryseq_ptr = Sequence_fullpointer(queryseq);
-  genomicseg_ptr = Sequence_fullpointer(genomicseg);
-#ifdef PMAP
-  genomicuc_ptr = Sequence_fullpointer(genomicuc);
-#endif
+  querystart = queryseq_trim_start;
+  queryend = queryseq_trim_end;
 
-  querystart = Sequence_trim_start(queryseq);
-  queryend = Sequence_trim_end(queryseq);
-  querylength = Sequence_fulllength(queryseq);
-
-  links = Linkmatrix_new(querylength,npositions,totalpositions);
+  if (oned_matrix_p == true) {
+    links = Linkmatrix_1d_new(querylength,npositions,totalpositions);
+  } else {
+    links = Linkmatrix_2d_new(querylength,npositions);
+  }
 
   /* These are all oligomers */
   if (debug_graphic_p == true) {
     mappings_dump_R(mappings,npositions,querylength,/*active*/NULL,/*firstactive*/NULL,indexsize,"all.mers");
   }
   
-  if (align_compute_scores(&fwdp,&querypos,&hit,links,mappings,npositions,totalpositions,
-			   minactive,maxactive,querystart,queryend,querylength,genomicuc,indexsize,
-			   sufflookback,nsufflookback,maxintronlen,crossspeciesp,queryseq_ptr,
-			   debug_graphic_p) == 0) {
+  if (align_compute_scores(&fwdp,&querypos,&hit,links,mappings,npositions,totalpositions,oned_matrix_p,
+			   minactive,maxactive,querystart,queryend,querylength,genomicuc_ptr,genomiclength,indexsize,
+			   sufflookback,nsufflookback,maxintronlen,queryseq_ptr,
+			   localp,skip_repetitive_p,debug_graphic_p) == false) {
     path = (List_T) NULL;
     *start_querypos = *end_querypos = 0;
 
@@ -1779,8 +2077,7 @@ align_compute (int *start_querypos, int *end_querypos,
       printf("lines(querypos,maxactive,col=\"blue\")\n");
     }
 
-    prevposition = mappings[querypos][hit]+1;
-    prev_querypos = querypos+1;
+    /* prevposition = mappings[querypos][hit]+1; */
     while (querypos >= 0) {
       position = mappings[querypos][hit];
 
@@ -1820,7 +2117,7 @@ align_compute (int *start_querypos, int *end_querypos,
       }
 #endif
 
-      prevposition = position;
+      /* prevposition = position; */
       prev_querypos = querypos;
       prevhit = hit;
       if (fwdp) {
@@ -1842,7 +2139,12 @@ align_compute (int *start_querypos, int *end_querypos,
       *cdna_direction = -1;
     }
   }
-  Linkmatrix_free(&links);
+
+  if (oned_matrix_p == true) {
+    Linkmatrix_1d_free(&links);
+  } else {
+    Linkmatrix_2d_free(&links,querylength);
+  }
 
   debug0(FREE(oligo));
 
@@ -1851,12 +2153,14 @@ align_compute (int *start_querypos, int *end_querypos,
 
 
 
+#if 0
 /* queryseq_ptr is NULL for PMAP.  querypos here is in nt. */
 static List_T
-convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
-#ifdef PMAP
-			char *genomicuc_ptr,
+convert_to_nucleotides_no_offset (List_T path,
+#ifndef PMAP
+			char *queryseq_ptr, char *queryuc_ptr,
 #endif
+			char *genomicseg_ptr, char *genomicuc_ptr, int queryoffset, int genomicoffset,
 			Pairpool_T pairpool, int indexsize_nt) {
   List_T pairs = NULL;
   Pair_T pair;
@@ -1876,17 +2180,25 @@ convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
   lastgenomepos = genomepos + default_fill;
   while (lastquerypos > querypos) {
 #ifdef PMAP
-    pairs = Pairpool_push(pairs,pairpool,lastquerypos,lastgenomepos,
+    pairs = Pairpool_push(pairs,pairpool,queryoffset+lastquerypos,genomicoffset+lastgenomepos,
 			  genomicuc_ptr[lastgenomepos],MATCH_COMP,
 			  genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
     debug5(printf("Pushing %c | %c at %d,%d\n",genomicuc_ptr[lastgenomepos],genomicseg_ptr[lastgenomepos],
 		  lastquerypos,lastgenomepos));
 #else
-    pairs = Pairpool_push(pairs,pairpool,lastquerypos,lastgenomepos,
-			  queryseq_ptr[lastquerypos],MATCH_COMP,
-			  genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
-    debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
-		  lastquerypos,lastgenomepos));
+    if (queryuc_ptr[lastquerypos] == genomicuc_ptr[lastgenomepos]) {
+      pairs = Pairpool_push(pairs,pairpool,queryoffset+lastquerypos,genomicoffset+lastgenomepos,
+			    queryseq_ptr[lastquerypos],MATCH_COMP,
+			    genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+      debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+		    lastquerypos,lastgenomepos));
+    } else {
+      pairs = Pairpool_push(pairs,pairpool,queryoffset+lastquerypos,genomicoffset+lastgenomepos,
+			    queryseq_ptr[lastquerypos],MISMATCH_COMP,
+			    genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+      debug5(printf("Pushing %c   %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+		    lastquerypos,lastgenomepos));
+    }
 #endif
     --lastquerypos;
     --lastgenomepos;
@@ -1913,14 +2225,20 @@ convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
 
       if (querypos + default_fill >= lastquerypos || genomepos + default_fill >= lastgenomepos) {
 	if (lastquerypos - querypos < lastgenomepos - genomepos) {
+#if 0
+	  /* This can occur with wobble mask */
 	  fprintf(stderr,"Partial fill from querypos %d to %d (genomepos goes from %u to %u)\n",
 		  querypos,lastquerypos,genomepos,lastgenomepos);
 	  abort();
+#endif
 	  fill = lastquerypos - querypos - 1;
 	} else {
+#if 0
+	  /* This can occur with wobble mask */
 	  fprintf(stderr,"Partial fill from genomepos %u to %u (querypos goes from %d to %d)\n",
 		  genomepos,lastgenomepos,querypos,lastquerypos);
 	  abort();
+#endif
 	  fill = lastgenomepos - genomepos - 1;
 	}
       } else {
@@ -1932,17 +2250,25 @@ convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
       debug5(printf("  Fill from querypos %d down to %d\n",lastquerypos,querypos));
       while (lastquerypos > querypos) {
 #ifdef PMAP
-	pairs = Pairpool_push(pairs,pairpool,lastquerypos,lastgenomepos,
+	pairs = Pairpool_push(pairs,pairpool,queryoffset+lastquerypos,genomicoffset+lastgenomepos,
 			      genomicuc_ptr[lastgenomepos],MATCH_COMP,
 			      genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
 	debug5(printf("Pushing %c | %c at %d,%d\n",genomicuc_ptr[lastgenomepos],genomicseg_ptr[lastgenomepos],
 		      lastquerypos,lastgenomepos));
 #else
-	pairs = Pairpool_push(pairs,pairpool,lastquerypos,lastgenomepos,
-			      queryseq_ptr[lastquerypos],MATCH_COMP,
-			      genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
-	debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
-		      lastquerypos,lastgenomepos));
+	if (queryuc_ptr[lastquerypos] == genomicuc_ptr[lastgenomepos]) {
+	  pairs = Pairpool_push(pairs,pairpool,queryoffset+lastquerypos,genomicoffset+lastgenomepos,
+				queryseq_ptr[lastquerypos],MATCH_COMP,
+				genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+	  debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+			lastquerypos,lastgenomepos));
+	} else {
+	  pairs = Pairpool_push(pairs,pairpool,queryoffset+lastquerypos,genomicoffset+lastgenomepos,
+				queryseq_ptr[lastquerypos],MISMATCH_COMP,
+				genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+	  debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+			lastquerypos,lastgenomepos));
+	}
 #endif
 	--lastquerypos;
 	--lastgenomepos;
@@ -1958,36 +2284,219 @@ convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
 
   return List_reverse(pairs);
 }
+#endif
 
 
-T
-Stage2_compute (Sequence_T queryseq, Sequence_T queryuc,
-		Sequence_T genomicseg, Sequence_T genomicuc, Oligoindex_T oligoindex,
-		int maxoligohits, int minindexsize, int maxindexsize, Pairpool_T pairpool, 
-		Intpool_T intpool, Diagpool_T diagpool, int sufflookback, int nsufflookback, int maxintronlen,
-		bool crossspeciesp, bool debug_graphic_p, Stopwatch_T stopwatch) {
-  T stage2;
+/* queryseq_ptr is NULL for PMAP.  querypos here is in nt. */
+static List_T
+convert_to_nucleotides (List_T path,
+#ifndef PMAP
+			char *queryseq_ptr, char *queryuc_ptr, 
+#endif
+			char *genomicseg_ptr, char *genomicuc_ptr,
+			int query_offset, int genomic_offset,
+			Pairpool_T pairpool, int indexsize_nt) {
+  List_T pairs = NULL;
+  Pair_T pair;
+  int querypos, genomepos, lastquerypos, lastgenomepos, queryjump, genomejump, fill, default_fill;
+
+  pair = path->first;
+  querypos = pair->querypos;
+  genomepos = pair->genomepos;
+
+#ifdef PMAP
+  default_fill = indexsize_nt - 3;
+#else
+  default_fill = indexsize_nt - 1;
+#endif
+
+  lastquerypos = querypos + default_fill;
+  lastgenomepos = genomepos + default_fill;
+  while (lastquerypos > querypos) {
+#ifdef PMAP
+    pairs = Pairpool_push(pairs,pairpool,lastquerypos+query_offset,lastgenomepos+genomic_offset,
+			  genomicuc_ptr[lastgenomepos],MATCH_COMP,
+			  genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+    debug5(printf("Pushing %c | %c at %d,%d\n",genomicuc_ptr[lastgenomepos],genomicseg_ptr[lastgenomepos],
+		  lastquerypos,lastgenomepos));
+#else
+    if (queryuc_ptr[lastquerypos] == genomicuc_ptr[lastgenomepos]) {
+      pairs = Pairpool_push(pairs,pairpool,lastquerypos+query_offset,lastgenomepos+genomic_offset,
+			    queryseq_ptr[lastquerypos],MATCH_COMP,
+			    genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+      debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+		    lastquerypos+query_offset,lastgenomepos+genomic_offset));
+    } else {
+      pairs = Pairpool_push(pairs,pairpool,lastquerypos+query_offset,lastgenomepos+genomic_offset,
+			    queryseq_ptr[lastquerypos],MISMATCH_COMP,
+			    genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+      debug5(printf("Pushing %c   %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+		    lastquerypos+query_offset,lastgenomepos+genomic_offset));
+    }
+#endif
+    --lastquerypos;
+    --lastgenomepos;
+  }
+
+  /* Take care of first pair */
+  pair->querypos += query_offset; /* Revise coordinates */
+  pair->genomepos += genomic_offset; /* Revise coordinates */
+  pairs = Pairpool_push_existing(pairs,pairpool,pair);
+  lastquerypos = querypos;
+  lastgenomepos = genomepos;
+  path = path->rest;
+
+  while (path != NULL) {
+    pair = path->first;
+    querypos = pair->querypos;
+    genomepos = pair->genomepos;
+    
+    queryjump = lastquerypos - 1 - querypos;
+    genomejump = lastgenomepos - 1 - genomepos;
+
+    if (queryjump == 0 && genomejump == 0) {
+      /* Do nothing */
+    } else {
+      debug5(printf("At querypos %d, saw queryjump of %d and genomejump of %d\n",querypos,queryjump,genomejump));
+
+      if (querypos + default_fill >= lastquerypos || genomepos + default_fill >= lastgenomepos) {
+	if (lastquerypos - querypos < lastgenomepos - genomepos) {
+#if 0
+	  /* This can occur with wobble mask */
+	  fprintf(stderr,"Partial fill from querypos %d to %d (genomepos goes from %u to %u)\n",
+		  querypos,lastquerypos,genomepos,lastgenomepos);
+	  abort();
+#endif
+	  fill = lastquerypos - querypos - 1;
+	} else {
+#if 0
+	  /* This can occur with wobble mask */
+	  fprintf(stderr,"Partial fill from genomepos %u to %u (querypos goes from %d to %d)\n",
+		  genomepos,lastgenomepos,querypos,lastquerypos);
+	  abort();
+#endif
+	  fill = lastgenomepos - genomepos - 1;
+	}
+      } else {
+	fill = default_fill;
+      }
+
+      lastquerypos = querypos + fill;
+      lastgenomepos = genomepos + fill;
+      debug5(printf("  Fill from querypos %d down to %d\n",lastquerypos,querypos));
+      while (lastquerypos > querypos) {
+#ifdef PMAP
+	pairs = Pairpool_push(pairs,pairpool,lastquerypos+query_offset,lastgenomepos+genomic_offset,
+			      genomicuc_ptr[lastgenomepos],MATCH_COMP,
+			      genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+	debug5(printf("Pushing %c | %c at %d,%d\n",genomicuc_ptr[lastgenomepos],genomicseg_ptr[lastgenomepos],
+		      lastquerypos+query_offset,lastgenomepos+genomic_offset));
+#else
+	if (queryuc_ptr[lastquerypos] == genomicuc_ptr[lastgenomepos]) {
+	  pairs = Pairpool_push(pairs,pairpool,lastquerypos+query_offset,lastgenomepos+genomic_offset,
+				queryseq_ptr[lastquerypos],MATCH_COMP,
+				genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+	  debug5(printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+			lastquerypos+query_offset,lastgenomepos+genomic_offset));
+	} else {
+	  pairs = Pairpool_push(pairs,pairpool,lastquerypos+query_offset,lastgenomepos+genomic_offset,
+				queryseq_ptr[lastquerypos],MISMATCH_COMP,
+				genomicseg_ptr[lastgenomepos],/*dynprogindex*/0);
+	  debug5(printf("Pushing %c   %c at %d,%d\n",queryseq_ptr[lastquerypos],genomicseg_ptr[lastgenomepos],
+			lastquerypos+query_offset,lastgenomepos+genomic_offset));
+	}
+#endif
+	--lastquerypos;
+	--lastgenomepos;
+      }
+    }
+
+    /* Take care of observed match */
+    pair->querypos += query_offset; /* Revise coordinates */
+    pair->genomepos += genomic_offset; /* Revise coordinates */
+    pairs = Pairpool_push_existing(pairs,pairpool,pair);
+    lastquerypos = querypos;
+    lastgenomepos = genomepos;
+    path = path->rest;
+  }
+
+  return List_reverse(pairs);
+}
+
+
+#if 0
+/* queryseq_ptr is NULL for PMAP.  querypos here is in nt. */
+static List_T
+convert_diag_to_nucleotides (List_T path,
+			     int querystart, int queryend, Genomicpos_T position,
+#ifndef PMAP
+			     char *queryseq_ptr, char *queryuc_ptr,
+#endif
+			     char *genomicseg_ptr, char *genomicuc_ptr,
+			     Pairpool_T pairpool, int indexsize_nt) {
+  int querypos, genomepos;
+
+  for (querypos = querystart, genomepos = position; 
+       querypos <= queryend; querypos++, genomepos++) {
+#ifdef PMAP
+    path = Pairpool_push(path,pairpool,querypos,genomepos,
+			 genomicuc_ptr[genomepos],MATCH_COMP,
+			 genomicseg_ptr[genomepos],/*dynprogindex*/0);
+    debug5(printf("Pushing %c | %c at %d,%d\n",
+		  genomicuc_ptr[genomepos],genomicseg_ptr[genomepos],
+		  querypos,genomepos));
+#else
+    if (queryuc_ptr[querypos] == genomicuc_ptr[genomepos]) {
+      path = Pairpool_push(path,pairpool,querypos,genomepos,
+			   queryseq_ptr[querypos],MATCH_COMP,
+			   genomicseg_ptr[genomepos],/*dynprogindex*/0);
+      debug5(printf("Pushing %c | %c at %d,%d\n",
+		    queryseq_ptr[querypos],genomicseg_ptr[genomepos],
+		    querypos,genomepos));
+    } else {
+      path = Pairpool_push(path,pairpool,querypos,genomepos,
+			   queryseq_ptr[querypos],MISMATCH_COMP,
+			   genomicseg_ptr[genomepos],/*dynprogindex*/0);
+      debug5(printf("Pushing %c   %c at %d,%d\n",
+		    queryseq_ptr[querypos],genomicseg_ptr[genomepos],
+		    querypos,genomepos));
+    }
+#endif
+  }
+
+  return path;
+}
+#endif
+
+
+
+List_T
+Stage2_compute (char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,
+		char *genomicseg_ptr, char *genomicuc_ptr, int genomiclength, int genomic_offset,
+		Oligoindex_T *oligoindices, int noligoindices, Pairpool_T pairpool,
+		Diagpool_T diagpool, int sufflookback, int nsufflookback, int maxintronlen,
+		bool localp, bool skip_repetitive_p, bool debug_graphic_p, bool diagnosticp,
+		Stopwatch_T stopwatch) {
   int indexsize, indexsize_nt;
+  Oligoindex_T oligoindex;
   List_T path = NULL, pairs;
   unsigned int **mappings;
+  bool *coveredp, oned_matrix_p;
+  int source;
   int nfwdintrons, nrevintrons, nunkintrons;
   int cdna_direction = 0;
-  int *npositions, totalpositions, pathlength, maxlength, trimlength,
-    start_querypos, end_querypos;
-  int ndiagonals;
+  int *npositions, totalpositions, start_querypos, end_querypos;
   unsigned int *minactive, *maxactive;
-  int querylength, genomiclength;
-  double pct_coverage, pct_clear_coverage;
-  int badoligos = 0, repoligos = 0, trimoligos, trim_start, trim_end;
+  int ncovered;
+  double pct_coverage;
   int maxnconsecutive;
+  /* double diag_runtime; */
+  List_T diagonals = NULL;
+#ifdef DEBUG
+  int nunique;
+#endif
 
   Stopwatch_start(stopwatch);
-
-  indexsize = minindexsize;
-  querylength = Sequence_fulllength(queryuc);
-  genomiclength = Sequence_fulllength(genomicseg);
-  trimlength = Sequence_trimlength(queryseq);
-  Oligoindex_tally(oligoindex,genomicuc,queryuc);
 
   minactive = (unsigned int *) CALLOC(querylength,sizeof(unsigned int));
   maxactive = (unsigned int *) CALLOC(querylength,sizeof(unsigned int));
@@ -1998,25 +2507,56 @@ Stage2_compute (Sequence_T queryseq, Sequence_T queryuc,
     printf("layout(matrix(c(1,2),1,2),widths=c(0.5,0.5),heights=c(1))\n");
   }
 
-  mappings = Oligoindex_get_mappings(&ndiagonals,&maxnconsecutive,&pct_coverage,&pct_clear_coverage,
-				     &npositions,&totalpositions,minactive,maxactive,
-				     oligoindex,queryuc,genomicuc,diagpool,
-				     LOCAL_LOOKBACK,debug_graphic_p);
+  coveredp = (bool *) CALLOC(querylength,sizeof(bool));
+  mappings = (unsigned int **) CALLOC(querylength,sizeof(unsigned int *));
+  npositions = (int *) CALLOC(querylength,sizeof(int));
+  totalpositions = 0;
+  maxnconsecutive = 0;
+
+  source = 0;
+  pct_coverage = 0.0;
+  while (source < noligoindices && pct_coverage < SUFF_PCTCOVERAGE_OLIGOINDEX) {
+    oligoindex = oligoindices[source];
+    indexsize = Oligoindex_indexsize(oligoindex); /* Different sources can have different indexsizes */
+    Oligoindex_tally(oligoindex,genomicuc_ptr,genomiclength,queryuc_ptr,querylength);
+    diagonals = Oligoindex_get_mappings(diagonals,coveredp,mappings,npositions,&totalpositions,
+					&oned_matrix_p,&maxnconsecutive,minactive,maxactive,
+					oligoindex,queryuc_ptr,querylength,genomiclength,diagpool);
+    pct_coverage = Diag_update_coverage(coveredp,&ncovered,diagonals,querylength);
+    if (diagnosticp) {
+      printf("source = %d, ncovered = %d, pct_coverage = %f\n",source,ncovered,pct_coverage);
+    }
+    source++;
+  }
+
+  debug(printf("Performing diag on genomiclength %u\n",genomiclength));
+  Diag_compute_bounds(minactive,maxactive,diagonals,genomiclength,querylength,
+		      indexsize,debug_graphic_p,diagnosticp,queryuc_ptr,genomicuc_ptr);
+
+  debug(
+	nunique = Diag_compute_bounds(minactive,maxactive,diagonals,genomiclength,querylength,
+				      indexsize,debug_graphic_p,diagnosticp,queryuc_ptr,genomicuc_ptr);
+	fprintf(stderr,"%d diagonals (%d not dominated), maxnconsecutive = %d\n",
+		List_length(diagonals),nunique,maxnconsecutive);
+	);
+
+  Diagpool_reset(diagpool);
+  /* No need to free diagonals */
+
+  /* diag_runtime = */ Stopwatch_stop(stopwatch);
+
+  Stopwatch_start(stopwatch);
 
   if (totalpositions == 0) {
-    debug2(fprintf(stderr,"Quitting because totalpositions is zero\n"));
+    debug(printf("Quitting because totalpositions is zero\n"));
     path = (List_T) NULL;
-  } else if (trimlength > 20000 & (maxnconsecutive < SUFFNCONSECUTIVE || pct_clear_coverage < SUFF_PCTCOVERAGE)) {
-    debug2(fprintf(stderr,"Quitting because maxnconsecutive is only %d or pct_coverage is only %f\n",
-		   maxnconsecutive,pct_clear_coverage));
-    path = (List_T) NULL;
-  } else if (trimlength > 120 && (maxnconsecutive < SUFFNCONSECUTIVE || pct_coverage < SUFF_PCTCOVERAGE)) {
-    debug2(fprintf(stderr,"Quitting because maxnconsecutive is only %d or pct_coverage is only %f\n",
-		   maxnconsecutive,pct_coverage));
+  } else if (pct_coverage < SUFF_PCTCOVERAGE_STAGE2 && ncovered < SUFF_NCOVERED) {
+    debug(printf("Quitting because pct_coverage is only %f and ncovered is only %d, maxnconsecutive = %d\n",
+		  pct_coverage,ncovered,maxnconsecutive));
     path = (List_T) NULL;
   } else {
-    debug2(fprintf(stderr,"Proceeding because maxnconsecutive is %d and pct_coverage is %f\n",
-		   maxnconsecutive,pct_coverage));
+    debug(printf("Proceeding because maxnconsecutive is %d and pct_coverage is %f, ncovered = %d\n",
+		  maxnconsecutive,pct_coverage,ncovered));
 
     if (debug_graphic_p == true) {
       active_bounds_dump_R(minactive,maxactive,querylength);
@@ -2026,17 +2566,25 @@ Stage2_compute (Sequence_T queryseq, Sequence_T queryuc,
 
     path = align_compute(&start_querypos,&end_querypos,
 			 &nfwdintrons,&nrevintrons,&nunkintrons,&cdna_direction,
-			 mappings,npositions,totalpositions,minactive,maxactive,
-			 queryseq,genomicseg,genomicuc,indexsize,sufflookback,nsufflookback,
-			 maxintronlen,pairpool,crossspeciesp,debug_graphic_p);
-    debug4(fprintf(stderr,"aligned from %d to %d\n",start_querypos,end_querypos));
+			 mappings,npositions,totalpositions,oned_matrix_p,minactive,maxactive,
+			 queryseq_ptr,querylength,/*query_trim_start*/0,/*query_trim_end*/querylength,
+			 genomicseg_ptr,genomicuc_ptr,genomiclength,
+			 indexsize,sufflookback,nsufflookback,
+			 maxintronlen,pairpool,localp,skip_repetitive_p,debug_graphic_p);
+
+    debug(printf("aligned from %d to %d\n",start_querypos,end_querypos));
   }
 
   FREE(maxactive);
   FREE(minactive);
   FREE(npositions);
+  FREE(coveredp);
   FREE(mappings);		/* Don't need to free contents of mappings */
-  Oligoindex_untally(oligoindex);
+
+  for (source = 0; source < noligoindices; source++) {
+    oligoindex = oligoindices[source];
+    Oligoindex_untally(oligoindex);
+  }
 
 #ifdef PMAP
   indexsize_nt = 3*indexsize;
@@ -2045,26 +2593,21 @@ Stage2_compute (Sequence_T queryseq, Sequence_T queryuc,
 #endif
 
   if (path == NULL) {
-    debug4(printf("Couldn't find alignment in stage 2\n"));
+    debug(printf("Couldn't find alignment in stage 2\n"));
     pairs = (List_T) NULL;
-    stage2 = NULL;
     Stopwatch_stop(stopwatch);
   } else {
-#ifdef PMAP
-    pairs = convert_to_nucleotides(List_reverse(path),(char *) NULL,
-				   Sequence_fullpointer(genomicseg),Sequence_fullpointer(genomicuc),
-				   pairpool,indexsize_nt);
-#else
-    pairs = convert_to_nucleotides(List_reverse(path),Sequence_fullpointer(queryseq),
-				   Sequence_fullpointer(genomicseg),pairpool,indexsize_nt);
+    pairs = convert_to_nucleotides(List_reverse(path),
+#ifndef PMAP
+				   queryseq_ptr,queryuc_ptr,
 #endif
-    stage2 = Stage2_new(pairs,nfwdintrons,nrevintrons,nunkintrons,cdna_direction,indexsize_nt);
-    stage2->runtime = Stopwatch_stop(stopwatch);
+				   genomicseg_ptr,genomicuc_ptr,
+				   query_offset,genomic_offset,pairpool,indexsize_nt);
   }
 
   /* Don't need to free path, because its memory belongs to pairpool */
 
-  return stage2;
+  return pairs;
 }
 
 

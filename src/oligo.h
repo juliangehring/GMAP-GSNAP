@@ -1,4 +1,4 @@
-/* $Id: oligo.h,v 1.26 2006/03/04 22:00:27 twu Exp $ */
+/* $Id: oligo.h,v 1.34 2009/05/16 14:06:40 twu Exp $ */
 #ifndef OLIGO_INCLUDED
 #define OLIGO_INCLUDED
 #include "bool.h"
@@ -12,20 +12,23 @@ extern char *
 Oligo_one_nt (Storedoligomer_T oligo, int oligosize);
 
 extern int
-Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, 
-#ifndef PMAP
-	      bool shiftp,
-#endif
-	      Storedoligomer_T storedoligo);
+Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo);
 
 extern Oligostate_T
 Oligo_next (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward, 
-	    Storedoligomer_T *revcomp, Reader_T reader, cDNAEnd_T cdnaend);
+	    Storedoligomer_T *revcomp, int oligosize, Reader_T reader, cDNAEnd_T cdnaend);
 extern Oligostate_T
 Oligo_skip (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward,
-	    Storedoligomer_T *revcomp, Reader_T reader, cDNAEnd_T cdnaend, int nskip);
+	    Storedoligomer_T *revcomp, int oligosize, Reader_T reader, cDNAEnd_T cdnaend, int nskip);
 
 extern char *
 Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize);
+
+extern bool
+Oligo_repetitive_p (Storedoligomer_T oligo);
+
+extern bool
+Oligo_mark_repetitive (bool **repetitivep, Storedoligomer_T *oligos,
+		       int first_querypos, int last_querypos);
 
 #endif

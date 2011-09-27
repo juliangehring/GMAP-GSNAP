@@ -1,4 +1,4 @@
-/* $Id: block.h,v 1.38 2007/09/20 22:32:42 twu Exp $ */
+/* $Id: block.h,v 1.47 2008/10/24 23:29:05 twu Exp $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"
@@ -9,12 +9,25 @@
 #define T Block_T
 typedef struct T *T;
 
+extern Reader_T
+Block_reader (T this);
+
 extern int
 Block_querypos (T this);
+
+#ifdef PMAP
+unsigned int
+Block_aaindex (T this);
+#else
 extern Storedoligomer_T
 Block_forward (T this);
 extern Storedoligomer_T
 Block_revcomp (T this);
+#endif
+
+extern bool
+Block_donep (T this);
+
 extern void
 Block_save (T this);
 extern void
@@ -23,13 +36,19 @@ extern void
 Block_reset_ends (T this);
 
 extern T
-Block_new (cDNAEnd_T cdnaend, Reader_T reader);
+Block_new (cDNAEnd_T cdnaend,
+#ifndef PMAP
+	   int oligosize, int leftreadshift,
+#endif
+	   Reader_T reader, int querylength);
 extern void
 Block_free (T *old);
 extern bool
 Block_next (T this);
 extern bool
 Block_skip (T this, int nskip);
+extern bool
+Block_skipto (T this, int querypos);
 
 #ifdef PMAP
 extern int

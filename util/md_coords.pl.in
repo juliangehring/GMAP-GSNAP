@@ -1,7 +1,9 @@
-#! @PERL@ -w
-# $Id: md_coords.pl.in,v 1.15 2006/11/30 17:24:01 twu Exp $
+#! @PERL@
+# $Id: md_coords.pl.in,v 1.18 2009/01/21 21:29:38 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
+
+use warnings;
 
 use IO::File;
 undef($opt_9);			# debug mode
@@ -29,7 +31,7 @@ if (defined($opt_c)) {
   ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = split ",",$opt_c;
 } else {
   ($ncols,$examples,$maxwidth) = show_lines($mdfile);
-  ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = grok_columns($ncols,$examples,$maxwidth,$mdfile);
+  ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol,$include_unmapped_p) = grok_columns($ncols,$examples,$maxwidth,$mdfile);
 }
 $flags .= " -c $contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol";
 
@@ -55,7 +57,7 @@ if ($nstrains > 1 && $altstrainp == 1) {
 
 
 $output = parse_md_file($mdfile,$contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol,
-			$altstrainp,$refstrain,$separate_chromosome,$treat_as_reference);
+			$altstrainp,$refstrain,$include_unmapped_p,$separate_chromosome,$treat_as_reference);
 if ($#{$output} < 0) {
   printf STDOUT "Error: No contigs were read in.\n";
   exit(9);
@@ -63,8 +65,10 @@ if ($#{$output} < 0) {
 
 $OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
 print $OUT "# Reference strain: $refstrain\n";
+print $OUT "# To rename a chromosome, edit each occurrence of that chromosome in the gmap_coordinates\n";
+print $OUT "# The strain column has information copied from NCBI md files, but is not otherwise used by gmap_setup\n";
 print $OUT "# To exclude a contig, place a '#' sign at the beginning of the line\n";
-print $OUT "#contig" . "\t" . "coordinates" . "\t" . "strain\n";
+print $OUT "#contig" . "\t" . "gmap_coordinates" . "\t" . "strain\n";
 foreach $string (@ {$output}) {
   print $OUT $string;
 }
@@ -125,7 +129,7 @@ sub extract_chr {
 
 sub parse_md_file {
   my ($mdfile, $contigcol, $chrcol, $chrstartcol, $chrendcol, $dircol, $straincol,
-      $altstrainp, $refstrain, $separate_chromosome, $treat_as_reference) = @_;
+      $altstrainp, $refstrain, $include_unmapped_p, $separate_chromosome, $treat_as_reference) = @_;
   my ($FP, $line, $dir, $strain);
   my @output = ();
   my %chrend = ();		# Need to reset, in case this procedure is run again
@@ -157,6 +161,7 @@ sub parse_md_file {
 
       if (defined($separate_chromosome) && defined($newchr = $ {$separate_chromosome}{$strain})) {
 	$chr = $newchr;
+	$mappedp = 1;
       } else {
 	($chr,$mappedp) = extract_chr($fields[$chrcol-1]);
       }
@@ -190,10 +195,18 @@ sub parse_md_file {
       } elsif (!defined($strain)) {
 	# Shouldn't get here
 	$string = "$contig\t$chrinfo{$contig}\t\n";
-	push @output,$string;
+	if ($mappedp == 0 && $include_unmapped_p == 0) {
+	    push @output,"#" . $string;
+	} else {
+	    push @output,$string;
+	}
       } elsif (!defined($refstrain)) {
 	$string = "$contig\t$chrinfo\t\n";
-	push @output,$string;
+	if ($mappedp == 0 && $include_unmapped_p == 0) {
+	    push @output,"#" . $string;
+	} else {
+	    push @output,$string;
+	}
       } elsif ($altstrainp == 0 && $strain ne $refstrain) {
 	if (defined($newname{$strain})) {
 	  $string = "$contig\t$chrinfo\t$newname{$strain}\n";
@@ -207,7 +220,11 @@ sub parse_md_file {
 	} else {
 	  $string = "$contig\t$chrinfo\t$strain\n";
 	}
-	push @output,$string;
+	if ($mappedp == 0 && $include_unmapped_p == 0) {
+	    push @output,"#" . $string;
+	} else {
+	    push @output,$string;
+	}
       }
     }
   }
@@ -533,6 +550,8 @@ sub guess_columns {
 sub grok_columns {
   my ($ncols, $examples, $maxwidth, $mdfile) = @_;
   my @fields;
+  my $unmapped_example;
+  my $include_unmapped_p;
 
   print STDERR "Parsing contig file $mdfile...\n";
   ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = guess_columns($mdfile,$ncols);
@@ -541,7 +560,7 @@ sub grok_columns {
 
   $donep = 0;
   while ($donep == 0) {
-    printf STDOUT "Which column has the contig name? (These must exist in header lines of the FASTA files)\n";
+    printf STDOUT "Which column has the contig name? (These must exist in header lines of the FASTA files, e.g., NT_077402)\n";
     $contigcol = input_numeric(1,$ncols,$contigcol);
     @results = ();
     foreach $example (@ {$examples}) {
@@ -562,6 +581,9 @@ sub grok_columns {
     foreach $example (@ {$examples}) {
       @fields = split /\t/,$example;
       ($chr,$mappedp) = extract_chr($fields[$chrcol-1]);
+      if ($mappedp == 0 && !defined($unmapped_example)) {
+	  $unmapped_example = $fields[$chrcol-1];
+      }
       push @results,$chr;
     }
     #printf STDOUT "Chromosome names are: " . join(",",@results) . "\n";
@@ -569,6 +591,14 @@ sub grok_columns {
     #$donep = input_yn("y");
     $donep = 1;
   }
+
+  if (!defined($unmapped_example)) {
+      $include_unmapped_p = 1;
+  } else {
+      print STDOUT "Some contigs are unmapped (e.g., $unmapped_example).  Include unmapped contigs?\n";
+      $include_unmapped_p = input_yn("y");
+  }
+
 
   $donep = 0;
   while ($donep == 0) {
@@ -630,7 +660,7 @@ sub grok_columns {
     $donep = 1;
   }
 
-  return ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol);
+  return ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol,$include_unmapped_p);
 }
 
 
@@ -702,8 +732,8 @@ sub find_reference_strain {
       print STDOUT "   $strain ($straincount{$strain} contigs, $strainlength{$strain} total nucleotides)\n";
     }
 
-    print STDOUT "Include multiple strains (y or n)?\n";
-    if (input_yn("y") != 1) {
+    # print STDOUT "Include multiple strains (y or n)?\n";
+    if (1 || input_yn("y") != 1) {
       printf STDOUT ("Strain with the most nucleotides is '%s'.  Is this the one to use as the reference strain?\n",$refstrain);
       $input = input_yn("y");
       if ($input == 1) {

@@ -2,9 +2,9 @@
 #define CHANGEPOINT_INCLUDED
 
 extern int
-Changepoint_start_change (int start, int end, int *matchscores);
+Changepoint_left (int *nmatches_left, int *ntotal_left, int *matchscores, int length);
 extern int
-Changepoint_end_change (int start, int end, int *matchscores);
+Changepoint_right (int *nmatches_right, int *ntotal_right, int *matchscores, int length);
 
 #endif
 

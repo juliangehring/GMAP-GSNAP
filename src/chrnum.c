@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrnum.c,v 1.21 2006/05/11 17:14:59 twu Exp $";
+static char rcsid[] = "$Id: chrnum.c,v 1.24 2008/04/15 19:23:43 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,10 +11,11 @@ static char rcsid[] = "$Id: chrnum.c,v 1.21 2006/05/11 17:14:59 twu Exp $";
 #include "interval.h"
 
 char *
-Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit, bool allocp) {
+Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit) {
   char *string, *label;
+  bool allocp;
 
-  label = IIT_label(chromosome_iit,chrnum);
+  label = IIT_label(chromosome_iit,chrnum,&allocp);
 #if 0
   if (strip_spaces_p) {
     while (*label != '\0' && isspace(*label)) {
@@ -22,7 +23,7 @@ Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit, bool allocp) {
     }
   }
 #endif
-  if (allocp == false) {
+  if (allocp == true) {
     return label;
   } else {
     string = (char *) CALLOC(strlen(label)+1,sizeof(char));
@@ -34,8 +35,9 @@ Chrnum_to_string (Chrnum_T chrnum, IIT_T chromosome_iit, bool allocp) {
 char *
 Chrnum_to_string_signed (Chrnum_T chrnum, IIT_T chromosome_iit, bool watsonp) {
   char *string, *label;
+  bool allocp;
 
-  label = IIT_label(chromosome_iit,chrnum);
+  label = IIT_label(chromosome_iit,chrnum,&allocp);
   string = (char *) CALLOC(strlen(label)+2,sizeof(char));
   if (watsonp) {
     string[0] = '+';
@@ -43,6 +45,10 @@ Chrnum_to_string_signed (Chrnum_T chrnum, IIT_T chromosome_iit, bool watsonp) {
     string[0] = '-';
   }
   strcpy(&(string[1]),label);
+
+  if (allocp == true) {
+    FREE(label);
+  }
   return string;
 }
 
@@ -59,4 +65,31 @@ Chrnum_offset (Chrnum_T chrnum, IIT_T chromosome_iit) {
   interval = IIT_interval(chromosome_iit,chrnum);
   return Interval_low(interval);
 }
+
+void
+Chrnum_print_position (Genomicpos_T position, IIT_T chromosome_iit) {
+  Chrnum_T chrnum;
+  Genomicpos_T chrpos;
+  int index;
+  char *label;
+  bool allocp;
+
+  if (chromosome_iit == NULL) {
+    chrnum = 0;
+    chrpos = position;
+  } else {
+    index = IIT_get_one(chromosome_iit,/*divstring*/NULL,position,position);
+    chrpos = position - Interval_low(IIT_interval(chromosome_iit,index));
+    chrnum = index;
+  }
+  label = IIT_label(chromosome_iit,chrnum,&allocp);
+  printf("#%d (chr%s):%u ",chrnum,label,chrpos);
+  if (allocp == true) {
+    FREE(label);
+  }
+  return;
+}
+
+
+
 

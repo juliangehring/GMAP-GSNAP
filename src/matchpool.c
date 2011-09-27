@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpool.c,v 1.7 2006/03/05 03:26:19 twu Exp $";
+static char rcsid[] = "$Id: matchpool.c,v 1.10 2008/08/08 12:19:36 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -138,8 +138,8 @@ Matchpool_restore (T this) {
 }
 
 List_T
-Matchpool_push (List_T list, T this, int querypos, bool forwardp, bool fivep,
-		Genomicpos_T position, IIT_T chromosome_iit) {
+Matchpool_push (List_T list, T this, int querypos, int querylength, bool forwardp, bool fivep,
+		Genomicpos_T diagonal, IIT_T chromosome_iit) {
   List_T listcell;
   Match_T match;
   List_T p;
@@ -159,17 +159,20 @@ Matchpool_push (List_T list, T this, int querypos, bool forwardp, bool fivep,
 
   match->querypos = querypos;
   match->weight = 0.0;		/* Will be entered later */
-  match->position = position;
-  match->forwardp = forwardp;
+  if ((match->forwardp = forwardp) == true) {
+    match->position = diagonal + querypos - querylength;
+  } else {
+    match->position = diagonal - querypos;
+  }
   match->fivep = fivep;
   match->npairings = 0;
 
   if (chromosome_iit == NULL) {
     match->chrnum = 0;
-    match->chrpos = position;
+    match->chrpos = match->position;
   } else {
-    index = IIT_get_one(chromosome_iit,position,position);
-    match->chrpos = position - Interval_low(IIT_interval(chromosome_iit,index));
+    index = IIT_get_one(chromosome_iit,/*divstring*/NULL,match->position,match->position);
+    match->chrpos = match->position - Interval_low(IIT_interval(chromosome_iit,index));
     match->chrnum = index;
   }
 

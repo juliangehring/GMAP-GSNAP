@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c,v 1.11 2007/02/08 21:30:08 twu Exp $";
+static char rcsid[] = "$Id: access.c,v 1.15 2009/08/29 00:27:11 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,6 +20,9 @@ static char rcsid[] = "$Id: access.c,v 1.11 2007/02/08 21:30:08 twu Exp $";
 /* Not sure why this was included
 #include <errno.h>
 */
+#ifdef PAGESIZE_VIA_SYSCONF
+#include <unistd.h>
+#endif
 #ifdef PAGESIZE_VIA_SYSCTL
 #include <sys/sysctl.h>
 #endif
@@ -44,12 +47,40 @@ static char rcsid[] = "$Id: access.c,v 1.11 2007/02/08 21:30:08 twu Exp $";
 #endif
 
 
+bool
+Access_file_exists_p (char *filename) {
+#ifdef HAVE_STRUCT_STAT64
+  struct stat64 sb;
+#else
+  struct stat sb;
+#endif
+
+#ifdef HAVE_STAT64
+  if (stat64(filename,&sb) == 0) {
+#else
+  if (stat(filename,&sb) == 0) {
+#endif
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
 off_t
 Access_filesize (char *filename) {
+#ifdef HAVE_STRUCT_STAT64
+  struct stat64 sb;
+#else
   struct stat sb;
+#endif
 
+#ifdef HAVE_STAT64
+  stat64(filename,&sb);
+#else
   stat(filename,&sb);
-  debug(printf("filesize is %u\n",sb.st_size));
+#endif
+  debug(printf("filesize is %lu\n",sb.st_size));
   return sb.st_size;
 }
 
@@ -58,7 +89,7 @@ Access_fileio (char *filename) {
   int fd;
 
   if ((fd = open(filename,O_RDONLY,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
+    fprintf(stderr,"Error: can't open file %s with open for reading\n",filename);
     exit(9);
   }
   return fd;
@@ -69,7 +100,7 @@ Access_fileio_rw (char *filename) {
   int fd;
 
   if ((fd = open(filename,O_RDWR | O_CREAT | O_TRUNC,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s for reading/writing\n",filename);
+    fprintf(stderr,"Error: can't open file %s with open for reading/writing\n",filename);
     exit(9);
   }
   return fd;
@@ -85,7 +116,7 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   *len = (size_t) Access_filesize(filename);
 
   if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
+    fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
     exit(9);
   }
 
@@ -104,6 +135,35 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   return memory;
 }
 
+
+#define PAGESIZE 1024*4
+
+static int
+get_pagesize () {
+
+#ifdef PAGESIZE_VIA_SYSCTL
+  int pagesize;
+  size_t pagelen;
+  int mib[2];
+#endif
+
+#ifdef __STRICT_ANSI__
+  return PAGESIZE;
+#elif defined(HAVE_GETPAGESIZE)
+  return getpagesize();
+#elif defined(PAGESIZE_VIA_SYSCONF)
+  return (int) sysconf(_SC_PAGESIZE);
+#elif defined(PAGESIZE_VIA_SYSCTL)
+  pagelen = sizeof(pagesize);
+  mib[0] = CTL_HW;
+  mib[1] = HW_PAGESIZE;
+  sysctl(mib,2,&pagesize,&pagelen,NULL,0);
+  return pagesize;
+#else
+  return PAGESIZE;
+#endif
+
+}
 
 
 #ifdef HAVE_MMAP
@@ -127,7 +187,7 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
   } 
 
   if ((*fd = open(filename,O_RDONLY,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
+    fprintf(stderr,"Error: can't open file %s with open for reading\n",filename);
     exit(9);
   }
 
@@ -149,17 +209,17 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
+      debug(printf("Got MAP_FAILED on len %lu from length %lu\n",length,length));
       memory = NULL;
     } else if (randomp == true) {
-      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,*len,MADV_RANDOM);
 #endif
 #endif
     } else {
-      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,*len,MADV_DONTNEED);
@@ -171,6 +231,70 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
   return memory;
 }
 #endif
+
+
+
+#ifdef HAVE_MMAP
+/* Returns NULL if mmap fails.  Bigendian conversion required */
+#ifdef HAVE_CADDR_T
+caddr_t
+#else
+void *
+#endif
+Access_mmap_offset (int *remainder, int fd, off_t offset, size_t length, size_t eltsize, bool randomp) {
+#ifdef HAVE_CADDR_T
+  caddr_t memory;
+#else
+  void *memory;
+#endif
+
+  if (length == 0) {
+    abort();
+  }
+
+  *remainder = offset % get_pagesize();
+  offset -= (off_t) *remainder;
+  length += (size_t) *remainder;
+
+  if (sizeof(size_t) <= 4 && length > MAX32BIT) {
+    debug(printf("Too big to mmap\n"));
+    memory = NULL;
+  } else {
+    memory = mmap(NULL,length,PROT_READ,0
+#ifdef HAVE_MMAP_MAP_SHARED
+		  |MAP_SHARED
+#endif
+#ifdef HAVE_MMAP_MAP_FILE
+		  |MAP_FILE
+#endif
+#ifdef HAVE_MMAP_MAP_VARIABLE
+		  |MAP_VARIABLE
+#endif
+		  ,fd,offset);
+    if (memory == MAP_FAILED) {
+      debug(printf("Got MAP_FAILED on fd %d, offset %lu, length %lu\n",fd,offset,length));
+      memory = NULL;
+    } else if (randomp == true) {
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+#ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_RANDOM
+      madvise(memory,length,MADV_RANDOM);
+#endif
+#endif
+    } else {
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+#ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_DONTNEED
+      madvise(memory,length,MADV_DONTNEED);
+#endif
+#endif
+    }
+  }
+
+  return memory;
+}
+#endif
+
 
 
 #ifdef HAVE_MMAP
@@ -194,7 +318,7 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
   }
 
   if ((*fd = open(filename,O_RDWR,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
+    fprintf(stderr,"Error: can't open file %s with open for reading/writing\n",filename);
     exit(9);
   }
 
@@ -219,14 +343,14 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
     } else if (randomp == true) {
-      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,*len,MADV_RANDOM);
 #endif
 #endif
     } else {
-      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,*len,MADV_DONTNEED);
@@ -239,10 +363,71 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
 }
 #endif
 
+#ifdef HAVE_MMAP
+/* Returns NULL if mmap fails.  Bigendian conversion required */
+#ifdef HAVE_CADDR_T
+caddr_t
+#else
+void *
+#endif
+Access_mmap_offset_rw (int *remainder, int fd, off_t offset, size_t length, size_t eltsize, bool randomp) {
+#ifdef HAVE_CADDR_T
+  caddr_t memory;
+#else
+  void *memory;
+#endif
+
+  if (length == 0) {
+    abort();
+  }
+
+  *remainder = offset % get_pagesize();
+  offset -= (off_t) *remainder;
+  length += (size_t) *remainder;
+
+  if (sizeof(size_t) <= 4 && length > MAX32BIT) {
+    debug(printf("Too big to mmap\n"));
+    memory = NULL;
+  } else {
+    memory = mmap(NULL,length,PROT_READ|PROT_WRITE,0
+#ifdef HAVE_MMAP_MAP_SHARED
+		  |MAP_SHARED
+#endif
+#ifdef HAVE_MMAP_MAP_FILE
+		  |MAP_FILE
+#endif
+#ifdef HAVE_MMAP_MAP_VARIABLE
+		  |MAP_VARIABLE
+#endif
+		  ,fd,offset);
+    if (memory == MAP_FAILED) {
+      debug(printf("Got MAP_FAILED on offset %lu, length %lu\n",offset,length));
+      memory = NULL;
+    } else if (randomp == true) {
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+#ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_RANDOM
+      madvise(memory,length,MADV_RANDOM);
+#endif
+#endif
+    } else {
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+#ifdef HAVE_MADVISE
+#ifdef HAVE_MADVISE_MADV_DONTNEED
+      madvise(memory,length,MADV_DONTNEED);
+#endif
+#endif
+    }
+  }
+
+  return memory;
+}
+#endif
+
+
+
 
 #ifdef HAVE_MMAP
-
-#define PAGESIZE 1024*4
 
 #ifdef HAVE_CADDR_T
 caddr_t
@@ -261,10 +446,6 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
   int nzero = 0, npos = 0;
   Stopwatch_T stopwatch;
 
-#ifdef PAGESIZE_VIA_SYSCTL
-  size_t pagelen;
-  int mib[2];
-#endif
 
   if ((*len = length = Access_filesize(filename)) == 0U) {
     fprintf(stderr,"Error: file %s is empty\n",filename);
@@ -272,7 +453,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
   }
 
   if ((*fd = open(filename,O_RDONLY,0764)) < 0) {
-    fprintf(stderr,"Error: can't open file %s\n",filename);
+    fprintf(stderr,"Error: can't open file %s with open for reading\n",filename);
     exit(9);
   }
 
@@ -285,20 +466,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 
   } else {
 
-#ifdef __STRICT_ANSI__
-    pagesize = PAGESIZE;
-#elif defined(HAVE_GETPAGESIZE)
-    pagesize = getpagesize();
-#elif defined(PAGESIZE_VIA_SYSCONF)
-    pagesize = (int) sysconf(_SC_PAGESIZE);
-#elif defined(PAGESIZE_VIA_SYSCTL)
-    pagelen = sizeof(pagesize);
-    mib[0] = CTL_HW;
-    mib[1] = HW_PAGESIZE;
-    sysctl(mib,2,&pagesize,&pagelen,NULL,0);
-#else
-    pagesize = PAGESIZE;
-#endif
+    pagesize = get_pagesize();
 
     indicesperpage = pagesize/eltsize;
     
@@ -322,7 +490,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
       Stopwatch_free(&stopwatch);
     } else {
       /* Touch all pages */
-      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_WILLNEED
       madvise(memory,*len,MADV_WILLNEED);

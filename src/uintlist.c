@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uintlist.c,v 1.4 2005/07/08 07:58:35 twu Exp $";
+static char rcsid[] = "$Id: uintlist.c,v 1.5 2010/02/03 18:19:20 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -144,3 +144,15 @@ Uintlist_index (T this, int index) {
   return this->first;
 }
 
+
+bool
+Uintlist_find (T this, unsigned int value) {
+  T r;
+
+  for (r = this; r != NULL; r = r->rest) {
+    if (r->first == value) {
+      return true;
+    }
+  }
+  return false;
+}

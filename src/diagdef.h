@@ -1,4 +1,4 @@
-/* $Id: diagdef.h,v 1.2 2007/02/06 14:30:44 twu Exp $ */
+/* $Id: diagdef.h,v 1.6 2008/09/15 17:43:57 twu Exp $ */
 #ifndef DIAGDEF_INCLUDED
 #define DIAGDEF_INCLUDED
 #include "bool.h"
@@ -10,6 +10,7 @@ struct T {
   int queryend;
   int nconsecutive;
   bool dominatedp;
+  double score;
 };
 
 #undef T

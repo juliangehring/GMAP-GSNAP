@@ -10,6 +10,6 @@ install-data-local:
 
 dist-hook:
 	if test -d CVS; then \
-	/usr/local/tools/bin/cvs2cl.pl; \
+	./cvs2cl.pl; \
 	fi
 

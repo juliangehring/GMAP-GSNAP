@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c,v 1.74 2007/04/23 18:07:42 twu Exp $";
+static char rcsid[] = "$Id: translation.c,v 1.75 2009/03/10 16:21:30 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -59,41 +59,6 @@ struct T {
   char aa;
   Frame_T frame;
 };
-
-
-static int aa_index_table[128] =
-  { -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-
-  /*     *                                  */
-    -1, 20, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1,
-
-  /* A,  B,  C,  D,  E,  F,  G,  H,  I,  J, */
-     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
-
-  /* K,  L,  M,  N,  O,  P,  Q,  R,  S,  T  */
-     8,  9, 10, 11, -1, 12, 13, 14, 15, 16,
-
-  /* U,  V,  W,  X,  Y,  Z  */
-    -1, 17, 18, -1, 19, -1,
-
-    -1, -1, -1, -1, -1, -1,
-
-  /* a,  b,  c,  d,  e,  f,  g,  h,  i,  j, */
-     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
-
-  /* k,  l,  m,  n,  o,  p,  q,  r,  s,  t  */
-     8,  9, 10, 11, -1, 12, 13, 14, 15, 16,
-
-  /* u,  v,  w,  x,  y,  z  */
-    -1, 17, 18, -1, 19, -1,
-
-    -1, -1, -1, -1, -1};
 
 
 static struct T *
@@ -991,7 +956,7 @@ terminate_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int sta
 static int
 assign_cdna_backward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
-  int i, nexti, j = 0, codon;
+  int i, nexti, j = 0;
 
   i = starti;
   while (i >= 0 && pairs[i].cdna == ' ') {
@@ -1067,7 +1032,7 @@ terminate_genomic (struct Pair_T *pairs, int npairs, int starti) {
 static void
 mark_cdna_forward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
   struct Pair_T *pair;
-  int i, nexti, nexti_alt, ncdna, ncdna_alt, codon = ' ';
+  int i, nexti, ncdna, codon = ' ';
 
   debug2(printf("mark_cdna_forward_strict called with pairs #%d..%d\n",starti,endi));
 
@@ -1148,7 +1113,7 @@ mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, 
 static void
 mark_cdna_backward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int starti, int endi) {
   struct Pair_T *pair;
-  int i, nexti, nexti_alt, ncdna, ncdna_alt, codon = ' ';
+  int i, nexti, ncdna, codon = ' ';
 
   debug2(printf("mark_cdna_backward called with pairs #%d..%d\n",starti,endi));
 
@@ -1944,7 +1909,10 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
 static void
 print_mutation (bool *printp, int aapos, int strlen_g, int strlen_c, int refquerypos,
 		char *aa_genomicseg, char *aa_queryseq, char *nt_genomicseg, char *nt_queryseq) {
-  bool print_nt_p = true, print_refquerypos_p = true;
+  bool print_refquerypos_p = true;
+#if 0
+  bool print_nt_p = true;
+#endif
 
   if (strlen_g > strlen_c) {
     if (*printp == true) printf(", "); else *printp = true;
@@ -1958,14 +1926,18 @@ print_mutation (bool *printp, int aapos, int strlen_g, int strlen_c, int refquer
     if (*printp == true) printf(", "); else *printp = true;
     if (strlen_c - strlen_g > 4) {
       printf("ins%d+%daa ",aapos,strlen_c-strlen_g);
+#if 0
       print_nt_p = false;
+#endif
     } else if (aa_genomicseg[0] == aa_queryseq[0]) {
       printf("ins%s%d%s ",&(aa_genomicseg[1]),aapos,&(aa_queryseq[1]));
     } else {
       printf("ins%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
     }
   } else if (aa_genomicseg[0] == 'X' || aa_queryseq[0] == 'X') {
+#if 0
     print_nt_p = false;
+#endif
     print_refquerypos_p = false;
   } else {
     if (*printp == true) printf(", "); else *printp = true;

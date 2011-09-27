@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reader.c,v 1.16 2006/05/19 17:14:14 twu Exp $";
+static char rcsid[] = "$Id: reader.c,v 1.21 2010/02/26 23:10:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,17 +15,27 @@ static char rcsid[] = "$Id: reader.c,v 1.16 2006/05/19 17:14:14 twu Exp $";
 
 #define T Reader_T
 struct T {
+  bool dibasep;
+
   int querystart;
   int queryend;
+  int querystart_save;
+  int queryend_save;
+
   int blocksize;
 
   char *startinit;
   char *startptr;
   char *endptr;
 
-  char *startbound;
+  char *startbound;		/* Saved for reset */
   char *endbound;
 };
+
+bool
+Reader_dibasep (T this) {
+  return this->dibasep;
+}
 
 int
 Reader_querystart (T this) {
@@ -69,14 +79,15 @@ Reader_reset_end (T this, int querypos) {
 
 void
 Reader_reset_ends (T this) {
-  char *sequence;
-
-  sequence = this->startinit;
-
   /*
+  char *sequence;
+  sequence = this->startinit;
   this->startptr = &(sequence[this->querystart]);
   this->endptr = &(sequence[this->queryend-1]);
   */
+
+  this->querystart = this->querystart_save;
+  this->queryend = this->queryend_save;
 
   this->startptr = this->startbound;
   this->endptr = this->endbound;
@@ -87,11 +98,13 @@ Reader_reset_ends (T this) {
 
 
 T
-Reader_new (char *sequence, int querystart, int queryend, int blocksize) {
+Reader_new (char *sequence, int querystart, int queryend, int blocksize, bool dibasep) {
   T new = (T) MALLOC(sizeof(*new));
 
-  new->querystart = querystart;
-  new->queryend = queryend;
+  new->dibasep = dibasep;
+
+  new->querystart_save = new->querystart = querystart;
+  new->queryend_save = new->queryend = queryend;
   new->blocksize = blocksize;
 
   new->startinit = sequence;
@@ -108,6 +121,7 @@ Reader_free (T *old) {
   return;
 }
 
+#if 0
 char
 Reader_getc_old (T this, cDNAEnd_T cdnaend) {
   debug(fprintf(stderr,"Read_getc has startptr %d and endptr %d\n",
@@ -120,19 +134,20 @@ Reader_getc_old (T this, cDNAEnd_T cdnaend) {
     return *(this->endptr--);
   }
 }
+#endif
 
 char
 Reader_getc (T this, cDNAEnd_T cdnaend) {
-  debug(fprintf(stderr,"Read_getc has startptr %d and endptr %d\n",
-		this->startptr-this->startinit,this->endptr-this->startinit));
+  debug(printf("Read_getc has startptr %d and endptr %d\n",
+	       this->startptr - this->startinit,this->endptr - this->startinit));
   if (cdnaend == FIVE) {
-    if (this->startptr >= this->endbound) {
+    if (this->startptr > this->endbound) {
       return '\0';
     } else {
       return *(this->startptr++);
     }
   } else {
-    if (this->endptr <= this->startbound) {
+    if (this->endptr < this->startbound) {
       return '\0';
     } else {
       return *(this->endptr--);

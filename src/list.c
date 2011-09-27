@@ -1,11 +1,13 @@
-static char rcsid[] = "$Id: list.c,v 1.12 2005/07/08 07:58:33 twu Exp $";
+static char rcsid[] = "$Id: list.c,v 1.20 2010/02/03 18:10:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "list.h"
 #include "listdef.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "mem.h"
 
 #define T List_T
@@ -32,7 +34,7 @@ List_pop (T list, void **x) {
     return list;
   }
 }
-  
+
 void *
 List_head (T list) {
   return list->first;
@@ -85,6 +87,19 @@ List_length (T list) {
   return n;
 }
 
+T
+List_truncate (T list, int n) {
+  T head = list;
+
+  while (--n > 0) {
+    list = list->rest;
+  }
+  if (list) {
+    list->rest = (T) NULL;
+  }
+  return head;
+}
+
 void **
 List_to_array (T list, void *end) {
   void **array;
@@ -99,6 +114,24 @@ List_to_array (T list, void *end) {
   return array;
 }
 
+void **
+List_to_array_n (int *n, T list) {
+  void **array;
+  int i;
+
+  *n = List_length(list);
+  if (*n == 0) {
+    return NULL;
+  } else {
+    array = (void **) CALLOC(*n,sizeof(*array));
+    for (i = 0; i < *n; i++) {
+      array[i] = list->first;
+      list = list->rest;
+    }
+    return array;
+  }
+}
+
 T
 List_copy (T list) {
   T head, *p = &head;
@@ -110,6 +143,15 @@ List_copy (T list) {
   }
   *p = NULL;
   return head;
+}
+
+void
+List_dump (T list) {
+  while (list) {
+    printf("%p\n",list);
+    list = list->rest;
+  }
+  return;
 }
 
 T
@@ -141,3 +183,60 @@ List_index (T this, int index) {
   return this->first;
 }
 
+
+#if 0
+/* Old definition, which doesn't make sense */
+void
+List_insert (T *listptr, void *x) {
+  T new = (T) MALLOC(sizeof(*new));
+  
+  new->first = x;
+  new->rest = *listptr;
+  *listptr = new;
+
+  return;
+}
+#else
+T
+List_insert (T p, void *x) {
+  T new = (T) MALLOC(sizeof(*new));
+  
+  new->first = x;
+  new->rest = p->rest;
+  p->rest = new;
+  return new;
+}
+#endif
+
+void
+List_reinsert (T *listptr, T cell) {
+  cell->rest = *listptr;
+  *listptr = cell;
+
+  return;
+}
+
+T
+List_from_string (char *string) {
+  T this = NULL;
+  char *p = string, *scout = string, *substring;
+  int substringlen;
+
+  while (*++scout != '\0') {
+    if (*scout == ',') {
+      substringlen = (scout-p)/sizeof(char);
+      substring = (char *) CALLOC(substringlen+1,sizeof(char));
+      strncpy(substring,p,substringlen);
+      this = List_push(this,substring);
+      scout++;
+      p = scout;
+    }
+  }
+
+  substringlen = (scout-p)/sizeof(char);
+  substring = (char *) CALLOC(substringlen+1,sizeof(char));
+  strncpy(substring,p,substringlen);
+  this = List_push(this,substring);
+
+  return List_reverse(this);
+}

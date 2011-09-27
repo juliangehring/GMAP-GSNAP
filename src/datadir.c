@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c,v 1.25 2006/05/02 15:58:30 twu Exp $";
+static char rcsid[] = "$Id: datadir.c,v 1.28 2010/02/03 01:57:10 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -28,8 +28,13 @@ static char rcsid[] = "$Id: datadir.c,v 1.25 2006/05/02 15:58:30 twu Exp $";
 #  include <ndir.h>
 # endif
 #endif
+
+#include <math.h>		/* for qsort */
+#include <string.h>		/* for strcmp */
 #include "mem.h"
 #include "fopen.h"
+#include "access.h"
+#include "list.h"
 
 /* Note: GMAPDB is defined externally by configure */
 #ifndef GMAPDB
@@ -67,6 +72,7 @@ find_homedir_config () {
 }
     
 
+
 static char *
 find_fileroot (char *genomesubdir, char *genomedir, char *dbroot) {
   char *fileroot, *filename, *p;
@@ -82,7 +88,8 @@ find_fileroot (char *genomesubdir, char *genomedir, char *dbroot) {
       exit(9);
     } else {
       fprintf(stderr,"Unable to find genome %s in default directory %s.\n",dbroot,genomedir);
-      fprintf(stderr,"Make sure you have typed the genome correctly.\n");
+      fprintf(stderr,"Make sure you have typed the genome correctly, or use the -D flag\n");
+      fprintf(stderr,"to specify a directory.  For example, '-D .' specifies this directory.\n");
       exit(9);
     }
   }
@@ -134,14 +141,11 @@ get_dbversion (char *filename) {
 }
 
 
-/* Allocates space for genomesubdir, fileroot, and dbversion */
 char *
-Datadir_find_genomesubdir (char **fileroot, char **dbversion,
-			   char *user_genomedir, char *dbroot) {
+Datadir_find_genomedir (char *user_genomedir) {
   FILE *fp;
-  char *genomesubdir, *genomedir, *filename, *p, *dbrootdir, *newgenomedir;
+  char *genomedir;
 
-  /* First get genomedir */
   if (user_genomedir != NULL) {
     genomedir = (char *) CALLOC(strlen(user_genomedir)+1,sizeof(char));
     strcpy(genomedir,user_genomedir);
@@ -164,6 +168,20 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
     strcpy(genomedir,GMAPDB);
   }
 
+  return genomedir;
+}
+
+
+/* Allocates space for genomesubdir, fileroot, and dbversion */
+char *
+Datadir_find_genomesubdir (char **fileroot, char **dbversion,
+			   char *user_genomedir, char *dbroot) {
+  FILE *fp;
+  char *genomesubdir, *genomedir, *filename, *p, *dbrootdir, *newgenomedir;
+
+  /* First get genomedir */
+  genomedir = Datadir_find_genomedir(user_genomedir);
+
   /* Append directory part of dbroot */
   if ((p = rindex(dbroot,'/')) != NULL) {
     *p = '\0';
@@ -171,7 +189,7 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
     dbrootdir = dbroot;
     dbroot = p;
     
-    newgenomedir = (char *) CALLOC(strlen(genomedir)+strlen(dbrootdir)+1,sizeof(char));
+    newgenomedir = (char *) CALLOC(strlen(genomedir)+strlen("/")+strlen(dbrootdir)+1,sizeof(char));
     sprintf(newgenomedir,"%s/%s",genomedir,dbrootdir);
     FREE(genomedir);
     genomedir = newgenomedir;
@@ -202,6 +220,7 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
       fprintf(stderr,"       Please specify directory using -D flag, GMAPDB environment variable,\n");
       fprintf(stderr,"       or a configuration file .gmaprc with the line GMAPDB=<directory>;\n");
       fprintf(stderr,"       or have GMAP recompiled using the --with-gmapdb flag to configure.\n");
+      Datadir_avail_gmap_databases(stderr,user_genomedir);
       exit(9);
     }
   }
@@ -239,7 +258,7 @@ Datadir_find_mapdir (char *user_mapdir, char *genomesubdir, char *fileroot) {
 
 
 void
-Datadir_list_directory (FILE *fp, char *directory) {
+Datadir_list_directory_multicol (FILE *fp, char *directory) {
   char *filename;
   struct dirent *entry;
   DIR *dp;
@@ -278,3 +297,137 @@ Datadir_list_directory (FILE *fp, char *directory) {
 
   return;
 }
+
+void
+Datadir_list_directory (FILE *fp, char *directory) {
+  char *filename;
+  struct dirent *entry;
+  DIR *dp;
+
+  if ((dp = opendir(directory)) == NULL) {
+    fprintf(stderr,"Unable to open directory %s\n",directory);
+    exit(9);
+  }
+  while ((entry = readdir(dp)) != NULL) {
+    filename = entry->d_name;
+    fprintf(fp,"%s\n",filename);
+  }
+  if (closedir(dp) < 0) {
+    fprintf(stderr,"Unable to close directory %s\n",directory);
+  }
+
+  return;
+}
+
+static int
+strcmp_cmp (const void *a, const void *b) {
+  return strcmp(* (char * const *) a, * (char * const *) b);
+}
+
+
+void
+Datadir_avail_gmap_databases (FILE *fp, char *user_genomedir) {
+  char *genomedir;
+  struct dirent *entry;
+  char *filename;
+  DIR *dp;
+  List_T databases = NULL;
+  char **array;
+  int n, i;
+
+  genomedir = Datadir_find_genomedir(user_genomedir);
+  fprintf(fp,"Available gmap databases in directory %s:\n",genomedir);
+
+  if ((dp = opendir(genomedir)) == NULL) {
+    fprintf(stderr,"Unable to open genomedir %s\n",genomedir);
+    exit(9);
+  }
+  while ((entry = readdir(dp)) != NULL) {
+    filename = (char *) CALLOC(strlen(genomedir)+strlen("/")+strlen(entry->d_name)+strlen("/")+
+			       strlen(entry->d_name)+strlen(".version")+1,sizeof(char));
+    sprintf(filename,"%s/%s/%s.version",genomedir,entry->d_name,entry->d_name);
+    if (Access_file_exists_p(filename) == true) {
+      FREE(filename);
+      filename = (char *) CALLOC(strlen(entry->d_name)+1,sizeof(char));
+      strcpy(filename,entry->d_name);
+      databases = List_push(databases,(void *) filename);
+    } else {
+      FREE(filename);
+    }
+  }
+  if (closedir(dp) < 0) {
+    fprintf(stderr,"Unable to close genomedir %s\n",genomedir);
+  }
+
+  if ((n = List_length(databases)) == 0) {
+    fprintf(fp,"  (none found)\n");
+  } else {
+    array = (char **) List_to_array(databases,NULL);
+    qsort(array,n,sizeof(char *),strcmp_cmp);
+    for (i = 0; i < n; i++) {
+      fprintf(fp,"%s\n",array[i]);
+      FREE(array[i]);
+    }
+    FREE(array);
+    List_free(&databases);
+  }
+
+  FREE(genomedir);
+  return;
+}
+
+void
+Datadir_avail_maps (FILE *fp, char *user_mapdir, char *genomesubdir, char *fileroot) {
+  char *mapdir;
+  struct dirent *entry;
+  char *filename;
+  DIR *dp;
+  List_T maps = NULL;
+  char **array;
+  int n, i;
+
+  mapdir = Datadir_find_mapdir(user_mapdir,genomesubdir,fileroot);
+  fprintf(fp,"Available maps in directory %s:\n",mapdir);
+
+  if ((dp = opendir(mapdir)) == NULL) {
+    fprintf(stderr,"Unable to open mapdir %s\n",mapdir);
+    exit(9);
+  }
+  while ((entry = readdir(dp)) != NULL) {
+    if (entry->d_name[0] != '.') {
+      filename = (char *) CALLOC(strlen(mapdir)+strlen("/")+strlen(entry->d_name)+1,
+				 sizeof(char));
+      sprintf(filename,"%s/%s",mapdir,entry->d_name);
+      
+      if (Access_file_exists_p(filename) == true) {
+	FREE(filename);
+	filename = (char *) CALLOC(strlen(entry->d_name)+1,sizeof(char));
+	strcpy(filename,entry->d_name);
+	maps = List_push(maps,(void *) filename);
+      } else {
+	FREE(filename);
+      }
+    }
+  }
+  if (closedir(dp) < 0) {
+    fprintf(stderr,"Unable to close mapdir %s\n",mapdir);
+  }
+
+  if ((n = List_length(maps)) == 0) {
+    fprintf(fp,"  (none found)\n");
+  } else {
+    array = (char **) List_to_array(maps,NULL);
+    qsort(array,n,sizeof(char *),strcmp_cmp);
+    for (i = 0; i < n; i++) {
+      fprintf(fp,"%s\n",array[i]);
+      FREE(array[i]);
+    }
+    FREE(array);
+    List_free(&maps);
+  }
+
+  FREE(mapdir);
+  return;
+
+}
+

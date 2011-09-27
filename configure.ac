@@ -1,7 +1,7 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-# $Id: configure.ac,v 1.44 2007/09/19 17:30:23 twu Exp $
+# $Id: configure.ac,v 1.45 2008/09/04 21:52:44 twu Exp $
 
 AC_PREREQ(2.57)
 
@@ -13,11 +13,13 @@ AC_PREREQ(2.57)
 #          m4_bpatsubst(m4_esyscmd([cat VERSION]),
 #                       [\([0-9.]*\)\(\w\|\W\)*],
 #                       [\1]))
-m4_define([PKG_VERSION],
-          m4_bpatsubst(m4_esyscmd([cat VERSION]),
-                       [\([0-9.\-]*\)\(\w\|\W\)*],
-                       [\1]))
+#m4_define([PKG_VERSION],m4_esyscmd([cat VERSION]))
+m4_define([PKG_VERSION],esyscmd([cat VERSION]))
+
 AC_INIT([gmap],PKG_VERSION,[Thomas Wu <twu@gene.com>])
+AC_MSG_CHECKING(package version)
+AC_MSG_RESULT(PKG_VERSION)
+
 AC_CONFIG_SRCDIR([src/gmap.c])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_AUX_DIR([config])
@@ -148,7 +150,7 @@ esac
 # Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_DIRENT
-AC_CHECK_HEADERS([fcntl.h limits.h stddef.h stdlib.h string.h strings.h unistd.h sys/types.h memory.])
+AC_CHECK_HEADERS([fcntl.h limits.h stddef.h stdlib.h string.h strings.h unistd.h sys/types.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_BIGENDIAN
@@ -158,6 +160,7 @@ AC_TYPE_SIZE_T
 AC_TYPE_OFF_T
 AC_CHECK_TYPES([caddr_t])
 AC_CHECK_SIZEOF(unsigned long)
+AC_CHECK_SIZEOF(unsigned long long)
 
 # Checks for library functions.
 #AC_FUNC_MALLOC -- Causes use of rpl_malloc
@@ -181,9 +184,11 @@ fi
 
 ACX_MMAP_FLAGS
 ACX_MADVISE_FLAGS
+ACX_BUILTIN
 
-AC_CHECK_FUNCS([ceil floor index log madvise memcpy memmove memset munmap pow rint strtoul sysconf sysctl sigaction])
+AC_CHECK_FUNCS([ceil floor index log madvise memcpy memmove memset munmap pow rint stat64 strtoul sysconf sysctl sigaction])
 
+ACX_STRUCT_STAT64
 ACX_PAGESIZE
 
 ACX_FUNC_FOPEN_BINARY
@@ -198,6 +203,7 @@ AC_CONFIG_FILES([util/gmap_uncompress.pl])
 AC_CONFIG_FILES([util/gmap_process.pl])
 AC_CONFIG_FILES([util/gmap_setup.pl])
 AC_CONFIG_FILES([util/gmap_update.pl])
+AC_CONFIG_FILES([util/gmap_reassemble.pl])
 AC_CONFIG_FILES([util/md_coords.pl])
 AC_CONFIG_FILES([util/fa_coords.pl])
 AC_CONFIG_FILES([tests/Makefile])

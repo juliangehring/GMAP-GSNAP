@@ -15,6 +15,11 @@ extern char *
 Gbuffer_chars3 (T this);
 
 extern void
+Gbuffer_free_contents (T this);
+extern void
+Gbuffer_alloc_contents (T this, int gbufferlen);
+
+extern void
 Gbuffer_free (T *old);
 extern T
 Gbuffer_new ();

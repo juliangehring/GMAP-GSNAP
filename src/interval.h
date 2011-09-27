@@ -1,4 +1,4 @@
-/* $Id: interval.h,v 1.17 2007/06/25 18:47:05 twu Exp $ */
+/* $Id: interval.h,v 1.18 2010/02/03 18:08:28 twu Exp $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
 #include "bool.h"
@@ -11,7 +11,6 @@ struct T {
   int sign;
   int type;
 };
-
 
 extern T
 Interval_new (unsigned int low, unsigned int high, int type);
@@ -50,6 +49,15 @@ Interval_qsort_by_omega (int *table, int i, int j, struct T *intervals);
 
 extern int
 Interval_cmp (const void *a, const void *b);
+
+
+struct Interval_windex_T {
+  int index;
+  T interval;
+};
+
+extern int
+Interval_windex_cmp (const void *a, const void *b);
 
 #undef T
 #endif

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: tableint.c,v 1.5 2007/09/28 22:47:16 twu Exp $";
+static char rcsid[] = "$Id: tableint.c,v 1.6 2010/02/03 18:18:48 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,6 +8,7 @@ static char rcsid[] = "$Id: tableint.c,v 1.5 2007/09/28 22:47:16 twu Exp $";
 #include <stdio.h>
 #include <limits.h>
 #include <stddef.h>
+#include <stdlib.h>		/* For qsort */
 #include "mem.h"
 #include "assert.h"
 

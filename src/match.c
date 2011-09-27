@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c,v 1.77 2007/08/28 23:21:04 twu Exp $";
+static char rcsid[] = "$Id: match.c,v 1.84 2008/10/10 17:52:44 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,6 +18,11 @@ static char rcsid[] = "$Id: match.c,v 1.77 2007/08/28 23:21:04 twu Exp $";
 #include "segmentpos.h"
 #include "separator.h"
 #include "sequence.h"
+#include "indexdb.h"
+
+#define MIN_STAGE1_FSUPPORT 0.20
+#define MAX_STAGE1_STRETCH 2000.0
+
 
 #define T Match_T
 
@@ -26,6 +31,14 @@ static char rcsid[] = "$Id: match.c,v 1.77 2007/08/28 23:21:04 twu Exp $";
 #else
 #define debug(x)
 #endif
+
+/* Filtering of poor matchpairs */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
+#endif
+
 
 int
 Match_querypos (T this) {
@@ -52,9 +65,10 @@ Match_chrnum (T this) {
   return this->chrnum;
 }
 
+/* Used only for debugging.  String is allocated and should be freed. */
 char *
 Match_chr (T this, IIT_T chromosome_iit) {
-  return Chrnum_to_string(this->chrnum,chromosome_iit,/*allocp*/false);
+  return Chrnum_to_string(this->chrnum,chromosome_iit);
 }
 
 Genomicpos_T
@@ -65,6 +79,12 @@ Match_chrpos (T this) {
 int
 Match_incr_npairings (T this) {
   this->npairings += 1;
+  return this->npairings;
+}
+
+int
+Match_decr_npairings (T this) {
+  this->npairings -= 1;
   return this->npairings;
 }
 
@@ -118,7 +138,7 @@ Match_new (int querypos, bool forwardp, bool fivep,
     new->chrnum = 0;
     new->chrpos = position;
   } else {
-    index = IIT_get_one(chromosome_iit,position,position);
+    index = IIT_get_one(chromosome_iit,/*divstring*/NULL,position,position);
     new->chrpos = position - Interval_low(IIT_interval(chromosome_iit,index));
     new->chrnum = index;
   }
@@ -144,7 +164,7 @@ Match_free (T *old) {
 #endif
 
 void
-Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size) {
+Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_iit, int stage1size) {
   char gbuffer1[MAXSTAGE1SIZE+1], gbuffer2[MAXSTAGE1SIZE+1], *genomicseg_ptr;
   Sequence_T genomicseg;
   int querypos;
@@ -155,15 +175,15 @@ Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size) {
 
 #ifdef PMAP
   if (this->forwardp == true) {
-    genomicseg = Genome_get_segment(genome,position,3*stage1size,/*revcomp*/false,gbuffer1,gbuffer2,3*stage1size);
+    genomicseg = Genome_get_segment(genome,position,3*stage1size,chromosome_iit,/*revcomp*/false,gbuffer1,gbuffer2,3*stage1size);
   } else {
-    genomicseg = Genome_get_segment(genome,position-(3*stage1size-1U),3*stage1size,/*revcomp*/true,gbuffer1,gbuffer2,3*stage1size);
+    genomicseg = Genome_get_segment(genome,position-(3*stage1size-1U),3*stage1size,chromosome_iit,/*revcomp*/true,gbuffer1,gbuffer2,3*stage1size);
   }
 #else
   if (this->forwardp == true) {
-    genomicseg = Genome_get_segment(genome,position,stage1size,/*revcomp*/false,gbuffer1,gbuffer2,stage1size);
+    genomicseg = Genome_get_segment(genome,position,stage1size,chromosome_iit,/*revcomp*/false,gbuffer1,gbuffer2,stage1size);
   } else {
-    genomicseg = Genome_get_segment(genome,position-(stage1size-1U),stage1size,/*revcomp*/true,gbuffer1,gbuffer2,stage1size);
+    genomicseg = Genome_get_segment(genome,position-(stage1size-1U),stage1size,chromosome_iit,/*revcomp*/true,gbuffer1,gbuffer2,stage1size);
   }
 #endif
   genomicseg_ptr = Sequence_fullpointer(genomicseg);
@@ -178,5 +198,94 @@ Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size) {
   Sequence_free(&genomicseg);
 
   return;
+}
+
+
+void
+Match_print (T this, IIT_T chromosome_iit) {
+  printf("  Match at %d: #%d(chr%s):%u (forwardp:%d, npairings:%d), weight %.3f ",
+	 this->querypos,this->chrnum,
+	 Match_chr(this,chromosome_iit),this->chrpos,this->forwardp,
+	 this->npairings,this->weight);
+  return;
+}
+
+
+
+static double
+compute_fsupport (T bound5, T bound3, int trimlength, int stage1size) {
+  return (double) (bound3->querypos - bound5->querypos + stage1size)/(double) trimlength;
+}
+
+static double
+compute_stretch (T bound5, T bound3) {
+  Genomicpos_T position5, position3;
+  int querypos5, querypos3;
+
+  querypos5 = bound5->querypos;
+  querypos3 = bound3->querypos;
+  
+  if (querypos5 == querypos3) {
+    return 1.0;
+  } else {
+    position5 = bound5->position;
+    position3 = bound3->position;
+    if (position3 > position5) {
+#ifdef PMAP
+      return (double) (position3 - position5)/(double) (querypos3 - querypos5)/3.0;
+#else
+      return (double) (position3 - position5)/(double) (querypos3 - querypos5);
+#endif
+    } else {
+#ifdef PMAP
+      return (double) (position5 - position3)/(double) (querypos3 - querypos5)/3.0;
+#else
+      return (double) (position5 - position3)/(double) (querypos3 - querypos5);
+#endif
+    }
+  }
+}
+
+bool
+Match_acceptable_pair (T match5, T match3, int trimlength, int stage1size) {
+  debug3(printf("support = %d/trimlength = %d\n",
+		match3->querypos - match5->querypos + stage1size,trimlength));
+  debug3(printf("stretch = %f\n",compute_stretch(match5,match3)));
+
+  if (compute_fsupport(match5,match3,trimlength,stage1size) < MIN_STAGE1_FSUPPORT) {
+    debug3(printf("Insufficient coverage of the query sequence\n"));
+    return false;
+  } else if (compute_stretch(match5,match3) > MAX_STAGE1_STRETCH) {
+    debug3(printf("Genomic region is too large relative to matching cDNA region\n"));
+    return false;
+  } else {
+    return true;
+  }
+}
+
+
+bool
+Match_sufficient_support (T match5, T match3, int trimstart, int trimend) {
+#ifdef PMAP
+  debug(printf("  Testing bound5 = %d < %d + %d, bound3 = %d (+%d) > %d - %d\n",
+	       Match_querypos(match5),trimstart,SUFFICIENT_SUPPORT,
+	       Match_querypos(match3),INDEX1PART_AA,trimend,SUFFICIENT_SUPPORT));
+  if (match5->querypos < trimstart + SUFFICIENT_SUPPORT && 
+      match3->querypos + INDEX1PART_AA > trimend - SUFFICIENT_SUPPORT) {
+    return true;
+  } else {
+    return false;
+  }
+#else
+  debug(printf("  Testing bound5 = %d < %d + %d, bound3 = %d (+%d) > %d - %d\n",
+	       Match_querypos(match5),trimstart,SUFFICIENT_SUPPORT,
+	       Match_querypos(match3),INDEX1PART,trimend,SUFFICIENT_SUPPORT));
+  if (match5->querypos < trimstart + SUFFICIENT_SUPPORT && 
+      match3->querypos + INDEX1PART > trimend - SUFFICIENT_SUPPORT) {
+    return true;
+  } else {
+    return false;
+  }
+#endif
 }
 

@@ -1,4 +1,4 @@
-/* $Id: pairpool.h,v 1.16 2007/04/23 16:07:42 twu Exp $ */
+/* $Id: pairpool.h,v 1.17 2009/11/18 18:41:44 twu Exp $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 #include "bool.h"
@@ -26,6 +26,8 @@ extern List_T
 Pairpool_pop (List_T list, Pair_T *x);
 extern List_T
 Pairpool_transfer (List_T dest, List_T source);
+extern List_T
+Pairpool_transfer_n (List_T dest, List_T source, int n);
 extern int
 Pairpool_count_bounded (List_T source, int minpos, int maxpos);
 extern List_T

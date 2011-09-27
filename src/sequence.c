@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.76 2007/09/25 20:20:32 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.96 2010/02/26 23:11:05 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -55,6 +55,7 @@ struct T {
   char *acc;			/* Accession */
   char *restofheader;		/* Rest of header */
   char *contents;		/* Original sequence, ends with '\0' */
+  char *contents_uc;		/* Original sequence, ends with '\0' */
   int trimstart;		/* Start of trim */
   int trimend;			/* End of trim */
   int fulllength;		/* Full length */
@@ -74,6 +75,11 @@ Sequence_accession (T this) {
 char *
 Sequence_fullpointer (T this) {
   return this->contents;
+}
+
+char *
+Sequence_fullpointer_uc (T this) {
+  return this->contents_uc;
 }
 
 char *
@@ -106,7 +112,7 @@ Sequence_fulllength_given (T this) {
 
 int
 Sequence_trimlength (T this) {
-  return this->trimend - this->trimstart;
+  return this->trimend - this->trimstart + 1;
 }
 
 void
@@ -146,6 +152,9 @@ Sequence_free (T *old) {
       FREE((*old)->acc);
     }
     if ((*old)->free_contents_p == true) {
+      if ((*old)->contents_uc) {
+	FREE((*old)->contents_uc);
+      }
       FREE((*old)->contents);
     }
     FREE(*old);
@@ -167,8 +176,9 @@ Sequence_convert_to_nucleotides (T this) {
   for (i = 0; i < new->fulllength; i++) {
     new->contents[i] = '?';
   }
+  new->contents_uc = (char *) NULL;
   new->trimstart = 0;
-  new->trimend = new->fulllength;
+  new->trimend = new->fulllength_given;
   new->free_contents_p = true;
   new->subseq_offset = 0;
   new->skiplength = this->skiplength;
@@ -177,6 +187,7 @@ Sequence_convert_to_nucleotides (T this) {
 }
 #endif
 
+#if 0
 int
 Sequence_count_bad (T this, int pos, int max, int direction) {
   int nbad = 0;
@@ -199,6 +210,7 @@ Sequence_count_bad (T this, int pos, int max, int direction) {
 
   return nbad;
 }
+#endif
 
 
 #define HEADERLEN 512
@@ -219,6 +231,12 @@ static int Initc = '\0';
 /* The first element of Sequence is always the null character, to mark
    the end of the string */
 
+/* Skipping of dashes might still be buggy */
+/*
+#define DASH '-'
+*/
+
+
 /* Returns '>' if FASTA file, first sequence char if not */
 static int
 input_init (FILE *fp) {
@@ -233,6 +251,9 @@ input_init (FILE *fp) {
   while (okayp == false && (c = fgetc(fp)) != EOF) {
     debug(printf("Read character %c\n",c));
     if (iscntrl(c)) {
+#ifdef DASH
+    } else if (c == DASH) {
+#endif
     } else if (isspace(c)) {
     } else {
       okayp = true;
@@ -296,6 +317,26 @@ input_header (FILE *fp, T this) {
   return this->acc;
 } 
 
+static bool
+skip_header (FILE *fp) {
+
+  if (feof(fp)) {
+    return false;
+  } else if (fgets(&(Header[0]),HEADERLEN,fp) == NULL) {
+    /* File must terminate after > */
+    return false;
+  }
+
+  if (rindex(&(Header[0]),'\n') == NULL) {
+    /* Eliminate rest of header from input */
+    while (fgets(&(Discard[0]),DISCARDLEN,fp) != NULL &&
+	   rindex(&(Discard[0]),'\n') == NULL) ;
+  }
+
+  return true;
+} 
+
+#ifdef DEBUG
 static void
 print_contents (char *p, int length) {
   int i;
@@ -313,6 +354,7 @@ print_contents (char *p, int length) {
   fprintf(fp,"\"\n");
   return;
 }
+#endif
 
 
 #define CONTROLM 13		/* From PC */
@@ -320,21 +362,41 @@ print_contents (char *p, int length) {
 
 static char *
 find_bad_char (char *line) {
-  char *p1, *p2;
+  char *first, *p1, *p2;
+#ifdef DASH
+  char *p3;
+#endif
 
   p1 = index(line,CONTROLM);
   p2 = index(line,SPACE);
+  /* p3 = index(line,DASH); */
 
-  if (p1 == NULL && p2 == NULL) {
+  if (p1 == NULL && p2 == NULL /* && p3 == NULL*/) {
     return NULL;
-  } else if (p1 == NULL) {
-    return p2;
-  } else if (p2 == NULL) {
-    return p1;
-  } else if (p1 < p2) {
-    return p1;
   } else {
-    return p2;
+    if (p1) {
+      first = p1;
+    }
+    if (p2) {
+      first = p2;
+    }
+    /*
+    if (p3) {
+      first = p3;
+    }
+    */
+    if (p1 && p1 < first) {
+      first = p1;
+    }
+    if (p2 && p2 < first) {
+      first = p2;
+    }
+    /*
+    if (p3 && p3 < first) {
+      first = p3;
+    }
+    */
+    return first;
   }
 }
 
@@ -373,6 +435,10 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else if (iscntrl(c)) {
 	debug(printf("c == control char.  Continuing\n"));
+#ifdef DASH
+      } else if (c == DASH) {
+	debug(printf("c == dash.  Continuing\n"));
+#endif
       } else if (isspace(c)) {
 	*eolnp = true;
 	debug(printf("c == NULL.  Continuing\n"));
@@ -400,7 +466,7 @@ read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
 	debug1(printf("read_first_half returning length1 of %d\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
 	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else {
-	debug(printf("Read %s\n",ptr));
+	debug(printf("Read %s.\n",ptr));
 	while ((p = find_bad_char(ptr)) != NULL) {
 	  /* Handle PC line feed ^M */
 	  ptr = p++;
@@ -461,6 +527,10 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 	break;
       } else if (iscntrl(c)) {
 	debug(printf("c == control char.  Continuing\n"));
+#ifdef DASH
+      } else if (c == DASH) {
+	debug(printf("c == dash.  Continuing\n"));
+#endif
       } else if (isspace(c)) {
 	debug(printf("c == NULL.  Continuing\n"));
       } else {
@@ -485,7 +555,7 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
 	*nextchar = EOF;
 	break;
       } else {
-	debug(printf("Read %s\n",ptr));
+	debug(printf("Read %s.\n",ptr));
 	while ((p = find_bad_char(ptr)) != NULL) {
 	  /* Handle PC line feed ^M */
 	  ptr = p++;
@@ -544,6 +614,64 @@ read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer
   return skiplength;
 }
 
+
+static int
+input_oneline (int *nextchar, FILE *fp) {
+  int remainder, strlenp;
+  char *ptr, *p = NULL;
+
+  debug(printf("Entering input_oneline with nextchar = %c\n",*nextchar));
+
+  ptr = &(Firsthalf[0]);
+  remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
+  if (*nextchar == EOF || *nextchar == '>') {
+    debug(printf("Returning 0\n"));
+    return 0;
+  } else {
+    *ptr++ = (char) *nextchar;
+    if ((p = fgets(ptr,remainder+1,fp)) == NULL) {
+      /* NULL if file ends with a blank line */
+      printf("Blank line. read %s.\n",ptr);
+    } else {
+      debug(printf("Read %s.\n",ptr));
+      while ((p = find_bad_char(ptr)) != NULL) {
+	/* Handle PC line feed ^M */
+	ptr = p++;
+	strlenp = strlen(p);
+	memmove(ptr,p,strlenp);
+	ptr[strlenp] = '\0';
+	debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+      }
+
+      if ((p = index(ptr,'\n')) != NULL) {
+	*p = '\0';
+	debug(printf("Now string is %s.\n",ptr));
+      } else if (feof(fp)) {
+	/* No line feed, but end of file.  Handle below. */
+	debug(printf("End of file seen\n"));
+      } else {
+	/* No line feed, but not end of file */
+	fprintf(stderr,"Line %s is too long for allocated buffer size of %d.  Aborting.\n",&(Firsthalf[0]),HALFLEN);
+	exit(9);
+      }
+    }
+    ptr += strlen(ptr);
+
+    /* Peek at character after eoln */
+    if (feof(fp)) {
+      *nextchar = EOF;
+    } else {
+      while ((*nextchar = fgetc(fp)) != EOF && (*nextchar == '\n' || isspace(*nextchar))) {
+      }
+    }
+
+    debug(printf("Returning %ld\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
+    return (ptr - &(Firsthalf[0]))/sizeof(char);
+  }
+}
+
+
+
 /* Returns sequence length */
 static int
 input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, int *length2a,
@@ -583,6 +711,7 @@ Sequence_genomic_new (char *contents, int length) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->contents = contents;
+  new->contents_uc = (char *) NULL;
   new->trimstart = 0;
   new->trimend = new->fulllength = length;
 #ifdef PMAP
@@ -604,11 +733,28 @@ make_complement (char *sequence, unsigned int length) {
 
   complement = (char *) CALLOC(length+1,sizeof(char));
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return complement;
 }
+
+#if 0
+static char *
+make_complement_uppercase (char *sequence, unsigned int length) {
+  char *complement;
+  char uppercaseCode[128] = UPPERCASE_U2T;
+  int i, j;
+
+  complement = (char *) CALLOC(length+1,sizeof(char));
+  for (i = length-1, j = 0; i >= 0; i--, j++) {
+    complement[j] = uppercaseCode[(int) complCode[(int) sequence[i]]];
+  }
+  complement[length] = '\0';
+  return complement;
+}
+#endif
+
 
 static void
 make_complement_buffered (char *complement, char *sequence, unsigned int length) {
@@ -616,7 +762,7 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 
   /* complement = (char *) CALLOC(length+1,sizeof(char)); */
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return;
@@ -658,6 +804,7 @@ Sequence_subsequence (T this, int start, int end) {
     new->acc = (char *) NULL;
     new->restofheader = (char *) NULL;
     new->contents = &(this->contents[start]); 
+    new->contents_uc = (char *) NULL;
     new->fulllength = end - start;
 #ifdef PMAP
     new->fulllength_given = new->fulllength;
@@ -683,6 +830,7 @@ Sequence_revcomp (T this) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->contents = make_complement(this->contents,this->fulllength);
+  new->contents_uc = (char *) NULL;
   new->fulllength = this->fulllength;
 #ifdef PMAP
   new->fulllength_given = this->fulllength_given;
@@ -713,6 +861,23 @@ make_uppercase (char *sequence, unsigned int length) {
   return uppercase;
 }
 
+#if 0
+static void
+make_uppercase_inplace (char *sequence, unsigned int length) {
+#ifdef PMAP
+  char uppercaseCode[128] = UPPERCASE_STD;
+#else
+  char uppercaseCode[128] = UPPERCASE_U2T;
+#endif
+  int i;
+
+  for (i = 0; i < length; i++) {
+    sequence[i] = uppercaseCode[(int) sequence[i]];
+  }
+  return;
+}
+#endif
+
 
 T
 Sequence_uppercase (T this) {
@@ -721,6 +886,7 @@ Sequence_uppercase (T this) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->contents = make_uppercase(this->contents,this->fulllength);
+  new->contents_uc = (char *) NULL;
   new->fulllength = this->fulllength;
 #ifdef PMAP
   new->fulllength_given = this->fulllength_given;
@@ -740,6 +906,7 @@ Sequence_alias (T this) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->contents = this->contents;
+  new->contents_uc = (char *) NULL;
   new->fulllength = this->fulllength;
 #ifdef PMAP
   new->fulllength_given = this->fulllength_given;
@@ -787,8 +954,8 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
     blank_header(new);
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
-      *nextchar = EOF;
-     return NULL;
+    *nextchar = EOF;
+    return NULL;
   } 
   if ((fulllength = input_sequence(&(*nextchar),&pointer1,&length1,&pointer2a,&length2a,
 				   &pointer2b,&length2b,&skiplength,input)) == 0) {
@@ -827,7 +994,11 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   new->skiplength = skiplength;
 
   new->trimstart = 0;
+#ifdef PMAP
+  new->trimend = new->fulllength_given;
+#else
   new->trimend = fulllength;
+#endif
 
   new->contents = (char *) CALLOC(fulllength+1,sizeof(char));
   if (length1 > 0) {
@@ -839,6 +1010,8 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
       strncpy(&(new->contents[length1+length2a]),pointer2b,length2b);
     }
   }
+  new->contents_uc = (char *) NULL;
+
 #ifdef PMAP
   if (lastchar != '*') {
     new->contents[fulllength-1] = '*';
@@ -850,6 +1023,43 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   debug(printf("Final query sequence is:\n"));
   debug(Sequence_print(new,/*uppercasep*/false,/*wraplength*/60,/*trimmedp*/false));
   return new;
+}
+
+
+static bool
+Sequence_skip (int *nextchar, FILE *input, bool maponlyp) {
+  int skiplength;
+  char *pointer1, *pointer2a, *pointer2b;
+  int length1, length2a, length2b;
+#ifdef PMAP
+  char lastchar = '*';
+#endif
+
+  if (feof(input)) {
+    *nextchar = EOF;
+    return false;
+  }
+
+  if (*nextchar == '\0') {
+    if ((*nextchar = input_init(input)) == EOF) {
+      *nextchar = EOF;
+      return false;
+    }
+  }
+  if (*nextchar != '>') {
+    /* Header is blank */
+  } else if (skip_header(input) == false) {
+    /* File ends after >.  Don't process. */
+    *nextchar = EOF;
+    return false;
+  } 
+  if (input_sequence(&(*nextchar),&pointer1,&length1,&pointer2a,&length2a,
+		     &pointer2b,&length2b,&skiplength,input) == 0) {
+    /* File ends during header.  Continue with a sequence of length 0. */
+    /* fprintf(stderr,"File ends after header\n"); */
+  }
+
+  return true;
 }
 
 
@@ -879,6 +1089,153 @@ Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles
   }
 }
 
+#if 0
+static bool
+Sequence_skip_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp) {
+
+  while (1) {
+    if (*input == NULL || feof(*input)) {
+      if (*nfiles == 0) {
+	*nextchar = EOF;
+	return false;
+      } else {
+	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
+	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
+	}
+	(*files)++;
+	(*nfiles)--;
+	*nextchar = '\0';
+      }
+    }
+    if (*input != NULL) {
+      return Sequence_skip(&(*nextchar),*input,maponlyp);
+    }
+  }
+}
+#endif
+
+T
+Sequence_read_multifile_shortreads (int *nextchar, T *queryseq2, FILE **input, char ***files, int *nfiles,
+				    bool circularp) {
+  T queryseq1, temp;
+  int fulllength;
+
+  while (1) {
+    if (*input == NULL || feof(*input)) {
+      if (*nfiles == 0) {
+	*nextchar = EOF;
+	return (T) NULL;
+      } else {
+	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
+	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
+	}
+	(*files)++;
+	(*nfiles)--;
+	*nextchar = '\0';
+      }
+    }
+    if (*input != NULL) {
+      if (*nextchar == '\0') {
+	if ((*nextchar = input_init(*input)) == EOF) {
+	  *nextchar = EOF;
+	  return NULL;
+	}
+      }
+
+      queryseq1 = (T) MALLOC(sizeof(*queryseq1));
+      (*queryseq2) = (T) NULL;
+      debug(printf("** Getting header\n"));
+      if (input_header(*input,queryseq1) == NULL) {
+	/* fprintf(stderr,"No header\n"); */
+	/* File ends after >.  Don't process. */
+	*nextchar = EOF;
+      } else {
+	if ((*nextchar = fgetc(*input)) == '\n') {
+	  queryseq1->contents = (char *) NULL;
+	  queryseq1->fulllength = 0;
+	  queryseq1->free_contents_p = false;
+	  while (*nextchar != EOF && ((*nextchar = fgetc(*input)) != '>')) {
+	  }
+	} else if ((queryseq1->fulllength = input_oneline(&(*nextchar),*input)) == 0) {
+	  /* fprintf(stderr,"length is zero\n"); */
+	  /* No sequence1.  Don't process. */
+	  /* *nextchar = EOF; */
+	  queryseq1->contents = (char *) NULL;
+	  queryseq1->free_contents_p = false;
+	} else {
+	  queryseq1->contents = (char *) CALLOC(queryseq1->fulllength+1,sizeof(char));
+	  strncpy(queryseq1->contents,&(Firsthalf[0]),queryseq1->fulllength);
+	  queryseq1->contents_uc = make_uppercase(queryseq1->contents,queryseq1->fulllength);
+	  queryseq1->free_contents_p = true;
+	  if ((fulllength = input_oneline(&(*nextchar),*input)) > 0) {
+	    (*queryseq2) = (T) MALLOC(sizeof(*(*queryseq2)));
+	    (*queryseq2)->acc = (char *) NULL;
+	    (*queryseq2)->restofheader = (char *) NULL;
+	    (*queryseq2)->fulllength = fulllength;
+	    (*queryseq2)->contents = make_complement(&(Firsthalf[0]),fulllength);
+	    (*queryseq2)->contents_uc = make_uppercase((*queryseq2)->contents,fulllength);
+	    (*queryseq2)->free_contents_p = true;
+	    if (circularp == true) {
+	      /* Circular-end read.  Swap queryseq1 and queryseq2. */
+	      temp = queryseq1;
+	      queryseq1 = *queryseq2;
+	      *queryseq2 = temp;
+	    }
+	  }
+	}
+	debug(printf("Returning queryseq with contents %s\n",queryseq1->contents));
+	return queryseq1;
+      }
+    }
+  }
+}
+
+#if 0
+static bool
+Sequence_skip_multifile_shortreads (int *nextchar, FILE **input, char ***files, int *nfiles) {
+
+  while (1) {
+    if (*input == NULL || feof(*input)) {
+      if (*nfiles == 0) {
+	*nextchar = EOF;
+	return false;
+      } else {
+	if ((*input = FOPEN_READ_TEXT((*files)[0])) == NULL) {
+	  fprintf(stderr,"Can't open file %s => skipping it.\n",(*files)[0]);
+	}
+	(*files)++;
+	(*nfiles)--;
+	*nextchar = '\0';
+      }
+    }
+    if (*input != NULL) {
+      if (*nextchar == '\0') {
+	if ((*nextchar = input_init(*input)) == EOF) {
+	  *nextchar = EOF;
+	  return false;
+	}
+      }
+
+      if (skip_header(*input) == false) {
+	/* fprintf(stderr,"No header\n"); */
+	/* File ends after >.  Don't process. */
+	*nextchar = EOF;
+      } else {
+	*nextchar = fgetc(*input);
+	if (input_oneline(&(*nextchar),*input) == 0) {
+	  /* fprintf(stderr,"length is zero\n"); */
+	  /* No sequence1.  Don't process. */
+	  *nextchar = EOF;
+	} else {
+	  /* queryseq2, if present */
+	  input_oneline(&(*nextchar),*input);
+	  return true;
+	}
+      }
+    }
+  }
+}
+#endif
 
 T
 Sequence_read_unlimited (FILE *input) {
@@ -913,7 +1270,11 @@ Sequence_read_unlimited (FILE *input) {
   while (fgets(&(Sequence[startpos]),maxseqlen,input) != NULL &&
 	 (eolnp == false || Sequence[1] != '>')) {
     for (p = &(Sequence[1]); *p != '\n' && *p != '\0'; p++) {
-      if (!iscntrl((int) *p)) {
+      if (!iscntrl((int) *p)
+#ifdef DASH
+	  && *p != DASH
+#endif
+	  ) {
 	intlist = Intlist_push(intlist,(int) *p);
       }
     }
@@ -927,6 +1288,7 @@ Sequence_read_unlimited (FILE *input) {
   }
   intlist = Intlist_reverse(intlist);
   new->contents = Intlist_to_char_array(&length,intlist);
+  new->contents_uc = (char *) NULL;
   Intlist_free(&intlist);
 
   if (length == 0) {
@@ -981,6 +1343,15 @@ Sequence_print_header (T this, bool checksump) {
 }
 
 void
+Sequence_print_header_revcomp (T this) {
+  printf(">%s %s",this->acc,this->restofheader);
+  printf(" REVCOMP");
+  printf("\n");
+  return;
+}
+
+
+void
 Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
   int i = 0, pos, start, end;
   char uppercaseCode[128] = UPPERCASE_STD;
@@ -995,7 +1366,7 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
 
   if (uppercasep == true) {
     for (pos = start; pos < end; pos++, i++) {
-      printf("%c",uppercaseCode[this->contents[i]]);
+      printf("%c",uppercaseCode[(int) this->contents[i]]);
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }
@@ -1010,6 +1381,121 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
   }
   if (i % wraplength != 0) {
     printf("\n");
+  }
+  return;
+}
+
+void
+Sequence_print_two (T this, T alt, bool uppercasep, int wraplength) {
+  int i = 0, pos, pos2, startpos, end;
+  char uppercaseCode[128] = UPPERCASE_STD;
+
+  end = this->fulllength;
+
+  pos = 0;
+  i = 0;
+  if (uppercasep == true) {
+    printf("ref\t");
+    startpos = pos;
+    while (pos < end) {
+      printf("%c",uppercaseCode[(int) this->contents[pos]]);
+      if (++i % wraplength == 0) {
+	printf("\n");
+	printf("alt\t");
+	for (pos2 = startpos, i = 0; i < wraplength; pos2++, i++) {
+	  printf("%c",uppercaseCode[(int) alt->contents[pos2]]);
+	}
+	printf("\n\n");
+	if (pos+1 < end) {
+	  printf("ref\t");
+	}
+	startpos = pos+1;
+      }
+      pos++;
+    }
+    if (i % wraplength != 0) {
+      printf("\n");
+      printf("alt\t");
+      for (pos2 = startpos; pos2 < end; pos2++) {
+	printf("%c",uppercaseCode[(int) alt->contents[pos2]]);
+      }
+      printf("\n\n");
+    }
+
+  } else {
+    printf("ref\t");
+    startpos = pos;
+    while (pos < end) {
+      printf("%c",this->contents[pos]);
+      if (++i % wraplength == 0) {
+	printf("\n");
+	printf("alt\t");
+	for (pos2 = startpos, i = 0; i < wraplength; pos2++, i++) {
+	  printf("%c",alt->contents[pos2]);
+	}
+	printf("\n\n");
+	if (pos+1 < end) {
+	  printf("ref\t");
+	}
+	startpos = pos+1;
+      }
+      pos++;
+    }
+    if (i % wraplength != 0) {
+      printf("\n");
+      printf("alt\t");
+      for (pos2 = startpos; pos2 < end; pos2++) {
+	printf("%c",alt->contents[pos2]);
+      }
+      printf("\n\n");
+    }
+  }
+
+  return;
+}
+
+
+
+void
+Sequence_print_oneline (FILE *fp, T this) {
+  int i = 0;
+
+  if (this->fulllength == 0 || isspace(this->contents[0])) {
+    fprintf(fp,"(null)");
+  } else {
+    for (i = 0; i < this->fulllength; i++) {
+      fprintf(fp,"%c",this->contents[i]);
+    }
+  }
+  return;
+}
+
+void
+Sequence_print_oneline_uc (FILE *fp, T this) {
+  int i = 0;
+
+  for (i = 0; i < this->fulllength; i++) {
+    fprintf(fp,"%c",this->contents_uc[i]);
+  }
+  return;
+}
+
+void
+Sequence_print_oneline_revcomp (FILE *fp, T this) {
+  int i = 0;
+
+  for (i = this->fulllength-1; i >= 0; --i) {
+    fprintf(fp,"%c",complCode[(int) this->contents[i]]);
+  }
+  return;
+}
+
+void
+Sequence_print_oneline_revcomp_uc (FILE *fp, T this) {
+  int i = 0;
+
+  for (i = this->fulllength-1; i >= 0; --i) {
+    fprintf(fp,"%c",complCode[(int) this->contents_uc[i]]);
   }
   return;
 }

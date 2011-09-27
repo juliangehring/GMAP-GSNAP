@@ -1,6 +1,7 @@
-/* $Id: uintlist.h,v 1.4 2005/02/07 23:56:57 twu Exp $ */
+/* $Id: uintlist.h,v 1.5 2010/02/03 18:19:20 twu Exp $ */
 #ifndef UINTLIST_INCLUDED
 #define UINTLIST_INCLUDED
+#include "bool.h"
 
 #define T Uintlist_T
 typedef struct T *T;
@@ -31,6 +32,8 @@ extern unsigned int
 Uintlist_last_value (T this);
 extern unsigned int 
 Uintlist_index (T this, int index);
+extern bool
+Uintlist_find (T this, unsigned int value);
 
 #undef T
 #endif

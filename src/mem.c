@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.19 2007/08/28 23:20:57 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.20 2009/08/14 16:35:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -71,7 +71,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to alloc %d bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to alloc %lu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -94,7 +94,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   void *ptr;
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to calloc %d x %d bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -122,7 +122,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to calloc %d x %d bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -137,7 +137,7 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
   void *ptr;
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to allocate %d x %d bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to allocate %lu x %lu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -181,7 +181,7 @@ Mem_resize (void *ptr, size_t nbytes, const char *file, int line) {
   assert(nbytes > 0);
   ptr = realloc(ptr, nbytes);
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to realloc %d bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to realloc %lu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {

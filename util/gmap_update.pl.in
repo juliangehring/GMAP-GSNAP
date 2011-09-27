@@ -1,5 +1,7 @@
-#! @PERL@ -w
+#! @PERL@
 # $Id: gmap_update.pl.in,v 1.3 2007/09/26 18:05:53 twu Exp $
+
+use warnings;
 
 $gmapdb = "@GMAPDB@";
 $package_version = "@PACKAGE_VERSION@";
@@ -45,36 +47,38 @@ exit;
 
 
 sub update_subdir {
-  my ($subdir) = @_;
-  my $DP;
-  my $file;
+    my ($subdir) = @_;
+    my $DP;
+    my $file;
 
-  $DP = new IO::Dir($subdir) or die "Cannot open directory $subdir";
-  while (defined($file = $DP->read)) {
-    if ($file =~ /\.iit$/) {
-      $filename = "$subdir/$file";
-      print STDERR "Updating iit file $filename\n";
-      $mode = (stat ($filename))[2] & 07777;
-      system("$IIT_UPDATE $version_flag -o $subdir/$$.iit $filename");
-      system("mv -f $subdir/$$.iit $filename");
-      if ((chmod $mode,$filename) != 1) {
-	print STDERR "Could not change permissions on $filename : $!\n";
-      }
+    $DP = new IO::Dir($subdir) or die "Cannot open directory $subdir";
+    while (defined($file = $DP->read)) {
+	if ($file =~ /\.chromosome\.iit$/ || $file =~ /\.contig.iit$/) {
+	    # Don't update chromosome or contig iit files
+	} elsif ($file =~ /\.iit$/) {
+	    $filename = "$subdir/$file";
+	    print STDERR "Updating iit file $filename\n";
+	    $mode = (stat ($filename))[2] & 07777;
+	    system("$IIT_UPDATE $version_flag -o $subdir/$$.iit $filename");
+	    system("mv -f $subdir/$$.iit $filename");
+	    if ((chmod $mode,$filename) != 1) {
+		print STDERR "Could not change permissions on $filename : $!\n";
+	    }
+	}
     }
-  }
-  close($DP);
+    close($DP);
 
-  $DP = new IO::Dir($subdir);
-  while (defined($file = $DP->read)) {
-    if ($file eq "." || $file eq "..") {
-      # Skip
-    } elsif (-d "$subdir/$file") {
-      update_subdir("$subdir/$file");
+    $DP = new IO::Dir($subdir);
+    while (defined($file = $DP->read)) {
+	if ($file eq "." || $file eq "..") {
+	    # Skip
+	} elsif (-d "$subdir/$file") {
+	    update_subdir("$subdir/$file");
+	}
     }
-  }
-  close($DP);
+    close($DP);
 
-  return;
+    return;
 }
 
 

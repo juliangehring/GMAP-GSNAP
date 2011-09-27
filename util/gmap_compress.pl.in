@@ -1,8 +1,10 @@
-#! @PERL@ -w
+#! @PERL@
 # $Id: gmap_compress.pl.in,v 1.21 2006/06/12 18:52:11 twu Exp $
 
 # Need to call gmap with -AF (A is to show alignment, and F is to flip
 # genomic sequence to be first)
+
+use warnings;
 
 use IO::File;
 compress();

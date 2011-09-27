@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c,v 1.41 2007/05/15 21:12:53 twu Exp $";
+static char rcsid[] = "$Id: smooth.c,v 1.44 2009/03/10 16:21:30 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -43,7 +43,6 @@ typedef enum {KEEP, DELETE, MARK} Exonstatus_T;
 
 static bool
 big_gap_p (Pair_T pair, bool bysizep) {
-  int length;
 
   /* When bysizep is true, single gaps should have been solved already
      (in pass 2), so any gap remaining must be a poor one (must have
@@ -71,7 +70,10 @@ get_exonlengths (int **exonmatches, int *nexons, List_T pairs, bool bysizep) {
   int *exonlengths;
   Intlist_T list = NULL, matchlist = NULL;
   Pair_T firstpair, pair;
-  int querypos, i, nmatches = 0;
+  int querypos, nmatches = 0;
+#ifdef DEBUG
+  int i;
+#endif
 
   firstpair = List_head(pairs);
   querypos = firstpair->querypos;
@@ -119,9 +121,12 @@ get_exonlengths (int **exonmatches, int *nexons, List_T pairs, bool bysizep) {
 
 static int *
 get_intronlengths (int *nintrons, List_T pairs, bool bysizep) {
-  int *intronlengths, length, i;
+  int *intronlengths, length;
   Intlist_T list = NULL;
   Pair_T pair;
+#ifdef DEBUG
+  int i;
+#endif
 
   while (pairs != NULL) {
     pair = List_head(pairs);
@@ -189,7 +194,6 @@ short_exon_byprob (int exonlen, int intronlen, int indexsize, double prob_thresh
 
 static bool
 short_exon_bylength (int exonlen, int intronlen, int length_threshold) {
-  double prob;
 
   if (exonlen >= length_threshold) {
     return false;
@@ -235,11 +239,10 @@ zero_net_gap (int *starti, int *startj, int i, int j, int *intronlengths) {
 
 static int *
 find_internal_shorts_by_netgap (bool *deletep, int *exonmatches, int nexons,
-				int *intronlengths, int nintrons, int stage2_indexsize) {
+				int *intronlengths, int nintrons) {
   int *exonstatus;
   int starti, startj, i, j;
-  int exonlen, intronlen;
-  double prob;
+  int exonlen;
 
   *deletep = false;
   exonstatus = (int *) CALLOC(nexons,sizeof(int));
@@ -286,7 +289,7 @@ static int *
 find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int nexons,
 			      int *intronlengths, int nintrons, int stage2_indexsize) {
   int *exonstatus;
-  int starti, startj, i, j;
+  int i;
   int exonlen, intronlen;
   double prob;
 
@@ -444,10 +447,12 @@ smooth_reset (List_T pairs) {
 
 /* Assumes pairs are from 1..querylength.  Reverses the pairs to be querylength..1 */
 List_T
-Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool, int stage2_indexsize) {
+Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool) {
   int *exonstatus;
-  int *exonlengths, *exonmatches, *intronlengths, nexons, nintrons, i;
-  bool delete1p, delete2p;
+  int *exonlengths, *exonmatches, *intronlengths, nexons, nintrons;
+#ifdef DEBUG
+  int i;
+#endif
 
   *deletep = false;
   smooth_reset(pairs);
@@ -466,7 +471,7 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool, int st
 	  );
 
     debug(printf("\nFind internal shorts\n"));
-    exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
+    exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths,nintrons);
     debug(printf("\nRemove internal shorts\n"));
     if (*deletep == true) {
       pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/false);
@@ -497,8 +502,11 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool, int st
 List_T
 Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pairpool, int stage2_indexsize) {
   int *exonstatus;
-  int *exonlengths, *exonmatches, *intronlengths, nexons, nintrons, i;
+  int *exonlengths, *exonmatches, *intronlengths, nexons, nintrons;
   bool delete1p, delete2p;
+#ifdef DEBUG
+  int i;
+#endif
 
   *shortp = *deletep = false;
   smooth_reset(pairs);

@@ -1,14 +1,14 @@
 
-Availability
+0.  Availability
 ============
 
 The source code for this package is available from
-http://www.gene.com/share/gmap.  License terms are provided in the
+http://share.gene.com/gmap.  License terms are provided in the
 COPYING file.
 
 
-Building and installing GMAP
-============================
+1.  Building and installing GMAP and GSNAP
+==========================================
 
 Prerequisites: a Unix system (including Cygwin on Windows), a C
 compiler, and Perl
@@ -25,43 +25,69 @@ following GNU commands
     make check
     make install
 
-Note: Instead of editing the config.site file in step 1, you may type
+Note 1: Instead of editing the config.site file in step 1, you may type
 everything on the command line for the ./configure script in step 2,
 like this
 
     ./configure --prefix=/your/usr/local/path --with-gmapdb=/path/to/gmapdb
 
 If you omit --with-gmapdb, it defaults to ${prefix}/share.  If you
-omit --prefix, it defaults to /usr/local.
+omit --prefix, it defaults to /usr/local.  Note that on the command
+line, it is "with-gmapdb" with a hyphen, but in a config.site file,
+it is "with_gmapdb" with an underscore.
 
 
-Downloading a GMAP database
-===========================
+Note 2: If you want to keep your version of config.site or have
+multiple versions, you can save the file to a different filename, and
+then refer to it like this
+
+    ./configure CONFIG_SITE=<config site file>
+
+
+2.  Downloading a pre-built GMAP/GSNAP database
+===============================================
 
 You can use the program gmap_setup to build your own database (as
 described below), but you can started quickly by downloading a
-pre-built GMAP database from the same place you obtained the GMAP
-program (see above for URL).  
+pre-built GMAP/GSNAP database from the same place you obtained the
+GMAP program (see above for URL).
 
 Place the database in the GMAPDB directory you specified in the
 config.site file when you built the gmap program.  You should include
 a subdirectory for each GMAP database; for example, if you downloaded
-a database called NHGD_R35, your directory structure should look like
+a database called <genome>, your directory structure should look like
 this
 
-    /path/to/gmapdb/NHGD_R35/
-    /path/to/gmapdb/NHGD_R35/NHGD_R35.chromosome
-    /path/to/gmapdb/NHGD_R35/NHGD_R35.chromosome.iit
+    /path/to/gmapdb/<genome>/
+    /path/to/gmapdb/<genome>/<genome>.chromosome
+    /path/to/gmapdb/<genome>/<genome>.chromosome.iit
     ...
-    /path/to/gmapdb/NHGD_R35/NHGD_R35.version
+    /path/to/gmapdb/<genome>/<genome>.version
+
+Note that GMAP databases built prior to 2008 will not work with GSNAP.
+However, if you build your own database using the commands below, it
+will work with both GMAP and GSNAP.  GSNAP requires the index files
+<genome>.ref3offsets and <genome>.ref3positions.
+
+Also, versions of GMAP before 2008 do not know about the
+<genome>.ref3offsets and <genome>.ref3positions filenames.  Earlier
+versions of GMAP are expecting the files <genome>.idxoffsets and
+<genome>.idxpositions.  If you want to use pre-2008 versions of GMAP
+with current versions of GMAP/GSNAP databases, you will need to create
+symbolic links like this:
+
+    ln -s <genome>.ref3offsets <genome>.idxoffsets
+    ln -s <genome>.ref3positions <genome>.idxpositions
 
 
-Building a GMAP database (quick guide)
-=====================================
+3a.  Setting up to build a GMAP/GSNAP database (one chromosome per FASTA entry)
+===============================================================================
 
 The program gmap_setup can build and install a GMAP database from a
 set of FASTA files containing either entire chromosomes or contigs
-that represent pieces of chromosomes.  Run this command
+that represent pieces of chromosomes.  If your FASTA entries each
+contain a single chromosome, and the accession for each chromosome is
+the chromosome number/letter, you can simply run this command
 
     gmap_setup -d <genome> <fasta_file>...
 
@@ -71,12 +97,27 @@ and then follow the directions.  Note that the term
 
 above indicates that multiple files can be listed.  The files can be
 in any order, and the contigs can be in any order within these files.
-The GMAP setup process will assemble the contigs and chromosomes into
-their appropriate alphanumeric order.
+The GMAP setup process will sort the contigs and chromosomes into
+their appropriate numeric/alphabetic order.  (If you don't want this
+sort, provide the '-O 0' (flag capital letter O, then a zero) flag to
+gmap_setup.)
 
-If your FASTA headers contain information about the chromosomal
-coordinates, gmap_setup will try to parse that information from the
-headers.  The program knows how to parse the following patterns:
+We show the full set of gmap_setup options under item 4c below, but
+we first discuss some common situations in using the program.
+
+
+
+3b.  Setting to build a GMAP database (with chromosomal regions in FASTA headers)
+=================================================================================
+
+Otherwise, if your FASTA entries consist of contigs, each of which has
+a mapping to a chromosomal region in the header, you may need to add
+the -C flag to gmap_setup, like this
+
+    gmap_setup -d <genome> -C <fasta_file>...
+
+Then gmap_setup will try to parse a chromosomal region from each
+header.  The program knows how to parse the following patterns:
 
     chr=1:217281..257582  [may insert spaces around '=', or omit '=' character]
     chr=1                 [may insert spaces around '=', or omit '=' character]
@@ -89,15 +130,18 @@ headers.  The program knows how to parse the following patterns:
 
 If only the chromosome is specified, without coordinates, the program
 will assign its own chromosomal coordinates by concatenating the
-contigs within each chromosome.
+contigs within each chromosome.  If gmap_setup cannot figure out the
+chromosome, it will assign it to chromosome "NA".
 
 
-Building a GMAP database (using an MD file)
-===========================================
+3c.  Setting up to build a GMAP/GSNAP database (by using an MD file)
+====================================================================
 
-Genomes from NCBI typically include an ".md" file (like seq_contig.md)
-that specifies the chromosomal coordinates for each contig.  To use
-this information, provide the -M flag to gmap_setup, like this
+Another possibility is that your FASTA entries consist of contigs,
+each of which has mapping information in an external file.  Genomes
+from NCBI typically include an ".md" file (like seq_contig.md) that
+specifies the chromosomal coordinates for each contig.  To use this
+information, provide the -M flag to gmap_setup, like this
 
     gmap_setup -d <genome> -M <mdfile> <fasta_file>...
 
@@ -106,21 +150,39 @@ formats) and verify with you which columns contain the contig names
 and chromosomal coordinates.
 
 
-Building a GMAP database (details)
-==================================
+3d.  Setting up to build a GMAP/GSNAP database (special cases)
+==============================================================
 
-The gmap_setup program will create a Makefile, called
-Makefile.<genome>.  You will then be prompted to use this Makefile
+If your genome files don't satisfy any of the cases above, you may
+need to write a small script that pipes the sequences in FASTA format
+to gmap_setup.  You can tell gmap_setup about your script with the -E
+flag, like this
+
+    gmap_setup -d <genome> -E 'gunzip -c chr*.gz'
+    gmap_setup -d <genome> -E 'cat *.fa | ./add-chromosomal-info.pl'
+
+You can think of the command as a Unix pipe for processing each FASTA
+file before it is read by gmap_setup.
+
+
+4.  Proceeding to build a GMAP/GSNAP database
+=============================================
+
+Any of the steps above (3a, 3b, 3c, or 3d) will create a Makefile,
+called Makefile.<genome>.  You will then use this Makefile to build a
+GMAP/GSNAP database.  You will be prompted to use this Makefile
 through the following commands:
 
     make -f Makefile.<genome> coords
-    make -f Makefile.<genome> gmapdb
-    make -f Makefile.<genome> fullascii [optional]
-    (edit the <genome>.chrsubset file [optional])
+
+    make -f Makefile.<genome> gmapdb, or
+    make -f Makefile.<genome> gmapdb_lc, or
+    make -f Makefile.<genome> gmapdb_lc_masked, or
+
     make -f Makefile.<genome> install
 
 
-1.  The first step in using this Makefile is to create
+4a.  The first step in using this Makefile is to create
 a file called coords.<genome>.  You may manually edit this file, if
 you wish, before proceeding with the rest of the Makefile steps.  The
 coords file contains one contig per line, in the following format:
@@ -141,102 +203,67 @@ NT_039199.1	1:61563373..61273712
 
 You may delete lines or comment them out with a '#' character, which
 will effectively omit those contigs from your genome build.  You may
-also change chromosomal assignments (in column 2) or assign contigs to
-alternative strains (in column 3).
+also change chromosomal assignments (in column 2) at this stage.
+
+Note: Previous versions of GMAP allowed you to specify alternate
+strains in column 3, but this feature added too much complexity and is
+no longer supported.
 
 
-2.  The optional "make fullascii" command is intended to represent
-genomes where it is important to show lower-case or non-standard
-characters (anything other than A, C, G, T, N, or X) in the alignment.
+4b.  You have three choices next: "gmapdb", "gmapdb_lc", or
+"gmapdb_lc_masked".  We recommend that you choose "gmapdb", which
+creates only a compressed version of the genome, in the file
+<genome>.genomecomp, which can hold only the standard, upper-case A,
+C, G, T, N, and X characters.  It converts all lower-case characters
+to upper-case, and all non-ACGTNX characters to 'N'.  In fact, GSNAP
+at present will work only with the compressed version format.
 
-Normally, gmap_setup creates only a compressed version of the
-genome, in the file <genome>.genomecomp, which can hold only the
-standard, upper-case A, C, G, T, N, and X characters.  It converts all
-lower-case characters to upper-case, and all non-ACGTNX characters to
-'N'.  
+If you wish to preserve lower-case or non-ACGT characters in the
+genomic part of the alignment, as shown by GMAP with its -A flag, you
+may choose "gmapdb_lc".  (Note that lower-case and non-ACGT characters
+in the _query_ are preserved in GMAP and GSNAP alignments, regardless
+of how the _genome_ is stored.)  This will create a larger version of
+the genome file, called <genome>.genome, instead of the
+<genome>.genomecomp file.  Note that the larger <genome>.genome file
+has a size equal to the total genome length, and some computers cannot
+handle files larger than 2 gigabytes.  In such cases, only the
+standard <genome>.genomecomp file will work.
 
-If you wish to show lower-case or non-standard characters in the
-alignment, you may create a full ASCII genome file with the command
+If you want to create both versions, you can build both "gmapdb" and
+"gmapdb_lc".  When you eventually run GMAP, you can then choose which
+version you want with the -G flag (which will choose the larger genome
+file that preserves the lower-case and non-ACGT characters in the
+genomic part of the alignment).  GSNAP does not have a -G flag,
+because it will work only with the compressed version.
 
-    make -f Makefile.<genome> fullascii
-
-after the "make gmapdb" command.  This will create the file
-<genome>.genome, in addition to the <genome>.genomecomp file.
-
-The full ASCII genome can then be used by GMAP instead of the
-compressed genome by specifying the -G flag to GMAP.  Note that a full
-ASCII genome file has a size equal to the total genome length, and
-some computers cannot handle files larger than 2 gigabytes.  In such
-cases, only the standard compressed genome will work.
-
-Note, however, that the full ASCII genome does not affect the GMAP
-computation, only the printed alignment shown by GMAP with its -A
-flag.  Also, you do not need to mask the genome; GMAP will work fine
-on the entire genome.  But if you wish to indicate masked regions in
-the alignment with lower-case characters, then you will need to create
-a full ASCII genome file.
+If your genome files contain lower-case characters that you want to be
+masked (i.e., with no alignments possible), then you may choose
+"gmapdb_lc_masked".  This will also create the larger <genome>.genome
+file, and also ignore the lower-case characters for indexing purposes.
+Note that you do not need to mask the genome; GMAP will work fine on
+the entire genome.  This is why we typically recommend you choose the
+"gmapdb" option.
 
 
-3.  The full usage for gmap_setup is as follows:
+4c.  The full usage for gmap_setup is as follows:
 
-Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] 
-                  [-M <.md file>] [-S] [-W] [-E] [-q interval] <fasta_files or command>
+Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-C] [-M <.md file>]
+       [-E] [-O <int>] [-W] [-q interval] [-Q interval] <fasta_files or command>
 
     -d    genome name
     -D    destination directory for installation (defaults to gmapdb directory specified at configure time)
     -o    name of output Makefile (default is "Makefile.<genome>")
     -M    use coordinates from an .md file (e.g., seq_contig.md file from NCBI)
-    -S    treat each sequence as a separate chromosome
-    -W    write some output directly to file, instead of using RAM (slow; use only if RAM is limited)
-    -E    interpret argument as a command, instead of a list of FASTA files
-    -q    GMAP indexing interval (default: 6 nt)
+    -C    try to parse chromosomal coordinates from each FASTA header
+    -E    interpret first argument as a command, instead of a list of FASTA files
+    -O    order chromosomes in numeric/alphabetic order (0 = no, 1 = yes (default))
 
+  Advanced flags, not typically used:
+    -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
+    -q    GMAP indexing interval (default: 3 nt)
+    -Q    PMAP indexing interval (default: 3 aa)
 
-These flags are explained below:
-
-* The -S flag: If your FASTA files contain separate sequences
-without any chromosomal information, you can treat each sequence as
-its own separate "chromosome" by adding the -S flag to the
-gmap_setup command, like this:
-
-    gmap_setup -S -d <genome> <fasta_file>...
-
-
-GMAP can handle an unlimited number of "chromosomes", with arbitrarily
-long names.  In this way, GMAP can act like a BLAST-type of program
-for near-identity matches.
-
-
-* The -E flag: If you need to pre-process the FASTA files before using
-these programs, perhaps because they are compressed or because you
-need to insert chromosomal information in the header lines, you can
-specify a command instead of multiple fasta_files, like these
-examples:
-
-    gmap_setup -d <genome> -E 'gunzip -c chr*.gz'
-    gmap_setup -d <genome> -E 'cat *.fa | ./add-chromosomal-info.pl'
-
-You can think of the command as a Unix pipe for processing each FASTA
-file before it is read by gmap_setup.
-
-* The -W flag: The gmap_setup process works best if you have a
-computer with enough RAM to hold the entire genome (e.g., 3
-gigabytes for a human- or mouse-sized genome).  Since the resulting
-genome files work across all machine architectures, you can find any
-machine with sufficient RAM to build the genome files and then
-transfer the files to another machine.  (GMAP itself runs fine on
-machines with limited RAM.)  If you cannot find any machine with
-sufficient RAM for gmap_setup, you can run the program with the -W
-flag to write the files directly, but this can be very slow.
-
-* The -q flag: If you specify a smaller interval (for example, 3 for
-the GMAP interval), you can create a higher-resolution database,
-which can be useful for mapping small oligomers (smaller than 18
-nt).  However, the corresponding genome index files will be larger
-(twice as big if you specify -q 3).  These index files may exceed
-the 2 gigabyte file offset limit on some computers, and will
-therefore fail to work on those computers.
-
+These flags are explained fully if you type "gmap_setup --help".
 
 
 Running GMAP
@@ -247,20 +274,19 @@ some common examples of usage.  For more examples, see the document
 available at http://www.gene.com/share/gmap/paper/demo-slides.pdf
 
 For each of the examples below, we assume that you have installed a
-genome database called NHGD_R35 in your GMAPDB directory.  (If your
+genome database called <genome> in your GMAPDB directory.  (If your
 database is located elsewhere, you can specify the -D flag to gmap or
 set the environment variable GMAPDB to point to that directory.)
 
 * Mapping only: To map one or more cDNAs in a FASTA file onto a
   genome, run GMAP as follows:
 
-    gmap -d NHGD_R35 <cdna_file>
+    gmap -d <genome> <cdna_file>
 
+* Mapping and alignment: If you want to map the cDNAs to a genome,
+  and show the full alignment, provide the -A flag:
 
-* Mapping and alignment: If you want to map and align the cDNAs, add
-  the -A flag:
-
-    gmap -d NHGD_R35 -A <cdna_file>
+    gmap -d <genome> -A <cdna_file>
 
 
 * Alignment only: To align one or more cDNAs in a FASTA file onto a
@@ -274,7 +300,7 @@ set the environment variable GMAPDB to point to that directory.)
   sufficient RAM (see below for guidelines) to run in batch mode, 
   add the "-B 1" or "-B 2" option:
 
-    gmap -d NHGD_R35 -B 1 -A <cdna_file>
+    gmap -d <genome> -B 1 -A <cdna_file>
 
   The "-B 1" option pre-loads the genomic indices only into RAM.
   The "-B 2" option pre-loads both the indices and genome into RAM.
@@ -292,7 +318,7 @@ set the environment variable GMAPDB to point to that directory.)
   make batch mode run even faster by specifying multiple threads with
   the -t flag:
 
-    gmap -d NHGD_R35 -B 1 -A -t <nthreads> <cdna_file>
+    gmap -d <genome> -B 1 -A -t <nthreads> <cdna_file>
 
   Note that with multiple threads, the output results will appear in
   random order, depending on which thread finishes its computation
@@ -314,7 +340,7 @@ set the environment variable GMAPDB to point to that directory.)
   compressed format, use the -Z flag.  You can uncompress the results
   by using the gmap_uncompress.pl program:
 
-    gmap -d NHGD_R35 -Z <cdna_file> > x
+    gmap -d <genome> -Z <cdna_file> > x
     cat x | gmap_uncompress
 
 
@@ -327,7 +353,7 @@ with the "-c" flag to GMAP.  The available chromosome subsets are
 listed in the chrsubset file in the GMAP database.  In our running
 example, this would be the file
 
-    /path/to/gmapdb/NHGD_R35/NHGD_R35.chrsubset
+    /path/to/gmapdb/<genome>/<genome>.chrsubset
 
 The gmap_setup process automatically creates a file by this name, and
 pre-defines some basic subsets in that file, namely the subset "all"
@@ -360,8 +386,8 @@ specifying a chrsubset file other than the one in the GMAPDB
 directory.
 
 
-Building map files (for advanced use only)
-==========================================
+Building map files
+==================
 
 This package includes an implementation of interval index trees
 (IITs), which permits efficient lookup of interval information.  The
@@ -371,73 +397,419 @@ interval index trees (or map files) are built using the iit_store
 program included in this package.  To build a map file, do the
 following:
 
-Step 1: Put your map information for a given genome (e.g. NHGD_R35)
-into a FASTA file with the following format:
+Step 1: Put your map information for a given genome into a map file
+with the following FASTA-like format:
    
-    >label start end optional_tag
+    >label coords optional_tag
     optional_annotation (which may be zero, one, or multiple lines)
 
-For example, the label may be an EST accession, with the start and end
-numbers representing their position in the genome database.
+For example, the label may be an EST accession, with the coords
+representing its genomic position.  Labels may be duplicated if
+necessary.
+
+The coords should be of the form
+
+    chr:position
+    chr:startposition..endposition
+
+The term "chr:position" is equivalent to "chr:position..position".  If
+you want to indicate that the interval is on the minus strand or
+reverse direction, then <endposition> may be less than
+<startposition>.
 
 Tags are very general and can be used for a variety of purposes.  For
-mapping purposes, GMAP understands two conventions for coordinates and
-tags: whole-genome and chromosomal.  At this time, the chromosomal
-convention is preferred, but the earlier, whole-genome convention is
-still supported for backwards compatibility.  The chromosomal option
-uses chromosomal coordinates and the tag indicates the chromosome and
-strand (using '+' or '-'):
-
-    >NM_004448 35109780 35138441 17+
-
-The whole-genome convention has just two tags to indicate the two
-strands of the genome.  The tags should be either in ("FWD","REV")
-style or ("+","-") style (don't mix the two styles in the same file).
-In this convention, the coordinates are universal coordinates, which
-are the coordinates computed when chromosomes are concatenated.  The
-GMAP program provides these coordinates in its alignments.  In
-addition, the get-genome program can translate chromosomal coordinates
-to universal coordinates with its -C flag:
-
-    get-genome -d NHGD_R35 -C 17:35109780..35138441
-
-Since this returns "2690002715--2690031376", the resulting header
-would be
-
-    >NM_004448 2690002715 2690031376 FWD
+example, you could 
 
 
-Step 2: Run iit_store on this FASTA file, and put the file into the
-maps subdirectory of the corresponding genome directory.  The file
-should end with ".iit"; if you don't specify this to the -o flag, the
-program will add ".iit" to the filename.
+Step 2: Run iit_store on this map file as follows
 
-    iit_store -o myannot myannot.fa
+    cat <mapfile> | iit_store -o <mapname>
+
+The program will create a file called <mapname>.iit.
 
 Now you can retrieve this information with iit_get
 
-    iit_get myannot.iit start [optional_end [optional_tags...]]
+    iit_get <mapname>.iit <coords>
 
-You can also retrieve this information with gmap, if you store the map
-file in the appropriate genome database, like this
+where <coords> has the format "chr:position" or
+"chr:startposition..endposition".  The iit_get program has other
+capabilities, including the ability to retrieve information by label,
+like this:
 
-    mv myannot.iit /path/to/genome/directory/NHGD_R35/NHGD_R35.maps/
+    iit_get <mapname>.iit <label>
 
-Then you can retrieve map information for a given cDNA sequence by
-specifying the desired map file with the -m flag:
+More details can be found by running "iit_get --help".
 
-    gmap -d NHGD_R35 -m myannot <cdna_file>
+If you plan to use this map information frequently, you may want to
+place it with its corresponding genome for future use.  In each
+GMAP/GSNAP database, there is a subdirectory for storing map files,
+like this
 
+    /path/to/gmapdb/<genome>/<genome>.maps/
 
-The iit_get program has other capabilities, including the ability to
-retrieve information by label, like this:
+(If you don't remember where your default gmap directory is, run "gmap
+--version" to find it.)  If you put your <mapname>.iit file into this
+maps subdirectory, you can get additional functionality.  First, you
+can run the program get-genome, which is used mainly for getting
+genome sequence, to get map information instead, like this
 
-    iit_get myannot.iit label
+    get-genome -d <genome> -m <mapname> <coords>
 
-More details can be found by doing "iit_get --help".
+Second, you can use GMAP with the -m flag to retrieve map information
+that corresponds to a given cDNA sequence like this
+
+    gmap -d <genome> -m <mapname> <cdna_file>
 
 Finally, GMAP and the IIT utilities support the GFF3 format.  GMAP can
 generate its results in GFF3 format, and iit_store can parse GFF3
 files using its -G and -l flags.  More details about iit_store can be
 found by doing "iit_store --help".
+
+
+Running GSNAP
+=============
+
+GSNAP uses the same database as GMAP does, so you will need to process
+the genome using gmap_setup as explained above, if you haven't done
+that already.
+
+To see the full set of options for GSNAP, type "gsnap --help".  A key
+parameter you will need to set is the "-m" flag, which is the maximal
+score you will allow per read (or each end of a paired-end read).  The
+score equals the number of mismatches, plus penalties for indels and
+local or distant splicing, if any.  For half-intron alignments, a
+further penalty is assessed for the amount of sequence that was not
+aligned.  If you do not set a value for "-m", then GSNAP will pick a
+value, depending on the length of each read, that will allow it to run
+fairly quickly.  For RNA-Seq data, we recommend setting -m to a
+relatively high value, because alignments past the end of an exon can
+result in several mismatches.  For 75-mer RNA-Seq data, we typically
+set -m to be at least 10.
+
+Input to GSNAP should be in FASTA format, with one line per read (or
+end of a paired-end read).  (In future versions, we will implement the
+ability to read FASTQ files.)  The same FASTA file can have a mixture
+of single-end and paired-end reads, if desired.
+
+Single-end reads:
+
+Each FASTA entry should contain one short read per line, like this
+
+>Header information
+AAAACATTCTCCTCCGCATAAGCCTGCGTCAGATTA
+
+Each short read can have a different length.  However, the entire read
+needs to be on a single line, and may not wrap around multiple lines.
+If it extends to a second line, GSNAP will think that the read is
+paired-end.
+
+
+Paired-end reads:
+
+Each FASTA entry should contain two short reads, one per line, like
+this
+
+>Header information
+AAAACATTCTCCTCCGCATAAGCCTAGTAGATTA
+GGCGTAGGTAGAAGTAGAGGTTAAGGCGCGTCAG
+
+By default, the program assumes that the second end is in the reverse
+complement direction compared with the first end.  If they are in the
+same direction, you may need to use the --circular-input (or -c) flag.
+
+
+Output formats in GSNAP
+=======================
+
+By default, GSNAP prints its output in a FASTA-like format, which we
+describe below.  We have also implemented SAM output format, which you
+can obtain by using the "-A sam" flag to GSNAP.  We find that GSNAP
+output has some advantages over SAM output, though, especially in
+showing the orientation of splice junctions.
+
+Here is some output from GSNAP on a paired-end read:
+
+>GGACTGCGCACCGAACGGCAGCGACTTCCCGTAGTAGCGGTGCTCCGCGAAGACCAGTAGAGCCCCCCGCTCGGCC   1 concordant    ILLUMINA-A1CCE9_0004:1:1:1510:2090#0
+ GGACTGCGCACCGAACGGCAGCGACTTCCCGTAGTAGCGct-----------------------------------   1..39   +9:139128263..139128301 start:0..acceptor:0.99,dir:antisense,splice_dist:214,sub:0+0=0,label:NM_013379.DPP7.exon4/13  segs:2,align_score:2  pair_score:5,pair_length:112
+,-------------------------------------acGTGCTCCGCGAAGACCAGTAGAGCCCCCCGCTCGGCC   40..76  +9:139128516..139128552 donor:0.96..end:0,dir:antisense,splice_dist:214,sub:0+0=0,label:NM_013379.DPP7.exon3/13
+ 
+<CTTCGCCAACAACTCGGGCTTCGTCGCGGAGCTGGCGGCCGAGCGGGGGGCTCTACTGGTCTTCGCGGAGCACCGC   1 concordant    ILLUMINA-A1CCE9_0004:1:1:1510:2090#0
+ CTTCGCCAACAACTCGGcCTTCGTCGCGGAGCTGGCGGCCGAGCGGGGGGCTCTACTGGTCTTCGCGGAGCACgtg   1..73   -9:139128588..139128516 start:0..end:3,sub:3+1=4      segs:1,align_score:3  pair_score:5,pair_length:112
+ 
+Each end of a read gets its own block, with the first read starting
+with ">" and the second read for paired-end reads starting with "<".
+The block starts with a header line that has in column 1, the query
+sequence in its original direction (and with lower-case preserved if
+any); in column 2, the number of hits for that query and if the read
+is paired-end, the relationship between the ends (as discussed in the
+next paragraph); and in column 3, the accession number for the query.
+
+The two ends of a paired-end read can have the following
+relationships: "concordant", "unpaired", "inversion", "toolong", or
+"scramble".  A paired-end read is concordant if the ends are on the
+same chromosome, in the expected directions, and within the
+"--pairmax" parameter.  There may be more than one concordant
+alignment for a given read, and if so, the alignments for each end are
+reported in corresponding order.  Otherwise, if a concordant
+relationship cannot be found, then the program will align each end
+separately.  If each end has a single best alignment and the two
+alignments lie on the same chromosome, then the relationship is
+"inversion", "toolong", or "scramble".  If the orientations are
+opposite what is expected, the relationship is "inversion".  If they
+are in the expected orientation, but the distance is greater than the
+"--pairmax" parameter, then the relationship is "toolong".  If they
+are in the expected orientation, but the distance appears to be
+negative, then the relationship is "scramble".  In all other cases,
+the relationship is "unpaired", and the alignments of the two ends are
+reported independently.
+
+After the query line, each of the genomic hits is shown, up to the
+'-n' parameter.  If too many hits were found (more than the '-n'
+parameter), the behavior depends on whether the "--quiet-if-excessive"
+flag is given to GSNAP.  If not, then the first n hits will be printed
+and the rest will not be printed.  If the "--quiet-if-excessive" flag
+is given to GSNAP, then no hits will be printed if the number exceeds
+n.
+
+Each of the genomic hits contains one or more alignment segments,
+which is a region of continuous one-to-one correspondence (matches or
+mismatches) between the query and the genome.  Multiple segments occur
+when the alignment contains an insertion, deletion, or splice.  The
+first segment is marked by a space (" ") at the beginning of the line,
+while the second and following segments are marked by a comma (",") at
+the beginning of the line.  (In the current implementation of GSNAP
+that allows only a single indel or splice, the number of segments is
+at most two.)
+
+The segments contain information in tab-delimited columns as follows:
+
+Column 1: Genomic sequence with matches in capital letters, mismatches
+in lower-case letters, and regions outside the segment with dashes.
+For deletions in the query, the deleted genomic sequence is also
+included in lower case.  For spliced reads, the two dinucleotides at
+the intron ends are included in lower case.
+
+Column 2: Range of query sequence aligned in the segment.  Coordinates
+are inclusive, with the first nucleotide considered to be position 1.
+
+Column 3: Range of genomic segment aligned, again with inclusive
+coordinates, with the first nucleotide in each chromosome considered
+to be position 1.  Plus and minus strands are marked with a "+" or "-"
+sign.
+
+Column 4: Segment information, delimited by commas.  The first item
+reports on the ends of the segment, which can be of type "start",
+"end", "ins", "del", "donor", "acceptor", "end_donor", or
+"end_acceptor".  After "start" and "end", we report the number of
+nucleotides clipped or trimmed from the segment.  In our example
+above, "end:3" means that 3 nucleotides should be trimmed from the
+end.  Trimming is computed only if the "-T" flag is specified.  After
+"ins" and "del", we report the number of nucleotides that were
+inserted or deleted in the query relative to the genome.  After
+"donor", "acceptor", "end_donor", and "end_acceptor", we report the
+probability of the splice site, based on the MaxEnt model.  The
+"end_donor" and "end_acceptor" labels indicate a "half-intron"
+segment, where the other exon could not be found.  
+
+Each segment will also show after the "sub" tag, he number of
+mismatches in that segment including the part that is trimmed, if any.
+If SNP-tolerant alignment is chosen, then the number of SNPs is also
+shown (see details below under SNP-tolerant alignment).  Other
+information may also be included with the segment information, such as
+the orientation and distance of the splice or known splice labels, if
+appropriate flags and information are given to GSNAP.  Splices are
+marked as being "splice_translocation", "splice_inversion", and
+"splice_scramble", if appropriate.
+
+Column 5: Alignment or hit information, delimited by commas.  For the
+first segment in a hit (the one starting with a space), this column
+provides the number of segments (denoted by "segs:") and the score of
+the alignment (denoted by "align_score:").
+
+Column 6: Pair information (for paired-end reads only).  For the first
+segment in a hit (with the same information repeated on both ends of a
+concordant pair), this column provides the score of the pair (which is
+the sum of the alignment scores) and the inferred length of the insert
+(ignoring splices within each segment, but not between segments).  
+
+
+Parsing GSNAP output
+====================
+
+We have provided a program called gsnap_tally that can parse GSNAP
+standard output and generate a tally (which is somewhat like a
+pileup).  A tally has the following FASTA-like format:
+
+>1_1 1:35117001..35118000
+G10 T5/2
+C21
+
+A0 T15/6 G1/1
+
+
+The header line occurs occasionally and provides the genomic range for
+the following data.  Each line has information about one genomic
+position in that range.  A blank line indicates that no nucleotides
+aligned to that position.  Otherwise, the first nucleotide is always
+the reference nucleotide with its count, possibly zero.  After that
+are the alternate nucleotides observed if any, along with their
+counts.  After the "/" sign are the number of different query shifts
+that gave rise to those alternate nucleotides.  The number of shifts
+is designed to reveal cases where the alternate nucleotide
+observations are due to large numbers of the same duplicate read.
+
+
+
+Detecting known and novel splice sites in GSNAP
+===============================================
+
+GSNAP can detect splice junctions in individual reads.  You can detect
+splices using a probabilistic model using the --novelsplicing (or -N)
+flag.  You can also detect splices from a set of splice sites that you
+provide, using the --splicesites (or -s) flag.  You may specify both
+flags, which will report splice junctions involving both known and
+novel sites.
+
+Output for a splicing junction will look like this:
+
+>TCCGTGACGTGGATTGGTGCTGCACCCCTCATC      1       Header
+ TCCGTGACGTGGATTGgt---------------      1..16   +19:56050054..56050069  start:0..donor:0.99,splice_dist:1238,dir:sense,sub:0+0=0,label:NM_001648.KLK3.exon1/5|NM_001030047.KLK3.exon1/5|NM_001030048.KLK3.exon1/5|NM_001030049.KLK3.exon1/6|NM_001030050.KLK3.exon1/2       
+,--------------agGTGCTGCACCCCTCATC      17..33  +19:56051308..56051324  acceptor:0.99..end:0,dir:sense,sub:0+0=0,label:NM_001648.KLK3.exon2/5|NM_001030047.KLK3.exon2/5|NM_001030048.KLK3.exon2/5|NM_001030049.KLK3.exon2/6|NM_001030050.KLK3.exon2/2
+ 
+After the "donor:" or "acceptor:" splice site type, the model score
+probability is given, even if the splice site is known.  For known
+splice sites, the "label:" field will provide information about the
+site.  If there is more than one known splice site at a genomic
+position, the labels are separated by a "|" delimiter.
+
+To specify known splice sites, you will need to create a file with the
+following format:
+
+>NM_004448.ERBB2.exon1 17:35110090..35110091 donor
+>NM_004448.ERBB2.exon2 17:35116768..35116769 acceptor
+>NM_004448.ERBB2.exon2 17:35116920..35116921 donor
+>NM_004448.ERBB2.exon3 17:35118099..35118100 acceptor
+>NM_004449.ERG.exon1 21:38955452..38955451 donor
+>NM_004449.ERG.exon2 21:38878740..38878739 acceptor
+>NM_004449.ERG.exon2 21:38878638..38878637 donor
+>NM_004449.ERG.exon3 21:38869542..38869541 acceptor
+
+Each line must start with a ">" character, then be followed by an
+identifier (which may have duplicates).  Then there should be the
+chromosomal coordinates which straddle the exon-intron boundary, so
+one coordinate is on the exon and one is on the intron.  (Coordinates
+are all 1-based, so the first character of a chromosome is number 1.)
+Finally, there should be the splice type: "donor" or "acceptor".
+                                                                                                
+Note that the chromosomal coordinates are in the sense direction.
+Therefore, genes on the plus strand of the genome (like NM_004448) have
+the coordinates in ascending order (e.g., 35110090..35110091).
+Genes on the minus strand of the genome (like NM_004449) have the
+coordinates in descending order (e.g., 38955452..38955451).
+                                                                                                
+To help you generate this file, GMAP now has an option (-f 6) that
+finds splice sites in cDNA sequences and reports them in format above.
+
+Once you have built this file, you process it as a map file (see
+"Building map files" above), by doing
+
+    cat <file> | iit_store -o <splicesitefile>
+                                                                                                
+which creates <splicesitefile>.iit, and then you put it in the maps
+subdirectory by doing
+                                                                                                
+    cp <splicesitefile>.iit /path/to/gmapdb/<genome>/<genome>.maps
+                                                                                                
+Then, you may use the file by doing this:
+                                                                                                
+    gsnap -d <genome> -s <splicesitefile> <shortreads>
+                                                                                                
+
+SNP-tolerant alignment in GSNAP
+===============================
+
+GSNAP has the ability to align to a reference space of all possible
+major and minor alleles in a set of known SNPs provided by the user.
+This ability is provided by the -V flag, and produces output like
+this:
+
+>ATGGTAATCCTGCTCAGTACGAGAGGAACCGCAGGA   2       Header
+ ATGGTAATCCTGCTCAGTACGAGAGGAACCGCAGGt   1..36   -12:34263937..34263902  start:0..end:0,sub:1+0=1       
+ ATGGTAATCCTGCTCAGTAgGAGAGGAACCcCAGGt   1..36   -21:14379300..14379265  start:0..end:0,sub:1+2=3,snps:20@rs62211262|31@rs62211261    
+
+The notation "sub:1+0=1" indicates that the SNP-tolerant alignment has
+one mismatch ("sub:1") and zero minor SNP alleles ("+0"), for a total
+of one differences ("=1") relative to the reference genome with all
+major alleles.  Likewise, the notation "sub:1+2=3" indicates one
+SNP-tolerant mismatch, two minor SNP alleles, and 3 mismatches
+relative to the reference sequence with all major alleles.  If minor
+SNP alleles are present, they are listed in the "snps:" field with
+their query position and the label for each SNP.
+
+To specify a set of known SNPs, you will need to create a file with the
+following format:
+
+>rs62211261 21:14379270..14379270 CG
+>rs62211262 21:14379281..14379281 CG
+
+Each line must start with a ">" character, then be followed by an
+identifier (which may have duplicates).  Then there should be the
+chromosomal coordinate of the SNP.  (Coordinates are all 1-based, so
+the first character of a chromosome is number 1.)  Finally, there
+should be the two possible alleles in alphabetical order: "AC", "AG",
+"AT", "CG", "CT", or "GT".  These alleles must correspond to the
+possible nucleotides on the plus strand of the genome.  If the allele
+in the reference sequence does not match one of these two letters, the
+SNP will be ignored in subsequent processing.
+                                                                                                
+Once you have built this file, you create an IIT file by doing this
+                                                                                                
+    cat <file> | iit_store -o <snpfile>
+                                                                                                
+which creates <snpfile>.iit, and then you put it in the right place by
+doing this
+                                                                                                
+    cp <snpfile>.iit /path/to/gmapdb/<genome>/<genome>.maps
+                                                                                                
+Then you need to create a reference space index and compressed genome
+by doing
+
+    snpindex -d <genome> -V <snpfile> <snpfile>.iit
+
+Finally, you can perform SNP-tolerant alignment by doing
+                                                                                                
+    gsnap -d <genome> -V <snpfile> <shortreads>
+
+You can also retrieve snp information for genomic segments by running
+get-genome with the -V and -f flags.  For more details, run
+"get-genome --help".
+
+
+Alignment of reads from bisulfite-treated DNA in GSNAP
+======================================================
+
+GSNAP has the ability to align reads from bisulfite-treated DNA, which
+converts unmethylated cytosines to uracils that appear as thymines in
+reads.  GSNAP is able to identify genomic-T to read-C mismatches, and
+produces output like this:
+
+>CTACGTcGTAGACATATTGATTCAGAATTTGAAGTTTAGCTAGATCTTAc     1       Convert every other c to t
+ C.ACG.tGTAGACATA.TGATTCAGAAT.TGAAGTTTAGCTAGA.C.TAg     1..50   sub:2   +9:1000000..1000049
+ 
+As with all GSNAP output, the first line is the query, and the ones
+afterward represent genomic segments.  The "." symbol indicates an
+unmethylated C in the genome that appears as a T in the read.
+Mismatches are shown by lower case characters in the genomic segment.
+In position 6, we see an example of a genomic-T that appears as a
+read-C, representing a mismatch.  The last position also shows a
+mismatch between a genomic-G and read-C.
+
+To process reads from bisulfite-treated DNA, you will first need to
+create the necessary index files by doing
+
+    cmetindex -d <genome>
+
+Then, you can align the reads by doing
+
+    gsnap -d <genome> -C <shortreads>
 

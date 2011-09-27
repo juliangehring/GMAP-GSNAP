@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.89 2007/06/25 18:57:12 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.107 2010/03/01 16:23:27 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -30,7 +30,6 @@ static char rcsid[] = "$Id: genome.c,v 1.89 2007/06/25 18:57:12 twu Exp $";
 #include "assert.h"
 #include "except.h"
 #include "mem.h"
-#include "types.h"
 #include "access.h"
 #include "complement.h"
 #include "interval.h"
@@ -82,6 +81,21 @@ struct T {
 };
 
 
+UINT4 *
+Genome_blocks (T this) {
+  return this->blocks;
+}
+
+
+Genomicpos_T
+Genome_totallength (T this) {
+  if (this->compressedp == false) {
+    return (Genomicpos_T) this->len;
+  } else {
+    return (Genomicpos_T) ((this->len/3) * 8);
+  }
+}
+
 void
 Genome_free (T *old) {
   if (*old) {
@@ -110,19 +124,27 @@ Genome_free (T *old) {
 
 
 T
-Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp) {
+Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_p, bool batchp) {
   T new = (T) MALLOC(sizeof(*new));
   char *filename;
-  bool compressedp = !uncompressedp;
+  bool compressedp = !genome_lc_p;
+#ifdef HAVE_MMAP
   int npages;
   double seconds;
+#endif
 
   new->compressedp = compressedp;
 
   if (compressedp == true) {
-    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-			       strlen(".genomecomp")+1,sizeof(char));
-    sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
+    if (snps_root != NULL) {
+      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				 strlen(".genomecomp.")+strlen(snps_root)+1,sizeof(char));
+      sprintf(filename,"%s/%s.genomecomp.%s",genomesubdir,fileroot,snps_root);
+    } else {
+      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				 strlen(".genomecomp")+1,sizeof(char));
+      sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
+    }
   } else {
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".genome")+1,sizeof(char));
@@ -225,7 +247,7 @@ make_complement_buffered (char *complement, char *sequence, Genomicpos_T length)
   int i, j;
 
   for (i = length-1, j = 0; i >= 0; i--, j++) {
-    complement[j] = complCode[sequence[i]];
+    complement[j] = complCode[(int) sequence[i]];
   }
   complement[length] = '\0';
   return;
@@ -265,18 +287,28 @@ genomecomp_read_current (T this) {
 }
 
 
-static char acgt[4] = {'A','C','G','T'};
-static char non_acgt[4] = {'N','?','?','X'};
+static char DEFAULT_CHARS[4] = {'A','C','G','T'};
+static char DEFAULT_FLAGS[4] = {'N','N','N','N'};
 
+static char SNP_CHARS[4] = {' ',' ',' ',' '};
+static char SNP_FLAGS[4] = {'A','C','G','T'};
+
+static char *global_chars = DEFAULT_CHARS;
+static char *global_flags = DEFAULT_FLAGS;
+
+
+#if 0
 void
 Genome_replace_x (void) {
   non_acgt[3] = 'N';
 }
+#endif
 
 
 static void
 uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos, 
-		   Genomicpos_T endpos) {
+		   Genomicpos_T endpos, const char defaultchars[],
+		   const char flagchars[]) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
@@ -298,12 +330,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
     flags = genomecomp_read_current(this);
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -317,12 +349,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
     flags = genomecomp_read_current(this);
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -337,12 +369,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
       flags = genomecomp_read_current(this);
 
       for (i = 0; i < 16; i++) {
-	gbuffer1[k++] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+	gbuffer1[k++] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	gbuffer1[k++] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+	gbuffer1[k++] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -355,12 +387,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
       flags = genomecomp_read_current(this);
 
       for (i = 0; i < 16; i++) {
-	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+	Buffer[i] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+	Buffer[i] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -373,9 +405,10 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
   return;
 }
 
-static void
-uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
-		 Genomicpos_T endpos) {
+void
+Genome_uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
+			Genomicpos_T endpos, const char defaultchars[],
+			const char flagchars[]) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
   UINT4 high, low, flags;
@@ -399,12 +432,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
     high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
     for (i = 0; i < 16; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -420,12 +453,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
     high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
     for (i = 0; i < 16; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+      Buffer[i] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -443,12 +476,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
       high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
       for (i = 0; i < 16; i++) {
-	gbuffer1[k++] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+	gbuffer1[k++] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	gbuffer1[k++] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+	gbuffer1[k++] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -464,12 +497,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
       high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
       for (i = 0; i < 16; i++) {
-	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
+	Buffer[i] = (flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
+	Buffer[i] = (flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -484,14 +517,27 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 
 static const Except_T gbufferlen_error = { "Insufficient allocation" };
 
-Sequence_T
-Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, 
-		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
+static bool
+fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,
+	     IIT_T chromosome_iit, const char defaultchars[], const char flagchars[]) {
+  Chrnum_T chrnum_left, chrnum_right, chrnumi;
+  Genomicpos_T inbounds_low, inbounds_high, pos, low, high, maxoverlap, overlap;
   
-  if (length > gbufferlen) {
-    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
-	    gbufferlen,length);
-    Except_raise(&gbufferlen_error,__FILE__,__LINE__);
+  *nunknowns = 0;
+  if (length == 0) {
+    *chrnum = 0;
+    return false;
+  }
+
+  /* Fix out of bounds resulting from negative numbers */
+  if (left + length < left) {
+    debug(printf("Got negative left\n"));
+    while (left != 0U) {
+      *(gbuffer1++) = OUTOFBOUNDS;
+      *nunknowns += 1;
+      length--;
+      left++;
+    }
   }
 
   if (this->compressedp == false) {
@@ -517,36 +563,111 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->read_mutex);
 #endif
-      uncompress_fileio(gbuffer1,this,left,left+length);
+      uncompress_fileio(gbuffer1,this,left,left+length,defaultchars,flagchars);
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
-      uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+      Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+length,defaultchars,flagchars);
     }
   }
   gbuffer1[length] = '\0';
 
-  if (revcomp == true) {
-    make_complement_buffered(gbuffer2,gbuffer1,length);
-    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
-    debug1(Sequence_print(Sequence_genomic_new(gbuffer2,length),false,60,true));
-    return Sequence_genomic_new(gbuffer2,length);
+  debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+
+  /* Fix out of bounds resulting from crossing chromosomes */
+  if (chromosome_iit == NULL) {
+    debug(printf("No chr info because chromosome_iit is null\n"));
+    /* None provided, perhaps because aligning to user segment */
+  } else if ((chrnum_left = IIT_get_one(chromosome_iit,/*divstring*/NULL,left,left)) == 
+	     (chrnum_right = IIT_get_one(chromosome_iit,/*divstring*/NULL,left+length-1U,left+length-1U))) {
+    debug(printf("Chr at beginning = %d, at end = %d\n",chrnum_left,chrnum_right));
+    *chrnum = chrnum_left;
+
+    /* Fix out of bounds resulting from going past last chromosome */
+    IIT_interval_bounds(&low,&high,chromosome_iit,chrnum_left);
+    if (left > high) {
+      for (pos = 0; pos < length; pos++) {
+	gbuffer1[pos] = OUTOFBOUNDS;
+	*nunknowns += 1;
+      }
+    } else if (left+length > high) {
+      for (pos = high-left+1; pos < length; pos++) {
+	gbuffer1[pos] = OUTOFBOUNDS;
+	*nunknowns += 1;
+      }
+    }
+
   } else {
-    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
-    debug1(Sequence_print(Sequence_genomic_new(gbuffer1,length),false,60,true));
-    return Sequence_genomic_new(gbuffer1,length);
+    debug(printf("Chr at beginning = %d, at end = %d\n",chrnum_left,chrnum_right));
+    maxoverlap = 0;
+    for (chrnumi = chrnum_left; chrnumi <= chrnum_right; chrnumi++) {
+      IIT_interval_bounds(&low,&high,chromosome_iit,chrnumi);
+      if (left > low) {
+	low = left;
+      }
+      if (left+length < high) {
+	high = left+length-1U;
+      }
+      if ((overlap = high - low) > maxoverlap) {
+	*chrnum = chrnumi;
+	maxoverlap = overlap;
+	inbounds_low = low - left;
+	inbounds_high = high - left;
+      }
+    }
+    debug(printf("in-bounds at %d..%d\n",inbounds_low,inbounds_high));
+    for (pos = 0; pos < inbounds_low; pos++) {
+      gbuffer1[pos] = OUTOFBOUNDS;
+      *nunknowns += 1;
+    }
+    for (pos = inbounds_high+1; pos < length; pos++) {
+      gbuffer1[pos] = OUTOFBOUNDS;
+      *nunknowns += 1;
+    }
+    debug(printf("%s\n",gbuffer1));
   }
+
+  return true;
 }
 
 
+
+bool
+Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,
+		    IIT_T chromosome_iit) {
+  return fill_buffer(&(*chrnum),&(*nunknowns),this,left,length,gbuffer1,chromosome_iit,DEFAULT_CHARS,DEFAULT_FLAGS);
+}
+
+#if 0
+/* See get_segment_alt and get_segment_cmp below */
+bool
+Genome_fill_buffer_alt (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,
+			IIT_T chromosome_iit) {
+  return fill_buffer(&(*chrnum),&(*nunknowns),this,left,length,gbuffer1,chromosome_iit,DEFAULTCHARS,DEFAULTCHARS);
+}
+
+bool
+Genome_fill_buffer_snp (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,
+			IIT_T chromosome_iit) {
+  return fill_buffer(&(*chrnum),&(*nunknowns),this,left,length,gbuffer1,chromosome_iit,SNP_DEFAULTCHARS,SNP_FLAGCHARS);
+}
+#endif
+
+
 void
-Genome_fill_buffer (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1) {
+Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1) {
   
   if (length == 0) {
     return;
+  }
 
-  } else if (this->compressedp == false) {
+  /* Fix out of bounds resulting from negative numbers */
+  if (left + length < left) {
+    abort();
+  }
+
+  if (this->compressedp == false) {
     if (this->access == FILEIO) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->read_mutex);
@@ -569,21 +690,104 @@ Genome_fill_buffer (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffe
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->read_mutex);
 #endif
-      uncompress_fileio(gbuffer1,this,left,left+length);
+      uncompress_fileio(gbuffer1,this,left,left+length,global_chars,global_flags);
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
-      uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+      Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+length,global_chars,global_flags);
     }
   }
   gbuffer1[length] = '\0';
 
   debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+
   return;
 }
 
 
+
+Sequence_T
+Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
+		    bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
+  Chrnum_T chrnum;
+  int nunknowns;
+  
+  if (length > gbufferlen) {
+    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
+	    gbufferlen,length);
+    Except_raise(&gbufferlen_error,__FILE__,__LINE__);
+  }
+
+  fill_buffer(&chrnum,&nunknowns,this,left,length,gbuffer1,chromosome_iit,DEFAULT_CHARS,DEFAULT_FLAGS);
+
+  if (revcomp == true) {
+    make_complement_buffered(gbuffer2,gbuffer1,length);
+    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer2,length),false,60,true));
+    return Sequence_genomic_new(gbuffer2,length);
+  } else {
+    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer1,length),false,60,true));
+    return Sequence_genomic_new(gbuffer1,length);
+  }
+}
+
+Sequence_T
+Genome_get_segment_alt (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
+			bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
+  Chrnum_T chrnum;
+  int nunknowns;
+  
+  if (length > gbufferlen) {
+    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
+	    gbufferlen,length);
+    Except_raise(&gbufferlen_error,__FILE__,__LINE__);
+  }
+
+  fill_buffer(&chrnum,&nunknowns,this,left,length,gbuffer1,chromosome_iit,DEFAULT_CHARS,SNP_FLAGS);
+
+  if (revcomp == true) {
+    make_complement_buffered(gbuffer2,gbuffer1,length);
+    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer2,length),false,60,true));
+    return Sequence_genomic_new(gbuffer2,length);
+  } else {
+    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer1,length),false,60,true));
+    return Sequence_genomic_new(gbuffer1,length);
+  }
+}
+
+Sequence_T
+Genome_get_segment_snp (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
+			bool revcomp, char *gbuffer1, char *gbuffer2, int gbufferlen) {
+  Chrnum_T chrnum;
+  int nunknowns;
+  
+  if (length > gbufferlen) {
+    fprintf(stderr,"Didn't allocate enough space for gbufferlen (%d < %u)\n",
+	    gbufferlen,length);
+    Except_raise(&gbufferlen_error,__FILE__,__LINE__);
+  }
+
+  fill_buffer(&chrnum,&nunknowns,this,left,length,gbuffer1,chromosome_iit,SNP_CHARS,SNP_FLAGS);
+
+  if (revcomp == true) {
+    make_complement_buffered(gbuffer2,gbuffer1,length);
+    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer2,length),false,60,true));
+    return Sequence_genomic_new(gbuffer2,length);
+  } else {
+    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer1,length),false,60,true));
+    return Sequence_genomic_new(gbuffer1,length);
+  }
+}
+
+
+
+#if 0
 int
 Genome_next_char (T this) {
   char gbuffer[2];
@@ -608,18 +812,18 @@ Genome_next_char (T this) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->read_mutex);
 #endif
-      uncompress_fileio(gbuffer,this,this->left,this->left+1U);
+      uncompress_fileio(gbuffer,this,this->left,this->left+1U,DEFAULT_CHARS,DEFAULT_FLAGS);
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
-      uncompress_mmap(gbuffer,this->blocks,this->left,this->left+1U);
+      Genome_uncompress_mmap(gbuffer,this->blocks,this->left,this->left+1U,DEFAULT_CHARS,DEFAULT_FLAGS);
     }
     this->left += 1U;
     return (int) gbuffer[0];
   }
 }
-
+#endif
 
 
 
@@ -716,4 +920,5 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
     return Sequence_genomic_new(gbuffer3,reflen);
   }
 }
+
 

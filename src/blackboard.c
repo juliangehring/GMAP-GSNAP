@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: blackboard.c,v 1.18 2007/08/28 23:24:29 twu Exp $";
+static char rcsid[] = "$Id: blackboard.c,v 1.24 2009/10/02 00:53:12 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,6 +14,7 @@ static char rcsid[] = "$Id: blackboard.c,v 1.18 2007/08/28 23:24:29 twu Exp $";
 #include "mem.h"
 #include "reqpost.h"
 
+
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -27,7 +28,6 @@ struct T {
   int nfiles;
   int nextchar;
   Sequence_T usersegment;
-  Params_T params;
 
   int nworkers;
   Reqpost_T *reqposts;
@@ -50,7 +50,7 @@ struct T {
 };
 
 T
-Blackboard_new (FILE *input, char **files, int nfiles, int nextchar, Sequence_T usersegment, int nworkers, Params_T params) {
+Blackboard_new (FILE *input, char **files, int nfiles, int nextchar, Sequence_T usersegment, int nworkers) {
   T new = (T) MALLOC(sizeof(*new));
   int i;
 
@@ -59,11 +59,10 @@ Blackboard_new (FILE *input, char **files, int nfiles, int nextchar, Sequence_T 
   new->nfiles = nfiles;
   new->nextchar = nextchar;
   new->usersegment = usersegment;
-  new->params = params;
   new->nworkers = nworkers;
   new->reqposts = (Reqpost_T *) CALLOC(nworkers,sizeof(Reqpost_T));
   for (i = 0; i < nworkers; i++) {
-    new->reqposts[i] = Reqpost_new(new,i,params);
+    new->reqposts[i] = Reqpost_new(new,i);
   }
 
   pthread_mutex_init(&new->lock,NULL);
@@ -92,7 +91,7 @@ Blackboard_new (FILE *input, char **files, int nfiles, int nextchar, Sequence_T 
 
 void
 Blackboard_free (T *old) {
-  int i;
+  /* int i; */
 
   if (*old) {
     pthread_cond_destroy(&(*old)->input_ready_p);
@@ -113,6 +112,11 @@ Blackboard_free (T *old) {
   return;
 }
 
+
+bool
+Blackboard_donep (T this) {
+  return (this->ninputs == this->noutputs);
+}
 
 FILE *
 Blackboard_input (T this) {
@@ -137,11 +141,6 @@ Blackboard_nextchar (T this) {
 Sequence_T
 Blackboard_usersegment (T this) {
   return this->usersegment;
-}
-
-Params_T
-Blackboard_params (T this) {
-  return this->params;
 }
 
 Reqpost_T
@@ -187,8 +186,16 @@ Blackboard_put_request (T this, Request_T request) {
 void
 Blackboard_set_inputdone (T this) {
   pthread_mutex_lock(&this->lock);
-  debug(printf("Blackboard: Setting inputdone to be true\n"));
+  debug(printf("Blackboard: Setting inputdone to be true.  ninputs %d, noutputs %d\n",
+	       this->ninputs,this->noutputs));
   this->inputdone = true;
+
+  if (this->noutputs >= this->ninputs) {
+    debug(printf("Blackboard: All outputs finished before input done (either input empty, or use of -q feature)\n"));
+    this->n_output_ready++;	/* For Blackboard_get_result to break out of loop */
+    pthread_cond_signal(&this->output_ready_p);
+  }
+
   pthread_mutex_unlock(&this->lock);
   return;
 }
@@ -214,7 +221,11 @@ Result_T
 Blackboard_get_result (Request_T *request, T this) {
   Result_T result;
 
+  debug(printf("Entering Blackboard_get_result with inputdone %d, ninputs %d, noutputs %d\n",
+	       this->inputdone,this->ninputs,this->noutputs));
+
   pthread_mutex_lock(&this->lock);
+
   if (this->inputdone == true &&
       this->noutputs == this->ninputs) {
     pthread_mutex_unlock(&this->lock);
@@ -225,7 +236,13 @@ Blackboard_get_result (Request_T *request, T this) {
       debug(printf("Blackboard: Cond wait for output_ready_p\n"));
       pthread_cond_wait(&this->output_ready_p,&this->lock);
     }
-    debug(printf("Blackboard: Cond okay for output_ready_p\n"));
+    debug(printf("Blackboard: Cond okay for output_ready_p.  inputdone = %d\n",this->inputdone));
+
+    /* n_output_ready can also be incremented by Blackboard_set_inputdone() */
+    if (this->inputdone == true && this->noutputs >= this->ninputs) {
+      debug(printf("Blackboard: All inputs, if any, have been processed.  Returning NULL.\n"));
+      return NULL;
+    }
       
     while (this->output_ready[this->outputi] == false) {
       if (++this->outputi >= this->nworkers) {

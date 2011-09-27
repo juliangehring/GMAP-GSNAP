@@ -1,4 +1,4 @@
-/* $Id: match.h,v 1.44 2006/12/01 23:20:40 twu Exp $ */
+/* $Id: match.h,v 1.48 2008/10/10 17:52:44 twu Exp $ */
 #ifndef MATCH_INCLUDED
 #define MATCH_INCLUDED
 #include "bool.h"
@@ -28,6 +28,8 @@ Match_chrpos (T this);
 extern int
 Match_incr_npairings (T this);
 extern int
+Match_decr_npairings (T this);
+extern int
 Match_npairings (T this);
 extern void
 Match_set_weight (T this, double weight);
@@ -47,7 +49,13 @@ Match_free (T *old);
 #endif
 
 extern void
-Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size);
+Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_iit, int stage1size);
+extern void
+Match_print (T this, IIT_T chromosome_iit);
+
+extern bool
+Match_acceptable_pair (T match5, T match3, int trimlength, int stage1size);
+
 
 #undef T
 #endif

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reqpost.c,v 1.19 2005/12/06 02:17:18 twu Exp $";
+static char rcsid[] = "$Id: reqpost.c,v 1.20 2008/02/28 18:12:06 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -25,7 +25,6 @@ struct T {
   int id;
   pthread_mutex_t lock;
 
-  Params_T params;
   Request_T request;
   Result_T result;
   bool resultp;
@@ -36,13 +35,12 @@ struct T {
 };
 
 T
-Reqpost_new (Blackboard_T blackboard, int id, Params_T params) {
+Reqpost_new (Blackboard_T blackboard, int id) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
   pthread_mutex_init(&new->lock,NULL);
 
-  new->params = params;
   new->request = NULL;
   new->result = NULL;
   new->resultp = false;
@@ -64,11 +62,6 @@ Reqpost_free (T *old) {
 int
 Reqpost_id (T this) {
   return this->id;
-}
-
-Params_T
-Reqpost_params (T this) {
-  return this->params;
 }
 
 

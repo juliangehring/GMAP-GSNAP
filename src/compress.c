@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.18 2007/04/23 18:34:12 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.24 2009/08/29 00:28:27 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,9 +17,29 @@ static char rcsid[] = "$Id: compress.c,v 1.18 2007/04/23 18:34:12 twu Exp $";
 #include <sys/types.h>		/* For off_t */
 #endif
 #include "complement.h"
+#include "mem.h"		/* For Compress_new */
+
 
 /* Another MONITOR_INTERVAL is in indexdb.c */
 #define MONITOR_INTERVAL 10000000 /* 10 million nt */
+
+#define MAX_BADCHAR_MESSAGES 10
+#define BADCHAR_INTERVAL 1000000
+
+
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
+/* print_blocks */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
+#endif
+
 
 static char uppercaseCode[128] = UPPERCASE_U2T;
 
@@ -27,7 +47,6 @@ static char uppercaseCode[128] = UPPERCASE_U2T;
    and we see problems converting from char to int */
 static void
 fill_buffer (int *Buffer, UINT4 high, UINT4 low, UINT4 flags, Genomicpos_T position) {
-  int errflag = 0;
   int i;
 
   /* printf("%08X %08X %08X => ",high,low,flags); */
@@ -107,6 +126,13 @@ Compress_get_char (FILE *sequence_fp, Genomicpos_T position, bool uncompressedp)
 #define LEFT_G 0x80000000
 #define LEFT_T 0xC0000000
 #define LEFT_BIT 0x80000000
+
+/*               87654321 */
+#define LEFT_0 0x00000000
+#define LEFT_1 0x40000000
+#define LEFT_2 0x80000000
+#define LEFT_3 0xC0000000
+
 
 /* A = 000  Stored as 00 in first two bytes, 0 in flag byte
    C = 001            01                     0
@@ -226,6 +252,8 @@ Compress_uncompress (FILE *fp, int wraplength) {
 }
 
 
+
+
 /************************************************************************/
 
 static void
@@ -289,7 +317,7 @@ genomecomp_read_current (UINT4 *high, UINT4 *low, UINT4 *flags, FILE *fp) {
 
 
 static void
-write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
+write_compressed_one (FILE *fp, int *nbadchars, char Buffer[], Genomicpos_T position) {
   UINT4 high = 0U, low = 0U, flags = 0U, carry;
   int i;
 
@@ -306,7 +334,7 @@ write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
     default: abort();
     }
 
-    switch (uppercaseCode[Buffer[i]]) {
+    switch (uppercaseCode[(int) Buffer[i]]) {
     case 'A': break;
     case 'C': high |= LEFT_C; break;
     case 'G': high |= LEFT_G; break;
@@ -314,8 +342,15 @@ write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
     case 'N': flags |= LEFT_BIT; break;
     case 'X': high |= LEFT_T; flags |= LEFT_BIT; break;
     default: 
-      fprintf(stderr,"Non-standard nucleotide %c at position %u.  Using N instead\n",
-	      Buffer[i],position+i);
+      (*nbadchars) += 1;
+      if (*nbadchars < MAX_BADCHAR_MESSAGES) {
+	fprintf(stderr,"Don't recognize character %c at position %u.  Using N instead\n",
+		Buffer[i],position+i);
+      } else if (*nbadchars == MAX_BADCHAR_MESSAGES) {
+	fprintf(stderr,"Too many non-recognizable characters.  Not reporting each individual occurrence anymore.\n");
+      } else if ((*nbadchars) % BADCHAR_INTERVAL == 0) {
+	fprintf(stderr,"A total of %d non-ACGTNX characters seen so far.\n",*nbadchars);
+      }
       flags |= LEFT_BIT;
       break;
     }
@@ -329,7 +364,7 @@ write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
 }
 
 static void
-put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
+put_compressed_one (UINT4 *sectioncomp, int *nbadchars, char Buffer[], Genomicpos_T position) {
   UINT4 high = 0U, low = 0U, flags = 0U, carry;
   int i;
 
@@ -346,7 +381,7 @@ put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
     default: abort();
     }
 
-    switch (uppercaseCode[Buffer[i]]) {
+    switch (uppercaseCode[(int) Buffer[i]]) {
     case 'A': break;
     case 'C': high |= LEFT_C; break;
     case 'G': high |= LEFT_G; break;
@@ -354,8 +389,15 @@ put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
     case 'N': flags |= LEFT_BIT; break;
     case 'X': high |= LEFT_T; flags |= LEFT_BIT; break;
     default: 
-      fprintf(stderr,"Don't recognize character %c at position %u.  Using N instead\n",
-	      Buffer[i],position+i);
+      (*nbadchars) += 1;
+      if (*nbadchars < MAX_BADCHAR_MESSAGES) {
+	fprintf(stderr,"Don't recognize character %c at position %u.  Using N instead\n",
+		Buffer[i],position+i);
+      } else if (*nbadchars == MAX_BADCHAR_MESSAGES) {
+	fprintf(stderr,"Too many non-recognizable characters.  Not reporting each individual occurrence anymore.\n");
+      } else if ((*nbadchars) % BADCHAR_INTERVAL == 0) {
+	fprintf(stderr,"A total of %d non-ACGTNX characters seen so far.\n",*nbadchars);
+      }
       flags |= LEFT_BIT;
       break;
     }
@@ -373,8 +415,8 @@ static char acgt[4] = {'A','C','G','T'};
 static char non_acgt[4] = {'N','?','?','X'};
 
 /* if gbuffer is NULL, then we fill with X's */
-void
-Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
+int
+Compress_update_file (int nbadchars, FILE *fp, char *gbuffer, Genomicpos_T startpos,
 		      Genomicpos_T endpos) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
@@ -406,7 +448,7 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
       Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
     }
     genomecomp_move_absolute(fp,ptr);
-    write_compressed_one(fp,Buffer,startpos);
+    write_compressed_one(fp,&nbadchars,Buffer,startpos);
 
   } else {
 
@@ -427,14 +469,14 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
       Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
     }
     genomecomp_move_absolute(fp,ptr);
-    write_compressed_one(fp,Buffer,startpos);
+    write_compressed_one(fp,&nbadchars,Buffer,startpos);
     ptr += 3;
       
     while (ptr < endblock) {
       for (i = 0; i < 32; i++) {
 	Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
       }
-      write_compressed_one(fp,Buffer,ptr/3*32U);
+      write_compressed_one(fp,&nbadchars,Buffer,ptr/3*32U);
       ptr += 3;
     }
 
@@ -456,16 +498,16 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
 	Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
       }
       genomecomp_move_absolute(fp,ptr);
-      write_compressed_one(fp,Buffer,ptr/3*32U);
+      write_compressed_one(fp,&nbadchars,Buffer,ptr/3*32U);
     }
   }
 
-  return;
+  return nbadchars;
 }
 
 
-void
-Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
+int
+Compress_update_memory (int nbadchars, UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
 			Genomicpos_T endpos) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
@@ -497,7 +539,7 @@ Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
     for (i = startdiscard; i < enddiscard; i++) {
       Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
     }
-    put_compressed_one(&(genomecomp[ptr]),Buffer,startpos);
+    put_compressed_one(&(genomecomp[ptr]),&nbadchars,Buffer,startpos);
 
   } else {
 
@@ -518,14 +560,14 @@ Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
     for (i = startdiscard; i < 32; i++) {
       Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
     }
-    put_compressed_one(&(genomecomp[ptr]),Buffer,startpos);
+    put_compressed_one(&(genomecomp[ptr]),&nbadchars,Buffer,startpos);
     ptr += 3;
       
     while (ptr < endblock) {
       for (i = 0; i < 32; i++) {
 	Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
       }
-      put_compressed_one(&(genomecomp[ptr]),Buffer,ptr/3*32U);
+      put_compressed_one(&(genomecomp[ptr]),&nbadchars,Buffer,ptr/3*32U);
       ptr += 3;
     }
 
@@ -547,11 +589,684 @@ Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
       for (i = 0; i < enddiscard; i++) {
 	Buffer[i] = gbuffer ? gbuffer[k++] : 'X';
       }
-      put_compressed_one(&(genomecomp[ptr]),Buffer,ptr/3*32U);
+      put_compressed_one(&(genomecomp[ptr]),&nbadchars,Buffer,ptr/3*32U);
     }
   }
 
+  return nbadchars;
+}
+
+
+
+#define T Compress_T
+struct T {
+  UINT4 *blocks;
+  int nblocks;
+  UINT4 **shift_array;
+  bool availp[32];
+};
+
+
+
+void
+Compress_free (T *old) {
+  FREE((*old)->shift_array[0]);
+  FREE((*old)->shift_array);
+  FREE((*old)->blocks);
+  FREE(*old);
   return;
 }
 
+void
+Compress_print (T this) {
+  int ptr = 0;
+
+  while (ptr < this->nblocks*3) {
+    printf("high: %08X  low: %08X  flags: %08X\n",
+	   this->blocks[ptr],this->blocks[ptr+1],this->blocks[ptr+2]);
+    ptr += 3;
+  }
+  printf("\n");
+  return;
+}
+
+
+int
+Compress_nblocks (T this) {
+  return this->nblocks;
+}
+
+
+#ifdef DEBUG1
+static void
+print_blocks (UINT4 *blocks, int nblocks) {
+  int ptr = 0;
+
+  while (ptr < nblocks*3) {
+    printf("high: %08X  low: %08X  flags: %08X\n",
+	   blocks[ptr],blocks[ptr+1],blocks[ptr+2]);
+    ptr += 3;
+  }
+  printf("\n");
+  return;
+}
+#endif
+
+
+
+T
+Compress_new (char *gbuffer, Genomicpos_T length, bool plusp) {
+  T new = (T) MALLOC(sizeof(*new));
+  UINT4 low = 0U, high = 0U, flags = 0U, carry;
+  Genomicpos_T ptr;
+  int position;
+  int c, i;
+  int in_counter = 0;
+
+  new->nblocks = (length+31)/32U;
+
+  new->blocks = (UINT4 *) CALLOC((new->nblocks+1)*3,sizeof(UINT4));
+
+  /* Note that elements of shift_array do not have extra block at beginning */
+  new->shift_array = (UINT4 **) CALLOC(32,sizeof(UINT4 *));
+  new->shift_array[0] = (UINT4 *) CALLOC(32*(new->nblocks+1)*3,sizeof(UINT4));
+  new->availp[0] = false;
+  for (i = 1; i < 32; i++) {
+    new->shift_array[i] = &(new->shift_array[i-1][(new->nblocks+1)*3]);
+    new->availp[i] = false;
+  }
+
+  ptr = 0;
+  if (plusp == true) {
+    for (position = 0U; position < length; position++) {
+      c = gbuffer[position];
+      /* printf("char: %c\n",c); */
+      in_counter++;
+
+      carry = high & 3U;
+      high >>= 2;
+      low >>= 2;
+      flags >>= 1;
+      switch (carry) {
+      case 0U: break;
+      case 1U: low |= LEFT_C; break;
+      case 2U: low |= LEFT_G; break;
+      case 3U: low |= LEFT_T; break;
+      default: abort();
+      }
+
+      /* Assume that gbuffer is upper case */
+      switch /*(uppercaseCode[c])*/ (c) {
+      case 'A': break;
+      case 'C': high |= LEFT_C; break;
+      case 'G': high |= LEFT_G; break;
+      case 'T': high |= LEFT_T; break;
+      default: flags |= LEFT_BIT; break;
+      }
+      /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
+      
+      if (in_counter == 8*sizeof(Genomicpos_T)) {
+	new->blocks[ptr] = high;
+	new->blocks[ptr+1] = low;
+	new->blocks[ptr+2] = flags;
+	ptr += 3;
+
+	low = high = flags = 0U;
+	in_counter = 0;
+      }
+    }
+  } else {
+
+    for (position = length-1; position >= 0; position--) {
+      c = gbuffer[position];
+      /* printf("char: %c\n",c); */
+      in_counter++;
+
+      carry = high & 3U;
+      high >>= 2;
+      low >>= 2;
+      flags >>= 1;
+      switch (carry) {
+      case 0U: break;
+      case 1U: low |= LEFT_C; break;
+      case 2U: low |= LEFT_G; break;
+      case 3U: low |= LEFT_T; break;
+      default: abort();
+      }
+
+      /* Assume that gbuffer is upper case */
+      switch /*(uppercaseCode[c])*/ (c) {
+      case 'A': high |= LEFT_T; break;
+      case 'C': high |= LEFT_G; break;
+      case 'G': high |= LEFT_C; break;
+      case 'T': break;
+      default: flags |= LEFT_BIT; break;
+      }
+      /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
+      
+      if (in_counter == 8*sizeof(Genomicpos_T)) {
+	new->blocks[ptr] = high;
+	new->blocks[ptr+1] = low;
+	new->blocks[ptr+2] = flags;
+	ptr += 3;
+
+	low = high = flags = 0U;
+	in_counter = 0;
+      }
+    }
+  }
+
+  if (in_counter > 0) {
+    while (in_counter < 8*sizeof(Genomicpos_T)) {
+      carry = high & 3U;
+      high >>= 2;
+      low >>= 2;
+      flags >>= 1;
+      switch (carry) {
+      case 0U: break;
+      case 1U: low |= LEFT_C; break;
+      case 2U: low |= LEFT_G; break;
+      case 3U: low |= LEFT_T; break;
+      default: abort();
+      }
+#if 0
+      /* Don't put in X's */
+      high |= LEFT_T; flags |= LEFT_BIT;
+#endif
+      in_counter++;
+    }
+
+    new->blocks[ptr] = high;
+    new->blocks[ptr+1] = low;
+    new->blocks[ptr+2] = flags;
+  }
+
+  debug1(printf("Compress_new, plusp %d\n",plusp));
+  debug1(print_blocks(new->blocks,new->nblocks));
+  debug1(printf("\n"));
+
+  return new;
+}
+
+#if 0
+T
+Compress_dibase_new (char *gbuffer, Genomicpos_T length, bool plusp) {
+  T new = (T) MALLOC(sizeof(*new));
+  UINT4 low = 0U, high = 0U, flags = 0U, carry;
+  Genomicpos_T ptr;
+  int position;
+  int c, i;
+  int in_counter = 0;
+
+  new->nblocks = (length+31)/32U;
+
+  new->blocks = (UINT4 *) CALLOC((new->nblocks+1)*3,sizeof(UINT4));
+
+  /* Note that elements of shift_array do not have extra block at beginning */
+  new->shift_array = (UINT4 **) CALLOC(32,sizeof(UINT4 *));
+  new->shift_array[0] = (UINT4 *) CALLOC(32*(new->nblocks+1)*3,sizeof(UINT4));
+  new->availp[0] = false;
+  for (i = 1; i < 32; i++) {
+    new->shift_array[i] = &(new->shift_array[i-1][(new->nblocks+1)*3]);
+    new->availp[i] = false;
+  }
+
+  ptr = 0;
+  if (plusp == true) {
+    for (position = 0U; position < length; position++) {
+      c = gbuffer[position];
+      /* printf("char: %c\n",c); */
+      in_counter++;
+
+      carry = high & 3U;
+      high >>= 2;
+      low >>= 2;
+      flags >>= 1;
+      switch (carry) {
+      case 0U: break;
+      case 1U: low |= LEFT_1; break;
+      case 2U: low |= LEFT_2; break;
+      case 3U: low |= LEFT_3; break;
+      default: abort();
+      }
+
+      switch (c) {
+      case '0': break;
+      case '1': high |= LEFT_1; break;
+      case '2': high |= LEFT_2; break;
+      case '3': high |= LEFT_3; break;
+      default: flags |= LEFT_BIT; break;
+      }
+      /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
+      
+      if (in_counter == 8*sizeof(Genomicpos_T)) {
+	new->blocks[ptr] = high;
+	new->blocks[ptr+1] = low;
+	new->blocks[ptr+2] = flags;
+	ptr += 3;
+
+	low = high = flags = 0U;
+	in_counter = 0;
+      }
+    }
+  } else {
+
+    for (position = length-1; position >= 0; position--) {
+      c = gbuffer[position];
+      /* printf("char: %c\n",c); */
+      in_counter++;
+
+      carry = high & 3U;
+      high >>= 2;
+      low >>= 2;
+      flags >>= 1;
+      switch (carry) {
+      case 0U: break;
+      case 1U: low |= LEFT_1; break;
+      case 2U: low |= LEFT_2; break;
+      case 3U: low |= LEFT_3; break;
+      default: abort();
+      }
+
+      switch (c) {
+      case '0': break;
+      case '1': high |= LEFT_1; break;
+      case '2': high |= LEFT_2; break;
+      case '3': high |= LEFT_3; break;
+      default: flags |= LEFT_BIT; break;
+      }
+      /* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
+      
+      if (in_counter == 8*sizeof(Genomicpos_T)) {
+	new->blocks[ptr] = high;
+	new->blocks[ptr+1] = low;
+	new->blocks[ptr+2] = flags;
+	ptr += 3;
+
+	low = high = flags = 0U;
+	in_counter = 0;
+      }
+    }
+  }
+
+  if (in_counter > 0) {
+    while (in_counter < 8*sizeof(Genomicpos_T)) {
+      carry = high & 3U;
+      high >>= 2;
+      low >>= 2;
+      flags >>= 1;
+      switch (carry) {
+      case 0U: break;
+      case 1U: low |= LEFT_1; break;
+      case 2U: low |= LEFT_2; break;
+      case 3U: low |= LEFT_3; break;
+      default: abort();
+      }
+#if 0
+      /* Don't put in X's */
+      high |= LEFT_T; flags |= LEFT_BIT;
+#endif
+      in_counter++;
+    }
+
+    new->blocks[ptr] = high;
+    new->blocks[ptr+1] = low;
+    new->blocks[ptr+2] = flags;
+  }
+
+  debug1(printf("Compress_new, plusp %d\n",plusp));
+  debug1(print_blocks(new->blocks,new->nblocks));
+  debug1(printf("\n"));
+
+  return new;
+}
+
+
+static char start[4] = "ACGT";
+
+T *
+Compress_dibase_array_new (char *gbuffer, Genomicpos_T dibase_length, bool plusp) {
+  T *array = (T *) CALLOC(4,sizeof(T)), new;
+  UINT4 low, high, flags, carry;
+  Genomicpos_T ptr;
+  int position;
+  int d, c, i, nt, lastnt;
+  int in_counter;
+  int nt_length = dibase_length + 1;
+
+  for (d = 0; d < 4; d ++) {
+    new = array[d] = (T) MALLOC(sizeof(*new));
+
+    new->nblocks = (nt_length+31)/32U;
+
+    new->blocks = (UINT4 *) CALLOC((new->nblocks+1)*3,sizeof(UINT4));
+
+    /* Note that elements of shift_array do not have extra block at beginning */
+    new->shift_array = (UINT4 **) CALLOC(32,sizeof(UINT4 *));
+    new->shift_array[0] = (UINT4 *) CALLOC(32*(new->nblocks+1)*3,sizeof(UINT4));
+    new->availp[0] = false;
+    for (i = 1; i < 32; i++) {
+      new->shift_array[i] = &(new->shift_array[i-1][(new->nblocks+1)*3]);
+      new->availp[i] = false;
+    }
+
+    ptr = 0;
+    in_counter = 0;
+    low = high = flags = 0U;
+    lastnt = start[d];
+
+    /* Handle starting character */
+    in_counter++;
+    switch (lastnt) {
+    case 'A': break;
+    case 'C': high |= LEFT_C; break;
+    case 'G': high |= LEFT_G; break;
+    case 'T': high |= LEFT_T; break;
+    }
+
+    if (plusp == true) {
+      for (position = 0U; position < dibase_length; position++) {
+	c = gbuffer[position];
+	/* printf("char: %c\n",c); */
+	in_counter++;
+
+	carry = high & 3U;
+	high >>= 2;
+	low >>= 2;
+	flags >>= 1;
+	switch (carry) {
+	case 0U: break;
+	case 1U: low |= LEFT_C; break;
+	case 2U: low |= LEFT_G; break;
+	case 3U: low |= LEFT_T; break;
+	default: abort();
+	}
+
+	/* Assume that gbuffer is upper case */
+	switch /*(uppercaseCode[c])*/ (c) {
+	case '0':
+	  switch (lastnt) {
+	  case 'A': nt = 'A'; break;
+	  case 'C': nt = 'C'; break;
+	  case 'G': nt = 'G'; break;
+	  case 'T': nt = 'T'; break;
+	  }
+	  break;
+	case '1':
+	  switch (lastnt) {
+	  case 'A': nt = 'C'; break;
+	  case 'C': nt = 'A'; break;
+	  case 'G': nt = 'T'; break;
+	  case 'T': nt = 'G'; break;
+	  }
+	  break;
+	case '2':
+	  switch (lastnt) {
+	  case 'A': nt = 'G'; break;
+	  case 'C': nt = 'T'; break;
+	  case 'G': nt = 'A'; break;
+	  case 'T': nt = 'C'; break;
+	  }
+	  break;
+	case '3':
+	  switch (lastnt) {
+	  case 'A': nt = 'T'; break;
+	  case 'C': nt = 'G'; break;
+	  case 'G': nt = 'C'; break;
+	  case 'T': nt = 'A'; break;
+	  }
+	  break;
+	default: abort();
+	}
+
+	/* debug1(printf("lastnt %c + dibase %d => nt %c\n",lastnt,c,nt)); */
+
+	switch (nt) {
+	case 'A': break;
+	case 'C': high |= LEFT_C; break;
+	case 'G': high |= LEFT_G; break;
+	case 'T': high |= LEFT_T; break;
+	}
+
+	/* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
+      
+	if (in_counter == 8*sizeof(Genomicpos_T)) {
+	  new->blocks[ptr] = high;
+	  new->blocks[ptr+1] = low;
+	  new->blocks[ptr+2] = flags;
+	  ptr += 3;
+
+	  low = high = flags = 0U;
+	  in_counter = 0;
+	}
+
+	lastnt = nt;
+      }
+
+    } else {
+
+      for (position = dibase_length-1; position >= 0; position--) {
+	c = gbuffer[position];
+	       
+	in_counter++;
+
+	carry = high & 3U;
+	high >>= 2;
+	low >>= 2;
+	flags >>= 1;
+	switch (carry) {
+	case 0U: break;
+	case 1U: low |= LEFT_C; break;
+	case 2U: low |= LEFT_G; break;
+	case 3U: low |= LEFT_T; break;
+	default: abort();
+	}
+
+	/* Assume that gbuffer is upper case */
+	switch /*(uppercaseCode[c])*/ (c) {
+	case '0':
+	  switch (lastnt) {
+	  case 'A': nt = 'A'; break;
+	  case 'C': nt = 'C'; break;
+	  case 'G': nt = 'G'; break;
+	  case 'T': nt = 'T'; break;
+	  }
+	  break;
+	case '1':
+	  switch (lastnt) {
+	  case 'A': nt = 'C'; break;
+	  case 'C': nt = 'A'; break;
+	  case 'G': nt = 'T'; break;
+	  case 'T': nt = 'G'; break;
+	  }
+	  break;
+	case '2':
+	  switch (lastnt) {
+	  case 'A': nt = 'G'; break;
+	  case 'C': nt = 'T'; break;
+	  case 'G': nt = 'A'; break;
+	  case 'T': nt = 'C'; break;
+	  }
+	  break;
+	case '3':
+	  switch (lastnt) {
+	  case 'A': nt = 'T'; break;
+	  case 'C': nt = 'G'; break;
+	  case 'G': nt = 'C'; break;
+	  case 'T': nt = 'A'; break;
+	  }
+	  break;
+	default: abort();
+	}
+
+	/* debug1(printf("lastnt %c + dibase %d => nt %c\n",lastnt,c,nt)); */
+
+	switch (nt) {
+	case 'A': break;
+	case 'C': high |= LEFT_C; break;
+	case 'G': high |= LEFT_G; break;
+	case 'T': high |= LEFT_T; break;
+	}
+
+	/* printf("high: %08X  low: %08X  flags: %08X\n",high,low,flags); */
+      
+	if (in_counter == 8*sizeof(Genomicpos_T)) {
+	  new->blocks[ptr] = high;
+	  new->blocks[ptr+1] = low;
+	  new->blocks[ptr+2] = flags;
+	  ptr += 3;
+
+	  low = high = flags = 0U;
+	  in_counter = 0;
+	}
+
+	lastnt = nt;
+      }
+    }
+
+    if (in_counter > 0) {
+      while (in_counter < 8*sizeof(Genomicpos_T)) {
+	carry = high & 3U;
+	high >>= 2;
+	low >>= 2;
+	flags >>= 1;
+	switch (carry) {
+	case 0U: break;
+	case 1U: low |= LEFT_C; break;
+	case 2U: low |= LEFT_G; break;
+	case 3U: low |= LEFT_T; break;
+	default: abort();
+	}
+#if 0
+	/* Don't put in X's */
+	high |= LEFT_T; flags |= LEFT_BIT;
+#endif
+	in_counter++;
+      }
+
+      new->blocks[ptr] = high;
+      new->blocks[ptr+1] = low;
+      new->blocks[ptr+2] = flags;
+    }
+
+    debug1(printf("Compress_dibase_new, plusp %d, startc %c\n",plusp,start[d]));
+    debug1(print_blocks(new->blocks,new->nblocks));
+    debug1(printf("\n"));
+  }
+
+  return array;
+}
+#endif
+
+
+UINT4 *
+Compress_shift (T this, int nshift) {
+  UINT4 *shifted;
+  int leftshift, rightshift, rightshift_flags;
+  int ptr;
+
+  debug(printf("nshift is %d\n",nshift));
+  if (this->availp[nshift] == false) {
+
+    shifted = this->shift_array[nshift];
+
+    /* Shift flags */
+    if (nshift == 0) {
+      ptr = this->nblocks*3;
+      while (ptr >= 0) {
+	shifted[ptr+2] = this->blocks[ptr+2];
+	shifted[ptr+1] = this->blocks[ptr+1];
+	shifted[ptr] = this->blocks[ptr];
+	ptr -= 3;
+      }
+
+    } else if (nshift < 16) {
+
+      leftshift = nshift*2;
+      rightshift = 32 - leftshift;
+      rightshift_flags = 32 - nshift;
+
+      ptr = this->nblocks*3;
+      while (ptr > 0) {
+	shifted[ptr+2] = (this->blocks[ptr+2] << nshift) | (this->blocks[ptr-1] >> rightshift_flags);
+	debug(printf("Making flag at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr+2,this->blocks[ptr+2],ptr+2,this->blocks[ptr+2] << nshift,
+		     this->blocks[ptr-1],ptr-1,this->blocks[ptr-1] >> rightshift_flags));
+	shifted[ptr+1] = (this->blocks[ptr+1] << leftshift) | (this->blocks[ptr-3] >> rightshift); 
+	debug(printf("Making low at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr+1,this->blocks[ptr+1],ptr+1,this->blocks[ptr+1] << leftshift,
+		     this->blocks[ptr-3],ptr-3,this->blocks[ptr-3] >> rightshift));
+	shifted[ptr] = (this->blocks[ptr] << leftshift) | (this->blocks[ptr+1] >> rightshift);
+	debug(printf("Making high at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr,this->blocks[ptr],ptr,this->blocks[ptr] << leftshift,
+		     this->blocks[ptr+1],ptr+1,this->blocks[ptr+1] >> rightshift));
+	ptr -= 3;
+      }
+      shifted[2] = this->blocks[2] << nshift;
+      debug(printf("Making flag at %d by combining %08X at %d => %08X\n",
+		   ptr+2,this->blocks[ptr+2],ptr+2,this->blocks[ptr+2] << nshift));
+      shifted[1] = this->blocks[1] << leftshift;
+      debug(printf("Making low at %d by combining %08X at %d => %08X\n",
+		   ptr+1,this->blocks[ptr+1],ptr+1,this->blocks[ptr+1] << leftshift));
+      shifted[0] = (this->blocks[0] << leftshift) | (this->blocks[1] >> rightshift);
+      debug(printf("Making high at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		   ptr,this->blocks[ptr],ptr,this->blocks[ptr] << leftshift,
+		   this->blocks[ptr+1],ptr+1,this->blocks[ptr+1] >> rightshift));
+      
+    } else if (nshift == 16) {
+      ptr = this->nblocks*3;
+      while (ptr > 0) {
+	shifted[ptr+2] = (this->blocks[ptr+2] << 16) | (this->blocks[ptr-1] >> 16);
+	debug(printf("Making flag at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr+2,this->blocks[ptr+2],ptr+2,this->blocks[ptr+2] << 16,
+		     this->blocks[ptr-1],ptr-1,this->blocks[ptr-1] >> 16));
+	shifted[ptr+1] = this->blocks[ptr-3];
+	debug(printf("Making low at %d by copying %08X at %d\n",ptr+1,this->blocks[ptr-3],ptr-3));
+	shifted[ptr] = this->blocks[ptr+1];
+	debug(printf("Making high at %d by copying %08X at %d\n",ptr,this->blocks[ptr+1],ptr+1));
+	ptr -= 3;
+      }
+      shifted[2] = this->blocks[2] << 16;
+      debug(printf("Making flag at %d by combining %08X at %d => %08X\n",
+		   ptr+2,this->blocks[ptr+2],ptr+2,this->blocks[ptr+2] << 16));
+      shifted[1] = 0U;
+      debug(printf("Making low at 1 by setting 0U\n"));
+      shifted[0] = this->blocks[1];
+      debug(printf("Making high at %d by copying %08X at %d\n",0,this->blocks[ptr+1],ptr+1));
+      
+    } else {
+      leftshift = (nshift - 16) * 2;
+      rightshift = 32 - leftshift;
+      rightshift_flags = 32 - nshift;
+      
+      ptr = this->nblocks*3;
+      while (ptr > 0) {
+	shifted[ptr+2] = (this->blocks[ptr+2] << nshift) | (this->blocks[ptr-1] >> rightshift_flags);
+	debug(printf("Making flag at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr+2,this->blocks[ptr+2],ptr+2,this->blocks[ptr+2] << nshift,
+		     this->blocks[ptr-1],ptr-1,this->blocks[ptr-1] >> rightshift_flags));
+	shifted[ptr+1] = (this->blocks[ptr-3] << leftshift) | (this->blocks[ptr-2] >> rightshift);
+	debug(printf("Making low at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr+1,this->blocks[ptr-3],ptr-3,this->blocks[ptr-3] << leftshift,
+		     this->blocks[ptr-2],ptr-2,this->blocks[ptr-2] >> rightshift));
+	shifted[ptr] = (this->blocks[ptr+1] << leftshift) | (this->blocks[ptr-3] >> rightshift);
+	debug(printf("Making high at %d by combining %08X at %d => %08X and %08X at %d => %08X\n",
+		     ptr,this->blocks[ptr+1],ptr+1,this->blocks[ptr+1] << leftshift,
+		     this->blocks[ptr-3],ptr-3,this->blocks[ptr-3] >> rightshift));
+	ptr -= 3;
+      }
+      shifted[2] = this->blocks[2] << nshift;
+      debug(printf("Making flag at %d by combining %08X at %d => %08X\n",
+		   ptr+2,this->blocks[ptr+2],ptr+2,this->blocks[ptr+2] << nshift));
+      shifted[1] = 0U;
+      debug(printf("Making low at 1 by setting 0U\n"));
+      shifted[0] = this->blocks[1] << leftshift;
+      debug(printf("Making high at %d by combining %08X at %d => %08X\n",
+		   0,this->blocks[ptr+1],ptr+1,this->blocks[ptr+1] << leftshift));
+    }
+    this->availp[nshift] = true;
+  }
+			     
+  return this->shift_array[nshift];
+}
 

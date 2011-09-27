@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c,v 1.122 2005/03/09 19:23:05 twu Exp $";
+static char rcsid[] = "$Id: pair.c,v 1.127 2005/05/06 18:44:53 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,7 @@ static char rcsid[] = "$Id: pair.c,v 1.122 2005/03/09 19:23:05 twu Exp $";
 #include <stdlib.h>
 #include <string.h>		/* For memcpy */
 #include <math.h>		/* For rint() */
+#include "except.h"
 #include "mem.h"
 #include "complement.h"
 #include "intron.h"
@@ -599,8 +600,7 @@ void
 Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos_T chrpos,
 			Genomicpos_T chroffset, IIT_T chromosome_iit, bool referencealignp, char *strain, 
 			IIT_T contig_iit, char *dbversion, Genomicpos_T genomiclength,
-			int nexons, double coverage, int coverage_correction, int ntrimmed, 
-			int matches, int unknowns, int mismatches, 
+			int nexons, double coverage, int matches, int unknowns, int mismatches, 
 			int qopens, int qindels, int topens, int tindels, int goodness,
 			bool watsonp, int cdna_direction, double defect_rate, 
 			int translation_start, int translation_end, int translation_length,
@@ -693,13 +693,6 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
     
   printf("    Number of exons: %d\n",nexons);
   printf("    Coverage: %.1f",((double) rint(1000.0*coverage))/10.0);
-  if (ntrimmed > 0 && coverage_correction > 0) {
-    printf(" (%d trimmed, %d genomic gap)",ntrimmed,coverage_correction);
-  } else if (ntrimmed > 0) {
-    printf(" (%d trimmed)",ntrimmed);
-  } else if (coverage_correction > 0) {
-    printf(" (%d genomic gap)",coverage_correction);
-  }
   printf("\n");
 
   if ((den = matches + mismatches + qindels + tindels) == 0) {
@@ -710,6 +703,7 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 
   debug(printf("     Goodness: %d\n",goodness));
 
+  /* The definition of indels here should be consistent with Stage3_indels */
   printf("    Percent identity: %.1f (%d matches, %d mismatches, %d indels, %d unknowns)\n",
 	 ((double) rint(1000.0*fracidentity))/10.0,matches,mismatches,qindels+tindels,unknowns);
   if (qindels + tindels > 0) {
@@ -1424,7 +1418,8 @@ Pair_fracidentity_bounded (int *matches, int *unknowns, int *mismatches,
   *matches = *unknowns = *mismatches = *qopens = *qindels = *topens = *tindels = 
     *ncanonical = *nsemicanonical = *nnoncanonical = 0;
   
-  for (i = 0, this = ptr; i < npairs; i++, this = ptr++) {
+  for (i = 0; i < npairs; i++) {
+    this = ptr++;
     if (this->gapp) {
       if (!in_intron) {
 	if (this->querypos >= minpos && this->querypos <= maxpos) {
@@ -1486,18 +1481,78 @@ Pair_fracidentity_bounded (int *matches, int *unknowns, int *mismatches,
   return;
 }
 
+const Except_T Array_bounds_error = { "Exceeded array bounds" };
+
+int *
+Pair_matchscores (struct T *ptr, int npairs, 
+		  int cdna_direction, int querylength) {
+  int *matchscores;
+  int querypos;
+  bool in_intron = false;
+  T this;
+  int i;
+
+  matchscores = (int *) CALLOC(querylength,sizeof(int));
+
+  for (i = 0; i < npairs; i++) {
+    this = ptr++;
+
+    querypos = this->querypos;
+    if (querypos >= querylength) {
+      fprintf(stderr,"Pair_matchscores: querypos %d >= querylength %d\n",querypos,querylength);
+      RAISE(Array_bounds_error);
+    }
+
+    if (this->gapp) {
+      if (!in_intron) {
+	/* no effect on matchscores[querypos] */
+	in_intron = true;
+      }
+    } else {
+      if (in_intron) {
+	in_intron = false;
+      }
+      if (this->comp == '-') {
+	matchscores[querypos] = 0;
+      } else if (this->comp == '~') {
+	/* Do nothing */
+      } else if (unknown_base(this->cdna) || unknown_base(this->genome)) {
+	/* (*unknowns)++; */
+      } else if (this->comp == '|' || this->comp == '*') {
+	matchscores[querypos] = 1; /* For match */
+      } else if (this->comp == ' ') {
+	matchscores[querypos] = 0;
+      } else {
+	fprintf(stderr,"Can't parse comp %c, gapp %d\n",this->comp,this->gapp);
+	abort();
+      }
+    }
+  }
+
+  return matchscores;
+}
+
 
 void
 Pair_pathscores (int *pathscores, struct T *ptr, int npairs, 
 		 int cdna_direction, int querylength) {
   int querypos;
   bool in_intron = false;
-  List_T p;
   T this, prev = NULL;
   int i;
 
-  for (i = 0, this = ptr; i < npairs; i++, this = ptr++) {
+  for (i = 0; i < npairs; i++) {
+    this = ptr++;
+
     querypos = this->querypos;
+    if (querypos >= querylength) {
+      fprintf(stderr,"Pair_pathscores: querypos %d >= querylength %d\n",querypos,querylength);
+      Pair_dump_array(ptr,npairs,/*zerobasedp*/true);
+      fflush(stdout);
+      abort();
+      RAISE(Array_bounds_error);
+    }
+
     if (this->gapp) {
       if (!in_intron) {
 	if (cdna_direction > 0) {
@@ -1772,7 +1827,9 @@ Pair_block_copy (List_T list, int *npairs, int ngap) {
     newpair++;
   }
 
-  if ((nmerged = merge_gaps(chunk,*npairs,ngap)) == 0) {
+  /* If ngap < 0, it means we are sure there are no gaps to merge, such as
+     when we are copying a Stage3_T object. */
+  if (ngap < 0 || (nmerged = merge_gaps(chunk,*npairs,ngap)) == 0) {
     return chunk;
   } else {
     chunk2 = (struct T *) MALLOC((*npairs-nmerged)*sizeof(struct T));
@@ -1909,7 +1966,7 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		       Genomicpos_T chroffset, IIT_T chromosome_iit, 
 		       Genomicpos_T genomiclength, bool checksump,
-		       bool chimerap, char *strain, bool watsonp, bool zerobasedp) {
+		       int chimerapos, char *strain, bool watsonp, bool zerobasedp) {
   Genomicpos_T chrpos1, chrpos2, position1, position2;
   char *chrstring = NULL;
 
@@ -1929,7 +1986,7 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 
   printf(">%s %s %d/%d %d %d",
 	 Sequence_accession(queryseq),version,pathnum,npaths,
-	 Sequence_length_full(queryseq),nexons);
+	 Sequence_fulllength(queryseq),nexons);
   printf(" %.1f",((double) rint(1000.0*coverage))/10.0);
   printf(" %.1f",((double) rint(1000.0*fracidentity))/10.0);
 
@@ -1967,8 +2024,8 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
     Sequence_print_digest(queryseq);
   }
 
-  if (chimerap == true) {
-    printf(" chimera:T");
+  if (chimerapos >= 0) {
+    printf(" chimera:%d",chimerapos);
   }
 
   if (strain != NULL) {

@@ -1,3 +1,398 @@
+2005-05-06 13:34  twu
+
+	* util/gmap_setup.pl.in: Added -q flag for specifying indexing
+	  interval.  Allowed comment lines to be in coords.txt.
+
+2005-05-06 13:33  twu
+
+	* util/md_coords.pl.in: Improved messages to user.
+
+2005-05-06 13:33  twu
+
+	* util/fa_coords.pl.in: Added handling of unmapped contigs for
+	  Ensembl genomes.  Improved messages to user.	Added check for
+	  possible conversions of alternate chromosomes to alternate
+	  strains.
+
+2005-05-06 12:08  twu
+
+	* util/gmap_uncompress.pl.in: Fixed bug due to old code that
+	  referred to the -R flag
+
+2005-05-06 11:46  twu
+
+	* src/gmap.c: Enhanced result to show number of matches,
+	  mismatches, and indels in alternative to chimera.  Introduced
+	  maxpaths of 0 to indicate output of both paths of chimera if
+	  present, otherwise one path.
+
+2005-05-06 11:44  twu
+
+	* src/: stage3.c, stage3.h, pair.c, pair.h, sequence.c, sequence.h:
+	  Removed references to ntrimmed
+
+2005-05-06 11:44  twu
+
+	* src/: result.c, result.h: Enhanced result to show number of
+	  matches, mismatches, and indels in alternative to chimera
+
+2005-05-06 10:04  twu
+
+	* src/gmap.c: Remove check for badoligos.  Modified logic for
+	  computing chimeras.  Made calls to initialization and termination
+	  routines for Dynprog_T.
+
+2005-05-06 10:03  twu
+
+	* src/chimera.c: Fixed memory leak
+
+2005-05-06 10:02  twu
+
+	* src/pair.c: Removed printing of ntrimmed nucleotides
+
+2005-05-06 10:01  twu
+
+	* src/: stage3.c, stage3.h: Added functions for reporting matches,
+	  mismatches, indels, and margin of a Stage3_T object
+
+2005-05-06 10:00  twu
+
+	* src/translation.c: Added initial values for translation_start and
+	  translation_end
+
+2005-05-06 10:00  twu
+
+	* src/stage2.c: Removed computation of stage2 support.	Simplified
+	  loop conditions.
+
+2005-05-06 09:59  twu
+
+	* src/: oligoindex.c, oligoindex.h: Removed computation of stage2
+	  support
+
+2005-05-06 09:59  twu
+
+	* src/: dynprog.c, dynprog.h: Replaced functions with arrays for
+	  computing pairdistances and jump penalties
+
+2005-05-05 18:09  twu
+
+	* src/: oligoindex.c, oligoindex.h: Changed memory allocation
+	  scheme, by setting ALLOCSIZE == MAXHITS.  Assigning blocks in
+	  ascending order of available slots.  Computing trim_start and
+	  trim_end.  Reporting support for stage 2.
+
+2005-05-05 18:06  twu
+
+	* src/gmap.c: Changed calls to Sequence_read().  Using
+	  oligomer-based method for trimming query sequence.
+
+2005-05-05 18:02  twu
+
+	* src/: md5-compute.c, oligo-count.c: Changed calls to
+	  Sequence_read()
+
+2005-05-05 18:02  twu
+
+	* src/: sequence.c, sequence.h: Removed poly-A and poly-T detection
+	  in favor of oligomer-based trimming at ends.
+
+2005-05-05 16:45  twu
+
+	* src/: stage2.c, stage2.h: Added check for stage 2 support.
+
+2005-05-05 16:44  twu
+
+	* src/stage1.c: Restored terminal sampling for short sequences.
+	  Fixed potential bug with subtracting unsigned ints.  Enhanced
+	  debugging messages.
+
+2005-05-05 16:43  twu
+
+	* src/: sequence.c, sequence.h, md5-compute.c, oligo-count.c:
+	  Modified functions to report next char in input.
+
+2005-05-05 16:43  twu
+
+	* src/: matchpair.c, matchpair.h: Added reporting of stage1 support
+	  and stage1 stretch.
+
+2005-05-05 16:42  twu
+
+	* src/gmap.c: Added checks for bad input sequences based on oligo
+	  depth, bad oligos, stage1 support, and stage2 support.  Moved
+	  message about batch mode earlier, if evidence of a second
+	  sequence is present.
+
+2005-05-05 06:38  twu
+
+	* src/gmap.c: Chopping chimeras at breakpoint, and providing a flag
+	  to allow overlaps at the breakpoint.
+
+2005-05-05 06:37  twu
+
+	* src/: stage3.c, stage3.h: Simplified interface to Stage3_copy.
+
+2005-05-05 06:36  twu
+
+	* src/: pair.c, pair.h: Removed coverage correction for genomic
+	  gaps.  Added way to turn off merge_gaps during copying of pairs.
+
+2005-05-04 23:58  twu
+
+	* src/stage2.c: Made changes in individual instructions to improve
+	  speed
+
+2005-05-04 23:57  twu
+
+	* src/oligoindex.c: Added overabundant field
+
+2005-05-04 23:56  twu
+
+	* src/chimera.c: Speeded up computation
+
+2005-05-04 22:16  twu
+
+	* src/gmap.c: Using explicit step for marking oligos in the query.
+	  Terminating attempt at mapping if oligo depth exceeds 2.  Fixed
+	  memory leak.
+
+2005-05-04 22:14  twu
+
+	* src/: stage2.c, stage2.h: The variable badsequencep is now fed
+	  into Stage2_compute.
+
+2005-05-04 22:14  twu
+
+	* src/stage1.c: Killed terminal sampling for short sequences.
+	  Reduced values for maxentries.  Both done to improve speed.
+
+2005-05-04 22:13  twu
+
+	* src/: oligoindex.c, oligoindex.h: Added an explicit step for
+	  marking oligos in the query, which needs to be done only once for
+	  each query sequence.
+
+2005-05-04 16:50  twu
+
+	* src/chimera.h: Added computation of margin.
+
+2005-05-04 16:50  twu
+
+	* src/chimera.c: Added computation of margin.  Improved debugging
+	  output.
+
+2005-05-04 16:49  twu
+
+	* src/gmap.c: Fixed bug where bestfrom == bestto.  Added check for
+	  sufficient margin at ends before finding chimera.
+
+2005-05-04 12:11  twu
+
+	* util/gmap_compress.pl.in: Changed compression routine to handle
+	  chimera information
+
+2005-05-04 11:49  twu
+
+	* src/chrsubset.c: Fixed bug where stdin was closed if .chrsubset
+	  file didn't exist
+
+2005-05-04 11:20  twu
+
+	* src/stage3.h: Added function to compute matchscores for chimera
+	  detection.
+
+2005-05-04 11:20  twu
+
+	* src/stage3.c: Changed calls to Sequence_T functions.	Added
+	  function to compute matchscores for chimera detection.
+
+2005-05-04 11:19  twu
+
+	* src/stage2.c: Performing Stage 2 from trim start to trim end,
+	  instead of entire sequence.  Changed calls to Sequence_T
+	  functions.
+
+2005-05-04 11:18  twu
+
+	* src/stage1.c: Changed calls to Sequence_T and Reader_T functions
+
+2005-05-04 11:08  twu
+
+	* src/: sequence.c, sequence.h: Cleaned up interface.  Added
+	  ability to print trimmed part of sequence.
+
+2005-05-04 11:07  twu
+
+	* src/: pair.c, pair.h: Added chimera detection based on Chow test
+
+2005-05-04 11:06  twu
+
+	* src/md5-compute.c: Changed call to Sequence_T function.  Using
+	  full sequence now for MD5 computation.
+
+2005-05-04 11:06  twu
+
+	* src/matchpair.c: Removed call to Sequence_T function
+
+2005-05-04 11:05  twu
+
+	* src/oligoindex.c: Changed calls to Sequence_T functions
+
+2005-05-04 11:05  twu
+
+	* src/oligo-count.c: Changed call to Reader_new
+
+2005-05-04 11:04  twu
+
+	* src/get-genome.c: Changed call to Sequence_print
+
+2005-05-04 11:04  twu
+
+	* src/: reader.c, reader.h: Storing querystart and queryend in
+	  Reader_T object
+
+2005-05-04 11:03  twu
+
+	* src/: block.c, block.h: Removed unnecessary field
+
+2005-05-04 11:02  twu
+
+	* src/: Makefile.am, chimera.c, chimera.h, nmath.c, nmath.h,
+	  gmap.c: Added chimera detection based on Chow test
+
+2005-05-03 10:25  twu
+
+	* src/: gmap.c, gmapindex.c, indexdb.c, indexdb.h: Allowed indexing
+	  interval of 12-mers to be specified at run time
+
+2005-05-03 09:58  twu
+
+	* configure.ac: Added check for madvise function
+
+2005-05-03 09:56  twu
+
+	* README: Added Ensembl format as a recognized coordinate format
+
+2005-05-03 09:55  twu
+
+	* util/md_coords.pl.in: Improved prompt for alternate chromosomes
+
+2005-05-03 09:49  twu
+
+	* src/: genome.c, iit-read.c, indexdb.c: Put compiler flags around
+	  madvise
+
+2005-05-03 09:48  twu
+
+	* src/datadir.c: Deleted line that was causing problems when the
+	  GMAPDB environment variable was set
+
+2005-05-01 09:20  twu
+
+	* util/fa_coords.pl.in: Further fixed coordinates
+
+2005-05-01 08:53  twu
+
+	* util/fa_coords.pl.in: Removed addition of 1 to coordinates.
+	  Added parsing for Ensembl format.
+
+2005-05-01 08:16  twu
+
+	* util/gmap_setup.pl.in: Testing accessions with and without
+	  version numbers
+
+2005-05-01 08:15  twu
+
+	* util/md_coords.pl.in: Making -U and -A flags standard.  Can
+	  exclude unmapped contigs and alternate chromosomes with
+	  chrsubsets.
+
+2005-05-01 08:13  twu
+
+	* util/md_coords.pl.in: Fixed case where direction eq "0".
+
+2005-05-01 07:52  twu
+
+	* src/oligoindex.c: Modified memory allocation scheme to have a
+	  fixed block of memory that expands when necessary.
+
+2005-05-01 07:51  twu
+
+	* src/iit_get.c: Added -A back to allowed flags.
+
+2005-05-01 07:49  twu
+
+	* src/chrsubset.c: Added debug statements
+
+2005-05-01 07:48  twu
+
+	* VERSION: Updated version
+
+2005-04-20 11:12  twu
+
+	* src/sequence.c: Kept poly-A and poly-T limits when specifying
+	  subsequences.
+
+2005-04-20 11:11  twu
+
+	* src/pair.c: Added an exception handler.  Removed minor bug where
+	  first pair was handled twice.
+
+2005-04-20 11:10  twu
+
+	* src/gmapindex.c: Allowed compress and uncompress routines to take
+	  a filename as an argument.  Added wraplength option for
+	  uncompress.
+
+2005-04-20 11:10  twu
+
+	* src/gmap.c: Fixed bug in specifying wrong sequence length for
+	  computing chimeras.  Removed limit on number of paths for finding
+	  chimeras.  Added exception handler.
+
+2005-04-20 11:08  twu
+
+	* src/except.c: Modified behavior of exception handler
+
+2005-04-20 11:07  twu
+
+	* src/genuncompress.c: Fixed problem if positions were greater than
+	  allowed for signed ints.
+
+2005-04-20 11:06  twu
+
+	* src/: compress.c, compress.h: Added wraplength option to
+	  Compress_uncompress.
+
+2005-04-19 08:51  twu
+
+	* src/: sequence.c, stage1.c: Added checks for null before freeing
+	  memory.
+
+2005-04-19 08:51  twu
+
+	* src/gmap.c: Made IIT_get return an array of ints, rather than an
+	  Intlist, to reduce repeated small memory allocations.  Placed a
+	  limit on npaths for finding chimeras.
+
+2005-04-19 08:50  twu
+
+	* src/: get-genome.c, iit-read.c, iit-read.h, iit_get.c,
+	  segmentpos.c, stage3.c: Made IIT_get return an array of ints,
+	  rather than an Intlist, to reduce repeated small memory
+	  allocations.
+
+2005-04-19 08:48  twu
+
+	* src/mem.c: Added debugging statements.
+
+2005-04-18 13:05  twu
+
+	* src/dynprog.c: Added memory allocation routines in cases where
+	  problem size exceeds maxlength of Dynprog_T.	Removed unused code
+	  for affine gap penalties.
+
 2005-03-11 09:58  twu
 
 	* util/: gmap_setup.pl.in, md_coords.pl.in: Allowed for contigs to

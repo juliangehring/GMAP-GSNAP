@@ -1,4 +1,4 @@
-/* $Id: matchpair.h,v 1.16 2005/03/01 20:22:09 twu Exp $ */
+/* $Id: matchpair.h,v 1.17 2005/05/05 23:43:17 twu Exp $ */
 #ifndef MATCHPAIR_INCLUDED
 #define MATCHPAIR_INCLUDED
 #include "bool.h"
@@ -24,6 +24,10 @@ extern int
 Matchpair_clustersize (T this);
 extern Matchpairend_T
 Matchpair_matchpairend (T this);
+extern int
+Matchpair_support (T this);
+extern double
+Matchpair_stretch (T this);
 
 extern T
 Matchpair_new (Match_T match5, Match_T match3, int matchsize, int clustersize,

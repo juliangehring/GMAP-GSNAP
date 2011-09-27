@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.38 2005/02/15 01:58:50 twu Exp $ */
+/* $Id: dynprog.h,v 1.39 2005/05/06 16:59:19 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -28,6 +28,13 @@ Dynprog_new (int maxlookback, int extraquerygap, int maxpeelback,
 	     int extramaterial_end, int extramaterial_paired);
 extern void
 Dynprog_free (T *old);
+
+extern void
+Dynprog_term ();
+extern void
+Dynprog_init (int maxlookback, int extraquerygap, int maxpeelback,
+	      int extramaterial_end, int extramaterial_paired);
+
 extern List_T
 Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    T dynprog, char *sequence1, char *sequence2, 

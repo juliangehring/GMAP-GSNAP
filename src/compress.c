@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.7 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.8 2005/04/20 18:06:49 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -174,13 +174,26 @@ Compress_compress (FILE *fp) {
 }
 
 void
-Compress_uncompress (FILE *fp) {
+Compress_uncompress (FILE *fp, int wraplength) {
   int c;
   Genomicpos_T position = 0U;
 
-  while ((c = Compress_get_char(fp,position,/*uncompressedp*/false)) != EOF) {
-    printf("%c",c);
-    position++;
+  if (wraplength <= 0) {
+    while ((c = Compress_get_char(fp,position,/*uncompressedp*/false)) != EOF) {
+      printf("%c",c);
+      position++;
+    }
+  } else {
+    while ((c = Compress_get_char(fp,position,/*uncompressedp*/false)) != EOF) {
+      printf("%c",c);
+      position++;
+      if (position % wraplength == 0) {
+	printf("\n");
+      }
+    }
+    if (position % wraplength != 0) {
+      printf("\n");
+    }
   }
 
   return;

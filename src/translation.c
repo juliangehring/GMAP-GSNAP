@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c,v 1.28 2005/02/15 01:50:55 twu Exp $";
+static char rcsid[] = "$Id: translation.c,v 1.29 2005/05/06 17:00:56 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -929,7 +929,7 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
   bool best0p, best1p, best2p, endstopp;
   int bestncodons0, bestncodons1, bestncodons2,
     beststart0, beststart1, beststart2, bestend0, bestend1, bestend2, maxorf, i, aapos = 0;
-  int translation_frame, translation_start, translation_end;
+  int translation_frame, translation_start = 0, translation_end = 0;
   int minpos, maxpos;
 
   if (backwardp == false) {

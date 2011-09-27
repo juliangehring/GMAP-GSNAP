@@ -1,4 +1,4 @@
-/* $Id: stage2.h,v 1.39 2005/02/15 01:52:34 twu Exp $ */
+/* $Id: stage2.h,v 1.41 2005/05/05 23:45:35 twu Exp $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "sequence.h"
@@ -28,7 +28,7 @@ Stage2_free (T *old);
 extern T
 Stage2_compute (Sequence_T queryseq, Sequence_T genomicseg,
 		Oligoindex_T oligoindex, int indexsize, Pairpool_T pairpool, 
-		int sufflookback, int nsufflookback);
+		int sufflookback, int nsufflookback, int badoligos);
 
 #undef T
 #endif

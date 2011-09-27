@@ -1,12 +1,17 @@
 #! @PERL@ -w
-# $Id: md_coords.pl.in,v 1.4 2005/03/11 17:58:29 twu Exp $
+# $Id: md_coords.pl.in,v 1.8 2005/05/06 20:33:50 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
 use IO::File;
 undef($opt_9);			# debug mode
-undef($opt_U);			# if 1, include unmapped contigs, else ignore
+
+#undef($opt_U);			# if 1, include unmapped contigs, else ignore
+$opt_U = 1;			# include in build.  can exclude with chrsubset
+
 undef($opt_A);			# if 1, use alternate strains
+$opt_A = 1;			# include in build.  can exclude with chrsubset
+
 undef($opt_s);			# Reference strain
 undef($opt_c);			# Columns
 undef($opt_o);			# Output file
@@ -24,6 +29,7 @@ $flags = "";
 $flags .= "-o $outfile";
 
 $OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
+print $OUT "#contig" . "\t" . "coordinates" . "\t" . "altstrain\n";
 
 if (defined($opt_c)) {
   ($contigcol,$chrcol,$chrstartcol,$chrendcol,$dircol,$straincol) = split ",",$opt_c;
@@ -85,6 +91,20 @@ print STDOUT "Contig mapping information has been written to file $outfile\n";
 print STDOUT "For future reference, some of this setup process can be specified\n";
 print STDOUT "on the command-line, as follows:\n\n";
 print STDOUT "    md_coords $flags $mdfile\n";
+print STDOUT "\n";
+print STDOUT "Now look at $outfile (you may edit it manually if you wish)\n";
+print STDOUT "and then run\n";
+print STDOUT "\n";
+if ($outfile ne "coords.txt") {
+  print STDOUT "    gmap_setup -c $outfile -d <db_name> <fastafiles>\n";
+} else {
+  print STDOUT "    gmap_setup -d <db_name> <fastafiles>\n";
+}
+print STDOUT "\n";
+print STDOUT "where you decide on the db_name, and the fastafiles contain\n";
+print STDOUT "the sequences for the contigs listed in $mdfile\n";
+print STDOUT "\n";
+print STDOUT "Note that gmap_setup can take a while to index a large genome\n";
 print STDOUT "============================================================\n";
 print STDOUT "\n";
 
@@ -154,12 +174,13 @@ sub parse_md_file {
 	$chrstart = $fields[$chrstartcol-1];
 	$chrend = $fields[$chrendcol-1];
       }	
-      if ($dir eq "+") {
+      if ($dir eq "+" || $dir eq "0") {
 	$chrinfo = "$chr:$chrstart..$chrend";
       } elsif ($dir eq "-") {
 	$chrinfo = "$chr:$chrend..$chrstart";
       } else {
-	die "Cannot understand direction $dir for contig $contig";
+	print STDERR "Cannot understand direction $dir for contig $contig.  Treating as +\n";
+	$chrinfo = "$chr:$chrstart..$chrend";
       }
 
       if (!defined($chr)) {
@@ -382,7 +403,7 @@ sub guess_columns {
   $maxvalue = 0;
   for ($col = 0; $col < $ncols; $col++) {
     if ($numericp[$col] == 1 && $alphanumericp[$col] == 0) {
-      if ($maxvalue[$col] > $maxvalue) {
+      if (defined($maxvalue[$col]) && $maxvalue[$col] > $maxvalue) {
 	$maxvalue = $maxvalue[$col];
 	$maxcol = $col;
       }
@@ -398,7 +419,7 @@ sub guess_columns {
   $secondvalue = 0;
   for ($col = 0; $col < $ncols; $col++) {
     if ($col != $maxcol && $numericp[$col] == 1 && $alphanumericp[$col] == 0) {
-      if ($maxvalue[$col] > $secondvalue) {
+      if (defined($maxvalue[$col]) && $maxvalue[$col] > $secondvalue) {
 	$secondvalue = $maxvalue[$col];
 	$secondcol = $col;
       }
@@ -647,25 +668,30 @@ sub check_strains {
   foreach $strain (@altstrains) {
     if ($nchr{$strain} == 1) {
       $chr = $lastchr{$strain};
-      print STDOUT "Strain $strain is only on one chromosome: $chr\n";
+      print STDOUT "Alternate strain '$strain' contains a single chromosome: $chr\n";
       if (!defined($referencelength{$chr}) || $referencelength{$chr} == 0) {
 	print STDOUT "This chromosome does not exist on the reference strain\n";
 	print STDOUT "Add this chromosome to the reference strain (y or n)?\n";
 	$default = "y";
       } else {
 	$coverage = $altlength{$strain . "_" . $chr}/$referencelength{$chr};
-	printf STDOUT ("This chromosome covers %.1f%% of the reference strain\n",100.0*$coverage);
-	print STDOUT "Add this chromosome to the reference strain under a different name (y or n)?\n";
+	printf STDOUT ("This chromosome has %.1f%% of the length as the reference strain\n",100.0*$coverage);
 	if ($coverage > 0.30) {
+	  print STDOUT "Because of its long length, it probably represents an alternate version of chromosome $chr,\n";
+	  print STDOUT "  rather than an alternate strain\n";
 	  $default = "y";
 	} else {
+	  print STDOUT "Because of its short length, it probably represents an alternate strain,\n";
+	  print STDOUT "  rather than an alternate version of chromosome $chr\n";
 	  $default = "n";
 	}
+	print STDOUT "Treat this chromosome as an alternate version of chromosome $chr (y or n)?\n";
       }
       if (input_yn($default) == 1) {
+	undef $existingchrp{$chr};
 	$donep = 0;
 	while ($donep == 0) {
-	  print STDOUT "Name for this chromosome?\n";
+	  print STDOUT "Name for this alternate version of chromosome $chr?\n";
 	  $newchr = input_nonempty();
 	  if (defined($existingchrp{$newchr})) {
 	    print STDOUT "That chromosome name is already taken.  Try again\n";

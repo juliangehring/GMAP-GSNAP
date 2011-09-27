@@ -156,7 +156,7 @@ AC_CHECK_SIZEOF(unsigned long)
 AC_FUNC_MMAP
 ACX_MMAP_FLAGS
 
-AC_CHECK_FUNCS([ceil floor log memcpy memmove memset munmap pow rint strtoul sysconf sysctl])
+AC_CHECK_FUNCS([ceil floor log madvise memcpy memmove memset munmap pow rint strtoul sysconf sysctl])
 
 ACX_PAGESIZE
 

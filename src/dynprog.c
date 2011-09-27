@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c,v 1.111 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: dynprog.c,v 1.113 2005/05/06 16:59:19 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -50,7 +50,11 @@ static char rcsid[] = "$Id: dynprog.c,v 1.111 2005/02/15 01:58:50 twu Exp $";
 #define MIN_NONINTRON 50
 
 #define FULLMATCH 3
-#define INCOMPLETE 0
+#define AMBIGUOUS 0
+
+typedef enum {HIGHQ, MEDQ, LOWQ, END} Mismatchtype_T;
+#define NMISMATCHTYPES 4
+
 #define MISMATCH_HIGHQ -10
 #define MISMATCH_MEDQ -9
 #define MISMATCH_LOWQ -8
@@ -59,9 +63,8 @@ static char rcsid[] = "$Id: dynprog.c,v 1.111 2005/02/15 01:58:50 twu Exp $";
    alignments to the end, and because ends are typically of lower
    quality.  Make equal to FULLMATCH, because criterion is nmatches >=
    nmismatches. */
-#define END_MISMATCH_HIGHQ -3
-#define END_MISMATCH_MEDQ -3
-#define END_MISMATCH_LOWQ -3
+#define MISMATCH_END -3
+
 
 /* Note: In definitions below, extensions don't include the first base */
 
@@ -84,6 +87,12 @@ static char rcsid[] = "$Id: dynprog.c,v 1.111 2005/02/15 01:58:50 twu Exp $";
    MEDQ      (-12-3)/2= -7.5                  -13
    LOWQ      (-10-3)/2= -6.5                  -11 
 */
+
+typedef enum {PAIRED_HIGHQ, PAIRED_MEDQ, PAIRED_LOWQ, 
+	      SINGLE_HIGHQ, SINGLE_MEDQ, SINGLE_LOWQ,
+	      END_HIGHQ, END_MEDQ, END_LOWQ,
+	      CDNA_HIGHQ, CDNA_MEDQ, CDNA_LOWQ} Jumptype_T;
+#define NJUMPTYPES 12
 
 #define PAIRED_OPEN_HIGHQ -17
 #define PAIRED_OPEN_MEDQ -15
@@ -326,6 +335,20 @@ struct T {
   int **jump_ptrs, *jump_space;
 };
 
+static void
+compute_maxlengths (int *maxlength1, int *maxlength2,
+		    int maxlookback, int extraquerygap, int maxpeelback,
+		    int extramaterial_end, int extramaterial_paired) {
+  *maxlength1 = maxlookback + maxpeelback;
+  *maxlength2 = *maxlength1 + extraquerygap;
+  if (extramaterial_end > extramaterial_paired) {
+    *maxlength2 += extramaterial_end;
+  } else {
+    *maxlength2 += extramaterial_paired;
+  }
+  return;
+}
+
 
 T
 Dynprog_new (int maxlookback, int extraquerygap, int maxpeelback,
@@ -333,15 +356,28 @@ Dynprog_new (int maxlookback, int extraquerygap, int maxpeelback,
   T new = (T) MALLOC(sizeof(*new));
   int maxlength1, maxlength2;
 
-  new->maxlength1 = maxlookback + maxpeelback;
-  new->maxlength2 = new->maxlength1 + extraquerygap;
-  if (extramaterial_end > extramaterial_paired) {
-    new->maxlength2 += extramaterial_end;
-  } else {
-    new->maxlength2 += extramaterial_paired;
-  }
-  maxlength1 = new->maxlength1;
-  maxlength2 = new->maxlength2;
+  compute_maxlengths(&maxlength1,&maxlength2,
+		     maxlookback,extraquerygap,maxpeelback,
+		     extramaterial_end,extramaterial_paired);
+  new->maxlength1 = maxlength1;
+  new->maxlength2 = maxlength2;
+
+  new->matrix_ptrs = (int **) CALLOC(maxlength1+1,sizeof(int *));
+  new->matrix_space = (int *) CALLOC((maxlength1+1)*(maxlength2+1),sizeof(int));
+  new->directions_ptrs = (Direction_T **) CALLOC(maxlength1+1,sizeof(Direction_T *));
+  new->directions_space = (Direction_T *) CALLOC((maxlength1+1)*(maxlength2+1),sizeof(Direction_T));
+  new->jump_ptrs = (int **) CALLOC(maxlength1+1,sizeof(int *));
+  new->jump_space = (int *) CALLOC((maxlength1+1)*(maxlength2+1),sizeof(int));
+
+  return new;
+}
+
+T
+Dynprog_temp (int maxlength1, int maxlength2) {
+  T new = (T) MALLOC(sizeof(*new));
+
+  new->maxlength1 = maxlength1;
+  new->maxlength2 = maxlength2;
 
   new->matrix_ptrs = (int **) CALLOC(maxlength1+1,sizeof(int *));
   new->matrix_space = (int *) CALLOC((maxlength1+1)*(maxlength2+1),sizeof(int));
@@ -372,6 +408,95 @@ Dynprog_free (T *old) {
 /************************************************************************/
 
 
+static int **pairdistance_array[NMISMATCHTYPES];
+
+static void
+permute_cases (int NA1, int NA2, int score) {
+  int i;
+  int na1, na2;
+
+  na1 = tolower(NA1);
+  na2 = tolower(NA2);
+
+  for (i = 0; i < NMISMATCHTYPES; i++) {
+    pairdistance_array[i][na1][na2] = score;
+    pairdistance_array[i][na1][NA2] = score;
+    pairdistance_array[i][NA1][na2] = score;
+    pairdistance_array[i][NA1][NA2] = score;
+
+    pairdistance_array[i][na2][na1] = score;
+    pairdistance_array[i][na2][NA1] = score;
+    pairdistance_array[i][NA2][na1] = score;
+    pairdistance_array[i][NA2][NA1] = score;
+  }
+
+  return;
+}
+
+
+static void
+pairdistance_init () {
+  int i, j;
+  int c, c1, c2;
+
+  for (i = 0; i < NMISMATCHTYPES; i++) {
+    pairdistance_array[i] = (int **) CALLOC(128,sizeof(int *));
+    for (j = 0; j < 128; j++) {
+      pairdistance_array[i][j] = (int *) CALLOC(128,sizeof(int));
+    }
+  }
+
+  for (c1 = 'A'; c1 <= 'z'; c1++) {
+    for (c2 = 'A'; c2 < 'z'; c2++) {
+      pairdistance_array[HIGHQ][c1][c2] = MISMATCH_HIGHQ;
+      pairdistance_array[MEDQ][c1][c2] = MISMATCH_MEDQ;
+      pairdistance_array[LOWQ][c1][c2] = MISMATCH_LOWQ;
+      pairdistance_array[END][c1][c2] = MISMATCH_END;
+    }
+  }
+
+  permute_cases('R','A',AMBIGUOUS);
+  permute_cases('R','G',AMBIGUOUS);
+
+  permute_cases('Y','T',AMBIGUOUS);
+  permute_cases('Y','C',AMBIGUOUS);
+
+  permute_cases('W','A',AMBIGUOUS);
+  permute_cases('W','T',AMBIGUOUS);
+
+  permute_cases('S','G',AMBIGUOUS);
+  permute_cases('S','C',AMBIGUOUS);
+
+  permute_cases('M','A',AMBIGUOUS);
+  permute_cases('M','C',AMBIGUOUS);
+
+  permute_cases('K','G',AMBIGUOUS);
+  permute_cases('K','T',AMBIGUOUS);
+
+  permute_cases('H','A',AMBIGUOUS);
+  permute_cases('H','T',AMBIGUOUS);
+  permute_cases('H','C',AMBIGUOUS);
+
+  permute_cases('B','G',AMBIGUOUS);
+  permute_cases('B','C',AMBIGUOUS);
+  permute_cases('B','T',AMBIGUOUS);
+
+  permute_cases('V','G',AMBIGUOUS);
+  permute_cases('V','A',AMBIGUOUS);
+  permute_cases('V','C',AMBIGUOUS);
+
+  permute_cases('D','G',AMBIGUOUS);
+  permute_cases('D','A',AMBIGUOUS);
+  permute_cases('D','T',AMBIGUOUS);
+
+  for (c = 'A'; c < 'Z'; c++) {
+    permute_cases(c,c,FULLMATCH);
+  }
+
+  return;
+}
+
+
 static int
 pairdistance (char *sequence1, char *sequence2, bool revp,
 	      int index1, int index2, int mismatch) {
@@ -388,31 +513,186 @@ pairdistance (char *sequence1, char *sequence2, bool revp,
   if (na1 == na2) {
     return FULLMATCH;
   } else if (na1 == 'N' || na1 == 'X') {
-    return INCOMPLETE;
+    return AMBIGUOUS;
   } else if (na2 == 'N' || na2 == 'X') {
-    return INCOMPLETE;
+    return AMBIGUOUS;
   } else {
     return mismatch;
   }
 }
 
+/************************************************************************/
+
+static int max_jump_penalty_lookup;
+static int *jump_penalty_array[NJUMPTYPES];
+
+
+/* For lengths of 1,2,3, returns open.  Then, for lengths of 4,5,6,
+   returns open + 3*extend.  Add extra extend to penalty, so ---- is
+   preferred over ---|-. */
+static int
+jump_penalty (int length, int open, int extend) {
+  int ncodons;
+
+  ncodons = (length - 1)/3;
+  return open + extend + ncodons*3*extend;
+}
+
+
+static void
+jump_penalty_init (int maxlookback, int extraquerygap, int maxpeelback,
+		   int extramaterial_end, int extramaterial_paired) {
+  int max_lookup, maxlength1, maxlength2, i;
+  int length, remainder, phase;
+  int paired_highq_penalty = PAIRED_OPEN_HIGHQ + PAIRED_EXTEND_HIGHQ,
+    paired_medq_penalty = PAIRED_OPEN_MEDQ + PAIRED_EXTEND_MEDQ,
+    paired_lowq_penalty = PAIRED_OPEN_LOWQ + PAIRED_EXTEND_LOWQ,
+    single_highq_penalty = SINGLE_OPEN_HIGHQ + SINGLE_EXTEND_HIGHQ,
+    single_medq_penalty = SINGLE_OPEN_MEDQ + SINGLE_EXTEND_MEDQ,
+    single_lowq_penalty = SINGLE_OPEN_LOWQ + SINGLE_EXTEND_LOWQ,
+    end_highq_penalty = END_OPEN_HIGHQ + END_EXTEND_HIGHQ,
+    end_medq_penalty = END_OPEN_MEDQ + END_EXTEND_MEDQ,
+    end_lowq_penalty = END_OPEN_LOWQ + END_EXTEND_LOWQ,
+    cdna_highq_penalty = CDNA_OPEN_HIGHQ + CDNA_EXTEND_HIGHQ,
+    cdna_medq_penalty = CDNA_OPEN_MEDQ + CDNA_EXTEND_MEDQ,
+    cdna_lowq_penalty = CDNA_OPEN_LOWQ + CDNA_EXTEND_LOWQ;
+  int paired_highq_delta = 3*PAIRED_EXTEND_HIGHQ,
+    paired_medq_delta = 3*PAIRED_EXTEND_MEDQ,
+    paired_lowq_delta = 3*PAIRED_EXTEND_LOWQ,
+    single_highq_delta = 3*SINGLE_EXTEND_HIGHQ,
+    single_medq_delta = 3*SINGLE_EXTEND_MEDQ,
+    single_lowq_delta = 3*SINGLE_EXTEND_LOWQ,
+    end_highq_delta = 3*END_EXTEND_HIGHQ,
+    end_medq_delta = 3*END_EXTEND_MEDQ,
+    end_lowq_delta = 3*END_EXTEND_LOWQ,
+    cdna_highq_delta = 3*CDNA_EXTEND_HIGHQ,
+    cdna_medq_delta = 3*CDNA_EXTEND_MEDQ,
+    cdna_lowq_delta = 3*CDNA_EXTEND_LOWQ;
+
+  compute_maxlengths(&maxlength1,&maxlength2,
+		     maxlookback,extraquerygap,maxpeelback,
+		     extramaterial_end,extramaterial_paired);
+
+  if (maxlength1 > maxlength2) {
+    max_lookup = maxlength1;
+  } else {
+    max_lookup = maxlength2;
+  }
+  if ((remainder = max_lookup % 3) != 0) {
+    max_lookup += (3 - remainder);
+  }
+
+  /* Set global */
+  max_jump_penalty_lookup = max_lookup;
+
+  for (i = 0; i < NJUMPTYPES; i++) {
+    jump_penalty_array[i] = (int *) CALLOC(max_lookup+1,sizeof(int));
+  }
+
+  length = 1;
+  while (length+2 <= max_lookup) {
+    for (phase = 0; phase < 3; phase++) {
+      jump_penalty_array[PAIRED_HIGHQ][length] = paired_highq_penalty;
+      jump_penalty_array[PAIRED_MEDQ][length] = paired_medq_penalty;
+      jump_penalty_array[PAIRED_LOWQ][length] = paired_lowq_penalty;
+      jump_penalty_array[SINGLE_HIGHQ][length] = single_highq_penalty;
+      jump_penalty_array[SINGLE_MEDQ][length] = single_medq_penalty;
+      jump_penalty_array[SINGLE_LOWQ][length] = single_lowq_penalty;
+      jump_penalty_array[END_HIGHQ][length] = end_highq_penalty;
+      jump_penalty_array[END_MEDQ][length] = end_medq_penalty;
+      jump_penalty_array[END_LOWQ][length] = end_lowq_penalty;
+      jump_penalty_array[CDNA_HIGHQ][length] = cdna_highq_penalty;
+      jump_penalty_array[CDNA_MEDQ][length] = cdna_medq_penalty;
+      jump_penalty_array[CDNA_LOWQ][length] = cdna_lowq_penalty;
+      length++;
+    }
+    paired_highq_penalty += paired_highq_delta;
+    paired_medq_penalty += paired_medq_delta;
+    paired_lowq_penalty += paired_lowq_delta;
+    single_highq_penalty += single_highq_delta;
+    single_medq_penalty += single_medq_delta;
+    single_lowq_penalty += single_lowq_delta;
+    end_highq_penalty += end_highq_delta;
+    end_medq_penalty += end_medq_delta;
+    end_lowq_penalty += end_lowq_delta;
+    cdna_highq_penalty += cdna_highq_delta;
+    cdna_medq_penalty += cdna_medq_delta;
+    cdna_lowq_penalty += cdna_lowq_delta;
+  }
+  return;
+}
+
+static int
+jump_penalty_lookup (Jumptype_T jumptype, int length, int open, int extend) {
+  if (length <= max_jump_penalty_lookup) {
+
+#if 0
+    if (jump_penalty_array[jumptype][length] != jump_penalty(length,open,extend)) {
+      abort();
+    }
+#endif
+
+    return jump_penalty_array[jumptype][length];
+  } else {
+    return jump_penalty(length,open,extend);
+  }
+}
+
+/************************************************************************/
+
+void
+Dynprog_init (int maxlookback, int extraquerygap, int maxpeelback,
+	      int extramaterial_end, int extramaterial_paired) {
+  pairdistance_init();
+  jump_penalty_init(maxlookback,extraquerygap,maxpeelback,
+		    extramaterial_end,extramaterial_paired);
+  return;
+}
+
+void
+Dynprog_term () {
+  int i, j;
+
+  for (i = 0; i < NJUMPTYPES; i++) {
+    FREE(jump_penalty_array[i]);
+  }
+
+  for (i = 0; i < NMISMATCHTYPES; i++) {
+    for (j = 0; j < 128; j++) {
+      FREE(pairdistance_array[i][j]);
+    }
+    FREE(pairdistance_array[i]);
+  }
+
+  return;
+}
+
+  /************************************************************************/
+
 static int **
-compute_scores_affine (Direction_T ***directions, int ***jump, T this, 
+compute_scores_lookup (Direction_T ***directions, int ***jump, T this, 
 		       char *sequence1, char *sequence2, bool revp, 
 		       int length1, int length2, 
-		       int mismatch, int open, int extend, 
-		       int extraband) {
+		       Mismatchtype_T mismatchtype, Jumptype_T jumptype,
+		       int mismatch, int open, int extend, int extraband) {
   int **matrix;
-  int r, c, r1, c1, pen;
+  int r, c, r1, c1, na1, na2;
   int bestscore, score, bestjump, j;
   Direction_T bestdir;
   int scoreV, scoreH, scoreD;
   int lband, rband, cmid, clo, chigh, rlo;
-  bool endp = false;
+  int **pairdistance_array_type;
+  int *jump_penalty_array_type;
+
+  pairdistance_array_type = pairdistance_array[mismatchtype];
+  jump_penalty_array_type = jump_penalty_array[jumptype];
 
   if (length2 >= length1) {
     rband = length2 - length1 + extraband;
     lband = extraband;
+  } else {
+    lband = length1 - length2 + extraband;
+    rband = extraband;
   }
 
   matrix = Matrix_alloc(length1,length2,this->matrix_ptrs,this->matrix_space,lband,rband);
@@ -424,24 +704,22 @@ compute_scores_affine (Direction_T ***directions, int ***jump, T this,
   (*jump)[0][0] = 0;
 
   /* Row 0 initialization */
-  pen = open;
   for (c = 1; c <= rband && c <= length2; c++) {
-    matrix[0][c] = pen;
+    matrix[0][c] = jump_penalty_array_type[c];
     (*directions)[0][c] = HORIZ;
     (*jump)[0][c] = c;
-    pen += extend;
   }
 
   /* Column 0 initialization */
-  pen = open;
   for (r = 1; r <= lband && r <= length1; r++) {
-    matrix[r][0] = pen;
+    matrix[r][0] = jump_penalty_array_type[r];
     (*directions)[r][0] = VERT;
     (*jump)[r][0] = r;
-    pen += extend;
   }
 
   for (r = 1; r <= length1; r++) {
+    na1 = revp ? sequence1[1-r] : sequence1[r-1];
+
     if ((clo = r - lband) < 1) {
       clo = 1;
     }
@@ -449,24 +727,25 @@ compute_scores_affine (Direction_T ***directions, int ***jump, T this,
       chigh = length2;
     }
     for (c = clo; c <= chigh; c++) {
+      na2 = revp ? sequence2[1-c] : sequence2[c-1];
+
       /* Diagonal case */
-      bestscore = matrix[r-1][c-1] + pairdistance(sequence1,sequence2,revp,r-1,c-1,mismatch);
+      bestscore = matrix[r-1][c-1] + pairdistance_array_type[na1][na2];
       bestdir = DIAG;
       bestjump = 1;
       
       /* Horizontal case */
-      pen = open;
       for (c1 = c-1, j = 1; c1 >= clo; c1--, j++) {
 	if ((*directions)[r][c1] == DIAG) {
-	  score = matrix[r][c1] + pen;
+	  score = matrix[r][c1] + jump_penalty_array_type[j];
 	  if (score > bestscore) {
 	    bestscore = score;
 	    bestdir = HORIZ;
 	    bestjump = j;
 	  }
-#ifdef RIGHTANGLE	  
-	} else if ((*directions)[r][c1] == VERT) {
-	  score = matrix[r][c1] + pen - open; /* Compensate for double opening */
+#ifdef RIGHTANGLE
+	} else if ((*directions)[r][c1] == VERT && (*jump)[r][c1] >= 3) {
+	  score = matrix[r][c1] + jump_penalty_array_type[j] - open;
 	  if (score > bestscore) {
 	    bestscore = score;
 	    bestdir = HORIZ;
@@ -474,25 +753,23 @@ compute_scores_affine (Direction_T ***directions, int ***jump, T this,
 	  }
 #endif
 	}
-	pen += extend;
       }
 
       /* Vertical case */
       if ((rlo = c+c-rband-r) < 1) {
 	rlo = 1;
       }
-      pen = open;
       for (r1 = r-1, j = 1; r1 >= rlo; r1--, j++) {
 	if ((*directions)[r1][c] == DIAG) {
-	  score = matrix[r1][c] + pen;
+	  score = matrix[r1][c] + jump_penalty_array_type[j];
 	  if (score > bestscore) {
 	    bestscore = score;
 	    bestdir = VERT;
 	    bestjump = j;
 	  }
 #ifdef RIGHTANGLE
-	} else if ((*directions)[r1][c] == HORIZ) {
-	  score = matrix[r1][c] + pen - open; /* Compensate for double opening */
+	} else if ((*directions)[r1][c] == HORIZ && (*jump)[r1][c] >= 3) {
+	  score = matrix[r1][c] + jump_penalty_array_type[j] - open;
 	  if (score > bestscore) {
 	    bestscore = score;
 	    bestdir = VERT;
@@ -500,7 +777,6 @@ compute_scores_affine (Direction_T ***directions, int ***jump, T this,
 	  }
 #endif
 	}
-	pen += extend;
       }
 
       /*
@@ -528,34 +804,21 @@ compute_scores_affine (Direction_T ***directions, int ***jump, T this,
   return matrix;
 }
 
-static int
-jump_penalty_affine (int length, int open, int extend) {
-  return open + (length - 1)*extend;
-}
-
-/* For lengths of 1,2,3, returns open.  Then, for lengths of 4,5,6,
-   returns open + 3*extend.  Add extra extend to penalty, so ---- is
-   preferred over ---|-. */
-static int
-jump_penalty (int length, int open, int extend) {
-  int ncodons;
-
-  ncodons = (length - 1)/3;
-  return open + extend + ncodons*3*extend;
-}
-
-
 static int **
 compute_scores (Direction_T ***directions, int ***jump, T this, 
 		char *sequence1, char *sequence2, bool revp, 
 		int length1, int length2, 
+		Mismatchtype_T mismatchtype, Jumptype_T jumptype,
 		int mismatch, int open, int extend, int extraband) {
   int **matrix;
-  int r, c, r1, c1;
+  int r, c, r1, c1, na1, na2;
   int bestscore, score, bestjump, j;
   Direction_T bestdir;
   int scoreV, scoreH, scoreD;
   int lband, rband, cmid, clo, chigh, rlo;
+  int **pairdistance_array_type;
+
+  pairdistance_array_type = pairdistance_array[mismatchtype];
 
   if (length2 >= length1) {
     rband = length2 - length1 + extraband;
@@ -588,6 +851,8 @@ compute_scores (Direction_T ***directions, int ***jump, T this,
   }
 
   for (r = 1; r <= length1; r++) {
+    na1 = revp ? sequence1[1-r] : sequence1[r-1];
+
     if ((clo = r - lband) < 1) {
       clo = 1;
     }
@@ -595,8 +860,10 @@ compute_scores (Direction_T ***directions, int ***jump, T this,
       chigh = length2;
     }
     for (c = clo; c <= chigh; c++) {
+      na2 = revp ? sequence2[1-c] : sequence2[c-1];
+
       /* Diagonal case */
-      bestscore = matrix[r-1][c-1] + pairdistance(sequence1,sequence2,revp,r-1,c-1,mismatch);
+      bestscore = matrix[r-1][c-1] + pairdistance_array_type[na1][na2];
       bestdir = DIAG;
       bestjump = 1;
       
@@ -1383,16 +1650,13 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 		    int length1, int length2, int offset1, int offset2,
 		    Pairpool_T pairpool, int extraband_single, double defect_rate) {
   List_T pairs = NULL;
+  Mismatchtype_T mismatchtype;
+  Jumptype_T jumptype;
   int **matrix, **jump, mismatch, open, extend;
   Direction_T **directions;
+  bool allocp = false;
 
   /* Length1: maxlookback+MAXPEELBACK.  Length2 +EXTRAMATERIAL */
-  /*
-  if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
-    fprintf(stderr,"%d %d\n",length1,length2);
-    abort();
-  }
-  */
 
   debug(
 	printf("Aligning single gap middle\n");
@@ -1402,23 +1666,39 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 	);
 
   if (defect_rate < DEFECT_HIGHQ) {
+    mismatchtype = HIGHQ;
     mismatch = MISMATCH_HIGHQ;
+    jumptype = SINGLE_HIGHQ;
     open = SINGLE_OPEN_HIGHQ;
     extend = SINGLE_EXTEND_HIGHQ;
   } else if (defect_rate < DEFECT_MEDQ) {
+    mismatchtype = MEDQ;
     mismatch = MISMATCH_MEDQ;
+    jumptype = SINGLE_MEDQ;
     open = SINGLE_OPEN_MEDQ;
     extend = SINGLE_EXTEND_MEDQ;
   } else {
+    mismatchtype = LOWQ;
     mismatch = MISMATCH_LOWQ;
+    jumptype = SINGLE_LOWQ;
     open = SINGLE_OPEN_LOWQ;
     extend = SINGLE_EXTEND_LOWQ;
   }
 
   /* endp is false */
-  matrix = compute_scores(&directions,&jump,dynprog,sequence1,sequence2,
-			  /*revp*/false,length1,length2,
-			  mismatch,open,extend,extraband_single);
+  if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
+    dynprog = Dynprog_temp(length1,length2);
+    allocp = true;
+    matrix = compute_scores(&directions,&jump,dynprog,sequence1,sequence2,
+			    /*revp*/false,length1,length2,
+			    mismatchtype,jumptype,
+			    mismatch,open,extend,extraband_single);
+  } else {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,sequence1,sequence2,
+				   /*revp*/false,length1,length2,
+				   mismatchtype,jumptype,
+				   mismatch,open,extend,extraband_single);
+  }
 
   *finalscore = matrix[length1][length2];
   *nmatches = *nmismatches = *nopens = *nindels = 0;
@@ -1431,6 +1711,10 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
   Directions_free(directions);
   Matrix_free(matrix);
   */
+
+  if (allocp == true) {
+    Dynprog_free(&dynprog);
+  }
 
   return List_reverse(pairs);
 }
@@ -1448,21 +1732,17 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   List_T pairs = NULL, p;
   Pair_T pair;
   char *revsequence2;
+  Mismatchtype_T mismatchtype;
+  Jumptype_T jumptype;
   int **matrixL, **matrixR, **jumpL, **jumpR, mismatch, open, extend;
   Direction_T **directionsL, **directionsR;
   int revoffset2, bestrL, bestrR, bestcL, bestcR, k;
   int nmatches, nmismatches, nopens, nindels;
+  bool allocRp = false, allocLp = false;
 
   if (length2 <= 0) {
     return NULL;
   }
-
-  /*
-  if (length1 > dynprogL->maxlength1 || length2L > dynprogL->maxlength2 || length2R > dynprogR->maxlength2) {
-    fprintf(stderr,"%d %d %d\n",length1,length2L,length2R);
-    abort();
-  }
-  */
 
   debug(
 	printf("\n");
@@ -1484,15 +1764,21 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   */
 
   if (defect_rate < DEFECT_HIGHQ) {
+    mismatchtype = HIGHQ;
     mismatch = MISMATCH_HIGHQ;
+    jumptype = CDNA_HIGHQ;
     open = CDNA_OPEN_HIGHQ;
     extend = CDNA_EXTEND_HIGHQ;
   } else if (defect_rate < DEFECT_MEDQ) {
+    mismatchtype = MEDQ;
     mismatch = MISMATCH_MEDQ;
+    jumptype = CDNA_MEDQ;
     open = CDNA_OPEN_MEDQ;
     extend = CDNA_EXTEND_MEDQ;
   } else {
+    mismatchtype = LOWQ;
     mismatch = MISMATCH_LOWQ;
+    jumptype = CDNA_LOWQ;
     open = CDNA_OPEN_LOWQ;
     extend = CDNA_EXTEND_LOWQ;
   }
@@ -1501,16 +1787,36 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   /* Note: sequence 1 and 2 flipped, because 1 has extramaterial */
   revsequence2 = &(sequence2[length2-1]);
   revoffset2 = offset2+length2-1;
-  matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
-			   revsequence2,revsequence1R,/*revp*/true,length2,length1R,
-			   mismatch,open,extend,extraband_paired);
+  if (length2 > dynprogR->maxlength1 || length1R > dynprogR->maxlength2) {
+    dynprogR = Dynprog_temp(length2,length1R);
+    allocRp = true;
+    matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
+			     revsequence2,revsequence1R,/*revp*/true,length2,length1R,
+			     mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
+  } else {
+    matrixR = compute_scores_lookup(&directionsR,&jumpR,dynprogR,
+				    revsequence2,revsequence1R,/*revp*/true,length2,length1R,
+				    mismatchtype,jumptype,
+				    mismatch,open,extend,extraband_paired);
+  }
 
   /* Left side looks like 3' end */
   /* Note: sequence 1 and 2 flipped, because 1 has extramaterial */
   /* endp is false */
-  matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
-			   sequence2,sequence1L,/*revp*/false,length2,length1L,
-			   mismatch,open,extend,extraband_paired);
+  if (length2 > dynprogL->maxlength1 || length1L > dynprogL->maxlength2) {
+    dynprogL = Dynprog_temp(length2,length1L);
+    allocLp = true;
+    matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
+			     sequence2,sequence1L,/*revp*/false,length2,length1L,
+			     mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
+  } else {
+    matrixL = compute_scores_lookup(&directionsL,&jumpL,dynprogL,
+				    sequence2,sequence1L,/*revp*/false,length2,length1L,
+				    mismatchtype,jumptype,
+				    mismatch,open,extend,extraband_paired);
+  }
 
   bridge_cdna_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,matrixL,matrixR,
 		  directionsL,directionsR,length2,length1L,length1R,extraband_paired,
@@ -1557,6 +1863,13 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
   Matrix_free(matrixL);
   */
 
+  if (allocLp == true) {
+    Dynprog_free(&dynprogL);
+  }
+  if (allocRp == true) {
+    Dynprog_free(&dynprogR);
+  }
+
   return List_reverse(pairs);
 }
 
@@ -1573,18 +1886,14 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 		    bool endp, double defect_rate, bool returnpairsp, bool addgapp) {
   List_T pairs = NULL;
   char *revsequence1;
+  Mismatchtype_T mismatchtype;
+  Jumptype_T jumptype;
   int **matrixL, **matrixR, **jumpL, **jumpR, mismatch, open, extend;
   int canonical_reward;
   Direction_T **directionsL, **directionsR;
   int revoffset1, bestrL, bestrR, bestcL, bestcR;
   int maxhorizjump, maxvertjump;
-
-  /*
-  if (length1 > dynprogL->maxlength1 || length2L > dynprogL->maxlength2 || length2R > dynprogR->maxlength2) {
-    fprintf(stderr,"%d %d %d\n",length1,length2L,length2R);
-    abort();
-  }
-  */
+  bool allocRp = false, allocLp = false;
 
   debug(
 	printf("\n");
@@ -1606,21 +1915,27 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
   */
 
   if (defect_rate < DEFECT_HIGHQ) {
+    mismatchtype = HIGHQ;
     mismatch = MISMATCH_HIGHQ;
+    jumptype = PAIRED_HIGHQ;
     open = PAIRED_OPEN_HIGHQ;
     extend = PAIRED_EXTEND_HIGHQ;
     canonical_reward = CANONICAL_INTRON_HIGHQ;
     maxhorizjump = MAXHORIZJUMP_HIGHQ;
     maxvertjump = MAXVERTJUMP_HIGHQ;
   } else if (defect_rate < DEFECT_MEDQ) {
+    mismatchtype = MEDQ;
     mismatch = MISMATCH_MEDQ;
+    jumptype = PAIRED_MEDQ;
     open = PAIRED_OPEN_MEDQ;
     extend = PAIRED_EXTEND_MEDQ;
     canonical_reward = CANONICAL_INTRON_MEDQ;
     maxhorizjump = MAXHORIZJUMP_MEDQ;
     maxvertjump = MAXVERTJUMP_MEDQ;
   } else {
+    mismatchtype = LOWQ;
     mismatch = MISMATCH_LOWQ;
+    jumptype = PAIRED_LOWQ;
     open = PAIRED_OPEN_LOWQ;
     extend = PAIRED_EXTEND_LOWQ;
     canonical_reward = CANONICAL_INTRON_LOWQ;
@@ -1628,15 +1943,35 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
     maxvertjump = MAXVERTJUMP_LOWQ;
   }
 
-  matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
-			   sequence1,sequence2L,/*revp*/false,length1,length2L,
-			   mismatch,open,extend,extraband_paired);
+  if (length1 > dynprogL->maxlength1 || length2L > dynprogL->maxlength2) {
+    dynprogL = Dynprog_temp(length1,length2L);
+    allocLp = true;
+    matrixL = compute_scores(&directionsL,&jumpL,dynprogL,
+			     sequence1,sequence2L,/*revp*/false,length1,length2L,
+			     mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
+  } else {
+    matrixL = compute_scores_lookup(&directionsL,&jumpL,dynprogL,
+				    sequence1,sequence2L,/*revp*/false,length1,length2L,
+				    mismatchtype,jumptype,
+				    mismatch,open,extend,extraband_paired);
+  }
 
   revsequence1 = &(sequence1[length1-1]);
   revoffset1 = offset1+length1-1;
-  matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
-			   revsequence1,revsequence2R,/*revp*/true,length1,length2R,
-			   mismatch,open,extend,extraband_paired);
+  if (length1 > dynprogR->maxlength1 || length2R > dynprogR->maxlength2) {
+    dynprogR = Dynprog_temp(length1,length2R);
+    allocRp = true;
+    matrixR = compute_scores(&directionsR,&jumpR,dynprogR,
+			     revsequence1,revsequence2R,/*revp*/true,length1,length2R,
+			     mismatchtype,jumptype,
+			     mismatch,open,extend,extraband_paired);
+  } else {
+    matrixR = compute_scores_lookup(&directionsR,&jumpR,dynprogR,
+				    revsequence1,revsequence2R,/*revp*/true,length1,length2R,
+				    mismatchtype,jumptype,
+				    mismatch,open,extend,extraband_paired);
+  }
 
   bridge_intron_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,&(*introntype),matrixL,matrixR,
 		    directionsL,directionsR,jumpL,jumpR,sequence2L,revsequence2R,
@@ -1679,6 +2014,13 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
   Matrix_free(matrixL);
   */
 
+  if (allocRp == true) {
+    Dynprog_free(&dynprogR);
+  }
+  if (allocLp == true) {
+    Dynprog_free(&dynprogL);
+  }
+
   return List_reverse(pairs);
 }
 
@@ -1691,9 +2033,12 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
 		  int cdna_direction, int ngap, bool extend_mismatch_p) {
   List_T pairs = NULL;
   Pair_T pair;
+  Mismatchtype_T mismatchtype;
+  Jumptype_T jumptype;
   int **matrix, **jump, mismatch, open, extend;
   int bestr, bestc;
   Direction_T **directions;
+  bool allocp = false;
 
   debug(
 	printf("\n");
@@ -1703,23 +2048,35 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
 	printf("\n")
 	);
 
+  mismatchtype = END;
+  mismatch = MISMATCH_END;
   if (defect_rate < DEFECT_HIGHQ) {
-    mismatch = END_MISMATCH_HIGHQ;
+    jumptype = END_HIGHQ; 
     open = END_OPEN_HIGHQ;
     extend = END_EXTEND_HIGHQ;
   } else if (defect_rate < DEFECT_MEDQ) {
-    mismatch = END_MISMATCH_MEDQ;
+    jumptype = END_MEDQ;
     open = END_OPEN_MEDQ;
     extend = END_EXTEND_MEDQ;
   } else {
-    mismatch = END_MISMATCH_LOWQ;
+    jumptype = END_LOWQ;
     open = END_OPEN_LOWQ;
     extend = END_EXTEND_LOWQ;
   }
 
-  matrix = compute_scores(&directions,&jump,dynprog,
-			  revsequence1,revsequence2,/*revp*/true,length1,length2,
-			  mismatch,open,extend,extraband_end);
+  if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
+    dynprog = Dynprog_temp(length1,length2);
+    allocp = true;
+    matrix = compute_scores(&directions,&jump,dynprog,
+			    revsequence1,revsequence2,/*revp*/true,length1,length2,
+			    mismatchtype,jumptype,
+			    mismatch,open,extend,extraband_end);
+  } else {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+				   revsequence1,revsequence2,/*revp*/true,length1,length2,
+				   mismatchtype,jumptype,
+				   mismatch,open,extend,extraband_end);
+  }
 
   find_best_endpoint_onegap(&(*finalscore),&bestr,&bestc,matrix,length1,length2,
 			    extraband_end,extend_mismatch_p);
@@ -1734,17 +2091,22 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
     while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == '-') {
       pairs = List_next(pairs);
     }
-    return List_reverse(pairs);
   } else {
     *finalscore = 0;
     /* No need to free pairs */
-    return NULL;
+    pairs = NULL;
   }
 
   /*
     Directions_free(directions);
     Matrix_free(matrix);
   */
+  
+  if (allocp == true) {
+    Dynprog_free(&dynprog);
+  }
+
+  return List_reverse(pairs);
 }
 
 
@@ -1756,9 +2118,12 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
 		  int cdna_direction, int ngap, bool extend_mismatch_p) {
   List_T pairs = NULL;
   Pair_T pair;
+  Mismatchtype_T mismatchtype;
+  Jumptype_T jumptype;
   int **matrix, **jump, mismatch, open, extend;
   int bestr, bestc;
   Direction_T **directions;
+  bool allocp = false;
 
   debug(
 	printf("\n");
@@ -1768,24 +2133,36 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
 	printf("\n")
 	);
 
+  mismatchtype = END;
+  mismatch = MISMATCH_END;
   if (defect_rate < DEFECT_HIGHQ) {
-    mismatch = END_MISMATCH_HIGHQ;
+    jumptype = END_HIGHQ;
     open = END_OPEN_HIGHQ;
     extend = END_EXTEND_HIGHQ;
   } else if (defect_rate < DEFECT_MEDQ) {
-    mismatch = END_MISMATCH_MEDQ;
+    jumptype = END_MEDQ;
     open = END_OPEN_MEDQ;
     extend = END_EXTEND_MEDQ;
   } else {
-    mismatch = END_MISMATCH_LOWQ;
+    jumptype = END_LOWQ;
     open = END_OPEN_LOWQ;
     extend = END_EXTEND_LOWQ;
   }
 
   /* endp is true */
-  matrix = compute_scores(&directions,&jump,dynprog,
-			  sequence1,sequence2,/*revp*/false,length1,length2,
-			  mismatch,open,extend,extraband_end);
+  if (length1 > dynprog->maxlength1 || length2 > dynprog->maxlength2) {
+    dynprog = Dynprog_temp(length1,length2);
+    allocp = true;
+    matrix = compute_scores(&directions,&jump,dynprog,
+			    sequence1,sequence2,/*revp*/false,length1,length2,
+			    mismatchtype,jumptype,
+			    mismatch,open,extend,extraband_end);
+  } else {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+				   sequence1,sequence2,/*revp*/false,length1,length2,
+				   mismatchtype,jumptype,
+				   mismatch,open,extend,extraband_end);
+  }
 
   find_best_endpoint_onegap(&(*finalscore),&bestr,&bestc,matrix,length1,length2,
 			    extraband_end,extend_mismatch_p);
@@ -1801,17 +2178,22 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens,
     while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == '-') {
       pairs = List_next(pairs);
     }
-    return pairs;
   } else {
     *finalscore = 0;
     /* No need to free pairs */
-    return NULL;
+    pairs = NULL;
   }
 
   /*
     Directions_free(directions);
     Matrix_free(matrix);
   */
+
+  if (allocp == true) {
+    Dynprog_free(&dynprog);
+  }
+
+  return pairs;			/* not List_reverse(pairs) */
 }
 
 

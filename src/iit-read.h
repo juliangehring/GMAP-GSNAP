@@ -1,9 +1,8 @@
-/* $Id: iit-read.h,v 1.27 2005/03/11 17:55:20 twu Exp $ */
+/* $Id: iit-read.h,v 1.28 2005/04/19 15:50:22 twu Exp $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
 #include "bool.h"
-#include "intlist.h"
 #include "uintlist.h"
 #include "list.h"
 #include "interval.h"
@@ -49,23 +48,23 @@ IIT_free_mmapped (T *old);
 extern T
 IIT_read (char *filename, char *name, bool readonlyp);
 
-extern Intlist_T
-IIT_find (T this, char *label);
+extern int *
+IIT_find (int *nmatches, T this, char *label);
 extern int
 IIT_find_linear (T this, char *label);
 extern int
 IIT_find_one (T this, char *label);
 
-extern Intlist_T
-IIT_get (T this, unsigned int x, unsigned int y);
+extern int *
+IIT_get (int *nmatches, T this, unsigned int x, unsigned int y);
 extern int
 IIT_get_one (T this, unsigned int x, unsigned int y);
-extern Intlist_T
-IIT_get_typed (T this, unsigned int x, unsigned int y, int type);
+extern int *
+IIT_get_typed (int *ntypematches, T this, unsigned int x, unsigned int y, int type);
 extern int
 IIT_get_exact (T this, unsigned int x, unsigned int y, int type);
 extern void
-IIT_print (T this, Intlist_T matches, bool map_bothstrands_p);
+IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p);
 
 extern List_T
 IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this);

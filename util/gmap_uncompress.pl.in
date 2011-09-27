@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_uncompress.pl.in,v 1.12 2005/01/24 01:32:35 twu Exp $
+# $Id: gmap_uncompress.pl.in,v 1.13 2005/05/06 19:08:05 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -498,12 +498,10 @@ sub print_alignment {
 sub get_genomic_sequence {
   my ($genomevers, $genomic_acc) = @_;
   my ($FP, $line);
-  my ($vendor, $release);
 
-  if ($genomevers =~ /(\S+)_R(\S+)/) {
-    $vendor = $1;
-    $release = $2;
-    $FP = new IO::File("@BINDIR@/get-genome -d $vendor -R $release $genomic_acc |");
+  if (1) {
+    $FP = new IO::File("@BINDIR@/get-genome -d $genomevers $genomic_acc |");
+
   } elsif (-e $genomic_acc) {
     $FP = new IO::File($genomic_acc);
   } elsif ($genomic_acc =~ /^GA_/) {

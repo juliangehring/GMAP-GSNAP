@@ -1,4 +1,4 @@
-/* $Id: sequence.h,v 1.23 2005/02/07 23:56:57 twu Exp $ */
+/* $Id: sequence.h,v 1.27 2005/05/06 18:44:53 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -10,33 +10,33 @@
 typedef struct T *T;
 
 extern char *
-Sequence_pointer (T this);
+Sequence_fullpointer (T this);
 extern char *
-Sequence_pointer_full (T this);
+Sequence_trimpointer (T this);
 extern int
-Sequence_length (T this);
+Sequence_fulllength (T this);
 extern int
-Sequence_length_full (T this);
-extern int
-Sequence_ntrimmed (T this);
-extern char
-Sequence_char (T this, int querypos);
+Sequence_trimlength (T this);
 extern void
-Sequence_trim_polya (T this);
+Sequence_trim (T this, int trim_start, int trim_end);
+extern int
+Sequence_trim_start (T this);
+extern int
+Sequence_trim_end (T this);
 
 extern void
 Sequence_free (T *old);
 extern T
 Sequence_genomic_new (char *contents, int length);
 extern T
-Sequence_read (FILE *input, bool polya_trim);
+Sequence_read (int *nextchar, FILE *input);
 extern T
 Sequence_read_unlimited (FILE *input);
 extern int
 Sequence_count_bad (T this, int pos, int max, int direction);
 
 extern T
-Sequence_subsequence (T this, int start, int end, bool fivep);
+Sequence_subsequence (T this, int start, int end);
 extern T
 Sequence_revcomp (T this);
 extern void
@@ -46,7 +46,7 @@ Sequence_print_digest (T this);
 extern void
 Sequence_print_header (T this, bool checksump);
 extern void
-Sequence_print (T this, bool uppercasep, int wraplength);
+Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp);
 extern char *
 Sequence_accession (T this);
 

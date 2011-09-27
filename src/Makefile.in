@@ -155,7 +155,7 @@ GMAP_SOURCES = bool.h types.h separator.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
  mutation.c mutation.h translation.c translation.h \
- chimera.c chimera.h stage3.c stage3.h \
+ nmath.c nmath.h chimera.c chimera.h stage3.c stage3.h \
  request.c request.h reqpost.c reqpost.h \
  result.c result.h blackboard.c blackboard.h \
  params.c params.h datadir.c datadir.h \
@@ -309,12 +309,12 @@ am__objects_2 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
 	gmap-boyer-moore.$(OBJEXT) gmap-dynprog.$(OBJEXT) \
 	gmap-mutation.$(OBJEXT) gmap-translation.$(OBJEXT) \
-	gmap-chimera.$(OBJEXT) gmap-stage3.$(OBJEXT) \
-	gmap-request.$(OBJEXT) gmap-reqpost.$(OBJEXT) \
-	gmap-result.$(OBJEXT) gmap-blackboard.$(OBJEXT) \
-	gmap-params.$(OBJEXT) gmap-datadir.$(OBJEXT) \
-	gmap-getopt.$(OBJEXT) gmap-getopt1.$(OBJEXT) \
-	gmap-gmap.$(OBJEXT)
+	gmap-nmath.$(OBJEXT) gmap-chimera.$(OBJEXT) \
+	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
+	gmap-reqpost.$(OBJEXT) gmap-result.$(OBJEXT) \
+	gmap-blackboard.$(OBJEXT) gmap-params.$(OBJEXT) \
+	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
+	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
 dist_gmap_OBJECTS = $(am__objects_2)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
 gmap_DEPENDENCIES =
@@ -432,7 +432,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-matchpair.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-md5.Po ./$(DEPDIR)/gmap-mem.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-mutation.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/gmap-oligo.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-nmath.Po ./$(DEPDIR)/gmap-oligo.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-oligoindex.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-pair.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-pairpool.Po \
@@ -674,6 +674,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mutation.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-nmath.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-oligo.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-oligoindex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-pair.Po@am__quote@
@@ -2616,6 +2617,39 @@ gmap-translation.lo: translation.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-translation.Plo' tmpdepfile='$(DEPDIR)/gmap-translation.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-translation.lo `test -f 'translation.c' || echo '$(srcdir)/'`translation.c
+
+gmap-nmath.o: nmath.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.o -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Po' tmpdepfile='$(DEPDIR)/gmap-nmath.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
+
+gmap-nmath.obj: nmath.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.obj -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Po' tmpdepfile='$(DEPDIR)/gmap-nmath.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`
+
+gmap-nmath.lo: nmath.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-nmath.lo -MD -MP -MF "$(DEPDIR)/gmap-nmath.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-nmath.Tpo" "$(DEPDIR)/gmap-nmath.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-nmath.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='gmap-nmath.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-nmath.Plo' tmpdepfile='$(DEPDIR)/gmap-nmath.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
 
 gmap-chimera.o: chimera.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.o -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \

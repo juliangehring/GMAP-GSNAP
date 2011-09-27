@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_compress.pl.in,v 1.15 2005/01/22 19:02:53 twu Exp $
+# $Id: gmap_compress.pl.in,v 1.16 2005/05/04 19:11:08 twu Exp $
 
 # Need to call gmap with -AF (A is to show alignment, and F is to flip
 # genomic sequence to be first)
@@ -16,7 +16,7 @@ sub compress {
       # Skip completely empty lines
     } elsif ($line =~ /^>(\S+)/) {
       if (defined(@gmap)) {
-	parse_gmap(\@gmap,$acc,$cdnalength,$md5,$npaths,$chimerap);
+	parse_gmap(\@gmap,$acc,$cdnalength,$md5,$npaths,$chimerap,$chimerapos);
       }
       $acc = $1;
       ($cdnalength) = $line =~ /\((\d+) bp\)/;
@@ -27,8 +27,14 @@ sub compress {
 	($npaths) = $line =~ /\((\d+)\)/; # Paths (2):
 	if ($line =~ /[Cc]himera/) {
 	  $chimerap = 1;
+	  if ($line =~ /[Cc]himera.*?(\d+)/) { # breakpoint at 232;
+	    $chimerapos = $1;
+	  } else {
+	    $chimerapos = -1;
+	  }
 	} else {
 	  $chimerap = 0;
+	  $chimerapos = -1;
 	}
       }
       @gmap = ();
@@ -38,7 +44,7 @@ sub compress {
   }
 
   if (defined(@gmap)) {
-    parse_gmap(\@gmap,$acc,$cdnalength,$md5,$npaths,$chimerap);
+    parse_gmap(\@gmap,$acc,$cdnalength,$md5,$npaths,$chimerap,$chimerapos);
   }
 
   return;
@@ -46,7 +52,7 @@ sub compress {
 
 
 sub parse_gmap {
-  my ($gmap, $acc, $cdnalength, $md5, $npaths, $chimerap) = @_;
+  my ($gmap, $acc, $cdnalength, $md5, $npaths, $chimerap, $chimerapos) = @_;
   my ($gendirection, $estdirection, $intrdirection, 
       $agreement, $sequence1, $sequence2, $agreements);
   my ($start1, $end1, $start2, $end2, $pct, $i, $line);
@@ -99,7 +105,11 @@ sub parse_gmap {
 	print "$nexons[$pathno] $coverage[$pathno] $pctidentity[$pathno] ";
 	print "$queryrange[$pathno] $genomerange[$pathno] $chrrange[$pathno] $chrstrand[$pathno]";
 	if ($chimerap == 1) {
-	  print " chimera:T";
+	  if ($chimerapos >= 0) {
+	    print " chimera:$chimerapos";
+	  } else {
+	    print " chimera:T";
+	  }
 	}
 	if (defined($strain[$pathno])) {
 	  print " strain:$strain[$pathno]";
@@ -160,7 +170,11 @@ sub parse_gmap {
     print "$nexons[$pathno] $coverage[$pathno] $pctidentity[$pathno] ";
     print "$queryrange[$pathno] $genomerange[$pathno] $chrrange[$pathno] $chrstrand[$pathno]";
     if ($chimerap == 1) {
-      print " chimera:T";
+      if ($chimerapos >= 0) {
+	print " chimera:$chimerapos";
+      } else {
+	print " chimera:T";
+      }
     }
     if (defined($strain[$pathno])) {
       print " strain:$strain[$pathno]";

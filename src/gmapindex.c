@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.90 2005/03/09 19:25:50 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.92 2005/05/03 17:25:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -36,8 +36,17 @@ static char rcsid[] = "$Id: gmapindex.c,v 1.90 2005/03/09 19:25:50 twu Exp $";
 #endif
 
 
+/* Program variables */
 typedef enum{NONE,AUXFILES,GENOME,COMPRESS,UNCOMPRESS,OFFSETS,POSITIONS} Action_T;
-
+static Action_T action = NONE;
+static char *sourcedir = ".";
+static char *destdir = ".";
+static char *fileroot = NULL;
+static char *refstrain = "reference";
+static int index1interval = 6;	/* Interval for storing 12-mers */
+static bool uncompressedp = false;
+static bool writefilep = false;
+static int wraplength = 0;
 
 /************************************************************************
  *   Creating aux file
@@ -499,11 +508,7 @@ remove_slashes (char *buffer) {
 
 int 
 main (int argc, char *argv[]) {
-  Action_T action = NONE;
-  bool binaryp = false, uncompressedp = false, writefilep = false;
   int contigtype;
-  char *refstrain = "reference";
-
   Table_T accsegmentpos_table;
   Tableint_T chrlength_table;
   Tableint_T contigtype_table;
@@ -513,15 +518,14 @@ main (int argc, char *argv[]) {
   void **pairs;
   int c, i;
   unsigned int genomelength;
-  char *sourcedir = ".", *destdir = ".", *fileroot = NULL, 
-    *chromosomefile, *iitfile, *iittypefile, *offsetsfile, *positionsfile,
+  char *chromosomefile, *iitfile, *iittypefile, *offsetsfile, *positionsfile,
     *typestring, *copy;
   FILE *offsets_fp, *fp;
 
   extern int optind;
   extern char *optarg;
 
-  while ((c = getopt(argc,argv,"F:D:d:AGgCUOoPps:W")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:AGgCUOoPps:Ww:q:")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -537,6 +541,15 @@ main (int argc, char *argv[]) {
     case 'p': action = POSITIONS; uncompressedp = true; break;
     case 's': refstrain = optarg; break;
     case 'W': writefilep = true; break;
+    case 'w': wraplength = atoi(optarg); break;
+    case 'q': 
+      index1interval = atoi(optarg);
+      if (INDEX1PART % index1interval != 0) {
+	fprintf(stderr,"Selected indexing interval %d is not evenly divisible into the size of the oligomer %d\n",
+		index1interval,INDEX1PART);
+	exit(9);
+      }
+      break;
     }
   }
   argc -= (optind - 1);
@@ -641,14 +654,28 @@ main (int argc, char *argv[]) {
     IIT_free_mmapped(&contig_iit);
 
   } else if (action == COMPRESS) {
-    /* Usage: cat <genomefile> | gmapindex -C > <genomecompfile> */
+    /* Usage: cat <genomefile> | gmapindex -C > <genomecompfile>, or
+              gmapindex -C <genomefile> > <genomecompfile> */
 
-    Compress_compress(stdin);
+    if (argc > 1) {
+      fp = fopen(argv[1],"rb");
+      Compress_compress(fp);
+      fclose(fp);
+    } else {
+      Compress_compress(stdin);
+    }
 
   } else if (action == UNCOMPRESS) {
-    /* Usage: cat <genomecompfile> | gmapindex -U > <genomefile> */
+    /* Usage: cat <genomecompfile> | gmapindex -U [-w <wraplength>] > <genomefile>, or
+              gmapindex -U [-w <wraplength>] <genomecompfile> > <genomefile> */
     
-    Compress_uncompress(stdin);
+    if (argc > 1) {
+      fp = fopen(argv[1],"rb");
+      Compress_uncompress(fp,wraplength);
+      fclose(fp);
+    } else {
+      Compress_uncompress(stdin,wraplength);
+    }
 
   } else if (action == OFFSETS) {
     /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -O
@@ -669,7 +696,7 @@ main (int argc, char *argv[]) {
     sprintf(iitfile,"%s/%s.altstrain.iit",sourcedir,fileroot);
     altstrain_iit = IIT_read(iitfile,NULL,true);
 
-    Indexdb_write_offsets(offsets_fp,stdin,altstrain_iit,uncompressedp);
+    Indexdb_write_offsets(offsets_fp,stdin,altstrain_iit,index1interval,uncompressedp);
 
     IIT_free_mmapped(&altstrain_iit);
     FREE(iitfile);
@@ -698,7 +725,8 @@ main (int argc, char *argv[]) {
     sprintf(iitfile,"%s/%s.altstrain.iit",sourcedir,fileroot);
     altstrain_iit = IIT_read(iitfile,NULL,true);
 
-    Indexdb_write_positions(positionsfile,offsets_fp,stdin,altstrain_iit,uncompressedp,writefilep);
+    Indexdb_write_positions(positionsfile,offsets_fp,stdin,altstrain_iit,index1interval,
+			    uncompressedp,writefilep);
 
     IIT_free_mmapped(&altstrain_iit);
     FREE(iitfile);

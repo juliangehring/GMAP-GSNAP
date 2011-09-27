@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.10 2005/02/07 23:56:56 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.11 2005/04/19 15:48:13 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,9 +9,18 @@ static char rcsid[] = "$Id: mem.c,v 1.10 2005/02/07 23:56:56 twu Exp $";
 #include "assert.h"
 #include "except.h"
 
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
 /*
 #define TRAP
 */
+
+
+#ifdef TRAP
 static void *trap_contents;
 static void **trap_location;
 
@@ -21,14 +30,18 @@ Mem_trap_start (void **location) {
   trap_contents = * (void **) location;
   return;
 }
+#endif
 
 
 const Except_T Mem_Failed = { "Allocation Failed" };
 void *
 Mem_alloc (size_t nbytes, const char *file, int line) {
   void *ptr;
+
   assert(nbytes > 0);
   ptr = malloc(nbytes);
+  debug(printf("Alloc of %d bytes requested from %s:%d => %p\n",nbytes,file,line,ptr));
+
 #ifdef TRAP
   if (*trap_location != trap_contents) {
     printf("Trap violation in malloc at %p (%d bytes).  Location %p contains %p\n",
@@ -59,6 +72,7 @@ Mem_alloc_no_exception (size_t nbytes, const char *file, int line) {
 void *
 Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   void *ptr;
+
   if (count <= 0) {
     if (file == NULL) {
       RAISE(Mem_Failed);
@@ -68,6 +82,8 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   }
   assert(nbytes > 0);
   ptr = calloc(count, nbytes);
+  debug(printf("Calloc of %d x %d bytes requested from %s:%d => %p\n",count,nbytes,file,line,ptr));
+
 #ifdef TRAP
   if (*trap_location != trap_contents) {
     printf("Trap violation in malloc at %p (%d bytes).  Location %p contains %p\n",
@@ -104,6 +120,9 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 
 void 
 Mem_free (void *ptr, const char *file, int line) {
+
+  debug(printf("Location %p freed at %s:%d\n",ptr,file,line));
+
 #ifdef TRAP
   if (*trap_location != trap_contents) {
     printf("Trap violation in free at %p.  Location %p contains %p\n",

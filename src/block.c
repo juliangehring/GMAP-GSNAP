@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c,v 1.43 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: block.c,v 1.44 2005/05/04 18:03:46 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,8 +20,6 @@ struct T {
   Reader_T reader;
 
   cDNAEnd_T cdnaend;
-
-  int seqlength;
 
   int last_querypos;
   Oligostate_T last_state;
@@ -45,12 +43,12 @@ Block_revcomp (T this) {
 }
 
 extern void
-Block_reset_ends (T this, int startpos, int endpos) {
-  Reader_reset_ends(this->reader,startpos,endpos);
+Block_reset_ends (T this) {
+  Reader_reset_ends(this->reader);
   if (this->cdnaend == FIVE) {
-    this->last_querypos = startpos;
+    this->last_querypos = Reader_querystart(this->reader);
   } else {
-    this->last_querypos = endpos;
+    this->last_querypos = Reader_queryend(this->reader);
   }
   this->last_state = INIT;
   this->forward = 0U;
@@ -60,13 +58,11 @@ Block_reset_ends (T this, int startpos, int endpos) {
 
 
 T
-Block_new (cDNAEnd_T cdnaend, Reader_T reader, int seqlength) {
+Block_new (cDNAEnd_T cdnaend, Reader_T reader) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->reader = reader;
   new->cdnaend = cdnaend;
-
-  new->seqlength = seqlength;
 
   if (cdnaend == FIVE) {
     new->last_querypos = Reader_startpos(reader);

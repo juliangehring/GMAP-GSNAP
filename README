@@ -79,11 +79,13 @@ the chromosome, in one of these forms
 
     /chr=1:217281..257582
     /chr=1
+    chromosome:NCBI35:22:1:49554710:1
     chr1:217281..257582
     chr1
 
 If only the chromosome is specified, without coordinates, the program
-will concatenate the contigs to create a chromosome.
+will assign chromosomal coordinates by concatenating the contigs within
+each chromosome.
 
 In summary, then, here are the steps for building a GMAP DB file:
 
@@ -132,6 +134,12 @@ that directory.)
   specified with the -t flag:
 
     gmap -d NHGD_R35 -BA -t <nthreads> <cdna_file>
+
+  Note that with multiple threads, the output results will appear in
+  random order, depending on which thread finishes its computation
+  first.  If you wish your output to be in the same order as the 
+  input cDNA file, add the '-O' (letter O, not the number 0) flag
+  to get ordered output.
 
 * Compressed output: If you want to store the alignment results in a
   compressed format, use the -Z flag.  You can uncompress the results

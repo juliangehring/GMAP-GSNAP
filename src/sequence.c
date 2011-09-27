@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.44 2005/02/15 01:50:55 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.50 2005/05/06 18:44:53 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,10 +21,6 @@ static char rcsid[] = "$Id: sequence.c,v 1.44 2005/02/15 01:50:55 twu Exp $";
 #include "intlist.h"
 #include "md5.h"
 
-#define POLYA_MINLENGTH 10
-#define POLYA_LEAVE 1		/* At one time we specified 8-1, to
-                                   leave an 8-mer for a possible match */
-
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -35,15 +31,13 @@ static char rcsid[] = "$Id: sequence.c,v 1.44 2005/02/15 01:50:55 twu Exp $";
  *    Definitions:
  *
  *   TTTTTT ACGT ...... ACGT AAAAAA
- *      <----- trimlength ----->
+ *          <- trimlength ->
  *   <-------- fulllength -------->
- *      ^offset
+ *          ^trimstart
  *   ^contents
  *
- *   To be safe, we need to trim poly-T heads, because we don't yet
- *   know the direction of the cDNA.  We don't trim all of the poly-A
- *   or poly-T, because we want an 8-mer to match if there is partial
- *   information.
+ *   Trimming is determined by Oligoindex_set_inquery(), based on
+ *   finding unique 8-mers on each end.
  ************************************************************************/
 
 
@@ -52,10 +46,8 @@ struct T {
   char *acc;			/* Accession */
   char *restofheader;		/* Rest of header */
   char *contents;		/* Original sequence, ends with '\0' */
-  int npolya;			/* Number of poly-A at end, if trimming requested */
-  int npolyt;			/* Number of poly-T at start, if trimming requested */
-  int offset;			/* Starting offset (excludes trimmed poly-T starts) */
-  int trimlength;		/* Trimmed length (excludes trimmed poly-A/T ends) */
+  int trimstart;		/* Start of trim */
+  int trimend;			/* End of trim */
   int fulllength;		/* Full length */
   bool free_contents_p;
 };
@@ -66,70 +58,58 @@ Sequence_accession (T this) {
 }
 
 char *
-Sequence_pointer (T this) {
-  return &(this->contents[this->offset]);
-}
-
-char *
-Sequence_pointer_full (T this) {
+Sequence_fullpointer (T this) {
   return this->contents;
 }
 
-int
-Sequence_offset (T this) {
-  return this->offset;
+char *
+Sequence_trimpointer (T this) {
+  return &(this->contents[this->trimstart]);
 }
 
 int
-Sequence_length (T this) {
-  return this->trimlength;
-}
-
-int
-Sequence_length_full (T this) {
+Sequence_fulllength (T this) {
   return this->fulllength;
 }
 
 int
-Sequence_ntrimmed (T this) {
-  return this->fulllength - this->trimlength;
+Sequence_trimlength (T this) {
+  return this->trimend - this->trimstart;
 }
+
+void
+Sequence_trim (T this, int trim_start, int trim_end) {
+  this->trimstart = trim_start;
+  this->trimend = trim_end;
+  return;
+}
+
+int
+Sequence_trim_start (T this) {
+  return this->trimstart;
+}
+
+int
+Sequence_trim_end (T this) {
+  return this->trimend;
+}
+
 
 void
 Sequence_free (T *old) {
   if (*old) {
-    FREE((*old)->restofheader);
-    FREE((*old)->acc);
+    if ((*old)->restofheader != NULL) {
+      FREE((*old)->restofheader);
+    }
+    if ((*old)->acc != NULL) {
+      FREE((*old)->acc);
+    }
     if ((*old)->free_contents_p == true) {
       FREE((*old)->contents);
     }
     FREE(*old);
   }
   return;
-}
-
-static int
-count_polya (char *sequence, int length) {
-  int count = 0, i;
-  
-  i = length-1;
-  while (i >= 0 && sequence[i] == 'A') {
-    i--;
-    count++;
-  }
-  return count;
-}
-
-static int
-count_polyt (char *sequence, int length) {
-  int count = 0, i;
-  
-  i = 0;
-  while (i < length && sequence[i] == 'T') {
-    i++;
-    count++;
-  }
-  return count;
 }
 
 
@@ -255,7 +235,7 @@ print_contents (char *p, int length) {
 
 /* Returns 1 if done reading sequence, 0 if not */
 static bool
-read_one_sequence (bool *eolnp, FILE *fp) {
+read_one_sequence (int *nextchar, bool *eolnp, FILE *fp) {
   size_t remainder;
   char *sequence;
   char *p;
@@ -270,18 +250,21 @@ read_one_sequence (bool *eolnp, FILE *fp) {
   while (1) {
     if (remainder <= 1) {
       debug(fprintf(stderr,"remainder <= 1.  Returning false\n"));
+      *nextchar = EOF;
       return false;
 
     } else if (feof(fp)) {
       /* EOF in middle of line */
       *sequence++ = '\0';
       debug(fprintf(stderr,"EOF.  Returning true\n"));
+      *nextchar = EOF;
       return true;
 
     } else if (*eolnp == true) {
       if ((c = fgetc(fp)) == EOF || c == '>') {
 	*sequence++ = '\0';
 	debug(fprintf(stderr,"c == EOF or >.  Returning true\n"));
+	*nextchar = c;
 	return true;
       } else if (iscntrl(c)) {
 	debug(fprintf(stderr,"c == control char.  Continuing\n"));
@@ -299,6 +282,7 @@ read_one_sequence (bool *eolnp, FILE *fp) {
       if (fgets(sequence,remainder,fp) == NULL) {
 	*sequence++ = '\0';
 	debug(fprintf(stderr,"line == NULL.  Returning true\n"));
+	*nextchar = EOF;
 	return true;
       } else {
 	if ((p = rindex(sequence,13)) != NULL) {
@@ -325,7 +309,7 @@ read_one_sequence (bool *eolnp, FILE *fp) {
 }
 
 static int
-discard_one_sequence (bool eolnp, FILE *fp) {
+discard_one_sequence (int *nextchar, bool eolnp, FILE *fp) {
   int ncycles = 0;
   size_t remainder;
   char *discard;
@@ -340,6 +324,7 @@ discard_one_sequence (bool eolnp, FILE *fp) {
 
     if (feof(fp)) {
       debug(fprintf(stderr,"EOF.  Returning\n"));
+      *nextchar = EOF;
       return ncycles*DISCARDLEN + (discard - &(Discard[0]))/sizeof(char);
 
     } else if (remainder <= 1) {
@@ -350,6 +335,7 @@ discard_one_sequence (bool eolnp, FILE *fp) {
     } else if (eolnp == true) {
       if ((c = fgetc(fp)) == EOF || c == '>') {
 	debug(fprintf(stderr,"c == EOF or >.  Returning\n"));
+	*nextchar = c;
 	return ncycles*DISCARDLEN + (discard - &(Discard[0]))/sizeof(char);
       } else if (iscntrl(c)) {
 	debug(fprintf(stderr,"c == control char.  Continuing\n"));
@@ -367,6 +353,7 @@ discard_one_sequence (bool eolnp, FILE *fp) {
 
       if (fgets(discard,remainder,fp) == NULL) {
 	debug(fprintf(stderr,"line == NULL.  Returning\n"));
+	*nextchar = EOF;
 	return ncycles*DISCARDLEN + (discard - &(Discard[0]))/sizeof(char);
       } else {
 	if ((p = rindex(discard,'\n')) != NULL) {
@@ -389,15 +376,15 @@ discard_one_sequence (bool eolnp, FILE *fp) {
 
 /* Returns sequence length */
 static int
-input_sequence (int *length, int *skiplength, FILE *fp) {
+input_sequence (int *nextchar, int *length, int *skiplength, FILE *fp) {
   bool eolnp = true;
   int ncycles;
   char *p, *q, c;
 
-  if (read_one_sequence(&eolnp,fp) == true) {
+  if (read_one_sequence(&(*nextchar),&eolnp,fp) == true) {
     *skiplength = 0;
   } else {
-    *skiplength = discard_one_sequence(eolnp,fp);
+    *skiplength = discard_one_sequence(&(*nextchar),eolnp,fp);
   }
   endinit = rindex(startinit,'\0') - 1;
   *length = (endinit - startinit + 1)/sizeof(char);
@@ -413,9 +400,8 @@ Sequence_genomic_new (char *contents, int length) {
   new->acc = (char *) NULL;
   new->restofheader = (char *) NULL;
   new->contents = contents;
-  new->npolya = new->npolyt = 0;
-  new->offset = 0;
-  new->trimlength = new->fulllength = length;
+  new->trimstart = 0;
+  new->trimend = new->fulllength = length;
   new->free_contents_p = false;	/* Called only by Genome_get_segment, which provides
 				   its own buffer */
   return new;
@@ -448,18 +434,18 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
   return;
 }
 
-/* fivep means we want the 5' end */
 T
-Sequence_subsequence (T this, int start, int end, bool fivep) {
+Sequence_subsequence (T this, int start, int end) {
   T new;
-  int trimlength;
 
-  if (fivep == true) {
-    trimlength = end - this->npolyt;
-  } else {
-    trimlength = this->fulllength - this->npolya - start;
+  if (start < this->trimstart) {
+    start = this->trimstart;
   }
-  if (trimlength <= 0) {
+  if (end > this->trimend) {
+    end = this->trimend;
+  }
+
+  if (end <= start) {
     return NULL;
   } else {
     new = (T) MALLOC(sizeof(*new));
@@ -468,15 +454,8 @@ Sequence_subsequence (T this, int start, int end, bool fivep) {
     new->restofheader = (char *) NULL;
     new->contents = this->contents;
     new->fulllength = this->fulllength;
-    if (fivep == true) {
-      new->npolyt = this->npolyt;
-      new->npolya = this->fulllength - end;
-    } else {
-      new->npolya = this->npolya;
-      new->npolyt = start;
-    }
-    new->trimlength = new->fulllength - new->npolya - new->npolyt;
-    new->offset = new->npolyt;
+    new->trimstart = start;
+    new->trimend = end;
     new->free_contents_p = false;
     return new;
   }
@@ -491,10 +470,8 @@ Sequence_revcomp (T this) {
   new->restofheader = (char *) NULL;
   new->contents = make_complement(this->contents,this->fulllength);
   new->fulllength = this->fulllength;
-  new->npolya = this->npolyt;
-  new->npolyt = this->npolya;
-  new->trimlength = new->fulllength - new->npolya - new->npolyt;
-  new->offset = new->npolyt;
+  new->trimstart = this->trimstart;
+  new->trimend = this->trimend;
   new->free_contents_p = true;
   return new;
 }
@@ -506,11 +483,12 @@ Sequence_endstream () {
 }
 
 T
-Sequence_read (FILE *input, bool polya_trim) {
+Sequence_read (int *nextchar, FILE *input) {
   T new;
-  int savelength, skiplength, polylength;
+  int savelength, skiplength;
 
   if (feof(input)) {
+    *nextchar = EOF;
     return NULL;
   }
 
@@ -518,6 +496,7 @@ Sequence_read (FILE *input, bool polya_trim) {
 
   if (Initc == '\0') {
     if ((Initc = input_init(input)) == EOF) {
+      *nextchar = EOF;
       return NULL;
     }
   }
@@ -525,9 +504,10 @@ Sequence_read (FILE *input, bool polya_trim) {
     blank_header(new);
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
+      *nextchar = EOF;
      return NULL;
   } 
-  if (input_sequence(&savelength,&skiplength,input) == 0) {
+  if (input_sequence(&(*nextchar),&savelength,&skiplength,input) == 0) {
     /* File ends during header.  Continue with a sequence of length 0. */
     /* fprintf(stderr,"File ends after header\n"); */
   }
@@ -537,20 +517,9 @@ Sequence_read (FILE *input, bool polya_trim) {
   }
 
   new->fulllength = savelength + skiplength;
-  new->npolya = new->npolyt = 0;
-  if (polya_trim == true) {
-    if ((polylength = count_polya(startinit,new->fulllength)) > POLYA_MINLENGTH) {
-      /* Should be (indexsize - 1) */
-      new->npolya = polylength - POLYA_LEAVE;
-    }
-    if ((polylength = count_polyt(startinit,new->fulllength)) > POLYA_MINLENGTH) {
-      /* Should be (indexsize - 1) */
-      new->npolyt = polylength - POLYA_LEAVE;
-    }
-  }
 
-  new->trimlength = new->fulllength - new->npolya - new->npolyt;
-  new->offset = new->npolyt;
+  new->trimstart = 0;
+  new->trimend = new->fulllength;
 
   new->contents = (char *) CALLOC(new->fulllength+1,sizeof(char));
   strncpy(new->contents,startinit,new->fulllength);
@@ -607,9 +576,8 @@ Sequence_read_unlimited (FILE *input) {
   if (length == 0) {
     return NULL;
   } else {
-    new->fulllength = new->trimlength = length;
-    new->npolya = new->npolyt = 0;
-    new->offset = 0;
+    new->fulllength = new->trimend = length;
+    new->trimstart = 0;
 
     new->free_contents_p = true;
 
@@ -643,18 +611,26 @@ Sequence_print_header (T this, bool checksump) {
 }
 
 void
-Sequence_print (T this, bool uppercasep, int wraplength) {
-  int i;
+Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
+  int i = 0, pos, start, end;
+
+  if (trimmedp == true) {
+    start = this->trimstart;
+    end = this->trimend;
+  } else {
+    start = 0;
+    end = this->fulllength;
+  }
 
   if (uppercasep == true) {
-    for (i = 0; i < this->fulllength; i++) {
+    for (pos = start; pos < end; pos++, i++) {
       printf("%c",toupper(this->contents[i]));
       if ((i+1) % wraplength == 0) {
 	printf("\n");
       }
     }
   } else {
-    for (i = 0; i < this->fulllength; i++) {
+    for (pos = start; pos < end; pos++, i++) {
       printf("%c",this->contents[i]);
       if ((i+1) % wraplength == 0) {
 	printf("\n");

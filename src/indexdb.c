@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.59 2005/02/16 19:23:06 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.62 2005/05/06 21:20:09 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -189,10 +189,14 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot, bool batchp) {
       fprintf(stderr,"insufficient memory (will use disk file instead)\n");
     }
   } else if (batchp == false) {
+#ifdef HAVE_MADVISE
     madvise((caddr_t) new->positions,new->positions_len,MADV_RANDOM);
+#endif
   } else {
     /* Touch all pages */
+#ifdef HAVE_MADVISE
     madvise((caddr_t) new->positions,new->positions_len,MADV_WILLNEED);
+#endif
     totalindices = new->positions_len/sizeof(Genomicpos_T);
     for (i = 0; i < totalindices; i += indicesperpage) {
       /* memcpy(temp,(caddr_t) new->positions + i,pagesize); */
@@ -390,7 +394,7 @@ power (int base, int exponent) {
 
 void
 Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
-		       bool uncompressedp) {
+		       int index1interval, bool uncompressedp) {
   Positionsptr_T *offsets;
   char *p, b;
   int c, oligospace, index, i;
@@ -410,7 +414,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
     position++;
 
     if (position % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,"Indexing offsets of oligomers in genome, position %u\n",position);
+      fprintf(stderr,"Indexing offsets of oligomers in genome (every %d), position %u\n",index1interval,position);
     }
 
     switch (c) {
@@ -434,7 +438,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
     */
 
     if (in_counter == INDEX1PART) {
-      if (between_counter >= INDEX1INTERVAL) {
+      if (between_counter >= index1interval) {
 	masked = oligo & mask;
 	offsets[masked + 1U] += 1;
 	debug(printf("Found oligo %06X.  Incremented offsets for %d to be %d\n",
@@ -474,7 +478,7 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 	*/
 
 	if (in_counter == INDEX1PART) {
-	  if (between_counter >= INDEX1INTERVAL) {
+	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
 	    offsets[masked + 1U] += 1;
 	    debug(printf("Found oligo %06X.  Incremented offsets for %d to be %d\n",
@@ -577,7 +581,8 @@ need_to_sort_p (Genomicpos_T *positions, int length) {
 /* Works directly in file, so we don't need to allocate memory */
 static void
 compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T *offsets,
-			   FILE *sequence_fp, IIT_T altstrain_iit, bool uncompressedp) {
+			   FILE *sequence_fp, IIT_T altstrain_iit, int index1interval,
+			   bool uncompressedp) {
   Positionsptr_T block_start, block_end, totalcounts;
   Genomicpos_T *positions_for_block, position = 0, adjposition, prevpos;
   char *p, b;
@@ -596,7 +601,7 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
     position++;
 
     if (position % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,"Indexing positions of oligomers in genome, position %u\n",position);
+      fprintf(stderr,"Indexing positions of oligomers in genome (every %d), position %u\n",index1interval,position);
     }
 
     switch (c) {
@@ -620,7 +625,7 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
     */
     
     if (in_counter == INDEX1PART) {
-      if (between_counter >= INDEX1INTERVAL) {
+      if (between_counter >= index1interval) {
 	masked = oligo & mask;
 	positionsfile_move_absolute(positions_fp,offsets[masked]);
 	offsets[masked] += 1;
@@ -661,7 +666,7 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	*/
     
 	if (in_counter == INDEX1PART) {
-	  if (between_counter >= INDEX1INTERVAL) {
+	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
 	    positionsfile_move_absolute(positions_fp,offsets[masked]);
 	    offsets[masked] += 1;
@@ -734,7 +739,8 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 /* Requires sufficient memory to hold all positions */
 static void
 compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Positionsptr_T *offsets,
-			     FILE *sequence_fp, IIT_T altstrain_iit, bool uncompressedp) {
+			     FILE *sequence_fp, IIT_T altstrain_iit, int index1interval,
+			     bool uncompressedp) {
   Positionsptr_T block_start, block_end, j, k;
   Genomicpos_T position = 0, prevpos;
   char *p, b;
@@ -753,7 +759,7 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
     position++;
 
     if (position % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,"Indexing positions of oligomers in genome, position %u\n",position);
+      fprintf(stderr,"Indexing positions of oligomers in genome (every %d), position %u\n",index1interval,position);
     }
 
     switch (c) {
@@ -777,7 +783,7 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
     */
     
     if (in_counter == INDEX1PART) {
-      if (between_counter >= INDEX1INTERVAL) {
+      if (between_counter >= index1interval) {
 	masked = oligo & mask;
 	positions[offsets[masked]++] = position-INDEX1PART;
 	between_counter = 0;
@@ -815,7 +821,7 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 	*/
     
 	if (in_counter == INDEX1PART) {
-	  if (between_counter >= INDEX1INTERVAL) {
+	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
 	    positions[offsets[masked]++] = position-INDEX1PART;
 	    between_counter = 0;
@@ -877,7 +883,8 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 
 void
 Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_fp, 
-			 IIT_T altstrain_iit, bool uncompressedp, bool writefilep) {
+			 IIT_T altstrain_iit, int index1interval, bool uncompressedp, 
+			 bool writefilep) {
   FILE *positions_fp;
   Positionsptr_T *offsets, totalcounts;
   Genomicpos_T *positions;
@@ -894,7 +901,8 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
       fprintf(stderr,"Can't open file %s\n",positionsfile);
       exit(9);
     }
-    compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,uncompressedp);
+    compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+			      index1interval,uncompressedp);
     fclose(positions_fp);
 
   } else {
@@ -906,7 +914,8 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
 	fprintf(stderr,"Can't open file %s\n",positionsfile);
 	exit(9);
       }
-      compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,uncompressedp);
+      compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+				index1interval,uncompressedp);
       fclose(positions_fp);
 
     } else {
@@ -915,8 +924,8 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
 	fprintf(stderr,"Can't open file %s\n",positionsfile);
 	exit(9);
       }
-      compute_positions_in_memory(positions,offsets_fp,offsets,
-				  sequence_fp,altstrain_iit,uncompressedp);
+      compute_positions_in_memory(positions,offsets_fp,offsets,sequence_fp,altstrain_iit,
+				  index1interval,uncompressedp);
       FWRITE_UINTS(positions,totalcounts,positions_fp);
 
       fclose(positions_fp);
@@ -934,7 +943,7 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
  ************************************************************************/
 
 T
-Indexdb_new_segment (char *genomicseg) {
+Indexdb_new_segment (char *genomicseg, int index1interval) {
   T new = (T) MALLOC(sizeof(*new));
   Positionsptr_T *work_offsets;	/* Working set for use in calculating positions */
   int totalcounts = 0;
@@ -973,7 +982,7 @@ Indexdb_new_segment (char *genomicseg) {
     */
 
     if (in_counter == INDEX1PART) {
-      if (between_counter >= INDEX1INTERVAL) {
+      if (between_counter >= index1interval) {
 	masked = oligo & mask;
 	new->offsets[masked + 1U] += 1;
 	debug(printf("Found oligo %06X.  Incremented offsets for %d to be %d\n",
@@ -1022,7 +1031,7 @@ Indexdb_new_segment (char *genomicseg) {
     */
     
     if (in_counter == INDEX1PART) {
-      if (between_counter >= INDEX1INTERVAL) {
+      if (between_counter >= index1interval) {
 	masked = oligo & mask;
 	new->positions[work_offsets[masked]++] = position-INDEX1PART;
 	between_counter = 0;

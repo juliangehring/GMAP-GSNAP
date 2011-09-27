@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.69 2005/03/09 19:23:05 twu Exp $ */
+/* $Id: pair.h,v 1.72 2005/05/06 18:44:53 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -60,8 +60,7 @@ extern void
 Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos_T chrpos,
 			Genomicpos_T chroffset, IIT_T chromosome_iit, bool referencealignp, char *strain, 
 			IIT_T contig_iit, char *dbversion, Genomicpos_T genomiclength,
-			int nexons, double coverage, int coverage_correction, int ntrimmed, 
-			int matches, int unknowns, int mismatches, 
+			int nexons, double coverage, int matches, int unknowns, int mismatches, 
 			int qopens, int qindels, int topens, int tindels, int goodness,
 			bool watsonp, int cdna_direction, double defect_rate, 
 			int translation_start, int translation_end, int translation_length,
@@ -107,7 +106,7 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
 		       Genomicpos_T chroffset, IIT_T chromosome_iit,
 		       Genomicpos_T genomiclength, bool checksump, 
-		       bool chimerap, char *strain, bool watsonp, bool zerobasedp);
+		       int chimerapos, char *strain, bool watsonp, bool zerobasedp);
 
 extern void
 Pair_fracidentity (int *matches, int *unknowns, int *mismatches, 
@@ -120,6 +119,9 @@ Pair_fracidentity_bounded (int *matches, int *unknowns, int *mismatches,
 			   int *ncanonical, int *nsemicanonical, int *nnoncanonical,
 			   struct T *pairs, int npairs, 
 			   int cdna_direction, int minpos, int maxpos);
+extern int *
+Pair_matchscores (struct T *ptr, int npairs, 
+		  int cdna_direction, int querylength);
 extern void
 Pair_pathscores (int *pathscores, struct T *ptr, int npairs, 
 		 int cdna_direction, int querylength);

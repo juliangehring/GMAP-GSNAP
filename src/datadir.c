@@ -1,11 +1,11 @@
-static char rcsid[] = "$Id: datadir.c,v 1.16 2005/03/04 16:37:14 twu Exp $";
+static char rcsid[] = "$Id: datadir.c,v 1.17 2005/05/03 16:48:19 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "datadir.h"
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdlib.h>		/* For getenv */
 #include <string.h>
 #include <strings.h>		/* For rindex */
 #include <pwd.h>
@@ -137,7 +137,6 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
     /* Use genomedir provided by environment variable */
     genomedir = (char *) CALLOC(strlen(getenv("GMAPDB"))+1,sizeof(char));
     strcpy(genomedir,getenv("GMAPDB"));
-    genomedir = getenv("GMAPDB");
 
   } else if ((fp = fopen("./.gmaprc","r")) != NULL) {
     genomedir = read_config_file(fp,"GMAPDB");

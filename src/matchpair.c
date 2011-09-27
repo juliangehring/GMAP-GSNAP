@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpair.c,v 1.24 2005/03/01 20:22:07 twu Exp $";
+static char rcsid[] = "$Id: matchpair.c,v 1.26 2005/05/05 23:43:13 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -70,6 +70,32 @@ Matchpair_clustersize (T this) {
 Matchpairend_T
 Matchpair_matchpairend (T this) {
   return this->matchpairend;
+}
+
+int
+Matchpair_support (T this) {
+  return Match_querypos(this->bound3) - Match_querypos(this->bound5) + this->matchsize;
+}
+  
+double
+Matchpair_stretch (T this) {
+  Genomicpos_T position5, position3;
+  int querypos5, querypos3;
+
+  querypos5 = Match_querypos(this->bound5);
+  querypos3 = Match_querypos(this->bound3);
+  
+  if (querypos5 == querypos3) {
+    return 1.0;
+  } else {
+    position5 = Match_position(this->bound5);
+    position3 = Match_position(this->bound3);
+    if (position3 > position5) {
+      return (double) (position3 - position5)/(double) (querypos3 - querypos5);
+    } else {
+      return (double) (position5 - position3)/(double) (querypos3 - querypos5);
+    }
+  }
 }
 
 T
@@ -297,11 +323,7 @@ Matchpair_get_coords (Genomicpos_T *chrpos, Genomicpos_T *genomicstart, Genomicp
 		      bool *watsonp, T this, Stage1_T stage1, Sequence_T queryseq, Genomicpos_T chrlength, 
 		      int maxextension) {
   Match_T match1, match2;
-  int stage1size;
   Genomicpos_T chrpos1, chrpos2, genomicpos1, genomicpos2, left, right;
-  int querylength;
-
-  querylength = Sequence_length(queryseq);
 
   if (Match_position(this->bound3) > Match_position(this->bound5)) {
     *watsonp = true;

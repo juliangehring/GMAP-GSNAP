@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c,v 1.129 2005/02/15 01:52:34 twu Exp $";
+static char rcsid[] = "$Id: stage2.c,v 1.134 2005/05/06 17:00:36 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -312,7 +312,7 @@ study_querypos (int querypos, unsigned int position,
   bool adjacentp = false;
   Link_T prevlink;
   int best_consecutive = 0, save_consecutive;
-  int prev_querypos, prevhit;
+  int prev_querypos, prevhit, lastprevhit;
   unsigned int *prev_mappings;
   unsigned int prevposition, gendistance;
   int querydistance, diffdistance, lookback, nlookback, sample_interval, nseen;
@@ -334,10 +334,10 @@ study_querypos (int querypos, unsigned int position,
     prev_querypos = querypos - indexsize;
     if (prev_querypos >= 0 && npositions[prev_querypos] > 0) {
       querydistance = querypos - prev_querypos;
-      prev_mappings = mappings[prev_querypos];
+      prev_mappings = &(mappings[prev_querypos][0]);
       for (prevhit = 0; prevhit < npositions[prev_querypos]; prevhit++) {
-	prevposition = prev_mappings[prevhit];
-	if (position > prevposition + indexsize - 1U) {
+	prevposition = *(prev_mappings++);
+	if (position >= prevposition + indexsize) {
 
 	  /* Penalty for introns. */
 	  gendistance = position - prevposition;
@@ -380,11 +380,14 @@ study_querypos (int querypos, unsigned int position,
 	querydistance = querypos - prev_querypos;
 	if ((prevhit = fwd_restrict_hit[prev_querypos]) < 0) {
 	  prevhit = 0;	/* Not restricted */
+	  lastprevhit = npositions[prev_querypos] - 1;
+	} else {
+	  lastprevhit = prevhit; /* Restricts loop to one iteration */
 	}
-	prev_mappings = mappings[prev_querypos];
-	for ( ; prevhit < npositions[prev_querypos]; prevhit++) {
-	  prevposition = prev_mappings[prevhit];
-	  if (position > prevposition + indexsize - 1U) {
+	prev_mappings = &(mappings[prev_querypos][prevhit]);
+	for ( ; prevhit <= lastprevhit; prevhit++) {
+	  prevposition = *(prev_mappings++);
+	  if (position >= prevposition + indexsize) {
 	    prevlink = &(links[prev_querypos][prevhit]);
 
 	    gendistance = position - prevposition;
@@ -392,9 +395,6 @@ study_querypos (int querypos, unsigned int position,
 	    if (diffdistance > max_intronlength) {
 	      max_intronlength = diffdistance;
 	    }
-	  }
-	  if (fwd_restrict_hit[prev_querypos] >= 0) {
-	    prevhit = npositions[prev_querypos]; /* Terminates loop */
 	  }
 	}
       }
@@ -431,11 +431,14 @@ study_querypos (int querypos, unsigned int position,
 	querydistance = querypos - prev_querypos;
 	if ((prevhit = rev_restrict_hit[prev_querypos]) < 0) {
 	  prevhit = 0;	/* Not restricted */
+	  lastprevhit = npositions[prev_querypos] - 1;
+	} else {
+	  lastprevhit = prevhit; /* Restricts loop to one iteration */
 	}
-	prev_mappings = mappings[prev_querypos];
-	for ( ; prevhit < npositions[prev_querypos]; prevhit++) {
-	  prevposition = prev_mappings[prevhit];
-	  if (position > prevposition + indexsize - 1U) {
+	prev_mappings = &(mappings[prev_querypos][prevhit]);
+	for ( ; prevhit <= lastprevhit; prevhit++) {
+	  prevposition = *(prev_mappings++);
+	  if (position >= prevposition + indexsize) {
 	    prevlink = &(links[prev_querypos][prevhit]);
 	    
 	    gendistance = position - prevposition;
@@ -443,9 +446,6 @@ study_querypos (int querypos, unsigned int position,
 	    if (diffdistance > max_intronlength) {
 	      max_intronlength = diffdistance;
 	    }
-	  }
-	  if (rev_restrict_hit[prev_querypos] >= 0) {
-	    prevhit = npositions[prev_querypos]; /* Terminates loop */
 	  }
 	}
       }
@@ -469,7 +469,7 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
   int best_rev_intronnfwd = 0, best_rev_intronnrev = 0, best_rev_intronnunk = 0;
   bool adjacentp = false;
-  int prev_querypos, prevhit;
+  int prev_querypos, prevhit, lastprevhit;
   unsigned int *prev_mappings;
   unsigned int prevposition, gendistance;
   int querydistance, diffdistance, lookback, nlookback, sample_interval, nseen;
@@ -512,10 +512,10 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
     prev_querypos = querypos - indexsize;
     if (prev_querypos >= 0 && npositions[prev_querypos] > 0) {
       querydistance = querypos - prev_querypos;
-      prev_mappings = mappings[prev_querypos];
+      prev_mappings = &(mappings[prev_querypos][0]);
       for (prevhit = 0; prevhit < npositions[prev_querypos]; prevhit++) {
-	prevposition = prev_mappings[prevhit];
-	if (position > prevposition + indexsize - 1U) {
+	prevposition = *(prev_mappings++);
+	if (position >= prevposition + indexsize) {
 	  prevlink = &(links[prev_querypos][prevhit]);
 	  if ((donor2 = genomicseg_ptr[prevposition+indexsize+1]) != 'T' || acceptor2 != 'A') {
 	    canonicalsgn = 0;
@@ -628,11 +628,14 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	querydistance = querypos - prev_querypos;
 	if ((prevhit = fwd_restrict_hit[prev_querypos]) < 0) {
 	  prevhit = 0;	/* Not restricted */
+	  lastprevhit = npositions[prev_querypos] - 1;
+	} else {
+	  lastprevhit = prevhit; /* Restricts loop to one iteration */
 	}
-	prev_mappings = mappings[prev_querypos];
-	for ( ; prevhit < npositions[prev_querypos]; prevhit++) {
-	  prevposition = prev_mappings[prevhit];
-	  if (position > prevposition + indexsize - 1U) {
+	prev_mappings = &(mappings[prev_querypos][prevhit]);
+	for ( ; prevhit <= lastprevhit; prevhit++) {
+	  prevposition = *(prev_mappings++);
+	  if (position >= prevposition + indexsize) {
 	    prevlink = &(links[prev_querypos][prevhit]);
 
 	    gendistance = position - prevposition;
@@ -675,9 +678,6 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	      debug(printf(" => Loses to %d\n",best_fwd_score));
 	    }
 	  }
-	  if (fwd_restrict_hit[prev_querypos] >= 0) {
-	    prevhit = npositions[prev_querypos]; /* Terminates loop */
-	  }
 	}
       }
     }
@@ -714,11 +714,14 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	querydistance = querypos - prev_querypos;
 	if ((prevhit = rev_restrict_hit[prev_querypos]) < 0) {
 	  prevhit = 0;	/* Not restricted */
+	  lastprevhit = npositions[prev_querypos] - 1;
+	} else {
+	  lastprevhit = prevhit; /* Restricts loop to one iteration */
 	}
-	prev_mappings = mappings[prev_querypos];
-	for ( ; prevhit < npositions[prev_querypos]; prevhit++) {
-	  prevposition = prev_mappings[prevhit];
-	  if (position > prevposition + indexsize - 1U) {
+	prev_mappings = &(mappings[prev_querypos][prevhit]);
+	for ( ; prevhit <= lastprevhit; prevhit++) {
+	  prevposition = *(prev_mappings++);
+	  if (position >= prevposition + indexsize) {
 	    prevlink = &(links[prev_querypos][prevhit]);
 	    
 	    gendistance = position - prevposition;
@@ -761,9 +764,6 @@ score_querypos (Link_T currlink, int querypos, unsigned int position, char accep
 	      debug(printf(" => Loses to %d\n",best_rev_score));
 	    }
 	  }
-	  if (rev_restrict_hit[prev_querypos] >= 0) {
-	    prevhit = npositions[prev_querypos]; /* Terminates loop */
-	  }
 	}
       }
     }
@@ -799,6 +799,7 @@ static void
 align_compute_scores (Link_T *termlink, bool *fwdp, struct Link_T **links,
 		      unsigned int **mappings, int *npositions, Sequence_T queryseq, Sequence_T genomicseg,
 		      int indexsize, int sufflookback, int nsufflookback) {
+  int querystart, queryend;
   Link_T prevlink, currlink;
   int best_overall, fwd_score, rev_score;
   int querypos, hit;
@@ -808,21 +809,26 @@ align_compute_scores (Link_T *termlink, bool *fwdp, struct Link_T **links,
   char *genomicseg_ptr;
   char acceptor2, acceptor1;
 
-  genomicseg_ptr = Sequence_pointer(genomicseg);
-  querylength = Sequence_length(queryseq);
+  genomicseg_ptr = Sequence_fullpointer(genomicseg);
+  querylength = Sequence_fulllength(queryseq);
+
+  querystart = Sequence_trim_start(queryseq);
+  queryend = Sequence_trim_end(queryseq);
+  debug0(printf("Querystart = %d, queryend = %d\n",querystart,queryend));
+
   fwd_restrict_hit = (int *) CALLOC(querylength,sizeof(int));
   rev_restrict_hit = (int *) CALLOC(querylength,sizeof(int));
 
   /* Treat querypos 0 as a special case */
-  fwd_restrict_hit[0] = rev_restrict_hit[0] = -1;
-  for (hit = 0; hit < npositions[0]; hit++) {
-    links[0][hit].fwd_pos = links[0][hit].fwd_hit = -1;
-    links[0][hit].rev_pos = links[0][hit].rev_hit = -1;
-    /* links[0][hit].score = 0; */
-    /* links[0][hit].consecutive = 0; */
+  fwd_restrict_hit[querystart] = rev_restrict_hit[querystart] = -1;
+  for (hit = 0; hit < npositions[querystart]; hit++) {
+    links[querystart][hit].fwd_pos = links[querystart][hit].fwd_hit = -1;
+    links[querystart][hit].rev_pos = links[querystart][hit].rev_hit = -1;
+    /* links[querystart][hit].score = 0; */
+    /* links[querystart][hit].consecutive = 0; */
   }
 
-  for (querypos = 1; querypos <= querylength - indexsize; querypos++) {
+  for (querypos = querystart+1; querypos <= queryend - indexsize; querypos++) {
     for (hit = 0; hit < npositions[querypos]; hit++) {
       currlink = &(links[querypos][hit]);
       position = mappings[querypos][hit];
@@ -899,7 +905,7 @@ align_compute_scores (Link_T *termlink, bool *fwdp, struct Link_T **links,
   *termlink = NULL;
   /* Go backwards, because best score is likely to be there, and so
      ties favor longer path */
-  for (querypos = querylength - indexsize; querypos > 0; querypos--) {
+  for (querypos = queryend - indexsize; querypos > querystart; --querypos) {
     /* Don't use restrict_hit here, because it doesn't save time */
     for (hit = 0; hit < npositions[querypos]; hit++) {
       if ((score = links[querypos][hit].fwd_score) > best_score) {
@@ -947,9 +953,9 @@ align_compute (double *defect_rate, int *nfwdintrons, int *nrevintrons, int *nun
   char *queryseq_ptr, *genomicseg_ptr;
   int nconsecutive = 0, nintrons = 0, ndefects = 0;
 
-  queryseq_ptr = Sequence_pointer(queryseq);
-  genomicseg_ptr = Sequence_pointer(genomicseg);
-  querylength = Sequence_length(queryseq);
+  queryseq_ptr = Sequence_fullpointer(queryseq);
+  genomicseg_ptr = Sequence_fullpointer(genomicseg);
+  querylength = Sequence_fulllength(queryseq);
 
   links = Linkmatrix_new(querylength,npositions,totalpositions);
 
@@ -1063,10 +1069,12 @@ fill_oligo (List_T pairs, int querypos, int genomepos, char *queryseq_ptr, char 
 	 genomepos < lastgenomepos - 1) {
     pairs = Pairpool_push(pairs,pairpool,lastquerypos-1,lastgenomepos-1,
 			  queryseq_ptr[lastquerypos-1],'|',genomicseg_ptr[lastgenomepos-1]);
+
     /*
     printf("Pushing %c | %c at %d,%d\n",queryseq_ptr[lastquerypos-1],genomicseg_ptr[lastgenomepos-1],
 	   lastquerypos-1,lastgenomepos-1);
     */
+
     lastquerypos--;
     lastgenomepos--;
   }
@@ -1118,24 +1126,22 @@ convert_to_nucleotides (List_T path, char *queryseq_ptr, char *genomicseg_ptr,
 T
 Stage2_compute (Sequence_T queryseq, Sequence_T genomicseg,
 		Oligoindex_T oligoindex, int indexsize, Pairpool_T pairpool, 
-		int sufflookback, int nsufflookback) {
+		int sufflookback, int nsufflookback, int badoligos) {
   T stage2;
   List_T path, pairs;
   unsigned int **mappings;
   int nfwdintrons, nrevintrons, nunkintrons;
   int *npositions, totalpositions;
   double defect_rate;
-  bool badsequencep;
 
-  badsequencep = Oligoindex_tally(oligoindex,queryseq,genomicseg);
-  mappings = Oligoindex_get_mappings(&npositions,&totalpositions,oligoindex,
-				     queryseq);
+  Oligoindex_tally(oligoindex,queryseq,genomicseg);
+  mappings = Oligoindex_get_mappings(&npositions,&totalpositions,oligoindex,queryseq);
 
   if (totalpositions == 0) {
     path = NULL;
     defect_rate = 1.0;
   } else {
-    if (badsequencep == true) {
+    if (badoligos > 16) {
       sufflookback = sufflookback*3/2;
     }
     path = align_compute(&defect_rate,&nfwdintrons,&nrevintrons,&nunkintrons,
@@ -1148,9 +1154,9 @@ Stage2_compute (Sequence_T queryseq, Sequence_T genomicseg,
     debug(printf("Couldn't find alignment in stage 2\n"));
     stage2 = NULL;
   } else {
-    add_offset(path,Sequence_offset(queryseq));
-    pairs = convert_to_nucleotides(List_reverse(path),Sequence_pointer_full(queryseq),Sequence_pointer(genomicseg),
-				   pairpool,indexsize);
+    /* add_offset(path,Sequence_trim_start(queryseq)); */
+    pairs = convert_to_nucleotides(List_reverse(path),Sequence_fullpointer(queryseq),
+				   Sequence_fullpointer(genomicseg),pairpool,indexsize);
     stage2 = Stage2_new(pairs,defect_rate,nfwdintrons,nrevintrons,nunkintrons);
   }
 

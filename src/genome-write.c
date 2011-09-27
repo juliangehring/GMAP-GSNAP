@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c,v 1.4 2005/02/16 00:43:12 twu Exp $";
+static char rcsid[] = "$Id: genome-write.c,v 1.5 2005/05/06 21:20:07 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -128,7 +128,7 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
       /* HEADER */
       accession = parse_accession(Buffer);
       find_positions(&startposition,&endposition,&truelength,&contigtype,accession,contig_iit);
-      fprintf(stderr,"Writing %s to universal coordinates %u..%u",
+      fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
 	      accession,startposition+1U,endposition+1U);
       if (contigtype > 0) {
 	fprintf(stderr," (alternate strain %s)",IIT_typestring(altstrain_iit,contigtype));
@@ -228,7 +228,7 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
       /* HEADER */
       accession = parse_accession(Buffer);
       find_positions(&startposition,&endposition,&truelength,&contigtype,accession,contig_iit);
-      fprintf(stderr,"Writing %s to universal coordinates %u..%u",
+      fprintf(stderr,"Writing contig %s to universal coordinates %u..%u",
 	      accession,startposition+1U,endposition+1U);
       if (contigtype > 0) {
 	fprintf(stderr," (alternate strain %s)",IIT_typestring(altstrain_iit,contigtype));

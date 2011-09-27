@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.58 2005/03/11 17:55:12 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.60 2005/05/03 16:49:08 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -586,7 +586,9 @@ IIT_read (char *filename, char *name, bool readonlyp) {
 	    filename);
     return NULL;
   }
+#ifdef HAVE_MADVISE
   madvise((caddr_t) new->finfo,new->flength,MADV_RANDOM);
+#endif
   new->annotations = (char *) &(new->finfo[offset]);
 
   return new;
@@ -656,15 +658,16 @@ fnode_query_aux (int *min, int *max, T this, int nodeindex, unsigned int x) {
 
 /************************************************************************/
 
-Intlist_T
-IIT_find (T this, char *label) {
-  Intlist_T matches = NULL;
+int *
+IIT_find (int *nmatches, T this, char *label) {
+  int *matches = NULL, j;
   int low, middle, high, recno;
   bool foundp = false;
   int cmp;
 
   low = 0;
   high = this->nintervals;
+  *nmatches = 0;
 
   debug(
 	for (middle = low; middle < high; middle++) {
@@ -707,9 +710,15 @@ IIT_find (T this, char *label) {
       high++;
     }
 
-    for (recno = low; recno <= high; recno++) {
-      debug(printf("Pushing %d:%d\n",recno,this->labelorder[recno]));
-      matches = Intlist_push(matches,this->labelorder[recno]+1);
+
+    *nmatches = high - low + 1;
+    if (*nmatches > 0) {
+      matches = (int *) CALLOC(*nmatches,sizeof(int));
+      j = 0;
+      for (recno = low; recno <= high; recno++) {
+	debug(printf("Pushing %d:%d\n",recno,this->labelorder[recno]));
+	matches[j++] = this->labelorder[recno]+1;
+      }
     }
   }
 
@@ -737,23 +746,24 @@ IIT_find_linear (T this, char *label) {
 int
 IIT_find_one (T this, char *label) {
   int index;
-  Intlist_T matches;
+  int *matches, nmatches;
 
-  matches = IIT_find(this,label);
-  if (Intlist_length(matches) == 0) {
+  matches = IIT_find(&nmatches,this,label);
+  if (nmatches == 0) {
     /*
     fprintf(stderr,"Expected one match for %s, but got 0\n",
 	    label);
     */
     index = -1;
   } else {
-    if (Intlist_length(matches) > 1) {
+    if (nmatches > 1) {
       fprintf(stderr,"Expected one match for %s, but got %d\n",
-	      label,Intlist_length(matches));
+	      label,nmatches);
     }
-    index = Intlist_head(matches);
+    index = matches[0];
+    FREE(matches);
   }
-  Intlist_free(&matches);
+
   return index;
 }    
 
@@ -775,10 +785,9 @@ int_compare (const void *a, const void *b) {
   }
 }
 
-Intlist_T
-IIT_get (T this, unsigned int x, unsigned int y) {
-  Intlist_T matches = NULL, p;
-  int *array, nmatches, i;
+int *
+IIT_get (int *nmatches, T this, unsigned int x, unsigned int y) {
+  int *result = NULL, *matches, neval, i, j;
   int lambda, prev;
   int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
 
@@ -786,103 +795,164 @@ IIT_get (T this, unsigned int x, unsigned int y) {
   fnode_query_aux(&min1,&max1,this,0,x);
   fnode_query_aux(&min2,&max2,this,0,y);
   debug(fprintf(stderr,"%d %d  %d %d\n",min1,max1,min2,max2));
-  for (lambda = min1; lambda <= max2; lambda++) {
-    if (Interval_overlap_p(this->intervals,x,y,this->sigmas[lambda]) == true) {
-      matches = Intlist_push(matches,this->sigmas[lambda]);
-      debug(printf("Pushing %d\n",this->sigmas[lambda]));
-    }
-  }
-  for (lambda = min1; lambda <= max2; lambda++) {
-    if (Interval_overlap_p(this->intervals,x,y,this->omegas[lambda]) == true) {
-      matches = Intlist_push(matches,this->omegas[lambda]);
-      debug(printf("Pushing %d\n",this->omegas[lambda]));
-    }
-  }
 
-  /* Eliminate duplicates */
-  if (matches != NULL) {
-    array = Intlist_to_array(&nmatches,matches);
-    Intlist_free(&matches);
-    matches = (Intlist_T) NULL;
-
-    qsort(array,nmatches,sizeof(int),int_compare);
-      
-    prev = array[0];
-    for (i = 1; i < nmatches; i++) {
-      if (array[i] == prev) {
-	array[i] = 0;		/* recnos are 1-based, so 0 means dup */
-      } else {
-	prev = array[i];
+  *nmatches = 0;
+  if (max2 >= min1) {
+    neval = (max2 - min1 + 1) + (max2 - min1 + 1);
+    matches = (int *) CALLOC(neval,sizeof(int));
+    for (lambda = min1, i = 0; lambda <= max2; lambda++, i++) {
+      if (Interval_overlap_p(this->intervals,x,y,this->sigmas[lambda]) == true) {
+	matches[i] = this->sigmas[lambda];
+	debug(printf("Pushing %d\n",this->sigmas[lambda]));
       }
     }
+    for (lambda = min1; lambda <= max2; lambda++, i++) {
+      if (Interval_overlap_p(this->intervals,x,y,this->omegas[lambda]) == true) {
+	matches[i] = this->omegas[lambda];
+	debug(printf("Pushing %d\n",this->omegas[lambda]));
+      }
+    }
+
+    /* Eliminate duplicates */
+    qsort(matches,neval,sizeof(int),int_compare);
+    i = 0;
+    while (i < neval && matches[i] == 0) {
+      i++;
+    }
+
+    if (i < neval) {
+      prev = matches[i];
+      (*nmatches)++;
+      for (i++; i < neval; i++) {
+	if (matches[i] == prev) {
+	  matches[i] = 0;		/* recnos are 1-based, so 0 means dup */
+	} else {
+	  prev = matches[i];
+	  (*nmatches)++;
+	}
+      }
     
-    for (i = 0; i < nmatches; i++) {
-      if (array[i] != 0) {
-	matches = Intlist_push(matches,array[i]);
+      if (*nmatches > 0) {
+	result = (int *) CALLOC(*nmatches,sizeof(int));
+	j = 0;
+	for (i = 0; i < neval; i++) {
+	  if (matches[i] != 0) {
+	    result[j++] = matches[i];
+	  }
+	}
       }
     }
-    FREE(array);
+
+    FREE(matches);
   }
 
-  return Intlist_reverse(matches);
+  return result;
 }
+
+
+int
+IIT_get_one (T this, unsigned int x, unsigned int y) {
+  int lambda;
+  int min1 = this->nintervals+1, max1 = 0, min2 = this->nintervals+1, max2 = 0;
+
+  debug(printf("%u %u\n",x,y));
+  fnode_query_aux(&min1,&max1,this,0,x);
+  fnode_query_aux(&min2,&max2,this,0,y);
+  debug(fprintf(stderr,"%d %d  %d %d\n",min1,max1,min2,max2));
+
+  if (max2 >= min1) {
+    for (lambda = min1; lambda <= max2; lambda++) {
+      if (Interval_overlap_p(this->intervals,x,y,this->sigmas[lambda]) == true) {
+	return this->sigmas[lambda];
+      }
+    }
+    for (lambda = min1; lambda <= max2; lambda++) {
+      if (Interval_overlap_p(this->intervals,x,y,this->omegas[lambda]) == true) {
+	return this->omegas[lambda];
+      }
+    }
+  }
+
+  fprintf(stderr,"Expected one match for %u--%u, but got none\n",
+	  x,y);
+  return -1;
+}
+
 
 /* Generally called where intervals don't overlap, like chromosomes,
    and where x == y. */
 int
-IIT_get_one (T this, unsigned int x, unsigned int y) {
+IIT_get_one_safe (T this, unsigned int x, unsigned int y) {
   int index;
-  Intlist_T matches;
+  int *matches, nmatches;
 
-  matches = IIT_get(this,x,y);
-  if (Intlist_length(matches) != 1) {
+  matches = IIT_get(&nmatches,this,x,y);
+  if (nmatches != 1) {
     fprintf(stderr,"Expected one match for %u--%u, but got %d\n",
-	    x,y,Intlist_length(matches));
+	    x,y,nmatches);
     abort();
   }
-  index = Intlist_head(matches);
-  Intlist_free(&matches);
+  index = matches[0];
+  FREE(matches);
   return index;
 }
 
-Intlist_T
-IIT_get_typed (T this, unsigned int x, unsigned int y, int type) {
+int *
+IIT_get_typed (int *ntypematches, T this, unsigned int x, unsigned int y, int type) {
   int index;
-  Intlist_T typematches = NULL, matches, p;
+  int *typematches = NULL, *matches, nmatches, i, j;
   Interval_T interval;
 
-  matches = IIT_get(this,x,y);
-  for (p = matches; p != NULL; p = Intlist_next(p)) {
-    index = Intlist_head(p);
+  *ntypematches = 0;
+  matches = IIT_get(&nmatches,this,x,y);
+  for (i = 0; i < nmatches; i++) {
+    index = matches[i];
     interval = &(this->intervals[index-1]);
     if (Interval_type(interval) == type) {
-      typematches = Intlist_push(typematches,index);
+      (*ntypematches)++;
     }
   }
-  Intlist_free(&matches);
-  return Intlist_reverse(typematches);
+
+  if (*ntypematches > 0) {
+    typematches = (int *) CALLOC(*ntypematches,sizeof(int));
+    j = 0;
+    for (i = 0; i < nmatches; i++) {
+      index = matches[i];
+      interval = &(this->intervals[index-1]);
+      if (Interval_type(interval) == type) {
+	typematches[j++] = index;
+      }
+    }
+  }
+  
+  if (matches != NULL) {
+    FREE(matches);
+  }
+
+  return typematches;
 }
 
 int
 IIT_get_exact (T this, unsigned int x, unsigned int y, int type) {
   int index;
-  Intlist_T matches, p;
+  int *matches, nmatches, i;
   Interval_T interval;
 
-  matches = IIT_get(this,x,y);
-  for (p = matches; p != NULL; p = Intlist_next(p)) {
-    index = Intlist_head(p);
+  matches = IIT_get(&nmatches,this,x,y);
+  for (i = 0; i < nmatches; i++) {
+    index = matches[i];
     interval = &(this->intervals[index-1]);
     if (Interval_low(interval) == x && Interval_high(interval) == y &&
 	Interval_type(interval) == type) {
-      Intlist_free(&matches);
+      FREE(matches);
       return index;
     }
   }
 
   fprintf(stderr,"IIT_get_exact failed for %u %u %d\n",x,y,type);
   exit(9);
-  Intlist_free(&matches);
+
+  FREE(matches);
   return -1;
 }
 
@@ -922,12 +992,11 @@ print_record (T this, int recno, bool map_bothstrands_p) {
 
 
 void
-IIT_print (T this, Intlist_T matches, bool map_bothstrands_p) {
-  Intlist_T p;
-  int recno;
+IIT_print (T this, int *matches, int nmatches, bool map_bothstrands_p) {
+  int recno, i;
 
-  for (p = matches; p != NULL; p = Intlist_next(p)) {
-    recno = Intlist_head(p) - 1; /* Convert to 0-based */
+  for (i = 0; i < nmatches; i++) {
+    recno = matches[i] - 1;	/* Convert to 0-based */
     print_record(this,recno,map_bothstrands_p);
   }
 

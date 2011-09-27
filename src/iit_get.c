@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c,v 1.28 2005/02/15 01:55:14 twu Exp $";
+static char rcsid[] = "$Id: iit_get.c,v 1.30 2005/05/01 14:51:14 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -38,7 +38,7 @@ main (int argc, char *argv[]) {
   unsigned int query1, query2;
   int typeint;
   int index, nargs;
-  Intlist_T matches, p;
+  int *matches, nmatches, i;
   IIT_T iit;
   Interval_T interval;
   bool skipp;
@@ -47,7 +47,7 @@ main (int argc, char *argv[]) {
   extern int optind;
   extern char *optarg;
 
-  while ((c = getopt(argc,argv,"")) != -1) {
+  while ((c = getopt(argc,argv,"A")) != -1) {
     switch (c) {
     case 'A': annotationonlyp = true; break;
     }
@@ -88,14 +88,14 @@ main (int argc, char *argv[]) {
       if ((nargs = sscanf(nocomment,"%u %u %s",&query1,&query2,typestring)) == 3) {
 	if ((typeint = IIT_typeint(iit,typestring)) < 0) {
 	  fprintf(stderr,"For %s, no such type as %s.  Ignoring the type.\n",nocomment,typestring);
-	  matches = IIT_get(iit,query1,query2);
+	  matches = IIT_get(&nmatches,iit,query1,query2);
 	} else {
-	  matches = IIT_get_typed(iit,query1,query2,typeint);
+	  matches = IIT_get_typed(&nmatches,iit,query1,query2,typeint);
 	}
       } else if (nargs == 2) {
-	matches = IIT_get(iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2);
       } else if (sscanf(nocomment,"%s",label) == 1) {
-	matches = IIT_find(iit,label);
+	matches = IIT_find(&nmatches,iit,label);
       } else {
 	fprintf(stderr,"Can't parse line %s.  Ignoring.\n",nocomment);
 	skipp = true;
@@ -103,8 +103,8 @@ main (int argc, char *argv[]) {
 	
       if (skipp == false) {
 	printf(">>%s\n",Buffer);
-	for (p = matches; p != NULL; p = Intlist_next(p)) {
-	  index = Intlist_head(p);
+	for (i = 0; i < nmatches; i++) {
+	  index = matches[i];
       
 	  if (annotationonlyp == false) {
 	    printf(">%s",IIT_label(iit,index));
@@ -125,16 +125,16 @@ main (int argc, char *argv[]) {
 	  }
 	}
       }
-      Intlist_free(&matches);
+      FREE(matches);
     }
 
   } else {
     if (argc == 2) {
       /* Try as iitfile label */
-      matches = IIT_find(iit,argv[1]);
+      matches = IIT_find(&nmatches,iit,argv[1]);
       if (matches == NULL && isnumberp(argv[1])) {
 	query1 = (unsigned int) atol(argv[1]);
-	matches = IIT_get(iit,query1,query1);
+	matches = IIT_get(&nmatches,iit,query1,query1);
       }
     } else if (argc == 3) {
       /* iitfile start end */
@@ -144,7 +144,7 @@ main (int argc, char *argv[]) {
       } else {
 	query1 = (unsigned int) atol(argv[1]);
 	query2 = (unsigned int) atol(argv[2]);
-	matches = IIT_get(iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2);
       }
     } else {
       query1 = (unsigned int) atol(argv[1]);
@@ -152,14 +152,14 @@ main (int argc, char *argv[]) {
       if ((typeint = IIT_typeint(iit,argv[3])) < 0) {
 	fprintf(stderr,"For %s %s %s, no such type as %s.  Ignoring the type.\n",
 		argv[1],argv[2],argv[3],argv[3]);
-	matches = IIT_get(iit,query1,query2);
+	matches = IIT_get(&nmatches,iit,query1,query2);
       } else {
-	matches = IIT_get_typed(iit,query1,query2,typeint);
+	matches = IIT_get_typed(&nmatches,iit,query1,query2,typeint);
       }
     }
 
-    for (p = matches; p != NULL; p = Intlist_next(p)) {
-      index = Intlist_head(p);
+    for (i = 0; i < nmatches; i++) {
+      index = matches[i];
       
       if (annotationonlyp == false) {
 	printf(">%s",IIT_label(iit,index));
@@ -179,7 +179,7 @@ main (int argc, char *argv[]) {
 	printf("%s\n",annotation);
       }
     }
-    Intlist_free(&matches);
+    FREE(matches);
   }
 
   IIT_free_mmapped(&iit);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.68 2005/02/16 19:23:06 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.69 2005/05/03 16:49:08 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -213,7 +213,9 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 #ifdef HAVE_MMAP
   if (batchp == false) {
     if (region != NULL) {
+#ifdef HAVE_MADVISE
       madvise(region,new->len,MADV_DONTNEED);
+#endif
     }
   } else if (region == NULL) {
     if (compressedp == true) {
@@ -237,7 +239,9 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 	      indicesperpage);
       Stopwatch_start();
 
+#ifdef HAVE_MADVISE
       madvise(region,new->len,MADV_WILLNEED);
+#endif
       for (i = 0; i < totalindices; i += indicesperpage) {
 	/* memcpy(temp,region + i,pagesize); */
 	if (new->blocks[i] == 0U) {
@@ -257,7 +261,9 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 	      indicesperpage);
       Stopwatch_start();
 
+#ifdef HAVE_MADVISE
       madvise(region,new->len,MADV_WILLNEED);
+#endif
       for (i = 0; i < totalindices; i += indicesperpage) {
 	/* memcpy(temp,region + i,pagesize); */
 	if (new->chars[i] == '0') {

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.48 2005/03/11 17:55:12 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.50 2005/05/04 18:04:51 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -472,7 +472,6 @@ main (int argc, char *argv[]) {
   IIT_T chromosome_iit, contig_iit, altstrain_iit = NULL;
   Interval_T interval;
   char *strain;
-  Intlist_T allindices, indices, p;
   int user_type = -1, type, *indexarray, nindices, index, i, j;
 
   int opt;
@@ -579,7 +578,7 @@ main (int argc, char *argv[]) {
 				      gbuffer1,gbuffer2,genomiclength);
 
       if (user_typestring == NULL) {
-	Sequence_print(genomicseg,uppercasep,wraplength);
+	Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
 	Sequence_free(&genomicseg);
       }
 
@@ -598,8 +597,7 @@ main (int argc, char *argv[]) {
       if (altstrain_iit != NULL) {
 	if (user_typestring == NULL) {
 	  /* No user-specified strain.  Get all indices. */
-	  indices = IIT_get(altstrain_iit,genomicstart+1,genomicstart+genomiclength-1);
-	  indexarray = Intlist_to_array(&nindices,indices);
+	  indexarray = IIT_get(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1);
 	} else {
 	  user_type = IIT_typeint(altstrain_iit,user_typestring);
 	  if (user_type < 0) {
@@ -611,19 +609,10 @@ main (int argc, char *argv[]) {
 	    Sequence_free(&genomicseg);
 	  } else {
 	    /* Valid user-specified strain.  Get subset of indices. */
-	    allindices = IIT_get(altstrain_iit,genomicstart+1,genomicstart+genomiclength-1);
-	    indices = (Intlist_T) NULL;
-	    for (p = allindices; p != NULL; p = Intlist_next(p)) {
-	      index = Intlist_head(p);
-	      type = Interval_type(interval = IIT_interval(altstrain_iit,index));
-	      if (type == user_type) {
-		indices = Intlist_push(indices,index);
-	      }
-	    }
-	    indexarray = Intlist_to_array(&nindices,indices);
+	    indexarray = IIT_get_typed(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,user_type);
 	    if (nindices == 0) {
 	      /* Print reference strain */
-	      Sequence_print(genomicseg,uppercasep,wraplength);
+	      Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
 	      Sequence_free(&genomicseg);
 	    }
 	  }
@@ -666,12 +655,11 @@ main (int argc, char *argv[]) {
 	      printf(">%s:%u%s%u variant:%s\n",
 		     dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
 	    }
-	    Sequence_print(genomicseg,uppercasep,wraplength);
+	    Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
 	    Sequence_free(&genomicseg);
 	    FREE(gbuffer3);
 	  }
 	  FREE(indexarray);
-	  Intlist_free(&indices);
 	}
 	IIT_free_mmapped(&altstrain_iit);
       }

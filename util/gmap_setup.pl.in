@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_setup.pl.in,v 1.16 2005/03/11 17:58:29 twu Exp $
+# $Id: gmap_setup.pl.in,v 1.19 2005/05/06 21:50:48 twu Exp $
 
 $gmapdb = "@GMAPDB@";
 $GMAPINDEX = "@BINDIR@/gmapindex";
@@ -8,7 +8,7 @@ $GMAPINDEX = "@BINDIR@/gmapindex";
 use IO::File;
 use Getopt::Std;
 
-# Usage: gmap_setup [-D <path>] -d <db> [-c <coord_file>] [-I] <fasta_files>
+# Usage: gmap_setup [-D <path>] -d <db> [-c <coord_file>] [-I] [-q <interval>] <fasta_files>
 
 undef($opt_9);			# debug
 undef($opt_B);			# bindir (needed for "make check")
@@ -17,8 +17,9 @@ undef($opt_d);			# genome name
 undef($opt_c);			# coordinates file for contigs
 undef($opt_s);			# name for reference strain
 undef($opt_W);			# writefilep (for debugging)
-undef($opt_I);			# install flag (1 for install, 0 for local)
-getopts("9B:D:d:c:s:WI");
+undef($opt_I);			# install flag
+undef($opt_q);			# interval for indexing 12-mers
+getopts("9B:D:d:c:s:WIq:");
 
 #print STDOUT <<TEXT1;
 #
@@ -63,6 +64,17 @@ if (defined($opt_s)) {
 } else {
   $refstrain = "Reference";
 }
+
+if (defined($opt_q)) {
+  if (12 % $opt_q != 0) {
+    die "Selected interval -q $opt_q does not divide evenly into 12";
+  } else {
+    print STDOUT "*** Indexing interval of $opt_q specified by user\n";
+    print STDOUT "*** Note that intervals < 6 may result in large index files that cannot be read on 32-bit machines\n";
+  }
+}
+
+
 $fastafiles = join(" ",@ARGV);
 
 $startwatch = localtime time;
@@ -72,13 +84,27 @@ $startwatch = localtime time;
 ########################################################################
 
 $FP = new IO::File($coord_file) or die "Cannot open coord file $coord_file";
+print STDOUT "Reading coordinates from file $coord_file\n";
 while (defined($line = <$FP>)) {
-  chop $line;
-  @fields = split /\s+/,$line;
-  $contig = $fields[0];
-  $coords{$contig} = $fields[1];
-  if (!defined($strain{$contig} = $fields[2])) {
-    $strain{$contig} = "";
+  if ($line =~ /^#/) {
+    # Skip
+  } else {
+    chop $line;
+    @fields = split /\s+/,$line;
+    $contig = $fields[0];
+    $coords{$contig} = $fields[1];
+    if (!defined($strain{$contig} = $fields[2])) {
+      $strain{$contig} = "";
+    }
+
+    # Also store information without version
+    if ($contig =~ /(\S+)\.\d+$/) {
+      $noversion = $1;
+      $coords{$noversion} = $fields[1];
+      if (!defined($strain{$noversion} = $fields[2])) {
+	$strain{$noversion} = "";
+      }
+    }
   }
 }
 close($FP);
@@ -120,13 +146,23 @@ close($IN);
 close($OUT);
 
 print STDOUT "Making index offsets file...\n";
-system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -O");
+if (defined($opt_q)) {
+  $flags = "-q $opt_q";
+} else {
+  $flags = "";
+}
+system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -O $flags");
 
 print STDOUT "Making index positions file...\n";
-if (defined($opt_W)) {
-  system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -P -W");
+if (defined($opt_q)) {
+  $flags = "-q $opt_q";
 } else {
-  system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -P");
+  $flags = "";
+}
+if (defined($opt_W)) {
+  system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -P -W $flags");
+} else {
+  system("cat $genome_name.genomecomp | $GMAPINDEX -d $genome_name -P $flags");
 }
 
 print STDOUT "Making chrsubset file...\n";
@@ -238,16 +274,26 @@ sub find_contig_name {
   my ($contiginfo, $coords) = @_;
 
   if ($contiginfo !~ /\|/) {
-    return $contiginfo;
+    if (defined($ {$coords}{$contiginfo})) {
+      return $contiginfo;
+    } elsif ($contiginfo =~ /(\S+)\.\d+/ && defined($ {$coords}{$1})) {
+      return $1;
+    } else {
+      # Failed
+      return $contiginfo;
+    }
   } else {
     @parts = split /\|/,$contiginfo;
     foreach $part (@parts) {
       if (defined($ {$coords}{$part})) {
 	return $part;
+      } elsif ($part =~ /(\S+)\.\d+/ && defined($ {$coords}{$1})) {
+	return $1;
       }
     }
+    # Failed
+    return $contiginfo;
   }
-  return $contiginfo;
 }
 
 

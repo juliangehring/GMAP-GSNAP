@@ -1,4 +1,4 @@
-/* $Id: stage3.h,v 1.70 2005/02/07 23:56:57 twu Exp $ */
+/* $Id: stage3.h,v 1.74 2005/05/06 18:44:34 twu Exp $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 #include "bool.h"
@@ -24,6 +24,12 @@ extern int
 Stage3_straintype (T this);
 extern int
 Stage3_goodness (T this);
+extern int
+Stage3_matches (T this);
+extern int
+Stage3_mismatches (T this);
+extern int
+Stage3_indels (T this);
 extern double
 Stage3_coverage (T this);
 extern Matchpairend_T
@@ -32,13 +38,18 @@ extern int
 Stage3_querystart (T this);
 extern int
 Stage3_queryend (T this);
+extern int
+Stage3_margin (int *chimerapos, T this, Sequence_T queryseq);
 
 extern double
 Stage3_fracidentity (T this);
+extern int *
+Stage3_matchscores (T this, int querylength);
 extern void
 Stage3_pathscores (int *pathscores, T this, int querylength);
-extern bool
-Stage3_five_end (int *substart, int *subend, T this, Sequence_T queryseq);
+extern int
+Stage3_chimeric_goodness (int *matches1, int *matches2, T part1, T part2, int breakpoint, int querylength);
+
 extern int
 Stage3_cmp (const void *a, const void *b);
 extern bool
@@ -57,9 +68,9 @@ extern void
 Stage3_fix_cdna_direction (T this, T reference);
 extern void
 Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit,
-			  char *dbversion, bool zerobasedp, int ntrimmed, bool fulllengthp);
+			  char *dbversion, bool zerobasedp, bool fulllengthp);
 extern void
-Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion, int ntrimmed, 
+Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion,
 			bool showalignp, bool zerobasedp, 
 			bool continuousp, bool diagnosticp, int proteinmode,
 			int invertmode, bool nointronlenp, int wraplength);
@@ -81,19 +92,12 @@ Stage3_print_protein_genomic (T this, int wraplength, bool fulllengthp);
 extern void
 Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 char *version, int pathnum, int npaths,
-			 bool checksump, bool chimerap, bool zerobasedp);
+			 bool checksump, int chimerapos, bool zerobasedp);
 
 extern T
-Stage3_copy (T old, Sequence_T queryseq, Genome_T genome, 
-	     char *gbuffer1, char *gbuffer2, int gbufferlen, int ngap,
-	     Pairpool_T pairpool);
+Stage3_copy (T old, Pairpool_T pairpool);
 extern T
-Stage3_copy_bounded (T old, Sequence_T queryseq, Genome_T genome, 
-		     char *gbuffer1, char *gbuffer2, int gbufferlen, int ngap,
-		     int minpos, int maxpos, int maxpeelback, int nullgap, 
-		     int extramaterial_end, int extramaterial_paired,
-		     int extraband_single, int extraband_end, int extraband_paired,
-		     Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR);
+Stage3_copy_bounded (T old, Pairpool_T pairpool, int minpos, int maxpos);
 
 extern T
 Stage3_compute (Stage2_T stage2, Sequence_T queryseq, Sequence_T genomicseg, 

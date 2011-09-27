@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c,v 1.89 2005/03/04 20:48:09 twu Exp $";
+static char rcsid[] = "$Id: stage1.c,v 1.93 2005/05/05 23:44:57 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,8 @@ static char rcsid[] = "$Id: stage1.c,v 1.89 2005/03/04 20:48:09 twu Exp $";
 
 #define VERYSHORTSEQLEN 40
 #define SHORTSEQLEN 80
+
+#define EXPANSION 1000		/* (int) Relative to trimlength */
 
 #define MAX_FILL_IN 200
 #define MAX_DANGLING_PCT 0.33
@@ -72,7 +74,6 @@ struct T {
   int interval;
   List_T matchpairlist;
   List_T matchbestlist;
-  int seqlength;
   Reader_T reader;
   Block_T block5;
   Block_T block3;
@@ -95,31 +96,30 @@ Stage1_new (Sequence_T queryseq, int maxintronlen, int stage1size, int maxentrie
   T new = (T) MALLOC(sizeof(*new));
   
   new->maxintronlen = maxintronlen;
-  new->querylength = Sequence_length(queryseq);
   new->maxentries = maxentries;
 
   new->stage1size = stage1size;
   new->interval = stage1size - INDEX1PART;
 
+  new->querylength = Sequence_fulllength(queryseq);
+  new->querystart = Sequence_trim_start(queryseq);
+  new->queryend = Sequence_trim_end(queryseq);
+
   new->matchpairlist = NULL;
   new->matchbestlist = NULL;
-  new->seqlength = Sequence_length(queryseq);
-  new->reader = Reader_new(Sequence_pointer(queryseq),0,new->seqlength-1);
-  new->block5 = Block_new(FIVE,new->reader,new->seqlength);
-  new->block3 = Block_new(THREE,new->reader,new->seqlength);
+  new->reader = Reader_new(Sequence_fullpointer(queryseq),new->querystart,new->queryend);
+  new->block5 = Block_new(FIVE,new->reader);
+  new->block3 = Block_new(THREE,new->reader);
   new->matches5 = NULL;
   new->matches3 = NULL;
 
-  new->querystart = 0;
-  new->queryend = new->seqlength-1;
-
-  new->plus_positions = (Genomicpos_T **) CALLOC(new->seqlength,sizeof(Genomicpos_T *));
-  new->minus_positions = (Genomicpos_T **) CALLOC(new->seqlength,sizeof(Genomicpos_T *));
-  new->plus_npositions = (int *) CALLOC(new->seqlength,sizeof(int));
-  new->minus_npositions = (int *) CALLOC(new->seqlength,sizeof(int));
-  new->plus_matchedp = (bool *) CALLOC(new->seqlength,sizeof(bool));
-  new->minus_matchedp = (bool *) CALLOC(new->seqlength,sizeof(bool));
-  new->processedp = (bool *) CALLOC(new->seqlength,sizeof(bool));
+  new->plus_positions = (Genomicpos_T **) CALLOC(new->querylength,sizeof(Genomicpos_T *));
+  new->minus_positions = (Genomicpos_T **) CALLOC(new->querylength,sizeof(Genomicpos_T *));
+  new->plus_npositions = (int *) CALLOC(new->querylength,sizeof(int));
+  new->minus_npositions = (int *) CALLOC(new->querylength,sizeof(int));
+  new->plus_matchedp = (bool *) CALLOC(new->querylength,sizeof(bool));
+  new->minus_matchedp = (bool *) CALLOC(new->querylength,sizeof(bool));
+  new->processedp = (bool *) CALLOC(new->querylength,sizeof(bool));
 
   return new;
 }
@@ -131,9 +131,13 @@ Stage1_free (T *old) {
   Match_T match;
   int i;
 
-  for (i = 0; i < (*old)->seqlength; i++) {
-    FREE((*old)->plus_positions[i]);
-    FREE((*old)->minus_positions[i]);
+  for (i = 0; i < (*old)->querylength; i++) {
+    if ((*old)->plus_positions[i] != NULL) {
+      FREE((*old)->plus_positions[i]);
+    }
+    if ((*old)->minus_positions[i] != NULL) {
+      FREE((*old)->minus_positions[i]);
+    }
   }    
 
   FREE((*old)->plus_positions);
@@ -197,7 +201,12 @@ connectable_p (Match_T match5, Match_T match3, int maxintronlen, int interval) {
     } else {
       position5 = Match_position(match5);
       position3 = Match_position(match3);
-      intronlen = abs(position3 - position5) - exonlen;
+      /* intronlen = abs(position3 - position5) - exonlen; -- shouldn't subtract unsigned ints */
+      if (position3 > position5) {
+	intronlen = position3 - position5 - exonlen;
+      } else {
+	intronlen = position5 - position3 - exonlen;
+      }
       forwardp5 = Match_forwardp(match5);
       forwardp3 = Match_forwardp(match3);
 
@@ -290,9 +299,10 @@ pair_up (bool *foundpairp, List_T matchpairlist, List_T newmatches5, List_T newm
 	      matchpair = (Matchpair_T) List_head(p);
 	      match5 = Matchpair_bound5(matchpair);
 	      match3 = Matchpair_bound3(matchpair);
-	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d)\n",
+	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d) for %d..%d\n",
 		     Match_chrnum(match5),Match_chrpos(match5),Match_forwardp(match5),
-		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3));
+		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3),
+		     Match_querypos(match5),Match_querypos(match3));
 	      );
 	matchpairlist = List_push(matchpairlist,(Matchpair_T) List_head(p));
       }
@@ -317,9 +327,10 @@ pair_exists_p (List_T newmatches5, List_T newmatches3,
       match3 = s->first;
       if (connectable_p(match5,match3,maxintronlen,interval)) {
 	debug(
-	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d)\n",
+	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d) for %d..%d\n",
 		     Match_chrnum(match5),Match_chrpos(match5),Match_forwardp(match5),
-		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3));
+		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3),
+		     Match_querypos(match5),Match_querypos(match3));
 	      );
 	return true;
       }
@@ -333,9 +344,10 @@ pair_exists_p (List_T newmatches5, List_T newmatches3,
       match3 = s->first;
       if (connectable_p(match5,match3,maxintronlen,interval)) {
 	debug(
-	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d)\n",
+	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d) for %d..%d\n",
 		     Match_chrnum(match5),Match_chrpos(match5),Match_forwardp(match5),
-		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3));
+		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3),
+		     Match_querypos(match5),Match_querypos(match3));
 	      );
 	return true;
       }
@@ -349,9 +361,10 @@ pair_exists_p (List_T newmatches5, List_T newmatches3,
       match3 = s->first;
       if (connectable_p(match5,match3,maxintronlen,interval)) {
 	debug(
-	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d)\n",
+	      printf("Found matching pair: #%d:%u (%d)-#%d:%u (%d) for %d..%d\n",
 		     Match_chrnum(match5),Match_chrpos(match5),Match_forwardp(match5),
-		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3));
+		     Match_chrnum(match3),Match_chrpos(match3),Match_forwardp(match3),
+		     Match_querypos(match5),Match_querypos(match3));
 	      );
 	return true;
       }
@@ -990,7 +1003,7 @@ stutter (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T chrsubset,
     newmatches3 = find_3prime_matches(&newp,newmatches3,this,this->plus_positions,this->plus_npositions,
 				      this->minus_positions,this->minus_npositions,
 				      this->block3,chromosome_iit,chrsubset,this->queryend,
-				      this->seqlength,this->interval,maxentries,true);
+				      this->querylength,this->interval,maxentries,true);
 
     stutterdist3 = start3 - Block_querypos(this->block3);
     if (newp) {
@@ -1094,7 +1107,7 @@ fill_in_3 (T this, List_T dangling5, Indexdb_T indexdb, IIT_T chromosome_iit,
     newmatches3 = find_3prime_matches(&newp,newmatches3,this,this->plus_positions,this->plus_npositions,
 				      this->minus_positions,this->minus_npositions,
 				      this->block3,chromosome_iit,chrsubset,this->queryend,
-				      this->seqlength,this->interval,maxentries,true);
+				      this->querylength,this->interval,maxentries,true);
     fillindist3 = start3 - Block_querypos(this->block3);
 
     if (newp) {
@@ -1126,8 +1139,8 @@ sample (T this, int nskip, int maxentries2, Indexdb_T indexdb, IIT_T chromosome_
   bool donep = false, newp;
   Match_T match;
 
-  Block_reset_ends(this->block5,0,this->querylength-1);
-  Block_reset_ends(this->block3,0,this->querylength-1);
+  Block_reset_ends(this->block5);
+  Block_reset_ends(this->block3);
 
   while (!donep) {
     if (n5hits <= n3hits) {
@@ -1169,7 +1182,7 @@ sample (T this, int nskip, int maxentries2, Indexdb_T indexdb, IIT_T chromosome_
 	newmatches3 = find_3prime_matches(&newp,newmatches3,this,this->plus_positions,this->plus_npositions,
 					  this->minus_positions,this->minus_npositions,
 					  this->block3,chromosome_iit,chrsubset,this->queryend,
-					  this->seqlength,this->interval,maxentries2,false);
+					  this->querylength,this->interval,maxentries2,false);
 	if (newp) {
 	  n3hits++;
 	  debug3(printf("    n5hits: %d, n3hits: %d\n",n5hits,n3hits));
@@ -1233,17 +1246,17 @@ Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T th
   }
   debug2(printf("Extension5 = %d\n",*extension5));
 
-  *extension3 = newend = this->seqlength - queryend - INDEX1PART;
-  debug2(printf("Extending %d - %d\n",queryend+1,this->seqlength));
-  for (i = queryend + 1; i < this->seqlength; i++) {
+  *extension3 = newend = this->querylength - queryend - INDEX1PART;
+  debug2(printf("Extending %d - %d\n",queryend+1,this->querylength));
+  for (i = queryend + 1; i < this->querylength; i++) {
     if (Match_forwardp(match3) == true) {
       for (j = 0; j < this->plus_npositions[i]; j++) {
 	position = this->plus_positions[i][j];
 	if (position > genomicend && (delta = position - genomicend) < maxextension && delta > 0) {
 	  debug2(printf("%d +%u %d\n",i,position,delta));
-	  if (delta + this->seqlength - i - INDEX1PART >= *extension3) {
-	    *extension3 = delta + this->seqlength - i - INDEX1PART;
-	    newend = this->seqlength - i - INDEX1PART;
+	  if (delta + this->querylength - i - INDEX1PART >= *extension3) {
+	    *extension3 = delta + this->querylength - i - INDEX1PART;
+	    newend = this->querylength - i - INDEX1PART;
 	  }
 	}
       }
@@ -1252,9 +1265,9 @@ Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T th
 	position = this->minus_positions[i][j] + INDEX1PART;
 	if (position < genomicend && (delta = genomicend - position) < maxextension && delta > 0) {
 	  debug2(printf("%d -%u %d\n",i,position,delta));
-	  if (delta + this->seqlength - i - INDEX1PART >= *extension3) {
-	    *extension3 = delta + this->seqlength - i - INDEX1PART;
-	    newend = this->seqlength - i - INDEX1PART;
+	  if (delta + this->querylength - i - INDEX1PART >= *extension3) {
+	    *extension3 = delta + this->querylength - i - INDEX1PART;
+	    newend = this->querylength - i - INDEX1PART;
 	  }
 	}
       }
@@ -1327,7 +1340,7 @@ find_first_pair (T this, Sequence_T queryseq, Indexdb_T indexdb,
 	newmatches3 = find_3prime_matches(&newp,NULL,this,this->plus_positions,this->plus_npositions,
 					  this->minus_positions,this->minus_npositions,
 					  this->block3,chromosome_iit,chrsubset,
-					  this->queryend,this->seqlength,
+					  this->queryend,this->querylength,
 					  this->interval,maxentries,true);
 	if (newp) {
 	  n3hits += 1.0/(double) (1 + List_length(newmatches3));
@@ -1426,10 +1439,10 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
     return this->matchpairlist;
 
   } else if (this->querylength <= SHORTSEQLEN) {
-    /* Sample exhaustively */
+    /* Sample exhaustively on short sequences */
     nskip = 0;
     debug1(printf("***Beginning terminal sampling.  nskip = %d\n",nskip));
-    sample(this,nskip,10*this->maxentries,indexdb,chromosome_iit,chrsubset);
+    sample(this,nskip,2*this->maxentries,indexdb,chromosome_iit,chrsubset);
     clusterlist = Matchpair_find_clusters(this->matches5,this->matches3,this->interval+INDEX1PART,
 					  this->maxintronlen,1,SIZEBOUND,MOVING_THRESHOLD);
     debug1(printf("***Ending terminal sampling.  Got %d clusters\n",List_length(clusterlist)));
@@ -1443,7 +1456,7 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
 
     while (nskip > 0 && clusterlist == NULL) {
       debug1(printf("***Beginning sampling.  nsamples = %d, nskip = %d\n",nsamples,nskip));
-      sample(this,nskip,10*this->maxentries,indexdb,chromosome_iit,chrsubset);
+      sample(this,nskip,2*this->maxentries,indexdb,chromosome_iit,chrsubset);
       clusterlist = Matchpair_find_clusters(this->matches5,this->matches3,this->interval+INDEX1PART,
 					    this->maxintronlen,2,SIZEBOUND,BY_CANDIDATES);
       debug1(printf("***Ending sampling.  Got %d clusters\n",List_length(clusterlist)));
@@ -1465,7 +1478,7 @@ Stage1_matchlist (T this, Indexdb_T indexdb, IIT_T chromosome_iit, Chrsubset_T c
 
 #if 0
       debug1(printf("***Beginning terminal sampling.  nsamples = %d, nskip = %d\n",nsamples,nskip));
-      sample(this,nskip,10*this->maxentries,indexdb,chromosome_iit,chrsubset);
+      sample(this,nskip,2*this->maxentries,indexdb,chromosome_iit,chrsubset);
       clusterlist = Matchpair_find_clusters(this->matches5,this->matches3,this->interval+INDEX1PART,
 					    this->maxintronlen,1,SIZEBOUND,MOVING_THRESHOLD);
       debug1(printf("***Ending terminal sampling.  Got %d clusters\n",List_length(clusterlist)));
@@ -1483,7 +1496,7 @@ Stage1_compute (Sequence_T queryseq, Indexdb_T indexdb, IIT_T chromosome_iit,
 		Chrsubset_T chrsubset, int maxintronlen_bound, int stuttercycles, 
 		int stutterhits, bool crossspeciesp) {
   T this;
-  int querylen, stage1size, maxentries, maxintronlen;
+  int trimlength, stage1size, maxentries, maxintronlen;
   int nplusoverflow, nminusoverflow;
   double dangling5_pct, dangling3_pct;
   int ndangling5, ndangling3;
@@ -1491,23 +1504,23 @@ Stage1_compute (Sequence_T queryseq, Indexdb_T indexdb, IIT_T chromosome_iit,
   Matchpair_T matchpair;
   bool foundpairp = false;
 
-  querylen = Sequence_length(queryseq);
-  if (querylen <= VERYSHORTSEQLEN) {
+  trimlength = Sequence_trimlength(queryseq);
+  if (trimlength <= VERYSHORTSEQLEN) {
     stage1size = 12;
-    maxentries = 1600;
-    maxintronlen = 10;		/* Essentially, we don't want to find any introns */
-  } else if (querylen <= SHORTSEQLEN) {
-    stage1size = 18;
     maxentries = 250;
+    maxintronlen = 10;		/* Essentially, we don't want to find any introns */
+  } else if (trimlength <= SHORTSEQLEN) {
+    stage1size = 18;
+    maxentries = 100;
     maxintronlen = 20;		/* Essentially, we don't want to find any introns */
   } else if (crossspeciesp == true) {
     stage1size = 18;
-    maxentries = 250;
-    maxintronlen = 20 + 1000*(querylen - SHORTSEQLEN);
+    maxentries = 100;
+    maxintronlen = 20 + EXPANSION*(trimlength - SHORTSEQLEN);
   } else {
     stage1size = 24;
     maxentries = 40;
-    maxintronlen = 20 + 1000*(querylen - SHORTSEQLEN);
+    maxintronlen = 20 + EXPANSION*(trimlength - SHORTSEQLEN);
   }
 
   if (maxintronlen > maxintronlen_bound) {

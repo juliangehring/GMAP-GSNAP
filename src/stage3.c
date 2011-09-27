@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c,v 1.161 2005/03/09 19:23:05 twu Exp $";
+static char rcsid[] = "$Id: stage3.c,v 1.166 2005/05/06 18:44:34 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -38,8 +38,7 @@ static char rcsid[] = "$Id: stage3.c,v 1.161 2005/03/09 19:23:05 twu Exp $";
 #define debug1(x)
 #endif
 
-/* Chimeras.  Not used currently */
-#define DEBUG2 1
+/* Chimeras */
 #ifdef DEBUG2
 #define debug2(x) x
 #else 
@@ -114,6 +113,7 @@ struct T {
   bool watsonp;
   double defect_rate;
   double coverage;
+  int querylength;
   int matches;
   int unknowns;
   int mismatches;
@@ -123,7 +123,7 @@ struct T {
   int tindels;
   int goodness;
   int nexons;
-  int coverage_correction;
+  /* int coverage_correction; */
 
   int translation_start;
   int translation_end;
@@ -149,8 +149,29 @@ Stage3_straintype (T this) {
 
 int
 Stage3_goodness (T this) {
+  debug2(printf("Overall goodness:\n"));
+  debug2(printf("  %d matches, %d mismatches, %d qopens, %d qindels, %d topens, %d tindels => %d\n",
+		this->matches,this->mismatches,this->qopens,this->qindels,this->topens,this->tindels,this->goodness));
+
   return this->goodness;
 }
+
+int
+Stage3_matches (T this) {
+  return this->matches;
+}
+
+int
+Stage3_mismatches (T this) {
+  return this->mismatches;
+}
+
+int
+Stage3_indels (T this) {
+  /* This should be consistent with the output from Pair_print_pathsummary */
+  return this->qindels + this->tindels;
+}
+
 
 double
 Stage3_coverage (T this) {
@@ -172,6 +193,30 @@ Stage3_queryend (T this) {
   return Pair_querypos(&(this->pairs[this->npairs-1]));
 }
   
+int
+Stage3_margin (int *chimerapos, T this, Sequence_T queryseq) {
+  int leftmargin, rightmargin;
+  int querystart, queryend;
+
+  querystart = Pair_querypos(&(this->pairs[0]));
+  queryend = Pair_querypos(&(this->pairs[this->npairs-1]));
+
+  if ((leftmargin = querystart - Sequence_trim_start(queryseq)) < 0) {
+    leftmargin = 0;
+  }
+  if ((rightmargin = Sequence_trim_end(queryseq) - queryend) < 0) {
+    rightmargin = 0;
+  }
+
+  /* Return larger margin */
+  if (leftmargin > rightmargin) {
+    *chimerapos = querystart;
+    return leftmargin;
+  } else {
+    *chimerapos = queryend;
+    return rightmargin;
+  }
+}
 
 
 double
@@ -185,6 +230,11 @@ Stage3_fracidentity (T this) {
   }
 }
 
+int *
+Stage3_matchscores (T this, int querylength) {
+  return Pair_matchscores(this->pairs,this->npairs,this->cdna_direction,querylength);
+}
+
 void
 Stage3_pathscores (int *pathscores, T this, int querylength) {
   Pair_pathscores(pathscores,this->pairs,this->npairs,this->cdna_direction,querylength);
@@ -192,21 +242,35 @@ Stage3_pathscores (int *pathscores, T this, int querylength) {
 }
 
 
-bool
-Stage3_five_end (int *substart, int *subend, T this, Sequence_T queryseq) {
-  int five_leftover, three_leftover;
+int
+Stage3_chimeric_goodness (int *matches1, int *matches2, T part1, T part2, int breakpoint, int querylength) {
+  int goodness, goodness1, goodness2, querystart, queryend;
+  int unknowns1, mismatches1, qopens1, qindels1, topens1, tindels1, 
+    ncanonical1, nsemicanonical1, nnoncanonical1;
+  int unknowns2, mismatches2, qopens2, qindels2, topens2, tindels2, 
+    ncanonical2, nsemicanonical2, nnoncanonical2;
 
-  five_leftover = Pair_querypos(&(this->pairs[0]));
-  three_leftover = Sequence_length(queryseq) - Pair_querypos(&(this->pairs[this->npairs-1]));
-  if (five_leftover < three_leftover) {
-    *substart = Pair_querypos(&(this->pairs[this->npairs-1]));
-    *subend = Sequence_length(queryseq);
-    return true;
-  } else {
-    *substart = 0;
-    *subend = Pair_querypos(&(this->pairs[0]));
-    return false;
-  }
+  querystart = Pair_querypos(&(part1->pairs[0]));
+  debug2(printf("Chimeric goodness requested for part %d..%d\n",querystart+1,breakpoint));
+  Pair_fracidentity_bounded(&(*matches1),&unknowns1,&mismatches1,&qopens1,&qindels1,&topens1,&tindels1,
+			    &ncanonical1,&nsemicanonical1,&nnoncanonical1,
+			    part1->pairs,part1->npairs,part1->cdna_direction,
+			    querystart,breakpoint);
+  goodness1 = (*matches1) + MISMATCH*mismatches1 + QOPEN*qopens1 + QINDEL*qindels1 + TOPEN*topens1 + TINDEL*tindels1;
+  debug2(printf("  %d matches, %d mismatches, %d qopens, %d qindels, %d topens, %d tindels => %d\n",
+		*matches1,mismatches1,qopens1,qindels1,topens1,tindels1,goodness1));
+
+  queryend = Pair_querypos(&(part2->pairs[part2->npairs-1]));
+  debug2(printf("Chimeric goodness requested for part %d..%d\n",breakpoint+1,queryend+1));
+  Pair_fracidentity_bounded(&(*matches2),&unknowns2,&mismatches2,&qopens2,&qindels2,&topens2,&tindels2,
+			    &ncanonical2,&nsemicanonical2,&nnoncanonical2,
+			    part2->pairs,part2->npairs,part2->cdna_direction,
+			    breakpoint,queryend);
+  goodness2 = (*matches2) + MISMATCH*mismatches2 + QOPEN*qopens2 + QINDEL*qindels2 + TOPEN*topens2 + TINDEL*tindels2;
+  debug2(printf("  %d matches, %d mismatches, %d qopens, %d qindels, %d topens, %d tindels => %d\n",
+		*matches2,mismatches2,qopens2,qindels2,topens2,tindels2,goodness2));
+
+  return goodness1 + goodness2;
 }
 
 
@@ -264,8 +328,7 @@ Stage3_overlap (T x, T y) {
 }
 
 static T
-Stage3_new (List_T pairs_fwd, List_T pairs_rev, 
-	    Sequence_T genomicseg, Matchpairend_T matchpairend,
+Stage3_new (List_T pairs_fwd, List_T pairs_rev, Matchpairend_T matchpairend,
 	    int straintype, char *strain, Chrnum_T chrnum, Genomicpos_T chrpos,
 	    Genomicpos_T chroffset, int querylength, Genomicpos_T genomiclength, 
 	    bool watsonp, double defect_rate, int ngap) {
@@ -274,7 +337,7 @@ Stage3_new (List_T pairs_fwd, List_T pairs_rev,
     unknowns_fwd, unknowns_rev, qopens_fwd, qindels_fwd, qopens_rev, qindels_rev, 
     topens_fwd, tindels_fwd, topens_rev, tindels_rev,
     ncanonical_fwd, ncanonical_rev, nsemicanonical_fwd, nsemicanonical_rev,
-    nnoncanonical_fwd, nnoncanonical_rev, npairs_fwd, npairs_rev, coverage_correction;
+    nnoncanonical_fwd, nnoncanonical_rev, npairs_fwd, npairs_rev;
   int goodness_fwd, goodness_rev;
   Pair_T start, end;
 
@@ -396,11 +459,15 @@ Stage3_new (List_T pairs_fwd, List_T pairs_rev,
       new->genomicend = chroffset + chrpos + (genomiclength - 1) - Pair_genomepos(end);
     }
 
+    /*
     new->coverage_correction = 
       Sequence_count_bad(genomicseg,start->genomepos,start->querypos,-1) +
       Sequence_count_bad(genomicseg,end->genomepos,(querylength - 1) - end->querypos,+1);
+    */
 
-    new->coverage = (double) (end->querypos - start->querypos + 1 + new->coverage_correction)/(double) querylength;
+    /* new->coverage = (double) (end->querypos - start->querypos + 1 + new->coverage_correction)/(double) querylength; */
+    new->querylength = querylength;
+    new->coverage = (double) (end->querypos - start->querypos + 1)/(double) querylength;
 
     return new;
   }
@@ -496,7 +563,7 @@ Stage3_fix_cdna_direction (T this, T reference) {
 
 void
 Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit, 
-			  char *dbversion, bool zerobasedp, int ntrimmed, bool fulllengthp) {
+			  char *dbversion, bool zerobasedp, bool fulllengthp) {
   Pair_T start, end;
   bool referencealignp;
 
@@ -507,7 +574,7 @@ Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T conti
   Pair_print_pathsummary(pathnum,start,end,this->chrnum,this->chrpos,this->chroffset,
 			 chromosome_iit,referencealignp,this->strain,contig_iit,
 			 dbversion,this->genomiclength,
-			 this->nexons,this->coverage,this->coverage_correction,ntrimmed,
+			 this->nexons,this->coverage,
 			 this->matches,this->unknowns,this->mismatches,
 			 this->qopens,this->qindels,this->topens,this->tindels,this->goodness,
 			 this->watsonp,this->cdna_direction,this->defect_rate,
@@ -521,7 +588,7 @@ Stage3_print_pathsummary (T this, int pathnum, IIT_T chromosome_iit, IIT_T conti
 }
 
 void
-Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion, int ntrimmed, 
+Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversion,
 			bool showalignp, bool zerobasedp, 
 			bool continuousp, bool diagnosticp, int proteinmode,
 			int invertmode, bool nointronlenp, int wraplength) {
@@ -537,7 +604,7 @@ Stage3_print_mutations (T this, T reference, IIT_T chromosome_iit, char *dbversi
   Pair_print_pathsummary(/*pathnum*/1,start,end,reference->chrnum,reference->chrpos,reference->chroffset,
 			 chromosome_iit,referencealignp,this->strain,/*contig_iit*/NULL,
 			 dbversion,reference->genomiclength,
-			 this->nexons,this->coverage,this->coverage_correction,ntrimmed,
+			 this->nexons,this->coverage,
 			 this->matches,this->unknowns,this->mismatches,
 			 this->qopens,this->qindels,this->topens,this->tindels,this->goodness,
 			 this->watsonp,this->cdna_direction,this->defect_rate,
@@ -564,7 +631,7 @@ Stage3_print_map (T this, IIT_T map_iit, int pathnum, bool map_bothstrands_p) {
   Genomicpos_T position1, position2;
   Pair_T start, end;
   int chrpos1, chrpos2;
-  Intlist_T iit_matches = NULL;
+  int *iit_matches = NULL, nmatches;
   int typeint;
   char *typestring;
 
@@ -586,33 +653,33 @@ Stage3_print_map (T this, IIT_T map_iit, int pathnum, bool map_bothstrands_p) {
 
   if (map_bothstrands_p == true) {
     if (position1 < position2) {
-      iit_matches = IIT_get(map_iit,position1,position2);
+      iit_matches = IIT_get(&nmatches,map_iit,position1,position2);
     } else {
-      iit_matches = IIT_get(map_iit,position2,position1);
+      iit_matches = IIT_get(&nmatches,map_iit,position2,position1);
     }
-    printf("  Map hits for path %d (%d):\n",pathnum,Intlist_length(iit_matches));
-    IIT_print(map_iit,iit_matches,true);
+    printf("  Map hits for path %d (%d):\n",pathnum,nmatches);
+    IIT_print(map_iit,iit_matches,nmatches,true);
   } else if ((typeint = IIT_typeint(map_iit,typestring)) < 0) {
     fprintf(stderr,"Warning: no type %s in %s.  Ignoring type.\n",typestring,IIT_name(map_iit));
     if (position1 < position2) {
-      iit_matches = IIT_get(map_iit,position1,position2);
+      iit_matches = IIT_get(&nmatches,map_iit,position1,position2);
     } else {
-      iit_matches = IIT_get(map_iit,position2,position1);
+      iit_matches = IIT_get(&nmatches,map_iit,position2,position1);
     }
-    printf("  Map hits for path %d (%d):\n",pathnum,Intlist_length(iit_matches));
-    IIT_print(map_iit,iit_matches,false);
+    printf("  Map hits for path %d (%d):\n",pathnum,nmatches);
+    IIT_print(map_iit,iit_matches,nmatches,false);
   } else {
     if (position1 < position2) {
-      iit_matches = IIT_get_typed(map_iit,position1,position2,typeint);
+      iit_matches = IIT_get_typed(&nmatches,map_iit,position1,position2,typeint);
     } else {
-      iit_matches = IIT_get_typed(map_iit,position2,position1,typeint);
+      iit_matches = IIT_get_typed(&nmatches,map_iit,position2,position1,typeint);
     }
-    printf("  Map hits for path %d (%d):\n",pathnum,Intlist_length(iit_matches));
-    IIT_print(map_iit,iit_matches,false);
+    printf("  Map hits for path %d (%d):\n",pathnum,nmatches);
+    IIT_print(map_iit,iit_matches,nmatches,false);
   }
   printf("\n");
 
-  Intlist_free(&iit_matches);
+  FREE(iit_matches);
   return;
 }
 
@@ -667,12 +734,12 @@ Stage3_print_protein_genomic (T this, int wraplength, bool fulllengthp) {
 void
 Stage3_print_compressed (T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 char *version, int pathnum, int npaths,
-			 bool checksump, bool chimerap, bool zerobasedp) {
+			 bool checksump, int chimerapos, bool zerobasedp) {
   Pair_print_compressed(queryseq,version,pathnum,npaths,
 			this->nexons,this->coverage,Stage3_fracidentity(this),
 			this->pairs,this->npairs,this->chrnum,this->chrpos,this->chroffset,
 			chromosome_iit,this->genomiclength,checksump,
-			chimerap,this->strain,this->watsonp,zerobasedp);
+			chimerapos,this->strain,this->watsonp,zerobasedp);
   return;
 }
 
@@ -2265,12 +2332,8 @@ path_compute (int *intronlen, int *nonintronlen,
 
 
 T
-Stage3_copy (T old, Sequence_T queryseq, Genome_T genome, 
-	     char *gbuffer1, char *gbuffer2, int gbufferlen, int ngap,
-	     Pairpool_T pairpool) {
-  T new;
+Stage3_copy (T old, Pairpool_T pairpool) {
   List_T pairs_fwd, pairs_rev;
-  Sequence_T genomicseg;
 
   pairs_fwd = Pairpool_transfer_copy(NULL,old->pairs_fwd,pairpool);
   pairs_rev = Pairpool_transfer_copy(NULL,old->pairs_rev,pairpool);
@@ -2278,63 +2341,28 @@ Stage3_copy (T old, Sequence_T queryseq, Genome_T genome,
   pairs_fwd = List_reverse(pairs_fwd);
   pairs_rev = List_reverse(pairs_rev);
 
-  genomicseg = Genome_get_segment(genome,old->genomicstart,old->genomiclength,!old->watsonp,
-				  gbuffer1,gbuffer2,gbufferlen);
-
-  new = Stage3_new(pairs_fwd,pairs_rev,genomicseg,old->matchpairend,old->straintype,old->strain,
-		   old->chrnum,old->chrpos,old->chroffset,
-		   Sequence_length_full(queryseq),(Genomicpos_T) Sequence_length(genomicseg),
-		   old->watsonp,old->defect_rate,ngap);
-
-  Sequence_free(&genomicseg);
-
-  return new;
+  /* ngap of -1 turns off merge_gaps() in pair.c */
+  return Stage3_new(pairs_fwd,pairs_rev,old->matchpairend,old->straintype,old->strain,
+		    old->chrnum,old->chrpos,old->chroffset,
+		    old->querylength,old->genomiclength,
+		    old->watsonp,old->defect_rate,/*ngap*/-1);
 }
 
 T
-Stage3_copy_bounded (T old, Sequence_T queryseq, Genome_T genome, 
-		     char *gbuffer1, char *gbuffer2, int gbufferlen, int ngap,
-		     int minpos, int maxpos, int maxpeelback, int nullgap, 
-		     int extramaterial_end, int extramaterial_paired,
-		     int extraband_single, int extraband_end, int extraband_paired,
-		     Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
-
-  T new;
+Stage3_copy_bounded (T old, Pairpool_T pairpool, int minpos, int maxpos) {
   List_T pairs_fwd, pairs_rev;
-  Sequence_T genomicseg;
-  int introndir;
-
-  if (old->pairs_fwd == NULL) {
-    introndir = -1;
-  } else if (old->pairs_rev == NULL) {
-    introndir = +1;
-  } else {
-    introndir = 0;
-  }
 
   pairs_fwd = Pairpool_transfer_copy_bounded(NULL,old->pairs_fwd,pairpool,minpos,maxpos);
   pairs_rev = Pairpool_transfer_copy_bounded(NULL,old->pairs_rev,pairpool,minpos,maxpos);
 
-  /*
-  pairs_fwd = build_pairs_end5(pairs_fwd,queryseq_ptr,genomicseg_ptr,+1,introndir,maxpeelback,nullgap,
-			       extramaterial_end,extramaterial_paired,extraband_end,
-			       old->defect_rate,ngap,pairpool,dynprogR);
-  */
-
   pairs_fwd = List_reverse(pairs_fwd);
   pairs_rev = List_reverse(pairs_rev);
 
-  genomicseg = Genome_get_segment(genome,old->genomicstart,old->genomiclength,!old->watsonp,
-				  gbuffer1,gbuffer2,gbufferlen);
-
-  new = Stage3_new(pairs_fwd,pairs_rev,genomicseg,old->matchpairend,old->straintype,old->strain,
-		   old->chrnum,old->chrpos,old->chroffset,
-		   Sequence_length_full(queryseq),(Genomicpos_T) Sequence_length(genomicseg),
-		   old->watsonp,old->defect_rate,ngap);
-
-  Sequence_free(&genomicseg);
-
-  return new;
+  /* ngap of -1 turns off merge_gaps() in pair.c */
+  return Stage3_new(pairs_fwd,pairs_rev,old->matchpairend,old->straintype,old->strain,
+		    old->chrnum,old->chrpos,old->chroffset,
+		    old->querylength,old->genomiclength,
+		    old->watsonp,old->defect_rate,/*ngap*/-1);
 }
 
 
@@ -2360,21 +2388,20 @@ Stage3_compute (Stage2_T stage2, Sequence_T queryseq, Sequence_T genomicseg,
   bool fwdp, revp;
   Genomicpos_T genomiclength;
   char *queryseq_ptr, *genomicseg_ptr;
-  Intlist_T typematches;
+  int *typematches, nmatches;
 
   debug(printf("Stage 3: *** Starting stage 3 for genomiclength %u at chrnum %d:%d\n",
-	       Sequence_length(genomicseg),chrnum,chrpos);
-	FREE(chrstring));
+	       Sequence_fulllength(genomicseg),chrnum,chrpos));
 
   defect_rate = Stage2_defect_rate(stage2);
   nfwdintrons = Stage2_nfwdintrons(stage2);
   nrevintrons = Stage2_nrevintrons(stage2);
   nunkintrons = Stage2_nunkintrons(stage2);
 
-  querylength = Sequence_length_full(queryseq);
-  genomiclength = (Genomicpos_T) Sequence_length(genomicseg);;
-  queryseq_ptr = Sequence_pointer_full(queryseq);
-  genomicseg_ptr = Sequence_pointer(genomicseg);
+  querylength = Sequence_fulllength(queryseq);
+  genomiclength = (Genomicpos_T) Sequence_fulllength(genomicseg);;
+  queryseq_ptr = Sequence_fullpointer(queryseq);
+  genomicseg_ptr = Sequence_fullpointer(genomicseg);
 
   if (nfwdintrons == 0 && nrevintrons == 0) {
     /* Should try both even if no introns (cf, AA011563) */
@@ -2417,7 +2444,7 @@ Stage3_compute (Stage2_T stage2, Sequence_T queryseq, Sequence_T genomicseg,
     pairs_rev = NULL;
   }
 
-  this = Stage3_new(pairs_fwd,pairs_rev,genomicseg,matchpairend,straintype,strain,
+  this = Stage3_new(pairs_fwd,pairs_rev,matchpairend,straintype,strain,
 		    chrnum,chrpos,chroffset,querylength,genomiclength,watsonp,defect_rate,ngap);
 
   if (this == NULL) {
@@ -2426,16 +2453,17 @@ Stage3_compute (Stage2_T stage2, Sequence_T queryseq, Sequence_T genomicseg,
     return this;
   } else {
     if (watsonp) {
-      typematches = IIT_get_typed(altstrain_iit,this->genomicstart,this->genomicend,straintype);
+      typematches = IIT_get_typed(&nmatches,altstrain_iit,this->genomicstart,this->genomicend,straintype);
     } else {
-      typematches = IIT_get_typed(altstrain_iit,this->genomicend,this->genomicstart,straintype);
+      typematches = IIT_get_typed(&nmatches,altstrain_iit,this->genomicend,this->genomicstart,straintype);
     }
     if (typematches == NULL) {
       Stage3_free(&this);
       return NULL;
     } else {
-      Intlist_free(&typematches);
+      FREE(typematches);
       return this;
     }
   }
 }
+

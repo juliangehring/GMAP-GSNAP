@@ -26,7 +26,7 @@ GMAP_SOURCES = bool.h types.h separator.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
  mutation.c mutation.h translation.c translation.h \
- chimera.c chimera.h stage3.c stage3.h \
+ nmath.c nmath.h chimera.c chimera.h stage3.c stage3.h \
  request.c request.h reqpost.c reqpost.h \
  result.c result.h blackboard.c blackboard.h \
  params.c params.h datadir.c datadir.h \

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.3 2005/03/04 22:38:46 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.5 2005/05/04 18:49:01 twu Exp $";
 
 #include "chrsubset.h"
 #include <stdio.h>
@@ -279,6 +279,7 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
       new->includep = includep;
     }
 
+    fclose(fp);
     debug(printf("User didn't specify a subset.  Using first list: %s\n",subsetname));
     
   } else {
@@ -301,13 +302,15 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
       new->name = subsetname;
       new->includep = includep;
     }
+    fclose(fp);
   }
-  close(fp);
   FREE(filename);
 
   debug(
-	for (i = 0; i < IIT_nintervals(chromosome_iit); i++) {
-	  printf(" %d: %d\n",i,new->includep[i]);
+	if (new != NULL) {
+	  for (i = 0; i < IIT_nintervals(chromosome_iit); i++) {
+	    printf(" %d: %d\n",i,new->includep[i]);
+	  }
 	}
 	);
 

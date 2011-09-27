@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: reader.c,v 1.13 2005/02/15 01:58:50 twu Exp $";
+static char rcsid[] = "$Id: reader.c,v 1.14 2005/05/04 18:04:24 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,10 +15,23 @@ static char rcsid[] = "$Id: reader.c,v 1.13 2005/02/15 01:58:50 twu Exp $";
 
 #define T Reader_T
 struct T {
+  int querystart;
+  int queryend;
+
   char *startinit;
   char *startptr;
   char *endptr;
 };
+
+int
+Reader_querystart (T this) {
+  return this->querystart;
+}
+
+int
+Reader_queryend (T this) {
+  return this->queryend;
+}
 
 int
 Reader_startpos (T this) {
@@ -32,12 +45,12 @@ Reader_endpos (T this) {
 
 
 void
-Reader_reset_ends (T this, int querystart, int queryend) {
+Reader_reset_ends (T this) {
   char *sequence;
 
   sequence = this->startinit;
-  this->startptr = &(sequence[querystart]);
-  this->endptr = &(sequence[queryend]);
+  this->startptr = &(sequence[this->querystart]);
+  this->endptr = &(sequence[this->queryend-1]);
   return;
 }
 
@@ -47,9 +60,12 @@ T
 Reader_new (char *sequence, int querystart, int queryend) {
   T new = (T) MALLOC(sizeof(*new));
 
+  new->querystart = querystart;
+  new->queryend = queryend;
+
   new->startinit = sequence;
   new->startptr = &(sequence[querystart]);
-  new->endptr = &(sequence[queryend]);
+  new->endptr = &(sequence[queryend-1]);
   return new;
 }
 

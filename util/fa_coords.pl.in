@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: fa_coords.pl.in,v 1.3 2005/03/11 17:57:19 twu Exp $
+# $Id: fa_coords.pl.in,v 1.6 2005/05/06 20:33:15 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
@@ -19,16 +19,56 @@ $flags = "";
 $flags .= "-o $outfile";
 
 $OUT = new IO::File(">$outfile") or die "Cannot write to file $outfile";
+print $OUT "#contig" . "\t" . "coordinates" . "\t" . "altstrain\n";
 parse_fa_files($OUT,\@fastafiles);
 close($OUT);
 
+@errors = ();
+foreach $chr (keys %lowest) {
+  if ($lowest{$chr} > 1) {
+    push @errors,"  First contig in chromosome $chr starts at position $lowest{$chr}";
+  }
+}
+
+
+if ($#errors >= 0) {
+  print STDOUT "\n";
+  print STDOUT "*** Possible errors: ***\n";
+  foreach $error (@errors) {
+    print $error . "\n";
+  }
+  print STDOUT "\n";
+  print STDOUT "  Some the errors above may be addressed by specifying the contigs to be on\n";
+  print STDOUT "  alternate strains of existing chromosomes, rather than on independent\n";
+  print STDOUT "  alternate chromosomes.\n";
+  print STDOUT "  You may make the appropriate changes in $outfile, by adding an alternate\n";
+  print STDOUT "  strain in column 3, and specifying an existing chromosome in column 2\n";
+  print STDOUT "\n";
+}
+
 print STDOUT "\n";
 print STDOUT "============================================================\n";
-print STDOUT "Contig mapping information has been written to file $outfile\n";
-print STDOUT "using the command:\n";
-print STDOUT "    fa_coords $flags " . join(" ",@fastafiles) . "\n";
+print STDOUT "Contig mapping information has been written to file $outfile.\n";
+if ($#errors >= 0) {
+  printf STDOUT ("%d possible errors were found (listed above)\n",$#errors+1);
+}
+print STDOUT "\n";
+print STDOUT "Now look at $outfile (you may edit it manually if you wish)\n";
+print STDOUT "and then run\n";
+print STDOUT "\n";
+if ($outfile ne "coords.txt") {
+  print STDOUT "    gmap_setup -c $outfile -d <db_name> <fastafiles>\n";
+} else {
+  print STDOUT "    gmap_setup -d <db_name> <fastafiles>\n";
+}
+print STDOUT "\n";
+print STDOUT "where you decide on the db_name, and the fastafiles are the\n";
+print STDOUT "same you used in running this fa_coords program.\n";
+print STDOUT "\n";
+print STDOUT "Note that gmap_setup can take a while to index a large genome\n";
 print STDOUT "============================================================\n";
 print STDOUT "\n";
+
 
 exit;
 
@@ -37,10 +77,12 @@ exit;
 sub parse_fa_files {
   my ($OUT, $fastafiles) = @_;
   my ($FP, $line, $strain);
-  my $seglength = 0;
+  my $seglength;
 
   foreach $file (@ {$fastafiles}) {
+    printf STDERR "Opening file $file\n";
     $FP = new IO::File("$file") or die "Can't open file $file";
+    $seglength = 0;
     while (defined($line = <$FP>)) {
       chop $line;
       if ($line !~ /\S/) {
@@ -49,9 +91,17 @@ sub parse_fa_files {
 	$seglength += length($line);
       } else {
 	if ($seglength > 0) {
-	  printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+1,$chrpos{$chr}+$seglength);
+	  printf STDERR ("%d (length = %d nt)\n",$chrpos{$chr}+$seglength-1,$seglength);
+	  printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+	  if (!defined($lowest{$chr})) {
+	    $lowest{$chr} = $chrpos{$chr};
+	  } elsif ($chrpos{$chr} < $lowest{$chr}) {
+	    $lowest{$chr} = $chrpos{$chr};
+	  }
 	  $chrpos{$chr} += $seglength;
 	}
+
+	print STDERR "  Header line: $line\n";
 	$seglength = 0;
 	($contig) = $line =~ /^>(\S+)/;
 	if ($line =~ /\/chr=(\S+):(\d+)\D+\d+/) {
@@ -59,21 +109,39 @@ sub parse_fa_files {
 	  $chrpos{$chr} = $2;
 	} elsif ($line =~ /\/chr=(\S+)/) {
 	  $chr = $1;
+	} elsif ($line =~ /chromosome:[^:]+:([^:]+):(\d+)/) {
+	  # Ensembl format: chromosome:NCBI35:22:1:49554710:1
+	  $chr = $1;
+	  $chrpos{$chr} = $2;
 	} elsif ($line =~ /chr(\S+):(\d+)\D+\d+/) {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
 	} elsif ($line =~ /chr(\S+)/) {
 	  $chr = $1;
 	} else {
-	  die "Can't find chromosome in $line";
+	  die "Can't find chromosome in header $line";
 	}
+
+	if ($chr =~ /(\S+?)_N\D_\d+/) {
+	  # Ensembl notation for unmapped contig
+	  $chr = $1 . "U";
+	}
+
 	if (!defined($chrpos{$chr})) {
-	  $chrpos{$chr} = 0;
+	  $chrpos{$chr} = 1;
 	}
+	printf STDERR ("  Processing contig %s at chromosomal coordinates %s:%d..",
+		       $contig,$chr,$chrpos{$chr});
       }
     }
     if ($seglength > 0) {
-      printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+1,$chrpos{$chr}+$seglength);
+      printf STDERR ("%d (length = %d nt)\n",$chrpos{$chr}+$seglength-1,$seglength);
+      printf $OUT ("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+      if (!defined($lowest{$chr})) {
+	$lowest{$chr} = $chrpos{$chr};
+      } elsif ($chrpos{$chr} < $lowest{$chr}) {
+	$lowest{$chr} = $chrpos{$chr};
+      }
     }
     close($FP);
   }

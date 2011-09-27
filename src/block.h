@@ -1,4 +1,4 @@
-/* $Id: block.h,v 1.34 2005/02/15 01:58:50 twu Exp $ */
+/* $Id: block.h,v 1.35 2005/05/04 18:03:48 twu Exp $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"
@@ -16,10 +16,10 @@ Block_forward (T this);
 extern Storedoligomer_T
 Block_revcomp (T this);
 extern void
-Block_reset_ends (T this, int startpos, int endpos);
+Block_reset_ends (T this);
 
 extern T
-Block_new (cDNAEnd_T cdnaend, Reader_T reader, int seqlength);
+Block_new (cDNAEnd_T cdnaend, Reader_T reader);
 extern void
 Block_free (T *old);
 extern bool

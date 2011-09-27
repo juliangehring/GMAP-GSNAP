@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c,v 1.52 2005/03/11 17:56:19 twu Exp $";
+static char rcsid[] = "$Id: segmentpos.c,v 1.53 2005/04/19 15:50:23 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -111,16 +111,16 @@ Segmentpos_compare (const void *x, const void *y) {
 }
 
 static bool
-altstrain_sufficient_p (Intlist_T indices, IIT_T contig_iit, Genomicpos_T position1,
+altstrain_sufficient_p (int *indices, int nindices, IIT_T contig_iit, Genomicpos_T position1,
 			Genomicpos_T position2, char *align_strain) {
-  Intlist_T p;
+  int i;
   Genomicpos_T contig_start, contig_end, contig_length;
   int index, contig_straintype;
   Interval_T interval;
 
-  p = indices;
-  while (p != NULL) {
-    index = Intlist_head(p);
+  i = 0;
+  while (i < nindices) {
+    index = indices[i];
     interval = IIT_interval(contig_iit,index);
     contig_straintype = Interval_type(interval);
     if (!strcmp(IIT_typestring(contig_iit,contig_straintype),align_strain)) {
@@ -134,7 +134,7 @@ altstrain_sufficient_p (Intlist_T indices, IIT_T contig_iit, Genomicpos_T positi
 	return true;
       }
     }
-    p = Intlist_next(p);
+    i++;
   }
 
   debug(printf("Altstrain is not sufficient\n"));
@@ -184,17 +184,17 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
   int relstart, relend;		/* Need to be signed int, not long or unsigned long */
   int index, contig_straintype, i = 0;
   char *comma1, *comma2, *annotation, *contig_strain;
-  Intlist_T indices, p;
+  int *indices, nindices, j;
   Interval_T interval;
   bool printreferencep, printaltp, firstprintp = false;
 
   printf("    Accessions: ");
 
-  p = indices = IIT_get(contig_iit,position1,position2);
+  indices = IIT_get(&nindices,contig_iit,position1,position2);
   if (referencealignp == true) {
     printreferencep = true;
     printaltp = false;
-  } else if (altstrain_sufficient_p(indices,contig_iit,position1,position2,align_strain) == true) {
+  } else if (altstrain_sufficient_p(indices,nindices,contig_iit,position1,position2,align_strain) == true) {
     printreferencep = false;
     printaltp = true;
   } else {
@@ -202,8 +202,9 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
     printaltp = true;
   }
 
-  while (p != NULL && i < MAXACCESSIONS) {
-    index = Intlist_head(p);
+  j = 0;
+  while (j < nindices && i < MAXACCESSIONS) {
+    index = indices[j];
     interval = IIT_interval(contig_iit,index);
     contig_straintype = Interval_type(interval);
     if (contig_print_p(contig_iit,contig_straintype,referencealignp,align_strain,
@@ -244,11 +245,14 @@ Segmentpos_print_accessions (IIT_T contig_iit, Genomicpos_T position1,
 
       i++;
     }
-    p = Intlist_next(p);
+    j++;
   }
   printf("\n");
 
-  Intlist_free(&indices);
+  if (indices != NULL) {
+    FREE(indices);
+  }
+
   return;
 }
 

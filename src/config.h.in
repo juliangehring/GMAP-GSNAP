@@ -31,6 +31,9 @@
 /* Define to 1 if you have the `log' function. */
 #undef HAVE_LOG
 
+/* Define to 1 if you have the `madvise' function. */
+#undef HAVE_MADVISE
+
 /* Define to 1 if you have the `memcpy' function. */
 #undef HAVE_MEMCPY
 

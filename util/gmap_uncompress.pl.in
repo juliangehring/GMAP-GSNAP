@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_uncompress.pl.in,v 1.15 2005/10/06 23:15:13 twu Exp $
+# $Id: gmap_uncompress.pl.in,v 1.16 2005/11/05 00:31:00 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -473,7 +473,7 @@ sub print_alignment {
       $taildots =~ s/\s+$//;
       printf ("%14d %s\n",$i,$taildots);
       if ($strand eq "+") {
-	$chrstring = sprintf("+s:%d",$chr,$gpos);
+	$chrstring = sprintf("+%s:%d",$chr,$gpos);
       } elsif ($strand eq "-") {
 	if ($invertmode == 2) {
 	  $chrstring = sprintf("+%s:%d",$chr,abs($gpos));

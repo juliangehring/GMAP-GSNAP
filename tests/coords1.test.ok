@@ -1,2 +1,3 @@
+# To exclude a contig, place a '#' sign at the beginning of the line
 #contig	coordinates	altstrain
 chr17test	17test:1..200000

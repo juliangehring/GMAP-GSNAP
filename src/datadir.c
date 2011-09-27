@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c,v 1.22 2005/10/14 19:33:03 twu Exp $";
+static char rcsid[] = "$Id: datadir.c,v 1.24 2006/04/21 16:36:32 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -29,6 +29,7 @@ static char rcsid[] = "$Id: datadir.c,v 1.22 2005/10/14 19:33:03 twu Exp $";
 # endif
 #endif
 #include "mem.h"
+#include "fopen.h"
 
 /* Note: GMAPDB is defined externally by configure */
 #ifndef GMAPDB
@@ -59,7 +60,7 @@ find_homedir_config () {
       (p = getpwnam(user)) != NULL) {
     configfile = (char *) CALLOC(strlen(p->pw_dir)+strlen("/")+strlen(".gmaprc")+1,sizeof(char));
     sprintf(configfile,"%s/.gmaprc",p->pw_dir);
-    fp = fopen(configfile,"r");
+    fp = FOPEN_READ_TEXT(configfile);
     FREE(configfile);
   }
   return fp;
@@ -73,7 +74,9 @@ find_fileroot (char *genomesubdir) {
   DIR *dp;
 
   if ((dp = opendir(genomesubdir)) == NULL) {
-    fprintf(stderr,"Unable to open directory %s\n",genomesubdir);
+    fprintf(stderr,"Unable to open default directory %s.  Either recompile GMAP\n",genomesubdir);
+    fprintf(stderr,"to have the correct default directory (seen by doing gmap --version),\n");
+    fprintf(stderr,"or add the -D flag to gmap to specify the genome directory.\n");
     exit(9);
   }
   while ((entry = readdir(dp)) != NULL) {
@@ -105,7 +108,7 @@ get_dbversion (char *filename) {
   char *dbversion = NULL, Buffer[100], *p;
   FILE *fp;
 
-  fp = fopen(filename,"r");
+  fp = FOPEN_READ_TEXT(filename);
   if (!fp) {
     return NULL;
   } else if (fgets(Buffer,100,fp) == NULL) {
@@ -141,7 +144,7 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
     genomedir = (char *) CALLOC(strlen(getenv("GMAPDB"))+1,sizeof(char));
     strcpy(genomedir,getenv("GMAPDB"));
 
-  } else if ((fp = fopen("./.gmaprc","r")) != NULL) {
+  } else if ((fp = FOPEN_READ_TEXT("./.gmaprc")) != NULL) {
     genomedir = read_config_file(fp,"GMAPDB");
     fclose(fp);
 
@@ -171,7 +174,7 @@ Datadir_find_genomesubdir (char **fileroot, char **dbversion,
   filename = (char *) CALLOC(strlen(genomedir) + strlen("/") + strlen(dbroot) + 
 			     strlen(".version") + 1,sizeof(char));
   sprintf(filename,"%s/%s.version",genomedir,dbroot);
-  if ((fp = fopen(filename,"r")) != NULL) {
+  if ((fp = FOPEN_READ_TEXT(filename)) != NULL) {
     /* Found in top-level genomedir */
     fclose(fp);
     FREE(filename);

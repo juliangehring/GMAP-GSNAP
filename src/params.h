@@ -1,4 +1,4 @@
-/* $Id: params.h,v 1.63 2005/07/21 16:54:49 twu Exp $ */
+/* $Id: params.h,v 1.64 2005/11/19 06:36:13 twu Exp $ */
 #ifndef PARAMS_INCLUDED
 #define PARAMS_INCLUDED
 #include "bool.h"
@@ -59,6 +59,8 @@ extern int
 Params_extraband_end (T this);
 extern int
 Params_extraband_paired (T this);
+extern int
+Params_maxmutations (T this);
 extern T
 Params_new (Genome_T genome, IIT_T altstrain_iit, 
 #ifdef PMAP
@@ -71,7 +73,8 @@ Params_new (Genome_T genome, IIT_T altstrain_iit,
 	    int maxextension, int stuttercycles, int stutterhits, 
 	    int indexsize, int maxpeelback, int sufflookback, int nsufflookback, int nullgap, 
 	    int extramaterial_end, int extramaterial_paired,
-	    int extraband_single, int extraband_end, int extraband_paired);
+	    int extraband_single, int extraband_end, int extraband_paired,
+	    int maxmutations);
 extern void
 Params_free (T *old);
 

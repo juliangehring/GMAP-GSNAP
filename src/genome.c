@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.81 2005/10/21 16:42:55 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.84 2006/03/05 03:14:48 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -28,6 +28,7 @@ static char rcsid[] = "$Id: genome.c,v 1.81 2005/10/21 16:42:55 twu Exp $";
 #endif
 
 #include "assert.h"
+#include "except.h"
 #include "mem.h"
 #include "types.h"
 #include "access.h"
@@ -47,11 +48,18 @@ static char rcsid[] = "$Id: genome.c,v 1.81 2005/10/21 16:42:55 twu Exp $";
 #define debug(x)
 #endif
 
-/* Patching with strain information */
+/* Print genomic segment */
 #ifdef DEBUG1
 #define debug1(x) x
 #else
 #define debug1(x)
+#endif
+
+/* Patching with strain information */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
 #endif
 
 
@@ -127,7 +135,7 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
     new->access = FILEIO;
 #else
     if (batchp == true) {
-      fprintf(stderr,"Pre-loading uncompressed genome...");
+      fprintf(stderr,"Pre-loading compressed genome...");
       new->blocks = (UINT4 *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
 						      filename,sizeof(UINT4));
       if (new->blocks == NULL) {
@@ -157,7 +165,7 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
     new->access = FILEIO;
 #else
     if (batchp == true) {
-      fprintf(stderr,"Pre-loading compressed genome...");
+      fprintf(stderr,"Pre-loading uncompressed genome...");
       new->chars = (char *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
 						    filename,sizeof(char));
       if (new->chars == NULL) {
@@ -499,11 +507,13 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
   gbuffer1[length] = '\0';
 
   if (revcomp == true) {
-    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
     make_complement_buffered(gbuffer2,gbuffer1,length);
+    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer2,length),false,60,true));
     return Sequence_genomic_new(gbuffer2,length);
   } else {
     debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer1,length),false,60,true));
     return Sequence_genomic_new(gbuffer1,length);
   }
 }
@@ -526,7 +536,7 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
   
   assert(reflen <= gbuffer3len);
   refR = refL + reflen;
-  debug1(printf("refL=%u refR=%u reflen=%u\n",refL,refR,reflen));
+  debug2(printf("refL=%u refR=%u reflen=%u\n",refL,refR,reflen));
 
   /* Work in gbuffer3 */
   memcpy(gbuffer3,gbuffer1,reflen);
@@ -562,7 +572,7 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
     if (allocp == true) {
       FREE(matbuffer);
     }
-    debug1(printf("srcL=%u matR=%u srcR=%u matlen=%u patchlen=%d expansion=%d\n",
+    debug2(printf("srcL=%u matR=%u srcR=%u matlen=%u patchlen=%d expansion=%d\n",
 		  srcL,matR,srcR,matlen,patchlen,expansion));
 
     /* If patchlen < 0, then matR is to left of refL and we are done */
@@ -583,19 +593,21 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
 	shiftdest = shiftsrc + expansion;
 	memmove(shiftdest,shiftsrc,shiftlen*sizeof(char));
 	memcpy(dest,src,expansion*sizeof(char));
-	debug1(printf("  shifted %d\n",shiftlen));
+	debug2(printf("  shifted %d\n",shiftlen));
       }
     }
   }
-  debug1(printf("\n"));
+  debug2(printf("\n"));
 
   if (revcomp == true) {
     make_complement_buffered(gbuffer2,gbuffer3,reflen);
     /* FREE(sequence); */
     debug(printf("Got sequence at %u with length %u, revcomp\n",refL,reflen));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer2,reflen),false,60,true));
     return Sequence_genomic_new(gbuffer2,reflen);
   } else {
     debug(printf("Got sequence at %u with length %u, forward\n",refL,reflen));
+    debug1(Sequence_print(Sequence_genomic_new(gbuffer3,reflen),false,60,true));
     return Sequence_genomic_new(gbuffer3,reflen);
   }
 }

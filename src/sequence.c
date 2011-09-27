@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c,v 1.60 2005/10/14 03:35:32 twu Exp $";
+static char rcsid[] = "$Id: sequence.c,v 1.66 2006/03/17 23:50:55 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,6 +26,13 @@ static char rcsid[] = "$Id: sequence.c,v 1.60 2005/10/14 03:35:32 twu Exp $";
 #define debug(x)
 #endif
 
+/* Pointers for first half and second half */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
+#endif
+
 /***********************************************************************
  *    Definitions:
  *
@@ -48,6 +55,8 @@ struct T {
   int trimstart;		/* Start of trim */
   int trimend;			/* End of trim */
   int fulllength;		/* Full length */
+  int subseq_offset;		/* Used only for subsequences */
+  int skiplength;		/* Used only for sequences longer than MAXSEQLEN */
   bool free_contents_p;
 };
 
@@ -102,6 +111,15 @@ Sequence_trim_end (T this) {
   return this->trimend;
 }
 
+int
+Sequence_subseq_offset (T this) {
+  return this->subseq_offset;
+}
+
+int
+Sequence_skiplength (T this) {
+  return this->skiplength;
+}
 
 void
 Sequence_free (T *old) {
@@ -125,6 +143,8 @@ Sequence_convert_to_nucleotides (T this) {
   T new = (T) MALLOC(sizeof(*new));
   int i;
 
+  new->acc = (char *) NULL;
+  new->restofheader = (char *) NULL;
   new->fulllength = this->fulllength*3;
   new->contents = (char *) CALLOC(new->fulllength+1,sizeof(char));
   for (i = 0; i < new->fulllength; i++) {
@@ -133,6 +153,8 @@ Sequence_convert_to_nucleotides (T this) {
   new->trimstart = 0;
   new->trimend = new->fulllength;
   new->free_contents_p = true;
+  new->subseq_offset = 0;
+  new->skiplength = this->skiplength;
 
   return new;
 }
@@ -164,14 +186,16 @@ Sequence_count_bad (T this, int pos, int max, int direction) {
 
 #define HEADERLEN 512
 #define DISCARDLEN 8192
-#define SEQUENCELEN MAXSEQLEN+2	/* extra spaces for beginning and end */
 
 static char Header[HEADERLEN];
-static char Sequence[SEQUENCELEN];
 static char Discard[DISCARDLEN];
 
-static char *startinit;
-static char *endinit;
+static char Sequence[1+MAXSEQLEN+1]; /* Used by Sequence_read_unlimited */
+static char Sequence1[HALFLEN+1]; /* 1 at end for '\0' */
+static char Sequence2[HALFLEN+3]; /* 1 at end for '\0' and 2 extra in cyclic part for '\n' and '\0' */
+
+static char *Firsthalf;
+static char *Secondhalf;
 static int Initc = '\0';
 
 
@@ -183,7 +207,8 @@ static int
 input_init (FILE *fp) {
   Header[0] = '\0';
   Sequence[0] = '\0';
-  startinit = &(Sequence[1]);
+  Firsthalf = &(Sequence1[0]);
+  Secondhalf = &(Sequence2[0]);
 
   return fgetc(fp);
 }
@@ -244,174 +269,224 @@ input_header (FILE *fp, T this) {
 static void
 print_contents (char *p, int length) {
   int i;
+  FILE *fp = stdout;
 	
-  fprintf(stderr,"\"");
+  fprintf(fp,"\"");
   for (i = 0; i < length; i++) {
     if (*p == '\0') {
-      fprintf(stderr,"_");
+      fprintf(fp,"_");
     } else {
-      fprintf(stderr,"%c",*p);
+      fprintf(fp,"%c",*p);
     }
     p++;
   }
-  fprintf(stderr,"\"\n");
+  fprintf(fp,"\"\n");
   return;
 }
 
 
 /* Returns 1 if done reading sequence, 0 if not */
 static bool
-read_one_sequence (int *nextchar, bool *eolnp, FILE *fp) {
+read_first_half (int *nextchar, bool *eolnp, FILE *fp) {
   int remainder;
-  char *sequence;
-  char *p;
+  char *ptr, *p;
   int c;
 
-  sequence = &(Sequence[1]);
+  ptr = &(Firsthalf[0]);
   if (Initc != '>') {
-    *sequence++ = (char) Initc;
+    *ptr++ = (char) Initc;
   }
-  remainder = (&(Sequence[SEQUENCELEN]) - sequence)/sizeof(char);
+  remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
 
   while (1) {
-    if (remainder <= 1) {
-      debug(fprintf(stderr,"remainder <= 1.  Returning false\n"));
+    if (remainder <= 0) {
+      debug(printf("remainder <= 0.  Returning false\n"));
       *nextchar = EOF;
-      return false;
+      debug1(printf("read_first_half returning length1 of %d\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
+      return (ptr - &(Firsthalf[0]))/sizeof(char);
 
     } else if (feof(fp)) {
       /* EOF in middle of line */
-      *sequence++ = '\0';
-      debug(fprintf(stderr,"EOF.  Returning true\n"));
+      debug(printf("EOF.  Returning true\n"));
       *nextchar = EOF;
-      return true;
+      debug1(printf("read_first_half returning length1 of %d\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
+      return (ptr - &(Firsthalf[0]))/sizeof(char);
 
     } else if (*eolnp == true) {
       if ((c = fgetc(fp)) == EOF || c == '>') {
-	*sequence++ = '\0';
-	debug(fprintf(stderr,"c == EOF or >.  Returning true\n"));
+	debug(printf("c == EOF or >.  Returning true\n"));
 	*nextchar = c;
-	return true;
+	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else if (iscntrl(c)) {
-	debug(fprintf(stderr,"c == control char.  Continuing\n"));
+	debug(printf("c == control char.  Continuing\n"));
       } else if (isspace(c)) {
 	*eolnp = true;
-	debug(fprintf(stderr,"c == NULL.  Continuing\n"));
+	debug(printf("c == NULL.  Continuing\n"));
       } else {
-	*sequence++ = (char) c;
+	*ptr++ = (char) c;
 	remainder--;
 	*eolnp = false;
-	debug(fprintf(stderr,"c == sth.  Continuing\n"));
+	debug(printf("c == sth.  Continuing\n"));
       }
 
     } else {
-      if (fgets(sequence,remainder,fp) == NULL) {
-	*sequence++ = '\0';
-	debug(fprintf(stderr,"line == NULL.  Returning true\n"));
+      debug(printf("Trying to read remainder of %d\n",remainder));
+      if (fgets(ptr,remainder+1,fp) == NULL) {
+	debug(printf("line == NULL.  Returning true\n"));
 	*nextchar = EOF;
-	return true;
+	debug1(printf("read_first_half returning length1 of %d\n",(ptr - &(Firsthalf[0]))/sizeof(char)));
+	return (ptr - &(Firsthalf[0]))/sizeof(char);
       } else {
-	if ((p = rindex(sequence,13)) != NULL) {
+	debug(printf("Read %s\n",ptr));
+	if ((p = rindex(ptr,13)) != NULL) {
 	  /* Handle PC line feed ^M */
-	  *p = '\0';
+	  ptr = p;
 	  *eolnp = true;
-	  debug(fprintf(stderr,"line == EOLN.  Continuing\n"));
-	} else if ((p = rindex(sequence,'\n')) != NULL) {
-	  *p = '\0';
+	  debug(printf("line == EOLN.  Continuing\n"));
+	} else if ((p = rindex(ptr,'\n')) != NULL) {
+	  ptr = p;
 	  *eolnp = true;
-	  debug(fprintf(stderr,"line == EOLN.  Continuing\n"));
+	  debug(printf("line == EOLN.  Continuing\n"));
 	} else {
-	  p = rindex(sequence,'\0');
+	  ptr += strlen(ptr);
 	  *eolnp = false;
-	  debug(fprintf(stderr,"line != EOLN.  Continuing\n"));
+	  debug(printf("line != EOLN.  Continuing\n"));
 	}
-	sequence = p;
-	remainder = (&(Sequence[SEQUENCELEN]) - sequence)/sizeof(char);
+	remainder = (&(Firsthalf[HALFLEN]) - ptr)/sizeof(char);
       }
     }
 
-    debug(print_contents(&(Sequence[0]),SEQUENCELEN));
+    debug(print_contents(&(Firsthalf[0]),HALFLEN+1));
   }
 }
 
+/* returns skip length */
 static int
-discard_one_sequence (int *nextchar, bool eolnp, FILE *fp) {
-  int ncycles = 0;
-  int remainder;
-  char *discard;
+read_second_half (int *nextchar, char **pointer2a, int *length2a, char **pointer2b, int *length2b,
+		  bool eolnp, FILE *fp) {
+  int skiplength, ncycles = 0, remainder, terminator;
+  char *ptr;
   char *p;
   int c;
   
-  discard = &(Discard[0]);
-  remainder = (&(Discard[DISCARDLEN]) - discard)/sizeof(char);
+  ptr = &(Secondhalf[0]);
+  remainder = (&(Secondhalf[HALFLEN+2]) - ptr)/sizeof(char);
 
   while (1) {
-    debug(fprintf(stderr,"\nEnd: %d\n",remainder));
+    debug(printf("\nEnd: %d\n",remainder));
 
     if (feof(fp)) {
-      debug(fprintf(stderr,"EOF.  Returning\n"));
+      debug(printf("EOF.  Returning\n"));
       *nextchar = EOF;
-      return ncycles*DISCARDLEN + (discard - &(Discard[0]))/sizeof(char);
+      break;
 
-    } else if (remainder <= 1) {
-      discard = &(Discard[0]);
-      remainder = (&(Discard[DISCARDLEN]) - discard)/sizeof(char);
-      debug(fprintf(stderr,"remainder <= 1.  Cycling\n"));
+    } else if (remainder <= 0) {
+      ptr = &(Secondhalf[0]);
+      remainder = (&(Secondhalf[HALFLEN+2]) - ptr)/sizeof(char);
+      ncycles++;
+      debug(printf("remainder <= 0.  Cycling\n"));
 
     } else if (eolnp == true) {
       if ((c = fgetc(fp)) == EOF || c == '>') {
-	debug(fprintf(stderr,"c == EOF or >.  Returning\n"));
+	debug(printf("c == EOF or >.  Returning\n"));
 	*nextchar = c;
-	return ncycles*DISCARDLEN + (discard - &(Discard[0]))/sizeof(char);
+	break;
       } else if (iscntrl(c)) {
-	debug(fprintf(stderr,"c == control char.  Continuing\n"));
+	debug(printf("c == control char.  Continuing\n"));
       } else if (isspace(c)) {
-	debug(fprintf(stderr,"c == NULL.  Continuing\n"));
+	debug(printf("c == NULL.  Continuing\n"));
       } else {
-	*discard++ = (char) c;
+	*ptr++ = (char) c;
 	remainder--;
 	eolnp = false;
-	debug(fprintf(stderr,"c == sth.  Continuing\n"));
+	debug(printf("c == sth.  Continuing\n"));
       }
       
     } else {
 
-      if (fgets(discard,remainder,fp) == NULL) {
-	debug(fprintf(stderr,"line == NULL.  Returning\n"));
+      if (fgets(ptr,remainder+1,fp) == NULL) {
+	debug(printf("line == NULL.  Returning\n"));
 	*nextchar = EOF;
-	return ncycles*DISCARDLEN + (discard - &(Discard[0]))/sizeof(char);
+	break;
       } else {
-	if ((p = rindex(discard,'\n')) != NULL) {
-	  *p = '\0';
+	if ((p = rindex(ptr,'\n')) != NULL) {
+	  ptr = p;
 	  eolnp = true;
-	  debug(fprintf(stderr,"line == EOLN.  Continuing\n"));
+	  debug(printf("line == EOLN.  Continuing\n"));
 	} else {
-	  p = rindex(discard,'\0');
+	  ptr += strlen(ptr);
 	  eolnp = false;
-	  debug(fprintf(stderr,"line != EOLN.  Continuing\n"));
+	  debug(printf("line != EOLN.  Continuing\n"));
 	}
-	discard = p;
-	remainder = (&(Discard[DISCARDLEN]) - discard)/sizeof(char);
+	remainder = (&(Secondhalf[HALFLEN+2]) - ptr)/sizeof(char);
       }
     }
 
-    debug(print_contents(&(Discard[0]),DISCARDLEN));
+    debug(print_contents(&(Secondhalf[0]),HALFLEN+3));
   }
+
+  terminator = (ptr - &(Secondhalf[0]))/sizeof(char);
+  debug(printf("ncycles = %d, terminator is %d\n",ncycles,terminator));
+  if (ncycles == 0) {
+    *length2a = 0;
+    if (terminator < HALFLEN) {
+      skiplength = 0;
+    } else {
+      skiplength = terminator-HALFLEN;
+    }
+  } else {
+    *length2a = HALFLEN-terminator;
+    skiplength = ncycles*(HALFLEN+2) + terminator-HALFLEN;
+  }
+  if (*length2a <= 0) {
+    *length2a = 0;
+    *pointer2a = (char *) NULL;
+  } else {
+    *pointer2a = &(Secondhalf[HALFLEN+2-(*length2a)]);
+  }
+  if (terminator == 0) {
+    *length2b = 0;
+    *pointer2b = (char *) NULL;
+  } else if (terminator > HALFLEN) {
+    *length2b = HALFLEN;
+    *pointer2b = &(ptr[-(*length2b)]);
+  } else {
+    *length2b = terminator;
+    *pointer2b = &(Secondhalf[0]);
+  }
+
+  return skiplength;
 }
 
 /* Returns sequence length */
 static int
-input_sequence (int *nextchar, int *length, int *skiplength, FILE *fp) {
+input_sequence (int *nextchar, char **pointer1, int *length1, char **pointer2a, int *length2a,
+		char **pointer2b, int *length2b, int *skiplength, FILE *fp) {
   bool eolnp = true;
+  int fulllength;
+  char *ptr;
 
-  if (read_one_sequence(&(*nextchar),&eolnp,fp) == true) {
+  *pointer1 = &(Firsthalf[0]);
+  *pointer2a = (char *) NULL;
+  *length2a = 0;
+  *pointer2b = (char *) NULL;
+  *length2b = 0;
+
+  if ((*length1 = read_first_half(&(*nextchar),&eolnp,fp)) == 0) {
+    *pointer1 = (char *) NULL;
+  } else if (*length1 < HALFLEN) {
     *skiplength = 0;
   } else {
-    *skiplength = discard_one_sequence(&(*nextchar),eolnp,fp);
+    *skiplength = read_second_half(&(*nextchar),&(*pointer2a),&(*length2a),
+				   &(*pointer2b),&(*length2b),eolnp,fp);
+    debug1(printf("read_second_half returns skiplength of %d, length2a=%d, length2b=%d\n",
+		  *skiplength,*length2a,*length2b));
   }
-  endinit = rindex(startinit,'\0') - 1;
-  *length = (endinit - startinit + 1)/sizeof(char);
-  return *length;
+
+  debug1(printf("length1 = %d, length2a = %d, length2b = %d\n",
+		*length1,*length2a,*length2b));
+
+  return (*length1) + (*length2a) + (*length2b);
 }
 
 /* Used only by extern procedures (outside of this file).  Internal
@@ -427,6 +502,8 @@ Sequence_genomic_new (char *contents, int length) {
   new->trimend = new->fulllength = length;
   new->free_contents_p = false;	/* Called only by Genome_get_segment, which provides
 				   its own buffer */
+  new->subseq_offset = 0;
+  new->skiplength = 0;
   return new;
 }
 
@@ -478,6 +555,13 @@ Sequence_subsequence (T this, int start, int end) {
   end /= 3;
 #endif
 
+  if (start < 0) {
+    start = 0;
+  }
+  if (end > this->fulllength) {
+    end = this->fulllength;
+  }
+
   if (end <= start) {
     return NULL;
   } else {
@@ -494,6 +578,8 @@ Sequence_subsequence (T this, int start, int end) {
       new->trimend = new->fulllength;
     }
     new->free_contents_p = false;
+    new->subseq_offset = start;
+    new->skiplength = this->skiplength;
     return new;
   }
 }
@@ -510,6 +596,8 @@ Sequence_revcomp (T this) {
   new->trimstart = this->trimstart;
   new->trimend = this->trimend;
   new->free_contents_p = true;
+  new->subseq_offset = 0;	/* Not sure if this is right */
+  new->skiplength = this->skiplength;
   return new;
 }
 
@@ -539,6 +627,8 @@ Sequence_uppercase (T this) {
   new->trimstart = this->trimstart;
   new->trimend = this->trimend;
   new->free_contents_p = true;
+  new->subseq_offset = this->subseq_offset;
+  new->skiplength = this->skiplength;
   return new;
 }
 
@@ -553,6 +643,7 @@ Sequence_alias (T this) {
   new->trimstart = this->trimstart;
   new->trimend = this->trimend;
   new->free_contents_p = false;
+  new->subseq_offset = this->subseq_offset;
   return new;
 }
 
@@ -566,9 +657,11 @@ Sequence_endstream () {
 */
 
 T
-Sequence_read (int *nextchar, FILE *input) {
+Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   T new;
-  int savelength, skiplength;
+  int fulllength, skiplength;
+  char *pointer1, *pointer2a, *pointer2b;
+  int length1, length2a, length2b;
 
   if (feof(input)) {
     *nextchar = EOF;
@@ -590,23 +683,39 @@ Sequence_read (int *nextchar, FILE *input) {
       *nextchar = EOF;
      return NULL;
   } 
-  if (input_sequence(&(*nextchar),&savelength,&skiplength,input) == 0) {
+  if ((fulllength = input_sequence(&(*nextchar),&pointer1,&length1,&pointer2a,&length2a,
+				   &pointer2b,&length2b,&skiplength,input)) == 0) {
     /* File ends during header.  Continue with a sequence of length 0. */
     /* fprintf(stderr,"File ends after header\n"); */
   }
+  Initc = *nextchar;
 
   if (skiplength > 0) {
-    fprintf(stderr,"Warning: sequence exceeds maximum length of %d.  Truncating middle.\n",MAXSEQLEN);
+    if (maponlyp == false) {
+      fprintf(stderr,"Warning: cDNA sequence exceeds maximum length of %d.  Truncating %d chars in middle.\n",
+	      MAXSEQLEN,skiplength);
+      fprintf(stderr,"  (For long sequences, perhaps you want maponly mode, by providing the '-1' flag.)\n");
+    }
   }
 
-  new->fulllength = savelength + skiplength;
+  new->fulllength = fulllength;
+  new->skiplength = skiplength;
 
   new->trimstart = 0;
   new->trimend = new->fulllength;
 
   new->contents = (char *) CALLOC(new->fulllength+1,sizeof(char));
-  strncpy(new->contents,startinit,new->fulllength);
+  if (length1 > 0) {
+    strncpy(new->contents,pointer1,length1);
+    if (length2a > 0) {
+      strncpy(&(new->contents[length1]),pointer2a,length2a);
+    }
+    if (length2b > 0) {
+      strncpy(&(new->contents[length1+length2a]),pointer2b,length2b);
+    }
+  }
   new->free_contents_p = true;
+  new->subseq_offset = 0;
 
   return new;
 }
@@ -667,6 +776,8 @@ Sequence_read_unlimited (FILE *input) {
     new->trimstart = 0;
 
     new->free_contents_p = true;
+    new->subseq_offset = 0;
+    new->skiplength = 0;
 
     /* Important to initialize for subsequent cDNA reads */
     Initc = '\0';
@@ -689,9 +800,9 @@ void
 Sequence_print_header (T this, bool checksump) {
 
 #ifdef PMAP
-  printf(">%s (%d aa) %s",this->acc,this->fulllength,this->restofheader);
+  printf(">%s (%d aa) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
 #else
-  printf(">%s (%d bp) %s",this->acc,this->fulllength,this->restofheader);
+  printf(">%s (%d bp) %s",this->acc,this->fulllength+this->skiplength,this->restofheader);
 #endif
   if (checksump == true) {
     printf(" md5:");
@@ -734,6 +845,21 @@ Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp) {
   }
   return;
 }
+
+void
+Sequence_print_raw (T this) {
+  int i = 0, pos, start, end;
+  char uppercaseCode[128] = UPPERCASE;
+
+  start = 0;
+  end = this->fulllength;
+
+  for (pos = start; pos < end; pos++, i++) {
+    printf("%d\n",(int) this->contents[i]);
+  }
+  return;
+}
+
 
 T
 Sequence_substring (T usersegment, unsigned int left, unsigned int length, 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.70 2005/10/19 03:50:08 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.73 2005/12/15 14:21:00 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -34,7 +34,9 @@ static char rcsid[] = "$Id: iit-read.c,v 1.70 2005/10/19 03:50:08 twu Exp $";
 #include <sys/mman.h>		/* For mmap and madvise */
 #include <errno.h>		/* For perror */
 #include "assert.h"
+#include "except.h"
 #include "mem.h"
+#include "fopen.h"
 #include "chrom.h"
 
 /* Integer interval tree. */
@@ -382,7 +384,7 @@ IIT_debug (char *filename) {
   off_t offset = 0;
   int i, stringlen;
 
-  if ((fp = fopen(filename,"r")) == NULL) {
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s\n",filename);
     return;
   } else {
@@ -535,7 +537,7 @@ IIT_read (char *filename, char *name, bool readonlyp) {
   off_t offset = 0;
   int i, stringlen, prot, oflag, mapflags;
 
-  if ((fp = fopen(filename,"r")) == NULL) {
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
     return NULL;
   } else {
     new = (T) MALLOC(sizeof(*new));
@@ -914,6 +916,8 @@ IIT_get (int *nmatches, T this, unsigned int x, unsigned int y) {
 }
 
 
+static const Except_T iit_error = { "IIT problem" };
+
 int
 IIT_get_one (T this, unsigned int x, unsigned int y) {
   int lambda;
@@ -939,6 +943,7 @@ IIT_get_one (T this, unsigned int x, unsigned int y) {
 
   fprintf(stderr,"Expected one match for %u--%u, but got none\n",
 	  x,y);
+  /* abort(); */
   return -1;
 }
 

@@ -1,9 +1,10 @@
-static char rcsid[] = "$Id: intlist.c,v 1.12 2005/10/14 19:03:05 twu Exp $";
+static char rcsid[] = "$Id: intlist.c,v 1.13 2005/11/09 01:12:46 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "intlist.h"
+#include <stdio.h>		/* For sprintf */
 #include <stdlib.h>
 #include <string.h>		/* For strlen */
 #include "mem.h"

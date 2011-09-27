@@ -1,10 +1,11 @@
-/* $Id: sequence.h,v 1.31 2005/10/01 05:03:05 twu Exp $ */
+/* $Id: sequence.h,v 1.36 2006/04/06 23:20:23 twu Exp $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
 #include "bool.h"
 
 #define MAXSEQLEN 1000000
+#define HALFLEN MAXSEQLEN/2
 
 #define T Sequence_T
 typedef struct T *T;
@@ -25,13 +26,17 @@ extern int
 Sequence_trim_start (T this);
 extern int
 Sequence_trim_end (T this);
+extern int
+Sequence_subseq_offset (T this);
+extern int
+Sequence_skiplength (T this);
 
 extern void
 Sequence_free (T *old);
 extern T
 Sequence_genomic_new (char *contents, int length);
 extern T
-Sequence_read (int *nextchar, FILE *input);
+Sequence_read (int *nextchar, FILE *input, bool maponlyp);
 extern T
 Sequence_read_unlimited (FILE *input);
 extern T
@@ -55,6 +60,8 @@ extern void
 Sequence_print_header (T this, bool checksump);
 extern void
 Sequence_print (T this, bool uppercasep, int wraplength, bool trimmedp);
+extern void
+Sequence_print_raw (T this);
 extern char *
 Sequence_accession (T this);
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c,v 1.47 2005/10/14 19:35:58 twu Exp $";
+static char rcsid[] = "$Id: result.c,v 1.50 2006/03/05 03:15:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,8 +11,9 @@ static char rcsid[] = "$Id: result.c,v 1.47 2005/10/14 19:35:58 twu Exp $";
 #define T Result_T
 struct T {
   int id;
+  int worker_id;
+
   Chimera_T chimera;		/* NULL indicates not a chimera */
-  Stage1_T stage1;
   Stage3_T *array;
   int npaths;
   Failure_T failuretype;
@@ -25,15 +26,15 @@ Result_id (T this) {
 }
 
 
-Chimera_T
-Result_chimera (T this) {
-  return this->chimera;
+int
+Result_worker_id (T this) {
+  return this->worker_id;
 }
 
 
-Stage1_T
-Result_stage1 (T this) {
-  return this->stage1;
+Chimera_T
+Result_chimera (T this) {
+  return this->chimera;
 }
 
 
@@ -51,13 +52,13 @@ Result_failuretype (T this) {
 
 
 T
-Result_new (int id, Chimera_T chimera, Stage1_T stage1, 
+Result_new (int id, int worker_id, Chimera_T chimera,
 	    Stage3_T *array, int npaths, Failure_T failuretype) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->id = id;
+  new->worker_id = worker_id;
   new->chimera = chimera;
-  new->stage1 = stage1;
   new->array = array;
   new->npaths = npaths;
   new->failuretype = failuretype;
@@ -69,7 +70,6 @@ Result_free (T *old) {
 #ifdef BETATEST
   Chimera_T chimera;
 #endif
-  Stage1_T stage1;
   Stage3_T stage3;
   int i;
 
@@ -79,9 +79,6 @@ Result_free (T *old) {
       Chimera_free(&chimera);
     }
 #endif
-    if ((stage1 = (*old)->stage1) != NULL) {
-      Stage1_free(&stage1);
-    }
     if ((*old)->array) {
       for (i = 0; i < (*old)->npaths; i++) {
 	stage3 = (*old)->array[i];

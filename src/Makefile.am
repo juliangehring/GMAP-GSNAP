@@ -6,7 +6,9 @@ bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump
 endif
 
 
-GMAP_FILES = bool.h types.h separator.h comp.h \
+if FULLDIST
+
+GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -17,19 +19,49 @@ GMAP_FILES = bool.h types.h separator.h comp.h \
  genome.c genome.h indexdb.c indexdb.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h matchdef.h match.c match.h matchpair.c matchpair.h \
- chrsubset.c chrsubset.h stage1.c stage1.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
+ matchpool.c matchpool.h stage1.c stage1.h \
  oligoindex.c oligoindex.h \
  scores.h intron.c intron.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h \
  boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
- mutation.c mutation.h translation.c translation.h \
+ translation.c translation.h \
+ stage3.c stage3.h \
+ maxent.c maxent.h chimera.c chimera.h \
+ request.c request.h reqpost.c reqpost.h \
+ result.c result.h blackboard.c blackboard.h \
+ params.c params.h datadir.c datadir.h \
+ getopt.c getopt1.c getopt.h gmap.c
+
+else
+
+GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
+ genomicpos.c genomicpos.h compress.c compress.h \
+ genome.c genome.h indexdb.c indexdb.h \
+ oligo.c oligo.h block.c block.h \
+ chrom.c chrom.h segmentpos.c segmentpos.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
+ matchpool.c matchpool.h stage1.c stage1.h \
+ oligoindex.c oligoindex.h \
+ scores.h intron.c intron.h pairdef.h pair.c pair.h \
+ pairpool.c pairpool.h stage2.c stage2.h \
+ smooth.c smooth.h \
+ boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
+ translation.c translation.h \
  stage3.c stage3.h \
  request.c request.h reqpost.c reqpost.h \
  result.c result.h blackboard.c blackboard.h \
  params.c params.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
+
+endif
 
 gmap_CC = $(PTHREAD_CC)
 if FULLDIST
@@ -42,7 +74,7 @@ gmap_LDADD = $(PTHREAD_LIBS)
 dist_gmap_SOURCES = $(GMAP_FILES)
 
 
-PMAP_FILES = bool.h types.h separator.h comp.h \
+PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
@@ -53,29 +85,30 @@ PMAP_FILES = bool.h types.h separator.h comp.h \
  complement.h intlist.c intlist.h md5.c md5.h sequence.c sequence.h \
  reader.c reader.h oligop.c oligop.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h matchdef.h match.c match.h matchpair.c matchpair.h \
- chrsubset.c chrsubset.h stage1.c stage1.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
+ matchpool.c matchpool.h stage1.c stage1.h \
  oligoindex.c oligoindex.h \
  intron.c intron.h scores.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h dynprog.c dynprog.h boyer-moore.c boyer-moore.h \
- mutation.c mutation.h translation.c translation.h stage3.c stage3.h \
+ translation.c translation.h backtranslation.c backtranslation.h \
+ stage3.c stage3.h \
  datadir.c datadir.h request.c request.h reqpost.c reqpost.h result.c result.h \
  blackboard.c blackboard.h params.c params.h \
  getopt.c getopt1.c getopt.h gmap.c
 
 # In front of stage3
-PMAP_FILES_BETA = nmath.c nmath.h maxent.c maxent.h chimera.c chimera.h 
+PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
 
 pmap_CC = $(PTHREAD_CC)
 pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1 -DPMAP=1
 pmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmap_LDADD = $(PTHREAD_LIBS)
-dist_pmap_SOURCES =
+dist_pmap_SOURCES = 
 nodist_pmap_SOURCES = $(PMAP_FILES) $(PMAP_FILES_BETA)
 
 
-GET_GENOME_FILES = bool.h types.h separator.h \
+GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -84,6 +117,7 @@ GET_GENOME_FILES = bool.h types.h separator.h \
  md5.c md5.h complement.h sequence.c sequence.h \
  genome.c genome.h \
  genomicpos.c genomicpos.h chrom.c chrom.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h \
  datadir.c datadir.h getopt.c getopt1.c getopt.h get-genome.c
 
 get_genome_CC = $(PTHREAD_CC)
@@ -93,7 +127,7 @@ get_genome_LDADD = $(PTHREAD_LIBS)
 dist_get_genome_SOURCES = $(GET_GENOME_FILES)
 
 
-IIT_STORE_FILES = bool.h types.h \
+IIT_STORE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -106,7 +140,7 @@ iit_store_LDADD =
 dist_iit_store_SOURCES = $(IIT_STORE_FILES)
 
 
-IIT_GET_FILES = bool.h types.h \
+IIT_GET_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -119,7 +153,7 @@ iit_get_LDADD =
 dist_iit_get_SOURCES = $(IIT_GET_FILES)
 
 
-IIT_DUMP_FILES = bool.h types.h \
+IIT_DUMP_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  intlist.c intlist.h list.c list.h \
@@ -133,7 +167,7 @@ iit_dump_LDADD =
 dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
 
 
-OLIGO_COUNT_FILES = bool.h types.h \
+OLIGO_COUNT_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  interval.c interval.h uintlist.c uintlist.h \
@@ -153,7 +187,7 @@ dist_oligo_count_SOURCES =
 nodist_oligo_count_SOURCES = $(OLIGO_COUNT_FILES)
 
 
-MD5_COMPUTE_FILES = bool.h types.h \
+MD5_COMPUTE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h \
  md5.c md5.h complement.h sequence.c sequence.h \
@@ -165,7 +199,7 @@ dist_md5_compute_SOURCES =
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_FILES)
 
 
-GENOMEPLOT_FILES = bool.h types.h \
+GENOMEPLOT_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  listdef.h list.c list.h interval.c interval.h \
  uintlist.c uintlist.h \
@@ -185,7 +219,7 @@ dist_genomeplot_SOURCES =
 nodist_genomeplot_SOURCES = $(GENOMEPLOT_FILES)
 
 
-PDLIMAGE_FILES = bool.h types.h \
+PDLIMAGE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  listdef.h list.c list.h \
  color.c color.h \
@@ -201,7 +235,7 @@ dist_pdlimage_SOURCES =
 nodist_pdlimage_SOURCES = $(PDLIMAGE_FILES)
 
 
-GMAPINDEX_FILES = bool.h types.h \
+GMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -220,7 +254,7 @@ gmapindex_LDADD = $(PTHREAD_LIBS)
 dist_gmapindex_SOURCES = $(GMAPINDEX_FILES)
 
 
-PMAPINDEX_FILES = bool.h types.h \
+PMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
@@ -234,5 +268,5 @@ pmapindex_CC = $(PTHREAD_CC)
 pmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DPMAP=1
 pmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmapindex_LDADD = $(PTHREAD_LIBS)
-dist_pmapindex_SOURCES =
-nodist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
+dist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
+nodist_pmapindex_SOURCES = 

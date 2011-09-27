@@ -1,4 +1,4 @@
-/* $Id: access.h,v 1.5 2005/10/21 16:42:39 twu Exp $ */
+/* $Id: access.h,v 1.6 2005/10/28 15:50:27 twu Exp $ */
 #ifndef ACCESS_INCLUDED
 #define ACCESS_INCLUDED
 
@@ -24,6 +24,9 @@ Access_filesize (char *filename);
 
 extern int
 Access_fileio (char *filename);
+
+extern int
+Access_fileio_rw (char *filename);
 
 extern void *
 Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize);

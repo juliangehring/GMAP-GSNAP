@@ -1,4 +1,4 @@
-/* $Id: pairdef.h,v 1.9 2005/01/22 14:51:06 twu Exp $ */
+/* $Id: pairdef.h,v 1.11 2006/02/20 03:11:20 twu Exp $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
@@ -14,9 +14,13 @@ struct T {
   char genome;
   char aa_g;			/* Genomic aa */
   char aa_e;			/* EST aa */
-  bool aamarker;
+  bool aamarker_g;
+  bool aamarker_e;
   bool gapp;			/* True if comp is in a big gap:
                                    >])([<#= (but not '-' or '~'). */
+  int queryjump;		/* Used only for gaps */
+  int genomejump;		/* Used only for gaps */
+
   bool shortexonp;
 };
 

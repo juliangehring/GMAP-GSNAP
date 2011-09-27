@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c,v 1.158 2005/10/25 18:03:28 twu Exp $";
+static char rcsid[] = "$Id: pair.c,v 1.177 2006/04/07 01:17:41 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -124,6 +124,8 @@ Pair_new (int querypos, int genomepos, char cdna, char comp, char genome) {
 }
 */
 
+/* Pairs now made in pairpool.c */
+/*
 void
 Pair_free (T *old) {
   if (*old) {
@@ -131,7 +133,7 @@ Pair_free (T *old) {
   }
   return;
 }
-
+*/
 
 
 /* Print routines */
@@ -175,7 +177,7 @@ print_cdna_sequence (struct T *ptr, int n, int npairs, bool zerobasedp,
 #ifdef PMAP
     /* Make nucleotide consistent */
     if (this->comp == AMBIGUOUS_COMP) {
-      putchar(toupper((int) this->genome));
+      putchar(this->genome);
     } else {
       putchar(this->cdna);
     }
@@ -187,48 +189,39 @@ print_cdna_sequence (struct T *ptr, int n, int npairs, bool zerobasedp,
   return;
 }
 
+static int
+find_aapos_in_line (int *aapos, struct T *ptr, int n, int npairs, int wraplength, 
+		    bool genomep) {
+  struct T *this, *last;
+
+  if (npairs - n < wraplength) {
+    last = &ptr[npairs - n - 1];
+  } else {
+    last = &ptr[wraplength - 1];
+  }
+  this = ptr;
+  while (this <= last && (genomep ? this->aa_g : this->aa_e) == ' ') {
+    this++;
+  }
+
+  if (this > last) {
+    /* No aa found */
+    return -1;
+  } else {
+    return this->aapos;
+  }
+}
+
+
 static void
 print_peptide (struct T *ptr, int n, int npairs, int margin,
 	       int wraplength, bool genomep) {
   struct T *this, *last = NULL;
   int aapos, i;
-  bool proteinp = false;
 
-  if (ptr->aapos > 0) {
-    proteinp = true;
-  } else {
-    /* Check if protein starts in middle of this line */
-    if (npairs - n < wraplength) {
-      last = &ptr[npairs - n - 1];
-    } else {
-      last = &ptr[wraplength - 1];
-    }
-    if (last->aapos != 0) {
-      proteinp = true;
-    }
-  }
-
-  if (proteinp == false) {
+  if ((aapos = find_aapos_in_line(&aapos,ptr,n,npairs,wraplength,genomep)) < 0) {
     printf("%*s ",margin,"");
   } else {
-    /* Look for first aa to determine aapos */
-    this = ptr;
-    if (last == NULL) {
-      if (npairs - n < wraplength) {
-	last = &ptr[npairs - n - 1];
-      } else {
-	last = &ptr[wraplength - 1];
-      }
-    }
-    while (this <= last && (genomep ? this->aa_g : this->aa_e) == ' ') {
-      this++;
-    }
-
-    if (this > last) {
-      aapos = ptr->aapos;
-    } else {
-      aapos = this->aapos;
-    }
     /* 4 is length of "aa.c" and "aa.g" */
     if (genomep == true) {
       printf("aa.g%*d ",margin-4,aapos);
@@ -237,14 +230,18 @@ print_peptide (struct T *ptr, int n, int npairs, int margin,
     }
   }
 
-  for (i = 0; n < npairs && i < wraplength; n++, i++) {
-    this = ptr++;
-    if (genomep == true) {
+  if (genomep == true) {
+    for (i = 0; n < npairs && i < wraplength; n++, i++) {
+      this = ptr++;
       putchar(this->aa_g);
-    } else {
+    }
+  } else {
+    for (i = 0; n < npairs && i < wraplength; n++, i++) {
+      this = ptr++;
       putchar(this->aa_e);
     }
   }
+
   printf("\n");
   return;
 }
@@ -264,10 +261,8 @@ print_alignment (struct T *ptr, int n, int npairs, bool diagnosticp,
       putchar(MATCH_COMP);
     } else if (diagnosticp == false && this->comp == DYNPROG_MATCH_COMP) {
       putchar(MATCH_COMP);
-#ifdef PMAP
     } else if (diagnosticp == false && this->comp == AMBIGUOUS_COMP) {
       putchar(MATCH_COMP);
-#endif
     } else if (this->comp == SHORTGAP_COMP) {
       putchar(INDEL_COMP);
     } else {
@@ -463,6 +458,7 @@ add_intronlengths (struct T *pairs, int npairs, int ngap) {
 	  ptr->cdna = intronstring[k];
 	}
 
+#if 0
 	/* Fix genomic positions on left end of gap */
 	genomepos = prev->genomepos + 1;
 	for (j = gapstart; j < gapstart + ngap; j++) {
@@ -482,6 +478,8 @@ add_intronlengths (struct T *pairs, int npairs, int ngap) {
 	  ptr = &(pairs[j]);
 	  ptr->genomepos = genomepos;
 	}
+#endif
+
       }
     }
   }	
@@ -678,7 +676,7 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
 			int qopens, int qindels, int topens, int tindels, int goodness,
 			bool watsonp, int cdna_direction, double defect_rate, 
 			int translation_start, int translation_end, int translation_length,
-			int relaastart, int relaaend, bool zerobasedp) {
+			int relaastart, int relaaend, bool zerobasedp, bool maponlyp) {
   int querypos1, querypos2, chrpos1, chrpos2, den;
   double fracidentity;
   Genomicpos_T position1, position2;
@@ -722,13 +720,15 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
   FREE(comma2);
   FREE(comma1);
 
-  printf("    cDNA direction: ");
-  if (cdna_direction > 0) {
-    printf("sense\n");
-  } else if (cdna_direction < 0) {
-    printf("antisense\n");
-  } else {
-    printf("indeterminate\n");
+  if (maponlyp == false) {
+    printf("    cDNA direction: ");
+    if (cdna_direction > 0) {
+      printf("sense\n");
+    } else if (cdna_direction < 0) {
+      printf("antisense\n");
+    } else {
+      printf("indeterminate\n");
+    }
   }
 
   if (altstrain_iit != NULL) {
@@ -770,42 +770,44 @@ Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos
     }
   }
     
-  printf("    Number of exons: %d\n",nexons);
-  printf("    Coverage: %.1f",((double) rint(1000.0*coverage))/10.0);
-  printf("\n");
+  if (maponlyp == false) {
+    printf("    Number of exons: %d\n",nexons);
+    printf("    Coverage: %.1f",((double) rint(1000.0*coverage))/10.0);
+    printf("\n");
 
-  if ((den = matches + mismatches + qindels + tindels) == 0) {
-    fracidentity = 1.0;
-  } else {
-    fracidentity = (double) matches/(double) den;
-  }
+    if ((den = matches + mismatches + qindels + tindels) == 0) {
+      fracidentity = 1.0;
+    } else {
+      fracidentity = (double) matches/(double) den;
+    }
 
-  debug(printf("     Goodness: %d\n",goodness));
+    debug(printf("     Goodness: %d\n",goodness));
 
-  /* The definition of indels here should be consistent with Stage3_indels */
-  printf("    Percent identity: %.1f (%d matches, %d mismatches, %d indels, %d unknowns)\n",
-	 ((double) rint(1000.0*fracidentity))/10.0,matches,mismatches,qindels+tindels,unknowns);
-  if (qindels + tindels > 0) {
-    printf("    Non-intron gaps: %d openings, %d bases in cdna; %d openings, %d bases in genome\n",
-	   qopens,qindels,topens,tindels);
-  } 
+    /* The definition of indels here should be consistent with Stage3_indels */
+    printf("    Percent identity: %.1f (%d matches, %d mismatches, %d indels, %d unknowns)\n",
+	   ((double) rint(1000.0*fracidentity))/10.0,matches,mismatches,qindels+tindels,unknowns);
+    if (qindels + tindels > 0) {
+      printf("    Non-intron gaps: %d openings, %d bases in cdna; %d openings, %d bases in genome\n",
+	     qopens,qindels,topens,tindels);
+    } 
 
 #ifndef PMAP
-  if (translation_length > 0) {
-    printf("    Translation: %d..%d (%d aa)\n",
-	   translation_start+!zerobasedp,translation_end,translation_length);
-  } else if (relaastart > 0) {
-    if (relaastart < relaaend) {
-      printf("    Protein coords: %d..%d\n",relaastart,relaaend);
-    } else {
-      printf("    Protein coords: %d..%d\n",relaaend,relaastart);
+    if (translation_length > 0) {
+      printf("    Translation: %d..%d (%d aa)\n",
+	     translation_start+!zerobasedp,translation_end,translation_length);
+    } else if (relaastart > 0) {
+      if (relaastart < relaaend) {
+	printf("    Protein coords: %d..%d\n",relaastart,relaaend);
+      } else {
+	printf("    Protein coords: %d..%d\n",relaaend,relaastart);
+      }
     }
-  }
 #endif
 
-  /* printf("    Defect rate (percent): %.1f\n",defect_rate*100.0); */
+    /* printf("    Defect rate (percent): %.1f\n",defect_rate*100.0); */
 
-  /* printf("\n"); -- Done by caller */
+    /* printf("\n"); -- Done by caller */
+  }
 
   if (chrstring != NULL) {
     FREE(chrstring);
@@ -856,17 +858,23 @@ Pair_print_coordinates (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
     for (i = 0; i < npairs; i++) {
       this = pairs++;
       if (this->gapp == false) {
-	if (this->aamarker == false) {
-	  printf("\t");
+	if (this->aamarker_e == false) {
+	  printf("%d\t",this->aapos);
 	} else {
 	  printf("%d %c\t",this->aapos,this->aa_e);
 	}
-	printf("%d %c\t%s:%u %u %c",
-	       this->querypos + !zerobasedp,this->cdna,chrstring,
-	       chrpos+this->genomepos + !zerobasedp,
-	       chroffset+chrpos+this->genomepos + !zerobasedp,
-	       this->genome);
-	if (this->aamarker == false) {
+	printf("%d %c\t",this->querypos + !zerobasedp,this->cdna);
+	if (chrstring == NULL) {
+	  printf("%u %u %c",chrpos+this->genomepos + !zerobasedp,
+		 chroffset+chrpos+this->genomepos + !zerobasedp,
+		 this->genome);
+	} else {
+	  printf("%s:%u %u %c",chrstring,
+		 chrpos+this->genomepos + !zerobasedp,
+		 chroffset+chrpos+this->genomepos + !zerobasedp,
+		 this->genome);
+	}
+	if (this->aamarker_g == false) {
 	  printf("\t");
 	} else {
 	  printf("\t%c",this->aa_g);
@@ -878,17 +886,23 @@ Pair_print_coordinates (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
     for (i = 0; i < npairs; i++) {
       this = pairs++;
       if (this->gapp == false) {
-	if (this->aamarker == false) {
-	  printf("\t");
+	if (this->aamarker_e == false) {
+	  printf("%d\t",this->aapos);
 	} else {
 	  printf("%d %c\t",this->aapos,this->aa_e);
 	}
-	printf("%d %c\t%s:%u %u %c",
-	       this->querypos + !zerobasedp,this->cdna,chrstring,
-	       chrpos+(genomiclength-1)-this->genomepos + !zerobasedp,
-	       chroffset+chrpos+(genomiclength-1)-this->genomepos + !zerobasedp,
-	       this->genome);
-	if (this->aamarker == false) {
+	printf("%d %c\t",this->querypos + !zerobasedp,this->cdna);
+	if (chrstring == NULL) {
+	  printf("%u %u %c",chrpos+(genomiclength-1)-this->genomepos + !zerobasedp,
+		 chroffset+chrpos+(genomiclength-1)-this->genomepos + !zerobasedp,
+		 this->genome);
+	} else {
+	  printf("%s:%u %u %c",chrstring,
+		 chrpos+(genomiclength-1)-this->genomepos + !zerobasedp,
+		 chroffset+chrpos+(genomiclength-1)-this->genomepos + !zerobasedp,
+		 this->genome);
+	}
+	if (this->aamarker_g == false) {
 	  printf("\t");
 	} else {
 	  printf("\t%c",this->aa_g);
@@ -941,83 +955,10 @@ Pair_dump_array (struct T *pairs, int npairs, bool zerobasedp) {
     printf("%d: %d %d %d %c %c %c",
 	   i,this->querypos + !zerobasedp,this->genomepos + !zerobasedp,this->aapos,
 	   this->cdna,this->comp,this->genome);
-    if (this->aamarker == true) {
+    if (this->aamarker_g == true || this->aamarker_e == true) {
       printf(" => %c %c",this->aa_g,this->aa_e);
     }
     printf("\n");
-  }
-  return;
-}  
-
-
-void
-Pair_dump_aapos (struct T *pairs, int npairs, int aapos, int cdna_direction) {
-  struct T *this, *start, *end;
-  int i, ngenome = 0, ncdna = 0;
-  char complCode[128] = COMPLEMENT;
-
-  i = 0;
-  this = pairs;
-  while (i < npairs && this->aapos != aapos) {
-    this++;
-    i++;
-  }
-  start = this;
-
-  while (i < npairs && (ngenome < 3 || ncdna < 3)) {
-    if (this->gapp == false) {
-      if (this->genome != ' ') {
-	ngenome++;
-      }
-      if (this->cdna != ' ') {
-	ncdna++;
-      }
-    }
-    this++;
-    i++;
-  }
-  end = --this;
-
-  if (cdna_direction < 0) {
-
-    for (this = end; this >= start; --this) {
-      if (this->gapp == true) {
-      } else if (this->genome == ' ') {
-	putchar(this->comp);
-      } else {
-	putchar(complCode[(int) this->genome]);
-      }
-    }
-    printf(">");
-    for (this = end; this >= start; --this) {
-      if (this->gapp == true) {
-      } else if (this->cdna == ' ') {
-	putchar(this->comp);
-      } else {
-	putchar(complCode[(int) this->cdna]);
-      }
-    }
-
-  } else {
-
-    for (this = start; this <= end; this++) {
-      if (this->gapp == true) {
-      } else if (this->genome == ' ') {
-	putchar(this->comp);
-      } else {
-	putchar(this->genome);
-      }
-    }
-    printf(">");
-    for (this = start; this <= end; this++) {
-      if (this->gapp == true) {
-      } else if (this->cdna == ' ') {
-	putchar(this->comp);
-      } else {
-	putchar(this->cdna);
-      }
-    }
-  
   }
   return;
 }  
@@ -1121,14 +1062,16 @@ Pair_check_list (List_T pairs) {
 
     for (p = List_next(pairs); p != NULL; p = List_next(p)) {
       this = List_head(p);
-      if (this->querypos > prev_querypos) {
-	printf("Problem at querypos %d\n",this->querypos);
+      if (this->gapp == false) {
+	if (this->querypos > prev_querypos) {
+	  printf("Problem at querypos %d\n",this->querypos);
+	}
+	if (this->genomepos > prev_genomepos) {
+	  printf("Problem at genomepos %d\n",this->genomepos);
+	}
+	prev_querypos = this->querypos;
+	prev_genomepos = this->genomepos;
       }
-      if (this->genomepos > prev_genomepos) {
-	printf("Problem at genomepos %d\n",this->genomepos);
-      }
-      prev_querypos = this->querypos;
-      prev_genomepos = this->genomepos;
     }
   }
   return;
@@ -1180,7 +1123,7 @@ Pair_print_exonsummary (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
 			int invertmode) {
   bool in_exon = false;
   struct T *save = NULL, *ptr, *prev, *this = NULL;
-  int exon_querystart = -1, exon_genomestart = -1, exon_queryend, exon_genomeend;
+  int exon_querystart = -1, exon_genomestart = -1, exon_queryend, exon_genomeend, intron_start, intron_end;
   int num = 0, den = 0, i;
   char *chrstring = NULL;
 
@@ -1216,8 +1159,10 @@ Pair_print_exonsummary (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
 	exon_queryend = prev->querypos + !zerobasedp;
 	if (watsonp) {
 	  exon_genomeend = chrpos + prev->genomepos + !zerobasedp;
+	  intron_start = exon_genomeend + 1;
 	} else {
 	  exon_genomeend = chrpos + (genomiclength - 1) - prev->genomepos + !zerobasedp;
+	  intron_start = exon_genomeend - 1;
 	}
 	if (genomefirstp == true) {
 	  printf("    ");
@@ -1242,21 +1187,21 @@ Pair_print_exonsummary (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
 	  printf("   %d%%",(int) floor(100.0*(double) num/(double) den));
 	}
 	if (this->comp == FWD_CANONICAL_INTRON_COMP) {
-	  printf(" ->\n");
+	  printf(" ->");
 	} else if (this->comp == REV_CANONICAL_INTRON_COMP) {
-	  printf(" <-\n");
+	  printf(" <-");
 	} else if (this->comp == FWD_GCAG_INTRON_COMP) {
-	  printf(" -)\n");
+	  printf(" -)");
 	} else if (this->comp == REV_GCAG_INTRON_COMP) {
-	  printf(" (-\n");
+	  printf(" (-");
 	} else if (this->comp == FWD_ATAC_INTRON_COMP) {
-	  printf(" -]\n");
+	  printf(" -]");
 	} else if (this->comp == REV_ATAC_INTRON_COMP) {
-	  printf(" [-\n");
+	  printf(" [-");
 	} else if (this->comp == NONINTRON_COMP) {
-	  printf(" ==\n");
+	  printf(" ==");
 	} else {
-	  printf(" ##\n");
+	  printf(" ##");
 	}
 	in_exon = false;
       }
@@ -1269,8 +1214,18 @@ Pair_print_exonsummary (struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos
 	exon_querystart = this->querypos + !zerobasedp;
 	if (watsonp) {
 	  exon_genomestart = chrpos + this->genomepos + !zerobasedp;
+	  intron_end = exon_genomestart - 1;
 	} else {
 	  exon_genomestart = chrpos + (genomiclength - 1) - this->genomepos + !zerobasedp;
+	  intron_end = exon_genomestart + 1;
+	}
+	if (i > 0) {
+	  if (intron_end > intron_start) {
+	    printf("   ...%d...",intron_end - intron_start + 1);
+	  } else {
+	    printf("   ...%d...",intron_start - intron_end + 1);
+	  }
+	  printf("\n");
 	}
 	num = den = 0;
 	in_exon = true;
@@ -1387,44 +1342,9 @@ Pair_exonbounds (struct T *pairs, int npairs, Genomicpos_T chrpos,
 }
 
 
-static void
-compute_gap_lengths (int *qnbreaks, int *qlength, int *tnbreaks, int *tlength, struct T *pairs, int npairs) {
-  struct T *prev, *this = NULL;
-  int i;
-  char comp;
-
-  *qnbreaks = *qlength = *tnbreaks = *tlength = 0;
-
-  i = 0;
-  while (i < npairs) {
-    prev = this;
-    this = &(pairs[i++]);
-
-    if (this->gapp) {
-      comp = this->comp;
-      while (i < npairs && this->gapp) {
-	this = &(pairs[i++]);
-      }
-
-      if (comp == DUALBREAK_COMP) {
-	*qnbreaks += 1;
-	*tnbreaks += 1;
-	*qlength += abs(this->querypos - prev->querypos)-1;
-	*tlength += abs(this->genomepos - prev->genomepos)-1;
-
-      } else {			/* Intron */
-	*tnbreaks += 1;
-	*tlength += abs(this->genomepos - prev->genomepos)-1;
-      }
-    }
-  }	
-  return;
-}
-
-
 static int
-count_psl_blocks (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tStarts, struct T *pairs_directional,
-		  int npairs, int querylength, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp) {
+count_psl_blocks_nt (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tStarts, struct T *pairs_directional,
+		     int npairs, int querylength, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp) {
   int nblocks = 0, i;
   int block_querystart, block_queryend;
   Genomicpos_T block_genomestart;
@@ -1482,6 +1402,132 @@ count_psl_blocks (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tStarts
   return nblocks;
 }
 
+static int
+count_psl_blocks_pro (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tStarts, struct T *pairs_directional,
+		      int npairs, int querylength, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp) {
+  int nblocks = 0, i;
+  int naminoacids = 0;
+  int block_querystart;
+  Genomicpos_T block_genomestart;
+  struct T *ptr = pairs_directional, *prev, *this = NULL;
+  bool in_block = false;
+
+  for (i = 0; i < npairs; i++) {
+    prev = this;
+    this = ptr++;
+
+    if (this->gapp) {
+      if (in_block == true) {
+	nblocks++;
+	*blockSizes = Intlist_push(*blockSizes,naminoacids);
+	in_block = false;
+	naminoacids = 0;
+      }
+    } else if (this->comp == INTRONGAP_COMP) {
+      /* Do nothing */
+
+#ifdef NOGAPSINBLOCK
+    } else if (this->cdna == ' ' || this->genome == ' ') {
+      if (in_block == true) {
+	nblocks++;
+	block_queryend = prev->querypos;
+	*blockSizes = Intlist_push(*blockSizes,block_queryend/3-(block_querystart+2)/3+1);
+	in_block = false;
+      }
+#endif
+
+    } else {
+      /* Remaining possibilities are MATCH_COMP, DYNPROG_MATCH_COMP, AMBIGUOUS_COMP, INDEL_COMP, 
+         or SHORTGAP_COMP */
+      if (this->aa_e != ' ') {
+	naminoacids++;
+      }
+      if (in_block == false) {
+	block_querystart = this->querypos;
+	*qStarts = Intlist_push(*qStarts,(block_querystart+2)/3);
+	if (watsonp == true) {
+	  *tStarts = Uintlist_push(*tStarts,chrpos + this->genomepos);
+	} else {
+	  *tStarts = Uintlist_push(*tStarts,chrpos + (genomiclength - 1) - this->genomepos);
+	}
+	in_block = true;
+      }
+    }
+  }
+
+  prev = this;
+  nblocks++;
+  *blockSizes = Intlist_push(*blockSizes,naminoacids);
+
+  *blockSizes = Intlist_reverse(*blockSizes);
+  *qStarts = Intlist_reverse(*qStarts);
+  *tStarts = Uintlist_reverse(*tStarts);
+
+  return nblocks;
+}
+
+
+static void
+compute_gap_lengths (int *qnbreaks, int *qlength, int *tnbreaks, int *tlength, struct T *pairs, int npairs) {
+  struct T *prev, *this = NULL;
+  int i;
+  char comp;
+
+  *qnbreaks = *qlength = *tnbreaks = *tlength = 0;
+
+  i = 0;
+  while (i < npairs) {
+    prev = this;
+    this = &(pairs[i++]);
+
+    if (this->gapp) {
+      comp = this->comp;
+      while (i < npairs && this->gapp) {
+	this = &(pairs[i++]);
+      }
+
+      if (comp == DUALBREAK_COMP) {
+	*qnbreaks += 1;
+	*tnbreaks += 1;
+	*qlength += abs(this->querypos - prev->querypos)-1;
+	*tlength += abs(this->genomepos - prev->genomepos)-1;
+
+      } else {			/* Intron */
+	*tnbreaks += 1;
+	*tlength += abs(this->genomepos - prev->genomepos)-1;
+      }
+    }
+  }	
+  return;
+}
+
+static void
+count_matches_pro (int *matches, int *mismatches, int *unknowns, 
+		   struct T *pairs, int npairs) {
+  struct T *prev, *this = NULL;
+  int i;
+
+  i = 0;
+  while (i < npairs) {
+    prev = this;
+    this = &(pairs[i++]);
+
+    if (this->gapp == false) {
+      if (this->aa_g != ' ' && this->aa_e != ' ') {
+	if (this->aa_g == this->aa_e) {
+	  *matches += 1;
+	} else if (this->aa_e == 'X') {
+	  *unknowns += 1;
+	} else {
+	  *mismatches += 1;
+	}
+      }
+    }
+  }	
+  return;
+}
+
+
 
 void
 Pair_print_pslformat_nt (struct T *pairs, int npairs, T start, T end,
@@ -1495,12 +1541,12 @@ Pair_print_pslformat_nt (struct T *pairs, int npairs, T start, T end,
   struct T *pairs_directional = NULL;
   Intlist_T blockSizes = NULL, qStarts = NULL, p;
   Uintlist_T tStarts = NULL, q;
-  int repeatmatches = 0, nblocks, i;
+  int nblocks;
   int qnbreaks, qlength, tnbreaks, tlength, querylength;
 
   compute_gap_lengths(&qnbreaks,&qlength,&tnbreaks,&tlength,pairs,npairs);
 
-  printf("%d\t%d\t%d\t%d\t",matches,mismatches,repeatmatches,unknowns);
+  printf("%d\t%d\t%d\t%d\t",matches,mismatches,/*repeatmatches*/0,unknowns);
   printf("%d\t%d\t%d\t%d\t",qopens+qnbreaks,qindels+qlength,topens+tnbreaks,tindels+tlength);
 
   if (watsonp == true) {
@@ -1539,8 +1585,8 @@ Pair_print_pslformat_nt (struct T *pairs, int npairs, T start, T end,
 #endif
   }
 
-  nblocks = count_psl_blocks(&blockSizes,&qStarts,&tStarts,pairs_directional,npairs,
-			     querylength,chrpos,genomiclength,watsonp);
+  nblocks = count_psl_blocks_nt(&blockSizes,&qStarts,&tStarts,pairs_directional,npairs,
+				querylength,chrpos,genomiclength,watsonp);
   printf("\t%d",nblocks);
 
   printf("\t");
@@ -1573,22 +1619,21 @@ Pair_print_pslformat_nt (struct T *pairs, int npairs, T start, T end,
 void
 Pair_print_pslformat_pro (struct T *pairs, int npairs, T start, T end,
 			  Sequence_T queryseq, Chrnum_T chrnum, Genomicpos_T chrpos,
-			  IIT_T chromosome_iit, Genomicpos_T genomiclength,
-			  int nexons, int matches, int unknowns, int mismatches, 
+			  IIT_T chromosome_iit, Genomicpos_T genomiclength, int nexons, 
 			  int qopens, int qindels, int topens, int tindels,
 			  bool watsonp, int cdna_direction) {
   Genomicpos_T chrpos1, chrpos2;
   char *chrstring;
-  bool in_exon = false;
-  struct T *pairs_directional = NULL, *ptr, *prev, *this;
-  int exon_querystart, exon_genomestart, exon_queryend;
-  int i;
-  int qnbreaks, qlength, tnbreaks, tlength;
+  Intlist_T blockSizes = NULL, qStarts = NULL, p;
+  Uintlist_T tStarts = NULL, q;
+  int nblocks, matches = 0, mismatches = 0, unknowns = 0;
+  int qnbreaks, qlength, tnbreaks, tlength, querylength;
 
   compute_gap_lengths(&qnbreaks,&qlength,&tnbreaks,&tlength,pairs,npairs);
+  count_matches_pro(&matches,&mismatches,&unknowns,pairs,npairs);
 
-  printf("%d\t%d\t%d\t%d\t",(matches+2)/3,(mismatches+2)/3,/*repeatmatches*/0,/*unknowns*/0);
-  printf("%d\t%d\t%d\t%d\t",(qopens+qnbreaks+2)/3,(qindels+qlength+2)/3,topens+tnbreaks,tindels+tlength);
+  printf("%d\t%d\t%d\t%d\t",matches,mismatches,/*repeatmatches*/0,unknowns);
+  printf("%d\t%d\t%d\t%d\t",qopens+qnbreaks,qindels+qlength,topens+tnbreaks,tindels+tlength);
 
   if (cdna_direction >= 0) {
     printf("+");
@@ -1603,7 +1648,7 @@ Pair_print_pslformat_pro (struct T *pairs, int npairs, T start, T end,
   }
   printf("\t%s\t%d",Sequence_accession(queryseq),Sequence_fulllength(queryseq));
 
-  printf("\t%d\t%d",start->querypos/3,end->querypos/3+1);
+  printf("\t%d\t%d",(start->querypos+2)/3,end->querypos/3+1);
 
   /* T name and T size */
   chrstring = Chrnum_to_string(chrnum,chromosome_iit);
@@ -1621,106 +1666,37 @@ Pair_print_pslformat_pro (struct T *pairs, int npairs, T start, T end,
     printf("\t%u\t%u",chrpos2,chrpos1+1U);
   }
 
-  printf("\t%d",nexons);	/* block count */
+  querylength = 3*Sequence_fulllength(queryseq);
 
-
-  pairs_directional = pairs;
-
-  /* Print exon lengths (blockSizes) */
+  nblocks = count_psl_blocks_pro(&blockSizes,&qStarts,&tStarts,pairs,npairs,
+				 querylength,chrpos,genomiclength,watsonp);
+  printf("\t%d",nblocks);
   printf("\t");
-  in_exon = false;
-  this = NULL;
-  ptr = pairs_directional;
-  for (i = 0; i < npairs; i++) {
-    prev = this;
-    this = ptr++;
 
-    if (this->gapp) {
-      if (in_exon == true) {
-	exon_queryend = prev->querypos;
-	printf("%d,",abs((exon_queryend-2)/3-(exon_querystart+2)/3)+1);
-	in_exon = false;
-      }
-    } else if (this->comp == INTRONGAP_COMP) {
-      /* Do nothing */
-    } else {
-      /* Remaining possibilities are MATCH_COMP, DYNPROG_MATCH_COMP, AMBIGUOUS_COMP, INDEL_COMP,
-	 SHORTGAP_COMP, or MISMATCH_COMP */
-      if (in_exon == false) {
-	exon_querystart = this->querypos;
-	in_exon = true;
-      }
-    }
-  }
-  prev = this;
-  exon_queryend = prev->querypos;
-  printf("%d,",abs((exon_queryend-2)/3-(exon_querystart+2)/3)+1);
-
-
-  /* Print query starts (qStarts) */
-  printf("\t");
-  in_exon = false;
-  this = NULL;
-  ptr = pairs_directional;
-  for (i = 0; i < npairs; i++) {
-    prev = this;
-    this = ptr++;
-
-    if (this->gapp) {
-      if (in_exon == true) {
-	in_exon = false;
-      }
-    } else if (this->comp == INTRONGAP_COMP) {
-      /* Do nothing */
-    } else {
-      /* Remaining possibilities are MATCH_COMP, DYNPROG_MATCH_COMP, AMBIGUOUS_COMP, INDEL_COMP,
-	 SHORTGAP_COMP, or MISMATCH_COMP */
-      if (in_exon == false) {
-	exon_querystart = this->querypos;
-	printf("%d,",exon_querystart/3);
-	in_exon = true;
-      }
-    }
+  for (p = blockSizes; p != NULL; p = Intlist_next(p)) {
+    printf("%d,",Intlist_head(p));
   }
 
-
-  /* Print genomic starts (tStarts) */
   printf("\t");
-  in_exon = false;
-  this = NULL;
-  ptr = pairs_directional;
-  for (i = 0; i < npairs; i++) {
-    prev = this;
-    this = ptr++;
-
-    if (this->gapp) {
-      if (in_exon == true) {
-	in_exon = false;
-      }
-    } else if (this->comp == INTRONGAP_COMP) {
-      /* Do nothing */
-    } else {
-      /* Remaining possibilities are MATCH_COMP, DYNPROG_MATCH_COMP, AMBIGUOUS_COMP, INDEL_COMP,
-	 SHORTGAP_COMP, or MISMATCH_COMP */
-      if (in_exon == false) {
-	if (watsonp) {
-	  exon_genomestart = chrpos + this->genomepos;
-	} else {
-	  exon_genomestart = chrpos + (genomiclength - 1) - this->genomepos;
-	}
-	printf("%d,",exon_genomestart);
-	in_exon = true;
-      }
-    }
+  for (p = qStarts; p != NULL; p = Intlist_next(p)) {
+    printf("%d,",Intlist_head(p));
   }
+
+  printf("\t");
+  for (q = tStarts; q != NULL; q = Uintlist_next(q)) {
+    printf("%u,",Uintlist_head(q));
+  }
+
+  Intlist_free(&blockSizes);
+  Intlist_free(&qStarts);
+  Uintlist_free(&tStarts);
 
   printf("\n");
   return;
 }
 
-
 void
-Pair_print_cdna_exons (struct T *pairs, int npairs, int wraplength) {
+Pair_print_exons (struct T *pairs, int npairs, int wraplength, int ngap, bool cdnap) {
   bool in_exon = false;
   struct T *ptr, *this = NULL;
   int i, exonno = 0, column = 0;
@@ -1737,6 +1713,19 @@ Pair_print_cdna_exons (struct T *pairs, int npairs, int wraplength) {
 	}
 	printf("</exon>\n");
 	in_exon = false;
+	if (ngap > 0) {
+	  printf("<intron %d>\n",exonno);
+	  putchar(this->genome);
+	  column = 1;
+	}
+      } else {
+	if (ngap > 0) {
+	  putchar(this->genome);
+	  if (++column % wraplength == 0) {
+	    printf("\n");
+	    column = 0;
+	  }
+	}
       }
     } else if (this->comp == INTRONGAP_COMP) {
       /* Do nothing */
@@ -1744,13 +1733,34 @@ Pair_print_cdna_exons (struct T *pairs, int npairs, int wraplength) {
       /* Remaining possibilities are MATCH_COMP, DYNPROG_MATCH_COMP, AMBIGUOUS_COMP, INDEL_COMP,
 	 SHORTGAP_COMP, or MISMATCH_COMP */
       if (in_exon == false) {
+	if (ngap > 0) {
+	  if (exonno > 0) {
+	    if (column != 0) {
+	      printf("\n");
+	      column = 0;
+	    }
+	    printf("</intron>\n");
+	  }
+	}
 	printf("<exon %d>\n",++exonno);
 	in_exon = true;
       }
-      putchar(this->cdna);
-      if (++column % wraplength == 0) {
-	printf("\n");
-	column = 0;
+      if (cdnap == true) {
+	if (this->cdna != ' ') {
+	  putchar(this->cdna);
+	  if (++column % wraplength == 0) {
+	    printf("\n");
+	    column = 0;
+	  }
+	}
+      } else {
+	if (this->genome != ' ') {
+	  putchar(this->genome);
+	  if (++column % wraplength == 0) {
+	    printf("\n");
+	    column = 0;
+	  }
+	}
       }
     }
   }
@@ -2079,13 +2089,14 @@ Pair_pathscores (int *pathscores, struct T *ptr, int npairs,
 
 
 int
-Pair_nexons (struct T *pairs, int npairs) {
-  int nexons = 0, i;
+Pair_nexons (List_T pairs) {
+  int nexons = 0;
   bool in_exon = false;
-  struct T *this;
-
-  for (i = 0; i < npairs; i++) {
-    this = pairs++;
+  T this;
+  List_T p;
+  
+  for (p = pairs; p != NULL; p = List_next(p)) {
+    this = List_head(p);
     if (this->gapp) {
       if (in_exon) {
 	in_exon = false;
@@ -2461,7 +2472,7 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 		       Genomicpos_T genomiclength, bool checksump,
 		       int chimerapos, int chimeraequivpos, double donor_prob, double acceptor_prob,
 		       int chimera_cdna_direction, char *strain, bool watsonp, int cdna_direction,
-		       bool zerobasedp) {
+		       bool zerobasedp, int worker_id) {
   Genomicpos_T chrpos1, chrpos2, position1, position2;
   char *chrstring = NULL;
 
@@ -2478,9 +2489,15 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
   donor[0] = donor[1] = donor[2] = '\0';
   acceptor[0] = acceptor[1] = acceptor[2] = '\0';
 
+#ifdef PMAP
   printf(">%s %s %d/%d %d %d",
 	 Sequence_accession(queryseq),version,pathnum,npaths,
-	 Sequence_fulllength(queryseq),nexons);
+	 (Sequence_fulllength(queryseq)+Sequence_skiplength(queryseq))*3,nexons);
+#else
+  printf(">%s %s %d/%d %d %d",
+	 Sequence_accession(queryseq),version,pathnum,npaths,
+	 Sequence_fulllength(queryseq)+Sequence_skiplength(queryseq),nexons);
+#endif
   printf(" %.1f",((double) rint(1000.0*coverage))/10.0);
   printf(" %.1f",((double) rint(1000.0*fracidentity))/10.0);
 
@@ -2518,7 +2535,7 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
   } else if (cdna_direction < 0) {
     printf(" dir:antisense");
   } else {
-    printf(" dir:unknown");
+    printf(" dir:indet");
   }
 
   if (checksump == true) {
@@ -2545,6 +2562,10 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
   if (strain != NULL) {
     printf(" strain:%s",strain);
   }
+
+#if 0
+  printf(" thread:%d",worker_id);
+#endif
 
   printf("\n");
 
@@ -2669,11 +2690,13 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 	runlength = 0;
 	den++;
 
+#ifndef PMAP
       } else if (this->comp == AMBIGUOUS_COMP) {
 	sprintf(token,"%d:%c",runlength,this->cdna);
 	tokens = push_token(tokens,token);
 	runlength = 0;
 	den++;
+#endif
 
       } else {
 	runlength++;
@@ -2716,6 +2739,5 @@ Pair_print_compressed (Sequence_T queryseq, char *version, int pathnum, int npat
 
   return;
 }
-
 
 

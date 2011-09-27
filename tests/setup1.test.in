@@ -6,8 +6,9 @@ cp ../util/gmap_process.pl gmap_process
 chmod +x gmap_process	
 cp ../src/gmapindex gmapindex
 chmod +x gmapindex
-./gmap_setup -B . -D . -d chr17test -c coords.txt ${srcdir}/ss.chr17test
-make -f Makefile.chr17test all
+./gmap_setup -B . -D . -d chr17test ${srcdir}/ss.chr17test
+make -f Makefile.chr17test coords
+make -f Makefile.chr17test gmapdb
 make -f Makefile.chr17test install
 if diff chr17test.genomecomp ${srcdir}/setup.genomecomp.ok; then
     :

@@ -1,9 +1,11 @@
-/* $Id: match.h,v 1.37 2005/07/08 00:00:37 twu Exp $ */
+/* $Id: match.h,v 1.43 2006/03/05 03:26:03 twu Exp $ */
 #ifndef MATCH_INCLUDED
 #define MATCH_INCLUDED
 #include "bool.h"
 #include "genomicpos.h"
 #include "iit-read.h"
+#include "list.h"
+#include "genome.h"
 
 #define T Match_T
 typedef struct T *T;
@@ -20,26 +22,29 @@ extern int
 Match_chrnum (T this);
 extern Genomicpos_T
 Match_chrpos (T this);
+extern int
+Match_incr_npairings (T this);
+extern int
+Match_npairings (T this);
 extern void
-Match_set_pairedp (T this);
-extern bool
-Match_pairedp (T this);
+Match_set_weight (T this, double weight);
+extern double
+Match_weight (T this);
 
 extern int
 Match_cmp (const void *a, const void *b);
 
+
+#ifndef USE_MATCHPOOL
 extern T
 Match_new (int querypos, bool forwardp, bool fivep,
 	   Genomicpos_T position, IIT_T chromosome_iit);
-extern T
-Match_copy (T this);
-
 extern void
 Match_free (T *old);
+#endif
 
 extern void
-Match_print_two (int pathnum, T start, T end, IIT_T chromosome_iit, IIT_T contig_iit, 
-		 char *dbroot, bool zerobasedp);
+Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size);
 
 #undef T
 #endif

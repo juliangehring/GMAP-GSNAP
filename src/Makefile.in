@@ -136,30 +136,57 @@ target_vendor = @target_vendor@
 
 @FULLDIST_TRUE@bin_PROGRAMS = gmap pmap get-genome gmapindex pmapindex iit_store iit_get iit_dump oligo-count md5-compute genomeplot pdlimage
 
-GMAP_FILES = bool.h types.h separator.h comp.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
- littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
- genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h indexdb.c indexdb.h \
- oligo.c oligo.h block.c block.h \
- chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h matchdef.h match.c match.h matchpair.c matchpair.h \
- chrsubset.c chrsubset.h stage1.c stage1.h \
- oligoindex.c oligoindex.h \
- scores.h intron.c intron.h pairdef.h pair.c pair.h \
- pairpool.c pairpool.h stage2.c stage2.h \
- smooth.c smooth.h \
- boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
- mutation.c mutation.h translation.c translation.h \
- stage3.c stage3.h \
- request.c request.h reqpost.c reqpost.h \
- result.c result.h blackboard.c blackboard.h \
- params.c params.h datadir.c datadir.h \
- getopt.c getopt1.c getopt.h gmap.c
+@FULLDIST_FALSE@GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
+@FULLDIST_FALSE@ except.c except.h assert.c assert.h mem.c mem.h \
+@FULLDIST_FALSE@ intlist.c intlist.h listdef.h list.c list.h \
+@FULLDIST_FALSE@ littleendian.h bigendian.c bigendian.h \
+@FULLDIST_FALSE@ interval.c interval.h uintlist.c uintlist.h \
+@FULLDIST_FALSE@ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+@FULLDIST_FALSE@ md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
+@FULLDIST_FALSE@ genomicpos.c genomicpos.h compress.c compress.h \
+@FULLDIST_FALSE@ genome.c genome.h indexdb.c indexdb.h \
+@FULLDIST_FALSE@ oligo.c oligo.h block.c block.h \
+@FULLDIST_FALSE@ chrom.c chrom.h segmentpos.c segmentpos.h \
+@FULLDIST_FALSE@ chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
+@FULLDIST_FALSE@ matchpool.c matchpool.h stage1.c stage1.h \
+@FULLDIST_FALSE@ oligoindex.c oligoindex.h \
+@FULLDIST_FALSE@ scores.h intron.c intron.h pairdef.h pair.c pair.h \
+@FULLDIST_FALSE@ pairpool.c pairpool.h stage2.c stage2.h \
+@FULLDIST_FALSE@ smooth.c smooth.h \
+@FULLDIST_FALSE@ boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
+@FULLDIST_FALSE@ translation.c translation.h \
+@FULLDIST_FALSE@ stage3.c stage3.h \
+@FULLDIST_FALSE@ request.c request.h reqpost.c reqpost.h \
+@FULLDIST_FALSE@ result.c result.h blackboard.c blackboard.h \
+@FULLDIST_FALSE@ params.c params.h datadir.c datadir.h \
+@FULLDIST_FALSE@ getopt.c getopt1.c getopt.h gmap.c
+
+
+@FULLDIST_TRUE@GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
+@FULLDIST_TRUE@ except.c except.h assert.c assert.h mem.c mem.h \
+@FULLDIST_TRUE@ intlist.c intlist.h listdef.h list.c list.h \
+@FULLDIST_TRUE@ littleendian.h bigendian.c bigendian.h \
+@FULLDIST_TRUE@ interval.c interval.h uintlist.c uintlist.h \
+@FULLDIST_TRUE@ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+@FULLDIST_TRUE@ md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
+@FULLDIST_TRUE@ genomicpos.c genomicpos.h compress.c compress.h \
+@FULLDIST_TRUE@ genome.c genome.h indexdb.c indexdb.h \
+@FULLDIST_TRUE@ oligo.c oligo.h block.c block.h \
+@FULLDIST_TRUE@ chrom.c chrom.h segmentpos.c segmentpos.h \
+@FULLDIST_TRUE@ chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
+@FULLDIST_TRUE@ matchpool.c matchpool.h stage1.c stage1.h \
+@FULLDIST_TRUE@ oligoindex.c oligoindex.h \
+@FULLDIST_TRUE@ scores.h intron.c intron.h pairdef.h pair.c pair.h \
+@FULLDIST_TRUE@ pairpool.c pairpool.h stage2.c stage2.h \
+@FULLDIST_TRUE@ smooth.c smooth.h \
+@FULLDIST_TRUE@ boyer-moore.c boyer-moore.h dynprog.c dynprog.h \
+@FULLDIST_TRUE@ translation.c translation.h \
+@FULLDIST_TRUE@ stage3.c stage3.h \
+@FULLDIST_TRUE@ maxent.c maxent.h chimera.c chimera.h \
+@FULLDIST_TRUE@ request.c request.h reqpost.c reqpost.h \
+@FULLDIST_TRUE@ result.c result.h blackboard.c blackboard.h \
+@FULLDIST_TRUE@ params.c params.h datadir.c datadir.h \
+@FULLDIST_TRUE@ getopt.c getopt1.c getopt.h gmap.c
 
 
 gmap_CC = $(PTHREAD_CC)
@@ -169,7 +196,7 @@ gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS)
 dist_gmap_SOURCES = $(GMAP_FILES)
 
-PMAP_FILES = bool.h types.h separator.h comp.h \
+PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
@@ -180,20 +207,21 @@ PMAP_FILES = bool.h types.h separator.h comp.h \
  complement.h intlist.c intlist.h md5.c md5.h sequence.c sequence.h \
  reader.c reader.h oligop.c oligop.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h matchdef.h match.c match.h matchpair.c matchpair.h \
- chrsubset.c chrsubset.h stage1.c stage1.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
+ matchpool.c matchpool.h stage1.c stage1.h \
  oligoindex.c oligoindex.h \
  intron.c intron.h scores.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h dynprog.c dynprog.h boyer-moore.c boyer-moore.h \
- mutation.c mutation.h translation.c translation.h stage3.c stage3.h \
+ translation.c translation.h backtranslation.c backtranslation.h \
+ stage3.c stage3.h \
  datadir.c datadir.h request.c request.h reqpost.c reqpost.h result.c result.h \
  blackboard.c blackboard.h params.c params.h \
  getopt.c getopt1.c getopt.h gmap.c
 
 
 # In front of stage3
-PMAP_FILES_BETA = nmath.c nmath.h maxent.c maxent.h chimera.c chimera.h 
+PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
 
 pmap_CC = $(PTHREAD_CC)
 pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1 -DPMAP=1
@@ -202,7 +230,7 @@ pmap_LDADD = $(PTHREAD_LIBS)
 dist_pmap_SOURCES = 
 nodist_pmap_SOURCES = $(PMAP_FILES) $(PMAP_FILES_BETA)
 
-GET_GENOME_FILES = bool.h types.h separator.h \
+GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -211,6 +239,7 @@ GET_GENOME_FILES = bool.h types.h separator.h \
  md5.c md5.h complement.h sequence.c sequence.h \
  genome.c genome.h \
  genomicpos.c genomicpos.h chrom.c chrom.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h \
  datadir.c datadir.h getopt.c getopt1.c getopt.h get-genome.c
 
 
@@ -220,7 +249,7 @@ get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 get_genome_LDADD = $(PTHREAD_LIBS)
 dist_get_genome_SOURCES = $(GET_GENOME_FILES)
 
-IIT_STORE_FILES = bool.h types.h \
+IIT_STORE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -233,7 +262,7 @@ iit_store_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_store_LDADD = 
 dist_iit_store_SOURCES = $(IIT_STORE_FILES)
 
-IIT_GET_FILES = bool.h types.h \
+IIT_GET_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -246,7 +275,7 @@ iit_get_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_get_LDADD = 
 dist_iit_get_SOURCES = $(IIT_GET_FILES)
 
-IIT_DUMP_FILES = bool.h types.h \
+IIT_DUMP_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  intlist.c intlist.h list.c list.h \
@@ -260,7 +289,7 @@ iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_dump_LDADD = 
 dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
 
-OLIGO_COUNT_FILES = bool.h types.h \
+OLIGO_COUNT_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  interval.c interval.h uintlist.c uintlist.h \
@@ -280,7 +309,7 @@ oligo_count_LDADD = $(PTHREAD_LIBS)
 dist_oligo_count_SOURCES = 
 nodist_oligo_count_SOURCES = $(OLIGO_COUNT_FILES)
 
-MD5_COMPUTE_FILES = bool.h types.h \
+MD5_COMPUTE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h \
  md5.c md5.h complement.h sequence.c sequence.h \
@@ -292,7 +321,7 @@ md5_compute_LDADD =
 dist_md5_compute_SOURCES = 
 nodist_md5_compute_SOURCES = $(MD5_COMPUTE_FILES)
 
-GENOMEPLOT_FILES = bool.h types.h \
+GENOMEPLOT_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  listdef.h list.c list.h interval.c interval.h \
  uintlist.c uintlist.h \
@@ -312,7 +341,7 @@ genomeplot_LDADD =
 dist_genomeplot_SOURCES = 
 nodist_genomeplot_SOURCES = $(GENOMEPLOT_FILES)
 
-PDLIMAGE_FILES = bool.h types.h \
+PDLIMAGE_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  listdef.h list.c list.h \
  color.c color.h \
@@ -328,7 +357,7 @@ pdlimage_LDADD =
 dist_pdlimage_SOURCES = 
 nodist_pdlimage_SOURCES = $(PDLIMAGE_FILES)
 
-GMAPINDEX_FILES = bool.h types.h \
+GMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
@@ -347,7 +376,7 @@ gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmapindex_LDADD = $(PTHREAD_LIBS)
 dist_gmapindex_SOURCES = $(GMAPINDEX_FILES)
 
-PMAPINDEX_FILES = bool.h types.h \
+PMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
@@ -362,8 +391,8 @@ pmapindex_CC = $(PTHREAD_CC)
 pmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DPMAP=1
 pmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmapindex_LDADD = $(PTHREAD_LIBS)
-dist_pmapindex_SOURCES = 
-nodist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
+dist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
+nodist_pmapindex_SOURCES = 
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -406,34 +435,85 @@ am__objects_2 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
 	get_genome-iit-read.$(OBJEXT) get_genome-md5.$(OBJEXT) \
 	get_genome-sequence.$(OBJEXT) get_genome-genome.$(OBJEXT) \
 	get_genome-genomicpos.$(OBJEXT) get_genome-chrom.$(OBJEXT) \
+	get_genome-chrnum.$(OBJEXT) get_genome-chrsubset.$(OBJEXT) \
 	get_genome-datadir.$(OBJEXT) get_genome-getopt.$(OBJEXT) \
 	get_genome-getopt1.$(OBJEXT) get_genome-get-genome.$(OBJEXT)
 dist_get_genome_OBJECTS = $(am__objects_2)
 get_genome_OBJECTS = $(dist_get_genome_OBJECTS)
 get_genome_DEPENDENCIES =
-am__objects_3 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
-	gmap-mem.$(OBJEXT) gmap-intlist.$(OBJEXT) gmap-list.$(OBJEXT) \
-	gmap-bigendian.$(OBJEXT) gmap-interval.$(OBJEXT) \
-	gmap-uintlist.$(OBJEXT) gmap-stopwatch.$(OBJEXT) \
-	gmap-access.$(OBJEXT) gmap-iit-read.$(OBJEXT) \
-	gmap-md5.$(OBJEXT) gmap-sequence.$(OBJEXT) \
-	gmap-reader.$(OBJEXT) gmap-genomicpos.$(OBJEXT) \
-	gmap-compress.$(OBJEXT) gmap-genome.$(OBJEXT) \
-	gmap-indexdb.$(OBJEXT) gmap-oligo.$(OBJEXT) \
-	gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
-	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
-	gmap-match.$(OBJEXT) gmap-matchpair.$(OBJEXT) \
-	gmap-chrsubset.$(OBJEXT) gmap-stage1.$(OBJEXT) \
-	gmap-oligoindex.$(OBJEXT) gmap-intron.$(OBJEXT) \
-	gmap-pair.$(OBJEXT) gmap-pairpool.$(OBJEXT) \
-	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
-	gmap-boyer-moore.$(OBJEXT) gmap-dynprog.$(OBJEXT) \
-	gmap-mutation.$(OBJEXT) gmap-translation.$(OBJEXT) \
-	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
-	gmap-reqpost.$(OBJEXT) gmap-result.$(OBJEXT) \
-	gmap-blackboard.$(OBJEXT) gmap-params.$(OBJEXT) \
-	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
-	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
+am__dist_gmap_SOURCES_DIST = fopen.h bool.h types.h separator.h comp.h \
+	except.c except.h assert.c assert.h mem.c mem.h intlist.c \
+	intlist.h listdef.h list.c list.h littleendian.h bigendian.c \
+	bigendian.h interval.c interval.h uintlist.c uintlist.h \
+	stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c \
+	iit-read.h md5.c md5.h complement.h sequence.c sequence.h \
+	reader.c reader.h genomicpos.c genomicpos.h compress.c \
+	compress.h genome.c genome.h indexdb.c indexdb.h oligo.c \
+	oligo.h block.c block.h chrom.c chrom.h segmentpos.c \
+	segmentpos.h chrnum.c chrnum.h chrsubset.c chrsubset.h \
+	matchdef.h match.c match.h matchpair.c matchpair.h matchpool.c \
+	matchpool.h stage1.c stage1.h oligoindex.c oligoindex.h \
+	scores.h intron.c intron.h pairdef.h pair.c pair.h pairpool.c \
+	pairpool.h stage2.c stage2.h smooth.c smooth.h boyer-moore.c \
+	boyer-moore.h dynprog.c dynprog.h translation.c translation.h \
+	stage3.c stage3.h request.c request.h reqpost.c reqpost.h \
+	result.c result.h blackboard.c blackboard.h params.c params.h \
+	datadir.c datadir.h getopt.c getopt1.c getopt.h gmap.c maxent.c \
+	maxent.h chimera.c chimera.h
+@FULLDIST_TRUE@am__objects_3 = gmap-except.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-assert.$(OBJEXT) gmap-mem.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-intlist.$(OBJEXT) gmap-list.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-bigendian.$(OBJEXT) gmap-interval.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-uintlist.$(OBJEXT) gmap-stopwatch.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-access.$(OBJEXT) gmap-iit-read.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-md5.$(OBJEXT) gmap-sequence.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-reader.$(OBJEXT) gmap-genomicpos.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-compress.$(OBJEXT) gmap-genome.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-indexdb.$(OBJEXT) gmap-oligo.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-chrsubset.$(OBJEXT) gmap-match.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-matchpair.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-matchpool.$(OBJEXT) gmap-stage1.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-oligoindex.$(OBJEXT) gmap-intron.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-pair.$(OBJEXT) gmap-pairpool.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-boyer-moore.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-dynprog.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-translation.$(OBJEXT) gmap-stage3.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-maxent.$(OBJEXT) gmap-chimera.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-request.$(OBJEXT) gmap-reqpost.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-result.$(OBJEXT) gmap-blackboard.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-params.$(OBJEXT) gmap-datadir.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-getopt.$(OBJEXT) gmap-getopt1.$(OBJEXT) \
+@FULLDIST_TRUE@	gmap-gmap.$(OBJEXT)
+@FULLDIST_FALSE@am__objects_3 = gmap-except.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-assert.$(OBJEXT) gmap-mem.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-intlist.$(OBJEXT) gmap-list.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-bigendian.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-interval.$(OBJEXT) gmap-uintlist.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-stopwatch.$(OBJEXT) gmap-access.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-iit-read.$(OBJEXT) gmap-md5.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-sequence.$(OBJEXT) gmap-reader.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-genomicpos.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-compress.$(OBJEXT) gmap-genome.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-indexdb.$(OBJEXT) gmap-oligo.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-chrsubset.$(OBJEXT) gmap-match.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-matchpair.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-matchpool.$(OBJEXT) gmap-stage1.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-oligoindex.$(OBJEXT) gmap-intron.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-pair.$(OBJEXT) gmap-pairpool.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-boyer-moore.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-dynprog.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-translation.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-reqpost.$(OBJEXT) gmap-result.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-blackboard.$(OBJEXT) gmap-params.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
+@FULLDIST_FALSE@	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
 dist_gmap_OBJECTS = $(am__objects_3)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
 gmap_DEPENDENCIES =
@@ -530,24 +610,23 @@ am__objects_11 = pmap-except.$(OBJEXT) pmap-assert.$(OBJEXT) \
 	pmap-sequence.$(OBJEXT) pmap-reader.$(OBJEXT) \
 	pmap-oligop.$(OBJEXT) pmap-block.$(OBJEXT) pmap-chrom.$(OBJEXT) \
 	pmap-segmentpos.$(OBJEXT) pmap-chrnum.$(OBJEXT) \
-	pmap-match.$(OBJEXT) pmap-matchpair.$(OBJEXT) \
-	pmap-chrsubset.$(OBJEXT) pmap-stage1.$(OBJEXT) \
-	pmap-oligoindex.$(OBJEXT) pmap-intron.$(OBJEXT) \
-	pmap-pair.$(OBJEXT) pmap-pairpool.$(OBJEXT) \
-	pmap-stage2.$(OBJEXT) pmap-smooth.$(OBJEXT) \
-	pmap-dynprog.$(OBJEXT) pmap-boyer-moore.$(OBJEXT) \
-	pmap-mutation.$(OBJEXT) pmap-translation.$(OBJEXT) \
-	pmap-stage3.$(OBJEXT) pmap-datadir.$(OBJEXT) \
-	pmap-request.$(OBJEXT) pmap-reqpost.$(OBJEXT) \
-	pmap-result.$(OBJEXT) pmap-blackboard.$(OBJEXT) \
-	pmap-params.$(OBJEXT) pmap-getopt.$(OBJEXT) \
-	pmap-getopt1.$(OBJEXT) pmap-gmap.$(OBJEXT)
-am__objects_12 = pmap-nmath.$(OBJEXT) pmap-maxent.$(OBJEXT) \
-	pmap-chimera.$(OBJEXT)
+	pmap-chrsubset.$(OBJEXT) pmap-match.$(OBJEXT) \
+	pmap-matchpair.$(OBJEXT) pmap-matchpool.$(OBJEXT) \
+	pmap-stage1.$(OBJEXT) pmap-oligoindex.$(OBJEXT) \
+	pmap-intron.$(OBJEXT) pmap-pair.$(OBJEXT) \
+	pmap-pairpool.$(OBJEXT) pmap-stage2.$(OBJEXT) \
+	pmap-smooth.$(OBJEXT) pmap-dynprog.$(OBJEXT) \
+	pmap-boyer-moore.$(OBJEXT) pmap-translation.$(OBJEXT) \
+	pmap-backtranslation.$(OBJEXT) pmap-stage3.$(OBJEXT) \
+	pmap-datadir.$(OBJEXT) pmap-request.$(OBJEXT) \
+	pmap-reqpost.$(OBJEXT) pmap-result.$(OBJEXT) \
+	pmap-blackboard.$(OBJEXT) pmap-params.$(OBJEXT) \
+	pmap-getopt.$(OBJEXT) pmap-getopt1.$(OBJEXT) \
+	pmap-gmap.$(OBJEXT)
+am__objects_12 = pmap-maxent.$(OBJEXT) pmap-chimera.$(OBJEXT)
 nodist_pmap_OBJECTS = $(am__objects_11) $(am__objects_12)
 pmap_OBJECTS = $(dist_pmap_OBJECTS) $(nodist_pmap_OBJECTS)
 pmap_DEPENDENCIES =
-dist_pmapindex_OBJECTS =
 am__objects_13 = pmapindex-except.$(OBJEXT) pmapindex-assert.$(OBJEXT) \
 	pmapindex-mem.$(OBJEXT) pmapindex-bigendian.$(OBJEXT) \
 	pmapindex-interval.$(OBJEXT) pmapindex-uintlist.$(OBJEXT) \
@@ -556,7 +635,8 @@ am__objects_13 = pmapindex-except.$(OBJEXT) pmapindex-assert.$(OBJEXT) \
 	pmapindex-iit-read.$(OBJEXT) pmapindex-iit-write.$(OBJEXT) \
 	pmapindex-genomicpos.$(OBJEXT) pmapindex-compress.$(OBJEXT) \
 	pmapindex-indexdb.$(OBJEXT) pmapindex-pmapindex.$(OBJEXT)
-nodist_pmapindex_OBJECTS = $(am__objects_13)
+dist_pmapindex_OBJECTS = $(am__objects_13)
+nodist_pmapindex_OBJECTS =
 pmapindex_OBJECTS = $(dist_pmapindex_OBJECTS) \
 	$(nodist_pmapindex_OBJECTS)
 pmapindex_DEPENDENCIES =
@@ -592,7 +672,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-access.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-assert.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-bigendian.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/get_genome-chrnum.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-chrom.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/get_genome-chrsubset.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-datadir.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-except.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/get_genome-genome.Po \
@@ -615,6 +697,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-blackboard.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-block.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-boyer-moore.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-chimera.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-chrnum.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-chrom.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-chrsubset.Po \
@@ -634,9 +717,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-intron.Po ./$(DEPDIR)/gmap-list.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-match.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-matchpair.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/gmap-md5.Po ./$(DEPDIR)/gmap-mem.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/gmap-mutation.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/gmap-oligo.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-matchpool.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-maxent.Po ./$(DEPDIR)/gmap-md5.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-mem.Po ./$(DEPDIR)/gmap-oligo.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-oligoindex.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-pair.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-pairpool.Po \
@@ -756,6 +839,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/pdlimage-stopwatch.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-access.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-assert.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pmap-backtranslation.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-bigendian.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-blackboard.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-block.Po \
@@ -780,10 +864,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-intron.Po ./$(DEPDIR)/pmap-list.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-match.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-matchpair.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pmap-matchpool.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-maxent.Po ./$(DEPDIR)/pmap-md5.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-mem.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/pmap-mutation.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/pmap-nmath.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-oligoindex.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-oligop.Po ./$(DEPDIR)/pmap-pair.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-pairpool.Po \
@@ -825,7 +908,7 @@ CCLD = $(CC)
 LINK = $(LIBTOOL) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
 DIST_SOURCES = $(dist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) \
-	$(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) \
+	$(am__dist_gmap_SOURCES_DIST) $(dist_gmapindex_SOURCES) \
 	$(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) \
 	$(dist_iit_store_SOURCES) $(dist_md5_compute_SOURCES) \
 	$(dist_oligo_count_SOURCES) $(dist_pdlimage_SOURCES) \
@@ -960,7 +1043,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-bigendian.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-chrom.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-chrsubset.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-datadir.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-genome.Po@am__quote@
@@ -983,6 +1068,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-blackboard.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-block.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-boyer-moore.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chimera.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrsubset.Po@am__quote@
@@ -1003,9 +1089,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-match.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-matchpair.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-matchpool.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-maxent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mem.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-mutation.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-oligo.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-oligoindex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-pair.Po@am__quote@
@@ -1126,6 +1213,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pdlimage-stopwatch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-backtranslation.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-blackboard.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-block.Po@am__quote@
@@ -1151,11 +1239,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-match.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-matchpair.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-matchpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-maxent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-mem.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-mutation.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-nmath.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-oligoindex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-oligop.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-pair.Po@am__quote@
@@ -2577,6 +2664,72 @@ get_genome-chrom.lo: chrom.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrom.lo `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
 
+get_genome-chrnum.o: chrnum.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-chrnum.o -MD -MP -MF "$(DEPDIR)/get_genome-chrnum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o get_genome-chrnum.o `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/get_genome-chrnum.Tpo" "$(DEPDIR)/get_genome-chrnum.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/get_genome-chrnum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='get_genome-chrnum.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/get_genome-chrnum.Po' tmpdepfile='$(DEPDIR)/get_genome-chrnum.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrnum.o `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
+
+get_genome-chrnum.obj: chrnum.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-chrnum.obj -MD -MP -MF "$(DEPDIR)/get_genome-chrnum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o get_genome-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/get_genome-chrnum.Tpo" "$(DEPDIR)/get_genome-chrnum.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/get_genome-chrnum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='get_genome-chrnum.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/get_genome-chrnum.Po' tmpdepfile='$(DEPDIR)/get_genome-chrnum.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`
+
+get_genome-chrnum.lo: chrnum.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-chrnum.lo -MD -MP -MF "$(DEPDIR)/get_genome-chrnum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o get_genome-chrnum.lo `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/get_genome-chrnum.Tpo" "$(DEPDIR)/get_genome-chrnum.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/get_genome-chrnum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='get_genome-chrnum.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/get_genome-chrnum.Plo' tmpdepfile='$(DEPDIR)/get_genome-chrnum.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrnum.lo `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
+
+get_genome-chrsubset.o: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-chrsubset.o -MD -MP -MF "$(DEPDIR)/get_genome-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o get_genome-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/get_genome-chrsubset.Tpo" "$(DEPDIR)/get_genome-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/get_genome-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='get_genome-chrsubset.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/get_genome-chrsubset.Po' tmpdepfile='$(DEPDIR)/get_genome-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+get_genome-chrsubset.obj: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-chrsubset.obj -MD -MP -MF "$(DEPDIR)/get_genome-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o get_genome-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/get_genome-chrsubset.Tpo" "$(DEPDIR)/get_genome-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/get_genome-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='get_genome-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/get_genome-chrsubset.Po' tmpdepfile='$(DEPDIR)/get_genome-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+
+get_genome-chrsubset.lo: chrsubset.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-chrsubset.lo -MD -MP -MF "$(DEPDIR)/get_genome-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o get_genome-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/get_genome-chrsubset.Tpo" "$(DEPDIR)/get_genome-chrsubset.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/get_genome-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='get_genome-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/get_genome-chrsubset.Plo' tmpdepfile='$(DEPDIR)/get_genome-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -c -o get_genome-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
 get_genome-datadir.o: datadir.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_genome_CFLAGS) $(CFLAGS) -MT get_genome-datadir.o -MD -MP -MF "$(DEPDIR)/get_genome-datadir.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o get_genome-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c; \
@@ -3468,6 +3621,39 @@ gmap-chrnum.lo: chrnum.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrnum.lo `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
 
+gmap-chrsubset.o: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chrsubset.o -MD -MP -MF "$(DEPDIR)/gmap-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chrsubset.Tpo" "$(DEPDIR)/gmap-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gmap-chrsubset.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/gmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+gmap-chrsubset.obj: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chrsubset.obj -MD -MP -MF "$(DEPDIR)/gmap-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chrsubset.Tpo" "$(DEPDIR)/gmap-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gmap-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/gmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+
+gmap-chrsubset.lo: chrsubset.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chrsubset.lo -MD -MP -MF "$(DEPDIR)/gmap-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chrsubset.Tpo" "$(DEPDIR)/gmap-chrsubset.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gmap-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chrsubset.Plo' tmpdepfile='$(DEPDIR)/gmap-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
 gmap-match.o: match.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-match.o -MD -MP -MF "$(DEPDIR)/gmap-match.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o gmap-match.o `test -f 'match.c' || echo '$(srcdir)/'`match.c; \
@@ -3534,38 +3720,38 @@ gmap-matchpair.lo: matchpair.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-matchpair.lo `test -f 'matchpair.c' || echo '$(srcdir)/'`matchpair.c
 
-gmap-chrsubset.o: chrsubset.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chrsubset.o -MD -MP -MF "$(DEPDIR)/gmap-chrsubset.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chrsubset.Tpo" "$(DEPDIR)/gmap-chrsubset.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chrsubset.Tpo"; exit 1; \
+gmap-matchpool.o: matchpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-matchpool.o -MD -MP -MF "$(DEPDIR)/gmap-matchpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-matchpool.o `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-matchpool.Tpo" "$(DEPDIR)/gmap-matchpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-matchpool.Tpo"; exit 1; \
 @am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gmap-chrsubset.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/gmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='matchpool.c' object='gmap-matchpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-matchpool.Po' tmpdepfile='$(DEPDIR)/gmap-matchpool.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-matchpool.o `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c
 
-gmap-chrsubset.obj: chrsubset.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chrsubset.obj -MD -MP -MF "$(DEPDIR)/gmap-chrsubset.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chrsubset.Tpo" "$(DEPDIR)/gmap-chrsubset.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chrsubset.Tpo"; exit 1; \
+gmap-matchpool.obj: matchpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-matchpool.obj -MD -MP -MF "$(DEPDIR)/gmap-matchpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-matchpool.obj `if test -f 'matchpool.c'; then $(CYGPATH_W) 'matchpool.c'; else $(CYGPATH_W) '$(srcdir)/matchpool.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-matchpool.Tpo" "$(DEPDIR)/gmap-matchpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-matchpool.Tpo"; exit 1; \
 @am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gmap-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/gmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='matchpool.c' object='gmap-matchpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-matchpool.Po' tmpdepfile='$(DEPDIR)/gmap-matchpool.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-matchpool.obj `if test -f 'matchpool.c'; then $(CYGPATH_W) 'matchpool.c'; else $(CYGPATH_W) '$(srcdir)/matchpool.c'; fi`
 
-gmap-chrsubset.lo: chrsubset.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chrsubset.lo -MD -MP -MF "$(DEPDIR)/gmap-chrsubset.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chrsubset.Tpo" "$(DEPDIR)/gmap-chrsubset.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chrsubset.Tpo"; exit 1; \
+gmap-matchpool.lo: matchpool.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-matchpool.lo -MD -MP -MF "$(DEPDIR)/gmap-matchpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-matchpool.lo `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-matchpool.Tpo" "$(DEPDIR)/gmap-matchpool.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-matchpool.Tpo"; exit 1; \
 @am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gmap-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chrsubset.Plo' tmpdepfile='$(DEPDIR)/gmap-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='matchpool.c' object='gmap-matchpool.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-matchpool.Plo' tmpdepfile='$(DEPDIR)/gmap-matchpool.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-matchpool.lo `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c
 
 gmap-stage1.o: stage1.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-stage1.o -MD -MP -MF "$(DEPDIR)/gmap-stage1.Tpo" \
@@ -3864,39 +4050,6 @@ gmap-dynprog.lo: dynprog.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-dynprog.lo `test -f 'dynprog.c' || echo '$(srcdir)/'`dynprog.c
 
-gmap-mutation.o: mutation.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-mutation.o -MD -MP -MF "$(DEPDIR)/gmap-mutation.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-mutation.o `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-mutation.Tpo" "$(DEPDIR)/gmap-mutation.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-mutation.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mutation.c' object='gmap-mutation.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-mutation.Po' tmpdepfile='$(DEPDIR)/gmap-mutation.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-mutation.o `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c
-
-gmap-mutation.obj: mutation.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-mutation.obj -MD -MP -MF "$(DEPDIR)/gmap-mutation.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-mutation.obj `if test -f 'mutation.c'; then $(CYGPATH_W) 'mutation.c'; else $(CYGPATH_W) '$(srcdir)/mutation.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-mutation.Tpo" "$(DEPDIR)/gmap-mutation.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-mutation.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mutation.c' object='gmap-mutation.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-mutation.Po' tmpdepfile='$(DEPDIR)/gmap-mutation.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-mutation.obj `if test -f 'mutation.c'; then $(CYGPATH_W) 'mutation.c'; else $(CYGPATH_W) '$(srcdir)/mutation.c'; fi`
-
-gmap-mutation.lo: mutation.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-mutation.lo -MD -MP -MF "$(DEPDIR)/gmap-mutation.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o gmap-mutation.lo `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-mutation.Tpo" "$(DEPDIR)/gmap-mutation.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-mutation.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mutation.c' object='gmap-mutation.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-mutation.Plo' tmpdepfile='$(DEPDIR)/gmap-mutation.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-mutation.lo `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c
-
 gmap-translation.o: translation.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-translation.o -MD -MP -MF "$(DEPDIR)/gmap-translation.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o gmap-translation.o `test -f 'translation.c' || echo '$(srcdir)/'`translation.c; \
@@ -3962,6 +4115,72 @@ gmap-stage3.lo: stage3.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-stage3.Plo' tmpdepfile='$(DEPDIR)/gmap-stage3.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-stage3.lo `test -f 'stage3.c' || echo '$(srcdir)/'`stage3.c
+
+gmap-maxent.o: maxent.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent.o -MD -MP -MF "$(DEPDIR)/gmap-maxent.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-maxent.Tpo" "$(DEPDIR)/gmap-maxent.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-maxent.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gmap-maxent.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-maxent.Po' tmpdepfile='$(DEPDIR)/gmap-maxent.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+
+gmap-maxent.obj: maxent.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent.obj -MD -MP -MF "$(DEPDIR)/gmap-maxent.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-maxent.Tpo" "$(DEPDIR)/gmap-maxent.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-maxent.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gmap-maxent.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-maxent.Po' tmpdepfile='$(DEPDIR)/gmap-maxent.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
+
+gmap-maxent.lo: maxent.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-maxent.lo -MD -MP -MF "$(DEPDIR)/gmap-maxent.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-maxent.lo `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-maxent.Tpo" "$(DEPDIR)/gmap-maxent.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-maxent.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='gmap-maxent.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-maxent.Plo' tmpdepfile='$(DEPDIR)/gmap-maxent.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-maxent.lo `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+
+gmap-chimera.o: chimera.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.o -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Po' tmpdepfile='$(DEPDIR)/gmap-chimera.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
+
+gmap-chimera.obj: chimera.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.obj -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Po' tmpdepfile='$(DEPDIR)/gmap-chimera.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
+
+gmap-chimera.lo: chimera.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-chimera.lo -MD -MP -MF "$(DEPDIR)/gmap-chimera.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-chimera.Tpo" "$(DEPDIR)/gmap-chimera.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-chimera.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='gmap-chimera.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-chimera.Plo' tmpdepfile='$(DEPDIR)/gmap-chimera.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
 
 gmap-request.o: request.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-request.o -MD -MP -MF "$(DEPDIR)/gmap-request.Tpo" \
@@ -8319,6 +8538,39 @@ pmap-chrnum.lo: chrnum.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrnum.lo `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
 
+pmap-chrsubset.o: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chrsubset.o -MD -MP -MF "$(DEPDIR)/pmap-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chrsubset.Tpo" "$(DEPDIR)/pmap-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='pmap-chrsubset.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/pmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+pmap-chrsubset.obj: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chrsubset.obj -MD -MP -MF "$(DEPDIR)/pmap-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chrsubset.Tpo" "$(DEPDIR)/pmap-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='pmap-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/pmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+
+pmap-chrsubset.lo: chrsubset.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chrsubset.lo -MD -MP -MF "$(DEPDIR)/pmap-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chrsubset.Tpo" "$(DEPDIR)/pmap-chrsubset.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='pmap-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chrsubset.Plo' tmpdepfile='$(DEPDIR)/pmap-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
 pmap-match.o: match.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-match.o -MD -MP -MF "$(DEPDIR)/pmap-match.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o pmap-match.o `test -f 'match.c' || echo '$(srcdir)/'`match.c; \
@@ -8385,38 +8637,38 @@ pmap-matchpair.lo: matchpair.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-matchpair.lo `test -f 'matchpair.c' || echo '$(srcdir)/'`matchpair.c
 
-pmap-chrsubset.o: chrsubset.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chrsubset.o -MD -MP -MF "$(DEPDIR)/pmap-chrsubset.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chrsubset.Tpo" "$(DEPDIR)/pmap-chrsubset.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chrsubset.Tpo"; exit 1; \
+pmap-matchpool.o: matchpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-matchpool.o -MD -MP -MF "$(DEPDIR)/pmap-matchpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-matchpool.o `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-matchpool.Tpo" "$(DEPDIR)/pmap-matchpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-matchpool.Tpo"; exit 1; \
 @am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='pmap-chrsubset.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/pmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='matchpool.c' object='pmap-matchpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-matchpool.Po' tmpdepfile='$(DEPDIR)/pmap-matchpool.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-matchpool.o `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c
 
-pmap-chrsubset.obj: chrsubset.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chrsubset.obj -MD -MP -MF "$(DEPDIR)/pmap-chrsubset.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chrsubset.Tpo" "$(DEPDIR)/pmap-chrsubset.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chrsubset.Tpo"; exit 1; \
+pmap-matchpool.obj: matchpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-matchpool.obj -MD -MP -MF "$(DEPDIR)/pmap-matchpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-matchpool.obj `if test -f 'matchpool.c'; then $(CYGPATH_W) 'matchpool.c'; else $(CYGPATH_W) '$(srcdir)/matchpool.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-matchpool.Tpo" "$(DEPDIR)/pmap-matchpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-matchpool.Tpo"; exit 1; \
 @am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='pmap-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chrsubset.Po' tmpdepfile='$(DEPDIR)/pmap-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='matchpool.c' object='pmap-matchpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-matchpool.Po' tmpdepfile='$(DEPDIR)/pmap-matchpool.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-matchpool.obj `if test -f 'matchpool.c'; then $(CYGPATH_W) 'matchpool.c'; else $(CYGPATH_W) '$(srcdir)/matchpool.c'; fi`
 
-pmap-chrsubset.lo: chrsubset.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chrsubset.lo -MD -MP -MF "$(DEPDIR)/pmap-chrsubset.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chrsubset.Tpo" "$(DEPDIR)/pmap-chrsubset.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chrsubset.Tpo"; exit 1; \
+pmap-matchpool.lo: matchpool.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-matchpool.lo -MD -MP -MF "$(DEPDIR)/pmap-matchpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-matchpool.lo `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-matchpool.Tpo" "$(DEPDIR)/pmap-matchpool.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-matchpool.Tpo"; exit 1; \
 @am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='pmap-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chrsubset.Plo' tmpdepfile='$(DEPDIR)/pmap-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='matchpool.c' object='pmap-matchpool.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-matchpool.Plo' tmpdepfile='$(DEPDIR)/pmap-matchpool.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-matchpool.lo `test -f 'matchpool.c' || echo '$(srcdir)/'`matchpool.c
 
 pmap-stage1.o: stage1.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-stage1.o -MD -MP -MF "$(DEPDIR)/pmap-stage1.Tpo" \
@@ -8715,39 +8967,6 @@ pmap-boyer-moore.lo: boyer-moore.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-boyer-moore.lo `test -f 'boyer-moore.c' || echo '$(srcdir)/'`boyer-moore.c
 
-pmap-mutation.o: mutation.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-mutation.o -MD -MP -MF "$(DEPDIR)/pmap-mutation.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-mutation.o `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-mutation.Tpo" "$(DEPDIR)/pmap-mutation.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-mutation.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mutation.c' object='pmap-mutation.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-mutation.Po' tmpdepfile='$(DEPDIR)/pmap-mutation.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-mutation.o `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c
-
-pmap-mutation.obj: mutation.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-mutation.obj -MD -MP -MF "$(DEPDIR)/pmap-mutation.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-mutation.obj `if test -f 'mutation.c'; then $(CYGPATH_W) 'mutation.c'; else $(CYGPATH_W) '$(srcdir)/mutation.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-mutation.Tpo" "$(DEPDIR)/pmap-mutation.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-mutation.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mutation.c' object='pmap-mutation.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-mutation.Po' tmpdepfile='$(DEPDIR)/pmap-mutation.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-mutation.obj `if test -f 'mutation.c'; then $(CYGPATH_W) 'mutation.c'; else $(CYGPATH_W) '$(srcdir)/mutation.c'; fi`
-
-pmap-mutation.lo: mutation.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-mutation.lo -MD -MP -MF "$(DEPDIR)/pmap-mutation.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-mutation.lo `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-mutation.Tpo" "$(DEPDIR)/pmap-mutation.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-mutation.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mutation.c' object='pmap-mutation.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-mutation.Plo' tmpdepfile='$(DEPDIR)/pmap-mutation.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-mutation.lo `test -f 'mutation.c' || echo '$(srcdir)/'`mutation.c
-
 pmap-translation.o: translation.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-translation.o -MD -MP -MF "$(DEPDIR)/pmap-translation.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o pmap-translation.o `test -f 'translation.c' || echo '$(srcdir)/'`translation.c; \
@@ -8780,6 +8999,39 @@ pmap-translation.lo: translation.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-translation.Plo' tmpdepfile='$(DEPDIR)/pmap-translation.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-translation.lo `test -f 'translation.c' || echo '$(srcdir)/'`translation.c
+
+pmap-backtranslation.o: backtranslation.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-backtranslation.o -MD -MP -MF "$(DEPDIR)/pmap-backtranslation.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-backtranslation.o `test -f 'backtranslation.c' || echo '$(srcdir)/'`backtranslation.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-backtranslation.Tpo" "$(DEPDIR)/pmap-backtranslation.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-backtranslation.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='backtranslation.c' object='pmap-backtranslation.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-backtranslation.Po' tmpdepfile='$(DEPDIR)/pmap-backtranslation.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-backtranslation.o `test -f 'backtranslation.c' || echo '$(srcdir)/'`backtranslation.c
+
+pmap-backtranslation.obj: backtranslation.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-backtranslation.obj -MD -MP -MF "$(DEPDIR)/pmap-backtranslation.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-backtranslation.obj `if test -f 'backtranslation.c'; then $(CYGPATH_W) 'backtranslation.c'; else $(CYGPATH_W) '$(srcdir)/backtranslation.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-backtranslation.Tpo" "$(DEPDIR)/pmap-backtranslation.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-backtranslation.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='backtranslation.c' object='pmap-backtranslation.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-backtranslation.Po' tmpdepfile='$(DEPDIR)/pmap-backtranslation.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-backtranslation.obj `if test -f 'backtranslation.c'; then $(CYGPATH_W) 'backtranslation.c'; else $(CYGPATH_W) '$(srcdir)/backtranslation.c'; fi`
+
+pmap-backtranslation.lo: backtranslation.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-backtranslation.lo -MD -MP -MF "$(DEPDIR)/pmap-backtranslation.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-backtranslation.lo `test -f 'backtranslation.c' || echo '$(srcdir)/'`backtranslation.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-backtranslation.Tpo" "$(DEPDIR)/pmap-backtranslation.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-backtranslation.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='backtranslation.c' object='pmap-backtranslation.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-backtranslation.Plo' tmpdepfile='$(DEPDIR)/pmap-backtranslation.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-backtranslation.lo `test -f 'backtranslation.c' || echo '$(srcdir)/'`backtranslation.c
 
 pmap-stage3.o: stage3.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-stage3.o -MD -MP -MF "$(DEPDIR)/pmap-stage3.Tpo" \
@@ -9110,39 +9362,6 @@ pmap-gmap.lo: gmap.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-gmap.Plo' tmpdepfile='$(DEPDIR)/pmap-gmap.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-gmap.lo `test -f 'gmap.c' || echo '$(srcdir)/'`gmap.c
-
-pmap-nmath.o: nmath.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-nmath.o -MD -MP -MF "$(DEPDIR)/pmap-nmath.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-nmath.Tpo" "$(DEPDIR)/pmap-nmath.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-nmath.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='pmap-nmath.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-nmath.Po' tmpdepfile='$(DEPDIR)/pmap-nmath.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-nmath.o `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
-
-pmap-nmath.obj: nmath.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-nmath.obj -MD -MP -MF "$(DEPDIR)/pmap-nmath.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-nmath.Tpo" "$(DEPDIR)/pmap-nmath.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-nmath.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='pmap-nmath.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-nmath.Po' tmpdepfile='$(DEPDIR)/pmap-nmath.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-nmath.obj `if test -f 'nmath.c'; then $(CYGPATH_W) 'nmath.c'; else $(CYGPATH_W) '$(srcdir)/nmath.c'; fi`
-
-pmap-nmath.lo: nmath.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-nmath.lo -MD -MP -MF "$(DEPDIR)/pmap-nmath.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-nmath.Tpo" "$(DEPDIR)/pmap-nmath.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-nmath.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nmath.c' object='pmap-nmath.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-nmath.Plo' tmpdepfile='$(DEPDIR)/pmap-nmath.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-nmath.lo `test -f 'nmath.c' || echo '$(srcdir)/'`nmath.c
 
 pmap-maxent.o: maxent.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-maxent.o -MD -MP -MF "$(DEPDIR)/pmap-maxent.Tpo" \

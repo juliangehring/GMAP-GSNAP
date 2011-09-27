@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c,v 1.99 2005/10/19 03:55:44 twu Exp $";
+static char rcsid[] = "$Id: gmapindex.c,v 1.103 2006/01/19 22:26:36 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,6 +17,8 @@ static char rcsid[] = "$Id: gmapindex.c,v 1.99 2005/10/19 03:55:44 twu Exp $";
 #include "bool.h"
 #include "assert.h"
 #include "mem.h"
+#include "fopen.h"
+
 #include "table.h"
 #include "tableint.h"
 #include "genomicpos.h"
@@ -43,11 +45,97 @@ static Action_T action = NONE;
 static char *sourcedir = ".";
 static char *destdir = ".";
 static char *fileroot = NULL;
-static char *refstrain = "reference";
+static char *coordsfile = NULL;
 static int index1interval = 6;	/* Interval for storing 12-mers */
 static bool uncompressedp = false;
+static bool rawp = false;
 static bool writefilep = false;
 static int wraplength = 0;
+
+
+/************************************************************************
+ *   Reading strain from file
+ ************************************************************************/
+
+static char *
+read_strain_from_strainfile (char *strainfile) {
+  FILE *fp;
+  char *refstrain = NULL, Buffer[1024], strain[1024], straintype[1024];
+
+  if (strainfile != NULL) {
+    fp = fopen(strainfile,"r");
+    if (fp == NULL) {
+      fprintf(stderr,"Cannot open strain file %s\n",strainfile);
+    } else {
+      while (fgets(Buffer,1024,fp) != NULL) {
+	if (Buffer[0] == '#') {
+	  /* Skip */
+	} else if (sscanf(Buffer,"%s %s",strain,straintype) == 2) {
+	  if (!strcmp(straintype,"reference") || !strcmp(straintype,"Reference") || 
+	      !strcmp(straintype,"REFERENCE")) {
+	    if (refstrain != NULL) {
+	      fprintf(stderr,"More than one reference strain seen in %s\n",strainfile);
+	      exit(9);
+	    }
+	    refstrain = (char *) CALLOC(strlen(strain)+1,sizeof(char));
+	    strcpy(refstrain,strain);
+	  }
+	}
+      }
+
+      fclose(fp);
+    }
+  }
+
+  if (refstrain != NULL) {
+    return refstrain;
+  } else {
+    refstrain = (char *) CALLOC(strlen("reference")+1,sizeof(char));
+    strcpy(refstrain,"reference");
+    return refstrain;
+  }
+}
+
+static char *
+read_strain_from_coordsfile (char *coordsfile) {
+  FILE *fp;
+  char *refstrain = NULL, Buffer[1024], strain[1024], *ptr;
+
+  if (coordsfile != NULL) {
+    fp = fopen(coordsfile,"r");
+    if (fp == NULL) {
+      fprintf(stderr,"Cannot open coords file %s\n",coordsfile);
+    } else {
+      while (fgets(Buffer,1024,fp) != NULL) {
+	if (Buffer[0] == '#') {
+	  if ((ptr = strstr(Buffer,"Reference strain:")) != NULL) {
+	    if (sscanf(ptr,"Reference strain: %s",strain) == 1) {
+	      if (refstrain != NULL) {
+		fprintf(stderr,"More than one reference strain seen in %s\n",coordsfile);
+		exit(9);
+	      }
+	      refstrain = (char *) CALLOC(strlen(strain)+1,sizeof(char));
+	      strcpy(refstrain,strain);
+	    }
+	  }
+	}	    
+      }
+
+      fclose(fp);
+    }
+  }
+
+  if (refstrain != NULL) {
+    return refstrain;
+  } else {
+    refstrain = (char *) CALLOC(strlen("reference")+1,sizeof(char));
+    strcpy(refstrain,"reference");
+    return refstrain;
+  }
+}
+
+
+
 
 /************************************************************************
  *   Creating aux file
@@ -98,10 +186,10 @@ store_accession (Table_T accsegmentpos_table, Tableint_T chrlength_table,
 
 /* We assume that header has already been read.  We need to check each
    new line for a new header */
-static int 
+static Genomicpos_T
 count_sequence () {
+  Genomicpos_T seglength = 0U;
   int c;
-  int seglength = 0;
   char Buffer[BUFFERSIZE], *p;
   bool newline = true;
 
@@ -111,7 +199,7 @@ count_sequence () {
       if ((c = getc(stdin)) == EOF || c == '>') {
 	return seglength;
       } else {
-	seglength += 1;
+	seglength += 1U;
       }
     }
 
@@ -124,11 +212,45 @@ count_sequence () {
       } else {
 	newline = false;
       }
-      seglength += strlen(Buffer);
+      seglength += (Genomicpos_T) strlen(Buffer);
     }
   }
 }
 
+static void
+skip_sequence (Genomicpos_T seglength) {
+  int c;
+  char Buffer[BUFFERSIZE], *p;
+  bool newline = true;
+  Genomicpos_T i;
+
+  while (seglength > BUFFERSIZE) {
+    if (fread(Buffer,sizeof(char),BUFFERSIZE,stdin) < BUFFERSIZE) {
+      fprintf(stderr,"End of file reached.  Expecting %u more characters\n",seglength);
+      exit(9);
+    }
+    seglength -= BUFFERSIZE;
+  }
+
+  if (seglength > 0U) {
+    if (fread(Buffer,sizeof(char),seglength,stdin) < seglength) {
+      fprintf(stderr,"End of file reached.  Expecting %u more characters\n",seglength);
+      exit(9);
+    }
+  }
+
+  if ((c = getchar()) != EOF && c != '\n') {
+    fprintf(stderr,"Expecting linefeed at end of sequence.  Saw %d (%c) instead\n",c,c);
+    exit(9);
+  }
+
+  if ((c = getchar()) != EOF && c != '>') {
+    fprintf(stderr,"Expecting new FASTA line.  Saw %d (%c) instead\n",c,c);
+    exit(9);
+  }
+
+  return;
+}
 
 static bool
 process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Tableint_T contigtype_table, 
@@ -208,10 +330,16 @@ process_sequence_aux (List_T *contigtypelist, Table_T accsegmentpos_table, Table
     strcpy(accession,accession_p);
   }
 
-  seglength = count_sequence();
-  if (seglength != upper - lower) {
-    fprintf(stderr,"%s has expected sequence length %u-%u=%u but actual length %u\n",
-	    accession,upper,lower,upper-lower,seglength);
+  if (rawp == true) {
+    seglength = upper - lower;
+    fprintf(stderr,"Skipping %u characters\n",seglength);
+    skip_sequence(seglength);
+  } else {
+    seglength = count_sequence();
+    if (seglength != upper - lower) {
+      fprintf(stderr,"%s has expected sequence length %u-%u=%u but actual length %u\n",
+	      accession,upper,lower,upper-lower,seglength);
+    }
   }
   store_accession(accsegmentpos_table,chrlength_table,
 		  accession,chr_string,lower,upper,revcompp,
@@ -247,7 +375,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   textfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			     strlen(fileroot)+strlen(".chromosome")+1,sizeof(char));
   sprintf(textfile,"%s/%s.chromosome",genomesubdir,fileroot);
-  if ((textfp = fopen(textfile,"w")) == NULL) {
+  /* Use binary, not text, so files are Unix-compatible */
+  if ((textfp = FOPEN_WRITE_BINARY(textfile)) == NULL) {
     fprintf(stderr,"Can't write to file %s\n",textfile);
     exit(9);
   }
@@ -256,7 +385,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   chrsubsetfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 				  strlen(fileroot)+strlen(".chrsubset")+1,sizeof(char));
   sprintf(chrsubsetfile,"%s/%s.chrsubset",genomesubdir,fileroot);
-  if ((chrsubsetfp = fopen(chrsubsetfile,"w")) == NULL) {
+  /* Use binary, not text, so files are Unix-compatible */
+  if ((chrsubsetfp = FOPEN_WRITE_BINARY(chrsubsetfile)) == NULL) {
     fprintf(stderr,"Can't write to file %s\n",chrsubsetfile);
     exit(9);
   }
@@ -367,7 +497,8 @@ write_contig_file (char *genomesubdir, char *fileroot,
   textfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			     strlen(fileroot)+strlen(".contig")+1,sizeof(char));
   sprintf(textfile,"%s/%s.contig",genomesubdir,fileroot);
-  if ((textfp = fopen(textfile,"w")) == NULL) {
+  /* Use binary, not text, so files are Unix-compatible */
+  if ((textfp = FOPEN_WRITE_BINARY(textfile)) == NULL) {
     fprintf(stderr,"Can't write to file %s\n",textfile);
     exit(9);
   }
@@ -554,14 +685,14 @@ main (int argc, char *argv[]) {
   IIT_T chromosome_iit, contig_iit, altstrain_iit;
   unsigned int genomelength;
   char *chromosomefile, *iitfile, *iittypefile, *offsetsfile, *positionsfile,
-    *typestring;
+    *refstrain;
   FILE *offsets_fp, *fp;
 
   int c;
   extern int optind;
   extern char *optarg;
 
-  while ((c = getopt(argc,argv,"F:D:d:AGgCUOoPps:Ww:q:")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:AGgrCUOoPpc:Ww:q:")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -569,13 +700,14 @@ main (int argc, char *argv[]) {
     case 'A': action = AUXFILES; break;
     case 'G': action = GENOME; uncompressedp = false; break;
     case 'g': action = GENOME; uncompressedp = true; break;
+    case 'r': rawp = true; break;
     case 'C': action = COMPRESS; break;
     case 'U': action = UNCOMPRESS; break;
     case 'O': action = OFFSETS; uncompressedp = false; break;
     case 'o': action = OFFSETS; uncompressedp = true; break;
     case 'P': action = POSITIONS; uncompressedp = false; break;
     case 'p': action = POSITIONS; uncompressedp = true; break;
-    case 's': refstrain = optarg; break;
+    case 'c': coordsfile = optarg; break;
     case 'W': writefilep = true; break;
     case 'w': wraplength = atoi(optarg); break;
     case 'q': 
@@ -599,7 +731,7 @@ main (int argc, char *argv[]) {
   }
 
   if (action == AUXFILES) {
-    /* Usage: cat <fastafile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -A [-s <refstrain>]
+    /* Usage: cat <fastafile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -A [-c <coordsfile>]
        Requires <fastafile> in appropriate format
        Writes <destdir>/<dbname>.chromosome and <destdir>/<dbname>.contig files 
        and corresponding .iit files */
@@ -616,9 +748,10 @@ main (int argc, char *argv[]) {
     /* keys are strings; values are ints */
     contigtype_table = Tableint_new(100,string_compare,string_hash);
 
-    typestring = (char *) CALLOC(sizeof(refstrain)+1,sizeof(char));
-    strcpy(typestring,refstrain);
-    contigtypelist = List_push(NULL,typestring);
+    refstrain = read_strain_from_coordsfile(coordsfile);
+    fprintf(stderr,"Reference strain is %s\n",refstrain);
+
+    contigtypelist = List_push(NULL,refstrain);
     ncontigs = 0;
     while (process_sequence_aux(&contigtypelist,accsegmentpos_table,contigtype_table,
 				chrlength_table) == true) {
@@ -660,7 +793,7 @@ main (int argc, char *argv[]) {
     FREE(iitfile);
 
     if (IIT_ntypes(contig_iit) == 1) {
-      Genome_write(destdir,fileroot,stdin,contig_iit,NULL,uncompressedp,writefilep,genomelength);
+      Genome_write(destdir,fileroot,stdin,contig_iit,NULL,uncompressedp,rawp,writefilep,genomelength);
     } else if (IIT_ntypes(contig_iit) > 1) {
       iitfile = (char *) CALLOC(strlen(destdir)+strlen("/")+
 				strlen(fileroot)+strlen(".altstrain.iit")+1,sizeof(char));
@@ -676,14 +809,14 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"Done writing alternate strain file\n");
 
       altstrain_iit = IIT_read(iitfile,NULL,false);
-      Genome_write(destdir,fileroot,stdin,contig_iit,altstrain_iit,uncompressedp,writefilep,genomelength);
+      Genome_write(destdir,fileroot,stdin,contig_iit,altstrain_iit,uncompressedp,rawp,writefilep,genomelength);
       FREE(iitfile);
 
       /* Write .altstrain.type file */
       iittypefile = (char *) CALLOC(strlen(destdir)+strlen("/")+
 				    strlen(fileroot)+strlen(".altstrain.type")+1,sizeof(char));
       sprintf(iittypefile,"%s/%s.altstrain.type",destdir,fileroot);
-      fp = fopen(iittypefile,"w");
+      fp = FOPEN_WRITE_BINARY(iittypefile);
       if (fp != NULL) {
 	IIT_dump_typestrings(fp,altstrain_iit);
 	fclose(fp);
@@ -700,7 +833,7 @@ main (int argc, char *argv[]) {
               gmapindex -C <genomefile> > <genomecompfile> */
 
     if (argc > 1) {
-      fp = fopen(argv[1],"rb");
+      fp = FOPEN_READ_BINARY(argv[1]);
       Compress_compress(fp);
       fclose(fp);
     } else {
@@ -712,7 +845,7 @@ main (int argc, char *argv[]) {
               gmapindex -U [-w <wraplength>] <genomecompfile> > <genomefile> */
     
     if (argc > 1) {
-      fp = fopen(argv[1],"rb");
+      fp = FOPEN_READ_BINARY(argv[1]);
       Compress_uncompress(fp,wraplength);
       fclose(fp);
     } else {
@@ -728,7 +861,7 @@ main (int argc, char *argv[]) {
     offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				  strlen(".idxoffsets")+1,sizeof(char));
     sprintf(offsetsfile,"%s/%s.idxoffsets",destdir,fileroot);
-    if ((offsets_fp = fopen(offsetsfile,"w")) == NULL) {
+    if ((offsets_fp = FOPEN_WRITE_BINARY(offsetsfile)) == NULL) {
       fprintf(stderr,"Can't write to file %s\n",offsetsfile);
       exit(9);
     }
@@ -754,7 +887,7 @@ main (int argc, char *argv[]) {
     offsetsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
 				  strlen(".idxoffsets")+1,sizeof(char));
     sprintf(offsetsfile,"%s/%s.idxoffsets",sourcedir,fileroot);
-    if ((offsets_fp = fopen(offsetsfile,"r")) == NULL) {
+    if ((offsets_fp = FOPEN_READ_BINARY(offsetsfile)) == NULL) {
       fprintf(stderr,"Can't open file %s\n",offsetsfile);
       exit(9);
     }

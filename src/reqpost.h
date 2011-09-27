@@ -1,4 +1,4 @@
-/* $Id: reqpost.h,v 1.12 2005/02/15 01:56:57 twu Exp $ */
+/* $Id: reqpost.h,v 1.13 2005/12/06 02:17:18 twu Exp $ */
 #ifndef REQPOST_INCLUDED
 #define REQPOST_INCLUDED
 #include "blackboard.h"
@@ -13,6 +13,8 @@ extern T
 Reqpost_new (Blackboard_T blackboard, int id, Params_T params);
 extern void
 Reqpost_free (T *old);
+extern int
+Reqpost_id (T this);
 extern Params_T
 Reqpost_params (T this);
 

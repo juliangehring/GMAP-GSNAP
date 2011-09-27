@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_process.pl.in,v 1.1 2005/10/12 22:50:06 twu Exp $
+# $Id: gmap_process.pl.in,v 1.3 2006/01/19 22:33:40 twu Exp $
 
 use IO::File;
 use Getopt::Std;
@@ -28,16 +28,21 @@ sub read_coords {
 
   while (defined($line = <$FP>)) {
     if ($line =~ /^#/) {
-      # Skip
+      if ($line =~ /Reference strain:\s*(\S+)/) {
+	$refstrain = $1;
+      }
+
     } else {
       chop $line;
       @fields = split /\s+/,$line;
       $contig = $fields[0];
-      $coords{$contig} = $fields[1];
       if (!defined($strain{$contig} = $fields[2])) {
+	$strain{$contig} = "";
+      } elsif (defined($refstrain) && $strain{$contig} eq $refstrain) {
 	$strain{$contig} = "";
       }
 
+      $coords{$contig} = $fields[1];
       # Also store information without version
       if ($contig =~ /(\S+)\.\d+$/) {
 	$noversion = $1;
@@ -46,6 +51,7 @@ sub read_coords {
 	  $strain{$noversion} = "";
 	}
       }
+
     }
   }
   close($FP);
@@ -90,6 +96,7 @@ sub process_fasta {
       if (!defined($coords{$contig})) {
 	print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
 	$printp = 0;
+
       } else {
 
 	# ($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;

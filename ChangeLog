@@ -1,3 +1,1156 @@
+2006-04-07 13:25  twu
+
+	* util/gmap_setup.pl.in: Fixed bugs with new install statements
+
+2006-04-07 13:25  twu
+
+	* tests/align.test.ok: Changed gold standard to contain intron
+	  lengths
+
+2006-04-07 10:07  twu
+
+	* VERSION: Updated version
+
+2006-04-07 10:06  twu
+
+	* util/gmap_setup.pl.in: Added comment about editing .chrsubset
+	  file.  Creating genome.maps directory.
+
+2006-04-07 10:06  twu
+
+	* src/stage3.c: Turned off CHECK
+
+2006-04-07 10:05  twu
+
+	* README: Added comment about editing .chrsubset file
+
+2006-04-07 10:05  twu
+
+	* MAINTAINER: Added check for CHECK
+
+2006-04-06 18:25  twu
+
+	* util/gmap_compress.pl.in: Changed program to handle intron
+	  lengths in exon summary
+
+2006-04-06 18:21  twu
+
+	* src/: stage2.c, stage2.h: Introduced limit on individual intron
+	  lengths
+
+2006-04-06 18:21  twu
+
+	* src/: stage1.c, stage1.h: Changed variable name from maxintronlen
+	  to maxtotallen
+
+2006-04-06 18:18  twu
+
+	* src/gmap.c: Added separate flag for limiting individual intron
+	  lengths
+
+2006-04-06 18:17  twu
+
+	* src/pair.c: Added intronlengths to exon summary
+
+2006-04-06 16:20  twu
+
+	* src/sequence.h: Increased maximum sequence length to be 1000000.
+
+2006-04-04 16:22  twu
+
+	* src/stage3.c: Building singles if a short exon is deleted during
+	  smoothing
+
+2006-04-04 16:21  twu
+
+	* src/smooth.c: Improved debugging statements
+
+2006-03-24 14:56  twu
+
+	* tests/Makefile.am: Added INSTALL file to be cleaned up
+
+2006-03-24 13:16  twu
+
+	* util/gmap_setup.pl.in: Printing a copy of the install procedure
+	  to a file
+
+2006-03-24 11:05  twu
+
+	* VERSION: Updated version
+
+2006-03-20 18:03  twu
+
+	* src/match.c: Match_npairings returns an int
+
+2006-03-20 17:50  twu
+
+	* tests/: setup2.test.in, setup1.test.in: Using new gmap_setup
+	  procedure
+
+2006-03-20 17:50  twu
+
+	* tests/: coords1.test.in, coords1.test.ok, Makefile.am: Changed
+	  names of files
+
+2006-03-20 17:48  twu
+
+	* util/md_coords.pl.in: Passing back maxwidth as a result.
+
+2006-03-20 17:48  twu
+
+	* src/gmap.c: Made changes for compatibility with PMAP.
+
+2006-03-20 17:47  twu
+
+	* src/: stage3.c, stage3.h: Giving maxpeelback information to
+	  dynamic programming routine, so it can use single gap penalties
+	  for long intron gaps.  Made changes for compatibility with PMAP.
+
+2006-03-20 17:46  twu
+
+	* src/: smooth.c, smooth.h: Changed smoothing routine to be based
+	  on net intron lengths.  Sequences of small exons are removed if
+	  they yield a net intron length of approximately zero.
+
+2006-03-20 17:44  twu
+
+	* src/: dynprog.c, dynprog.h: Disallowing intron or cDNA gaps to be
+	  placed at the edge of the segment, which caused an error to occur
+	  in the check_gaps routine.  Using single gap penalties for long
+	  intron gaps.
+
+2006-03-17 15:50  twu
+
+	* src/sequence.c: Added handler for cases where requested
+	  subsequence start and end are beyond the bounds of the sequence
+
+2006-03-17 15:50  twu
+
+	* src/: stage1.c, stage1.h, gmap.c: Added concept of maxtrial, to
+	  be used for chimera (subsequence) problems
+
+2006-03-17 15:49  twu
+
+	* src/stage3.c: Added an exception handle for errors in checking
+	  gaps
+
+2006-03-17 15:48  twu
+
+	* src/dynprog.c: Disallowed intron or cDNA gaps to be inserted at
+	  ends of the subsequence, which results in an unexpected gap.
+
+2006-03-05 21:46  twu
+
+	* src/gmap.c: Providing maponlyp information to Sequence_read, to
+	  turn skiplength warning message on or off.
+
+2006-03-05 21:45  twu
+
+	* src/sequence.h: Set MAXSEQLEN to be 200000
+
+2006-03-05 21:43  twu
+
+	* src/: stage3.c, pair.c: Revision of procedures to handle
+	  sequences with skiplength
+
+2006-03-05 21:42  twu
+
+	* src/stage1.c: Expanded maxintronlen to include skiplength
+
+2006-03-05 21:42  twu
+
+	* src/: sequence.c, sequence.h: Addition of skiplength.  Rewriting
+	  of code for reading sequences to handle skipping of middle
+	  correctly.
+
+2006-03-04 19:38  twu
+
+	* src/gmap.c: Reworking of maponlyp case to generate a Stage3_T
+	  object
+
+2006-03-04 19:31  twu
+
+	* src/: stage3.c, stage3.h: Implementedq Stage3_direct function for
+	  maponlyp case.  Cleaned up merge function for combining two
+	  Stage3_T objects.
+
+2006-03-04 19:29  twu
+
+	* src/: stage1.c, stage1.h: Cleaned up various procedures in stage
+	  1 computation.  Simplified function identify_matches.
+	  Eliminating extensions for maponlyp case.
+
+2006-03-04 19:27  twu
+
+	* src/: matchpair.c, matchpair.h: Added function for making a path
+	  from a matchpair object
+
+2006-03-04 19:26  twu
+
+	* src/matchpool.c: Simplified code for handling positions on
+	  reverse genomic strands.
+
+2006-03-04 19:26  twu
+
+	* src/: match.c, match.h: Added function for printing the oligomer
+	  for a match.	Simplified code for handling positions on reverse
+	  genomic strands.
+
+2006-03-04 19:20  twu
+
+	* src/oligoindex.c: Turned off code for changepoint analysis for
+	  trimming ends
+
+2006-03-04 19:16  twu
+
+	* src/: pair.c, pair.h: Modified printing of path summary for
+	  maponlyp
+
+2006-03-04 19:15  twu
+
+	* src/: result.c, result.h: Removed Stage1_T objects from Result_T
+
+2006-03-04 19:14  twu
+
+	* src/genome.c: Added debugging statements
+
+2006-03-04 14:00  twu
+
+	* src/: block.c, oligo.c, oligo.h: Fixed problem where oligomers
+	  read from left side need to be shifted down to low 12-mer.  This
+	  corrects problem with match coordinates being off by 4.
+
+2006-03-02 14:53  twu
+
+	* src/gmap.c: Revised code for computing chimeras
+
+2006-03-02 14:52  twu
+
+	* src/: chimera.c, chimera.h: Made Chimera_T object created only
+	  when completely specified
+
+2006-03-02 14:51  twu
+
+	* src/stage3.c: Added a step to allow for subseq_offset, if present
+
+2006-03-02 14:51  twu
+
+	* src/: sequence.c, sequence.h: Added subseq_offset to Sequence_T
+
+2006-03-01 18:23  twu
+
+	* src/: dynprog.c, dynprog.h: Restored one gap behavior on ends.
+	  Using cdna_direction information on single gaps.
+
+2006-03-01 18:22  twu
+
+	* src/stage3.c: Forcing single gaps to be solved.  Adding
+	  cdna_direction information for single gaps.  Fixed problem with
+	  short indels being inserted backward.
+
+2006-03-01 18:21  twu
+
+	* src/: oligoindex.c, oligoindex.h: Implemented new scheme for
+	  detecting repetitive sequence on ends, based on changepoint
+	  analysis
+
+2006-03-01 18:20  twu
+
+	* src/smooth.c: Fixed memory leak.
+
+2006-03-01 18:20  twu
+
+	* src/translation.c: Added check so we won't go beyond ends.
+	  Assigned variables when npairs is too few.
+
+2006-02-27 12:44  twu
+
+	* src/: stage3.c, stage3.h: Minor bug fixes
+
+2006-02-26 11:07  twu
+
+	* src/: match.c, match.h, matchdef.h, matchpool.c, stage1.c:
+	  Keeping track of number of pairings for each match, and placing a
+	  limit on the number of matchpairs generated for each match with a
+	  "promiscuous" variable
+
+2006-02-25 06:01  twu
+
+	* src/stage2.c: Made behavior similar for sequence and reverse
+	  complement, including bug fix and using diffdistance rather than
+	  querydistance
+
+2006-02-24 12:39  twu
+
+	* src/: pairpool.c, pairpool.h: Added procedure for counting result
+	  of bounding operation
+
+2006-02-24 12:38  twu
+
+	* src/: pair.c, pair.h: Counting amino acids directly for protein
+	  PSL output.  Fixed problem in coordinates output where chrstring
+	  was NULL.
+
+2006-02-24 12:38  twu
+
+	* src/dynprog.c: Increased penalty for gaps in single alignments
+	  and made them uniform across sequence quality
+
+2006-02-24 12:37  twu
+
+	* src/: smooth.c, smooth.h: Rewrite of code to use arrays instead
+	  of lists.  Reduced definition of short exon.	Now deleting
+	  consecutive strings of short exons.
+
+2006-02-24 12:36  twu
+
+	* src/translation.c: Noting large insertions and deletions of amino
+	  acids, even if not a multiple of 3
+
+2006-02-23 14:08  twu
+
+	* src/: chimera.c, chimera.h, gmap.c, stage3def.h: Moved various
+	  functions back to stage3.c
+
+2006-02-23 14:08  twu
+
+	* src/: stage3.c, stage3.h: Performing substitution of gaps only
+	  for final cDNA direction
+
+2006-02-23 14:07  twu
+
+	* src/: oligoindex.c, oligoindex.h: Turned off trimming of sequence
+	  for reference sequences and for protein sequences
+
+2006-02-23 14:06  twu
+
+	* src/: intron.c, intron.h: Using cdna_direction information in
+	  assigning Intron_type
+
+2006-02-23 14:06  twu
+
+	* src/: dynprog.c, pairpool.c, pairpool.h, stage2.c: Passing in
+	  gapp as a parameter to Pairpool_push
+
+2006-02-23 14:03  twu
+
+	* src/translation.c: Fixed bug with marking backwards cDNAs
+	  relative to reference sequence
+
+2006-02-22 19:04  twu
+
+	* src/translation.c: Fixed minor bugs in new implementation
+
+2006-02-22 17:55  twu
+
+	* src/Makefile.am: Rewrite of code for determining mutations and
+	  for printing the results.  Removed mutation.c and mutation.h.
+
+2006-02-22 17:55  twu
+
+	* src/: mutation.c, mutation.h, pair.c, pair.h, translation.c:
+	  Rewrite of code for determining mutations and for printing the
+	  results
+
+2006-02-21 09:35  twu
+
+	* src/stage3.c: Moved some chimera functions from stage3.c to
+	  chimera.c.  Set acceptable_mismatches for microexons to be 2.
+
+2006-02-21 09:35  twu
+
+	* src/: Makefile.am, chimera.c, chimera.h, stage3.h, stage3def.h:
+	  Moved some chimera functions from stage3.c to chimera.c
+
+2006-02-21 09:33  twu
+
+	* src/dynprog.c: Increased probability standard for finding
+	  microexons
+
+2006-02-19 19:59  twu
+
+	* src/translation.c: Fixed bug where cDNA translation was
+	  incomplete
+
+2006-02-19 19:58  twu
+
+	* src/stage3.c: Fixed bug in substitution for gaps when ngap is not
+	  3
+
+2006-02-19 19:20  twu
+
+	* src/: stage3.c, stage3.h: Complete rewrite of stage 3 to use gap
+	  pairs
+
+2006-02-19 19:19  twu
+
+	* src/translation.c: Increased parameter for ignoring amino acid
+	  mismatches at ends of query sequence
+
+2006-02-19 19:19  twu
+
+	* src/: smooth.c, smooth.h: Made changes to handle new gap pairs
+
+2006-02-19 19:18  twu
+
+	* src/pair.c: No longer assigning coordinates for query sequence
+	  and genomic segment within gaps
+
+2006-02-19 19:17  twu
+
+	* src/: matchpair.c, matchpair.h: Limiting 12-mer hits that are
+	  considered in clustering method to those that have a neighboring
+	  hit within the query length
+
+2006-02-19 19:15  twu
+
+	* src/: dynprog.c, dynprog.h: Inserting a single gap pair for
+	  introns and cDNA insertions instead of filling in nucleotides
+
+2006-02-19 19:14  twu
+
+	* src/stage1.c: Reduced extension of genomic segment when cluster
+	  mode is required
+
+2006-02-19 19:13  twu
+
+	* src/gmap.c: Put output to stderr when path not found in
+	  compressed output
+
+2006-02-19 19:12  twu
+
+	* src/: intron.c, intron.h: Moved Intron_type function here
+
+2006-02-19 19:11  twu
+
+	* src/: pairpool.c, pairpool.h: Added explicit functios for
+	  handling gap pairs
+
+2006-02-19 19:11  twu
+
+	* src/pairdef.h: Added fields for queryjump and genomejump, to be
+	  used for gaps
+
+2006-02-08 06:26  twu
+
+	* src/translation.c: Set minimum number of pairs required for a
+	  translation
+
+2006-02-07 11:27  twu
+
+	* src/gmap.c: Now checking for existence of -g or -d flag before
+	  proceeding
+
+2006-02-07 11:26  twu
+
+	* src/stage3.c: Fixed problem when solving an intron and unable to
+	  peel back anything.
+
+2006-02-05 19:09  twu
+
+	* src/dynprog.c: Fixed problem with extending 5' and 3' ends with
+	  assumption of no gap.  Added extra efficiency based on this
+	  assumption.
+
+2006-01-19 15:08  twu
+
+	* tests/: align.test.ok, map.test.ok: Changed "Mutations" to "Amino
+	  acid changes" in output
+
+2006-01-19 15:07  twu
+
+	* README: Enhanced usage statement for gmap_setup
+
+2006-01-19 15:06  twu
+
+	* util/gmap_setup.pl.in: Cleaned up flags.  Added messages after
+	  each make procedure.	Enhanced usage statement.
+
+2006-01-19 14:33  twu
+
+	* util/gmap_process.pl.in: Removed code for a separate strain file
+
+2006-01-19 14:33  twu
+
+	* util/gmap_process.pl.in: Added provision for a separate strain
+	  file, but commented out code
+
+2006-01-19 14:31  twu
+
+	* util/md_coords.pl.in: Fixed problem when MD file has fewer than 6
+	  lines.  Put output into an array for printing out in one batch.
+	  Improved handling of strains.
+
+2006-01-19 14:30  twu
+
+	* util/fa_coords.pl.in: Put output into an array for printing out
+	  in one batch.
+
+2006-01-19 14:27  twu
+
+	* util/: Makefile.am, pmap_setup.pl.in: Removed pmap_setup program
+
+2006-01-19 14:27  twu
+
+	* src/stage3.c: Added procedure to fix short gaps
+
+2006-01-19 14:26  twu
+
+	* src/gmapindex.c: Added ability to read reference strain from
+	  coords file
+
+2006-01-19 14:25  twu
+
+	* src/gmap.c: Added provision for different stage 2 index size for
+	  PMAP
+
+2006-01-17 16:52  twu
+
+	* src/pair.c: Fixed problem with protein PSL coordinates
+
+2005-12-15 11:16  twu
+
+	* src/: backtranslation.c, backtranslation.h: Fixed problems in
+	  backtranslation when genomic segment has lower case characters
+
+2005-12-15 11:15  twu
+
+	* src/: gmap.c, stage3.c, stage3.h: Preserved diagnostic info in
+	  PMAP through backtranslation
+
+2005-12-15 11:14  twu
+
+	* src/pair.c: Changed printing of cDNA on ambiguous comps to be
+	  lower case if appropriate
+
+2005-12-15 11:13  twu
+
+	* src/dynprog.c: Changed ends from 1 gap to no gaps.  Changed
+	  open/extend penalties at ends (which may be irrelevant now).
+
+2005-12-15 06:24  twu
+
+	* src/: matchpool.c, stage1.c: Fixed problems with genomic position
+	  in reverse complement matches in PMAP.
+
+2005-12-15 06:23  twu
+
+	* src/translation.c: Fixed problems with ends of cDNA and genomic
+	  translation for PMAP.  Set margin to zero for computing amino
+	  acid changes.
+
+2005-12-15 06:21  twu
+
+	* src/iit-read.c: Commented out abort
+
+2005-12-14 09:05  twu
+
+	* src/sequence.c: Fixed uninitialized heap
+
+2005-12-13 10:07  twu
+
+	* src/: gmap.c, stage2.c, stage2.h: Added pruning before stage 2
+	  based on number of potentially consecutive hits and short paths
+
+2005-12-13 10:06  twu
+
+	* src/: oligoindex.c, oligoindex.h: Added computation of
+	  potentially consecutive hits in the query
+
+2005-12-13 10:05  twu
+
+	* src/stage1.c: Added filtering of matchlist based on support
+
+2005-12-13 10:05  twu
+
+	* src/: matchpair.c, matchpair.h: Added storage of support and usep
+	  in Matchpair_T object
+
+2005-12-09 08:57  twu
+
+	* src/: stage2.c, gmap.c: Removed code for finding PMAP unaligned
+	  access error
+
+2005-12-09 08:56  twu
+
+	* src/: stage2.c, gmap.c: Added code for finding PMAP unaligned
+	  access error
+
+2005-12-09 08:55  twu
+
+	* src/: backtranslation.c, oligoindex.c: Removed code for checking
+	  assertions
+
+2005-12-09 08:54  twu
+
+	* src/: backtranslation.c, oligoindex.c: Added code for checking
+	  assertions
+
+2005-12-08 12:43  twu
+
+	* src/pair.c: Streamlined determination of amino acid coordinates
+	  in alignment output
+
+2005-12-08 12:42  twu
+
+	* src/indexdb.c: Fixed bug in handling offsets in alternative
+	  strains in PMAP
+
+2005-12-08 12:41  twu
+
+	* src/dynprog.c: Reformulated assignment of pointers in
+	  two-dimensional array
+
+2005-12-06 10:01  twu
+
+	* src/translation.c: Formatting change
+
+2005-12-06 10:00  twu
+
+	* src/stage1.c: Turned on use of matchpool.  Fixed problem where
+	  list was not reset to NULL.
+
+2005-12-06 10:00  twu
+
+	* src/pair.c: Changed dir:unknown to dir:indet
+
+2005-12-06 09:59  twu
+
+	* src/oligoindex.c: Fixed uninitialized variable in GMAP
+
+2005-12-06 09:59  twu
+
+	* src/matchpool.c: Improved debugging statements
+
+2005-12-06 09:59  twu
+
+	* src/matchpair.c: Increased standard for stage 1 support
+
+2005-12-05 23:58  twu
+
+	* src/oligoindex.c: Made code compatible with both GMAP and PMAP
+
+2005-12-05 23:49  twu
+
+	* src/: backtranslation.c, dynprog.c: Reduced memory allocation for
+	  two-dimensional array into a one-dimensional array
+
+2005-12-05 23:47  twu
+
+	* src/: pairpool.c, matchpool.c: Removed initial creation of chunks
+
+2005-12-05 23:47  twu
+
+	* src/oligoindex.c: Fixed bug in PMAP where stop codon in the
+	  genomic sequence created a value that exceeded oligospace
+
+2005-12-05 18:17  twu
+
+	* src/: pair.c, pair.h: Added a way for the thread worker id to be
+	  printed with the result.  Removed ambiguous comp characters from
+	  gmap.
+
+2005-12-05 18:17  twu
+
+	* src/: gmap.c, reqpost.c, reqpost.h, result.c, result.h, stage3.c,
+	  stage3.h: Added a way for the thread worker id to be printed with
+	  the result
+
+2005-12-05 18:15  twu
+
+	* src/matchpool.c: Added commands for saving and restoring
+	  pointers, so memory can be re-used
+
+2005-12-05 18:14  twu
+
+	* src/: match.c, match.h, stage1.c: Added compiler conditions for
+	  using matchpool method.
+
+2005-12-05 18:12  twu
+
+	* src/genome.c: Fixed messages to user
+
+2005-12-05 16:55  twu
+
+	* src/chrsubset.c: Changed format of output
+
+2005-12-05 16:54  twu
+
+	* src/translation.c: Fixed bug in translating backward cDNAs.
+	  Extended translation all the way to the end.
+
+2005-12-04 08:13  twu
+
+	* src/: Makefile.am, gmap.c, matchpair.c, matchpair.h,
+	  matchpairdef.h, matchpairpool.c, matchpairpool.h, stage1.c,
+	  stage1.h: Removed special memory allocation routines for
+	  matchpairs
+
+2005-12-04 07:31  twu
+
+	* src/: Makefile.am, gmap.c, match.c, match.h, matchpair.c,
+	  matchpair.h, matchpairdef.h, matchpairpool.c, matchpool.c,
+	  matchpool.h, stage1.c, stage1.h, matchpairpool.h: Added special
+	  memory allocation routines for matches and matchpairs
+
+2005-12-04 07:29  twu
+
+	* src/iit-read.c: Added an exception handler
+
+2005-12-04 07:29  twu
+
+	* src/pair.c: Commented out unused procedure
+
+2005-12-04 07:28  twu
+
+	* src/genome.c: Added include of except.h
+
+2005-12-02 15:00  twu
+
+	* src/gmap.c: Fixed memory leak
+
+2005-12-02 14:59  twu
+
+	* src/translation.c: Added separate routine for printing list of
+	  mutations.  Fixed problem where number of cDNA nucleotides in
+	  codon is 4 or 5.
+
+2005-12-02 14:58  twu
+
+	* src/stage2.c: Clarified different code for gmap and pmap
+
+2005-12-02 14:58  twu
+
+	* src/stage1.c: Added checking routine for Stage1 object
+
+2005-12-02 14:57  twu
+
+	* src/sequence.c: Fixed case where first sequence of FASTA file has
+	  no header, but subsequent sequences do.
+
+2005-12-02 14:55  twu
+
+	* src/nr-x.c: Initial import into CVS
+
+2005-12-02 14:55  twu
+
+	* src/pair.c: Added printing of aapos to all positions in "f -9"
+	  mode
+
+2005-12-02 14:55  twu
+
+	* src/mutation.c: Simplified logic of merge functions
+
+2005-12-02 14:54  twu
+
+	* src/: mem.c, access.c: Augmented debugging statements
+
+2005-11-29 09:33  twu
+
+	* src/match.h: Provided interface for new functions
+
+2005-11-29 09:32  twu
+
+	* src/gmap.c: Fixed bug due to switched parameters
+
+2005-11-29 09:25  twu
+
+	* src/stage3.c: Added comment
+
+2005-11-29 09:24  twu
+
+	* config.site: Added information about defaults
+
+2005-11-29 09:23  twu
+
+	* README: Added information about Cygwin and defaults
+
+2005-11-28 17:37  twu
+
+	* src/stage1.c: Added include of match.h
+
+2005-11-23 09:30  twu
+
+	* config/fopen.m4, acinclude.m4, configure.ac: Added commands to
+	  check for 'b' or 't' flag to fopen
+
+2005-11-23 09:30  twu
+
+	* src/pmap.c: Removed obsolete file
+
+2005-11-23 09:29  twu
+
+	* src/: Makefile.am, access.c, chrsubset.c, datadir.c, fopen.h,
+	  genome-write.c, genomeplot.c, gmap.c, gmapindex.c, iit-read.c,
+	  iit-write.c, iit_store.c, indexdb.c, oligo-count.c, pdldata.c,
+	  pmapindex.c: All calls to fopen now generalized to handle systems
+	  that allow or disallow the 'b' or 't' flag
+
+2005-11-22 17:09  twu
+
+	* VERSION: Updated version
+
+2005-11-22 15:32  twu
+
+	* tests/Makefile.am: Removed coords1.test, which is now performed
+	  by setup1.test and setup2.test
+
+2005-11-22 15:31  twu
+
+	* tests/: setup1.test.in, setup2.test.in: Added prerequisite of
+	  fa_coords program for setup tests
+
+2005-11-22 15:31  twu
+
+	* README: Made instructions for raw genome build match changes in
+	  gmap_setup
+
+2005-11-22 15:30  twu
+
+	* util/gmap_setup.pl.in: Changed name of make command
+
+2005-11-22 10:52  twu
+
+	* util/gmap_setup.pl.in: Clarified comments
+
+2005-11-22 10:52  twu
+
+	* src/gmap.c: Made npaths output correct when user provides a
+	  segment
+
+2005-11-22 10:51  twu
+
+	* src/: match.c, matchdef.h, stage1.c: Storing reciprocal of
+	  nentries to avoid repeating this calculation multiple times later
+
+2005-11-22 10:50  twu
+
+	* tests/: setup1.test.in, setup2.test.in: Made changes in test to
+	  match changes in program
+
+2005-11-22 10:50  twu
+
+	* tests/: align.test.ok, map.test.ok: Made change in output from
+	  Mutations to Amino acid changes
+
+2005-11-22 10:50  twu
+
+	* tests/Makefile.am: Made change in name of coords file
+
+2005-11-22 10:49  twu
+
+	* README: Made instructions consistent with changes in programs
+
+2005-11-21 19:58  twu
+
+	* util/fa_coords.pl.in: Changed a flag.  Output now going to stdout
+	  rather than stderr.
+
+2005-11-21 19:57  twu
+
+	* util/gmap_setup.pl.in: Now making the call to fa_coords or
+	  md_coords within the Makefile
+
+2005-11-21 18:40  twu
+
+	* src/matchpair.c: Turned off debugging
+
+2005-11-21 18:39  twu
+
+	* src/: match.c, match.h, matchdef.h: Storing number of entries for
+	  each match
+
+2005-11-21 18:39  twu
+
+	* src/indexdb.c: Moved one type of debug macro into its own
+	  category
+
+2005-11-21 18:38  twu
+
+	* src/stage1.c: Weighted dangling computation according to number
+	  of entries for each match
+
+2005-11-21 18:37  twu
+
+	* src/translation.c: Fixed bug where pointer went past beyond
+	  sequence
+
+2005-11-19 11:18  twu
+
+	* src/: chrsubset.c, gmap.c: Added printing of chrsubset
+	  information.	Consolidated printing of npaths information into a
+	  single function.
+
+2005-11-19 11:11  twu
+
+	* src/backtranslation.c: Using the two aamarkers.  Allowing matches
+	  to codons even for frameshifts.
+
+2005-11-19 09:07  twu
+
+	* src/mutation.c: Allowed merging of adjacent insertions
+
+2005-11-19 08:23  twu
+
+	* src/translation.c: Made PMAP assignment of genomic amino acids
+	  conform to GMAP code for assignment of cDNA amino acids
+
+2005-11-19 07:38  twu
+
+	* src/translation.c: Added further translation of cDNA beyond
+	  genomic stop codon, if possible
+
+2005-11-19 07:29  twu
+
+	* src/translation.c: Streamlined code for amino acids to cDNA
+	  sequence
+
+2005-11-19 01:27  twu
+
+	* src/translation.c: Overhaul of method for assigning amino acids
+	  to cDNA sequence, now based on separate marking and assignment of
+	  codons.
+
+2005-11-19 01:26  twu
+
+	* src/: pair.c, pairdef.h, pairpool.c: Created separate aamarkers
+	  for genomic and cDNA sequence
+
+2005-11-18 22:36  twu
+
+	* src/: gmap.c, params.c, params.h, stage3.c, stage3.h,
+	  translation.c, translation.h: Added flag for specifying maximum
+	  number of amino acid changes to show
+
+2005-11-18 20:56  twu
+
+	* src/stage1.c: Fixed memory leak
+
+2005-11-18 20:56  twu
+
+	* src/matchpair.c: Fixed read of uninitialized heap when bestsize
+	  == 0
+
+2005-11-18 20:25  twu
+
+	* src/: matchpair.c, matchpair.h: Removed storage of support value
+
+2005-11-18 20:22  twu
+
+	* src/: gmap.c, matchpair.c, matchpair.h, stage1.c: Moved sequence
+	  pruning procedures from gmap.c to matchpair.c
+
+2005-11-18 16:40  twu
+
+	* src/stage1.c: Fixed bug which caused loop to continue
+	  unnecessarily
+
+2005-11-18 15:25  twu
+
+	* src/: gmap.c, result.c, stage1.h: Added complete option for
+	  freeing Stage 1 objects
+
+2005-11-18 15:24  twu
+
+	* src/stage1.c: Introduced idea of stepping through trials to
+	  identify poor genomic matches
+
+2005-11-18 15:23  twu
+
+	* src/: matchpair.c, matchpair.h: Introduced method for salvaging
+	  individual 12-mer hits
+
+2005-11-18 13:04  twu
+
+	* src/: gmap.c, stage1.c, stage1.h: Simplified call to
+	  Stage1_matchlist
+
+2005-11-18 12:43  twu
+
+	* src/stage1.c: Cleaning up parameters in preparation for cycling
+	  through stage 1
+
+2005-11-17 17:54  twu
+
+	* src/indexdb.c: Added forward/backward to pre-loading messages for
+	  pmap
+
+2005-11-17 17:54  twu
+
+	* src/translation.c: Skipping mutation calls on non-standard amino
+	  acids
+
+2005-11-17 17:53  twu
+
+	* src/backtranslation.c: Fixed bug when trying to backtranslate
+	  non-standard amino acids
+
+2005-11-17 13:37  twu
+
+	* util/gmap_setup.pl.in: Added intermediate commands to Makefile
+
+2005-11-11 14:14  twu
+
+	* src/backtranslation.c: Improved matching of genomic codon to cdna
+	  codon.
+
+2005-11-11 14:13  twu
+
+	* src/translation.c: Added debugging statement
+
+2005-11-11 14:13  twu
+
+	* src/pair.c: Restored printing of genomic sequence for ambiguous
+	  matches in pmap
+
+2005-11-10 13:06  twu
+
+	* src/genome-write.c: Added read of linefeed after FASTA entry in
+	  raw genome files.  Improved speed of writing blocks of zeros or
+	  X's.
+
+2005-11-10 13:05  twu
+
+	* src/gmapindex.c: Fixed bug in skip_sequence for raw genome files
+
+2005-11-10 13:05  twu
+
+	* src/get-genome.c: Implemented printing of raw genome files
+
+2005-11-10 12:26  twu
+
+	* src/: gmap.c, stage3.c, stage3.h: Moved final translation and
+	  backtranslation steps into print procedures
+
+2005-11-10 12:24  twu
+
+	* src/: Makefile.am, backtranslation.c, backtranslation.h,
+	  translation.c, translation.h: Moved nucleotide consistency
+	  procedures for pmap into backtranslation.c
+
+2005-11-10 12:21  twu
+
+	* src/pair.c: Removed consistency conversion.  Now being done by
+	  backtranslation procedures.  Removed meaning of AMBIGUOUS_COMP
+	  for compressed output of pmap.
+
+2005-11-10 09:38  twu
+
+	* src/dynprog.c: Added actual coordinates to debugging statements
+
+2005-11-10 09:36  twu
+
+	* src/translation.h: Made backtranslation procedure more rigorous.
+
+2005-11-10 09:36  twu
+
+	* src/translation.c: Made backtranslation procedure more rigorous.
+	  Added debugging statements.
+
+2005-11-09 15:39  twu
+
+	* src/get-genome.c: Changed -r flag to also indicate use of the
+	  uncompressed genome file
+
+2005-11-09 14:05  twu
+
+	* src/: get-genome.c, sequence.c, sequence.h: Added uncompressed
+	  raw format for printing genome segment
+
+2005-11-09 14:04  twu
+
+	* src/: genome-write.c, genome-write.h, gmapindex.c: Added
+	  uncompressed raw format for genome file
+
+2005-11-08 17:13  twu
+
+	* src/pair.c: Reformulated printing of protein-based PSL output
+
+2005-11-08 17:12  twu
+
+	* src/intlist.c: Added include of stdio.h
+
+2005-11-08 17:12  twu
+
+	* src/chimera.c: Removed include of nmath.h
+
+2005-11-08 17:11  twu
+
+	* src/gmap.c: Allowed coordinate output for pmap.  Changed flag to
+	  -f 9.
+
+2005-11-04 16:31  twu
+
+	* util/gmap_compress.pl.in: Allowed handling of PMAP output
+
+2005-11-04 16:31  twu
+
+	* util/gmap_uncompress.pl.in: Fixed bug in printing last line of
+	  alignment
+
+2005-11-01 16:37  twu
+
+	* src/: gmap.c, pair.c, pair.h, stage3.c, stage3.h: Allowed introns
+	  to be printed in exon mode
+
+2005-11-01 16:37  twu
+
+	* src/matchpair.c: Imposed the requirement that minsize be 2 or
+	  more away from bestsize
+
+2005-10-31 11:02  twu
+
+	* src/: gmap.c, pair.c, pair.h, stage3.c, stage3.h: Added ability
+	  to print exons using genomic sequence
+
+2005-10-28 08:51  twu
+
+	* src/indexdb.c: Using lseek instead of fseek/fseeko for writing a
+	  positions file on disk
+
+2005-10-28 08:50  twu
+
+	* src/: access.c, access.h: Added a function for opening a file as
+	  read/write
+
+2005-10-27 15:56  twu
+
+	* VERSION: Updated version
+
+2005-10-27 15:56  twu
+
+	* tests/Makefile.am: Restored setup2.test
+
+2005-10-27 15:55  twu
+
+	* tests/setup2.test.in: Made test use new gmap_setup script
+
+2005-10-27 15:55  twu
+
+	* tests/setup1.test.in: Removed install step
+
+2005-10-27 15:55  twu
+
+	* util/gmap_setup.pl.in: Fixed bug in clean statement
+
+2005-10-27 15:54  twu
+
+	* configure.ac: Added check for fseeko
+
+2005-10-27 15:53  twu
+
+	* src/gmap.c: Added information about various type sizes to -V flag
+
+2005-10-27 15:52  twu
+
+	* src/: indexdb.c, genome-write.c, compress.c: Using fseeko if
+	  available
+
+2005-10-25 21:11  twu
+
+	* util/gmap_setup.pl.in: Fixed bug where -W flag was in the wrong
+	  branch
+
 2005-10-25 11:03  twu
 
 	* src/pair.c: Removed extraneous linefeed in compressed output

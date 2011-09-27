@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c,v 1.58 2005/10/19 03:53:07 twu Exp $";
+static char rcsid[] = "$Id: get-genome.c,v 1.62 2006/04/21 16:36:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,7 @@ static char rcsid[] = "$Id: get-genome.c,v 1.58 2005/10/19 03:53:07 twu Exp $";
 #include "chrom.h"
 #include "genome.h"
 #include "iit-read.h"
+#include "chrsubset.h"
 #include "datadir.h"
 #include "separator.h"
 #include "getopt.h"
@@ -45,6 +46,7 @@ static char *user_typestring = NULL;
 static int wraplength = 60;
 static char *header = NULL;
 static bool levelsp = false;
+static bool rawp = false;
 
 static char *user_mapdir = NULL;
 static char *map_iitfile = NULL;
@@ -52,6 +54,7 @@ static char *map_iitfile = NULL;
 /* Dump options */
 static bool dumpchrp = false;
 static bool dumpsegsp = false;
+static bool dumpchrsubsetsp = false;
 
 static struct option long_options[] = {
   /* Input options */
@@ -71,11 +74,13 @@ static struct option long_options[] = {
 
   {"mapdir", required_argument, 0, 'M'}, /* user_mapdir */
   {"map", required_argument, 0, 'm'},	/* map_iitfile */
-  {"ranks", no_argument, 0, 'r'}, /* levelsp */
+  {"ranks", no_argument, 0, 'k'}, /* levelsp */
+  {"raw", no_argument, 0, 'r'}, /* rawp */
 
   /* Dump options */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
   {"contigs", no_argument, 0, 'I'}, /* dumpsegsp */
+  {"chrsubsets", no_argument, 0, 'c'}, /* dumpchrsubsetsp */
   
   /* Help options */
   {"version", no_argument, 0, 'V'}, /* print_program_version */
@@ -122,7 +127,8 @@ Output options\n\
   -h, --header=STRING     Desired header line\n\
   -M, --mapdir=directory  Map directory\n\
   -m, --map=iitfile       Map file\n\
-  -r, --ranks             Prints levels for non-overlapping printing of map hits\n\
+  -k, --ranks             Prints levels for non-overlapping printing of map hits\n\
+  -r, --raw               Prints sequence as ASCII numeric codes\n\
 \n\
 Dump options\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
@@ -525,26 +531,30 @@ index_compare (const void *a, const void *b) {
 }
 
 
+#define BUFFERLEN 1024
 
 int
 main (int argc, char *argv[]) {
-  char *iitfile;
+  char *iitfile, *chrsubsetfile;
+  FILE *fp;
   Genomicpos_T genomicstart, genomiclength, sourcelength, extra;
-  char *genomesubdir = NULL, *mapdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL;
+  char *genomesubdir = NULL, *mapdir = NULL, *dbversion = NULL, *olddbroot, *fileroot = NULL, *p;
   char *gbuffer1, *gbuffer2, *gbuffer3;
   Sequence_T genomicseg;
   Genome_T genome;
   IIT_T chromosome_iit, contig_iit, altstrain_iit = NULL, map_iit = NULL;
   Interval_T interval;
+  Chrsubset_T chrsubset;
   char *strain;
   int user_type = -1, type, *indexarray, nindices, i, j;
+  char Buffer[BUFFERLEN], subsetname[BUFFERLEN];
 
   int opt;
   extern int optind;
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:M:m:rLIV?",
+  while ((opt = getopt_long(argc,argv,"D:d:R:Ss:CUXl:Gh:M:m:krLIcV?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -564,10 +574,12 @@ main (int argc, char *argv[]) {
     case 'h': header = optarg; break;
     case 'M': user_mapdir = optarg; break;
     case 'm': map_iitfile = optarg; break;
-    case 'r': levelsp = true; break;
+    case 'k': levelsp = true; break;
+    case 'r': uncompressedp = true; rawp = true; break;
 
     case 'L': dumpchrp = true; break;
     case 'I': dumpsegsp = true; break;
+    case 'c': dumpchrsubsetsp = true; break;
 
     case 'V': print_program_version(); exit(0);
     case '?': print_program_usage(); exit(0);
@@ -608,6 +620,45 @@ main (int argc, char *argv[]) {
 
     IIT_dump_formatted(contig_iit,/*directionalp*/true);
     IIT_free(&contig_iit);
+    return 0;
+
+  } else if (dumpchrsubsetsp == true) {
+    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
+    chromosome_iit = IIT_read(iitfile,NULL,true);
+    FREE(iitfile);
+
+    chrsubsetfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+				    strlen(fileroot)+strlen(".chrsubset")+1,sizeof(char));
+    sprintf(chrsubsetfile,"%s/%s.chrsubset",genomesubdir,fileroot);
+    if ((fp = fopen(chrsubsetfile,"r")) == NULL) {
+      fprintf(stderr,"Cannot open file %s\n",chrsubsetfile);
+      exit(9);
+    } else {
+      while (fgets(Buffer,BUFFERLEN,fp) != NULL) {
+	if (Buffer[0] == '>') {
+	  if (Buffer[1] == '\0' || isspace(Buffer[1])) {
+	    /* Skip */
+	  } else {
+	    if ((p = rindex(Buffer,'\n')) != NULL) {
+	      *p = '\0';
+	    }
+	    sscanf(&(Buffer[1]),"%s",subsetname);
+	    printf("%s\t",subsetname);
+	    chrsubset = Chrsubset_read(chrsubsetfile,genomesubdir,fileroot,subsetname,chromosome_iit);
+	    Chrsubset_print_chromosomes(chrsubset,chromosome_iit);
+	    Chrsubset_free(&chrsubset);
+	    printf("\n");
+	  }
+	}
+      }
+      fclose(fp);
+    }
+
+    FREE(chrsubsetfile);
+    IIT_free(&chromosome_iit);
+
     return 0;
 
   } else if (argc < 1) {
@@ -672,7 +723,11 @@ main (int argc, char *argv[]) {
 				      gbuffer1,gbuffer2,genomiclength);
 
       if (user_typestring == NULL) {
-	Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	if (rawp == true) {
+	  Sequence_print_raw(genomicseg);
+	} else {
+	  Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	}
 	Sequence_free(&genomicseg);
       }
 
@@ -706,7 +761,11 @@ main (int argc, char *argv[]) {
 	    indexarray = IIT_get_typed(&nindices,altstrain_iit,genomicstart+1,genomicstart+genomiclength-1,user_type);
 	    if (nindices == 0) {
 	      /* Print reference strain */
-	      Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	      if (rawp == true) {
+		Sequence_print_raw(genomicseg);
+	      } else {
+		Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	      }
 	      Sequence_free(&genomicseg);
 	    }
 	  }
@@ -749,7 +808,11 @@ main (int argc, char *argv[]) {
 	      printf(">%s:%u%s%u variant:%s\n",
 		     dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
 	    }
-	    Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	    if (rawp == true) {
+	      Sequence_print_raw(genomicseg);
+	    } else {
+	      Sequence_print(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	    }
 	    Sequence_free(&genomicseg);
 	    FREE(gbuffer3);
 	  }

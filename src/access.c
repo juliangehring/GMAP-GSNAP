@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c,v 1.5 2005/10/21 16:42:26 twu Exp $";
+static char rcsid[] = "$Id: access.c,v 1.8 2005/12/02 22:57:21 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -27,6 +27,7 @@ static char rcsid[] = "$Id: access.c,v 1.5 2005/10/21 16:42:26 twu Exp $";
 #include "assert.h"
 #include "mem.h"
 #include "types.h"
+#include "fopen.h"
 #include "stopwatch.h"
 
 #ifdef WORDS_BIGENDIAN
@@ -62,6 +63,16 @@ Access_fileio (char *filename) {
   return fd;
 }
 
+int
+Access_fileio_rw (char *filename) {
+  int fd;
+
+  if ((fd = open(filename,O_RDWR | O_CREAT | O_TRUNC,0764)) < 0) {
+    fprintf(stderr,"Error: can't open file %s for reading/writing\n",filename);
+    exit(9);
+  }
+  return fd;
+}
 
 /* Bigendian conversion not needed */
 void *
@@ -72,7 +83,7 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
 
   *len = (size_t) Access_filesize(filename);
 
-  if ((fp = fopen(filename,"r")) == NULL) {
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Error: can't open file %s\n",filename);
     exit(9);
   }
@@ -139,12 +150,14 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
     } else if (randomp == true) {
+      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,*len,MADV_RANDOM);
 #endif
 #endif
     } else {
+      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,*len,MADV_DONTNEED);
@@ -204,12 +217,14 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
     } else if (randomp == true) {
+      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,*len,MADV_RANDOM);
 #endif
 #endif
     } else {
+      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,*len,MADV_DONTNEED);
@@ -302,6 +317,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
       Stopwatch_stop();
     } else {
       /* Touch all pages */
+      debug(printf("Got mmap of %d bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_WILLNEED
       madvise(memory,*len,MADV_WILLNEED);

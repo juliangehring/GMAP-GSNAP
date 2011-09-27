@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c,v 1.66 2005/07/08 14:39:55 twu Exp $";
+static char rcsid[] = "$Id: match.c,v 1.73 2006/03/21 02:03:08 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,6 +17,7 @@ static char rcsid[] = "$Id: match.c,v 1.66 2005/07/08 14:39:55 twu Exp $";
 #include "mem.h"
 #include "segmentpos.h"
 #include "separator.h"
+#include "sequence.h"
 
 #define T Match_T
 
@@ -56,15 +57,28 @@ Match_chrpos (T this) {
   return this->chrpos;
 }
 
-void
-Match_set_pairedp (T this) {
-  this->pairedp = true;
+int
+Match_incr_npairings (T this) {
+  this->npairings += 1;
+  return this->npairings;
 }
 
-bool
-Match_pairedp (T this) {
-  return this->pairedp;
+int
+Match_npairings (T this) {
+  return this->npairings;
 }
+
+void
+Match_set_weight (T this, double weight) {
+  this->weight = weight;
+  return;
+}
+
+double
+Match_weight (T this) {
+  return this->weight;
+}
+
 
 int
 Match_cmp (const void *a, const void *b) {
@@ -80,6 +94,8 @@ Match_cmp (const void *a, const void *b) {
   }
 }
 
+#ifndef USE_MATCHPOOL
+/* Matches now made in matchpool.c */
 T
 Match_new (int querypos, bool forwardp, bool fivep,
 	   Genomicpos_T position, IIT_T chromosome_iit) {
@@ -87,35 +103,23 @@ Match_new (int querypos, bool forwardp, bool fivep,
   int index;
 
   new->querypos = querypos;
+  new->weight = 0.0;		/* Will be entered later */
   new->position = position;
   new->forwardp = forwardp;
   new->fivep = fivep;
-  new->pairedp = false;
+  new->npairings = 0;
 
   if (chromosome_iit == NULL) {
     new->chrnum = 0;
     new->chrpos = position;
   } else {
-    if (forwardp == true) {
-      index = IIT_get_one(chromosome_iit,position,position);
-    } else {
-      index = IIT_get_one(chromosome_iit,position-1,position-1);
-    }
+    index = IIT_get_one(chromosome_iit,position,position);
     new->chrpos = position - Interval_low(IIT_interval(chromosome_iit,index));
     new->chrnum = index;
   }
 
   return new;
 }
-
-T
-Match_copy (T this) {
-  T new = (T) MALLOC(sizeof(*new));
-
-  memcpy((void *) new,this,sizeof(struct T));
-  return new;
-}
-
 
 void
 Match_free (T *old) {
@@ -124,63 +128,36 @@ Match_free (T *old) {
   }
   return;
 }
+#endif
 
-/* Matches format of Pair_print_two */
+
+/* Static gbuffer1, gbuffer2 are allowable only for debugging */
+#define MAXSTAGE1SIZE 24
+
 void
-Match_print_two (int pathnum, T start, T end, IIT_T chromosome_iit, IIT_T contig_iit, 
-		 char *dbversion, bool zerobasedp) {
-  unsigned int querypos1, querypos2;
-  Genomicpos_T chrpos1, chrpos2, position1, position2;
-  char *chrstring, *comma1, *comma2;
+Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, int stage1size) {
+  char gbuffer1[MAXSTAGE1SIZE+1], gbuffer2[MAXSTAGE1SIZE+1], *genomicseg_ptr;
+  Sequence_T genomicseg;
+  int querypos, i, j;
+  Genomicpos_T position;
 
-  querypos1 = start->querypos;
-  querypos2 = end->querypos;
+  querypos = this->querypos;
+  position = this->position;
 
-  printf("  Path %d: ",pathnum);
-
-  printf("query %u%s%u (%u bp) => ",
-	 querypos1 + !zerobasedp,SEPARATOR,querypos2 + !zerobasedp,querypos2-querypos1+1);
-  
-  chrstring = Chrnum_to_string(start->chrnum,chromosome_iit);
-  if (start->chrpos <= end->chrpos) {
-    chrpos1 = start->chrpos;
-    chrpos2 = end->chrpos;
+  if (this->forwardp == true) {
+    genomicseg = Genome_get_segment(genome,position,stage1size,/*revcomp*/false,gbuffer1,gbuffer2,stage1size);
   } else {
-    chrpos1 = end->chrpos;
-    chrpos2 = start->chrpos;
-  }    
-    
-  comma1 = Genomicpos_commafmt(chrpos1 + !zerobasedp);
-  comma2 = Genomicpos_commafmt(chrpos2 + !zerobasedp);
-  printf("chr %s:%s%s%s (%u bp)\n",
-	 chrstring,comma1,SEPARATOR,comma2,chrpos2-chrpos1+1);
-  FREE(comma2);
-  FREE(comma1);
-
-  position1 = start->position;
-  position2 = end->position;
-  comma1 = Genomicpos_commafmt(position1 + !zerobasedp);
-  comma2 = Genomicpos_commafmt(position2 + !zerobasedp);
-  printf("    Genomic pos: %s:%s%s%s",dbversion,comma1,SEPARATOR,comma2);
-  FREE(comma2);
-  FREE(comma1);
-
-  if (start->chrpos <= end->chrpos) {
-    printf(" (+ strand)\n");
-  } else {
-    printf(" (- strand)\n");
+    genomicseg = Genome_get_segment(genome,position-(stage1size-1U),stage1size,/*revcomp*/true,gbuffer1,gbuffer2,stage1size);
   }
-  
-  if (contig_iit != NULL) {
-    if (position1 <= position2) {
-      Segmentpos_print_accessions(contig_iit,position1,position2,/*referencealignp*/true,/*align_strain*/NULL,zerobasedp);
-    } else {
-      Segmentpos_print_accessions(contig_iit,position2,position1,/*referencealignp*/true,/*align_strain*/NULL,zerobasedp);
-    }
+  genomicseg_ptr = Sequence_fullpointer(genomicseg);
+
+  for (i = querypos; i < querypos + stage1size; i++) {
+    printf("%c",queryseq_ptr[i]);
   }
-    
-  printf("\n");
-  FREE(chrstring);
+  printf(" ");
+  for (j = 0; j < stage1size; j++) {
+    printf("%c",genomicseg_ptr[j]);
+  }
 
   return;
 }

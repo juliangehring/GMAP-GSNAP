@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c,v 1.12 2005/10/19 03:56:35 twu Exp $";
+static char rcsid[] = "$Id: chrsubset.c,v 1.16 2006/04/21 16:36:58 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,6 +9,7 @@ static char rcsid[] = "$Id: chrsubset.c,v 1.12 2005/10/19 03:56:35 twu Exp $";
 #include <string.h>		/* For strlen */
 #include <ctype.h>		/* For isspace */
 #include "mem.h"
+#include "fopen.h"
 
 
 #ifdef DEBUG
@@ -31,8 +32,27 @@ struct T {
 void
 Chrsubset_print (T this) {
   if (this != NULL && this->name != NULL) {
-    printf("    Chromosome subset: %s\n",this->name);
+    printf("  [chrsubset: %s]",this->name);
   }
+  return;
+}
+
+void
+Chrsubset_print_chromosomes (T this, IIT_T chromosome_iit) {
+  int i;
+  bool firstp = true;
+
+  for (i = 0; i < IIT_nintervals(chromosome_iit); i++) {
+    if (this == NULL || this->includep[i] == true) {
+      if (firstp == true) {
+	printf("%s",IIT_label(chromosome_iit,i+1));
+	firstp = false;
+      } else {
+	printf(",%s",IIT_label(chromosome_iit,i+1));
+      }
+    }
+  }
+
   return;
 }
 
@@ -351,7 +371,7 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
   if (user_chrsubsetfile != NULL) {
     filename = (char *) CALLOC(strlen(user_chrsubsetfile)+1,sizeof(char));
     strcpy(filename,user_chrsubsetfile);
-    fp = fopen(filename,"r");
+    fp = FOPEN_READ_TEXT(filename);
     if (fp == NULL) {
       fprintf(stderr,"The provided file chromosome subset file %s could not be read\n",
 	      filename);
@@ -362,7 +382,7 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".chrsubset")+1,sizeof(char));
     sprintf(filename,"%s/%s.chrsubset",genomesubdir,fileroot);
-    fp = fopen(filename,"r");
+    fp = FOPEN_READ_TEXT(filename);
   }
 
   if (fp == NULL) {

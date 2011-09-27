@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: params.c,v 1.62 2005/07/21 16:54:49 twu Exp $";
+static char rcsid[] = "$Id: params.c,v 1.63 2005/11/19 06:36:13 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -35,6 +35,7 @@ struct T {
   int extraband_single;
   int extraband_end;
   int extraband_paired;
+  int maxmutations;
 };
 
 
@@ -155,6 +156,11 @@ Params_extraband_paired (T this) {
   return this->extraband_paired;
 }
 
+int
+Params_maxmutations (T this) {
+  return this->maxmutations;
+}
+
 
 T
 Params_new (Genome_T genome, IIT_T altstrain_iit, 
@@ -168,7 +174,8 @@ Params_new (Genome_T genome, IIT_T altstrain_iit,
 	    int maxextension, int stuttercycles, int stutterhits, int indexsize,
 	    int maxpeelback, int sufflookback, int nsufflookback, int nullgap, 
 	    int extramaterial_end, int extramaterial_paired,
-	    int extraband_single, int extraband_end, int extraband_paired) {
+	    int extraband_single, int extraband_end, int extraband_paired,
+	    int maxmutations) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->genome = genome;
@@ -196,6 +203,7 @@ Params_new (Genome_T genome, IIT_T altstrain_iit,
   new->extraband_single = extraband_single;
   new->extraband_end = extraband_end;
   new->extraband_paired = extraband_paired;
+  new->maxmutations = maxmutations;
   return new;
 }
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.21 2005/10/19 03:51:03 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.22 2005/11/23 17:29:33 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,7 +24,9 @@ static char rcsid[] = "$Id: iit-write.c,v 1.21 2005/10/19 03:51:03 twu Exp $";
 #include "assert.h"
 #include "bool.h"
 #include "mem.h"
+#include "fopen.h"
 #include "interval.h"
+
 
 #ifdef DEBUG
 #define debug(x) x
@@ -530,7 +532,7 @@ IIT_write (char *iitfile, List_T intervallist, List_T typelist, List_T labellist
   T iit;
   FILE *fp;
 
-  if ((fp = fopen(iitfile,"wb")) == NULL) {
+  if ((fp = FOPEN_WRITE_BINARY(iitfile)) == NULL) {
     fprintf(stderr,"Error: can't open file %s\n",iitfile);
     exit(9);
   } else {

@@ -134,10 +134,10 @@ target_os = @target_os@
 target_vendor = @target_vendor@
 @FULLDIST_FALSE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup md_coords fa_coords
 
-@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup pmap_setup md_coords fa_coords
+@FULLDIST_TRUE@bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup md_coords fa_coords
 @FULLDIST_FALSE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup md_coords fa_coords
 
-@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup pmap_setup md_coords fa_coords
+@FULLDIST_TRUE@CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup md_coords fa_coords
 subdir = util
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -339,10 +339,6 @@ gmap_process: gmap_process.pl
 gmap_setup: gmap_setup.pl
 	cp gmap_setup.pl gmap_setup
 	chmod +x gmap_setup
-
-pmap_setup: pmap_setup.pl
-	cp pmap_setup.pl pmap_setup
-	chmod +x pmap_setup
 
 md_coords: md_coords.pl
 	cp md_coords.pl md_coords

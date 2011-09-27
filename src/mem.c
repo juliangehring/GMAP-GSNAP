@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c,v 1.14 2005/10/01 15:29:45 twu Exp $";
+static char rcsid[] = "$Id: mem.c,v 1.15 2005/12/02 22:54:30 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -54,7 +54,8 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 
   assert(nbytes > 0);
   ptr = malloc(nbytes);
-  debug(printf("Alloc of %d bytes requested from %s:%d => %p\n",nbytes,file,line,ptr));
+  debug(printf("Allocating %p to %p -- Malloc of %d bytes requested from %s:%d\n",
+	       ptr,ptr+nbytes-1,nbytes,file,line));
 
 #ifdef TRAP
   if (ptr == trap_location) {
@@ -114,7 +115,8 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   }
 #endif
 
-  debug(printf("Calloc of %d x %d bytes requested from %s:%d => %p\n",count,nbytes,file,line,ptr));
+  debug(printf("Allocating %p to %p -- Calloc of %d x %d bytes requested from %s:%d\n",
+	       ptr,ptr+count*nbytes-1,count,nbytes,file,line));
 
   if (ptr == NULL) {
     if (file == NULL) {
@@ -152,7 +154,7 @@ Mem_free (void *ptr, const char *file, int line) {
 #endif
 
   if (ptr) {
-    debug(printf("Location %p freed at %s:%d\n",ptr,file,line));
+    debug(printf("Freeing %p at %s:%d\n",ptr,file,line));
     free(ptr);
   }
 

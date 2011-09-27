@@ -1,4 +1,4 @@
-/* $Id: translation.h,v 1.17 2005/07/21 22:51:22 twu Exp $ */
+/* $Id: translation.h,v 1.20 2005/11/19 06:36:14 twu Exp $ */
 #ifndef TRANSLATION_INCLUDED
 #define TRANSLATION_INCLUDED
 #include "bool.h"
@@ -27,7 +27,7 @@ Translation_via_reference (int *relaastart, int *relaaend,
 
 extern void
 Translation_compare (struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
-		     int cdna_direction, int relaastart, int relaaend);
+		     int cdna_direction, int relaastart, int relaaend, int maxmutations);
 
 #undef T
 #endif

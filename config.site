@@ -14,7 +14,8 @@
 ## directory must be an absolute path, so "." and "~" are not allowed.
 ##
 ## If you want to install in this build directory for testing purposes,
-## specify prefix=`pwd` (with two backward quotes).
+## specify prefix=`pwd` (with two backward quotes).  If you don't specify
+## anything for prefix, it defaults to /usr/local.
 ##
 ## prefix=/usr/local
 
@@ -31,6 +32,9 @@
 ##
 ## Make sure there is adequate disk space in this directory; for
 ## example, the human genome will need about 3 gigabytes.
+##
+## If you don't specify anything for with_gmapdb, it defaults to 
+## ${prefix}/share.
 ##
 ## with_gmapdb=/path/to/gmapdb
 

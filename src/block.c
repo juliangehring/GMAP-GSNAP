@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c,v 1.46 2005/07/19 17:54:53 twu Exp $";
+static char rcsid[] = "$Id: block.c,v 1.47 2006/03/04 22:00:26 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -117,6 +117,8 @@ Block_free (T *old) {
 
 bool
 Block_next (T this) {
+  char *nt;
+
   if (this->last_state == DONE) {
     return false;
   } else {
@@ -130,8 +132,9 @@ Block_next (T this) {
     this->last_state = Oligo_next(this->last_state,&this->last_querypos,
 				  &this->forward,&this->revcomp,
 				  this->reader,this->cdnaend);
-    debug(printf("Block has oligo %08X at querypos %d\n",
-		 this->forward,this->last_querypos));
+    debug(nt = Oligo_one_nt(this->forward,16);
+	  printf("Block has oligo %s (%08X) at querypos %d\n",nt,this->forward,this->last_querypos);
+	  FREE(nt));
 #endif
 
     if (this->last_state == DONE) {
@@ -190,8 +193,13 @@ Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits,
 		     Genomicpos_T **revpositions, int *nrevhits,
 		     T this, Indexdb_T indexdb) {
 
-  *nfwdhits = Oligo_lookup(&(*fwdpositions),indexdb,this->forward);
-  *nrevhits = Oligo_lookup(&(*revpositions),indexdb,this->revcomp);
+  if (this->cdnaend == FIVE) {
+    *nfwdhits = Oligo_lookup(&(*fwdpositions),indexdb,/*shiftp*/false,this->forward);
+    *nrevhits = Oligo_lookup(&(*revpositions),indexdb,/*shiftp*/true,this->revcomp);
+  } else {
+    *nfwdhits = Oligo_lookup(&(*fwdpositions),indexdb,/*shiftp*/true,this->forward);
+    *nrevhits = Oligo_lookup(&(*revpositions),indexdb,/*shiftp*/false,this->revcomp);
+  }
 
   return this->last_querypos;
 }

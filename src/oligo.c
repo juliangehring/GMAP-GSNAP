@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c,v 1.39 2005/10/01 05:06:42 twu Exp $";
+static char rcsid[] = "$Id: oligo.c,v 1.40 2006/03/04 22:00:26 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,6 +13,18 @@ static char rcsid[] = "$Id: oligo.c,v 1.39 2005/10/01 05:06:42 twu Exp $";
 #define debug(x) x
 #else
 #define debug(x)
+#endif
+
+/* Output of positions */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
+#endif
+
+
+#ifndef PMAP
+#define LEFTREADSHIFT (32 - 2*INDEX1PART) /* chars are shifted into left of 32 bit word */
 #endif
 
 /*               87654321 */
@@ -31,24 +43,78 @@ static char rcsid[] = "$Id: oligo.c,v 1.39 2005/10/01 05:06:42 twu Exp $";
  *   Check
  ************************************************************************/
 
+/*                      87654321 */
+#define LOW_TWO_BITS  0x00000003
+
+char *
+Oligo_one_nt (Storedoligomer_T oligo, int oligosize) {
+  char *nt;
+  int i, j;
+  Storedoligomer_T lowbits;
+
+  nt = (char *) CALLOC(oligosize+1,sizeof(char));
+  j = oligosize-1;
+  for (i = 0; i < oligosize; i++) {
+    lowbits = oligo & LOW_TWO_BITS;
+    switch (lowbits) {
+    case RIGHT_A: nt[j] = 'A'; break;
+    case RIGHT_C: nt[j] = 'C'; break;
+    case RIGHT_G: nt[j] = 'G'; break;
+    case RIGHT_T: nt[j] = 'T'; break;
+    }
+    oligo >>= 2;
+    j--;
+  }
+
+  return nt;
+}
+
 /* Note: positions is allocated by system malloc() */
 int
-Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo) {
-  int nentries;
+Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, 
+#ifndef PMAP
+	      bool shiftp,
+#endif
+	      Storedoligomer_T storedoligo) {
+  int nentries, i;
+  char *nt;
   
-  debug(printf("Oligo on entry = %06X",storedoligo));
+  debug(nt = Oligo_one_nt(storedoligo,16);
+	printf("Oligo on entry = %06X (%s)",storedoligo,nt);
+	FREE(nt);
+	);
+
+#ifndef PMAP
+  if (shiftp == true) {
+    storedoligo >>= LEFTREADSHIFT;
+    debug(nt = Oligo_one_nt(storedoligo,16);
+	  printf("Oligo shifted = %06X (%s)",storedoligo,nt);
+	  FREE(nt);
+	  );
+  }
+#endif
+
+  debug(nt = Oligo_one_nt(storedoligo,16);
+	printf("Oligo on entry = %06X (%s)",storedoligo,nt);
+	FREE(nt);
+	);
   
   if ((*positions = Indexdb_read(&nentries,indexdb,storedoligo)) == NULL) {
     debug(printf(" not found\n"));
     return 0;
     
   } else {
-    debug(printf(" => %d entries\n",nentries));
+    debug(printf(" => %d entries: ",nentries));
+    debug1(
+	   for (i = 0; i < nentries; i++) {
+	     printf("%u ",(*positions)[i]);
+	   }
+	   printf("\n");
+	   );
+    debug(printf("\n"));
     return nentries;
   }
 }
-
-
 
 static Oligostate_T
 Oligo_read (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcomp, 
@@ -196,9 +262,6 @@ Oligo_skip (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward,
 }
 
 
-/*                      87654321 */
-#define LOW_TWO_BITS  0x00000003
-
 /* Procedure used by oligo-count.c. */
 char *
 Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize) {
@@ -234,4 +297,5 @@ Oligo_nt (Storedoligomer_T oligo1, Storedoligomer_T oligo2, int oligosize) {
 
   return nt;
 }
+
 

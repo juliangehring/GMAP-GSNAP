@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_setup.pl.in,v 1.28 2005/10/26 04:11:16 twu Exp $
+# $Id: gmap_setup.pl.in,v 1.39 2006/04/21 16:37:51 twu Exp $
 
 $gmapdb = "@GMAPDB@";
 $bindir = "@BINDIR@";
@@ -8,21 +8,27 @@ $package_version = "@PACKAGE_VERSION@";
 use IO::File;
 use Getopt::Std;
 
-# Usage: gmap_setup [-D <path>] -d <db> [-c <coords>] [-o <file>] [-W] [-E] <fasta_files or command>
+# Usage: gmap_setup -d <db> [-D <destdir>] [-o <Makefile>] [-M <.md file>] [-S] [-W] [-E] [-q interval] [-Q interval] <fasta_files or command>
 #
-# To make just the full (uncompressed) genome file, can run the program a second time with the -G flag
 
-#undef($opt_9);			# debug
-undef($opt_B);			# bindir (needed for "make check")
-undef($opt_D);			# destination directory
 undef($opt_d);			# genome name
-undef($opt_c);			# coords file
+undef($opt_D);			# destination directory
 undef($opt_o);			# name of output file (default is "Makefile.<genome>")
+
+undef($opt_M);			# use seq_contig.md file (provide as argument)
+undef($opt_S);			# Treat each sequence as a separate chromosome
+
 undef($opt_W);			# write directly to file, not RAM
 undef($opt_E);			# interpret argument as a command
-undef($opt_P);			# also set up for pmap
 
-getopts("9B:D:d:c:o:WEP");
+undef($opt_B);			# bindir (needed for "make check")
+
+$opt_q = 6;			# GMAP interval;
+$opt_Q = 7;			# PMAP interval;
+
+#undef($opt_9);			# debug
+
+getopts("d:D:o:M:SWEB:q:Q:");
 
 if (!defined($genome_name = $opt_d)) {
   print_usage();
@@ -43,6 +49,9 @@ $MAKEFILE = new IO::File(">$outputfile") or die "Cannot write to file $outputfil
 
 print $MAKEFILE "# Makefile for creating genome $genome_name for use by GMAP.\n";
 print $MAKEFILE "# Created by gmap_setup, but may be edited as needed\n\n";
+#print $MAKEFILE ":SILENT: \n"; -- Doesn't work
+print $MAKEFILE "\n";
+
 print $MAKEFILE "GENOME = $genome_name\n";
 
 if (defined($opt_D)) {
@@ -55,27 +64,22 @@ print $MAKEFILE "\n";
 if (defined($opt_E)) {
   $incommand = $ARGV[0];
 } else {
-  print $MAKEFILE "FASTA = " . join(" ",@ARGV) . "\n";
+  #                                       FASTA =
+  print $MAKEFILE "FASTA = " . join(" \\\n         ",@ARGV) . "\n";
   $incommand = "cat \$(FASTA)";
 }
 
-if (defined($opt_c)) {
-  print $MAKEFILE "COORDS = $opt_c\n";
-} else {
-  print $MAKEFILE "COORDS = coords.txt\n";
-}
-
-if (defined($opt_s)) {
-  print $MAKEFILE "REFSTRAIN_NAME = $opt_s\n";
-} else {
-  print $MAKEFILE "REFSTRAIN_NAME = Reference\n";
-}
+print $MAKEFILE "COORDS = coords.\$(GENOME)\n";
 
 if (defined($opt_B)) {
+  print $MAKEFILE "FA_COORDS = $opt_B/fa_coords\n";
+  print $MAKEFILE "MD_COORDS = $opt_B/md_coords\n";
   print $MAKEFILE "GMAP_PROCESS = $opt_B/gmap_process\n";
   print $MAKEFILE "GMAPINDEX = $opt_B/gmapindex\n";
   print $MAKEFILE "PMAPINDEX = $opt_B/pmapindex\n";
 } else {
+  print $MAKEFILE "FA_COORDS = $bindir/fa_coords\n";
+  print $MAKEFILE "MD_COORDS = $bindir/md_coords\n";
   print $MAKEFILE "GMAP_PROCESS = $bindir/gmap_process\n";
   print $MAKEFILE "GMAPINDEX = $bindir/gmapindex\n";
   print $MAKEFILE "PMAPINDEX = $bindir/pmapindex\n";
@@ -90,10 +94,10 @@ if (defined($opt_W)) {
 }
 print $MAKEFILE "\n";
 
-print $MAKEFILE "GMAPINDEX_INTERVAL = 6 # Change this only for special situations.  Intervals < 6\n";
+print $MAKEFILE "GMAPINDEX_INTERVAL = $opt_q # Change this only for special situations.  Intervals < 6\n";
 print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 
-print $MAKEFILE "PMAPINDEX_INTERVAL = 7 # Change this only for special situations.  Intervals < 7\n";
+print $MAKEFILE "PMAPINDEX_INTERVAL = $opt_Q # Change this only for special situations.  Intervals < 7\n";
 print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 
 print $MAKEFILE "\n";
@@ -103,29 +107,88 @@ print $MAKEFILE "\n";
 #   General commands
 ########################################################################
 
-if (defined($opt_P)) {
-  print $MAKEFILE "all: gmapfiles pmapfiles\n";
-  print $MAKEFILE "full: gmapfiles.full pmapfiles\n";
-} else {
-  print $MAKEFILE "all: gmapfiles\n";
-  print $MAKEFILE "full: gmapfiles.full\n";
-}
-print $MAKEFILE "\n";
-
 print $MAKEFILE "install:\n";
 print $MAKEFILE "\tmkdir -p \$(DESTINATION)\n";
-print $MAKEFILE "\tmv -f \$(GENOME).* \$(DESTINATION)\n";
+if (!defined($opt_D) || $opt_D ne ".") {
+  print $MAKEFILE "\tmv -f \$(GENOME).* \$(DESTINATION)\n";
+}
 print $MAKEFILE "\tchmod 644 \$(DESTINATION)/\$(GENOME).*\n";
+print $MAKEFILE "\tmkdir -p \$(DESTINATION)/\$(GENOME).maps\n";
+print $MAKEFILE "\tchmod 755 \$(DESTINATION)/\$(GENOME).maps\n";
 print $MAKEFILE "\n";
 
-print $MAKEFILE "gmapfiles: \$(GENOME).genomecomp \$(GENOME).idxpositions \$(GENOME).version\n";
-print $MAKEFILE "gmapfiles.full: gmapfiles.compressed \$(GENOME).genome\n";
-print $MAKEFILE "pmapfiles: \$(GENOME).pfxoffsets \$(GENOME).pfxpositions \$(GENOME).prxoffsets \$(GENOME).prxpositions\n";
+print $MAKEFILE "gmapdb: checkcoords genomedb gmapindices gmapmsg\n";
+
+print $MAKEFILE "raw: checkcoords rawgenomedb gmapindices rawmsg\n";
+print $MAKEFILE "pmapdb: checkgenomecomp pmapindices pmapmsg\n";
 print $MAKEFILE "\n";
+
+print $MAKEFILE "coords: \$(COORDS)\n";
+print $MAKEFILE "\n";
+
+print $MAKEFILE "checkcoords: \n";
+print $MAKEFILE "\tif test -s \$(COORDS); then \\\n";
+print $MAKEFILE "\techo File \$(COORDS) found.  Proceeding...; \\\n";
+print $MAKEFILE "\telse \\\n";
+print $MAKEFILE "\techo File \$(COORDS) not found.  Please run \"make -f $outputfile coords\" first.; \\\n";
+print $MAKEFILE "\texit 1; \\\n";
+print $MAKEFILE "\tfi\n";
+print $MAKEFILE "\n";
+
+print $MAKEFILE "checkgenomecomp: \n";
+print $MAKEFILE "\tif test -s \$(GENOME).genomecomp; then \\\n";
+print $MAKEFILE "\techo File \$(GENOME).genomecomp found.  Proceeding...; \\\n";
+print $MAKEFILE "\telse \\\n";
+print $MAKEFILE "\techo File \$(GENOME).genomecomp not found.  Please make sure gmap files are created first.; \\\n";
+print $MAKEFILE "\texit 1; \\\n";
+print $MAKEFILE "\tfi\n";
+print $MAKEFILE "\n";
+
+print $MAKEFILE "genomedb: \$(GENOME).genomecomp \$(GENOME).version\n";
+print $MAKEFILE "rawgenomedb: \$(GENOME).genomecomp \$(GENOME).genome \$(GENOME).version\n";
+print $MAKEFILE "\n";
+
+print $MAKEFILE "gmapindices: \$(GENOME).idxpositions\n";
+print $MAKEFILE "pmapindices: checkgenomecomp \$(GENOME).pfxoffsets \$(GENOME).pfxpositions \$(GENOME).prxoffsets \$(GENOME).prxpositions\n";
+print $MAKEFILE "\n";
+
+
+print $MAKEFILE "gmapmsg:\n";
+print $MAKEFILE "\techo gmapdb for $genome_name complete.\n";
+print $MAKEFILE "\techo To make a raw genome file, do: make -f Makefile.$genome_name raw [optional]\n";
+#print $MAKEFILE "\techo To make pmapdb, do: make -f Makefile.$genome_name pmapdb\n";
+print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
+
+print $MAKEFILE "rawmsg:\n";
+print $MAKEFILE "\techo raw genome for $genome_name complete.\n";
+#print $MAKEFILE "\techo To make pmapdb, do: make -f Makefile.$genome_name pmapdb\n";
+print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
+
+print $MAKEFILE "pmapmsg:\n";
+#print $MAKEFILE "\techo pmapdb for $genome_name complete.\n";
+print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
+
 
 print $MAKEFILE "clean:\n";
-print $MAKEFILE "\trm -f $(GENOME).*\n";
+print $MAKEFILE "\trm -f \$(GENOME).*\n";
 print $MAKEFILE "\n";
+
+
+########################################################################
+#   Coords file
+########################################################################
+
+print $MAKEFILE "\$(COORDS):\n";
+if (defined($mdfile = $opt_M)) {
+  print $MAKEFILE "\t\$(MD_COORDS) -o \$(COORDS) $mdfile\n";
+
+} else {
+  if (defined($opt_S)) {
+    print $MAKEFILE "\t$incommand | \$(FA_COORDS) -S -o \$(COORDS)\n";
+  } else {
+    print $MAKEFILE "\t$incommand | \$(FA_COORDS) -o \$(COORDS)\n";
+  }
+}
 
 
 ########################################################################
@@ -133,12 +196,12 @@ print $MAKEFILE "\n";
 ########################################################################
 
 if (defined($opt_E)) {
-  print $MAKEFILE "\$(GENOME).contig.iit:\n";
+  print $MAKEFILE "\$(GENOME).contig.iit: \$(COORDS)\n";
 } else {
-  print $MAKEFILE "\$(GENOME).contig.iit: \$(FASTA)\n";
+  print $MAKEFILE "\$(GENOME).contig.iit: \$(COORDS) \$(FASTA)\n";
 }
 print $MAKEFILE "\techo Making contig files...\n";
-print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) -s \$(REFSTRAIN_NAME) -A\n";
+print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) -A -c \$(COORDS)\n";
 print $MAKEFILE "\n";
 
 
@@ -153,7 +216,7 @@ print $MAKEFILE "\n";
 
 
 print $MAKEFILE "\$(GENOME).genome: \$(GENOME).contig.iit\n";
-print $MAKEFILE "\techo Making full genome file...\n";
+print $MAKEFILE "\techo Making raw, or uncompressed, genome file...\n";
 print $MAKEFILE "\t$incommand | \$(GMAP_PROCESS) -c \$(COORDS) | \$(GMAPINDEX) -d \$(GENOME) \$(WRITEFILE) -g\n";
 print $MAKEFILE "\n";
 
@@ -219,8 +282,24 @@ close($MAKEFILE);
 #   Final instructions
 ########################################################################
 
-print <<INSTRUCTIONS1;
+$FP = new IO::File(">INSTALL.$genome_name") or die "Cannot write to INSTALL.$genome_name";
+print_instructions($FP);
+close($FP);
+
+$FP = new IO::File(">&STDOUT");
+print_instructions($FP);
+close($FP);
+
+exit;
+
+
+
+sub print_instructions {
+  my ($FP) = @_;
+
+  print $FP <<INSTRUCTIONS1;
 ============================================================
+
 A Makefile has been created for your genome $genome_name.  You may
 inspect and edit it if necessary.  To start the build of your genome,
 do
@@ -228,38 +307,45 @@ do
 INSTRUCTIONS1
 
 if ($outputfile eq "Makefile") {
-  print "    make all\n";
-  print "    make install\n";
+  print $FP "    make coords\n";
+  print $FP "    make gmapdb\n";
+  print $FP "    make raw [optional]\n";
+  print $FP "    (edit the .chrsubset file [optional])\n";
+  print $FP "    make install\n";
 } else {
-  print "    make -f $outputfile all\n";
-  print "    make -f $outputfile install\n";
+  print $FP "    make -f $outputfile coords\n";
+  print $FP "    make -f $outputfile gmapdb\n";
+  print $FP "    make -f $outputfile raw [optional]\n";
+  print $FP "    (edit the .chrsubset file [optional])\n";
+  print $FP "    make -f $outputfile install\n";
 }
 
-print <<INSTRUCTIONS2;
+print $FP <<INSTRUCTIONS2;
 
-Note that the "make all" command can take a while to index a large genome.
+Note that the "make gmapdb" and "make raw" commands can take a while
+to index a large genome.
 
-If your genome has lower-case or non-standard characters (anything
-other than A, C, G, T, N, or X) and you wish to show these characters
-in the alignment, you may build a full genome by doing
+The optional "make raw" command is intended to represent genomes where
+it is important to show lower-case or non-standard characters
+(anything other than A, C, G, T, N, or X) in the alignment.  This step
+is optional.  For human- or mouse-sized genomes, it requires that your
+computer can address files greater than 2 gigabytes in size.  See the
+README file in the original source tree to see if you really need to
+do this.
 
+The .chrsubset file defines various subsets of the available
+chromosomes, which can then be specified by the user with the "-c"
+flag to GMAP.  For more information about specifying chromosomal
+subsets, see the README file that comes with the GMAP source code.
+
+A copy of these commands has been written to a file called
+INSTALL.$genome_name.
+
+============================================================
 INSTRUCTIONS2
 
-if ($outputfile eq "Makefile") {
-  print "    make $genome_name.genome\n";
-} else {
-  print "    make -f $outputfile $genome_name.genome\n";
+  return;
 }
-
-print <<INSTRUCTIONS3;
-
-after the "make" command above.  Read the README file in the original
-source tree to see if you really need to do this and if your computer
-is able to handle the resulting file.
-============================================================
-INSTRUCTIONS3
-
-exit;
 
 
 
@@ -269,14 +355,62 @@ sub print_usage {
 gmap_setup: Sets up a Makefile for creating a genome by use by GMAP.
 Part of GMAP package, version $package_version.
 
-Usage: gmap_setup [-D <path>] -d <db> [-c <coords>] [-o <file>] [-W] [-E] <fasta_files or command>
+Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-M <.md file>] [-S] [-W] [-E] [-q interval] [-Q interval] <fasta_files or command>
 
-    -D    destination directory
     -d    genome name
-    -c    coords file (default is "coords.txt")
-    -o    name of output file (default is "Makefile.<genome>")
+    -D    destination directory for installation (defaults to gmapdb directory specified at configure time)
+    -o    name of output Makefile (default is "Makefile.<genome>")
+    -M    use coordinates from an .md file (e.g., seq_contig.md file from NCBI)
+    -S    treat each sequence as a separate chromosome
     -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
     -E    interpret argument as a command, instead of a list of FASTA files
+    -q    GMAP indexing interval (default: 6 nt)
+    -Q    PMAP indexing interval (default: 7 aa)
+
+These flags are explained below:
+
+* The -S flag: If your FASTA files contain separate sequences
+without any chromosomal information, you can treat each sequence as
+its own separate "chromosome" by adding the -S flag to the
+gmap_setup command, like this:
+
+    gmap_setup -S -d <genome> <fasta_file>...
+
+
+GMAP can handle an unlimited number of "chromosomes", with arbitrarily
+long names.  In this way, GMAP can act like a BLAST-type of program
+for near-identity matches.
+
+
+* The -E flag: If you need to pre-process the FASTA files before using
+these programs, perhaps because they are compressed or because you
+need to insert chromosomal information in the header lines, you can
+specify a command instead of multiple fasta_files, like these
+examples:
+
+    gmap_setup -d <genome> -E 'gunzip -c genomefiles.gz'
+    gmap_setup -d <genome> -E 'cat *.fa | ./add-chromosomal-info.pl'
+
+
+* The -W flag: The gmap_setup process works best if you have a
+computer with enough RAM to hold the entire genome (e.g., 3
+gigabytes for a human- or mouse-sized genome).  Since the resulting
+genome files work across all machine architectures, you can find any
+machine with sufficient RAM to build the genome files and then
+transfer the files to another machine.  (GMAP itself runs fine on
+machines with limited RAM.)  If you cannot find any machine with
+sufficient RAM for gmap_setup, you can run the program with the -W
+flag to write the files directly, but this can be very slow.
+
+
+* The -q and -Q flags: If you specify a smaller interval (for example,
+3 for the GMAP interval), you can create a higher-resolution
+database, which can be useful for mapping small oligomers (smaller
+than 18 nt).  However, the corresponding genome index files will be
+larger (twice as big if you specify -q 3).  These index files may
+exceed the 2 gigabyte file offset limit on some computers, and will
+therefore fail to work on those computers.
+
 
 TEXT1
   return;

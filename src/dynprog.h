@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.44 2005/10/01 05:35:08 twu Exp $ */
+/* $Id: dynprog.h,v 1.47 2006/03/21 01:45:02 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -9,16 +9,6 @@
    and low sequence quality, respectively */
 #define DEFECT_HIGHQ 0.003
 #define DEFECT_MEDQ 0.014
-
-/* Intron types.  Results of logical AND of dinucleotide pairs.  */
-#define GTAG_FWD 0x20		/* 100000 GT-AG */
-#define GCAG_FWD 0x10		/* 010000 GC-AG */
-#define ATAC_FWD 0x08		/* 001000 AT-AC */
-#define GTAG_REV 0x04		/* 000100 CT-AC */
-#define GCAG_REV 0x02		/* 000010 CT-GC */
-#define ATAC_REV 0x01		/* 000001 GT-AT */
-#define NONINTRON 0x00
-
 
 #define T Dynprog_T
 typedef struct T *T;
@@ -45,7 +35,7 @@ Dynprog_single_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
-		    Pairpool_T pairpool, int extraband_single, double defect_rate);
+		    int cdna_direction, Pairpool_T pairpool, int extraband_single, double defect_rate);
 
 extern List_T
 Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR, 
@@ -57,7 +47,7 @@ Dynprog_cdna_gap (int *finalscore, T dynprogL, T dynprogR,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  Pairpool_T pairpool, int extraband_paired, double defect_rate);
+		  int cdna_direction, Pairpool_T pairpool, int extraband_paired, double defect_rate);
 
 extern List_T
 Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
@@ -70,8 +60,8 @@ Dynprog_genome_gap (int *finalscore, int *nmatches, int *nmismatches, int *nopen
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
-		    int cdna_direction, int ngap, Pairpool_T pairpool, int extraband_paired,
-		    bool endp, double defect_rate, bool returnpairsp, bool addgapp);
+		    int cdna_direction, Pairpool_T pairpool, int extraband_paired,
+		    bool endp, double defect_rate, bool returnpairsp, bool addgapp, int maxpeelback);
 
 extern List_T
 Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches,
@@ -82,8 +72,8 @@ Dynprog_end5_gap (int *finalscore, int *nmatches, int *nmismatches,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  Pairpool_T pairpool, int extraband_end, double defect_rate,
-		  int cdna_direction, int ngap, bool extend_mismatch_p);
+		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate,
+		  bool extend_mismatch_p);
 
 extern List_T
 Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches,
@@ -94,8 +84,8 @@ Dynprog_end3_gap (int *finalscore, int *nmatches, int *nmismatches,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  Pairpool_T pairpool, int extraband_end, double defect_rate,
-		  int cdna_direction, int ngap, bool extend_mismatch_p);
+		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate,
+		  bool extend_mismatch_p);
 
 extern List_T
 Dynprog_microexon_int (int *microintrontype,
@@ -108,7 +98,7 @@ Dynprog_microexon_int (int *microintrontype,
 		       char *queryaaseq,
 #endif
 		       char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-		       Pairpool_T pairpool, int ngap);
+		       Pairpool_T pairpool);
 
 extern List_T
 Dynprog_microexon_5 (int *microintrontype, int *microexonlength,
@@ -119,7 +109,7 @@ Dynprog_microexon_5 (int *microintrontype, int *microexonlength,
 		     char *queryaaseq,
 #endif
 		     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-		     Pairpool_T pairpool, int ngap, bool end_microexons_p);
+		     Pairpool_T pairpool, bool end_microexons_p);
 
 extern List_T
 Dynprog_microexon_3 (int *microintrontype, int *microexonlength,
@@ -130,7 +120,7 @@ Dynprog_microexon_3 (int *microintrontype, int *microexonlength,
 		     char *queryaaseq,
 #endif
 		     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-		     int genomiclength, Pairpool_T pairpool, int ngap, bool end_microexons_p);
+		     int genomiclength, Pairpool_T pairpool, bool end_microexons_p);
 
 #undef T
 #endif

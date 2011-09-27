@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.12 2005/10/04 00:15:10 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.13 2005/10/27 22:53:09 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -216,12 +216,22 @@ Compress_uncompress (FILE *fp, int wraplength) {
 
 static void
 genomecomp_move_absolute (FILE *fp, Genomicpos_T ptr) {
-  long int offset = (long int) (ptr*sizeof(UINT4));
+#ifdef HAVE_FSEEKO
+  off_t offset = ptr*((off_t) sizeof(UINT4));
+
+  if (fseeko(fp,offset,SEEK_SET) < 0) {
+    perror("Error in gmapindex, genomecomp_move_absolute");
+    exit(9);
+  }
+#else
+  long int offset = ptr*((long int) sizeof(UINT4));
 
   if (fseek(fp,offset,SEEK_SET) < 0) {
     perror("Error in gmapindex, genomecomp_move_absolute");
     exit(9);
   }
+#endif
+
   return;
 }
 

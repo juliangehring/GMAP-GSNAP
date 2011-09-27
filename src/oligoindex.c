@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c,v 1.52 2005/10/12 17:59:27 twu Exp $";
+static char rcsid[] = "$Id: oligoindex.c,v 1.61 2006/03/05 03:20:46 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,7 +19,12 @@ static char rcsid[] = "$Id: oligoindex.c,v 1.52 2005/10/12 17:59:27 twu Exp $";
 #include "genomicpos.h"
 #include "list.h"
 
+#ifdef PMAP
 #define NAMINOACIDS_STAGE2 20
+#define NT_PER_MATCH 3
+#else
+#define NT_PER_MATCH 1
+#endif
 
 #ifdef DEBUG
 #define debug(x) x
@@ -27,7 +32,7 @@ static char rcsid[] = "$Id: oligoindex.c,v 1.52 2005/10/12 17:59:27 twu Exp $";
 #define debug(x)
 #endif
 
-/* For querycounts, used for trimming ends of query sequence */
+/* For trimming ends of query sequence */
 #ifdef DEBUG1
 #define debug1(x) x
 #else
@@ -64,6 +69,9 @@ static int indexsize;
 static Shortoligomer_T mask;
 #endif
 
+#define THETADIFF1 2.0
+#define THETADIFF2 2.0
+#define BADOLIGOCOUNT 8
 #define ALLOCSIZE 200
 #define MAXHITS 200		/* Certain code below depends on whether this is greater than ALLOCSIZE */
 #define MAXHITS_GT_ALLOCSIZE 0
@@ -200,27 +208,241 @@ aaindex_aa (unsigned int aaindex) {
 #endif
 
 
+#define NPSEUDO 0.0
+
+/* -1 means edge is on 5', +1 means edge is on 3'  0 means no edge found. */
+static int
+edge_detect (int *edge, int *sumx, int *sumxx, int length) {
+  int side = 0;
+  int pos, sumx_left, sumxx_left, sumx_right, sumxx_right, n_left, n_right;
+  double theta, sumx_pseudo, x_pseudo, theta_left, theta_right, rss, rss_left, rss_right, rss_sep;
+  double fscore, min_rss_sep;
+
+  sumx_right = sumx[length] - sumx[0];
+  sumxx_right = sumxx[length] - sumxx[0];
+
+  theta = (double) sumx_right/(double) length;
+  sumx_pseudo = NPSEUDO * theta;
+  min_rss_sep = rss = sumxx_right - sumx_right*theta;
+  debug1(printf("theta: %d/%d = %f\n",sumx_right,length,theta));
+  debug1(printf("rss: %f\n",rss)); 
+
+  debug1(printf("%s %s %s %s %s %s %s %s %s %s\n",
+		"pos","sumx.left","n.left","sumx.right","n.right",
+		"theta.left","theta.right","rss.left","rss.right","fscore"));
+
+  n_left = 1;
+  n_right = length-1;
+  for (pos = 1; pos < length; pos++) {
+    sumx_left = sumx[pos] - sumx[0];
+    sumxx_left = sumxx[pos] - sumxx[0];
+    sumx_right = sumx[length] - sumx[pos];
+    sumxx_right = sumxx[length] - sumxx[pos];
+
+    theta_left = ((double) sumx_left + sumx_pseudo)/((double) n_left + NPSEUDO);
+    theta_right = ((double) sumx_right + sumx_pseudo)/((double) n_right + NPSEUDO);
+    rss_left = sumxx_left - sumx_left*theta_left;
+    rss_right = sumxx_right - sumx_right*theta_right;
+    rss_sep = rss_left + rss_right;
+
+    if (rss_sep == 0) {
+      debug1(printf("%d %d %d %d %d %f %f %f %f NA\n",
+		    pos,sumx_left,n_left,sumx_right,n_right,
+		    theta_left,theta_right,rss_left,rss_right));
+    } else {
+      debug1(      
+	     fscore = ((double) (length - 2))*(rss - rss_sep)/rss_sep;
+	     debug1(printf("%d %d %d %d %d %f %f %f %f %f\n",
+			   pos,sumx_left,n_left,sumx_right,n_right,
+			   theta_left,theta_right,rss_left,rss_right,fscore));
+	     );
+    }
+    /* fscore = (n-2)*(rss - rss_sep)/rss_sep = (n-2)*(rss/rss_sep -
+       1) is maximized when rss_sep is minimized */
+
+    if (theta_left > theta_right + THETADIFF1) {
+      if (rss_sep < min_rss_sep) {
+	min_rss_sep = rss_sep;
+	*edge = pos;
+	side = -1;
+	debug1(printf("Set edge to %d\n",pos));
+      }
+    } else if (theta_right > theta_left + THETADIFF1) {
+      if (rss_sep < min_rss_sep) {
+	min_rss_sep = rss_sep;
+	*edge = pos;
+	side = +1;
+	debug1(printf("Set edge to %d\n",pos));
+      }
+    }
+
+    n_left += 1;
+    n_right -= 1;
+  }
+
+  return side;
+}
+
+static int
+trim_start_detect (int start, int end, int *sumx, int *sumxx) {
+  int edge = -1;
+  int pos, sumx_left, sumxx_left, sumx_right, sumxx_right, n_left, n_right;
+  double theta, sumx_pseudo, x_pseudo, theta_left, theta_right, rss, rss_left, rss_right, rss_sep;
+  double fscore, min_rss_sep;
+
+  sumx_right = sumx[end] - sumx[start];
+  sumxx_right = sumxx[end] - sumxx[start];
+
+  theta = (double) sumx_right/(double) (end - start);
+  sumx_pseudo = NPSEUDO * theta;
+  min_rss_sep = rss = sumxx_right - sumx_right*theta;
+  debug1(printf("%d/%d = %f\n",sumx_right,end-start,theta));
+  
+  debug1(printf("%s %s %s %s %s %s %s %s %s %s %s\n",
+		"pos","counts","sumx.left","n.left","sumx.right","n.right",
+		"theta.left","theta.right","rss.left","rss.right","fscore"));
+
+  n_left = 1;
+  n_right = end - (start+1);
+  for (pos = start+1; pos < end; pos++) {
+    sumx_left = sumx[pos] - sumx[start];
+    sumxx_left = sumxx[pos] - sumxx[start];
+    sumx_right = sumx[end] - sumx[pos];
+    sumxx_right = sumxx[end] - sumxx[pos];
+
+    theta_left = ((double) sumx_left + sumx_pseudo)/((double) n_left + NPSEUDO);
+    theta_right = ((double) sumx_right + sumx_pseudo)/((double) n_right + NPSEUDO);
+    rss_left = sumxx_left - sumx_left*theta_left;
+    rss_right = sumxx_right - sumx_right*theta_right;
+    rss_sep = rss_left + rss_right;
+
+    if (rss_sep == 0) {
+      debug1(printf("%d %d %d %d %d %f %f %f %f NA\n",
+		    pos,sumx_left,n_left,sumx_right,n_right,
+		    theta_left,theta_right,rss_left,rss_right));
+    } else {
+      debug1(      
+	     fscore = ((double) (end - start - 2))*(rss - rss_sep)/rss_sep;
+	     debug1(printf("%d %d %d %d %d %f %f %f %f %f\n",
+			   pos,sumx_left,n_left,sumx_right,n_right,
+			   theta_left,theta_right,rss_left,rss_right,fscore));
+	     );
+    }
+    /* fscore = (n-2)*(rss - rss_sep)/rss_sep = (n-2)*(rss/rss_sep -
+       1) is maximized when rss_sep is minimized */
+
+    if (theta_left < theta_right) {
+      debug1(printf("trim_detect aborting early with edge=%d\n",edge));
+      return edge;
+    } else if (theta_left > theta_right + THETADIFF2) {
+      if (rss_sep < min_rss_sep) {
+	min_rss_sep = rss_sep;
+	edge = pos;
+	debug1(printf("Set trim_start to %d\n",pos));      
+      }
+    }
+
+    n_left += 1;
+    n_right -= 1;
+  }
+
+  debug1(printf("trim_detect returning %d\n",edge));
+  return edge;
+}
+
+static int
+trim_end_detect (int start, int end, int *sumx, int *sumxx) {
+  int edge = -1;
+  int pos, sumx_left, sumxx_left, sumx_right, sumxx_right, n_left, n_right;
+  double theta, sumx_pseudo, x_pseudo, theta_left, theta_right, rss, rss_left, rss_right, rss_sep;
+  double fscore, min_rss_sep;
+
+  sumx_right = sumx[end] - sumx[start];
+  sumxx_right = sumxx[end] - sumxx[start];
+
+  theta = (double) sumx_right/(double) (end - start);
+  sumx_pseudo = NPSEUDO * theta;
+  min_rss_sep = rss = sumxx_right - sumx_right*theta;
+  debug1(printf("%d/%d = %f\n",sumx_right,end-start,theta));
+  
+  debug1(printf("%s %s %s %s %s %s %s %s %s %s %s\n",
+		"pos","counts","sumx.left","n.left","sumx.right","n.right",
+		"theta.left","theta.right","rss.left","rss.right","fscore"));
+
+  n_left = end - (start+1);
+  n_right = 1;
+  for (pos = end-1; pos > start; --pos) {
+    sumx_left = sumx[pos] - sumx[start];
+    sumxx_left = sumxx[pos] - sumxx[start];
+    sumx_right = sumx[end] - sumx[pos];
+    sumxx_right = sumxx[end] - sumxx[pos];
+
+    theta_left = ((double) sumx_left + sumx_pseudo)/((double) n_left + NPSEUDO);
+    theta_right = ((double) sumx_right + sumx_pseudo)/((double) n_right + NPSEUDO);
+    rss_left = sumxx_left - sumx_left*theta_left;
+    rss_right = sumxx_right - sumx_right*theta_right;
+    rss_sep = rss_left + rss_right;
+
+    if (rss_sep == 0) {
+      debug1(printf("%d %d %d %d %d %f %f %f %f NA\n",
+		    pos,sumx_left,n_left,sumx_right,n_right,
+		    theta_left,theta_right,rss_left,rss_right));
+    } else {
+      debug1(      
+	     fscore = ((double) (end - start - 2))*(rss - rss_sep)/rss_sep;
+	     debug1(printf("%d %d %d %d %d %f %f %f %f %f\n",
+			   pos,sumx_left,n_left,sumx_right,n_right,
+			   theta_left,theta_right,rss_left,rss_right,fscore));
+	     );
+    }
+    /* fscore = (n-2)*(rss - rss_sep)/rss_sep = (n-2)*(rss/rss_sep -
+       1) is maximized when rss_sep is minimized */
+
+    if (theta_right < theta_left) {
+      debug1(printf("trim_detect aborting early with edge=%d\n",edge));
+      return edge;
+    } else if (theta_right > theta_left + THETADIFF2) {
+      if (rss_sep < min_rss_sep) {
+	min_rss_sep = rss_sep;
+	edge = pos;
+	debug1(printf("Set trim_end to %d\n",pos));      
+      }
+    }
+
+    n_left -= 1;
+    n_right += 1;
+  }
+
+  debug1(printf("trim_detect returning %d\n",edge));
+  return edge;
+}
+
+
+
 /* Run query sequence through this procedure.  First, we count occurrences
  * of each oligo in queryuc (upper case version of queryseq).  This
  * allows us to scan genomicseg intelligently, because then we know
  * whether to store positions for that oligo. */
 
 double
-Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, Sequence_T queryuc) {
+Oligoindex_set_inquery (int *badoligos, int *trimoligos, int *trim_start, int *trim_end,
+			T this, Sequence_T queryuc, bool trimp) {
   double oligodepth;
-  int nunique = 0, querylength;
-  int i = 0, noligos = 0;
+  int nunique = 0, ngoodoligos = 0, x, *sumx, *sumxx, sumx0 = 0, sumxx0 = 0, querylength;
+  int i = 0, noligos = 0, edge, side;
   int in_counter = 0, querypos;
   Shortoligomer_T oligo = 0U, masked;
-  char *p;
+  char *p, *ptr;
   bool prevunique = false;
 #ifdef PMAP
   int indexsize = indexsize_aa, index;
   unsigned int aaindex = 0U;
   char *aa;
+#else
+  char *nt;
 #endif
 
-  memset((void *) this->inquery,0,oligospace*sizeof(bool));
+  memset((void *) this->inquery,false,oligospace*sizeof(bool));
   memset((void *) this->counts,0,oligospace*sizeof(int));
 
   querylength = Sequence_fulllength(queryuc);
@@ -267,20 +489,81 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
     }
   }
 
+  if (trimp == false) {
+    *badoligos = 0;
+    *trim_start = 0;
+    *trim_end = querylength;
+    return 1.0;
+  }
+
 #ifdef PMAP
-  *badoligos = 0;
-  *trim_start = 0;
-  *trim_end = querylength;
-  return 1.0;
+  /* trimp should be set to false for PMAP */
+  abort();
 #else
 
   /*
   printf("Saw %d oligos out of %d expected\n",noligos,seqlength-indexsize+1);
   */
 
-  *badoligos = querylength-indexsize+1 - noligos;
-
+#ifdef CHANGEPOINT
   /* Determine where to trim */
+  sumx = (int *) CALLOC(querylength - indexsize + 1,sizeof(int));
+  sumxx = (int *) CALLOC(querylength - indexsize + 1,sizeof(int));
+
+  in_counter = 0;
+  querypos = -indexsize;
+  for (i = 0, p = Sequence_fullpointer(queryuc); i < querylength; i++, p++) {
+    in_counter++;
+    querypos++;
+
+    switch (*p) {
+    case 'A': oligo = (oligo << 2); break;
+    case 'C': oligo = (oligo << 2) | 1; break;
+    case 'G': oligo = (oligo << 2) | 2; break;
+    case 'T': oligo = (oligo << 2) | 3; break;
+    default: oligo = 0U; in_counter = 0; break;
+    }
+
+    if (in_counter == indexsize) {
+      x = this->counts[oligo&mask];
+      in_counter--;
+    } else {
+      x = 1;
+    } 
+
+    if (querypos >= 0) {
+      sumx0 += x;
+      sumxx0 += x*x;
+      sumx[querypos] = sumx0;
+      sumxx[querypos] = sumxx0;
+    }
+  }
+  sumx[querylength-indexsize] = sumx0;
+  sumxx[querylength-indexsize] = sumxx0;
+
+
+  *trim_start = 0;
+  *trim_end = querylength-indexsize;
+  if ((side = edge_detect(&edge,sumx,sumxx,querylength-indexsize)) == -1) {
+    *trim_start = edge;
+    if ((edge = trim_end_detect(*trim_start,querylength-indexsize,sumx,sumxx)) >= 0) {
+      *trim_end = edge;
+    }
+  } else if (side == +1) {
+    *trim_end = edge;
+    if ((edge = trim_start_detect(0,*trim_end,sumx,sumxx)) >= 0) {
+      *trim_start = edge;
+    }
+  }
+
+  FREE(sumxx);
+  FREE(sumx);
+
+  *trim_end += indexsize;
+
+  debug1(printf("trim_start = %d, trim_end = %d\n",*trim_start,*trim_end));
+#else
+
   *trim_start = -1;
   *trim_end = 0;
 
@@ -331,6 +614,35 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
   }
   *trim_end += indexsize;
 
+#endif
+
+#ifdef COUNTBADOLIGOS
+  /* Count good oligos */
+  in_counter = 0;
+  ptr = Sequence_fullpointer(queryuc);
+  for (querypos = (*trim_start)-indexsize, p = &(ptr[*trim_start]);
+       querypos < (*trim_end)-indexsize; querypos++, p++) {
+    in_counter++;
+
+    switch (*p) {
+    case 'A': oligo = (oligo << 2); break;
+    case 'C': oligo = (oligo << 2) | 1; break;
+    case 'G': oligo = (oligo << 2) | 2; break;
+    case 'T': oligo = (oligo << 2) | 3; break;
+    default: oligo = 0U; in_counter = 0; break;
+    }
+
+    if (in_counter == indexsize) {
+      if (this->counts[oligo&mask] < BADOLIGOCOUNT) {
+	ngoodoligos++;
+      }
+      in_counter--;
+    }
+  }
+
+  *trimoligos = (*trim_end - indexsize) - (*trim_start) + 1;
+  *badoligos = (*trimoligos) - ngoodoligos;
+
   if (nunique == 0) {
     return 1000000.0;
   } else {
@@ -338,6 +650,12 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
     oligodepth = (double) noligos/(double) nunique;
     return oligodepth;
   }
+#else
+  *trimoligos = (*trim_end - indexsize) - (*trim_start) + 1;
+  *badoligos = 0;
+  return 1000000.0;
+#endif
+
 #endif
 }
 
@@ -366,11 +684,11 @@ Oligoindex_set_inquery (int *badoligos, int *trim_start, int *trim_end, T this, 
 #define G3    0x00000002
 #define T3    0x00000003
 
+/* Do not include stop codon, because oligospace will not allow it */
 typedef enum {AA_A, AA_C, AA_D, AA_E, AA_F, 
 	      AA_G, AA_H, AA_I, AA_K, AA_L,
 	      AA_M, AA_N, AA_P, AA_Q, AA_R,
-	      AA_S, AA_T, AA_V, AA_W, AA_Y,
-	      AA_STOP} Aminoacid_T;
+	      AA_S, AA_T, AA_V, AA_W, AA_Y} Aminoacid_T;
 
 static int
 get_last_codon (Shortoligomer_T oligo) {
@@ -402,7 +720,7 @@ get_last_codon (Shortoligomer_T oligo) {
     case T1:
       switch (oligo & CHAR3) {
       case T3: case C3: return AA_Y;
-      default: /* case A3: case G3: */ return AA_STOP;
+      default: /* case A3: case G3: */ return -1; /* STOP */
       }
     case C1:
       switch (oligo & CHAR3) {
@@ -425,7 +743,7 @@ get_last_codon (Shortoligomer_T oligo) {
     case T1:
       switch (oligo & CHAR3) {
       case T3: case C3: return AA_C;
-      case A3: return AA_STOP;
+      case A3: return -1; /* STOP */
       default: /* case G3: */ return AA_W;
       }
     case C1: return AA_R;
@@ -458,12 +776,14 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
   int indexsize = indexsize_nt, index;
   int frame = 2;
   unsigned int aaindex0 = 0U, aaindex1 = 0U, aaindex2 = 0U;
+  int in_counter_0 = 0, in_counter_1 = 0, in_counter_2 = 0;
 #endif
   int i = 0, sequencepos;
   int in_counter = 0, count;
   Shortoligomer_T oligo = 0U, masked;
   char *p;
   int availslot = 0;
+  int nqueryoligos = 0;
 #if MAXHITS_GT_ALLOCSIZE
   Genomicpos_T *ptr;
 #endif
@@ -478,7 +798,13 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
 
   sequencepos = -indexsize;
   for (i = 0, p = sequence; i < seqlength; i++, p++) {
+#ifdef PMAP
+    in_counter_0++;
+    in_counter_1++;
+    in_counter_2++;
+#else
     in_counter++;
+#endif
     sequencepos++;
 
     debug(printf("At genomicpos %u, char is %c\n",sequencepos,*p));
@@ -488,24 +814,49 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
     case 'T': oligo = (oligo << 2) | 3; break;
-    default: oligo = 0U; in_counter = 0; break;
+    default: oligo = 0U; 
+#ifdef PMAP
+      in_counter_0 = in_counter_1 = in_counter_2 = 0; 
+#else
+      in_counter = 0;
+#endif
+      break;
     }
 
 #ifdef PMAP
     index = get_last_codon(oligo);
     if (frame == 0) {
       frame = 1;
-      aaindex1 = aaindex1 % msb;
-      masked = aaindex1 = aaindex1 * NAMINOACIDS_STAGE2 + index;
+      if (index < 0) {
+	aaindex1 = 0;
+	in_counter = in_counter_1 = 0;
+      } else {
+	aaindex1 = aaindex1 % msb;
+	masked = aaindex1 = aaindex1 * NAMINOACIDS_STAGE2 + index;
+	in_counter = in_counter_1;
+      }
     } else if (frame == 1) {
       frame = 2;
-      aaindex2 = aaindex2 % msb;
-      masked = aaindex2 = aaindex2 * NAMINOACIDS_STAGE2 + index;
+      if (index < 0) {
+	aaindex2 = 0;
+	in_counter = in_counter_2 = 0;
+      } else {
+	aaindex2 = aaindex2 % msb;
+	masked = aaindex2 = aaindex2 * NAMINOACIDS_STAGE2 + index;
+	in_counter = in_counter_2;
+      }
     } else {
       frame = 0;
-      aaindex0 = aaindex0 % msb;
-      masked = aaindex0 = aaindex0 * NAMINOACIDS_STAGE2 + index;
+      if (index < 0) {
+	aaindex0 = 0;
+	in_counter = in_counter_0 = 0;
+      } else {
+	aaindex0 = aaindex0 % msb;
+	masked = aaindex0 = aaindex0 * NAMINOACIDS_STAGE2 + index;
+	in_counter = in_counter_0;
+      }
     }
+    debug(printf("frame = %d, masked = %d, in_counters = %d/%d/%d\n",frame,masked,in_counter_0,in_counter_1,in_counter_2));
 #endif
 
     if (in_counter == indexsize) {
@@ -514,6 +865,16 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
 #endif
       if (overabundant[masked] == true) {
 	/* Don't bother */
+#ifdef PMAP
+	debug(aa = aaindex_aa(masked);
+	      printf("At genomicpos %u, aa %s is overabundant\n",sequencepos,aa);
+	      FREE(aa));
+#else
+	debug(nt = shortoligo_nt(masked,indexsize);
+	      printf("At genomicpos %u, oligo %s is overabundant\n",sequencepos,nt);
+	      FREE(nt));
+#endif
+
       } else if (inquery[masked] == false) {
 	/* Don't bother, because it's not in the query sequence */
 #ifdef PMAP
@@ -598,8 +959,21 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
 	      FREE(nt));
 #endif
       }
+#ifndef PMAP
       in_counter--;
+#endif
     }
+#ifdef PMAP
+    if (in_counter_0 == indexsize) {
+      in_counter_0--;
+    }
+    if (in_counter_1 == indexsize) {
+      in_counter_1--;
+    }
+    if (in_counter_2 == indexsize) {
+      in_counter_2--;
+    }
+#endif
   }
 
 #ifdef PMAP
@@ -625,6 +999,8 @@ store_positions (Genomicpos_T **positions, Genomicpos_T *data,
 	}
 	);
 #endif
+
+  /* printf("nqueryoligos = %d\n",nqueryoligos); */
 
   return;
 }
@@ -690,7 +1066,7 @@ clear_positions (Genomicpos_T **positions, int *counts, char *queryuc_ptr, int s
 #endif
 
 
-/* Returns true if the sequence is repetitive */
+/* Returns nqueryoligos */
 void
 Oligoindex_tally (T this, Sequence_T genomicuc) {
 
@@ -749,18 +1125,41 @@ lookup (int *nhits, T this, Shortoligomer_T masked) {
 }
 
 
+static bool
+consecutivep (unsigned int *prev_mappings, int prev_nhits, unsigned int *cur_mappings, int cur_nhits) {
+  int i, j;
+
+  if (prev_nhits > 0 && cur_nhits > 0) {
+    j = i = 0;
+    while (j < prev_nhits && i < cur_nhits) {
+      /* printf("Comparing %u with %u + %d\n",cur_mappings[i],prev_mappings[j],NT_PER_MATCH); */
+      if (cur_mappings[i] == prev_mappings[j] + NT_PER_MATCH) {
+	/* printf("true\n"); */
+	return true;
+      } else if (cur_mappings[i] < prev_mappings[j] + NT_PER_MATCH) {
+	i++;
+      } else {
+	j++;
+      }
+    }
+  }
+  /* printf("false\n"); */
+  return false;
+}
+
+
 /* Retrieves appropriate oligo information for a given position and
    copies it to that position */
 /* Note: Be careful on totalpositions, because nhits may be < 0 */
 unsigned int **
-Oligoindex_get_mappings (int **npositions, int *totalpositions, T this, 
+Oligoindex_get_mappings (int *nconsecutive, int **npositions, int *totalpositions, T this, 
 			 Sequence_T queryuc) {
   unsigned int **mappings;
-  int nhits, i;
+  int prev_nhits = 0, nhits, i;
   int querylength, trimlength, trim_start;
 
   char *p;
-  int in_counter = 0, querypos;
+  int in_counter = 0, prev_querypos = 0, querypos;
   Shortoligomer_T oligo = 0U, masked;
 
 #ifdef PMAP
@@ -775,6 +1174,7 @@ Oligoindex_get_mappings (int **npositions, int *totalpositions, T this,
   *npositions = (int *) CALLOC(querylength,sizeof(int));
   *totalpositions = 0;
 
+  *nconsecutive = 0;
   querypos = trim_start - indexsize;
   for (i = 0, p = Sequence_trimpointer(queryuc); i < trimlength; i++, p++) {
     in_counter++;
@@ -810,6 +1210,12 @@ Oligoindex_get_mappings (int **npositions, int *totalpositions, T this,
 	*totalpositions += nhits;
       }
       in_counter--;
+
+      if (consecutivep(mappings[prev_querypos],prev_nhits,mappings[querypos],nhits) == true) {
+	(*nconsecutive)++;
+      }
+      prev_nhits = nhits;
+      prev_querypos = querypos;
     }
   }
 

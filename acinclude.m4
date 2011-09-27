@@ -9,4 +9,4 @@ m4_include([config/acx_pthread.m4])
 m4_include([config/expand.m4])
 m4_include([config/perl.m4])
 
-
+m4_include([config/fopen.m4])

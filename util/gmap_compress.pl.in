@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: gmap_compress.pl.in,v 1.17 2005/10/06 23:15:13 twu Exp $
+# $Id: gmap_compress.pl.in,v 1.19 2006/04/07 01:25:10 twu Exp $
 
 # Need to call gmap with -AF (A is to show alignment, and F is to flip
 # genomic sequence to be first)
@@ -20,6 +20,10 @@ sub compress {
       }
       $acc = $1;
       ($cdnalength) = $line =~ /\((\d+) bp\)/;
+      if (!defined($cdnalength)) {
+	($prolength) = $line =~ /\((\d+) aa\)/;
+	$cdnalength = $prolength*3;
+      }
       if ($line =~ /[Mm][Dd]5:(\S+)$/) {
 	$md5 = $1;
       }
@@ -125,12 +129,12 @@ sub parse_gmap {
       @exons = ();
       @introns = ();
       $i++;
-    } elsif ($line =~ /(\d+)-(\d+)\s+\(\s*(\S+:)?(\d+)-(\d+)\)\s+(\d+)%(.*)/) {
-      $chromosome = $3;
+    } elsif ($line =~ /(\S+:)?(\d+)-(\d+)\s+\((\d+)-(\d+)\)\s+(\d+)%(.*)/) {
+      $chromosome = $1;
       if (defined($chromosome)) {
 	$chromosome =~ s/://;
       }
-      push @exons,"$1 $2 $4 $5 $6";
+      push @exons,"$2 $3 $4 $5 $6";
       push @introns,"$7";
       $i++;
     } elsif ($line =~ /^\s*(\d+)[ .:]+$/) {
@@ -294,34 +298,31 @@ sub parse_agreement {
     }
 
     $print_dinucleotide_p = 1;
-    if ($ {$introns}[$segno] eq " ->") {
+    if ($ {$introns}[$segno] =~ / ->/) {
       $token = "$runlength" . ">";
-    } elsif ($ {$introns}[$segno] eq " <-") {
+    } elsif ($ {$introns}[$segno] =~ / <-/) {
       $token = "$runlength" . "<";
       $print_dinucleotide_p = -1;
-    } elsif ($ {$introns}[$segno] eq " ==") {
+    } elsif ($ {$introns}[$segno] =~ / ==/) {
       $token = "$runlength" . "=";
-    } elsif ($ {$introns}[$segno] eq " -)") {
+    } elsif ($ {$introns}[$segno] =~ / -\)/) {
       $token = "$runlength" . ")";
-    } elsif ($ {$introns}[$segno] eq " (-") {
+    } elsif ($ {$introns}[$segno] =~ / \(-/) {
       $token = "$runlength" . "(";
       $print_dinucleotide_p = -1;
-    } elsif ($ {$introns}[$segno] eq " -]") {
+    } elsif ($ {$introns}[$segno] =~ / -\]/) {
       $token = "$runlength" . "]";
-    } elsif ($ {$introns}[$segno] eq " [-") {
+    } elsif ($ {$introns}[$segno] =~ / \[-/) {
       $token = "$runlength" . "[";
       $print_dinucleotide_p = -1;
-    } elsif ($ {$introns}[$segno] eq " --") {
+    } elsif ($ {$introns}[$segno] =~ / --/) {
       $token = "$runlength" . "-";
-    } elsif ($ {$introns}[$segno] eq " ##") {
+    } elsif ($ {$introns}[$segno] =~ / \#\#/) {
       $token = "$runlength" . "#";
       $print_dinucleotide_p = 0;
-    } elsif ($ {$introns}[$segno] eq "") {
+    } else {
       $token = "$runlength" . "*";
       $print_dinucleotide_p = 0;
-    } else {
-      print STDERR "Can't parse $ {$introns}[$segno] in $acc\n";
-      exit(9);
     }
 
     ($lasttoken,$tokencount,$firsttokenp) = print_token($token,$lasttoken,$tokencount,$firsttokenp);
@@ -331,7 +332,7 @@ sub parse_agreement {
     print "\t" . $exonlength;
 
     if ($segno < $#{$introns}) {
-      if ($ {$introns}[$segno] eq " ##") {
+      if ($ {$introns}[$segno] =~ / \#\#/) {
 	($intronlength) = substr($sequence1,$pos+$length,9) =~ /(\d+)/;
       } else {
 	($intronlength) = substr($sequence2,$pos+$length,9) =~ /(\d+)/;

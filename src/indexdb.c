@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.81 2005/10/21 16:43:05 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.87 2005/12/08 20:42:05 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -31,6 +31,8 @@ static char rcsid[] = "$Id: indexdb.c,v 1.81 2005/10/21 16:43:05 twu Exp $";
 #endif
 
 #include "mem.h"
+#include "fopen.h"
+
 #include "compress.h"
 #include "access.h"
 
@@ -66,6 +68,13 @@ typedef UINT4 Positionsptr_T;
 #define debug2(x) x
 #else
 #define debug2(x)
+#endif
+
+/* get_codon_rev */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
 #endif
 
 
@@ -166,7 +175,11 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot,
   new->offsets_access = FILEIO;
 #else
   if (batch_offsets_p == true) {
-    fprintf(stderr,"Pre-loading offsets db...");
+    if (watsonp == true) {
+      fprintf(stderr,"Pre-loading forward offsets db...");
+    } else {
+      fprintf(stderr,"Pre-loading reverse offsets db...");
+    }
     new->offsets = (Positionsptr_T *) Access_mmap_and_preload(&new->offsets_fd,&new->offsets_len,&npages,&seconds,
 							    filename,sizeof(Positionsptr_T));
     if (new->offsets == NULL) {
@@ -247,7 +260,15 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot,
   new->positions_access = FILEIO;
 #else
   if (batch_positions_p == true) {
+#ifdef PMAP
+    if (watsonp == true) {
+      fprintf(stderr,"Pre-loading forward positions db...");
+    } else {
+      fprintf(stderr,"Pre-loading reverse positions db...");
+    }
+#else
     fprintf(stderr,"Pre-loading positions db...");
+#endif
     new->positions = (Genomicpos_T *) Access_mmap_and_preload(&new->positions_fd,&new->positions_len,&npages,&seconds,
 							    filename,sizeof(Genomicpos_T));
     if (new->positions == NULL) {
@@ -285,24 +306,26 @@ Indexdb_new_genome (char *genomesubdir, char *fileroot,
  *   Read procedures
  ************************************************************************/
 
+/* PMAP only, because GMAP does allocation rather than fileio */
 #ifdef PMAP
 static void
-offsets_move_absolute (T this, unsigned int aaindex) {
+offsets_move_absolute (int offsets_fd, unsigned int aaindex) {
   off_t offset = aaindex*((off_t) sizeof(Positionsptr_T));
 
-  if (lseek(this->offsets_fd,offset,SEEK_SET) < 0) {
-    perror("Error in gmap, offsets_move_absolute");
+  if (lseek(offsets_fd,offset,SEEK_SET) < 0) {
+    fprintf(stderr,"Attempted to do lseek on offset %u*%d=%lu\n",aaindex,sizeof(Positionsptr_T),offset);
+    perror("Error in indexdb.c, offsets_move_absolute");
     exit(9);
   }
   return;
 }
 
 static Positionsptr_T
-offsets_read_forward (T this) {
+offsets_read_forward (int offsets_fd) {
   Positionsptr_T value;
   char buffer[4];
 
-  read(this->offsets_fd,buffer,4);
+  read(offsets_fd,buffer,4);
 
   value = (buffer[3] & 0xff);
   value <<= 8;
@@ -317,41 +340,80 @@ offsets_read_forward (T this) {
 #endif
 
 static void
-positions_move_absolute (T this, Positionsptr_T ptr) {
+positions_move_absolute (int positions_fd, Positionsptr_T ptr) {
   off_t offset = ptr*((off_t) sizeof(Genomicpos_T));
 
-  if (lseek(this->positions_fd,offset,SEEK_SET) < 0) {
-    perror("Error in gmap, positions_move_absolute");
+  if (lseek(positions_fd,offset,SEEK_SET) < 0) {
+    fprintf(stderr,"Attempted to do lseek on offset %u*%d=%lu\n",ptr,sizeof(Genomicpos_T),offset);
+    perror("Error in indexdb.c, positions_move_absolute");
     exit(9);
   }
   return;
 }
 
-static Genomicpos_T
-positions_read_forward (T this) {
+static void
+positions_write (int fd, Genomicpos_T value) {
+  char buffer[4];
+
+  buffer[0] = value & 0xff;
+  buffer[1] = (value >>= 8) & 0xff;
+  buffer[2] = (value >>= 8) & 0xff;
+  buffer[3] = (value >>= 8) & 0xff;
+
+  write(fd,buffer,4);
+  return;
+}
+
+static void
+positions_write_multiple (int fd, Genomicpos_T *values, int n) {
+  int i;
   Genomicpos_T value;
   char buffer[4];
 
-  read(this->positions_fd,buffer,4);
+  for (i = 0; i < n; i++) {
+    value = values[i];
+    buffer[0] = value & 0xff;
+    buffer[1] = (value >>= 8) & 0xff;
+    buffer[2] = (value >>= 8) & 0xff;
+    buffer[3] = (value >>= 8) & 0xff;
 
-  value = (buffer[3] & 0xff);
-  value <<= 8;
-  value |= (buffer[2] & 0xff);
-  value <<= 8;
-  value |= (buffer[1] & 0xff);
-  value <<= 8;
-  value |= (buffer[0] & 0xff);
+    write(fd,buffer,4);
+  }
 
-  return value;
+  return;
+}
+
+
+static void
+positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
+  int i;
+  Genomicpos_T value;
+  char buffer[4];
+
+  for (i = 0; i < n; i++) {
+    read(positions_fd,buffer,4);
+
+    value = (buffer[3] & 0xff);
+    value <<= 8;
+    value |= (buffer[2] & 0xff);
+    value <<= 8;
+    value |= (buffer[1] & 0xff);
+    value <<= 8;
+    value |= (buffer[0] & 0xff);
+
+    values[i] = value;
+  }
+
+  return;
 }
 
 static Genomicpos_T
-positions_read_backward (T this) {
+positions_read_backward (int positions_fd) {
   Genomicpos_T value;
   char buffer[4];
   off_t reloffset = -2*((off_t) sizeof(Genomicpos_T)); /* 1 to undo the effect of read */
 
-  read(this->positions_fd,buffer,4);
+  read(positions_fd,buffer,4);
 
   value = (buffer[3] & 0xff);
   value <<= 8;
@@ -361,8 +423,9 @@ positions_read_backward (T this) {
   value <<= 8;
   value |= (buffer[0] & 0xff);
 
-  if (lseek(this->positions_fd,reloffset,SEEK_CUR) < 0) {
-    perror("Error in gmap, positions_read_backward");
+  if (lseek(positions_fd,reloffset,SEEK_CUR) < 0) {
+    fprintf(stderr,"Attempted to do lseek on relative offset %ld\n",reloffset);
+    perror("Error in indexdb.c, positions_read_backward");
     exit(9);
   }
     
@@ -385,9 +448,9 @@ Indexdb_read (int *nentries, T this, unsigned int aaindex) {
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->offsets_read_mutex);
 #endif
-    offsets_move_absolute(this,aaindex);
-    ptr0 = offsets_read_forward(this);
-    end0 = offsets_read_forward(this);
+    offsets_move_absolute(this->offsets_fd,aaindex);
+    ptr0 = offsets_read_forward(this->offsets_fd);
+    end0 = offsets_read_forward(this->offsets_fd);
 #ifdef HAVE_PTHREAD
     pthread_mutex_unlock(&this->offsets_read_mutex);
 #endif
@@ -415,8 +478,8 @@ Indexdb_read (int *nentries, T this, unsigned int aaindex) {
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-    positions_move_absolute(this,end0-1);
-    while (end0 > ptr0 && positions_read_backward(this) == BADVAL) {
+    positions_move_absolute(this->positions_fd,end0-1);
+    while (end0 > ptr0 && positions_read_backward(this->positions_fd) == BADVAL) {
       end0--;
     }
 #ifdef HAVE_PTHREAD
@@ -438,10 +501,8 @@ Indexdb_read (int *nentries, T this, unsigned int aaindex) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-      positions_move_absolute(this,ptr0);
-      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
-	positions[i] = positions_read_forward(this);
-      }
+      positions_move_absolute(this->positions_fd,ptr0);
+      positions_read_multiple(this->positions_fd,positions,*nentries);
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
@@ -534,8 +595,8 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-    positions_move_absolute(this,end0-1);
-    while (end0 > ptr0 && positions_read_backward(this) == BADVAL) {
+    positions_move_absolute(this->positions_fd,end0-1);
+    while (end0 > ptr0 && positions_read_backward(this->positions_fd) == BADVAL) {
       end0--;
     }
 #ifdef HAVE_PTHREAD
@@ -557,10 +618,8 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-      positions_move_absolute(this,ptr0);
-      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
-	positions[i] = positions_read_forward(this);
-      }
+      positions_move_absolute(this->positions_fd,ptr0);
+      positions_read_multiple(this->positions_fd,positions,*nentries);
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
@@ -811,72 +870,72 @@ get_codon_rev (Storedoligomer_T codon) {
     switch (codon & CHAR3) {
     case A3:
       switch (codon & CHAR1) {
-      case A1: case G1: debug(printf("F\n")); return AA_F;
+      case A1: case G1: debug3(printf("L\n")); return AA_F;
       default: /* case T1: case C1: */
 #ifdef NOCOLLAPSE
-	debug(printf("L\n"));
+	debug3(printf("L\n"));
 	return AA_L;
 #else
-	debug(printf("[ILV]\n"));
+	debug3(printf("[ILV]\n"));
 	return AA_ILV;
 #endif
       }
     case G3:
 #ifdef NOCOLLAPSE
-      debug(printf("L\n"));
+      debug3(printf("L\n"));
       return AA_L;
 #else
-      debug(printf("[ILV]\n"));
+      debug3(printf("[ILV]\n"));
       return AA_ILV;
 #endif
     case T3: 
       switch (codon & CHAR1) {
-      case C1: debug(printf("M\n")); return AA_M;
+      case C1: debug3(printf("M\n")); return AA_M;
       default: /* case A1: case T1: case G1: */
 #ifdef NOCOLLAPSE
-	debug(printf("I\n"));
+	debug3(printf("I\n"));
 	return AA_I;
 #else
-	debug(printf("[ILV]\n"));
+	debug3(printf("[ILV]\n"));
 	return AA_ILV;
 #endif
       }
     default: /* case C3: */
 #ifdef NOCOLLAPSE
-      debug(printf("V\n"));
+      debug3(printf("V\n"));
       return AA_V;
 #else
-      debug(printf("[ILV]\n"));
+      debug3(printf("[ILV]\n"));
       return AA_ILV;
 #endif
   }
   case G2:
     switch (codon & CHAR3) {
-    case G3: debug(printf("P\n")); return AA_P;
+    case G3: debug3(printf("P\n")); return AA_P;
 #ifdef NOCOLLAPSE
-    case A3: debug(printf("S\n")); return AA_S;
-    case T3: debug(printf("T\n")); return AA_T;
+    case A3: debug3(printf("S\n")); return AA_S;
+    case T3: debug3(printf("T\n")); return AA_T;
 #else
-    case A3: case T3: debug(printf("[ST]\n")); return AA_ST;
+    case A3: case T3: debug3(printf("[ST]\n")); return AA_ST;
 #endif
-    default: /* case C3: */ debug(printf("A\n")); return AA_A;
+    default: /* case C3: */ debug3(printf("A\n")); return AA_A;
     }
   case T2:
     switch (codon & CHAR3) {
     case A3:
       switch (codon & CHAR1) {
-      case A1: case G1: debug(printf("Y\n")); return AA_Y;
-      default: /* case T1: case C1: */ debug(printf("*\n")); return AA_STOP;
+      case A1: case G1: debug3(printf("Y\n")); return AA_Y;
+      default: /* case T1: case C1: */ debug3(printf("*\n")); return AA_STOP;
       }
     case G3:
       switch (codon & CHAR1) {
-      case A1: case G1: debug(printf("H\n")); return AA_H;
+      case A1: case G1: debug3(printf("H\n")); return AA_H;
       default: /* case T1: case C1: */
 #ifdef NOCOLLAPSE
-	debug(printf("Q\n"));
+	debug3(printf("Q\n"));
 	return AA_Q;
 #else
-	debug(printf("[NQ]\n"));
+	debug3(printf("[NQ]\n"));
 	return AA_NQ;
 #endif
       }
@@ -884,22 +943,22 @@ get_codon_rev (Storedoligomer_T codon) {
       switch (codon & CHAR1) {
       case A1: case G1: 
 #ifdef NOCOLLAPSE
-	debug(printf("N\n"));
+	debug3(printf("N\n"));
 	return AA_N;
 #else
-	debug(printf("[NQ]\n"));
+	debug3(printf("[NQ]\n"));
 	return AA_NQ;
 #endif
-      default: /* case T1: case C1: */ debug(printf("K\n")); return AA_K;
+      default: /* case T1: case C1: */ debug3(printf("K\n")); return AA_K;
       }
     default: /* case C3: */
 #ifdef NOCOLLAPSE
       switch (codon & CHAR1) {
-      case A1: case G1: debug(printf("D\n")); return AA_D;
-      default: /* case T1: case C1: */ debug(printf("E\n")); return AA_E;
+      case A1: case G1: debug3(printf("D\n")); return AA_D;
+      default: /* case T1: case C1: */ debug3(printf("E\n")); return AA_E;
       }
 #else
-      debug(printf("[DE]\n"));
+      debug3(printf("[DE]\n"));
       return AA_DE;
 #endif
     }
@@ -907,24 +966,24 @@ get_codon_rev (Storedoligomer_T codon) {
     switch (codon & CHAR3) {
     case A3:
       switch (codon & CHAR1) {
-      case A1: case G1: debug(printf("C\n")); return AA_C;
-      case T1: debug(printf("*\n")); return AA_STOP;
-      default: /* case C1: */ debug(printf("W\n")); return AA_W;
+      case A1: case G1: debug3(printf("C\n")); return AA_C;
+      case T1: debug3(printf("*\n")); return AA_STOP;
+      default: /* case C1: */ debug3(printf("W\n")); return AA_W;
       }
-    case G3: debug(printf("R\n")); return AA_R;
+    case G3: debug3(printf("R\n")); return AA_R;
     case T3:
       switch (codon & CHAR1) {
       case A1: case G1:
 #ifdef NOCOLLAPSE
-	debug(printf("S\n"));
+	debug3(printf("S\n"));
 	return AA_S;
 #else
-	debug(printf("[ST]\n"));
+	debug3(printf("[ST]\n"));
 	return AA_ST;
 #endif
-      default: /* case T1: case C1: */ debug(printf("R\n")); return AA_R;
+      default: /* case T1: case C1: */ debug3(printf("R\n")); return AA_R;
       }
-    default: /* case C3: */ debug(printf("G\n")); return AA_G;
+    default: /* case C3: */ debug3(printf("G\n")); return AA_G;
     }
   }
 
@@ -1316,26 +1375,18 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 }
 
 
+/* FILE *fp is preferable to int fd, because former is buffered.  No
+   need for fseeko, because offsets file is < 2 Gigabytes */
 static void
 offsetsfile_move_absolute (FILE *fp, int ptr) {
-  long int offset = (long int) (ptr*sizeof(Positionsptr_T));
+  long int offset = ptr*((long int) sizeof(Positionsptr_T));
 
   if (fseek(fp,offset,SEEK_SET) < 0) {
-    perror("Error in gmapindex, offsetsfile_move_absolute");
+    fprintf(stderr,"Attempted to do fseek on offset %u*%d=%lu\n",ptr,sizeof(Positionsptr_T),offset);
+    perror("Error in indexdb.c, offsetsfile_move_absolute");
     exit(9);
   }
-  return;
-}
 
-
-static void
-positionsfile_move_absolute (FILE *fp, Positionsptr_T ptr) {
-  long int offset = (long int) (ptr*sizeof(Genomicpos_T));
-
-  if (fseek(fp,offset,SEEK_SET) < 0) {
-    perror("Error in gmapindex, positionsfile_move_absolute");
-    exit(9);
-  }
   return;
 }
 
@@ -1360,7 +1411,7 @@ need_to_sort_p (Genomicpos_T *positions, int length) {
 
 /* Works directly in file, so we don't need to allocate memory */
 static void
-compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T *offsets,
+compute_positions_in_file (int positions_fd, FILE *offsets_fp, Positionsptr_T *offsets,
 			   FILE *sequence_fp, IIT_T altstrain_iit, int index1interval,
 #ifdef PMAP
 			   bool watsonp,
@@ -1472,14 +1523,14 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
     if (in_counter[frame] == INDEX1PART_AA + 1) {
       if (between_counter[frame] >= index1interval) {
 	aaindex = get_aa_index(high,low,watsonp);
-	positionsfile_move_absolute(positions_fp,offsets[aaindex]);
+	positions_move_absolute(positions_fd,offsets[aaindex]);
 	offsets[aaindex] += 1;
 	if (watsonp == true) {
 	  adjposition = position-INDEX1PART_NT;
 	} else {
 	  adjposition = position;
 	}
-	FWRITE_UINT(adjposition,positions_fp);
+	positions_write(positions_fd,adjposition);
 	between_counter[frame] = 0;
       }
       in_counter[frame] -= 1;
@@ -1488,10 +1539,10 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
     if (in_counter == INDEX1PART) {
       if (between_counter >= index1interval) {
 	masked = oligo & mask;
-	positionsfile_move_absolute(positions_fp,offsets[masked]);
+	positions_move_absolute(positions_fd,offsets[masked]);
 	offsets[masked] += 1;
 	adjposition = position-INDEX1PART;
-	FWRITE_UINT(adjposition,positions_fp);
+	positions_write(positions_fd,adjposition);
 	between_counter = 0;
       }
       in_counter--;
@@ -1573,14 +1624,14 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	if (in_counter[frame] == INDEX1PART_AA + 1) {
 	  if (between_counter[frame] >= index1interval) {
 	    aaindex = get_aa_index(high,low,watsonp);
-	    positionsfile_move_absolute(positions_fp,offsets[aaindex]);
+	    positions_move_absolute(positions_fd,offsets[aaindex]);
 	    offsets[aaindex] += 1;
 	    if (watsonp == true) {
 	      adjposition = position-INDEX1PART_NT;
 	    } else {
 	      adjposition = position;
 	    }
-	    FWRITE_UINT(adjposition,positions_fp);
+	    positions_write(positions_fd,adjposition);
 	    between_counter[frame] = 0;
 	  }
 	  in_counter[frame] -= 1;
@@ -1589,10 +1640,10 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	if (in_counter == INDEX1PART) {
 	  if (between_counter >= index1interval) {
 	    masked = oligo & mask;
-	    positionsfile_move_absolute(positions_fp,offsets[masked]);
+	    positions_move_absolute(positions_fd,offsets[masked]);
 	    offsets[masked] += 1;
 	    adjposition = position-INDEX1PART;
-	    FWRITE_UINT(adjposition,positions_fp);
+	    positions_write(positions_fd,adjposition);
 	    between_counter = 0;
 	  }
 	  in_counter--;
@@ -1617,8 +1668,8 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
       block_end = offsets[i+1];
       if ((npositions = block_end - block_start) > 1) {
 	positions_for_block = (Genomicpos_T *) CALLOC(npositions,sizeof(Genomicpos_T));
-	positionsfile_move_absolute(positions_fp,block_start);
-	FREAD_UINTS(positions_for_block,npositions,positions_fp);
+	positions_move_absolute(positions_fd,block_start);
+	positions_read_multiple(positions_fd,positions_for_block,npositions);
 
 	if (need_to_sort_p(positions_for_block,npositions)) {	
 	  qsort(positions_for_block,npositions,sizeof(Genomicpos_T),Genomicpos_compare);
@@ -1649,8 +1700,8 @@ compute_positions_in_file (FILE *positions_fp, FILE *offsets_fp, Positionsptr_T 
 	    }
 	  }
 
-	  positionsfile_move_absolute(positions_fp,block_start);
-	  FWRITE_UINTS(positions_for_block,npositions,positions_fp);
+	  positions_move_absolute(positions_fd,block_start);
+	  positions_write_multiple(positions_fd,positions_for_block,npositions);
 	}
 
 	FREE(positions_for_block);
@@ -1888,7 +1939,7 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 	    }
 	    between_counter[frame] = 0;
 	  }
-	  in_counter[frame] -= 0;
+	  in_counter[frame] -= 1;
 	}
 #else
 	if (in_counter == INDEX1PART) {
@@ -1963,7 +2014,8 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
 			 bool watsonp,
 #endif
 			 bool writefilep) {
-  FILE *positions_fp;
+  FILE *positions_fp;		/* For building positions in memory */
+  int positions_fd;		/* For building positions in file */
   Positionsptr_T *offsets, totalcounts;
   Genomicpos_T *positions;
   int oligospace;
@@ -1984,40 +2036,34 @@ Indexdb_write_positions (char *positionsfile, FILE *offsets_fp, FILE *sequence_f
 
   if (writefilep == true) {
     fprintf(stderr,"User requested build of positions in file\n");
-    if ((positions_fp = fopen(positionsfile,"w+")) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",positionsfile);
-      exit(9);
-    }
+    positions_fd = Access_fileio_rw(positionsfile);
 #ifdef PMAP
-    compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+    compute_positions_in_file(positions_fd,offsets_fp,offsets,sequence_fp,altstrain_iit,
 			      index1interval,watsonp,uncompressedp);
 #else
-    compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+    compute_positions_in_file(positions_fd,offsets_fp,offsets,sequence_fp,altstrain_iit,
 			      index1interval,uncompressedp);
 #endif
-    fclose(positions_fp);
+    close(positions_fd);
 
   } else {
     fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",totalcounts,(int) sizeof(Genomicpos_T));
     positions = (Genomicpos_T *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(Genomicpos_T));
     if (positions == NULL) {
       fprintf(stderr,"failed.  Building positions in file.\n");
-      if ((positions_fp = fopen(positionsfile,"w+")) == NULL) {
-	fprintf(stderr,"Can't open file %s\n",positionsfile);
-	exit(9);
-      }
+      positions_fd = Access_fileio_rw(positionsfile);
 #ifdef PMAP
-      compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+      compute_positions_in_file(positions_fd,offsets_fp,offsets,sequence_fp,altstrain_iit,
 				index1interval,watsonp,uncompressedp);
 #else
-      compute_positions_in_file(positions_fp,offsets_fp,offsets,sequence_fp,altstrain_iit,
+      compute_positions_in_file(positions_fd,offsets_fp,offsets,sequence_fp,altstrain_iit,
 				index1interval,uncompressedp);
 #endif
-      fclose(positions_fp);
+      close(positions_fd);
 
     } else {
       fprintf(stderr,"succeeded.  Building positions in memory.\n");
-      if ((positions_fp = fopen(positionsfile,"w")) == NULL) {
+      if ((positions_fp = FOPEN_WRITE_BINARY(positionsfile)) == NULL) {
 	fprintf(stderr,"Can't open file %s\n",positionsfile);
 	exit(9);
       }

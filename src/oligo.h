@@ -1,4 +1,4 @@
-/* $Id: oligo.h,v 1.25 2005/07/08 14:37:40 twu Exp $ */
+/* $Id: oligo.h,v 1.26 2006/03/04 22:00:27 twu Exp $ */
 #ifndef OLIGO_INCLUDED
 #define OLIGO_INCLUDED
 #include "bool.h"
@@ -8,8 +8,15 @@
 
 typedef enum {INIT, DONE, INVALID, VALID} Oligostate_T;
 
+extern char *
+Oligo_one_nt (Storedoligomer_T oligo, int oligosize);
+
 extern int
-Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T oligo);
+Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, 
+#ifndef PMAP
+	      bool shiftp,
+#endif
+	      Storedoligomer_T storedoligo);
 
 extern Oligostate_T
 Oligo_next (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward, 

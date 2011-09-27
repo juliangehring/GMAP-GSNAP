@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c,v 1.22 2005/07/08 07:58:32 twu Exp $";
+static char rcsid[] = "$Id: iit_store.c,v 1.23 2005/11/23 17:29:33 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,8 @@ static char rcsid[] = "$Id: iit_store.c,v 1.22 2005/07/08 07:58:32 twu Exp $";
 #include <ctype.h>
 #include "assert.h"
 #include "mem.h"
+#include "fopen.h"
+
 #include "list.h"
 #include "interval.h"
 #include "tableint.h"
@@ -155,7 +157,7 @@ main (int argc, char *argv[]) {
     fp = stdin;
   } else {
     inputfile = argv[1];
-    fp = fopen(inputfile,"r");
+    fp = FOPEN_READ_TEXT(inputfile);
     if (!fp) {
       fprintf(stderr,"Can't open file %s\n",inputfile);
       exit(9);

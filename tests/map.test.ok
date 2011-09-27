@@ -5,7 +5,8 @@ Paths (1):
     Genomic pos: chr17test:109,781--138,442 (+ strand)
     Accessions: chr17test:109,781--138,442 (out of 200000 bp)
     Number of exons: 27
-    Coverage: 100.0 (query length: 4624 bp, trimmed query: 1..4624)
+    Coverage: 100.0 (query length: 4624 bp)
+    Trimmed coverage: 100.0 (trimmed length: 4624 bp, trimmed region: 1..4624)
     Percent identity: 100.0 (4624 matches, 0 mismatches, 0 indels, 0 unknowns)
     Translation: 2..4006 (1334 aa)
     Amino acid changes: 

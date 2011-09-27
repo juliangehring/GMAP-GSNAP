@@ -1,4 +1,4 @@
-/* $Id: comp.h,v 1.1 2005/10/06 20:42:04 twu Exp $ */
+/* $Id: comp.h,v 1.2 2007/04/23 16:06:46 twu Exp $ */
 #ifndef COMP_INCLUDED
 #define COMP_INCLUDED
 
@@ -21,6 +21,7 @@
 
 #define NONINTRON_COMP '='
 #define DUALBREAK_COMP '#'
+#define EXTRAEXON_COMP '^'
 
 #define INTRONGAP_COMP '.'
 #define INTRONGAP_CHAR '.'

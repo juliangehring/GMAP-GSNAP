@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c,v 1.86 2006/11/16 03:02:51 twu Exp $";
+static char rcsid[] = "$Id: genome.c,v 1.88 2007/04/23 18:34:48 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -74,6 +74,8 @@ struct T {
   UINT4 *blocks;
   bool compressedp;
 
+  char *ptr;
+  unsigned int left;
 #ifdef HAVE_PTHREAD
   pthread_mutex_t read_mutex;
 #endif
@@ -195,6 +197,24 @@ Genome_new (char *genomesubdir, char *fileroot, bool uncompressedp, bool batchp)
 
   FREE(filename);
 
+  /* Initialize for Genome_next_char */
+  new->ptr = new->chars;
+  new->left = 0U;
+  if (new->compressedp == false) {
+    if (new->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&new->read_mutex);
+#endif
+      if (lseek(new->fd,/*left*/0U,SEEK_SET) < 0) {
+	perror("Error in gmap, Genome_get_segment");
+	exit(9);
+      }
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&new->read_mutex);
+#endif
+    }
+  }
+
   return new;
 }
 
@@ -245,11 +265,12 @@ genomecomp_read_current (T this) {
 }
 
 
-static char translate[8] = {'A','C','G','T','N','?','?','X'};
+static char acgt[4] = {'A','C','G','T'};
+static char non_acgt[4] = {'N','?','?','X'};
 
 void
 Genome_replace_x (void) {
-  translate[7] = 'N';
+  non_acgt[3] = 'N';
 }
 
 
@@ -277,12 +298,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
     flags = genomecomp_read_current(this);
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -296,12 +317,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
     flags = genomecomp_read_current(this);
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -316,12 +337,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
       flags = genomecomp_read_current(this);
 
       for (i = 0; i < 16; i++) {
-	gbuffer1[k++] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+	gbuffer1[k++] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	gbuffer1[k++] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+	gbuffer1[k++] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -334,12 +355,12 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
       flags = genomecomp_read_current(this);
 
       for (i = 0; i < 16; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -378,12 +399,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
     high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -399,12 +420,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
     high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -422,12 +443,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
       high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
       for (i = 0; i < 16; i++) {
-	gbuffer1[k++] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+	gbuffer1[k++] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	gbuffer1[k++] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+	gbuffer1[k++] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -443,12 +464,12 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
       high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
       for (i = 0; i < 16; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -517,6 +538,90 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length,
     return Sequence_genomic_new(gbuffer1,length);
   }
 }
+
+
+void
+Genome_fill_buffer (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1) {
+  
+  if (length == 0) {
+    return;
+
+  } else if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      if (lseek(this->fd,left,SEEK_SET) < 0) {
+	perror("Error in gmap, Genome_get_segment");
+	exit(9);
+      }
+      read(this->fd,gbuffer1,length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer1,&(this->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer1,this,left,left+length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+    }
+  }
+  gbuffer1[length] = '\0';
+
+  debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+  return;
+}
+
+
+int
+Genome_next_char (T this) {
+  char gbuffer[2];
+  
+  if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      read(this->fd,gbuffer,1);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+      return (int) gbuffer[0];
+
+    } else {
+      return *(this->ptr++);
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer,this,this->left,this->left+1U);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      uncompress_mmap(gbuffer,this->blocks,this->left,this->left+1U);
+    }
+    this->left += 1U;
+    return (int) gbuffer[0];
+  }
+}
+
+
+
 
 /* sbuffer is the strain buffer, with coordinates low--high.  gbuffer1
    has the reference sequence in the forward direction.  The reference

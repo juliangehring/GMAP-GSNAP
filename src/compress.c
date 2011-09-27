@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c,v 1.16 2006/11/16 03:02:00 twu Exp $";
+static char rcsid[] = "$Id: compress.c,v 1.18 2007/04/23 18:34:12 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,7 +26,8 @@ static char uppercaseCode[128] = UPPERCASE_U2T;
 /* We use int *, rather than char *, because we eventually return an int,
    and we see problems converting from char to int */
 static void
-fill_buffer (int *Buffer, UINT4 high, UINT4 low, UINT4 flags) {
+fill_buffer (int *Buffer, UINT4 high, UINT4 low, UINT4 flags, Genomicpos_T position) {
+  int errflag = 0;
   int i;
 
   /* printf("%08X %08X %08X => ",high,low,flags); */
@@ -57,7 +58,7 @@ fill_buffer (int *Buffer, UINT4 high, UINT4 low, UINT4 flags) {
       } else if (Buffer[i] == 'T') {
 	Buffer[i] = 'X';
       } else {
-	fprintf(stderr,"Parsing error\n");
+	printf("Parsing error; saw non-ACGT flag plus %c at position %u\n",Buffer[i],position+i);
 	exit(9);
       }
     }
@@ -87,7 +88,7 @@ Compress_get_char (FILE *sequence_fp, Genomicpos_T position, bool uncompressedp)
 	FREAD_UINT(&flags,sequence_fp) <= 0) {
       return EOF;
     } else {
-      fill_buffer(SAVEBUFFER,high,low,flags);
+      fill_buffer(SAVEBUFFER,high,low,flags,position);
       return SAVEBUFFER[0];
     }
   } else {
@@ -135,6 +136,7 @@ Compress_compress (FILE *fp) {
       case 1U: low |= LEFT_C; break;
       case 2U: low |= LEFT_G; break;
       case 3U: low |= LEFT_T; break;
+      default: abort();
       }
 
       switch (uppercaseCode[c]) {
@@ -176,6 +178,7 @@ Compress_compress (FILE *fp) {
       case 1U: low |= LEFT_C; break;
       case 2U: low |= LEFT_G; break;
       case 3U: low |= LEFT_T; break;
+      default: abort();
       }
       high |= LEFT_T; flags |= LEFT_BIT;
       in_counter++;
@@ -300,6 +303,7 @@ write_compressed_one (FILE *fp, char Buffer[], Genomicpos_T position) {
     case 1U: low |= LEFT_C; break;
     case 2U: low |= LEFT_G; break;
     case 3U: low |= LEFT_T; break;
+    default: abort();
     }
 
     switch (uppercaseCode[Buffer[i]]) {
@@ -339,6 +343,7 @@ put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
     case 1U: low |= LEFT_C; break;
     case 2U: low |= LEFT_G; break;
     case 3U: low |= LEFT_T; break;
+    default: abort();
     }
 
     switch (uppercaseCode[Buffer[i]]) {
@@ -364,7 +369,8 @@ put_compressed_one (UINT4 *sectioncomp, char Buffer[], Genomicpos_T position) {
 }
 
 
-static char translate[8] = {'A','C','G','T','N','?','?','X'};
+static char acgt[4] = {'A','C','G','T'};
+static char non_acgt[4] = {'N','?','?','X'};
 
 /* if gbuffer is NULL, then we fill with X's */
 void
@@ -387,12 +393,12 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
     genomecomp_read_current(&high,&low,&flags,fp);
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -408,12 +414,12 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
     genomecomp_read_current(&high,&low,&flags,fp);
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -437,12 +443,12 @@ Compress_update_file (FILE *fp, char *gbuffer, Genomicpos_T startpos,
       genomecomp_read_current(&high,&low,&flags,fp);
 
       for (i = 0; i < 16; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }
@@ -479,12 +485,12 @@ Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
     flags = genomecomp[ptr+2];
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -500,12 +506,12 @@ Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
     flags = genomecomp[ptr+2];
 
     for (i = 0; i < 16; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
       low >>= 2;
       flags >>= 1;
     }
     for ( ; i < 32; i++) {
-      Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+      Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
       high >>= 2;
       flags >>= 1;
     }
@@ -529,12 +535,12 @@ Compress_update_memory (UINT4 *genomecomp, char *gbuffer, Genomicpos_T startpos,
       flags = genomecomp[ptr+2];
 
       for (i = 0; i < 16; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (low & 3U) + 4 : low & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[low & 3U] : acgt[low & 3U];
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	Buffer[i] = translate[(flags & 1U) ? (high & 3U) + 4 : high & 3U];
+	Buffer[i] = flags & 1U ? non_acgt[high & 3U] : acgt[high & 3U];
 	high >>= 2;
 	flags >>= 1;
       }

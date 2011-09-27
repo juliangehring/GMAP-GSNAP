@@ -1,4 +1,4 @@
-/* $Id: dynprog.h,v 1.52 2006/10/12 16:30:38 twu Exp $ */
+/* $Id: dynprog.h,v 1.53 2007/04/23 15:52:16 twu Exp $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 #include "bool.h"
@@ -18,6 +18,11 @@ Dynprog_new (int maxlookback, int extraquerygap, int maxpeelback,
 	     int extramaterial_end, int extramaterial_paired);
 extern void
 Dynprog_free (T *old);
+
+#ifdef PMAP
+extern char
+Dynprog_codon_char (char aa, int codonpos);
+#endif
 
 extern int
 Dynprog_pairdistance (int c1, int c2);
@@ -64,7 +69,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 		    char *queryaaseq,
 #endif
 		    int cdna_direction, Pairpool_T pairpool, int extraband_paired,
-		    bool endp, double defect_rate, int maxpeelback, bool halfp, bool finalp);
+		    double defect_rate, int maxpeelback, bool halfp, bool finalp);
 
 extern List_T
 Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
@@ -75,8 +80,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate,
-		  bool extend_mismatch_p);
+		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate);
 
 extern List_T
 Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
@@ -87,8 +91,20 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate,
-		  bool extend_mismatch_p);
+		  int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate);
+
+extern List_T
+Dynprog_dual_break (int *dynprogindex, int *finalscore, T dynprogL, T dynprogR, 
+		    char *sequence1L, char *sequenceuc1L,
+		    char *sequence2L, char *sequenceuc2L,
+		    char *revsequence1R, char *revsequenceuc1R,
+		    char *revsequence2R, char *revsequenceuc2R,
+		    int length1, int length2, int offset1L, int offset2L, 
+		    int revoffset1R, int revoffset2R, 
+#ifdef PMAP
+		    char *queryaaseq,
+#endif
+		    int cdna_direction, Pairpool_T pairpool, int extraband_end, double defect_rate);
 
 extern List_T
 Dynprog_microexon_int (int *dynprogindex, int *microintrontype,

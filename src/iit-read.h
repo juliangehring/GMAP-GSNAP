@@ -1,4 +1,4 @@
-/* $Id: iit-read.h,v 1.37 2006/11/13 04:05:33 twu Exp $ */
+/* $Id: iit-read.h,v 1.40 2007/03/01 23:54:26 twu Exp $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -43,9 +43,13 @@ IIT_debug (char *filename);
 extern void
 IIT_dump_typestrings (FILE *fp, T this);
 extern void
+IIT_dump_labels (FILE *fp, T this);
+extern void
 IIT_dump (T this, bool annotationonlyp);
 extern void
 IIT_dump_formatted (T this, bool directionalp);
+extern unsigned int *
+IIT_transitions (int **signs, int *nedges, T this);
 extern void
 IIT_dump_counts (T this, bool alphabetizep);
 

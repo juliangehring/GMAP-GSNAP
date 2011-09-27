@@ -22,9 +22,6 @@
 /* Define to 1 if fseeko (and presumably ftello) exists and is declared. */
 #undef HAVE_FSEEKO
 
-/* Define to 1 if you have the `getpagesize' function. */
-#undef HAVE_GETPAGESIZE
-
 /* Define to 1 if you have the `index' function. */
 #undef HAVE_INDEX
 
@@ -67,7 +64,7 @@
 /* Define to 1 if you have the `memset' function. */
 #undef HAVE_MEMSET
 
-/* Define to 1 if you have a working `mmap' system call. */
+/* Define to 1 if you have a working 'mmap' system call. */
 #undef HAVE_MMAP
 
 /* Define to 1 if MAP_FILE available for mmap. */
@@ -93,6 +90,10 @@
 
 /* Define if you have POSIX threads libraries and header files. */
 #undef HAVE_PTHREAD
+
+/* Define if you have pthread_getspecific, pthread_setspecific, and
+   pthread_key_create. */
+#undef HAVE_PTHREAD_TSD
 
 /* Define to 1 if you have the `rint' function. */
 #undef HAVE_RINT

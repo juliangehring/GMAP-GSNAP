@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c,v 1.155 2006/12/18 13:19:45 twu Exp $";
+static char rcsid[] = "$Id: stage1.c,v 1.160 2007/06/02 20:39:42 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -43,6 +43,7 @@ typedef enum {TRIAL0, TRIAL1, TRIAL2, TRIAL3, FAILED} Trial_T;
 
 #define MAX_FILL_IN 200
 #define MAX_DANGLING_PCT 0.33
+#define MAX_NSAMPLES 50
 
 #define SIZEBOUND 0.7
 #define MAXMATCHPAIRS_PREUNIQUE 500
@@ -50,6 +51,8 @@ typedef enum {TRIAL0, TRIAL1, TRIAL2, TRIAL3, FAILED} Trial_T;
 
 #define SUFFICIENT_FSUPPORT 0.90
 #define MIN_SUPPORT_FRACTION 0.30
+
+#define MAXSALVAGE 50
 
 #define BINARY_FOLDDIFF 8
 
@@ -664,7 +667,7 @@ identify_singles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
     }
     for (p = newmatches; p != NULL; p = p->rest) {
       debug(
-	    printf("  Match at %d: #%d(%s):%u (forwardp:%d, npairings:%d) ",
+	    printf("  Match at %d: #%d(chr%s):%u (forwardp:%d, npairings:%d) ",
 		   Match_querypos(List_head(p)),Match_chrnum(List_head(p)),
 		   Match_chr(List_head(p),chromosome_iit),
 		   Match_chrpos(List_head(p)),Match_forwardp(List_head(p)),
@@ -872,7 +875,7 @@ identify_doubles (bool *newp, bool *overflowp, List_T matches, int merstart, Gen
 
     for (p = newmatches; p != NULL; p = p->rest) {
       debug(
-	    printf("  Match at %d: #%d(%s):%u (forwardp:%d, npairings:%d)",
+	    printf("  Match at %d: #%d(chr%s):%u (forwardp:%d, npairings:%d)",
 		   Match_querypos(List_head(p)),Match_chrnum(List_head(p)),
 		   Match_chr(List_head(p),chromosome_iit),
 		   Match_chrpos(List_head(p)),Match_forwardp(List_head(p)),
@@ -2118,7 +2121,7 @@ compute_matchlist (T this,
       prevnskip = nskip = 0;
     }
 
-    while (nskip > 0 && clusterlist == NULL) {
+    while (nskip > 0 && nsamples < MAX_NSAMPLES && clusterlist == NULL) {
       debug1(printf("***Beginning sampling.  nsamples = %d, nskip = %d\n",nsamples,nskip));
 #ifdef PMAP
       sample(this,nskip,2*this->maxentries,indexdb_fwd,indexdb_rev,chromosome_iit,chrsubset,matchpool);
@@ -2411,15 +2414,16 @@ Stage1_compute (Sequence_T queryuc,
 #endif
     } else {
       trial = TRIAL0;
-      maxtrial = TRIAL2;
+      maxtrial = TRIAL2;	/* TRIAL3 is too slow */
     }
   }
 #endif
 
   /* Perform trials */
-  while (sufficient_matchpair_p(matchlist,trimstart,trimend) == false && trial != maxtrial) {
+  while (sufficient_matchpair_p(matchlist,trimstart,trimend) == false && trial < maxtrial) {
     compute_parameters(&stage1size,&maxentries,trial);
-    debug(printf("Starting trial %d with stage1size = %d, maxentries = %d\n",trial,stage1size,maxentries));
+    debug(printf("Starting trial %d (out of %d) with stage1size = %d, maxentries = %d\n",
+		 trial,maxtrial-1,stage1size,maxentries));
 
     if (this != NULL) {
       plus_positions = this->plus_positions;
@@ -2456,7 +2460,7 @@ Stage1_compute (Sequence_T queryuc,
 
   /* Salvage hits */
   if (this->matchlist == NULL) {
-    if (trimlength <= SHORTSEQLEN) {
+    if (trimlength <= SHORTSEQLEN || List_length(this->matches5) + List_length(this->matches3) < MAXSALVAGE) {
       this->matchlist = Matchpair_salvage_hits(this->matches5,this->matches3,stage1size,trimstart,trimend,trimlength);
       for (p = this->matchlist; p != NULL; p = List_next(p)) {
 	matchpair = (Matchpair_T) List_head(p);
@@ -2511,6 +2515,7 @@ Stage1_compute (Sequence_T queryuc,
 	  
   this->runtime = Stopwatch_stop(stopwatch);
 
+  debug(printf("Finished with stage 1\n"));
   return this;
 }
 

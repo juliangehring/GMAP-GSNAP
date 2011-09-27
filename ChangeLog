@@ -1,3 +1,728 @@
+2007-06-02 13:39  twu
+
+	* src/stage1.c: Added debugging statement to signal end of stage 1
+
+2007-06-02 13:39  twu
+
+	* src/dynprog.c: Eliminated allocation of temporary Dynprog_T
+	  objects
+
+2007-06-02 13:38  twu
+
+	* src/pair.c: Now printing query_skip in -A and -S output
+
+2007-05-29 13:44  twu
+
+	* src/dynprog.c: Lowered gap penalties for single gaps.  Fixed bug
+	  in solving dynamic programming for lower-case input sequences.
+
+2007-05-29 13:11  twu
+
+	* src/stage3.c: Added procedures for cleaning non-matches at ends
+	  of alignment, which are always called.
+
+2007-05-29 11:12  twu
+
+	* src/stage3.c: Removing all nonmatches at 5' and 3' ends
+
+2007-05-25 09:13  twu
+
+	* VERSION: Updated version
+
+2007-05-25 09:13  twu
+
+	* share/index.html: Made changes to reflect 2007-05-25 version
+
+2007-05-25 09:12  twu
+
+	* src/: pair.c, pair.h, stage3.c: Added coverage and identity
+	  information to GFF3 output
+
+2007-05-25 08:40  twu
+
+	* share/: archive.html, index.html: Made changes to reflect
+	  2007-05-25 version
+
+2007-05-24 08:57  twu
+
+	* configure.ac: Checking both fixed and variable mapping for mmap
+
+2007-05-24 08:55  twu
+
+	* util/fa_coords.pl.in: Fixed problem in parsing lines containing
+	  the word "chromosome"
+
+2007-05-24 08:55  twu
+
+	* src/stage3.c: Fixed bug in solving dual breaks
+
+2007-05-24 08:53  twu
+
+	* src/pair.c: Fixed PSL output so query and target gaps are
+	  computed directly from the block starts and lengths.
+
+2007-05-24 08:52  twu
+
+	* src/gmap.c: Added flag -j for showing dual breaks
+
+2007-05-24 08:51  twu
+
+	* src/dynprog.c: Fixed bug where solution of dual break exceeded
+	  minimum gap
+
+2007-05-15 14:17  twu
+
+	* src/stage3.h: Added do_final_p parameter to Stage3_compute
+
+2007-05-15 14:16  twu
+
+	* src/stage3.c: Incorporating procedure to trim bad middle exons
+
+2007-05-15 14:13  twu
+
+	* src/stage1.c: Performing salvage if total number of matches is
+	  relatively low
+
+2007-05-15 14:12  twu
+
+	* src/smooth.c: Added to exon length in smoothing for short exons
+
+2007-05-15 14:12  twu
+
+	* src/pair.c: Added test code to print information about extra
+	  exons
+
+2007-05-15 14:11  twu
+
+	* src/intron.c: Removing call to abort.
+
+2007-05-15 14:11  twu
+
+	* src/dynprog.c: Added code to bridge dual break with rewards for
+	  canonical introns.  Tweaked some parameters, including less
+	  penalty for gap extensions.
+
+2007-04-25 17:58  twu
+
+	* src/mem.c: Added error messages for memory allocation problems
+
+2007-04-25 17:58  twu
+
+	* src/gmap.c: Added -X flag for heavily favoring canonical and
+	  semi-canonical introns
+
+2007-04-23 12:20  twu
+
+	* src/gmap.c: Made strict translation the default again
+
+2007-04-23 11:35  twu
+
+	* src/indexdb.c: Added "U" to integers in bit operations
+
+2007-04-23 11:34  twu
+
+	* src/genome.c: Using two arrays instead of one for translate.
+
+2007-04-23 11:34  twu
+
+	* src/compress.c: Using two arrays instead of one for translate.
+	  Added various abort checks.
+
+2007-04-23 11:07  twu
+
+	* src/translation.c: Removed unnecessary checks of extraexonp
+
+2007-04-23 11:07  twu
+
+	* src/pair.c: Fixed Pair_dump_one so it handles extraexonp flag
+
+2007-04-23 10:50  twu
+
+	* src/pairpool.c: Fixed bug in assigning extraexonp
+
+2007-04-23 10:50  twu
+
+	* src/pair.c: Changed add_intronlengths slightly
+
+2007-04-23 10:33  twu
+
+	* config/acx_mmap_variable.m4: Moved AC_DEFINE out of macro, to be
+	  called explicitly in configure.ac
+
+2007-04-23 10:32  twu
+
+	* config/acx_mmap_fixed.m4: Added macro for testing mmap with
+	  MAP_FIXED
+
+2007-04-23 10:02  twu
+
+	* src/gmap.c: Made frameshift-tolerant translation the default
+
+2007-04-23 10:01  twu
+
+	* src/pair.c: Changed output of CDS in gff3 mode to produce an
+	  in-frame protein sequence
+
+2007-04-23 09:10  twu
+
+	* src/translation.h: Added strictp for PMAP.
+
+2007-04-23 09:10  twu
+
+	* src/translation.c: Added strictp for PMAP.  Handling extraexonp
+	  items in alignment.
+
+2007-04-23 09:09  twu
+
+	* src/stage3.c: Giving extraexonp information to pairpool
+	  procedures for gapalign items
+
+2007-04-23 09:08  twu
+
+	* src/pair.h: Added procedure for computing fractional error.
+
+2007-04-23 09:08  twu
+
+	* src/pair.c: Added provisions for handling extraexonp flag.  Added
+	  procedure for computing fractional error.
+
+2007-04-23 09:07  twu
+
+	* src/: pairpool.c, pairpool.h: Added provisions for handling
+	  extraexonp flag
+
+2007-04-23 09:07  twu
+
+	* src/pairdef.h: Added flag for extra cDNA exon
+
+2007-04-23 09:06  twu
+
+	* src/comp.h: Added comp for extra cDNA exon
+
+2007-04-23 08:55  twu
+
+	* src/stage3.h: Added strictp for PMAP.
+
+2007-04-23 08:54  twu
+
+	* src/stage3.c: Added procedures for trimming internal exons with
+	  poor matches, and for finding extra exons in a dual break.  Added
+	  strictp for PMAP.
+
+2007-04-23 08:52  twu
+
+	* src/: dynprog.c, dynprog.h: Added procedures for finding extra
+	  exons in a dual break
+
+2007-04-23 08:48  twu
+
+	* src/compress.c: Provided more informative error message
+
+2007-04-23 08:33  twu
+
+	* src/oligoindex.c: Handled an arithmetic error caused by divide by
+	  zero
+
+2007-04-23 08:26  twu
+
+	* src/gmap.c: Added flag -H for handling trimming middle exons and
+	  reporting of dual breaks.  Removed flag -j.  Allowed strictp to
+	  be used in PMAP.
+
+2007-04-16 17:23  twu
+
+	* tests/: align.test.ok, map.test.ok: Made test output match
+	  current output
+
+2007-04-16 17:22  twu
+
+	* config/acx_mmap_variable.m4, configure.ac: Added check for mmap
+	  using MAP_VARIABLE (because AIX fails on MAP_FIXED)
+
+2007-04-16 17:17  twu
+
+	* src/gmap.c: Fixed global variables not used in PMAP
+
+2007-04-16 17:16  twu
+
+	* src/stage2.c: Fixed check for negative scores to work for PMAP
+
+2007-04-16 16:46  twu
+
+	* src/stage1.c: Placing bound on number of samples taken over query
+	  sequence
+
+2007-04-16 16:46  twu
+
+	* src/stage2.c: For very long sequences, pruning based on clear
+	  coverage
+
+2007-04-16 16:46  twu
+
+	* src/: oligoindex.c, oligoindex.h: Added computation of clear
+	  coverage (percent of query sequence covered by relatively few
+	  diagonals).
+
+2007-04-16 16:45  twu
+
+	* src/matchpair.c: Added debugging statements
+
+2007-04-06 14:34  twu
+
+	* src/stage2.c: Added restriction on distance for grand lookback.
+	  Added check on nactive for scoring at querypos.
+
+2007-04-06 10:14  twu
+
+	* src/stage2.c: Added nactive as a filter in stage 2
+
+2007-04-02 15:05  twu
+
+	* src/stage2.c: Added comment about a way to restrict debugging
+	  output
+
+2007-04-02 15:04  twu
+
+	* src/iit-read.c: Added start/end information to endpoints in
+	  dumping counts
+
+2007-03-08 15:44  twu
+
+	* src/stage2.c: Quitting if totalpositions is zero
+
+2007-03-08 15:43  twu
+
+	* src/gmap.c: Enabled table output (-f 9) for relative alignment
+	  mode (-w).
+
+2007-03-03 12:59  twu
+
+	* src/stage2.c: Fixed bug which led to the partial fill problem in
+	  filling oligomers
+
+2007-03-02 15:57  twu
+
+	* src/Makefile.am: Added pthread_libs for iit utilities
+
+2007-03-01 15:56  twu
+
+	* src/gdiag.c: Added printing of centromere regions.  Printing
+	  marginals more efficiently.
+
+2007-03-01 15:54  twu
+
+	* src/Makefile.am: Added chrnum and chrsubset files to gdiag
+
+2007-03-01 15:54  twu
+
+	* src/: iit-read.c, iit-read.h: Made IIT_transitions function
+	  return signs
+
+2007-02-28 08:37  twu
+
+	* src/gdiag.c: Added flag for ignoring main diagonal.  Fixed
+	  problem with printing revcomp diagonals.  Added code for
+	  computing different types of patterns.
+
+2007-02-21 11:17  twu
+
+	* src/gdiag.c: Added hooks for user to enter chromosomal subsets
+
+2007-02-21 11:16  twu
+
+	* src/complement.h: Added a character code string that doesn't
+	  convert to uppercase, for gdiag.
+
+2007-02-20 15:27  twu
+
+	* src/gdiag.c: Added ability to use map iit files.  Skipping over
+	  masked regions in determining lookback.
+
+2007-02-20 12:42  twu
+
+	* src/gdiag.c: Fixed bug in retrieving last part of sequence from
+	  gmapdb.  Providing flag to ignore lowercase (e.g., masked)
+	  characters in query.
+
+2007-02-20 10:13  twu
+
+	* src/gdiag.c: Added ability for user to provide genomic segment
+
+2007-02-20 09:03  twu
+
+	* src/Makefile.am: Added iit-write source files for gdiag
+
+2007-02-20 09:03  twu
+
+	* src/gdiag.c: Fixed bug where genomestart could be less than
+	  genomeend in a diagonal.  Made separate procedures for updating
+	  forward and revcomp diagonals.
+
+2007-02-20 09:01  twu
+
+	* src/: indexdb.c, indexdb.h: Added procedure IIT_read_inplace for
+	  gdiag.
+
+2007-02-20 09:01  twu
+
+	* src/iit-write.h: Added procedure IIT_new to allow creation and
+	  use of iit in the same program.
+
+2007-02-20 09:01  twu
+
+	* src/iit-write.c: Added procedure IIT_new to allow creation and
+	  use of iit in the same program.  Simplified code for Node_fwrite.
+
+2007-02-20 08:59  twu
+
+	* src/: iit-read.c, iit-read.h: Added procedure IIT_transitions
+
+2007-02-18 19:45  twu
+
+	* src/gdiag.c: Added a ring structure to increase speed
+
+2007-02-18 12:53  twu
+
+	* src/genome.h: Added procedures for gdiag
+
+2007-02-18 12:50  twu
+
+	* src/gdiag.c: Made speed improvements by not storing full 24-mers,
+	  but rather storing results of previous 12-mers
+
+2007-02-18 12:49  twu
+
+	* src/genome.c: Added procedures for gdiag
+
+2007-02-18 11:45  twu
+
+	* src/gdiag.c: Added calculation of diagonals, ability to read
+	  query from gmapdb, and storage of intervals.
+
+2007-02-16 17:45  twu
+
+	* src/: Makefile.am, gdiag.c: Added program gdiag
+
+2007-02-12 09:36  twu
+
+	* src/gmap.c: Increased parameter for maxoligohits
+
+2007-02-12 09:36  twu
+
+	* src/stage3.c: Lowered parameter for intronlen
+
+2007-02-12 09:36  twu
+
+	* src/stage2.h: Removed unused function
+
+2007-02-12 09:36  twu
+
+	* src/stage2.c: Changed distance penalty to consider both
+	  gendistance (now linearly, instead of logarithmically) and
+	  querydistance (quadratically).  Using both maxnconsecutive and
+	  pct_coverage to decide whether to continue with stage 2.
+
+2007-02-12 09:31  twu
+
+	* src/stage1.c: Reduced parameter for number of trials
+
+2007-02-12 09:31  twu
+
+	* src/pair.c: Fixed calculation of coverage for PMAP
+
+2007-02-12 09:29  twu
+
+	* src/oligoindex.h: Moved parameters here
+
+2007-02-12 09:29  twu
+
+	* src/oligoindex.c: Implemented algorithm for PMAP.  Allowing a
+	  diagonal to dominate only if it is completely consecutive.
+
+2007-02-09 11:49  twu
+
+	* src/: iit-read.c, iit-read.h: Added function to dump labels
+
+2007-02-09 10:12  twu
+
+	* src/gmap.c: Fixed bugs with map iit files: bad test for
+	  distinguishing between universal map files and chromosomal map
+	  files, and incorrectly checking map tags against chromosomal iit.
+
+2007-02-08 18:06  twu
+
+	* src/: oligoindex.c, oligoindex.h: Added computation of percent
+	  coverage by diagonals
+
+2007-02-08 13:30  twu
+
+	* src/access.c: Added a debugging statement
+
+2007-02-08 10:04  twu
+
+	* src/gmap.c: Fixed floating point error when trimoligos is zero
+
+2007-02-08 09:59  twu
+
+	* src/: gmap.c, oligoindex.c, oligoindex.h, stage2.c, stage2.h:
+	  Added graphical debugging output for stage 2
+
+2007-02-07 18:05  twu
+
+	* src/smooth.c: Distinguishing use of genomejump and queryjump
+	  lengths in pre-single-gap smoothing versus post-single-gap
+	  smoothing.
+
+2007-02-07 15:14  twu
+
+	* src/gmap.c: Fixed floating exception when sequence has no oligos
+
+2007-02-07 12:21  twu
+
+	* src/stage2.c: Initializing guide in 5' trim region, until first
+	  hits are found.
+
+2007-02-07 10:26  twu
+
+	* src/gmap.c: Changed default pruning behavior to be no pruning.
+
+2007-02-07 10:25  twu
+
+	* src/oligoindex.c: Made speed improvements in scanning diagonals.
+	  Removed old code for computing maxconsecutive.
+
+2007-02-07 00:38  twu
+
+	* src/: oligoindex.h, stage2.c: Changed name of variable
+
+2007-02-07 00:38  twu
+
+	* src/oligoindex.c: Eliminated convex hull algorithm and
+	  implemented method based on ordering of diagonals.
+
+2007-02-07 00:35  twu
+
+	* src/: diag.c, diag.h: Removed unused procedures
+
+2007-02-06 18:44  twu
+
+	* src/oligoindex.c: Implemented a convex hull algorithm to
+	  determine minactive and maxactive bounds.
+
+2007-02-06 18:43  twu
+
+	* src/: diag.c, diag.h: Added a procedure to sort diagonals based
+	  on closeness to origin
+
+2007-02-06 14:53  twu
+
+	* src/: oligoindex.c, oligoindex.h, stage2.c: Restored computation
+	  of maxgoodconsecutive to filter out bad stage1 candidates
+
+2007-02-06 12:24  twu
+
+	* src/stage2.c: Allowing fill of nucleotides to occur even when
+	  querypos/lastquerypos or genomepos/lastgenomepos are too close.
+
+2007-02-06 12:23  twu
+
+	* src/oligoindex.c: Added new procedure for determining dominance
+	  among diagonals
+
+2007-02-06 12:22  twu
+
+	* src/: diag.c, diag.h: Added procedure for sorting by nconsecutive
+
+2007-02-06 06:33  twu
+
+	* src/stage2.c: Using minactive and maxactive to bound current
+	  querypos, and active to determine available hits for previous
+	  querypos.
+
+2007-02-06 06:32  twu
+
+	* src/: oligoindex.c, oligoindex.h: Computing diagonals inside
+	  Oligoindex_get_mappings procedure.  Implemented simple dominance
+	  procedure.
+
+2007-02-06 06:30  twu
+
+	* src/: diag.c, diag.h, diagdef.h, diagpool.c, diagpool.h: Added
+	  fields for nconsecutive and dominancep
+
+2007-02-05 16:00  twu
+
+	* src/oligoindex.c: Changes in parameters
+
+2007-02-05 16:00  twu
+
+	* src/stage2.c: Changes to debugging output
+
+2007-02-05 13:28  twu
+
+	* src/oligoindex.c: Speed improvements by inlining calls to Intlist
+	  accessors
+
+2007-02-05 12:39  twu
+
+	* src/stage2.h: Removed unused function
+
+2007-02-05 12:39  twu
+
+	* src/: oligoindex.h, stage2.c: Using length as a criterion instead
+	  of nconsecutive for proceeding to dynamic programming
+
+2007-02-05 12:38  twu
+
+	* src/oligoindex.c: Reduced requirement for nconsecutive in
+	  scanning diagonals.  Keeping cumulative track of highest and
+	  lowest diagonals.  Added extra_bounds to diagonal bounds.
+
+2007-02-05 11:34  twu
+
+	* src/: Makefile.am, diag.c, diag.h, diagdef.h, diagpool.c,
+	  diagpool.h, gmap.c: Adding Diag_T and Diagpool_T objects for
+	  scanning diagonals
+
+2007-02-05 11:33  twu
+
+	* src/: oligoindex.c, oligoindex.h, stage2.c, stage2.h: Scanning
+	  diagonals to set bounds on active oligomers
+
+2007-02-04 23:45  twu
+
+	* src/: Makefile.am, gmap.c, intpool.c, intpool.h, oligoindex.c,
+	  oligoindex.h, stage2.c, stage2.h: Added Intpool_T object to
+	  manage storage for Intlist_T objects
+
+2007-02-04 23:15  twu
+
+	* src/gmap.c: Using new interface to Stage3_compute
+
+2007-02-04 23:14  twu
+
+	* src/stage2.c: In dynamic programming, added a lookback to the
+	  grand best querypos and hit
+
+2007-02-04 23:13  twu
+
+	* src/: intlist.c, intlistdef.h: Provided exposure to internal
+	  structure of Intlist_T
+
+2007-02-03 21:19  twu
+
+	* src/: oligoindex.c, oligoindex.h, stage2.c: Implemented faster
+	  algorithm for identifying active stage 2 oligomers.
+
+2007-02-03 16:50  twu
+
+	* src/stage2.h: Removed unused procedures
+
+2007-02-03 16:49  twu
+
+	* src/: oligoindex.c, oligoindex.h, stage2.c: Implemented
+	  procedures to skip over unused mappings, based on active
+
+2007-02-02 11:15  twu
+
+	* src/: gmap.c, oligoindex.c, oligoindex.h, stage2.c, stage2.h:
+	  Implemented new stage 2 procedure.  Now using oligoindex at
+	  minindexsize and filtering those hits according to a local
+	  search.  Initial search is based on maxindexsize.  Uncovered ends
+	  of the alignment receive a looser local search criterion.
+	  Increased stage 2 lookback from 60 to 100.
+
+2007-02-02 11:09  twu
+
+	* src/translation.c: Fixed bug where first cDNA amino acid appeared
+	  under a cDNA space.
+
+2007-02-02 11:08  twu
+
+	* src/stage1.c: Adding one more trial for long sequences
+
+2007-02-02 11:07  twu
+
+	* src/pair.c: Computing coverage and now trimmed coverage at print
+	  time.  Added output line for trimmed coverage.  Added trim
+	  information in compressed (-Z) output.  Adjusting output of trim
+	  boundaries based on alignment.
+
+2007-02-02 11:05  twu
+
+	* src/: stage3.h, pair.h: Computing coverage and now trimmed
+	  coverage at print time.
+
+2007-02-02 11:04  twu
+
+	* src/stage3.c: Computing coverage and now trimmed coverage at
+	  print time.  Increased parameter for minintronlength.
+
+2007-02-02 10:14  twu
+
+	* src/gmap.c: Removed -X (cross-species) flag
+
+2007-01-31 16:37  twu
+
+	* src/oligoindex.c: Added code for 18-amino-acid alphabet
+
+2007-01-31 16:36  twu
+
+	* src/gmap.c: Made user_stage1p false
+
+2007-01-31 16:17  twu
+
+	* src/stage2.c: Trying to make penalties consistent across
+	  different cases
+
+2007-01-31 09:26  twu
+
+	* src/stage3.c: Initialized variables in Stage3_T object
+
+2007-01-31 09:26  twu
+
+	* src/pair.c: Fixed memory leak in gff exon mode (-f 2)
+
+2007-01-07 10:34  twu
+
+	* src/stage3.c: If both single and dual gap solutions are
+	  canonical, picking solution with best score.
+
+2007-01-06 13:54  twu
+
+	* src/dynprog.c: Made reward for final canonical intron uniform
+	  across defect rates.	Boosted reward for final semicanonical
+	  intron to match that for canonical intron.
+
+2007-01-05 06:23  twu
+
+	* src/pair.c: Fixed dinucleotide output in compressed (-Z) format
+	  when user-provided genomic segment has lower-case characters.
+
+2007-01-04 12:25  twu
+
+	* src/stage2.c: Reduced value of EQUAL_DISTANCE, to favor better
+	  local alignment over longer global alignment
+
+2007-01-04 12:20  twu
+
+	* src/stage3.c: Counting exons only after gaps filled in
+
+2007-01-04 12:19  twu
+
+	* src/: pair.c, pair.h: Added procedure for counting exons after
+	  gaps filled in
+
+2007-01-03 14:04  twu
+
+	* src/dynprog.c: Made one-sided gap behavior true only for single
+	  gaps and end gaps
+
+2007-01-03 13:03  twu
+
+	* src/stage3.c: Removed fix_pmap_holes function and all references
+	  to it
+
 2006-12-18 07:38  twu
 
 	* share/index.html: Updated version

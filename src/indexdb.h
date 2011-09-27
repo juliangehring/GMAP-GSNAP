@@ -1,4 +1,4 @@
-/* $Id: indexdb.h,v 1.32 2006/12/14 21:47:14 twu Exp $ */
+/* $Id: indexdb.h,v 1.33 2007/02/20 17:01:59 twu Exp $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -110,6 +110,8 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo);
 #else
 extern Genomicpos_T *
 Indexdb_read (int *nentries, T this, unsigned int aaindex);
+extern Genomicpos_T *
+Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo);
 #endif
 
 extern void

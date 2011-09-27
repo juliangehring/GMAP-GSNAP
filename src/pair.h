@@ -1,4 +1,4 @@
-/* $Id: pair.h,v 1.106 2006/12/15 12:00:58 twu Exp $ */
+/* $Id: pair.h,v 1.110 2007/05/25 16:12:15 twu Exp $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 #include "bool.h"
@@ -60,15 +60,15 @@ extern void
 Pair_print_pathsummary (int pathnum, T start, T end, Chrnum_T chrnum, Genomicpos_T chrpos,
 			Genomicpos_T chroffset, IIT_T chromosome_iit, bool referencealignp, 
 			IIT_T altstrain_iit, char *strain, IIT_T contig_iit, char *dbversion,
-			int querylength_given, int trim_start, int trim_end, Genomicpos_T genomiclength,
-			int nexons, double coverage, int matches, int unknowns, int mismatches, 
+			int querylength_given, int skiplength, int trim_start, int trim_end, Genomicpos_T genomiclength,
+			int nexons, int matches, int unknowns, int mismatches, 
 			int qopens, int qindels, int topens, int tindels, int goodness,
 			bool watsonp, int cdna_direction, double defect_rate, 
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool zerobasedp, bool maponlyp,
 			bool diagnosticp, int stage1_genomicstart, int stage1_genomiclength,
-			double stage2_runtime, int stage2_indexsize, double stage2_mapfraction,
-			int stage2_maxconsecutive, double stage2_defectrate, double stage3_runtime);
+			double stage2_runtime, int stage2_indexsize, double stage2_defectrate,
+			double stage3_runtime);
 
 extern void
 Pair_print_mutation (struct T *pairs, int npairs, int cdna_direction,
@@ -107,7 +107,10 @@ extern void
 Pair_print_gff3 (struct T *pairs, int npairs, int pathnum, char *dbversion, char *accession, 
 		 T start, T end, Chrnum_T chrnum, Genomicpos_T chrpos,
 		 IIT_T chromosome_iit, Genomicpos_T genomiclength,
-		 int translation_start, int translation_end, bool watsonp, int cdna_direction,
+		 int translation_start, int translation_end, 
+		 int querylength_given, int skiplength, int matches, int unknowns, int mismatches, 
+		 int qopens, int qindels, int topens, int tindels, 
+		 bool watsonp, int cdna_direction,
 		 bool gff_gene_format_p, char *user_genomicseg);
 
 extern Uintlist_T
@@ -143,13 +146,14 @@ Pair_print_protein_cdna (struct T *ptr, int npairs, int wraplength);
 #endif
 
 extern void
-Pair_print_compressed (Sequence_T queryseq, char *dbversion, int pathnum, int npaths, 
-		       int nexons, double coverage, double fracidentity,
+Pair_print_compressed (int pathnum, int npaths, T start, T end, Sequence_T queryseq, char *dbversion, 
+		       int nexons, double fracidentity,
 		       struct T *pairs, int npairs, Chrnum_T chrnum, Genomicpos_T chrpos,
-		       Genomicpos_T chroffset, IIT_T chromosome_iit,
-		       Genomicpos_T genomiclength, bool checksump, 
+		       Genomicpos_T chroffset, IIT_T chromosome_iit, 
+		       int querylength_given, int skiplength, int trim_start, int trim_end,
+		       Genomicpos_T genomiclength, bool checksump,
 		       int chimerapos, int chimeraequivpos, double donor_prob, double acceptor_prob,
-		       int chimera_cdna_direction, char *strain, bool watsonp, int cdna_direction, 
+		       int chimera_cdna_direction, char *strain, bool watsonp, int cdna_direction,
 		       bool zerobasedp, int worker_id);
 
 extern void
@@ -162,6 +166,9 @@ Pair_fracidentity (int *matches, int *unknowns, int *mismatches,
 		   int *qopens, int *qindels, int *topens, int *tindels,
 		   int *ncanonical, int *nsemicanonical, int *nnoncanonical,
 		   List_T pairs, int cdna_direction);
+extern double
+Pair_frac_error (List_T pairs, int cdna_direction);
+
 extern void
 Pair_fracidentity_bounded (int *matches, int *unknowns, int *mismatches, 
 			   int *qopens, int *qindels, int *topens, int *tindels,
@@ -180,7 +187,9 @@ Pair_pathscores (int *pathscores, struct T *ptr, int npairs,
 extern int
 Pair_cdna_direction (List_T pairs);
 extern int
-Pair_nexons (List_T pairs);
+Pair_nexons_approx (List_T pairs);
+extern int
+Pair_nexons (struct T *pairs, int npairs);
 extern bool
 Pair_consistentp (int *ncanonical, struct T *pairs, int npairs, int cdna_direction);
 

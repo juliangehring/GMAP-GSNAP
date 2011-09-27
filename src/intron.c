@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intron.c,v 1.12 2006/10/09 16:59:39 twu Exp $";
+static char rcsid[] = "$Id: intron.c,v 1.13 2007/05/15 21:11:59 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -53,7 +53,7 @@ Intron_type (char left1, char left2, char right2, char right1, int cdna_directio
       return introntype;
     }
   } else {
-    abort();
+    return NONINTRON;
   }
 }
 

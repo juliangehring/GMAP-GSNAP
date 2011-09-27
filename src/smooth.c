@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c,v 1.39 2006/12/15 11:59:20 twu Exp $";
+static char rcsid[] = "$Id: smooth.c,v 1.41 2007/05/15 21:12:53 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -42,10 +42,23 @@ typedef enum {KEEP, DELETE, MARK} Exonstatus_T;
 
 
 static bool
-big_gap_p (Pair_T pair) {
+big_gap_p (Pair_T pair, bool bysizep) {
   int length;
 
-  if (pair->genomejump > pair->queryjump) {
+  /* When bysizep is true, single gaps should have been solved already
+     (in pass 2), so any gap remaining must be a poor one (must have
+     been removed because of a negative score), and we should consider
+     all gaps, regardless of size.  When bysizep is false, we must be
+     doing initial smoothing, before any single gaps have been solved,
+     so we want to consider only big gaps.  This change was motivated
+     by alignment of mouse HER2 against human genome, where a 58/58
+     section was deleted in stage 3, but subsequent smoothing failed
+     to recognize the short exon between this section and the next
+     intron. */
+
+  if (bysizep == true) {
+    return true;
+  } else if (pair->genomejump > pair->queryjump) {
     return (pair->genomejump - pair->queryjump) > BIGGAP ? true : false;
   } else {
     return false;
@@ -54,7 +67,7 @@ big_gap_p (Pair_T pair) {
 
 
 static int *
-get_exonlengths (int **exonmatches, int *nexons, List_T pairs) {
+get_exonlengths (int **exonmatches, int *nexons, List_T pairs, bool bysizep) {
   int *exonlengths;
   Intlist_T list = NULL, matchlist = NULL;
   Pair_T firstpair, pair;
@@ -65,7 +78,7 @@ get_exonlengths (int **exonmatches, int *nexons, List_T pairs) {
 
   while (pairs != NULL) {
     pair = List_head(pairs);
-    if (pair->gapp == true && big_gap_p(pair) == true) {
+    if (pair->gapp == true && big_gap_p(pair,bysizep) == true) {
       list = Intlist_push(list,querypos-firstpair->querypos+1);
       matchlist = Intlist_push(matchlist,nmatches);
 
@@ -105,14 +118,14 @@ get_exonlengths (int **exonmatches, int *nexons, List_T pairs) {
 }
 
 static int *
-get_intronlengths (int *nintrons, List_T pairs) {
+get_intronlengths (int *nintrons, List_T pairs, bool bysizep) {
   int *intronlengths, length, i;
   Intlist_T list = NULL;
   Pair_T pair;
 
   while (pairs != NULL) {
     pair = List_head(pairs);
-    if (pair->gapp == true && big_gap_p(pair) == true) {
+    if (pair->gapp == true && big_gap_p(pair,bysizep) == true) {
 #if 0
       if (pair->genomejump > pair->queryjump) {
 	list = Intlist_push(list,pair->genomejump);
@@ -287,7 +300,7 @@ find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int
   for (i = 1; i < nexons - 1; i++) {
     exonlen = exonmatches[i];
     intronlen = intronlengths[i-1]+intronlengths[i];
-    prob = compute_prob(exonlen,intronlen,stage2_indexsize);
+    prob = compute_prob(exonlen+4,intronlen,stage2_indexsize); /* Hack: add 4 for possible canonical dinucleotides */
     if (prob > DELETE_THRESHOLD) {
       *deletep = true;
       exonstatus[i] = DELETE;
@@ -345,7 +358,7 @@ trim_ends (bool *deletep, int *exonmatches, int nexons, int *intronlengths, int 
 
 static List_T
 delete_and_mark_exons (List_T pairs, Pairpool_T pairpool, int *exonstatus, int *exonmatches, int nexons,
-		       bool markp) {
+		       bool markp, bool bysizep) {
   List_T newpairs = NULL;
   Pair_T pair;
   int currstatus, prevstatus;
@@ -369,7 +382,7 @@ delete_and_mark_exons (List_T pairs, Pairpool_T pairpool, int *exonstatus, int *
   currstatus = exonstatus[i];
   while (pairs != NULL) {
     pair = List_head(pairs);
-    if (pair->gapp == true && big_gap_p(pair) == true) {
+    if (pair->gapp == true && big_gap_p(pair,bysizep) == true) {
       prevstatus = currstatus;
       currstatus = exonstatus[++i];
       debug(printf("Gap observed\n"));
@@ -440,8 +453,8 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool, int st
   smooth_reset(pairs);
   if (pairs != NULL) {
     /* Remove internal shorts */
-    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs);
-    intronlengths = get_intronlengths(&nintrons,pairs);
+    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs,/*bysizep*/false);
+    intronlengths = get_intronlengths(&nintrons,pairs,/*bysizep*/false);
 
     debug(
 	  printf("Beginning of smoothing.  Initial structure:\n");
@@ -456,7 +469,7 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool, int st
     exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
     debug(printf("\nRemove internal shorts\n"));
     if (*deletep == true) {
-      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false);
+      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/false);
     }
     
     debug(
@@ -491,14 +504,14 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
   smooth_reset(pairs);
   if (pairs != NULL) {
     /* Trim ends */
-    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs);
-    intronlengths = get_intronlengths(&nintrons,pairs);
+    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs,/*bysizep*/true);
+    intronlengths = get_intronlengths(&nintrons,pairs,/*bysizep*/true);
 
     debug(printf("\nTrim ends\n"));
     exonstatus = trim_ends(&delete1p,exonmatches,nexons,intronlengths,nintrons,stage2_indexsize);
     if (delete1p == true) {
       *deletep = true;
-      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false);
+      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/true);
     }
 
     FREE(exonstatus);
@@ -510,8 +523,8 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
 
   if (pairs != NULL) {
     /* Remove internal shorts */
-    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs);
-    intronlengths = get_intronlengths(&nintrons,pairs);
+    exonlengths = get_exonlengths(&exonmatches,&nexons,pairs,/*bysizep*/true);
+    intronlengths = get_intronlengths(&nintrons,pairs,/*bysizep*/true);
 
     debug(
 	  printf("Beginning of smoothing.  Initial structure:\n");
@@ -529,7 +542,7 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
       *deletep = true;
     }
     if (delete2p == true || *shortp == true) {
-      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/true);
+      pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,exonmatches,nexons,/*markp*/true,/*bysizep*/true);
     }
 
     debug(

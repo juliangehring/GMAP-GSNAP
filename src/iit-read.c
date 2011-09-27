@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c,v 1.80 2006/11/13 04:05:29 twu Exp $";
+static char rcsid[] = "$Id: iit-read.c,v 1.84 2007/04/02 22:04:50 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -282,6 +282,21 @@ IIT_dump_typestrings (FILE *fp, T this) {
   return;
 }
 
+void
+IIT_dump_labels (FILE *fp, T this) {
+  int i;
+  unsigned int start;
+  char *label;
+
+  for (i = 0; i < this->nintervals; i++) {
+    start = this->labelpointers[i];
+    label = &(this->labels[start]);
+    fprintf(fp,"%s ",label);
+  }
+  fprintf(fp,"\n");
+  return;
+}
+
 
 void
 IIT_dump (T this, bool annotationonlyp) {
@@ -367,26 +382,81 @@ uint_cmp (const void *x, const void *y) {
 }
 
 
+unsigned int *
+IIT_transitions (int **signs, int *nedges, T this) { 
+  unsigned int *edges, *starts, *ends;
+  int nintervals, i, j, k;
+  Interval_T interval;
+  Uintlist_T startlist = NULL, endlist = NULL;
+
+  for (i = 0; i < this->nintervals; i++) {
+    interval = &(this->intervals[i]);
+    startlist = Uintlist_push(startlist,Interval_low(interval));
+    endlist = Uintlist_push(endlist,Interval_high(interval));
+  }
+
+  if (Uintlist_length(startlist) == 0) {
+    edges = (unsigned int *) NULL;
+    *signs = (int *) NULL;
+    *nedges = 0;
+  } else {
+    starts = Uintlist_to_array(&nintervals,startlist);
+    ends = Uintlist_to_array(&nintervals,endlist);
+    qsort(starts,nintervals,sizeof(unsigned int),uint_cmp);
+    qsort(ends,nintervals,sizeof(unsigned int),uint_cmp);
+
+    *nedges = nintervals+nintervals;
+    *signs = (int *) CALLOC(*nedges,sizeof(int));
+    edges = (unsigned int *) CALLOC(*nedges,sizeof(unsigned int));
+    i = j = k = 0;
+    while (i < nintervals && j < nintervals) {
+      if (starts[i] <= ends[j]) {
+	(*signs)[k] = +1;
+	edges[k++] = starts[i++];
+      } else {
+	(*signs)[k] = -1;
+	edges[k++] = ends[j++];
+      }
+    }
+    while (i < nintervals) {
+      (*signs)[k] = +1;
+      edges[k++] = starts[i++];
+    }
+    while (j < nintervals) {
+      (*signs)[k] = -1;
+      edges[k++] = ends[j++];
+    }
+  }
+
+  Uintlist_free(&endlist);
+  Uintlist_free(&startlist);
+
+  return edges;
+}
+
+
 void
 IIT_dump_counts (T this, bool alphabetizep) { 
-  int type, index, i, t, k;
+  int type, index, i, j, k, t;
   Interval_T interval;
-  Uintlist_T *edgelists;
-  int *matches, nmatches, nedges;
-  unsigned int *edges, edge, lastedge;
+  Uintlist_T *startlists, *endlists;
+  int *matches, nmatches, nintervals;
+  unsigned int *starts, *ends, edge;
   char *typestring;
   Chrom_T *chroms;
 
-  edgelists = (Uintlist_T *) CALLOC(this->ntypes,sizeof(Uintlist_T));
+  startlists = (Uintlist_T *) CALLOC(this->ntypes,sizeof(Uintlist_T));
+  endlists = (Uintlist_T *) CALLOC(this->ntypes,sizeof(Uintlist_T));
   for (i = 0; i < this->nintervals; i++) {
     interval = &(this->intervals[i]);
     type = Interval_type(interval);
-    edgelists[type] = Uintlist_push(edgelists[type],Interval_low(interval));
-    edgelists[type] = Uintlist_push(edgelists[type],Interval_high(interval));
+    startlists[type] = Uintlist_push(startlists[type],Interval_low(interval));
+    endlists[type] = Uintlist_push(endlists[type],Interval_high(interval));
   }
 
   if (alphabetizep == true) {
     chroms = (Chrom_T *) CALLOC(this->ntypes,sizeof(Chrom_T));
+
     for (type = 0; type < this->ntypes; type++) {
       typestring = IIT_typestring(this,type);
       chroms[type] = Chrom_from_string(typestring);
@@ -403,29 +473,50 @@ IIT_dump_counts (T this, bool alphabetizep) {
       type = IIT_typeint(this,typestring);
     }
 
-    if (Uintlist_length(edgelists[type]) > 0) {
-      edges = Uintlist_to_array(&nedges,edgelists[type]);
-      qsort(edges,nedges,sizeof(unsigned int),uint_cmp);
+    if (Uintlist_length(startlists[type]) > 0) {
+      starts = Uintlist_to_array(&nintervals,startlists[type]);
+      ends = Uintlist_to_array(&nintervals,endlists[type]);
+      qsort(starts,nintervals,sizeof(unsigned int),uint_cmp);
+      qsort(ends,nintervals,sizeof(unsigned int),uint_cmp);
 
-      edge = edges[0];
-      matches = IIT_get_typed(&nmatches,this,edge,edge,type);
-      printf("%s\t%u\t%d",typestring,edge,nmatches);
-
-      index = matches[0];
-      printf("\t%s",IIT_label(this,index));
-      for (k = 1; k < nmatches; k++) {
-	index = matches[k];
-	printf(",%s",IIT_label(this,index));
-      }
-      printf("\n");
-
-      lastedge = edge;
-
-      for (i = 1; i < nedges; i++) {
-	if ((edge = edges[i]) != lastedge) {
+      i = j = 0;
+      while (i < nintervals || j < nintervals) {
+	if (i >= nintervals && j >= nintervals) {
+	  /* done */
+	  matches = (int *) NULL;
+	} else if (i >= nintervals) {
+	  /* work on remaining ends */
+	  edge = ends[j++];
 	  matches = IIT_get_typed(&nmatches,this,edge,edge,type);
-	  printf("%s\t%u\t%d",typestring,edge,nmatches);
-	  
+	  printf("%s\t%u\tend\t%d",typestring,edge,nmatches);
+	  while (j < nintervals && ends[j] == edge) {
+	    j++;
+	  }
+	} else if (j >= nintervals) {
+	  /* work on remaining starts */
+	  edge = starts[i++];
+	  matches = IIT_get_typed(&nmatches,this,edge,edge,type);
+	  printf("%s\t%u\tstart\t%d",typestring,edge,nmatches);
+	  while (i < nintervals && starts[i] == edge) {
+	    i++;
+	  }
+	} else if (starts[i] <= ends[j]) {
+	  edge = starts[i++];
+	  matches = IIT_get_typed(&nmatches,this,edge,edge,type);
+	  printf("%s\t%u\tstart\t%d",typestring,edge,nmatches);
+	  while (i < nintervals && starts[i] == edge) {
+	    i++;
+	  }
+	} else {
+	  edge = ends[j++];
+	  matches = IIT_get_typed(&nmatches,this,edge,edge,type);
+	  printf("%s\t%u\tend\t%d",typestring,edge,nmatches);
+	  while (j < nintervals && ends[j] == edge) {
+	    j++;
+	  }
+	}
+
+	if (matches != NULL) {
 	  index = matches[0];
 	  printf("\t%s",IIT_label(this,index));
 	  for (k = 1; k < nmatches; k++) {
@@ -433,13 +524,13 @@ IIT_dump_counts (T this, bool alphabetizep) {
 	    printf(",%s",IIT_label(this,index));
 	  }
 	  printf("\n");
-	  
-	  lastedge = edge;
 	}
       }
 
-      Uintlist_free(&(edgelists[type]));
-      FREE(edges);
+      Uintlist_free(&(endlists[type]));
+      Uintlist_free(&(startlists[type]));
+      FREE(ends);
+      FREE(starts);
     }
 
   }
@@ -451,7 +542,8 @@ IIT_dump_counts (T this, bool alphabetizep) {
     FREE(chroms);
   }
 
-  FREE(edgelists);
+  FREE(endlists);
+  FREE(startlists);
 
   return;
 }
@@ -489,16 +581,21 @@ IIT_free (T *old) {
       close((*old)->fd);
     } else if ((*old)->access == FILEIO) {
       close((*old)->fd);
+    } else if ((*old)->access == ALLOCATED) {
+      /* Nothing to close.  IIT must have been created by IIT_new. */
     } else {
       abort();
     }
 
-    FREE((*old)->annotpointers);
-    FREE((*old)->labels);
-    FREE((*old)->labelpointers);
-    FREE((*old)->labelorder);
-    FREE((*old)->typestrings);
-    FREE((*old)->typepointers);
+    if ((*old)->access != ALLOCATED) {
+      FREE((*old)->annotpointers);
+      FREE((*old)->labels);
+      FREE((*old)->labelpointers);
+      FREE((*old)->labelorder);
+      FREE((*old)->typestrings);
+      FREE((*old)->typepointers);
+    }
+
     FREE((*old)->intervals);
     FREE((*old)->nodes);
     FREE((*old)->omegas);
@@ -761,6 +858,7 @@ IIT_read (char *filename, char *name, bool readonlyp) {
   offset += sizeof(int)*FREAD_UINTS(new->annotpointers,new->nintervals+1,fp);
 
   fclose(fp);
+
 
 #ifndef HAVE_MMAP
   new->annotations = (char *) NULL;

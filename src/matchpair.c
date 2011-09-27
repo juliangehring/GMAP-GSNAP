@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpair.c,v 1.55 2006/12/18 13:19:33 twu Exp $";
+static char rcsid[] = "$Id: matchpair.c,v 1.56 2007/04/16 23:45:40 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -696,6 +696,7 @@ find_paths_bounded (int *bestsize, List_T clusterlist, Match_T *matches, int npo
       }
     }
   }
+  debug1(printf("Done\n"));
 
   return clusterlist;
 }
@@ -972,6 +973,7 @@ Matchpair_find_clusters (List_T matches5, List_T matches3, int stage1size,
   Match_T *plus_matches = NULL, *minus_matches = NULL;
   T matchpair;
   int plus_npositions, minus_npositions, bestsize = 0;
+  int i;
 
   separate_strands(&plus_matches,&plus_npositions,&minus_matches,&minus_npositions,matches5,matches3,
 		   maxintronlen);

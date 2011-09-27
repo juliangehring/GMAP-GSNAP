@@ -1,5 +1,5 @@
 #! @PERL@ -w
-# $Id: fa_coords.pl.in,v 1.17 2006/08/03 21:15:12 twu Exp $
+# $Id: fa_coords.pl.in,v 1.18 2007/05/24 15:55:32 twu Exp $
 
 #$package_version = "@PACKAGE_VERSION@";
 
@@ -212,14 +212,10 @@ sub parse_fa_files {
 	  $chronlyp = 0;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
-	} elsif ($line =~ /[Cc]hr\s*=?\s*(\S+)/) {
-	  $chr = $1;
-	  $chronlyp = 1;
-	  $consec_errors = handle_consecutive_errors($consec_errors);
-
 	} elsif ($line =~ /[Cc]hromosome\s*(\S+)/) {
 	  # NCBI .mfa format
 	  $chr = $1;
+	  $chr =~ s/[,;:.]$//;
 	  $chronlyp = 1;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
@@ -252,6 +248,11 @@ sub parse_fa_files {
 	  $chr = $1;
 	  $chrpos{$chr} = $2;
 	  $chronlyp = 0;
+	  $consec_errors = handle_consecutive_errors($consec_errors);
+
+	} elsif ($line =~ /[Cc]hr\s*=?\s*(\S+) && $1 ne "omosome"/) {
+	  $chr = $1;
+	  $chronlyp = 1;
 	  $consec_errors = handle_consecutive_errors($consec_errors);
 
 	} elsif ($line =~ /[Cc]hr\s*(\S+)/ && $1 ne "omosome") {

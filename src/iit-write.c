@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c,v 1.22 2005/11/23 17:29:33 twu Exp $";
+static char rcsid[] = "$Id: iit-write.c,v 1.23 2007/02/20 17:01:29 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -318,7 +318,6 @@ IIT_build (Node_T *root, List_T intervallist) {
   return new;
 }
 
-
 /************************************************************************
  *   Output procedures
  ************************************************************************/
@@ -386,7 +385,6 @@ get_labelorder (List_T labellist, int nintervals) {
 /* Prints in DFS order */
 static void
 Node_fwrite (FILE *fp, Node_T node) {
-  FNode_T fnode;
   int leftindex, rightindex;
 
   if (node != NULL) {
@@ -402,24 +400,64 @@ Node_fwrite (FILE *fp, Node_T node) {
       rightindex = node->right->index;
     }
 
-    fnode = FNode_new(node->value,node->a,node->b,leftindex,rightindex);
-    /*
-    debug(fprintf(stderr,"Writing node %d %d %d %d %d\n",
-		  fnode->value,fnode->a,fnode->b,fnode->leftindex,fnode->rightindex));
-    */
-
-    FWRITE_UINT(fnode->value,fp);
-    FWRITE_INT(fnode->a,fp);
-    FWRITE_INT(fnode->b,fp);
-    FWRITE_INT(fnode->leftindex,fp);
-    FWRITE_INT(fnode->rightindex,fp);
-
-    FNode_free(&fnode);
+    FWRITE_UINT(node->value,fp);
+    FWRITE_INT(node->a,fp);
+    FWRITE_INT(node->b,fp);
+    FWRITE_INT(leftindex,fp);
+    FWRITE_INT(rightindex,fp);
 
     Node_fwrite(fp,node->left);
     Node_fwrite(fp,node->right);
   }
   return;
+}
+
+/* Stores in DFS order */
+static void
+Node_store (int *fnodei, struct FNode_T *fnodes, Node_T node) {
+  int leftindex, rightindex;
+
+  if (node != NULL) {
+    if (node->left == NULL) {
+      leftindex = -1;
+    } else {
+      leftindex = node->left->index;
+    }
+
+    if (node->right == NULL) {
+      rightindex = -1;
+    } else {
+      rightindex = node->right->index;
+    }
+
+    fnodes[*fnodei].value = node->value;
+    fnodes[*fnodei].a = node->a;
+    fnodes[*fnodei].b = node->b;
+    fnodes[*fnodei].leftindex = leftindex;
+    fnodes[*fnodei].rightindex = rightindex;
+    (*fnodei)++;
+
+    Node_store(&(*fnodei),fnodes,node->left);
+    Node_store(&(*fnodei),fnodes,node->right);
+  }
+  return;
+}
+
+T
+IIT_new (List_T intervallist) {
+  T new;
+  Node_T root;
+  int fnodei = 0;
+
+  if (intervallist == NULL) {
+    return (T) NULL;
+  } else {
+    new = IIT_build(&root,intervallist);
+    new->nodes = (struct FNode_T *) CALLOC(new->nnodes,sizeof(struct FNode_T));
+    Node_store(&fnodei,new->nodes,root);
+    Node_gc(&root);
+    return new;
+  }
 }
 
 static void

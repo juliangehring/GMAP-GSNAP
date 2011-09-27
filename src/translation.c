@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c,v 1.71 2006/12/18 13:20:14 twu Exp $";
+static char rcsid[] = "$Id: translation.c,v 1.74 2007/04/23 18:07:42 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -552,9 +552,8 @@ translate_pairs_cdna (int *translation_starti, int *translation_endi, int *trans
   for (i = *translation_endi; i >= 0; --i) {
     pair = --ptr;
     pair->aapos = pair->querypos/3 + 1;
-    if (pair->gapp == true) {
-      /* pair->aa_e = ' '; */
-    } else if (pair->cdna == ' ') {
+
+    if (pair->cdna == ' ') {
       /* pair->aa_e = ' '; */
     } else {
       if ((pair->aaphase_e = pair->querypos % 3) == 0) {
@@ -663,7 +662,7 @@ count_cdna_forward_strict (int *nexti, struct Pair_T *pairs, int npairs, int sta
     if (ncdna >= 3 && pairs[j].cdna != ' ') {
       *nexti = j;
       return ncdna;
-    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    } else if (pairs[j].cdna != ' ') {
       ncdna++;
     }
     j++;
@@ -683,7 +682,7 @@ count_cdna_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, in
     if (j > starti && pairs[j].aaphase_g == 0 && pairs[j].cdna != ' ') {
       *nexti = j;
       return ncdna;
-    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    } else if (pairs[j].cdna != ' ') {
       ncdna++;
     }
     j++;
@@ -704,7 +703,7 @@ count_cdna_forward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int start
 	(ncdna % 3) == 0) {
       *nexti = j;
       return ncdna;
-    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    } else if (pairs[j].cdna != ' ') {
       ncdna++;
     }
     j++;
@@ -723,7 +722,7 @@ count_cdna_backward_strict (int *nexti, struct Pair_T *pairs, int npairs, int st
     if (ncdna >= 3 && pairs[j].cdna != ' ') {
       *nexti = j;
       return ncdna;
-    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    } else if (pairs[j].cdna != ' ') {
       ncdna++;
     }
     j--;
@@ -742,7 +741,7 @@ count_cdna_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, i
     if (j < starti && pairs[j].aaphase_g == 0 && pairs[j].cdna != ' ') {
       *nexti = j;
       return ncdna;
-    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    } else if (pairs[j].cdna != ' ') {
       ncdna++;
     }
     j--;
@@ -763,7 +762,7 @@ count_cdna_backward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int star
 	(ncdna % 3) == 0) {
       *nexti = j;
       return ncdna;
-    } else if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    } else if (pairs[j].cdna != ' ') {
       ncdna++;
     }
     j--;
@@ -771,6 +770,28 @@ count_cdna_backward_mod3 (int *nexti, struct Pair_T *pairs, int npairs, int star
 
   *nexti = j;
   return 1;			/* any answer that is not mod 0 */
+}
+
+
+static int
+count_genomic_strict (int *nexti, struct Pair_T *pairs, int npairs, int starti, int endi) {
+  int ngenomic = 0, j;
+
+  j = starti;
+  while (j < npairs) {
+    /* Need to check gapp in addition to genome, because genome
+       characters are provided at ends of introns */
+    if (ngenomic >= 3 && pairs[j].gapp == false && pairs[j].genome != ' ') {
+      *nexti = j;
+      return ngenomic;
+    } else if (pairs[j].gapp == false && pairs[j].genome != ' ') {
+      ngenomic++;
+    }
+    j++;
+  }
+
+  *nexti = j;
+  return ngenomic;
 }
 
 
@@ -824,7 +845,7 @@ get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, boo
 
   j = starti;
   while (j < npairs && ncdna < 3) {
-    if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    if (pairs[j].cdna != ' ') {
       nt0 = nt1;
       nt1 = nt2;
       nt2 = revcompp ? complCode[pairs[j].cdna] : uppercaseCode[pairs[j].cdna];
@@ -837,7 +858,7 @@ get_codon_forward (int *nexti, struct Pair_T *pairs, int npairs, int starti, boo
   }
 
   /* assign function depends on nexti pointing to a valid position */
-  while (j <= npairs - 1 && (pairs[j].gapp == true || pairs[j].cdna == ' ')) {
+  while (j <= npairs - 1 && pairs[j].cdna == ' ') {
     j++;
   }
 
@@ -860,7 +881,7 @@ get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, bo
 
   j = starti;
   while (j >= 0 && ncdna < 3) {
-    if (pairs[j].gapp == false && pairs[j].cdna != ' ') {
+    if (pairs[j].cdna != ' ') {
       nt0 = nt1;
       nt1 = nt2;
       nt2 = revcompp ? complCode[pairs[j].cdna] : uppercaseCode[pairs[j].cdna];
@@ -873,7 +894,7 @@ get_codon_backward (int *nexti, struct Pair_T *pairs, int npairs, int starti, bo
   }
 
   /* assign function depends on nexti pointing to a valid position */
-  while (j >= 0 && (pairs[j].gapp == true || pairs[j].cdna == ' ')) {
+  while (j >= 0 && (pairs[j].cdna == ' ')) {
     --j;
   }
 
@@ -933,6 +954,9 @@ assign_cdna_forward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp,
   int i, nexti, j = 0, codon;
 
   i = starti;
+  while (i < npairs && pairs[i].cdna == ' ') {
+    i++;
+  }
   while (j < ncdna) {
     pair = &(pairs[i]);
     codon = pair->aa_e = get_codon_forward(&nexti,pairs,npairs,i,revcompp);
@@ -951,7 +975,7 @@ terminate_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int sta
   char lastcodon = ' ';
 
   i = starti;
-  while (i < npairs && (pairs[i].gapp == true || pairs[i].cdna == ' ')) {
+  while (i < npairs && pairs[i].cdna == ' ') {
     i++;
   }
   while (i <= npairs-3 && lastcodon != '*') {
@@ -970,6 +994,9 @@ assign_cdna_backward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp
   int i, nexti, j = 0, codon;
 
   i = starti;
+  while (i >= 0 && pairs[i].cdna == ' ') {
+    --i;
+  }
   while (j < ncdna) {
     pair = &(pairs[i]);
     pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,revcompp);
@@ -988,7 +1015,7 @@ terminate_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int st
   char lastcodon = ' ';
 
   i = starti;
-  while (i >= 0 && (pairs[i].gapp == true || pairs[i].cdna == ' ')) {
+  while (i >= 0 && pairs[i].cdna == ' ') {
     --i;
   }
 
@@ -1004,19 +1031,19 @@ terminate_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int st
 }
 
 #ifdef PMAP
-static void
+static int
 assign_genomic (int ngenomic, struct Pair_T *pairs, int npairs, int starti) {
   struct Pair_T *pair;
-  int i, nexti, j = 0;
+  int i, nexti, j = 0, codon;
 
   i = starti;
   while (j < ngenomic) {
     pair = &(pairs[i]);
-    pair->aa_g = get_codon_genomic(&nexti,pairs,npairs,i);
+    codon = pair->aa_g = get_codon_genomic(&nexti,pairs,npairs,i);
     i = nexti;
     j += 3;
   }
-  return;
+  return codon;
 }
 
 static void
@@ -1202,6 +1229,38 @@ mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int starti,
 
 #ifdef PMAP
 static void
+mark_genomic_strict (struct Pair_T *pairs, int npairs, int starti, int endi) {
+  struct Pair_T *pair;
+  int i, nexti, nexti_alt, ngenomic, codon = ' ';
+
+  debug2(printf("mark_genomic_strict called with pairs #%d %d\n",starti,endi));
+
+  i = starti;
+
+  /* Advance to same start as cDNA */
+  pair = &(pairs[i]);
+  while (i < endi && pair->aaphase_e != 0) {
+    i++;
+    pair = &(pairs[i]);
+  }
+
+  while (i < npairs && codon != '*') {
+    pair = &(pairs[i]);
+    ngenomic = count_genomic_strict(&nexti,pairs,npairs,i,endi);
+    if (ngenomic == 3) {
+      codon = assign_genomic(ngenomic,pairs,npairs,i);
+    }
+    i = nexti;
+  }
+
+  if (codon != '*') {
+    terminate_genomic(pairs,npairs,i);
+  }
+
+  return;
+}  
+
+static void
 mark_genomic (struct Pair_T *pairs, int npairs, int starti, int endi) {
   struct Pair_T *pair;
   int i, nexti, nexti_alt, ngenomic, ngenomic_alt;
@@ -1257,7 +1316,7 @@ mark_genomic (struct Pair_T *pairs, int npairs, int starti, int endi) {
 void
 Translation_via_cdna (int *translation_leftpos, int *translation_rightpos, int *translation_length,
 		      int *relaastart, int *relaaend,
-		      struct Pair_T *pairs, int npairs, char *queryaaseq_ptr) {
+		      struct Pair_T *pairs, int npairs, char *queryaaseq_ptr, bool strictp) {
   int translation_starti, translation_endi, i;
 
   /* Don't check for MIN_NPAIRS */
@@ -1281,7 +1340,11 @@ Translation_via_cdna (int *translation_leftpos, int *translation_rightpos, int *
   *relaastart = pairs[translation_starti].aapos;
   *relaaend = pairs[translation_endi].aapos;
 
-  mark_genomic(pairs,npairs,translation_starti,translation_endi);
+  if (strictp == true) {
+    mark_genomic_strict(pairs,npairs,translation_starti,translation_endi);
+  } else {
+    mark_genomic(pairs,npairs,translation_starti,translation_endi);
+  }
 
   return;
 }

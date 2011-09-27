@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c,v 1.10 2006/10/09 17:02:43 twu Exp $";
+static char rcsid[] = "$Id: access.c,v 1.11 2007/02/08 21:30:08 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -49,6 +49,7 @@ Access_filesize (char *filename) {
   struct stat sb;
 
   stat(filename,&sb);
+  debug(printf("filesize is %u\n",sb.st_size));
   return sb.st_size;
 }
 

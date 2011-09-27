@@ -42,6 +42,7 @@ ACLOCAL = @ACLOCAL@
 AMDEP_FALSE = @AMDEP_FALSE@
 AMDEP_TRUE = @AMDEP_TRUE@
 AMTAR = @AMTAR@
+AR = @AR@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -52,6 +53,10 @@ CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
+CXX = @CXX@
+CXXCPP = @CXXCPP@
+CXXDEPMODE = @CXXDEPMODE@
+CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
@@ -61,6 +66,8 @@ ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
+F77 = @F77@
+FFLAGS = @FFLAGS@
 FULLDIST_FALSE = @FULLDIST_FALSE@
 FULLDIST_TRUE = @FULLDIST_TRUE@
 GMAPDB = @GMAPDB@
@@ -94,12 +101,17 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+ac_ct_AR = @ac_ct_AR@
 ac_ct_CC = @ac_ct_CC@
+ac_ct_CXX = @ac_ct_CXX@
+ac_ct_F77 = @ac_ct_F77@
 ac_ct_RANLIB = @ac_ct_RANLIB@
 ac_ct_STRIP = @ac_ct_STRIP@
 acx_pthread_config = @acx_pthread_config@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
 am__fastdepCC_TRUE = @am__fastdepCC_TRUE@
+am__fastdepCXX_FALSE = @am__fastdepCXX_FALSE@
+am__fastdepCXX_TRUE = @am__fastdepCXX_TRUE@
 am__include = @am__include@
 am__leading_dot = @am__leading_dot@
 am__quote = @am__quote@
@@ -136,11 +148,13 @@ target_os = @target_os@
 target_vendor = @target_vendor@
 @FULLDIST_FALSE@bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump 
 
-@FULLDIST_TRUE@bin_PROGRAMS = gmap pmap get-genome gmapindex pmapindex iit_store iit_get iit_dump oligo-count md5-compute genomeplot pdlimage
+@FULLDIST_TRUE@bin_PROGRAMS = gmap pmap get-genome gmapindex pmapindex iit_store iit_get iit_dump \
+@FULLDIST_TRUE@               oligo-count md5-compute genomeplot pdlimage gdiag
+
 
 GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
@@ -151,7 +165,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
  matchpool.c matchpool.h stage1.c stage1.h \
- oligoindex.c oligoindex.h \
+ intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h oligoindex.c oligoindex.h \
  scores.h intron.c intron.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h \
@@ -167,12 +181,11 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 # In front of stage3
-#if FULLDIST
+# FULLDIST
+# GMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
+# NORMAL
 GMAP_FILES_BETA = 
 
-#else
-#GMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
-#endif
 gmap_CC = $(PTHREAD_CC)
 @FULLDIST_FALSE@gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 @FULLDIST_TRUE@gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1
@@ -184,16 +197,16 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
- list.c list.h listdef.h \
+ intlistdef.h intlist.c intlist.h list.c list.h listdef.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  genomicpos.c genomicpos.h compress.c compress.h \
  gbuffer.c gbuffer.h genome.c genome.h indexdb.c indexdb.h \
- complement.h intlist.c intlist.h md5.c md5.h sequence.c sequence.h \
+ complement.h md5.c md5.h sequence.c sequence.h \
  reader.c reader.h oligop.c oligop.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h chrsubset.c chrsubset.h matchdef.h match.c match.h matchpair.c matchpair.h \
  matchpool.c matchpool.h stage1.c stage1.h \
- oligoindex.c oligoindex.h \
+ intpool.c intpool.h diagdef.h diag.c diag.h diagpool.c diagpool.h oligoindex.c oligoindex.h \
  intron.c intron.h scores.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  smooth.c smooth.h dynprog.c dynprog.h boyer-moore.c boyer-moore.h \
@@ -205,146 +218,25 @@ PMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 
 
 # In front of stage3
-PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
+# FULLDIST
+# PMAP_FILES_BETA = maxent.c maxent.h chimera.c chimera.h 
+# NORMAL
+PMAP_FILES_BETA = 
 
 pmap_CC = $(PTHREAD_CC)
-pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DBETATEST=1 -DPMAP=1
+@FULLDIST_FALSE@pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DPMAP=1
+@FULLDIST_TRUE@pmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DPMAP=1 -DBETATEST=1 
 pmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmap_LDADD = $(PTHREAD_LIBS)
-dist_pmap_SOURCES = 
+
+# FULLDIST
+# dist_pmap_SOURCES = $(PMAP_FILES) $(PMAP_FILES_BETA)
+# NORMAL
 nodist_pmap_SOURCES = $(PMAP_FILES) $(PMAP_FILES_BETA)
-
-GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
- littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- md5.c md5.h complement.h sequence.c sequence.h \
- genome.c genome.h \
- genomicpos.c genomicpos.h chrom.c chrom.h \
- chrnum.c chrnum.h chrsubset.c chrsubset.h \
- datadir.c datadir.h getopt.c getopt1.c getopt.h get-genome.c
-
-
-get_genome_CC = $(PTHREAD_CC)
-get_genome_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
-get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-get_genome_LDADD = $(PTHREAD_LIBS)
-dist_get_genome_SOURCES = $(GET_GENOME_FILES)
-
-IIT_STORE_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
- littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- stopwatch.c stopwatch.h access.c access.h iitdef.h iit-write.c iit-write.h \
- tableint.c tableint.h \
- getopt.c getopt1.c getopt.h iit_store.c
-
-iit_store_CFLAGS = $(AM_CFLAGS)  $(PTHREAD_CFLAGS)
-iit_store_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-iit_store_LDADD = 
-dist_iit_store_SOURCES = $(IIT_STORE_FILES)
-
-IIT_GET_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
- littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- getopt.c getopt1.c getopt.h iit_get.c
-
-iit_get_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
-iit_get_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-iit_get_LDADD = 
-dist_iit_get_SOURCES = $(IIT_GET_FILES)
-
-IIT_DUMP_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- littleendian.h bigendian.c bigendian.h \
- intlist.c intlist.h list.c list.h \
- interval.c interval.h uintlist.c uintlist.h \
- chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- getopt.c getopt1.c getopt.h iit_dump.c
-
-
-iit_dump_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
-iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-iit_dump_LDADD = 
-dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
-
-OLIGO_COUNT_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
- interval.c interval.h uintlist.c uintlist.h \
- chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
- genomicpos.c genomicpos.h \
- indexdb.c indexdb.h \
- compress.c compress.h oligo.c oligo.h \
- block.c block.h \
- oligo-count.c
-
-
-oligo_count_CC = $(PTHREAD_CC)
-oligo_count_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
-oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-oligo_count_LDADD = $(PTHREAD_LIBS)
-dist_oligo_count_SOURCES = 
-nodist_oligo_count_SOURCES = $(OLIGO_COUNT_FILES)
-
-MD5_COMPUTE_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h \
- md5.c md5.h complement.h sequence.c sequence.h \
- md5-compute.c
-
-md5_compute_CFLAGS = $(AM_CFLAGS)
-md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
-md5_compute_LDADD = 
-dist_md5_compute_SOURCES = 
-nodist_md5_compute_SOURCES = $(MD5_COMPUTE_FILES)
-
-GENOMEPLOT_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- listdef.h list.c list.h interval.c interval.h \
- uintlist.c uintlist.h \
- chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- chrsubset.c chrsubset.h color.c color.h \
- doublelist.c doublelist.h datum.c datum.h plotdata.c plotdata.h \
- plotgenes.c plotgenes.h \
- intlist.c intlist.h nr-x.c nr-x.h chrsegment.c chrsegment.h \
- chrnum.c chrnum.h datadir.c datadir.h \
- pdldata.c pdldata.h \
- getopt.c getopt1.c getopt.h genomeplot.c
-
-
-genomeplot_CFLAGS = $(AM_CFLAGS)  $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
-genomeplot_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-genomeplot_LDADD = 
-dist_genomeplot_SOURCES = 
-nodist_genomeplot_SOURCES = $(GENOMEPLOT_FILES)
-
-PDLIMAGE_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- listdef.h list.c list.h \
- color.c color.h \
- doublelist.c doublelist.h \
- intlist.c intlist.h \
- stopwatch.c stopwatch.h access.c access.h pdldata.c pdldata.h \
- getopt.c getopt1.c getopt.h pdlimage.c
-
-
-pdlimage_CFLAGS = $(AM_CFLAGS)
-pdlimage_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
-pdlimage_LDADD = 
-dist_pdlimage_SOURCES = 
-nodist_pdlimage_SOURCES = $(PDLIMAGE_FILES)
 
 GMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
- intlist.c intlist.h listdef.h list.c list.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
  littleendian.h bigendian.c bigendian.h \
  interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h iit-write.c iit-write.h \
@@ -376,8 +268,161 @@ pmapindex_CC = $(PTHREAD_CC)
 pmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DPMAP=1
 pmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 pmapindex_LDADD = $(PTHREAD_LIBS)
-dist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
-nodist_pmapindex_SOURCES = 
+# FULLDIST
+# dist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
+# NORMAL
+nodist_pmapindex_SOURCES = $(PMAPINDEX_FILES)
+
+GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ md5.c md5.h complement.h sequence.c sequence.h \
+ genome.c genome.h \
+ genomicpos.c genomicpos.h chrom.c chrom.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h \
+ datadir.c datadir.h getopt.c getopt1.c getopt.h get-genome.c
+
+
+get_genome_CC = $(PTHREAD_CC)
+get_genome_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+get_genome_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+get_genome_LDADD = $(PTHREAD_LIBS)
+dist_get_genome_SOURCES = $(GET_GENOME_FILES)
+
+IIT_STORE_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-write.c iit-write.h \
+ tableint.c tableint.h \
+ getopt.c getopt1.c getopt.h iit_store.c
+
+iit_store_CFLAGS = $(AM_CFLAGS)  $(PTHREAD_CFLAGS)
+iit_store_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+iit_store_LDADD = $(PTHREAD_LIBS)
+dist_iit_store_SOURCES = $(IIT_STORE_FILES)
+
+IIT_GET_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ getopt.c getopt1.c getopt.h iit_get.c
+
+iit_get_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+iit_get_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+iit_get_LDADD = $(PTHREAD_LIBS)
+dist_iit_get_SOURCES = $(IIT_GET_FILES)
+
+IIT_DUMP_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ littleendian.h bigendian.c bigendian.h \
+ intlistdef.h intlist.c intlist.h list.c list.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ getopt.c getopt1.c getopt.h iit_dump.c
+
+
+iit_dump_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+iit_dump_LDADD = $(PTHREAD_LIBS)
+dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
+
+OLIGO_COUNT_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
+ genomicpos.c genomicpos.h \
+ indexdb.c indexdb.h \
+ compress.c compress.h oligo.c oligo.h \
+ block.c block.h \
+ oligo-count.c
+
+
+oligo_count_CC = $(PTHREAD_CC)
+oligo_count_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+oligo_count_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+oligo_count_LDADD = $(PTHREAD_LIBS)
+dist_oligo_count_SOURCES = 
+nodist_oligo_count_SOURCES = $(OLIGO_COUNT_FILES)
+
+MD5_COMPUTE_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h \
+ md5.c md5.h complement.h sequence.c sequence.h \
+ md5-compute.c
+
+md5_compute_CC = $(PTHREAD_CC)
+md5_compute_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+md5_compute_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+md5_compute_LDADD = $(PTHREAD_LIBS)
+dist_md5_compute_SOURCES = 
+nodist_md5_compute_SOURCES = $(MD5_COMPUTE_FILES)
+
+GENOMEPLOT_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h interval.c interval.h \
+ uintlist.c uintlist.h \
+ chrom.c chrom.h stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ chrsubset.c chrsubset.h color.c color.h \
+ doublelist.c doublelist.h datum.c datum.h plotdata.c plotdata.h \
+ plotgenes.c plotgenes.h \
+ nr-x.c nr-x.h chrsegment.c chrsegment.h \
+ chrnum.c chrnum.h datadir.c datadir.h \
+ pdldata.c pdldata.h \
+ getopt.c getopt1.c getopt.h genomeplot.c
+
+
+genomeplot_CFLAGS = $(AM_CFLAGS)  $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\"
+genomeplot_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+genomeplot_LDADD = $(PTHREAD_LIBS)
+dist_genomeplot_SOURCES = 
+nodist_genomeplot_SOURCES = $(GENOMEPLOT_FILES)
+
+PDLIMAGE_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ listdef.h list.c list.h \
+ color.c color.h \
+ doublelist.c doublelist.h \
+ intlistdef.h intlist.c intlist.h \
+ stopwatch.c stopwatch.h access.c access.h pdldata.c pdldata.h \
+ getopt.c getopt1.c getopt.h pdlimage.c
+
+
+pdlimage_CC = $(PTHREAD_CC)
+pdlimage_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
+pdlimage_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+pdlimage_LDADD = $(PTHREAD_LIBS)
+dist_pdlimage_SOURCES = 
+nodist_pdlimage_SOURCES = $(PDLIMAGE_FILES)
+
+GDIAG_FILES = fopen.h bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ complement.h compress.c compress.h chrom.c chrom.h \
+ md5.c md5.h sequence.c sequence.h genome.c genome.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ iit-write.c iit-write.h \
+ chrnum.c chrnum.h chrsubset.c chrsubset.h \
+ genomicpos.c genomicpos.h indexdb.c indexdb.h \
+ datadir.c datadir.h \
+ getopt.c getopt1.c getopt.h gdiag.c
+
+
+gdiag_CC = $(PTHREAD_CC)
+gdiag_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
+gdiag_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+gdiag_LDADD = $(PTHREAD_LIBS)
+nodist_gdiag_SOURCES = $(GDIAG_FILES) $(GDIAG_FILES_BETA)
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -388,31 +433,48 @@ CONFIG_CLEAN_FILES =
 @FULLDIST_TRUE@	pmapindex$(EXEEXT) iit_store$(EXEEXT) \
 @FULLDIST_TRUE@	iit_get$(EXEEXT) iit_dump$(EXEEXT) \
 @FULLDIST_TRUE@	oligo-count$(EXEEXT) md5-compute$(EXEEXT) \
-@FULLDIST_TRUE@	genomeplot$(EXEEXT) pdlimage$(EXEEXT)
+@FULLDIST_TRUE@	genomeplot$(EXEEXT) pdlimage$(EXEEXT) \
+@FULLDIST_TRUE@	gdiag$(EXEEXT)
 @FULLDIST_FALSE@bin_PROGRAMS = gmap$(EXEEXT) get-genome$(EXEEXT) \
 @FULLDIST_FALSE@	gmapindex$(EXEEXT) iit_store$(EXEEXT) \
 @FULLDIST_FALSE@	iit_get$(EXEEXT) iit_dump$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS)
 
+am__objects_1 = gdiag-except.$(OBJEXT) gdiag-assert.$(OBJEXT) \
+	gdiag-mem.$(OBJEXT) gdiag-intlist.$(OBJEXT) \
+	gdiag-list.$(OBJEXT) gdiag-bigendian.$(OBJEXT) \
+	gdiag-interval.$(OBJEXT) gdiag-uintlist.$(OBJEXT) \
+	gdiag-compress.$(OBJEXT) gdiag-chrom.$(OBJEXT) \
+	gdiag-md5.$(OBJEXT) gdiag-sequence.$(OBJEXT) \
+	gdiag-genome.$(OBJEXT) gdiag-stopwatch.$(OBJEXT) \
+	gdiag-access.$(OBJEXT) gdiag-iit-read.$(OBJEXT) \
+	gdiag-iit-write.$(OBJEXT) gdiag-chrnum.$(OBJEXT) \
+	gdiag-chrsubset.$(OBJEXT) gdiag-genomicpos.$(OBJEXT) \
+	gdiag-indexdb.$(OBJEXT) gdiag-datadir.$(OBJEXT) \
+	gdiag-getopt.$(OBJEXT) gdiag-getopt1.$(OBJEXT) \
+	gdiag-gdiag.$(OBJEXT)
+nodist_gdiag_OBJECTS = $(am__objects_1) $(am__objects_2)
+gdiag_OBJECTS = $(nodist_gdiag_OBJECTS)
+gdiag_DEPENDENCIES =
 dist_genomeplot_OBJECTS =
-am__objects_1 = genomeplot-except.$(OBJEXT) genomeplot-assert.$(OBJEXT) \
-	genomeplot-mem.$(OBJEXT) genomeplot-list.$(OBJEXT) \
-	genomeplot-interval.$(OBJEXT) genomeplot-uintlist.$(OBJEXT) \
-	genomeplot-chrom.$(OBJEXT) genomeplot-stopwatch.$(OBJEXT) \
-	genomeplot-access.$(OBJEXT) genomeplot-iit-read.$(OBJEXT) \
-	genomeplot-chrsubset.$(OBJEXT) genomeplot-color.$(OBJEXT) \
-	genomeplot-doublelist.$(OBJEXT) genomeplot-datum.$(OBJEXT) \
-	genomeplot-plotdata.$(OBJEXT) genomeplot-plotgenes.$(OBJEXT) \
-	genomeplot-intlist.$(OBJEXT) genomeplot-nr-x.$(OBJEXT) \
+am__objects_3 = genomeplot-except.$(OBJEXT) genomeplot-assert.$(OBJEXT) \
+	genomeplot-mem.$(OBJEXT) genomeplot-intlist.$(OBJEXT) \
+	genomeplot-list.$(OBJEXT) genomeplot-interval.$(OBJEXT) \
+	genomeplot-uintlist.$(OBJEXT) genomeplot-chrom.$(OBJEXT) \
+	genomeplot-stopwatch.$(OBJEXT) genomeplot-access.$(OBJEXT) \
+	genomeplot-iit-read.$(OBJEXT) genomeplot-chrsubset.$(OBJEXT) \
+	genomeplot-color.$(OBJEXT) genomeplot-doublelist.$(OBJEXT) \
+	genomeplot-datum.$(OBJEXT) genomeplot-plotdata.$(OBJEXT) \
+	genomeplot-plotgenes.$(OBJEXT) genomeplot-nr-x.$(OBJEXT) \
 	genomeplot-chrsegment.$(OBJEXT) genomeplot-chrnum.$(OBJEXT) \
 	genomeplot-datadir.$(OBJEXT) genomeplot-pdldata.$(OBJEXT) \
 	genomeplot-getopt.$(OBJEXT) genomeplot-getopt1.$(OBJEXT) \
 	genomeplot-genomeplot.$(OBJEXT)
-nodist_genomeplot_OBJECTS = $(am__objects_1)
+nodist_genomeplot_OBJECTS = $(am__objects_3)
 genomeplot_OBJECTS = $(dist_genomeplot_OBJECTS) \
 	$(nodist_genomeplot_OBJECTS)
 genomeplot_DEPENDENCIES =
-am__objects_2 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
+am__objects_4 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
 	get_genome-mem.$(OBJEXT) get_genome-intlist.$(OBJEXT) \
 	get_genome-list.$(OBJEXT) get_genome-bigendian.$(OBJEXT) \
 	get_genome-interval.$(OBJEXT) get_genome-uintlist.$(OBJEXT) \
@@ -423,10 +485,10 @@ am__objects_2 = get_genome-except.$(OBJEXT) get_genome-assert.$(OBJEXT) \
 	get_genome-chrnum.$(OBJEXT) get_genome-chrsubset.$(OBJEXT) \
 	get_genome-datadir.$(OBJEXT) get_genome-getopt.$(OBJEXT) \
 	get_genome-getopt1.$(OBJEXT) get_genome-get-genome.$(OBJEXT)
-dist_get_genome_OBJECTS = $(am__objects_2)
+dist_get_genome_OBJECTS = $(am__objects_4)
 get_genome_OBJECTS = $(dist_get_genome_OBJECTS)
 get_genome_DEPENDENCIES =
-am__objects_3 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
+am__objects_5 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-mem.$(OBJEXT) gmap-intlist.$(OBJEXT) gmap-list.$(OBJEXT) \
 	gmap-bigendian.$(OBJEXT) gmap-interval.$(OBJEXT) \
 	gmap-uintlist.$(OBJEXT) gmap-stopwatch.$(OBJEXT) \
@@ -439,22 +501,23 @@ am__objects_3 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
 	gmap-chrsubset.$(OBJEXT) gmap-match.$(OBJEXT) \
 	gmap-matchpair.$(OBJEXT) gmap-matchpool.$(OBJEXT) \
-	gmap-stage1.$(OBJEXT) gmap-oligoindex.$(OBJEXT) \
-	gmap-intron.$(OBJEXT) gmap-pair.$(OBJEXT) \
-	gmap-pairpool.$(OBJEXT) gmap-stage2.$(OBJEXT) \
-	gmap-smooth.$(OBJEXT) gmap-boyer-moore.$(OBJEXT) \
-	gmap-dynprog.$(OBJEXT) gmap-translation.$(OBJEXT) \
-	gmap-changepoint.$(OBJEXT) gmap-stage3.$(OBJEXT) \
-	gmap-request.$(OBJEXT) gmap-reqpost.$(OBJEXT) \
-	gmap-result.$(OBJEXT) gmap-blackboard.$(OBJEXT) \
-	gmap-params.$(OBJEXT) gmap-datadir.$(OBJEXT) \
-	gmap-getopt.$(OBJEXT) gmap-getopt1.$(OBJEXT) \
-	gmap-gmap.$(OBJEXT)
-am__objects_4 =
-dist_gmap_OBJECTS = $(am__objects_3) $(am__objects_4)
+	gmap-stage1.$(OBJEXT) gmap-intpool.$(OBJEXT) \
+	gmap-diag.$(OBJEXT) gmap-diagpool.$(OBJEXT) \
+	gmap-oligoindex.$(OBJEXT) gmap-intron.$(OBJEXT) \
+	gmap-pair.$(OBJEXT) gmap-pairpool.$(OBJEXT) \
+	gmap-stage2.$(OBJEXT) gmap-smooth.$(OBJEXT) \
+	gmap-boyer-moore.$(OBJEXT) gmap-dynprog.$(OBJEXT) \
+	gmap-translation.$(OBJEXT) gmap-changepoint.$(OBJEXT) \
+	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
+	gmap-reqpost.$(OBJEXT) gmap-result.$(OBJEXT) \
+	gmap-blackboard.$(OBJEXT) gmap-params.$(OBJEXT) \
+	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
+	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
+am__objects_6 =
+dist_gmap_OBJECTS = $(am__objects_5) $(am__objects_6)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
 gmap_DEPENDENCIES =
-am__objects_5 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
+am__objects_7 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-mem.$(OBJEXT) gmapindex-intlist.$(OBJEXT) \
 	gmapindex-list.$(OBJEXT) gmapindex-bigendian.$(OBJEXT) \
 	gmapindex-interval.$(OBJEXT) gmapindex-uintlist.$(OBJEXT) \
@@ -465,10 +528,10 @@ am__objects_5 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-table.$(OBJEXT) gmapindex-tableint.$(OBJEXT) \
 	gmapindex-chrom.$(OBJEXT) gmapindex-segmentpos.$(OBJEXT) \
 	gmapindex-gmapindex.$(OBJEXT)
-dist_gmapindex_OBJECTS = $(am__objects_5)
+dist_gmapindex_OBJECTS = $(am__objects_7)
 gmapindex_OBJECTS = $(dist_gmapindex_OBJECTS)
 gmapindex_DEPENDENCIES =
-am__objects_6 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
+am__objects_8 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-mem.$(OBJEXT) iit_dump-bigendian.$(OBJEXT) \
 	iit_dump-intlist.$(OBJEXT) iit_dump-list.$(OBJEXT) \
 	iit_dump-interval.$(OBJEXT) iit_dump-uintlist.$(OBJEXT) \
@@ -476,10 +539,10 @@ am__objects_6 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-access.$(OBJEXT) iit_dump-iit-read.$(OBJEXT) \
 	iit_dump-getopt.$(OBJEXT) iit_dump-getopt1.$(OBJEXT) \
 	iit_dump-iit_dump.$(OBJEXT)
-dist_iit_dump_OBJECTS = $(am__objects_6)
+dist_iit_dump_OBJECTS = $(am__objects_8)
 iit_dump_OBJECTS = $(dist_iit_dump_OBJECTS)
 iit_dump_DEPENDENCIES =
-am__objects_7 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
+am__objects_9 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-mem.$(OBJEXT) iit_get-intlist.$(OBJEXT) \
 	iit_get-list.$(OBJEXT) iit_get-bigendian.$(OBJEXT) \
 	iit_get-interval.$(OBJEXT) iit_get-uintlist.$(OBJEXT) \
@@ -487,10 +550,10 @@ am__objects_7 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-access.$(OBJEXT) iit_get-iit-read.$(OBJEXT) \
 	iit_get-getopt.$(OBJEXT) iit_get-getopt1.$(OBJEXT) \
 	iit_get-iit_get.$(OBJEXT)
-dist_iit_get_OBJECTS = $(am__objects_7)
+dist_iit_get_OBJECTS = $(am__objects_9)
 iit_get_OBJECTS = $(dist_iit_get_OBJECTS)
 iit_get_DEPENDENCIES =
-am__objects_8 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
+am__objects_10 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-mem.$(OBJEXT) iit_store-intlist.$(OBJEXT) \
 	iit_store-list.$(OBJEXT) iit_store-bigendian.$(OBJEXT) \
 	iit_store-interval.$(OBJEXT) iit_store-uintlist.$(OBJEXT) \
@@ -498,21 +561,21 @@ am__objects_8 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-iit-write.$(OBJEXT) iit_store-tableint.$(OBJEXT) \
 	iit_store-getopt.$(OBJEXT) iit_store-getopt1.$(OBJEXT) \
 	iit_store-iit_store.$(OBJEXT)
-dist_iit_store_OBJECTS = $(am__objects_8)
+dist_iit_store_OBJECTS = $(am__objects_10)
 iit_store_OBJECTS = $(dist_iit_store_OBJECTS)
 iit_store_DEPENDENCIES =
 dist_md5_compute_OBJECTS =
-am__objects_9 = md5_compute-except.$(OBJEXT) \
+am__objects_11 = md5_compute-except.$(OBJEXT) \
 	md5_compute-assert.$(OBJEXT) md5_compute-mem.$(OBJEXT) \
 	md5_compute-intlist.$(OBJEXT) md5_compute-md5.$(OBJEXT) \
 	md5_compute-sequence.$(OBJEXT) \
 	md5_compute-md5-compute.$(OBJEXT)
-nodist_md5_compute_OBJECTS = $(am__objects_9)
+nodist_md5_compute_OBJECTS = $(am__objects_11)
 md5_compute_OBJECTS = $(dist_md5_compute_OBJECTS) \
 	$(nodist_md5_compute_OBJECTS)
 md5_compute_DEPENDENCIES =
 dist_oligo_count_OBJECTS =
-am__objects_10 = oligo_count-except.$(OBJEXT) \
+am__objects_12 = oligo_count-except.$(OBJEXT) \
 	oligo_count-assert.$(OBJEXT) oligo_count-mem.$(OBJEXT) \
 	oligo_count-intlist.$(OBJEXT) oligo_count-list.$(OBJEXT) \
 	oligo_count-interval.$(OBJEXT) oligo_count-uintlist.$(OBJEXT) \
@@ -523,52 +586,51 @@ am__objects_10 = oligo_count-except.$(OBJEXT) \
 	oligo_count-indexdb.$(OBJEXT) oligo_count-compress.$(OBJEXT) \
 	oligo_count-oligo.$(OBJEXT) oligo_count-block.$(OBJEXT) \
 	oligo_count-oligo-count.$(OBJEXT)
-nodist_oligo_count_OBJECTS = $(am__objects_10)
+nodist_oligo_count_OBJECTS = $(am__objects_12)
 oligo_count_OBJECTS = $(dist_oligo_count_OBJECTS) \
 	$(nodist_oligo_count_OBJECTS)
 oligo_count_DEPENDENCIES =
 dist_pdlimage_OBJECTS =
-am__objects_11 = pdlimage-except.$(OBJEXT) pdlimage-assert.$(OBJEXT) \
+am__objects_13 = pdlimage-except.$(OBJEXT) pdlimage-assert.$(OBJEXT) \
 	pdlimage-mem.$(OBJEXT) pdlimage-list.$(OBJEXT) \
 	pdlimage-color.$(OBJEXT) pdlimage-doublelist.$(OBJEXT) \
 	pdlimage-intlist.$(OBJEXT) pdlimage-stopwatch.$(OBJEXT) \
 	pdlimage-access.$(OBJEXT) pdlimage-pdldata.$(OBJEXT) \
 	pdlimage-getopt.$(OBJEXT) pdlimage-getopt1.$(OBJEXT) \
 	pdlimage-pdlimage.$(OBJEXT)
-nodist_pdlimage_OBJECTS = $(am__objects_11)
+nodist_pdlimage_OBJECTS = $(am__objects_13)
 pdlimage_OBJECTS = $(dist_pdlimage_OBJECTS) $(nodist_pdlimage_OBJECTS)
 pdlimage_DEPENDENCIES =
-dist_pmap_OBJECTS =
-am__objects_12 = pmap-except.$(OBJEXT) pmap-assert.$(OBJEXT) \
+am__objects_14 = pmap-except.$(OBJEXT) pmap-assert.$(OBJEXT) \
 	pmap-mem.$(OBJEXT) pmap-bigendian.$(OBJEXT) \
 	pmap-interval.$(OBJEXT) pmap-uintlist.$(OBJEXT) \
-	pmap-list.$(OBJEXT) pmap-stopwatch.$(OBJEXT) \
-	pmap-access.$(OBJEXT) pmap-iit-read.$(OBJEXT) \
-	pmap-genomicpos.$(OBJEXT) pmap-compress.$(OBJEXT) \
-	pmap-gbuffer.$(OBJEXT) pmap-genome.$(OBJEXT) \
-	pmap-indexdb.$(OBJEXT) pmap-intlist.$(OBJEXT) \
-	pmap-md5.$(OBJEXT) pmap-sequence.$(OBJEXT) \
-	pmap-reader.$(OBJEXT) pmap-oligop.$(OBJEXT) \
-	pmap-block.$(OBJEXT) pmap-chrom.$(OBJEXT) \
+	pmap-intlist.$(OBJEXT) pmap-list.$(OBJEXT) \
+	pmap-stopwatch.$(OBJEXT) pmap-access.$(OBJEXT) \
+	pmap-iit-read.$(OBJEXT) pmap-genomicpos.$(OBJEXT) \
+	pmap-compress.$(OBJEXT) pmap-gbuffer.$(OBJEXT) \
+	pmap-genome.$(OBJEXT) pmap-indexdb.$(OBJEXT) pmap-md5.$(OBJEXT) \
+	pmap-sequence.$(OBJEXT) pmap-reader.$(OBJEXT) \
+	pmap-oligop.$(OBJEXT) pmap-block.$(OBJEXT) pmap-chrom.$(OBJEXT) \
 	pmap-segmentpos.$(OBJEXT) pmap-chrnum.$(OBJEXT) \
 	pmap-chrsubset.$(OBJEXT) pmap-match.$(OBJEXT) \
 	pmap-matchpair.$(OBJEXT) pmap-matchpool.$(OBJEXT) \
-	pmap-stage1.$(OBJEXT) pmap-oligoindex.$(OBJEXT) \
-	pmap-intron.$(OBJEXT) pmap-pair.$(OBJEXT) \
-	pmap-pairpool.$(OBJEXT) pmap-stage2.$(OBJEXT) \
-	pmap-smooth.$(OBJEXT) pmap-dynprog.$(OBJEXT) \
-	pmap-boyer-moore.$(OBJEXT) pmap-translation.$(OBJEXT) \
-	pmap-backtranslation.$(OBJEXT) pmap-changepoint.$(OBJEXT) \
-	pmap-stage3.$(OBJEXT) pmap-datadir.$(OBJEXT) \
-	pmap-request.$(OBJEXT) pmap-reqpost.$(OBJEXT) \
-	pmap-result.$(OBJEXT) pmap-blackboard.$(OBJEXT) \
-	pmap-params.$(OBJEXT) pmap-getopt.$(OBJEXT) \
-	pmap-getopt1.$(OBJEXT) pmap-gmap.$(OBJEXT)
-am__objects_13 = pmap-maxent.$(OBJEXT) pmap-chimera.$(OBJEXT)
-nodist_pmap_OBJECTS = $(am__objects_12) $(am__objects_13)
-pmap_OBJECTS = $(dist_pmap_OBJECTS) $(nodist_pmap_OBJECTS)
+	pmap-stage1.$(OBJEXT) pmap-intpool.$(OBJEXT) \
+	pmap-diag.$(OBJEXT) pmap-diagpool.$(OBJEXT) \
+	pmap-oligoindex.$(OBJEXT) pmap-intron.$(OBJEXT) \
+	pmap-pair.$(OBJEXT) pmap-pairpool.$(OBJEXT) \
+	pmap-stage2.$(OBJEXT) pmap-smooth.$(OBJEXT) \
+	pmap-dynprog.$(OBJEXT) pmap-boyer-moore.$(OBJEXT) \
+	pmap-translation.$(OBJEXT) pmap-backtranslation.$(OBJEXT) \
+	pmap-changepoint.$(OBJEXT) pmap-stage3.$(OBJEXT) \
+	pmap-datadir.$(OBJEXT) pmap-request.$(OBJEXT) \
+	pmap-reqpost.$(OBJEXT) pmap-result.$(OBJEXT) \
+	pmap-blackboard.$(OBJEXT) pmap-params.$(OBJEXT) \
+	pmap-getopt.$(OBJEXT) pmap-getopt1.$(OBJEXT) \
+	pmap-gmap.$(OBJEXT)
+nodist_pmap_OBJECTS = $(am__objects_14) $(am__objects_6)
+pmap_OBJECTS = $(nodist_pmap_OBJECTS)
 pmap_DEPENDENCIES =
-am__objects_14 = pmapindex-except.$(OBJEXT) pmapindex-assert.$(OBJEXT) \
+am__objects_15 = pmapindex-except.$(OBJEXT) pmapindex-assert.$(OBJEXT) \
 	pmapindex-mem.$(OBJEXT) pmapindex-bigendian.$(OBJEXT) \
 	pmapindex-interval.$(OBJEXT) pmapindex-uintlist.$(OBJEXT) \
 	pmapindex-list.$(OBJEXT) pmapindex-chrom.$(OBJEXT) \
@@ -576,16 +638,38 @@ am__objects_14 = pmapindex-except.$(OBJEXT) pmapindex-assert.$(OBJEXT) \
 	pmapindex-iit-read.$(OBJEXT) pmapindex-iit-write.$(OBJEXT) \
 	pmapindex-genomicpos.$(OBJEXT) pmapindex-compress.$(OBJEXT) \
 	pmapindex-indexdb.$(OBJEXT) pmapindex-pmapindex.$(OBJEXT)
-dist_pmapindex_OBJECTS = $(am__objects_14)
-nodist_pmapindex_OBJECTS =
-pmapindex_OBJECTS = $(dist_pmapindex_OBJECTS) \
-	$(nodist_pmapindex_OBJECTS)
+nodist_pmapindex_OBJECTS = $(am__objects_15)
+pmapindex_OBJECTS = $(nodist_pmapindex_OBJECTS)
 pmapindex_DEPENDENCIES =
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I.
 depcomp = $(SHELL) $(top_srcdir)/config/depcomp
 am__depfiles_maybe = depfiles
-@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/genomeplot-access.Po \
+@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/gdiag-access.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-assert.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-bigendian.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-chrnum.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-chrom.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-chrsubset.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-compress.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-datadir.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-except.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-gdiag.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-genome.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-genomicpos.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-getopt.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-getopt1.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-iit-read.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-iit-write.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-indexdb.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-interval.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-intlist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-list.Po ./$(DEPDIR)/gdiag-md5.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-mem.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-sequence.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-stopwatch.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gdiag-uintlist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/genomeplot-access.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/genomeplot-assert.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/genomeplot-chrnum.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/genomeplot-chrom.Po \
@@ -644,6 +728,8 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-chrsubset.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-compress.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-datadir.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-diag.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-diagpool.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-dynprog.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-except.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-gbuffer.Po \
@@ -656,6 +742,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-indexdb.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-interval.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-intlist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gmap-intpool.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-intron.Po ./$(DEPDIR)/gmap-list.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-match.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gmap-matchpair.Po \
@@ -793,12 +880,13 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-block.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-boyer-moore.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-changepoint.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/pmap-chimera.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-chrnum.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-chrom.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-chrsubset.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-compress.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-datadir.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pmap-diag.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pmap-diagpool.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-dynprog.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-except.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-gbuffer.Po \
@@ -811,12 +899,12 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-indexdb.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-interval.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-intlist.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pmap-intpool.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-intron.Po ./$(DEPDIR)/pmap-list.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-match.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-matchpair.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-matchpool.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/pmap-maxent.Po ./$(DEPDIR)/pmap-md5.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/pmap-mem.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pmap-md5.Po ./$(DEPDIR)/pmap-mem.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-oligoindex.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-oligop.Po ./$(DEPDIR)/pmap-pair.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/pmap-pairpool.Po \
@@ -861,10 +949,9 @@ DIST_SOURCES = $(dist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) \
 	$(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) \
 	$(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) \
 	$(dist_iit_store_SOURCES) $(dist_md5_compute_SOURCES) \
-	$(dist_oligo_count_SOURCES) $(dist_pdlimage_SOURCES) \
-	$(dist_pmap_SOURCES) $(dist_pmapindex_SOURCES)
+	$(dist_oligo_count_SOURCES) $(dist_pdlimage_SOURCES)
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am config.h.in
-SOURCES = $(dist_genomeplot_SOURCES) $(nodist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) $(dist_md5_compute_SOURCES) $(nodist_md5_compute_SOURCES) $(dist_oligo_count_SOURCES) $(nodist_oligo_count_SOURCES) $(dist_pdlimage_SOURCES) $(nodist_pdlimage_SOURCES) $(dist_pmap_SOURCES) $(nodist_pmap_SOURCES) $(dist_pmapindex_SOURCES) $(nodist_pmapindex_SOURCES)
+SOURCES = $(nodist_gdiag_SOURCES) $(dist_genomeplot_SOURCES) $(nodist_genomeplot_SOURCES) $(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) $(dist_gmapindex_SOURCES) $(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) $(dist_md5_compute_SOURCES) $(nodist_md5_compute_SOURCES) $(dist_oligo_count_SOURCES) $(nodist_oligo_count_SOURCES) $(dist_pdlimage_SOURCES) $(nodist_pdlimage_SOURCES) $(nodist_pmap_SOURCES) $(nodist_pmapindex_SOURCES)
 
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -922,6 +1009,9 @@ clean-binPROGRAMS:
 	  echo " rm -f $$p $$f"; \
 	  rm -f $$p $$f ; \
 	done
+gdiag$(EXEEXT): $(gdiag_OBJECTS) $(gdiag_DEPENDENCIES) 
+	@rm -f gdiag$(EXEEXT)
+	$(LINK) $(gdiag_LDFLAGS) $(gdiag_OBJECTS) $(gdiag_LDADD) $(LIBS)
 genomeplot$(EXEEXT): $(genomeplot_OBJECTS) $(genomeplot_DEPENDENCIES) 
 	@rm -f genomeplot$(EXEEXT)
 	$(LINK) $(genomeplot_LDFLAGS) $(genomeplot_OBJECTS) $(genomeplot_LDADD) $(LIBS)
@@ -965,6 +1055,31 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-access.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-bigendian.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-chrnum.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-chrom.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-chrsubset.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-compress.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-datadir.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-except.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-gdiag.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-genome.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-genomicpos.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-getopt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-getopt1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-iit-read.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-iit-write.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-indexdb.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-interval.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-intlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-list.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-md5.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-mem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-sequence.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-stopwatch.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gdiag-uintlist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/genomeplot-chrnum.Po@am__quote@
@@ -1024,6 +1139,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrsubset.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-compress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-datadir.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-diag.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-diagpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-dynprog.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-gbuffer.Po@am__quote@
@@ -1036,6 +1153,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-indexdb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-interval.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-intlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-intpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-intron.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-match.Po@am__quote@
@@ -1175,12 +1293,13 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-block.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-boyer-moore.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-changepoint.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-chimera.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-chrsubset.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-compress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-datadir.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-diag.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-diagpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-dynprog.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-gbuffer.Po@am__quote@
@@ -1193,12 +1312,12 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-indexdb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-interval.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-intlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-intpool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-intron.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-match.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-matchpair.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-matchpool.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-maxent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-md5.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-mem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pmap-oligoindex.Po@am__quote@
@@ -1268,6 +1387,831 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/$*.Plo' tmpdepfile='$(DEPDIR)/$*.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LTCOMPILE) -c -o $@ `test -f '$<' || echo '$(srcdir)/'`$<
+
+gdiag-except.o: except.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-except.o -MD -MP -MF "$(DEPDIR)/gdiag-except.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-except.Tpo" "$(DEPDIR)/gdiag-except.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-except.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='gdiag-except.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-except.Po' tmpdepfile='$(DEPDIR)/gdiag-except.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
+
+gdiag-except.obj: except.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-except.obj -MD -MP -MF "$(DEPDIR)/gdiag-except.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-except.Tpo" "$(DEPDIR)/gdiag-except.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-except.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='gdiag-except.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-except.Po' tmpdepfile='$(DEPDIR)/gdiag-except.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`
+
+gdiag-except.lo: except.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-except.lo -MD -MP -MF "$(DEPDIR)/gdiag-except.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-except.lo `test -f 'except.c' || echo '$(srcdir)/'`except.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-except.Tpo" "$(DEPDIR)/gdiag-except.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-except.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='gdiag-except.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-except.Plo' tmpdepfile='$(DEPDIR)/gdiag-except.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-except.lo `test -f 'except.c' || echo '$(srcdir)/'`except.c
+
+gdiag-assert.o: assert.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-assert.o -MD -MP -MF "$(DEPDIR)/gdiag-assert.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-assert.Tpo" "$(DEPDIR)/gdiag-assert.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-assert.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='gdiag-assert.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-assert.Po' tmpdepfile='$(DEPDIR)/gdiag-assert.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
+
+gdiag-assert.obj: assert.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-assert.obj -MD -MP -MF "$(DEPDIR)/gdiag-assert.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-assert.Tpo" "$(DEPDIR)/gdiag-assert.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-assert.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='gdiag-assert.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-assert.Po' tmpdepfile='$(DEPDIR)/gdiag-assert.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`
+
+gdiag-assert.lo: assert.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-assert.lo -MD -MP -MF "$(DEPDIR)/gdiag-assert.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-assert.lo `test -f 'assert.c' || echo '$(srcdir)/'`assert.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-assert.Tpo" "$(DEPDIR)/gdiag-assert.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-assert.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='gdiag-assert.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-assert.Plo' tmpdepfile='$(DEPDIR)/gdiag-assert.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-assert.lo `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
+
+gdiag-mem.o: mem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-mem.o -MD -MP -MF "$(DEPDIR)/gdiag-mem.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-mem.Tpo" "$(DEPDIR)/gdiag-mem.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-mem.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='gdiag-mem.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-mem.Po' tmpdepfile='$(DEPDIR)/gdiag-mem.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+
+gdiag-mem.obj: mem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-mem.obj -MD -MP -MF "$(DEPDIR)/gdiag-mem.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-mem.Tpo" "$(DEPDIR)/gdiag-mem.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-mem.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='gdiag-mem.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-mem.Po' tmpdepfile='$(DEPDIR)/gdiag-mem.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`
+
+gdiag-mem.lo: mem.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-mem.lo -MD -MP -MF "$(DEPDIR)/gdiag-mem.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-mem.lo `test -f 'mem.c' || echo '$(srcdir)/'`mem.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-mem.Tpo" "$(DEPDIR)/gdiag-mem.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-mem.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='gdiag-mem.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-mem.Plo' tmpdepfile='$(DEPDIR)/gdiag-mem.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-mem.lo `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+
+gdiag-intlist.o: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-intlist.o -MD -MP -MF "$(DEPDIR)/gdiag-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-intlist.Tpo" "$(DEPDIR)/gdiag-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='gdiag-intlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-intlist.Po' tmpdepfile='$(DEPDIR)/gdiag-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+gdiag-intlist.obj: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-intlist.obj -MD -MP -MF "$(DEPDIR)/gdiag-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-intlist.Tpo" "$(DEPDIR)/gdiag-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='gdiag-intlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-intlist.Po' tmpdepfile='$(DEPDIR)/gdiag-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
+
+gdiag-intlist.lo: intlist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-intlist.lo -MD -MP -MF "$(DEPDIR)/gdiag-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-intlist.Tpo" "$(DEPDIR)/gdiag-intlist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='gdiag-intlist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-intlist.Plo' tmpdepfile='$(DEPDIR)/gdiag-intlist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+gdiag-list.o: list.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-list.o -MD -MP -MF "$(DEPDIR)/gdiag-list.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-list.Tpo" "$(DEPDIR)/gdiag-list.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-list.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='gdiag-list.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-list.Po' tmpdepfile='$(DEPDIR)/gdiag-list.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
+
+gdiag-list.obj: list.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-list.obj -MD -MP -MF "$(DEPDIR)/gdiag-list.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-list.Tpo" "$(DEPDIR)/gdiag-list.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-list.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='gdiag-list.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-list.Po' tmpdepfile='$(DEPDIR)/gdiag-list.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
+
+gdiag-list.lo: list.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-list.lo -MD -MP -MF "$(DEPDIR)/gdiag-list.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-list.lo `test -f 'list.c' || echo '$(srcdir)/'`list.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-list.Tpo" "$(DEPDIR)/gdiag-list.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-list.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='gdiag-list.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-list.Plo' tmpdepfile='$(DEPDIR)/gdiag-list.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-list.lo `test -f 'list.c' || echo '$(srcdir)/'`list.c
+
+gdiag-bigendian.o: bigendian.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-bigendian.o -MD -MP -MF "$(DEPDIR)/gdiag-bigendian.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-bigendian.o `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-bigendian.Tpo" "$(DEPDIR)/gdiag-bigendian.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-bigendian.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='gdiag-bigendian.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-bigendian.Po' tmpdepfile='$(DEPDIR)/gdiag-bigendian.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-bigendian.o `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c
+
+gdiag-bigendian.obj: bigendian.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-bigendian.obj -MD -MP -MF "$(DEPDIR)/gdiag-bigendian.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-bigendian.obj `if test -f 'bigendian.c'; then $(CYGPATH_W) 'bigendian.c'; else $(CYGPATH_W) '$(srcdir)/bigendian.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-bigendian.Tpo" "$(DEPDIR)/gdiag-bigendian.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-bigendian.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='gdiag-bigendian.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-bigendian.Po' tmpdepfile='$(DEPDIR)/gdiag-bigendian.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-bigendian.obj `if test -f 'bigendian.c'; then $(CYGPATH_W) 'bigendian.c'; else $(CYGPATH_W) '$(srcdir)/bigendian.c'; fi`
+
+gdiag-bigendian.lo: bigendian.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-bigendian.lo -MD -MP -MF "$(DEPDIR)/gdiag-bigendian.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-bigendian.lo `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-bigendian.Tpo" "$(DEPDIR)/gdiag-bigendian.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-bigendian.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='gdiag-bigendian.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-bigendian.Plo' tmpdepfile='$(DEPDIR)/gdiag-bigendian.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-bigendian.lo `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c
+
+gdiag-interval.o: interval.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-interval.o -MD -MP -MF "$(DEPDIR)/gdiag-interval.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-interval.Tpo" "$(DEPDIR)/gdiag-interval.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-interval.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='gdiag-interval.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-interval.Po' tmpdepfile='$(DEPDIR)/gdiag-interval.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
+
+gdiag-interval.obj: interval.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-interval.obj -MD -MP -MF "$(DEPDIR)/gdiag-interval.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-interval.Tpo" "$(DEPDIR)/gdiag-interval.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-interval.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='gdiag-interval.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-interval.Po' tmpdepfile='$(DEPDIR)/gdiag-interval.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`
+
+gdiag-interval.lo: interval.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-interval.lo -MD -MP -MF "$(DEPDIR)/gdiag-interval.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-interval.lo `test -f 'interval.c' || echo '$(srcdir)/'`interval.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-interval.Tpo" "$(DEPDIR)/gdiag-interval.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-interval.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='gdiag-interval.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-interval.Plo' tmpdepfile='$(DEPDIR)/gdiag-interval.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-interval.lo `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
+
+gdiag-uintlist.o: uintlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-uintlist.o -MD -MP -MF "$(DEPDIR)/gdiag-uintlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-uintlist.Tpo" "$(DEPDIR)/gdiag-uintlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-uintlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='gdiag-uintlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-uintlist.Po' tmpdepfile='$(DEPDIR)/gdiag-uintlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
+
+gdiag-uintlist.obj: uintlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-uintlist.obj -MD -MP -MF "$(DEPDIR)/gdiag-uintlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-uintlist.Tpo" "$(DEPDIR)/gdiag-uintlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-uintlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='gdiag-uintlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-uintlist.Po' tmpdepfile='$(DEPDIR)/gdiag-uintlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`
+
+gdiag-uintlist.lo: uintlist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-uintlist.lo -MD -MP -MF "$(DEPDIR)/gdiag-uintlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-uintlist.lo `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-uintlist.Tpo" "$(DEPDIR)/gdiag-uintlist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-uintlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='gdiag-uintlist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-uintlist.Plo' tmpdepfile='$(DEPDIR)/gdiag-uintlist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-uintlist.lo `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
+
+gdiag-compress.o: compress.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-compress.o -MD -MP -MF "$(DEPDIR)/gdiag-compress.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-compress.o `test -f 'compress.c' || echo '$(srcdir)/'`compress.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-compress.Tpo" "$(DEPDIR)/gdiag-compress.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-compress.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compress.c' object='gdiag-compress.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-compress.Po' tmpdepfile='$(DEPDIR)/gdiag-compress.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-compress.o `test -f 'compress.c' || echo '$(srcdir)/'`compress.c
+
+gdiag-compress.obj: compress.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-compress.obj -MD -MP -MF "$(DEPDIR)/gdiag-compress.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-compress.Tpo" "$(DEPDIR)/gdiag-compress.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-compress.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compress.c' object='gdiag-compress.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-compress.Po' tmpdepfile='$(DEPDIR)/gdiag-compress.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
+
+gdiag-compress.lo: compress.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-compress.lo -MD -MP -MF "$(DEPDIR)/gdiag-compress.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-compress.lo `test -f 'compress.c' || echo '$(srcdir)/'`compress.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-compress.Tpo" "$(DEPDIR)/gdiag-compress.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-compress.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compress.c' object='gdiag-compress.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-compress.Plo' tmpdepfile='$(DEPDIR)/gdiag-compress.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-compress.lo `test -f 'compress.c' || echo '$(srcdir)/'`compress.c
+
+gdiag-chrom.o: chrom.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrom.o -MD -MP -MF "$(DEPDIR)/gdiag-chrom.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrom.o `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrom.Tpo" "$(DEPDIR)/gdiag-chrom.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrom.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='gdiag-chrom.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrom.Po' tmpdepfile='$(DEPDIR)/gdiag-chrom.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrom.o `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
+
+gdiag-chrom.obj: chrom.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrom.obj -MD -MP -MF "$(DEPDIR)/gdiag-chrom.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrom.obj `if test -f 'chrom.c'; then $(CYGPATH_W) 'chrom.c'; else $(CYGPATH_W) '$(srcdir)/chrom.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrom.Tpo" "$(DEPDIR)/gdiag-chrom.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrom.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='gdiag-chrom.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrom.Po' tmpdepfile='$(DEPDIR)/gdiag-chrom.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrom.obj `if test -f 'chrom.c'; then $(CYGPATH_W) 'chrom.c'; else $(CYGPATH_W) '$(srcdir)/chrom.c'; fi`
+
+gdiag-chrom.lo: chrom.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrom.lo -MD -MP -MF "$(DEPDIR)/gdiag-chrom.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrom.lo `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrom.Tpo" "$(DEPDIR)/gdiag-chrom.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrom.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='gdiag-chrom.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrom.Plo' tmpdepfile='$(DEPDIR)/gdiag-chrom.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrom.lo `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
+
+gdiag-md5.o: md5.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-md5.o -MD -MP -MF "$(DEPDIR)/gdiag-md5.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-md5.o `test -f 'md5.c' || echo '$(srcdir)/'`md5.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-md5.Tpo" "$(DEPDIR)/gdiag-md5.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-md5.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='gdiag-md5.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-md5.Po' tmpdepfile='$(DEPDIR)/gdiag-md5.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-md5.o `test -f 'md5.c' || echo '$(srcdir)/'`md5.c
+
+gdiag-md5.obj: md5.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-md5.obj -MD -MP -MF "$(DEPDIR)/gdiag-md5.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-md5.obj `if test -f 'md5.c'; then $(CYGPATH_W) 'md5.c'; else $(CYGPATH_W) '$(srcdir)/md5.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-md5.Tpo" "$(DEPDIR)/gdiag-md5.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-md5.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='gdiag-md5.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-md5.Po' tmpdepfile='$(DEPDIR)/gdiag-md5.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-md5.obj `if test -f 'md5.c'; then $(CYGPATH_W) 'md5.c'; else $(CYGPATH_W) '$(srcdir)/md5.c'; fi`
+
+gdiag-md5.lo: md5.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-md5.lo -MD -MP -MF "$(DEPDIR)/gdiag-md5.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-md5.lo `test -f 'md5.c' || echo '$(srcdir)/'`md5.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-md5.Tpo" "$(DEPDIR)/gdiag-md5.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-md5.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='gdiag-md5.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-md5.Plo' tmpdepfile='$(DEPDIR)/gdiag-md5.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-md5.lo `test -f 'md5.c' || echo '$(srcdir)/'`md5.c
+
+gdiag-sequence.o: sequence.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-sequence.o -MD -MP -MF "$(DEPDIR)/gdiag-sequence.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-sequence.o `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-sequence.Tpo" "$(DEPDIR)/gdiag-sequence.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-sequence.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='gdiag-sequence.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-sequence.Po' tmpdepfile='$(DEPDIR)/gdiag-sequence.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-sequence.o `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c
+
+gdiag-sequence.obj: sequence.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-sequence.obj -MD -MP -MF "$(DEPDIR)/gdiag-sequence.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-sequence.obj `if test -f 'sequence.c'; then $(CYGPATH_W) 'sequence.c'; else $(CYGPATH_W) '$(srcdir)/sequence.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-sequence.Tpo" "$(DEPDIR)/gdiag-sequence.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-sequence.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='gdiag-sequence.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-sequence.Po' tmpdepfile='$(DEPDIR)/gdiag-sequence.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-sequence.obj `if test -f 'sequence.c'; then $(CYGPATH_W) 'sequence.c'; else $(CYGPATH_W) '$(srcdir)/sequence.c'; fi`
+
+gdiag-sequence.lo: sequence.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-sequence.lo -MD -MP -MF "$(DEPDIR)/gdiag-sequence.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-sequence.lo `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-sequence.Tpo" "$(DEPDIR)/gdiag-sequence.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-sequence.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='gdiag-sequence.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-sequence.Plo' tmpdepfile='$(DEPDIR)/gdiag-sequence.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-sequence.lo `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c
+
+gdiag-genome.o: genome.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-genome.o -MD -MP -MF "$(DEPDIR)/gdiag-genome.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-genome.Tpo" "$(DEPDIR)/gdiag-genome.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-genome.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='gdiag-genome.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-genome.Po' tmpdepfile='$(DEPDIR)/gdiag-genome.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
+
+gdiag-genome.obj: genome.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-genome.obj -MD -MP -MF "$(DEPDIR)/gdiag-genome.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-genome.Tpo" "$(DEPDIR)/gdiag-genome.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-genome.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='gdiag-genome.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-genome.Po' tmpdepfile='$(DEPDIR)/gdiag-genome.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
+
+gdiag-genome.lo: genome.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-genome.lo -MD -MP -MF "$(DEPDIR)/gdiag-genome.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-genome.lo `test -f 'genome.c' || echo '$(srcdir)/'`genome.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-genome.Tpo" "$(DEPDIR)/gdiag-genome.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-genome.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='gdiag-genome.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-genome.Plo' tmpdepfile='$(DEPDIR)/gdiag-genome.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-genome.lo `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
+
+gdiag-stopwatch.o: stopwatch.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-stopwatch.o -MD -MP -MF "$(DEPDIR)/gdiag-stopwatch.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-stopwatch.o `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-stopwatch.Tpo" "$(DEPDIR)/gdiag-stopwatch.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-stopwatch.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='gdiag-stopwatch.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-stopwatch.Po' tmpdepfile='$(DEPDIR)/gdiag-stopwatch.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-stopwatch.o `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c
+
+gdiag-stopwatch.obj: stopwatch.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-stopwatch.obj -MD -MP -MF "$(DEPDIR)/gdiag-stopwatch.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-stopwatch.obj `if test -f 'stopwatch.c'; then $(CYGPATH_W) 'stopwatch.c'; else $(CYGPATH_W) '$(srcdir)/stopwatch.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-stopwatch.Tpo" "$(DEPDIR)/gdiag-stopwatch.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-stopwatch.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='gdiag-stopwatch.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-stopwatch.Po' tmpdepfile='$(DEPDIR)/gdiag-stopwatch.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-stopwatch.obj `if test -f 'stopwatch.c'; then $(CYGPATH_W) 'stopwatch.c'; else $(CYGPATH_W) '$(srcdir)/stopwatch.c'; fi`
+
+gdiag-stopwatch.lo: stopwatch.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-stopwatch.lo -MD -MP -MF "$(DEPDIR)/gdiag-stopwatch.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-stopwatch.lo `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-stopwatch.Tpo" "$(DEPDIR)/gdiag-stopwatch.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-stopwatch.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='gdiag-stopwatch.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-stopwatch.Plo' tmpdepfile='$(DEPDIR)/gdiag-stopwatch.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-stopwatch.lo `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c
+
+gdiag-access.o: access.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-access.o -MD -MP -MF "$(DEPDIR)/gdiag-access.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-access.o `test -f 'access.c' || echo '$(srcdir)/'`access.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-access.Tpo" "$(DEPDIR)/gdiag-access.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-access.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='gdiag-access.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-access.Po' tmpdepfile='$(DEPDIR)/gdiag-access.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-access.o `test -f 'access.c' || echo '$(srcdir)/'`access.c
+
+gdiag-access.obj: access.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-access.obj -MD -MP -MF "$(DEPDIR)/gdiag-access.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-access.obj `if test -f 'access.c'; then $(CYGPATH_W) 'access.c'; else $(CYGPATH_W) '$(srcdir)/access.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-access.Tpo" "$(DEPDIR)/gdiag-access.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-access.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='gdiag-access.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-access.Po' tmpdepfile='$(DEPDIR)/gdiag-access.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-access.obj `if test -f 'access.c'; then $(CYGPATH_W) 'access.c'; else $(CYGPATH_W) '$(srcdir)/access.c'; fi`
+
+gdiag-access.lo: access.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-access.lo -MD -MP -MF "$(DEPDIR)/gdiag-access.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-access.lo `test -f 'access.c' || echo '$(srcdir)/'`access.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-access.Tpo" "$(DEPDIR)/gdiag-access.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-access.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='gdiag-access.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-access.Plo' tmpdepfile='$(DEPDIR)/gdiag-access.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-access.lo `test -f 'access.c' || echo '$(srcdir)/'`access.c
+
+gdiag-iit-read.o: iit-read.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-iit-read.o -MD -MP -MF "$(DEPDIR)/gdiag-iit-read.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-iit-read.Tpo" "$(DEPDIR)/gdiag-iit-read.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-iit-read.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='gdiag-iit-read.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-iit-read.Po' tmpdepfile='$(DEPDIR)/gdiag-iit-read.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
+
+gdiag-iit-read.obj: iit-read.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-iit-read.obj -MD -MP -MF "$(DEPDIR)/gdiag-iit-read.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-iit-read.Tpo" "$(DEPDIR)/gdiag-iit-read.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-iit-read.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='gdiag-iit-read.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-iit-read.Po' tmpdepfile='$(DEPDIR)/gdiag-iit-read.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`
+
+gdiag-iit-read.lo: iit-read.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-iit-read.lo -MD -MP -MF "$(DEPDIR)/gdiag-iit-read.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-iit-read.lo `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-iit-read.Tpo" "$(DEPDIR)/gdiag-iit-read.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-iit-read.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='gdiag-iit-read.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-iit-read.Plo' tmpdepfile='$(DEPDIR)/gdiag-iit-read.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-iit-read.lo `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
+
+gdiag-iit-write.o: iit-write.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-iit-write.o -MD -MP -MF "$(DEPDIR)/gdiag-iit-write.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-iit-write.o `test -f 'iit-write.c' || echo '$(srcdir)/'`iit-write.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-iit-write.Tpo" "$(DEPDIR)/gdiag-iit-write.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-iit-write.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-write.c' object='gdiag-iit-write.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-iit-write.Po' tmpdepfile='$(DEPDIR)/gdiag-iit-write.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-iit-write.o `test -f 'iit-write.c' || echo '$(srcdir)/'`iit-write.c
+
+gdiag-iit-write.obj: iit-write.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-iit-write.obj -MD -MP -MF "$(DEPDIR)/gdiag-iit-write.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-iit-write.obj `if test -f 'iit-write.c'; then $(CYGPATH_W) 'iit-write.c'; else $(CYGPATH_W) '$(srcdir)/iit-write.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-iit-write.Tpo" "$(DEPDIR)/gdiag-iit-write.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-iit-write.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-write.c' object='gdiag-iit-write.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-iit-write.Po' tmpdepfile='$(DEPDIR)/gdiag-iit-write.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-iit-write.obj `if test -f 'iit-write.c'; then $(CYGPATH_W) 'iit-write.c'; else $(CYGPATH_W) '$(srcdir)/iit-write.c'; fi`
+
+gdiag-iit-write.lo: iit-write.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-iit-write.lo -MD -MP -MF "$(DEPDIR)/gdiag-iit-write.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-iit-write.lo `test -f 'iit-write.c' || echo '$(srcdir)/'`iit-write.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-iit-write.Tpo" "$(DEPDIR)/gdiag-iit-write.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-iit-write.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-write.c' object='gdiag-iit-write.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-iit-write.Plo' tmpdepfile='$(DEPDIR)/gdiag-iit-write.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-iit-write.lo `test -f 'iit-write.c' || echo '$(srcdir)/'`iit-write.c
+
+gdiag-chrnum.o: chrnum.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrnum.o -MD -MP -MF "$(DEPDIR)/gdiag-chrnum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrnum.o `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrnum.Tpo" "$(DEPDIR)/gdiag-chrnum.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrnum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='gdiag-chrnum.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrnum.Po' tmpdepfile='$(DEPDIR)/gdiag-chrnum.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrnum.o `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
+
+gdiag-chrnum.obj: chrnum.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrnum.obj -MD -MP -MF "$(DEPDIR)/gdiag-chrnum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrnum.Tpo" "$(DEPDIR)/gdiag-chrnum.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrnum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='gdiag-chrnum.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrnum.Po' tmpdepfile='$(DEPDIR)/gdiag-chrnum.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`
+
+gdiag-chrnum.lo: chrnum.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrnum.lo -MD -MP -MF "$(DEPDIR)/gdiag-chrnum.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrnum.lo `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrnum.Tpo" "$(DEPDIR)/gdiag-chrnum.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrnum.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='gdiag-chrnum.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrnum.Plo' tmpdepfile='$(DEPDIR)/gdiag-chrnum.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrnum.lo `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
+
+gdiag-chrsubset.o: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrsubset.o -MD -MP -MF "$(DEPDIR)/gdiag-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrsubset.Tpo" "$(DEPDIR)/gdiag-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gdiag-chrsubset.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrsubset.Po' tmpdepfile='$(DEPDIR)/gdiag-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrsubset.o `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+gdiag-chrsubset.obj: chrsubset.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrsubset.obj -MD -MP -MF "$(DEPDIR)/gdiag-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrsubset.Tpo" "$(DEPDIR)/gdiag-chrsubset.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gdiag-chrsubset.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrsubset.Po' tmpdepfile='$(DEPDIR)/gdiag-chrsubset.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrsubset.obj `if test -f 'chrsubset.c'; then $(CYGPATH_W) 'chrsubset.c'; else $(CYGPATH_W) '$(srcdir)/chrsubset.c'; fi`
+
+gdiag-chrsubset.lo: chrsubset.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-chrsubset.lo -MD -MP -MF "$(DEPDIR)/gdiag-chrsubset.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-chrsubset.Tpo" "$(DEPDIR)/gdiag-chrsubset.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-chrsubset.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrsubset.c' object='gdiag-chrsubset.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-chrsubset.Plo' tmpdepfile='$(DEPDIR)/gdiag-chrsubset.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-chrsubset.lo `test -f 'chrsubset.c' || echo '$(srcdir)/'`chrsubset.c
+
+gdiag-genomicpos.o: genomicpos.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-genomicpos.o -MD -MP -MF "$(DEPDIR)/gdiag-genomicpos.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-genomicpos.o `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-genomicpos.Tpo" "$(DEPDIR)/gdiag-genomicpos.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-genomicpos.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='gdiag-genomicpos.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-genomicpos.Po' tmpdepfile='$(DEPDIR)/gdiag-genomicpos.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-genomicpos.o `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c
+
+gdiag-genomicpos.obj: genomicpos.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-genomicpos.obj -MD -MP -MF "$(DEPDIR)/gdiag-genomicpos.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-genomicpos.obj `if test -f 'genomicpos.c'; then $(CYGPATH_W) 'genomicpos.c'; else $(CYGPATH_W) '$(srcdir)/genomicpos.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-genomicpos.Tpo" "$(DEPDIR)/gdiag-genomicpos.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-genomicpos.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='gdiag-genomicpos.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-genomicpos.Po' tmpdepfile='$(DEPDIR)/gdiag-genomicpos.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-genomicpos.obj `if test -f 'genomicpos.c'; then $(CYGPATH_W) 'genomicpos.c'; else $(CYGPATH_W) '$(srcdir)/genomicpos.c'; fi`
+
+gdiag-genomicpos.lo: genomicpos.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-genomicpos.lo -MD -MP -MF "$(DEPDIR)/gdiag-genomicpos.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-genomicpos.lo `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-genomicpos.Tpo" "$(DEPDIR)/gdiag-genomicpos.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-genomicpos.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='gdiag-genomicpos.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-genomicpos.Plo' tmpdepfile='$(DEPDIR)/gdiag-genomicpos.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-genomicpos.lo `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c
+
+gdiag-indexdb.o: indexdb.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-indexdb.o -MD -MP -MF "$(DEPDIR)/gdiag-indexdb.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-indexdb.o `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-indexdb.Tpo" "$(DEPDIR)/gdiag-indexdb.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-indexdb.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='gdiag-indexdb.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-indexdb.Po' tmpdepfile='$(DEPDIR)/gdiag-indexdb.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-indexdb.o `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c
+
+gdiag-indexdb.obj: indexdb.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-indexdb.obj -MD -MP -MF "$(DEPDIR)/gdiag-indexdb.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-indexdb.obj `if test -f 'indexdb.c'; then $(CYGPATH_W) 'indexdb.c'; else $(CYGPATH_W) '$(srcdir)/indexdb.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-indexdb.Tpo" "$(DEPDIR)/gdiag-indexdb.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-indexdb.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='gdiag-indexdb.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-indexdb.Po' tmpdepfile='$(DEPDIR)/gdiag-indexdb.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-indexdb.obj `if test -f 'indexdb.c'; then $(CYGPATH_W) 'indexdb.c'; else $(CYGPATH_W) '$(srcdir)/indexdb.c'; fi`
+
+gdiag-indexdb.lo: indexdb.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-indexdb.lo -MD -MP -MF "$(DEPDIR)/gdiag-indexdb.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-indexdb.lo `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-indexdb.Tpo" "$(DEPDIR)/gdiag-indexdb.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-indexdb.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='gdiag-indexdb.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-indexdb.Plo' tmpdepfile='$(DEPDIR)/gdiag-indexdb.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-indexdb.lo `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c
+
+gdiag-datadir.o: datadir.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-datadir.o -MD -MP -MF "$(DEPDIR)/gdiag-datadir.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-datadir.Tpo" "$(DEPDIR)/gdiag-datadir.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-datadir.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='gdiag-datadir.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-datadir.Po' tmpdepfile='$(DEPDIR)/gdiag-datadir.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+gdiag-datadir.obj: datadir.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-datadir.obj -MD -MP -MF "$(DEPDIR)/gdiag-datadir.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-datadir.Tpo" "$(DEPDIR)/gdiag-datadir.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-datadir.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='gdiag-datadir.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-datadir.Po' tmpdepfile='$(DEPDIR)/gdiag-datadir.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
+
+gdiag-datadir.lo: datadir.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-datadir.lo -MD -MP -MF "$(DEPDIR)/gdiag-datadir.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-datadir.lo `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-datadir.Tpo" "$(DEPDIR)/gdiag-datadir.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-datadir.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='gdiag-datadir.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-datadir.Plo' tmpdepfile='$(DEPDIR)/gdiag-datadir.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-datadir.lo `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+gdiag-getopt.o: getopt.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-getopt.o -MD -MP -MF "$(DEPDIR)/gdiag-getopt.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-getopt.Tpo" "$(DEPDIR)/gdiag-getopt.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-getopt.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='gdiag-getopt.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-getopt.Po' tmpdepfile='$(DEPDIR)/gdiag-getopt.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
+
+gdiag-getopt.obj: getopt.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-getopt.obj -MD -MP -MF "$(DEPDIR)/gdiag-getopt.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-getopt.Tpo" "$(DEPDIR)/gdiag-getopt.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-getopt.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='gdiag-getopt.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-getopt.Po' tmpdepfile='$(DEPDIR)/gdiag-getopt.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`
+
+gdiag-getopt.lo: getopt.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-getopt.lo -MD -MP -MF "$(DEPDIR)/gdiag-getopt.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-getopt.lo `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-getopt.Tpo" "$(DEPDIR)/gdiag-getopt.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-getopt.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='gdiag-getopt.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-getopt.Plo' tmpdepfile='$(DEPDIR)/gdiag-getopt.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-getopt.lo `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
+
+gdiag-getopt1.o: getopt1.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-getopt1.o -MD -MP -MF "$(DEPDIR)/gdiag-getopt1.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-getopt1.Tpo" "$(DEPDIR)/gdiag-getopt1.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-getopt1.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='gdiag-getopt1.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-getopt1.Po' tmpdepfile='$(DEPDIR)/gdiag-getopt1.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
+
+gdiag-getopt1.obj: getopt1.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-getopt1.obj -MD -MP -MF "$(DEPDIR)/gdiag-getopt1.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-getopt1.Tpo" "$(DEPDIR)/gdiag-getopt1.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-getopt1.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='gdiag-getopt1.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-getopt1.Po' tmpdepfile='$(DEPDIR)/gdiag-getopt1.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`
+
+gdiag-getopt1.lo: getopt1.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-getopt1.lo -MD -MP -MF "$(DEPDIR)/gdiag-getopt1.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-getopt1.lo `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-getopt1.Tpo" "$(DEPDIR)/gdiag-getopt1.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-getopt1.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='gdiag-getopt1.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-getopt1.Plo' tmpdepfile='$(DEPDIR)/gdiag-getopt1.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-getopt1.lo `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
+
+gdiag-gdiag.o: gdiag.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-gdiag.o -MD -MP -MF "$(DEPDIR)/gdiag-gdiag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-gdiag.o `test -f 'gdiag.c' || echo '$(srcdir)/'`gdiag.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-gdiag.Tpo" "$(DEPDIR)/gdiag-gdiag.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-gdiag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gdiag.c' object='gdiag-gdiag.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-gdiag.Po' tmpdepfile='$(DEPDIR)/gdiag-gdiag.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-gdiag.o `test -f 'gdiag.c' || echo '$(srcdir)/'`gdiag.c
+
+gdiag-gdiag.obj: gdiag.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-gdiag.obj -MD -MP -MF "$(DEPDIR)/gdiag-gdiag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-gdiag.obj `if test -f 'gdiag.c'; then $(CYGPATH_W) 'gdiag.c'; else $(CYGPATH_W) '$(srcdir)/gdiag.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-gdiag.Tpo" "$(DEPDIR)/gdiag-gdiag.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-gdiag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gdiag.c' object='gdiag-gdiag.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-gdiag.Po' tmpdepfile='$(DEPDIR)/gdiag-gdiag.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-gdiag.obj `if test -f 'gdiag.c'; then $(CYGPATH_W) 'gdiag.c'; else $(CYGPATH_W) '$(srcdir)/gdiag.c'; fi`
+
+gdiag-gdiag.lo: gdiag.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -MT gdiag-gdiag.lo -MD -MP -MF "$(DEPDIR)/gdiag-gdiag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gdiag-gdiag.lo `test -f 'gdiag.c' || echo '$(srcdir)/'`gdiag.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gdiag-gdiag.Tpo" "$(DEPDIR)/gdiag-gdiag.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gdiag-gdiag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gdiag.c' object='gdiag-gdiag.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gdiag-gdiag.Plo' tmpdepfile='$(DEPDIR)/gdiag-gdiag.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gdiag_CFLAGS) $(CFLAGS) -c -o gdiag-gdiag.lo `test -f 'gdiag.c' || echo '$(srcdir)/'`gdiag.c
 
 genomeplot-except.o: except.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-except.o -MD -MP -MF "$(DEPDIR)/genomeplot-except.Tpo" \
@@ -1367,6 +2311,39 @@ genomeplot-mem.lo: mem.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-mem.Plo' tmpdepfile='$(DEPDIR)/genomeplot-mem.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-mem.lo `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+
+genomeplot-intlist.o: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.o -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+genomeplot-intlist.obj: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.obj -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
+
+genomeplot-intlist.lo: intlist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.lo -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Plo' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
 
 genomeplot-list.o: list.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-list.o -MD -MP -MF "$(DEPDIR)/genomeplot-list.Tpo" \
@@ -1796,39 +2773,6 @@ genomeplot-plotgenes.lo: plotgenes.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-plotgenes.Plo' tmpdepfile='$(DEPDIR)/genomeplot-plotgenes.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-plotgenes.lo `test -f 'plotgenes.c' || echo '$(srcdir)/'`plotgenes.c
-
-genomeplot-intlist.o: intlist.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.o -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
-
-genomeplot-intlist.obj: intlist.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.obj -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Po' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
-
-genomeplot-intlist.lo: intlist.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-intlist.lo -MD -MP -MF "$(DEPDIR)/genomeplot-intlist.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o genomeplot-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/genomeplot-intlist.Tpo" "$(DEPDIR)/genomeplot-intlist.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/genomeplot-intlist.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='genomeplot-intlist.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/genomeplot-intlist.Plo' tmpdepfile='$(DEPDIR)/genomeplot-intlist.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -c -o genomeplot-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
 
 genomeplot-nr-x.o: nr-x.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(genomeplot_CFLAGS) $(CFLAGS) -MT genomeplot-nr-x.o -MD -MP -MF "$(DEPDIR)/genomeplot-nr-x.Tpo" \
@@ -3776,6 +4720,105 @@ gmap-stage1.lo: stage1.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-stage1.Plo' tmpdepfile='$(DEPDIR)/gmap-stage1.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-stage1.lo `test -f 'stage1.c' || echo '$(srcdir)/'`stage1.c
+
+gmap-intpool.o: intpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-intpool.o -MD -MP -MF "$(DEPDIR)/gmap-intpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-intpool.o `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-intpool.Tpo" "$(DEPDIR)/gmap-intpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-intpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='gmap-intpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-intpool.Po' tmpdepfile='$(DEPDIR)/gmap-intpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-intpool.o `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c
+
+gmap-intpool.obj: intpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-intpool.obj -MD -MP -MF "$(DEPDIR)/gmap-intpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-intpool.obj `if test -f 'intpool.c'; then $(CYGPATH_W) 'intpool.c'; else $(CYGPATH_W) '$(srcdir)/intpool.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-intpool.Tpo" "$(DEPDIR)/gmap-intpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-intpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='gmap-intpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-intpool.Po' tmpdepfile='$(DEPDIR)/gmap-intpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-intpool.obj `if test -f 'intpool.c'; then $(CYGPATH_W) 'intpool.c'; else $(CYGPATH_W) '$(srcdir)/intpool.c'; fi`
+
+gmap-intpool.lo: intpool.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-intpool.lo -MD -MP -MF "$(DEPDIR)/gmap-intpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-intpool.lo `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-intpool.Tpo" "$(DEPDIR)/gmap-intpool.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-intpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='gmap-intpool.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-intpool.Plo' tmpdepfile='$(DEPDIR)/gmap-intpool.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-intpool.lo `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c
+
+gmap-diag.o: diag.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diag.o -MD -MP -MF "$(DEPDIR)/gmap-diag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-diag.Tpo" "$(DEPDIR)/gmap-diag.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-diag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='gmap-diag.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-diag.Po' tmpdepfile='$(DEPDIR)/gmap-diag.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
+
+gmap-diag.obj: diag.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diag.obj -MD -MP -MF "$(DEPDIR)/gmap-diag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-diag.obj `if test -f 'diag.c'; then $(CYGPATH_W) 'diag.c'; else $(CYGPATH_W) '$(srcdir)/diag.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-diag.Tpo" "$(DEPDIR)/gmap-diag.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-diag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='gmap-diag.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-diag.Po' tmpdepfile='$(DEPDIR)/gmap-diag.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diag.obj `if test -f 'diag.c'; then $(CYGPATH_W) 'diag.c'; else $(CYGPATH_W) '$(srcdir)/diag.c'; fi`
+
+gmap-diag.lo: diag.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diag.lo -MD -MP -MF "$(DEPDIR)/gmap-diag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-diag.lo `test -f 'diag.c' || echo '$(srcdir)/'`diag.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-diag.Tpo" "$(DEPDIR)/gmap-diag.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-diag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='gmap-diag.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-diag.Plo' tmpdepfile='$(DEPDIR)/gmap-diag.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diag.lo `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
+
+gmap-diagpool.o: diagpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diagpool.o -MD -MP -MF "$(DEPDIR)/gmap-diagpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-diagpool.o `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-diagpool.Tpo" "$(DEPDIR)/gmap-diagpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-diagpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='gmap-diagpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-diagpool.Po' tmpdepfile='$(DEPDIR)/gmap-diagpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diagpool.o `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c
+
+gmap-diagpool.obj: diagpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diagpool.obj -MD -MP -MF "$(DEPDIR)/gmap-diagpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-diagpool.Tpo" "$(DEPDIR)/gmap-diagpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-diagpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='gmap-diagpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-diagpool.Po' tmpdepfile='$(DEPDIR)/gmap-diagpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`
+
+gmap-diagpool.lo: diagpool.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-diagpool.lo -MD -MP -MF "$(DEPDIR)/gmap-diagpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o gmap-diagpool.lo `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/gmap-diagpool.Tpo" "$(DEPDIR)/gmap-diagpool.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/gmap-diagpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='gmap-diagpool.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/gmap-diagpool.Plo' tmpdepfile='$(DEPDIR)/gmap-diagpool.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diagpool.lo `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c
 
 gmap-oligoindex.o: oligoindex.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-oligoindex.o -MD -MP -MF "$(DEPDIR)/gmap-oligoindex.Tpo" \
@@ -8133,6 +9176,39 @@ pmap-uintlist.lo: uintlist.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-uintlist.lo `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
 
+pmap-intlist.o: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intlist.o -MD -MP -MF "$(DEPDIR)/pmap-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intlist.Tpo" "$(DEPDIR)/pmap-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='pmap-intlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intlist.Po' tmpdepfile='$(DEPDIR)/pmap-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+pmap-intlist.obj: intlist.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intlist.obj -MD -MP -MF "$(DEPDIR)/pmap-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intlist.Tpo" "$(DEPDIR)/pmap-intlist.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='pmap-intlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intlist.Po' tmpdepfile='$(DEPDIR)/pmap-intlist.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
+
+pmap-intlist.lo: intlist.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intlist.lo -MD -MP -MF "$(DEPDIR)/pmap-intlist.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intlist.Tpo" "$(DEPDIR)/pmap-intlist.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intlist.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='pmap-intlist.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intlist.Plo' tmpdepfile='$(DEPDIR)/pmap-intlist.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
 pmap-list.o: list.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-list.o -MD -MP -MF "$(DEPDIR)/pmap-list.Tpo" \
 @am__fastdepCC_TRUE@	  -c -o pmap-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c; \
@@ -8429,39 +9505,6 @@ pmap-indexdb.lo: indexdb.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-indexdb.Plo' tmpdepfile='$(DEPDIR)/pmap-indexdb.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-indexdb.lo `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c
-
-pmap-intlist.o: intlist.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intlist.o -MD -MP -MF "$(DEPDIR)/pmap-intlist.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intlist.Tpo" "$(DEPDIR)/pmap-intlist.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intlist.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='pmap-intlist.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intlist.Po' tmpdepfile='$(DEPDIR)/pmap-intlist.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
-
-pmap-intlist.obj: intlist.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intlist.obj -MD -MP -MF "$(DEPDIR)/pmap-intlist.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intlist.Tpo" "$(DEPDIR)/pmap-intlist.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intlist.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='pmap-intlist.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intlist.Po' tmpdepfile='$(DEPDIR)/pmap-intlist.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
-
-pmap-intlist.lo: intlist.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intlist.lo -MD -MP -MF "$(DEPDIR)/pmap-intlist.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intlist.Tpo" "$(DEPDIR)/pmap-intlist.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intlist.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='pmap-intlist.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intlist.Plo' tmpdepfile='$(DEPDIR)/pmap-intlist.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intlist.lo `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
 
 pmap-md5.o: md5.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-md5.o -MD -MP -MF "$(DEPDIR)/pmap-md5.Tpo" \
@@ -8891,6 +9934,105 @@ pmap-stage1.lo: stage1.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-stage1.Plo' tmpdepfile='$(DEPDIR)/pmap-stage1.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-stage1.lo `test -f 'stage1.c' || echo '$(srcdir)/'`stage1.c
+
+pmap-intpool.o: intpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intpool.o -MD -MP -MF "$(DEPDIR)/pmap-intpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-intpool.o `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intpool.Tpo" "$(DEPDIR)/pmap-intpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='pmap-intpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intpool.Po' tmpdepfile='$(DEPDIR)/pmap-intpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intpool.o `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c
+
+pmap-intpool.obj: intpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intpool.obj -MD -MP -MF "$(DEPDIR)/pmap-intpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-intpool.obj `if test -f 'intpool.c'; then $(CYGPATH_W) 'intpool.c'; else $(CYGPATH_W) '$(srcdir)/intpool.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intpool.Tpo" "$(DEPDIR)/pmap-intpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='pmap-intpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intpool.Po' tmpdepfile='$(DEPDIR)/pmap-intpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intpool.obj `if test -f 'intpool.c'; then $(CYGPATH_W) 'intpool.c'; else $(CYGPATH_W) '$(srcdir)/intpool.c'; fi`
+
+pmap-intpool.lo: intpool.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-intpool.lo -MD -MP -MF "$(DEPDIR)/pmap-intpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-intpool.lo `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-intpool.Tpo" "$(DEPDIR)/pmap-intpool.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-intpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intpool.c' object='pmap-intpool.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-intpool.Plo' tmpdepfile='$(DEPDIR)/pmap-intpool.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-intpool.lo `test -f 'intpool.c' || echo '$(srcdir)/'`intpool.c
+
+pmap-diag.o: diag.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-diag.o -MD -MP -MF "$(DEPDIR)/pmap-diag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-diag.Tpo" "$(DEPDIR)/pmap-diag.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-diag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='pmap-diag.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-diag.Po' tmpdepfile='$(DEPDIR)/pmap-diag.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
+
+pmap-diag.obj: diag.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-diag.obj -MD -MP -MF "$(DEPDIR)/pmap-diag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-diag.obj `if test -f 'diag.c'; then $(CYGPATH_W) 'diag.c'; else $(CYGPATH_W) '$(srcdir)/diag.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-diag.Tpo" "$(DEPDIR)/pmap-diag.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-diag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='pmap-diag.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-diag.Po' tmpdepfile='$(DEPDIR)/pmap-diag.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-diag.obj `if test -f 'diag.c'; then $(CYGPATH_W) 'diag.c'; else $(CYGPATH_W) '$(srcdir)/diag.c'; fi`
+
+pmap-diag.lo: diag.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-diag.lo -MD -MP -MF "$(DEPDIR)/pmap-diag.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-diag.lo `test -f 'diag.c' || echo '$(srcdir)/'`diag.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-diag.Tpo" "$(DEPDIR)/pmap-diag.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-diag.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='pmap-diag.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-diag.Plo' tmpdepfile='$(DEPDIR)/pmap-diag.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-diag.lo `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
+
+pmap-diagpool.o: diagpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-diagpool.o -MD -MP -MF "$(DEPDIR)/pmap-diagpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-diagpool.o `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-diagpool.Tpo" "$(DEPDIR)/pmap-diagpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-diagpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='pmap-diagpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-diagpool.Po' tmpdepfile='$(DEPDIR)/pmap-diagpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-diagpool.o `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c
+
+pmap-diagpool.obj: diagpool.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-diagpool.obj -MD -MP -MF "$(DEPDIR)/pmap-diagpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-diagpool.Tpo" "$(DEPDIR)/pmap-diagpool.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-diagpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='pmap-diagpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-diagpool.Po' tmpdepfile='$(DEPDIR)/pmap-diagpool.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`
+
+pmap-diagpool.lo: diagpool.c
+@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-diagpool.lo -MD -MP -MF "$(DEPDIR)/pmap-diagpool.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o pmap-diagpool.lo `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-diagpool.Tpo" "$(DEPDIR)/pmap-diagpool.Plo"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-diagpool.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='pmap-diagpool.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-diagpool.Plo' tmpdepfile='$(DEPDIR)/pmap-diagpool.TPlo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-diagpool.lo `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c
 
 pmap-oligoindex.o: oligoindex.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-oligoindex.o -MD -MP -MF "$(DEPDIR)/pmap-oligoindex.Tpo" \
@@ -9584,72 +10726,6 @@ pmap-gmap.lo: gmap.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-gmap.Plo' tmpdepfile='$(DEPDIR)/pmap-gmap.TPlo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-gmap.lo `test -f 'gmap.c' || echo '$(srcdir)/'`gmap.c
-
-pmap-maxent.o: maxent.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-maxent.o -MD -MP -MF "$(DEPDIR)/pmap-maxent.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-maxent.Tpo" "$(DEPDIR)/pmap-maxent.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-maxent.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='pmap-maxent.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-maxent.Po' tmpdepfile='$(DEPDIR)/pmap-maxent.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
-
-pmap-maxent.obj: maxent.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-maxent.obj -MD -MP -MF "$(DEPDIR)/pmap-maxent.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-maxent.Tpo" "$(DEPDIR)/pmap-maxent.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-maxent.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='pmap-maxent.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-maxent.Po' tmpdepfile='$(DEPDIR)/pmap-maxent.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
-
-pmap-maxent.lo: maxent.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-maxent.lo -MD -MP -MF "$(DEPDIR)/pmap-maxent.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-maxent.lo `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-maxent.Tpo" "$(DEPDIR)/pmap-maxent.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-maxent.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='pmap-maxent.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-maxent.Plo' tmpdepfile='$(DEPDIR)/pmap-maxent.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-maxent.lo `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
-
-pmap-chimera.o: chimera.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chimera.o -MD -MP -MF "$(DEPDIR)/pmap-chimera.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chimera.Tpo" "$(DEPDIR)/pmap-chimera.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chimera.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='pmap-chimera.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chimera.Po' tmpdepfile='$(DEPDIR)/pmap-chimera.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
-
-pmap-chimera.obj: chimera.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chimera.obj -MD -MP -MF "$(DEPDIR)/pmap-chimera.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chimera.Tpo" "$(DEPDIR)/pmap-chimera.Po"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chimera.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='pmap-chimera.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chimera.Po' tmpdepfile='$(DEPDIR)/pmap-chimera.TPo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
-
-pmap-chimera.lo: chimera.c
-@am__fastdepCC_TRUE@	if $(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -MT pmap-chimera.lo -MD -MP -MF "$(DEPDIR)/pmap-chimera.Tpo" \
-@am__fastdepCC_TRUE@	  -c -o pmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pmap-chimera.Tpo" "$(DEPDIR)/pmap-chimera.Plo"; \
-@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/pmap-chimera.Tpo"; exit 1; \
-@am__fastdepCC_TRUE@	fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='pmap-chimera.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pmap-chimera.Plo' tmpdepfile='$(DEPDIR)/pmap-chimera.TPlo' @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(LIBTOOL) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmap_CFLAGS) $(CFLAGS) -c -o pmap-chimera.lo `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
 
 pmapindex-except.o: except.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pmapindex_CFLAGS) $(CFLAGS) -MT pmapindex-except.o -MD -MP -MF "$(DEPDIR)/pmapindex-except.Tpo" \

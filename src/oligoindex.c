@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c,v 1.79 2006/11/28 00:50:28 twu Exp $";
+static char rcsid[] = "$Id: oligoindex.c,v 1.99 2007/04/23 15:33:14 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,19 +18,28 @@ static char rcsid[] = "$Id: oligoindex.c,v 1.79 2006/11/28 00:50:28 twu Exp $";
 #include "types.h"
 #include "genomicpos.h"
 #include "list.h"
+#include "diag.h"
+#include "intlistdef.h"
+
+
+
+#define DOMINANCE_END_EQUIV 20
+#define EXTRA_BOUNDS 120	/* Number of extra diaglines to make active */
+
+#define MAX_DIAGONALS 20
 
 #define THETADIFF1 20.0
 #define THETADIFF2 20.0
 #define REPOLIGOCOUNT 8
 
 /* MAXHITS needs to be in the 100-200 range to handle sequences, like NM_013244, in highly repetitive genomic segments */
-#define ALLOCSIZE 200
+#define ALLOCSIZE 400
 #define MAXHITS_GT_ALLOCSIZE 0
 
 #define CHANGEPOINT 1		/* Needed for bad sequences like BM926731 */
 
 #ifdef PMAP
-#define NAMINOACIDS_STAGE2 20
+#define NAMINOACIDS_STAGE2 18
 #define NT_PER_MATCH 3
 #else
 #define NT_PER_MATCH 1
@@ -49,11 +58,18 @@ static char rcsid[] = "$Id: oligoindex.c,v 1.79 2006/11/28 00:50:28 twu Exp $";
 #define debug1(x)
 #endif
 
-/* Map fraction */
+/* Segments.  May want to turn on DEBUG2 in stage2.c. */
 #ifdef DEBUG2
 #define debug2(x) x
 #else
 #define debug2(x)
+#endif
+
+/* Diagonals */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
 #endif
 
 
@@ -78,6 +94,7 @@ struct T {
   Shortoligomer_T mask;
 #endif
 
+  bool query_evaluated_p;
   int oligospace;
   bool *overabundant;
   bool *inquery;
@@ -121,6 +138,42 @@ static int aa_index_table[128] =
 
   /* u,  v,  w,  x,  y,  z  */
     -1, 17, 18, -1, 19, -1,
+
+    -1, -1, -1, -1, -1};
+
+#elif NAMINOACIDS_STAGE2 == 18
+
+static int aa_index_table[128] =
+  { -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  /*     *                                  */
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1,
+
+  /* A,  B,  C,  D,  E,  F,  G,  H,  I,  J, */
+     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
+
+  /* K,  L,  M,  N,  O,  P,  Q,  R,  S,  T  */
+     8,  7,  9, 10, -1, 11, 12, 13, 14, 15,
+
+  /* U,  V,  W,  X,  Y,  Z  */
+    -1,  7, 16, -1, 17, -1,
+
+    -1, -1, -1, -1, -1, -1,
+
+  /* a,  b,  c,  d,  e,  f,  g,  h,  i,  j, */
+     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
+
+  /* k,  l,  m,  n,  o,  p,  q,  r,  s,  t  */
+     8,  7,  9, 10, -1, 11, 12, 13, 14, 15,
+
+  /* u,  v,  w,  x,  y,  z  */
+    -1,  7, 16, -1, 17, -1,
 
     -1, -1, -1, -1, -1};
 
@@ -191,6 +244,7 @@ Oligoindex_new (int indexsize) {
   new->oligospace = power(4,indexsize);
 #endif
 
+  new->query_evaluated_p = false;
   new->overabundant = (bool *) CALLOC(new->oligospace,sizeof(bool));
   new->inquery = (bool *) CALLOC(new->oligospace,sizeof(bool));
   new->counts = (int *) CALLOC(new->oligospace,sizeof(int));
@@ -241,6 +295,8 @@ shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
 #ifdef PMAP
 #if NAMINOACIDS_STAGE2 == 20
 static char aa_table[NAMINOACIDS_STAGE2] = "ACDEFGHIKLMNPQRSTVWY";
+#elif NAMINOACIDS_STAGE2 == 18
+static char aa_table[NAMINOACIDS_STAGE2] = "ACDEFGHIKMNPQRSTWY";
 #elif NAMINOACIDS_STAGE2 == 16
 static char aa_table[NAMINOACIDS_STAGE2] = "ACDEFGHIKNPQSTWY";
 #endif
@@ -355,6 +411,9 @@ trim_start_detect (int start, int end, int *sumx, int *sumxx) {
   sumx_right = sumx[end] - sumx[start];
   sumxx_right = sumxx[end] - sumxx[start];
 
+  if (end <= start) {
+    return -1;
+  }
   theta = (double) sumx_right/(double) (end - start);
   sumx_pseudo = NPSEUDO * theta;
   min_rss_sep = rss = sumxx_right - sumx_right*theta;
@@ -424,6 +483,9 @@ trim_end_detect (int start, int end, int *sumx, int *sumxx) {
   sumx_right = sumx[end] - sumx[start];
   sumxx_right = sumxx[end] - sumxx[start];
 
+  if (end <= start) {
+    return -1;
+  }
   theta = (double) sumx_right/(double) (end - start);
   sumx_pseudo = NPSEUDO * theta;
   min_rss_sep = rss = sumxx_right - sumx_right*theta;
@@ -508,6 +570,7 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
 
   memset((void *) this->inquery,false,this->oligospace*sizeof(bool));
   memset((void *) this->counts,0,this->oligospace*sizeof(int));
+  this->query_evaluated_p = true;
 
   querylength = Sequence_fulllength(queryuc);
   if (querylength <= indexsize) {
@@ -609,14 +672,14 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
 
 
   *trim_start = 0;
-  *trim_end = querylength-indexsize;
+  *trim_end = querylength-1;
   if ((side = edge_detect(&edge,sumx,sumxx,querylength-indexsize)) == -1) {
-    *trim_start = edge;
+    *trim_start = edge+1;
     if ((edge = trim_end_detect(*trim_start,querylength-indexsize,sumx,sumxx)) >= 0) {
-      *trim_end = edge;
+      *trim_end = edge+1;
     }
   } else if (side == +1) {
-    *trim_end = edge;
+    *trim_end = edge+1;
     if ((edge = trim_start_detect(0,*trim_end,sumx,sumxx)) >= 0) {
       *trim_start = edge;
     }
@@ -624,8 +687,6 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
 
   FREE(sumxx);
   FREE(sumx);
-
-  *trim_end += indexsize;
 
   debug1(printf("trim_start = %d, trim_end = %d\n",*trim_start,*trim_end));
 #endif
@@ -759,6 +820,11 @@ typedef enum {AA_A, AA_C, AA_D, AA_E, AA_F,
 	      AA_G, AA_H, AA_I, AA_K, AA_L,
 	      AA_M, AA_N, AA_P, AA_Q, AA_R,
 	      AA_S, AA_T, AA_V, AA_W, AA_Y} Aminoacid_T;
+#elif NAMINOACIDS_STAGE2 == 18
+typedef enum {AA_A, AA_C, AA_D, AA_E, AA_F, 
+	      AA_G, AA_H, AA_ILV, AA_K,
+	      AA_M, AA_N, AA_P, AA_Q, AA_R,
+	      AA_S, AA_T, AA_W, AA_Y} Aminoacid_T;
 #elif NAMINOACIDS_STAGE2 == 16
 typedef enum {AA_A, AA_C, AA_D, AA_E, AA_F, 
 	      AA_G, AA_H, AA_ILMV, AA_KR,
@@ -779,6 +845,8 @@ get_last_codon (Shortoligomer_T oligo) {
       default: /* case A3: case G3: */ 
 #if NAMINOACIDS_STAGE2 == 20
 	return AA_L;
+#elif NAMINOACIDS_STAGE2 == 18
+	return AA_ILV;
 #elif NAMINOACIDS_STAGE2 == 16
 	return AA_ILMV;
 #endif
@@ -791,6 +859,13 @@ get_last_codon (Shortoligomer_T oligo) {
       }
     case C1: return AA_L;
     default: /* case G1: */ return AA_V;
+#elif NAMINOACIDS_STAGE2 == 18
+    case A1: 
+      switch (oligo & CHAR3) {
+      case G3: return AA_M;
+      default: /* case T3: case A3: case C3: */ return AA_ILV;
+      }
+    default: /* case C1: case G1: */ return AA_ILV;
 #elif NAMINOACIDS_STAGE2 == 16
     default: /* case A1: case C1: case G1: */ return AA_ILMV;
 #endif
@@ -821,6 +896,8 @@ get_last_codon (Shortoligomer_T oligo) {
       default: /* case A3: case G3: */
 #if NAMINOACIDS_STAGE2 == 20
 	return AA_K;
+#elif NAMINOACIDS_STAGE2 == 18
+	return AA_K;
 #elif NAMINOACIDS_STAGE2 == 16
 	return AA_KR;
 #endif
@@ -842,6 +919,8 @@ get_last_codon (Shortoligomer_T oligo) {
     case C1:
 #if NAMINOACIDS_STAGE2 == 20
       return AA_R;
+#elif NAMINOACIDS_STAGE2 == 18
+      return AA_R;
 #elif NAMINOACIDS_STAGE2 == 16
       return AA_KR;
 #endif
@@ -850,6 +929,8 @@ get_last_codon (Shortoligomer_T oligo) {
       case T3: case C3: return AA_S;
       default: /* case A3: case G3: */
 #if NAMINOACIDS_STAGE2 == 20
+	return AA_R;
+#elif NAMINOACIDS_STAGE2 == 18
 	return AA_R;
 #elif NAMINOACIDS_STAGE2 == 16
 	return AA_KR;
@@ -1182,7 +1263,12 @@ clear_positions (Genomicpos_T **positions, int *counts,
 
 /* Returns nqueryoligos */
 void
-Oligoindex_tally (T this, Sequence_T genomicuc, int maxoligohits) {
+Oligoindex_tally (T this, Sequence_T genomicuc, Sequence_T queryuc, int maxoligohits) {
+  int badoligos, repoligos, trimoligos, trim_start, trim_end;
+
+  if (this->query_evaluated_p == false) {
+    Oligoindex_set_inquery(&badoligos,&repoligos,&trimoligos,&trim_start,&trim_end,this,queryuc,/*trimp*/false);
+  }
 
   memset((void *) this->counts,0,this->oligospace*sizeof(int));
   memset((void *) this->overabundant,0,this->oligospace*sizeof(bool));
@@ -1220,6 +1306,7 @@ Oligoindex_cleanup (T this, Sequence_T queryuc) {
 		  Sequence_trimpointer(queryuc),Sequence_trimlength(queryuc));
 #endif
 
+  this->query_evaluated_p = false;
   return;
 }
 
@@ -1276,22 +1363,359 @@ consecutivep (int prev_querypos, unsigned int *prev_mappings, int prev_nhits,
 }
 
 
+static int
+abs_compare (const void *x, const void *y) {
+  int absa, absb;
+  int a = * (int *) x;
+  int b = * (int *) y;
+
+  absa = (a >= 0) ? a : -a;
+  absb = (b >= 0) ? b : -b;
+
+  if (absa < absb) {
+    return -1;
+  } else if (absa > absb) {
+    return +1;
+  } else if (a >= 0 && b < 0) {
+    /* positives before negatives */
+    return -1;
+  } else if (a < 0 && b >= 0) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+/* Assume array sorted by querystart */
+static Diag_T *
+compute_dominance (int *nunique, Diag_T *array, int ndiagonals, int indexsize,
+		   bool debug_graphic_p) {
+  int superstart, superend, expected_nconsecutive, threshold;
+  int i, j, k;
+  Diag_T super, sub;
+
+  if (debug_graphic_p == true) {
+    for (i = 0; i < ndiagonals; i++) {
+      sub = array[i];
+#ifdef PMAP
+      printf("segments(%d,%d+%d,%d,%d+%d,col=\"black\")  # nconsecutive = %d\n",
+	     Diag_querystart(sub),Diag_diagonal(sub),3*Diag_querystart(sub),
+	     Diag_queryend(sub),Diag_diagonal(sub),3*Diag_queryend(sub),Diag_nconsecutive(sub));
+#else
+      printf("segments(%d,%d+%d,%d,%d+%d,col=\"black\")  # nconsecutive = %d\n",
+	     Diag_querystart(sub),Diag_diagonal(sub),Diag_querystart(sub),
+	     Diag_queryend(sub),Diag_diagonal(sub),Diag_queryend(sub),Diag_nconsecutive(sub));
+#endif
+    }
+  }
+
+  qsort(array,ndiagonals,sizeof(Diag_T),Diag_compare_nconsecutive);
+
+  *nunique = ndiagonals;
+  i = 0;
+  while (i < *nunique) {
+    super = array[i];
+    superstart = Diag_querystart(super);
+    superend = Diag_queryend(super);
+
+    expected_nconsecutive = superend + 1 - superstart;
+    if (Diag_nconsecutive(super) > expected_nconsecutive - 10) {
+      threshold = Diag_nconsecutive(super) - DOMINANCE_END_EQUIV;
+      for (j = i+1; j < *nunique; j++) {
+	sub = array[j];
+	if (Diag_querystart(sub) >= superstart && Diag_queryend(sub) <= superend && Diag_nconsecutive(sub) < threshold) {
+	  Diag_set_dominatedp(sub);
+	}
+      }
+
+      /* Shift array to contain non-dominated diagonals */
+      k = i+1;
+      for (j = i+1; j < *nunique; j++) {
+	sub = array[j];
+	if (Diag_dominatedp(sub) == false) {
+	  array[k++] = array[j];
+	}
+      }
+      *nunique = k;
+    }
+    i++;
+  }
+
+  return array;
+}
+  
+
+static int
+diagonal_coverage (int *clear_coverage, Diag_T *array, int nunique) {
+  int coverage = 0, regionstart, clear_regionstart, i, j = 0, status;
+  int *events, nevents;
+  Diag_T diag;
+  
+  *clear_coverage = 0;
+  nevents = nunique+nunique;
+
+  events = (int *) CALLOC(nevents,sizeof(int));
+  for (i = 0; i < nunique; i++) {
+    diag = array[i];
+    events[j++] = +Diag_querystart(diag);
+    events[j++] = -Diag_queryend(diag);
+  }
+  qsort(events,nevents,sizeof(int),abs_compare);
+
+  status = 0;
+  for (j = 0; j < nevents; j++) {
+    if (events[j] >= 0) {
+      status++;
+      if (status == 1) {
+	/* Start of region.  Now in state 1..MAX_DIAGONALS */
+	clear_regionstart = events[j];
+	regionstart = events[j];
+      } else if (status == MAX_DIAGONALS + 1) {
+	/* End of region.  Now in state MAX_DIAGONALS+1 .. Inf */
+	*clear_coverage += (events[j]) - clear_regionstart + 1;
+      }
+    } else {
+      status--;
+      if (status == MAX_DIAGONALS) {
+	/* Start of region.  Now in state 1..MAX_DIAGONALS */
+	clear_regionstart = -events[j];
+      } else if (status == 0) {
+	/* End of region.  Now in state 0 */
+	coverage += (-events[j]) - regionstart + 1;
+	*clear_coverage += (-events[j]) - clear_regionstart + 1;
+      }
+    }
+  }
+
+  FREE(events);
+  
+  return coverage;
+}
+
+
+static int
+compute_bounds (double *pct_coverage, double *pct_clear_coverage, 
+		unsigned int *minactive, unsigned int *maxactive, List_T diagonals,
+		int genomiclength, int querylength, int indexsize, bool debug_graphic_p) {
+  int nunique, ndiagonals, diagonal, i, j;
+  int querypos, position;
+  Diag_T *array, diag;
+  int coverage, clear_coverage;
+
+  /* Sort diagonals */
+  if ((ndiagonals = List_length(diagonals)) == 0) {
+    nunique = 0;
+    *pct_coverage = 0.0;
+    for (querypos = 0; querypos < querylength; querypos++) {
+      minactive[querypos] = 0U;
+      maxactive[querypos] = genomiclength;
+    }
+  } else {
+    if (debug_graphic_p == true) {
+      printf("plot(c(%d,%d),c(%d,%d),type=\"n\")\n",0,querylength,0,genomiclength);
+    }
+
+    array = (Diag_T *) List_to_array(diagonals,NULL);
+    array = compute_dominance(&nunique,array,ndiagonals,indexsize,debug_graphic_p);
+
+    coverage = diagonal_coverage(&clear_coverage,array,nunique);
+    *pct_coverage = (double) coverage/(double) querylength;
+    *pct_clear_coverage = (double) clear_coverage/(double) querylength;
+    debug2(fprintf(stderr,"coverage = %d/%d = %f\n",coverage,querylength,*pct_coverage));
+    debug2(fprintf(stderr,"clear coverage = %d/%d = %f\n",clear_coverage,querylength,*pct_clear_coverage));
+
+    qsort(array,nunique,sizeof(Diag_T),Diag_compare_diagonal);
+    if (debug_graphic_p == true) {
+      for (i = 0; i < nunique; i++) {
+	diag = array[i];
+#ifdef PMAP
+	printf("segments(%d,%d+%d,%d,%d+%d,col=\"red\")  # nconsecutive = %d\n",
+	       Diag_querystart(diag),Diag_diagonal(diag),3*Diag_querystart(diag),
+	       Diag_queryend(diag),Diag_diagonal(diag),3*Diag_queryend(diag),Diag_nconsecutive(diag));
+#else
+	printf("segments(%d,%d+%d,%d,%d+%d,col=\"red\")  # nconsecutive = %d\n",
+	       Diag_querystart(diag),Diag_diagonal(diag),Diag_querystart(diag),
+	       Diag_queryend(diag),Diag_diagonal(diag),Diag_queryend(diag),Diag_nconsecutive(diag));
+#endif
+      }
+    }
+
+    /* Set minactive */
+    for (querypos = 0; querypos < Diag_querystart(array[0]); querypos++) {
+      minactive[querypos] = 0U;
+    }
+
+    diagonal = Diag_diagonal(array[0]);
+    for ( ; querypos < Diag_queryend(array[0]); querypos++) {
+#ifdef PMAP
+      if ((position = diagonal + 3*querypos - EXTRA_BOUNDS) < 0) {
+	minactive[querypos] = 0U;
+      } else {
+	minactive[querypos] = (unsigned int) position;
+      }
+#else
+      if ((position = diagonal + querypos - EXTRA_BOUNDS) < 0) {
+	minactive[querypos] = 0U;
+      } else {
+	minactive[querypos] = (unsigned int) position;
+      }
+#endif
+    }
+
+    i = 0;
+    while (i < nunique) {
+      j = i+1;
+      while (j < nunique && Diag_queryend(array[j]) <= Diag_queryend(array[i])) {
+	j++;
+      }
+      diagonal = Diag_diagonal(array[i]);
+      if (j < nunique) {
+	for ( ; querypos <= Diag_queryend(array[j]); querypos++) {
+#ifdef PMAP
+	  if ((position = diagonal + 3*querypos - EXTRA_BOUNDS) < 0) {
+	    minactive[querypos] = 0U;
+	  } else {
+	    minactive[querypos] = (unsigned int) position;
+	  }
+#else
+	  if ((position = diagonal + querypos - EXTRA_BOUNDS) < 0) {
+	    minactive[querypos] = 0U;
+	  } else {
+	    minactive[querypos] = (unsigned int) position;
+	  }
+#endif
+	}
+      }
+      i = j;
+    }
+
+    for ( ; querypos < querylength; querypos++) {
+#ifdef PMAP
+      if ((position = diagonal + 3*querypos - EXTRA_BOUNDS) < 0) {
+	minactive[querypos] = 0U;
+      } else {
+	minactive[querypos] = (unsigned int) position;
+      }
+#else
+      if ((position = diagonal + querypos - EXTRA_BOUNDS) < 0) {
+	minactive[querypos] = 0U;
+      } else {
+	minactive[querypos] = (unsigned int) position;
+      }
+#endif
+    }
+
+    /* Set maxactive */
+    for (querypos = querylength-1; querypos > Diag_queryend(array[nunique-1]); --querypos) {
+      maxactive[querypos] = genomiclength;
+    }
+
+    diagonal = Diag_diagonal(array[nunique-1]);
+    for ( ; querypos > Diag_querystart(array[nunique-1]); --querypos) {
+#ifdef PMAP
+      if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
+	maxactive[querypos] = genomiclength;
+      } else {
+	maxactive[querypos] = (unsigned int) position;
+      }
+#else
+      if ((position = diagonal + querypos + EXTRA_BOUNDS) > genomiclength) {
+	maxactive[querypos] = genomiclength;
+      } else {
+	maxactive[querypos] = (unsigned int) position;
+      }
+#endif
+    }
+
+    i = nunique-1;
+    while (i >= 0) {
+      j = i-1;
+      while (j >= 0 && Diag_querystart(array[j]) > Diag_querystart(array[i])) {
+	--j;
+      }
+      diagonal = Diag_diagonal(array[i]);
+      if (j >= 0) {
+	for ( ; querypos >= Diag_querystart(array[j]); --querypos) {
+#ifdef PMAP
+	  if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
+	    maxactive[querypos] = genomiclength;
+	  } else {
+	    maxactive[querypos] = (unsigned int) position;
+	  }
+#else
+	  if ((position = diagonal + querypos + EXTRA_BOUNDS) > genomiclength) {
+	    maxactive[querypos] = genomiclength;
+	  } else {
+	    maxactive[querypos] = (unsigned int) position;
+	  }
+#endif
+	}
+      }
+      i = j;
+    }
+
+    for ( ; querypos >= 0; --querypos) {
+#ifdef PMAP
+      if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
+	maxactive[querypos] = genomiclength;
+      } else {
+	maxactive[querypos] = (unsigned int) position;
+      }
+#else
+      if ((position = diagonal + querypos + EXTRA_BOUNDS) > genomiclength) {
+	maxactive[querypos] = genomiclength;
+      } else {
+	maxactive[querypos] = (unsigned int) position;
+      }
+#endif
+    }
+
+    FREE(array);
+  }
+
+  return nunique;
+}
+
+
+struct Genomicdiag_T {
+  int i;
+  int querypos;
+  int best_nconsecutive;
+  int nconsecutive;
+  int best_consecutive_start;
+  int consecutive_start;
+  int best_consecutive_end;
+};
+typedef struct Genomicdiag_T *Genomicdiag_T;
+
+
 /* Third, retrieves appropriate oligo information for a given querypos and
    copies it to that querypos */
 /* Note: Be careful on totalpositions, because nhits may be < 0 */
 unsigned int **
-Oligoindex_get_mappings (double *mapfraction, int *maxconsecutive, int **npositions, int *totalpositions, 
-			 T this, Sequence_T queryuc) {
-  unsigned int **mappings;
-  int nhits, i;
-  int querylength, trimlength, trim_start, nmapped = 0;
+Oligoindex_get_mappings (int *nunique, int *maxnconsecutive, double *pct_coverage, double *pct_clear_coverage,
+			 int **npositions, int *totalpositions,
+			 unsigned int *minactive, unsigned int *maxactive,
+			 T this, Sequence_T queryuc, Sequence_T genomicuc, Diagpool_T diagpool,
+			 int local_lookback, bool debug_graphic_p) {
+  unsigned int **mappings, position;
+  int nhits, hit, diagi, diagi_adjustment, i;
+  int querylength, genomiclength, trimlength, trim_start;
+#ifdef PREV_MAXCONSECUTIVE
   int prev_querypos, prev_nhits;
   unsigned int *prev_mappings;
-  int nconsecutive;
+  int ngoodconsecutive;
+#endif
 
   char *p;
   int in_counter = 0, querypos;
   Shortoligomer_T oligo = 0U, masked;
+  Intlist_T prevdiag;
+
+  struct Genomicdiag_T *genomicdiag;
+  Genomicdiag_T ptr;
+  List_T diagonals = NULL, good_genomicdiags = NULL, q;
 
 #ifdef PMAP
   int indexsize = this->indexsize_aa, index;
@@ -1301,17 +1725,29 @@ Oligoindex_get_mappings (double *mapfraction, int *maxconsecutive, int **npositi
 #endif
 
   querylength = Sequence_fulllength(queryuc);
+  genomiclength = Sequence_fulllength(genomicuc);
   trimlength = Sequence_trimlength(queryuc);
   trim_start = Sequence_trim_start(queryuc);
   mappings = (unsigned int **) CALLOC(querylength,sizeof(unsigned int *));
   *npositions = (int *) CALLOC(querylength,sizeof(int));
   *totalpositions = 0;
 
-  prev_querypos = querypos = trim_start - indexsize;
-  prev_mappings = (unsigned int *) NULL;
-  prev_nhits = 0;
-  *maxconsecutive = 0;
-  nconsecutive = 0;
+  *maxnconsecutive = 0;
+#ifdef PMAP
+  genomicdiag = (struct Genomicdiag_T *) CALLOC(3*querylength+genomiclength,sizeof(struct Genomicdiag_T));
+  for (diagi = 0; diagi < 3*querylength+genomiclength; diagi++) {
+    genomicdiag[diagi].i = diagi;
+    genomicdiag[diagi].querypos = -local_lookback; /* guarantees first check won't be consecutive */
+  }
+#else
+  genomicdiag = (struct Genomicdiag_T *) CALLOC(querylength+genomiclength,sizeof(struct Genomicdiag_T));
+  for (diagi = 0; diagi < querylength+genomiclength; diagi++) {
+    genomicdiag[diagi].i = diagi;
+    genomicdiag[diagi].querypos = -local_lookback; /* guarantees first check won't be consecutive */
+  }
+#endif
+
+  querypos = trim_start - indexsize;
   for (i = 0, p = Sequence_trimpointer(queryuc); i < trimlength; i++, p++) {
     in_counter++;
     querypos++;
@@ -1343,40 +1779,70 @@ Oligoindex_get_mappings (double *mapfraction, int *maxconsecutive, int **npositi
       mappings[querypos] = lookup(&nhits,this,masked);
       (*npositions)[querypos] = nhits;
       if (nhits > 0) {
-	nmapped++;
 	*totalpositions += nhits;
 
-	if (nhits < 8) {
-	  if (consecutivep(prev_querypos,prev_mappings,prev_nhits,querypos,mappings[querypos],nhits) == true) {
-	    nconsecutive += querypos - prev_querypos;
-	  } else {
-	    if (nconsecutive > *maxconsecutive) {
-	      *maxconsecutive = nconsecutive;
-	    }
-	    nconsecutive = 0;
-	  }
-	  prev_querypos = querypos;
-	  prev_mappings = mappings[querypos];
-	  prev_nhits = nhits;
-	}
+#ifdef PMAP
+	/* diagonal is (position - 3*querypos); diagi is (position - 3*querypos) + 3*querylength */
+	diagi_adjustment = 3*(querylength - querypos);
+#else
+	/* diagonal is (position - querypos); diagi is (position - querypos) + querylength */
+	diagi_adjustment = querylength - querypos;
+#endif
+	for (hit = 0; hit < nhits; hit++) {
+	  diagi = mappings[querypos][hit] + diagi_adjustment;
+	  ptr = &(genomicdiag[diagi]);
+	  /* Must use >= here, so querypos 0 - (-local_lookback) will fail */
+	  if (querypos - ptr->querypos >= local_lookback) {
+	    debug3(printf("At diagi %d (checking querypos %d to %d), no consecutive\n",diagi,ptr->querypos,querypos));
+	    ptr->nconsecutive = 0;
+	    ptr->consecutive_start = querypos;
 
+	  } else if (++ptr->nconsecutive > ptr->best_nconsecutive) {
+	    ptr->best_consecutive_start = ptr->consecutive_start;
+	    ptr->best_consecutive_end = querypos;
+	    ptr->best_nconsecutive = ptr->nconsecutive;
+	    debug3(printf("At diagi %d (checking querypos %d to %d), best consecutive of %d from %d to %d\n",
+			  diagi,ptr->querypos,querypos,ptr->best_nconsecutive,
+			  ptr->best_consecutive_start,ptr->best_consecutive_end));
+	    if (ptr->best_nconsecutive == SUFFNCONSECUTIVE) {
+	      good_genomicdiags = List_push(good_genomicdiags,(void *) ptr);
+	    }
+	    if (ptr->best_nconsecutive > *maxnconsecutive) {
+	      *maxnconsecutive = ptr->best_nconsecutive;
+	    }
+	  }
+	  ptr->querypos = querypos;
+	}
       }
       in_counter--;
     }
   }
 
-  if (nconsecutive > *maxconsecutive) {
-    *maxconsecutive = nconsecutive;
+  while (good_genomicdiags != NULL) {
+    good_genomicdiags = List_pop(good_genomicdiags,(void **) &ptr);
+#ifdef PMAP
+    diagonals = Diagpool_push(diagonals,diagpool,/*diagonal*/(ptr->i - 3*querylength),
+			      ptr->best_consecutive_start,ptr->best_consecutive_end,
+			      ptr->best_nconsecutive+1);
+#else
+    diagonals = Diagpool_push(diagonals,diagpool,/*diagonal*/(ptr->i - querylength),
+			      ptr->best_consecutive_start,ptr->best_consecutive_end,
+			      ptr->best_nconsecutive+1);
+#endif
   }
 
-  if (trimlength - indexsize <= 0) {
-    *mapfraction = 0.0;
-  } else {
-    *mapfraction = (double) nmapped/(double) (trimlength - indexsize);
-  }
+  FREE(genomicdiag);
 
-  debug2(printf("For indexsize = %d, mapfraction = %f\n",indexsize,*mapfraction));
+  *nunique = compute_bounds(&(*pct_coverage),&(*pct_clear_coverage),minactive,maxactive,diagonals,
+			    genomiclength,querylength,indexsize,debug_graphic_p);
+
+  debug2(fprintf(stderr,"%d diagonals (%d not dominated), maxnconsecutive = %d\n",
+		 List_length(diagonals),*nunique,*maxnconsecutive));
+
+  Diagpool_reset(diagpool);
+  /* No need to free diagonals */
 
   return mappings;
 }
+
 

@@ -1,7 +1,7 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-# $Id: configure.ac,v 1.41 2006/11/30 17:25:11 twu Exp $
+# $Id: configure.ac,v 1.43 2007/05/24 15:57:01 twu Exp $
 
 AC_PREREQ(2.57)
 
@@ -165,7 +165,20 @@ AC_CHECK_SIZEOF(unsigned long)
 #AC_FUNC_CLOSEDIR_VOID -- We are checking return value
 
 AC_FUNC_FSEEKO
-AC_FUNC_MMAP
+
+#AC_FUNC_MMAP        # Checks only private fixed mapping of already-mapped memory
+
+ACX_MMAP_FIXED   # Checks fixed mapping
+ACX_MMAP_VARIABLE   # Checks variable mapping
+
+if test x"$acx_mmap_fixed_ok" = xyes; then
+  AC_DEFINE(HAVE_MMAP,1,[Define to 1 if you have a working 'mmap' system call.])
+else
+  if test x"$acx_mmap_variable_ok" = xyes; then
+    AC_DEFINE(HAVE_MMAP,1,[Define to 1 if you have a working 'mmap' system call.])
+  fi
+fi
+
 ACX_MMAP_FLAGS
 ACX_MADVISE_FLAGS
 
@@ -184,7 +197,6 @@ AC_CONFIG_FILES([util/gmap_compress.pl])
 AC_CONFIG_FILES([util/gmap_uncompress.pl])
 AC_CONFIG_FILES([util/gmap_process.pl])
 AC_CONFIG_FILES([util/gmap_setup.pl])
-#AC_CONFIG_FILES([util/pmap_setup.pl])
 AC_CONFIG_FILES([util/md_coords.pl])
 AC_CONFIG_FILES([util/fa_coords.pl])
 AC_CONFIG_FILES([tests/Makefile])
@@ -218,15 +230,16 @@ installation.
 ])
 fi
 
-if test x"$ac_cv_func_mmap_fixed_mapped" != xyes; then
-  AC_MSG_WARN([
+if test x"$acx_mmap_fixed_ok" != xyes; then
+  if test x$"acx_mmap_variable_ok" != xyes; then
+    AC_MSG_WARN([
 
-WARNING: You don't seem to have memory mapping (mmap function).
-GMAP will work without this, but the program can run faster if
-memory mapping is available.  If you wish to enable memory mapping,
-please specify the appropriate values for CC, PTHREAD_CFLAGS, and
-PTHREAD_LIBS in the config.site file and run configure again.
-Otherwise, you may proceed with the rest of the installation.
+WARNING: You don't seem to have memory mapping.  GMAP will work
+without this, but the program can run faster if memory mapping is
+available.  If you wish to enable memory mapping, please specify the
+appropriate values for CC, PTHREAD_CFLAGS, and PTHREAD_LIBS in the
+config.site file and run configure again.  Otherwise, you may proceed
+with the rest of the installation.
 ])
+  fi
 fi
-

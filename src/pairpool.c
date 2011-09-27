@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c,v 1.37 2006/10/11 00:08:34 twu Exp $";
+static char rcsid[] = "$Id: pairpool.c,v 1.39 2007/04/23 17:50:17 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -156,6 +156,11 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->aa_e = ' ';
   pair->shortexonp = false;
   pair->gapp = false;
+  if (comp == EXTRAEXON_COMP) {
+    pair->extraexonp = true;
+  } else {
+    pair->extraexonp = false;
+  }
   
   pair->queryjump = 0;
   pair->genomejump = 0;
@@ -184,7 +189,8 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
 
 
 List_T
-Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome) {
+Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome,
+			bool extraexonp) {
   List_T listcell;
   Pair_T pair;
   List_T p;
@@ -215,6 +221,7 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
   pair->aa_e = ' ';
   pair->shortexonp = false;
   pair->gapp = true;
+  pair->extraexonp = extraexonp;
   
   pair->queryjump = 0;
   pair->genomejump = 0;
@@ -274,6 +281,7 @@ Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump) {
   pair->aa_e = ' ';
   pair->shortexonp = false;
   pair->gapp = true;
+  pair->extraexonp = false;
 
   pair->queryjump = queryjump;
   pair->genomejump = genomejump;

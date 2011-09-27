@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c,v 1.97 2006/11/30 17:17:00 twu Exp $";
+static char rcsid[] = "$Id: indexdb.c,v 1.99 2007/04/23 18:35:16 twu Exp $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -776,6 +776,46 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
   }
 }
 
+
+Genomicpos_T *
+Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
+  Positionsptr_T ptr0, end0;
+  Storedoligomer_T part0;
+  int i;
+
+#ifdef WORDS_BIGENDIAN
+  fprintf(stderr,"Can only use Indexdb_read_inplace with littleendian systems\n");
+  exit(9);
+#endif
+
+  if (this->positions_access != MMAPPED) {
+    fprintf(stderr,"Can only use Indexdb_read_inplace with memory mapping\n");
+    exit(9);
+  }
+
+  debug(printf("%06X (%s)\n",oligo,shortoligo_nt(oligo,INDEX1PART)));
+  part0 = oligo & LOW12MER;
+
+  /* Ignore poly A and poly T on stage 1 */
+  if (part0 == 0U || part0 == LOW12MER) {
+    return NULL;
+  }
+
+  ptr0 = this->offsets[part0];
+  end0 = this->offsets[part0+1];
+
+  debug(printf("offset pointers are %u and %u\n",ptr0,end0));
+
+  *nentries = end0 - ptr0;
+
+  if (*nentries == 0) {
+    return NULL;
+  } else {
+    return &(this->positions[ptr0]);
+  }
+}
+
+
 #endif
 
 /************************************************************************
@@ -1328,9 +1368,9 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 #else
     switch (uppercaseCode[c]) {
     case 'A': oligo = (oligo << 2); break;
-    case 'C': oligo = (oligo << 2) | 1; break;
-    case 'G': oligo = (oligo << 2) | 2; break;
-    case 'T': oligo = (oligo << 2) | 3; break;
+    case 'C': oligo = (oligo << 2) | 1U; break;
+    case 'G': oligo = (oligo << 2) | 2U; break;
+    case 'T': oligo = (oligo << 2) | 3U; break;
     case 'X': case 'N': oligo = 0U; in_counter = 0; break;
     default: 
       if (uncompressedp == true) {
@@ -1437,9 +1477,9 @@ Indexdb_write_offsets (FILE *offsets_fp, FILE *sequence_fp, IIT_T altstrain_iit,
 #else
 	switch (uppercaseCode[b]) {
 	case 'A': oligo = (oligo << 2); break;
-	case 'C': oligo = (oligo << 2) | 1; break;
-	case 'G': oligo = (oligo << 2) | 2; break;
-	case 'T': oligo = (oligo << 2) | 3; break;
+	case 'C': oligo = (oligo << 2) | 1U; break;
+	case 'G': oligo = (oligo << 2) | 2U; break;
+	case 'T': oligo = (oligo << 2) | 3U; break;
 	default: oligo = 0U; in_counter = 0; break;
 	}
 #endif
@@ -1945,9 +1985,9 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 #else
     switch (c) {
     case 'A': oligo = (oligo << 2); break;
-    case 'C': oligo = (oligo << 2) | 1; break;
-    case 'G': oligo = (oligo << 2) | 2; break;
-    case 'T': oligo = (oligo << 2) | 3; break;
+    case 'C': oligo = (oligo << 2) | 1U; break;
+    case 'G': oligo = (oligo << 2) | 2U; break;
+    case 'T': oligo = (oligo << 2) | 3U; break;
     case 'X': case 'N': oligo = 0U; in_counter = 0; break;
     default: 
       if (uncompressedp == true) {
@@ -2055,9 +2095,9 @@ compute_positions_in_memory (Genomicpos_T *positions, FILE *offsets_fp, Position
 #else
 	switch (uppercaseCode[b]) {
 	case 'A': oligo = (oligo << 2); break;
-	case 'C': oligo = (oligo << 2) | 1; break;
-	case 'G': oligo = (oligo << 2) | 2; break;
-	case 'T': oligo = (oligo << 2) | 3; break;
+	case 'C': oligo = (oligo << 2) | 1U; break;
+	case 'G': oligo = (oligo << 2) | 2U; break;
+	case 'T': oligo = (oligo << 2) | 3U; break;
 	default: oligo = 0U; in_counter = 0; break;
 	}
 #endif
@@ -2304,9 +2344,9 @@ Indexdb_new_segment (char *genomicseg, int index1interval
 #else
     switch (uppercaseCode[c]) {
     case 'A': oligo = (oligo << 2); break;
-    case 'C': oligo = (oligo << 2) | 1; break;
-    case 'G': oligo = (oligo << 2) | 2; break;
-    case 'T': oligo = (oligo << 2) | 3; break;
+    case 'C': oligo = (oligo << 2) | 1U; break;
+    case 'G': oligo = (oligo << 2) | 2U; break;
+    case 'T': oligo = (oligo << 2) | 3U; break;
     default: oligo = 0U; in_counter = 0; break;
     }
 #endif

@@ -22,7 +22,7 @@ while (defined($line = <>)) {
 		    die "strand $strand";
 		}
 		print "$gene_name\n";
-		print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+		print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand);
 	    }
 	    @starts = ();
 	    @ends = ();
@@ -47,34 +47,11 @@ if ($last_transcript_id =~ /\S/) {
 	die "strand $strand";
     }
     print "$gene_name\n";
-    print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+    print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand);
 }
 
-if (defined($opt_d)) {
-    close($FP);
-}
 
 exit;
-
-
-sub get_line {
-    my $line;
-
-    if (!defined($opt_d)) {
-	if (!defined($line = <>)) {
-	    return;
-	} else {
-	    return $line;
-	}
-    } else {
-	if ($#lines < 0) {
-	    return;
-	} else {
-	    $line = shift @lines;
-	    return $line;
-	}
-    }
-}
 
 
 sub parse_info {
@@ -110,7 +87,7 @@ sub get_info {
 
 
 sub print_exons {
-    my ($starts, $ends, $gene_name, $transcript_id, $chr, $strand, $FP) = @_;
+    my ($starts, $ends, $gene_name, $transcript_id, $chr, $strand) = @_;
 
     $nexons = $#{$starts} + 1;
     if ($strand eq "+") {

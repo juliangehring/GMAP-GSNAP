@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 47214 2011-09-14 17:08:30Z twu $";
+static char rcsid[] = "$Id: sequence.c 48861 2011-10-01 22:37:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,8 +16,6 @@ static char rcsid[] = "$Id: sequence.c 47214 2011-09-14 17:08:30Z twu $";
 #include <string.h>
 #include <strings.h>		/* For rindex */
 #include <ctype.h>		/* For iscntrl and isspace */
-
-#undef HAVE_ZLIB
 
 #ifdef HAVE_ZLIB
 #include <zlib.h>

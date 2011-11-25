@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: maxent_hr.c 41520 2011-06-21 16:08:13Z twu $";
+static char rcsid[] = "$Id: maxent_hr.c 49625 2011-10-12 18:18:20Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,13 +19,6 @@ static char rcsid[] = "$Id: maxent_hr.c 41520 2011-06-21 16:08:13Z twu $";
 #define debug(x) x
 #else
 #define debug(x)
-#endif
-
-#ifdef DEBUG1
-#include "genome.h"
-#define debug1(x) x
-#else
-#define debug1(x)
 #endif
 
 
@@ -27232,8 +27225,8 @@ Maxent_hr_donor_prob (Genomicpos_T splice_pos) {
   ptr = startpos/32U*3;
   shift = startpos % 32;
 
-  debug1(printf("splice_pos = %u, donor dinucleotide is %c%c\n",
-		splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
+  debug(printf("splice_pos = %u, donor dinucleotide is %c%c\n",
+	       splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
 
   debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
   debug(printf("startpos is %u, shift is %d\n",startpos,shift));
@@ -27272,10 +27265,10 @@ Maxent_hr_acceptor_prob (Genomicpos_T splice_pos) {
   ptr = startpos/32U*3;
   shift = startpos % 32;
 
-  debug1(printf("splice_pos = %u, acceptor dinucleotide is %c%c\n",
-		splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
+  debug(printf("splice_pos = %u, acceptor dinucleotide is %c%c\n",
+	       splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
 
-  debug(Genome_print_blocks(blocks,startpos,startpos+22));
+  debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
   debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN
@@ -27314,10 +27307,10 @@ Maxent_hr_antidonor_prob (Genomicpos_T splice_pos) {
   ptr = startpos/32U*3;
   shift = startpos % 32;
 
-  debug1(printf("splice_pos = %u, antidonor dinucleotide is %c%c\n",
-		splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
+  debug(printf("splice_pos = %u, antidonor dinucleotide is %c%c\n",
+	       splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
 
-  debug(Genome_print_blocks(blocks,startpos,startpos+9));
+  debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
   debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN
@@ -27354,10 +27347,10 @@ Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos) {
   ptr = startpos/32U*3;
   shift = startpos % 32;
 
-  debug1(printf("splice_pos = %u, antiacceptor dinucleotide is %c%c\n",
-		splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
+  debug(printf("splice_pos = %u, antiacceptor dinucleotide is %c%c\n",
+	       splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
 
-  debug(Genome_print_blocks(blocks,startpos,startpos+22));
+  debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
   debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN

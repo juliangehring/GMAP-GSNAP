@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 46762 2011-09-07 20:49:34Z twu $ */
+/* $Id: dynprog.h 48822 2011-09-30 23:43:27Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -27,8 +27,12 @@ typedef struct Dynprog_T *Dynprog_T;
 
 extern void
 Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
-	       int donor_typeint_in, int acceptor_typeint_in, double microexon_spliceprob_in);
-
+	       int donor_typeint_in, int acceptor_typeint_in,
+	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
+	       Genomicpos_T *splicedists_in, int nsplicesites_in,
+	       unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
+	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
+	       double microexon_spliceprob_in);
 
 extern int
 Dynprog_score (int matches, int mismatches, int qopens, int qindels, int topens, int tindels,
@@ -150,9 +154,6 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *revsequence2, char *revsequenceuc2,
 		    int length1, int length2, int revoffset1, int revoffset2, 
 		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -173,9 +174,6 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2, int querylength,
 		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,

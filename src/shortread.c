@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 47214 2011-09-14 17:08:30Z twu $";
+static char rcsid[] = "$Id: shortread.c 49439 2011-10-08 00:46:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -72,6 +72,7 @@ static char rcsid[] = "$Id: shortread.c 47214 2011-09-14 17:08:30Z twu $";
 struct T {
   char *acc;			/* Accession */
   char *restofheader;		/* Rest of header */
+  bool filterp;			/* If true, then sequence should be skipped */
   bool invertedp;
 
   char *contents;		/* Original sequence, ends with '\0' */
@@ -105,6 +106,11 @@ Shortread_accession (T this) {
 char *
 Shortread_header (T this) {
   return this->restofheader;
+}
+
+bool
+Shortread_filterp (T this) {
+  return this->filterp;
 }
 
 bool
@@ -252,11 +258,26 @@ Shortread_input_init_gzip (gzFile fp) {
 #endif
 
 
+static int acc_fieldi_start = 0;
+static int acc_fieldi_end = 0;
+static bool filter_chastity_p = true;
+
+void
+Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in,
+		 bool filter_chastity_p_in) {
+  acc_fieldi_start = acc_fieldi_start_in;
+  acc_fieldi_end = acc_fieldi_end_in;
+  filter_chastity_p = filter_chastity_p_in;
+  return;
+}
+
 
 static char *
-input_header (char **restofheader, FILE *fp) {
-  char *acc = NULL, *p;
+input_header (bool *filterp, char **restofheader, FILE *fp) {
+  char *acc = NULL, *p, *q;
   size_t length;
+
+  *filterp = false;
 
   if (feof(fp)) {
     return (char *) NULL;
@@ -282,6 +303,21 @@ input_header (char **restofheader, FILE *fp) {
   while (*p != '\0' && !isspace((int) *p)) {
     p++;
   }
+
+  if (filter_chastity_p == true) {
+    q = p;
+    /* Expecting <read>:<is filtered>:<control number>:<index sequence>, e.g., 1:Y:0:CTTGTA */
+    while (*q != '\0' && *q != ':') {
+      q++;
+    }
+    if (*q != '\0') {
+      q++;
+      if (*q == 'Y') {
+	*filterp = true;
+      }
+    }
+  }
+
   if (*p == '\0') {
     /* Accession only */
     length = (p - &(Header[0]))/sizeof(char);
@@ -305,9 +341,11 @@ input_header (char **restofheader, FILE *fp) {
 
 #ifdef HAVE_ZLIB
 static char *
-input_header_gzip (char **restofheader, gzFile fp) {
-  char *acc = NULL, *p;
+input_header_gzip (bool *filterp, char **restofheader, gzFile fp) {
+  char *acc = NULL, *p, *q;
   size_t length;
+
+  *filterp = false;
 
   if (gzeof(fp)) {
     return NULL;
@@ -333,6 +371,21 @@ input_header_gzip (char **restofheader, gzFile fp) {
   while (*p != '\0' && !isspace((int) *p)) {
     p++;
   }
+
+  if (filter_chastity_p == true) {
+    q = p;
+    /* Expecting <read>:<is filtered>:<control number>:<index sequence>, e.g., 1:Y:0:CTTGTA */
+    while (*q != '\0' && *q != ':') {
+      q++;
+    }
+    if (*q != '\0') {
+      q++;
+      if (*q == 'Y') {
+	*filterp = true;
+      }
+    }
+  }
+
   if (*p == '\0') {
     /* Accession only */
     length = (p - &(Header[0]))/sizeof(char);
@@ -396,22 +449,13 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
 }
 
 
-static int acc_fieldi_start = 0;
-static int acc_fieldi_end = 0;
-
-void
-Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in) {
-  acc_fieldi_start = acc_fieldi_start_in;
-  acc_fieldi_end = acc_fieldi_end_in;
-  return;
-}
-
-
 static char *
-input_header_fastq (char **restofheader, FILE *fp) {
-  char *acc, *p, *start;
+input_header_fastq (bool *filterp, char **restofheader, FILE *fp) {
+  char *acc, *p, *q, *start;
   size_t length;
   int fieldi = 0;
+
+  *filterp = false;
 
   if (feof(fp)) {
     return NULL;
@@ -458,6 +502,21 @@ input_header_fastq (char **restofheader, FILE *fp) {
   while (*p != '\0' && !isspace((int) *p)) {
     p++;
   }
+
+  if (filter_chastity_p == true) {
+    q = p;
+    /* Expecting <read>:<is filtered>:<control number>:<index sequence>, e.g., 1:Y:0:CTTGTA */
+    while (*q != '\0' && *q != ':') {
+      q++;
+    }
+    if (*q != '\0') {
+      q++;
+      if (*q == 'Y') {
+	*filterp = true;
+      }
+    }
+  }
+
   *p = '\0';
 
   length = (p - start)/sizeof(char);
@@ -472,10 +531,12 @@ input_header_fastq (char **restofheader, FILE *fp) {
 
 #ifdef HAVE_ZLIB
 static char *
-input_header_fastq_gzip (char **restofheader, gzFile fp) {
-  char *acc, *p, *start;
+input_header_fastq_gzip (bool *filterp, char **restofheader, gzFile fp) {
+  char *acc, *p, *q, *start;
   size_t length;
   int fieldi = 0;
+
+  *filterp = false;
 
   if (gzeof(fp)) {
     return NULL;
@@ -522,6 +583,21 @@ input_header_fastq_gzip (char **restofheader, gzFile fp) {
   while (*p != '\0' && !isspace((int) *p)) {
     p++;
   }
+
+  if (filter_chastity_p == true) {
+    q = p;
+    /* Expecting <read>:<is filtered>:<control number>:<index sequence>, e.g., 1:Y:0:CTTGTA */
+    while (*q != '\0' && *q != ':') {
+      q++;
+    }
+    if (*q != '\0') {
+      q++;
+      if (*q == 'Y') {
+	*filterp = true;
+      }
+    }
+  }
+
   *p = '\0';
 
   length = (p - start)/sizeof(char);
@@ -1494,7 +1570,7 @@ Shortread_find_overlap (T queryseq1, T queryseq2) {
  ************************************************************************/
 
 T
-Shortread_new (char *acc, char *restofheader,
+Shortread_new (char *acc, char *restofheader, bool filterp,
 	       char *sequence, int sequence_length, char *quality, int quality_length,
 	       int barcode_length, bool invertp, bool copy_acc_p) {
   T new;
@@ -1523,6 +1599,7 @@ Shortread_new (char *acc, char *restofheader,
     strcpy(new->restofheader,restofheader);
   }
 
+  new->filterp = filterp;
   new->invertedp = invertp;
 
   /* printf("Before: sequence %s, quality %s\n",sequence,quality); */
@@ -1584,6 +1661,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input, char
   T queryseq1;
   char *acc, *restofheader;
   int fulllength1, fulllength2, quality_length;
+  bool filterp;
 
   while (1) {
     if (*input == NULL || feof(*input)) {
@@ -1621,7 +1699,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input, char
     }
 
     debug(printf("** Getting header\n"));
-    if ((acc = input_header(&restofheader,*input)) == NULL) {
+    if ((acc = input_header(&filterp,&restofheader,*input)) == NULL) {
       /* fprintf(stderr,"No header\n"); */
       /* File ends after >.  Don't process, but loop again */
       *nextchar = EOF;
@@ -1651,13 +1729,13 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input, char
 		    quality_length,fulllength1,acc);
 	    abort();
 	  } else {
-	    queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength1,
+	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
 				      Quality,quality_length,barcode_length,
 				      invert_first_p,/*copy_acc_p*/false);
 	  }
 	} else {
 	  /* Single-end without quality string */
-	  queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength1,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
 				    /*quality*/NULL,/*quality_length*/0,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false);
 	}
@@ -1676,7 +1754,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input, char
 	    abort();
 	  }
 
-	  queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength1,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
 				    Quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false);
 	  quality_length = input_oneline(&(*nextchar),&(Quality[0]),*input,acc,
@@ -1687,14 +1765,14 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input, char
 	    abort();
 	  }
 	      
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength2,
+	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength2,
 				       Quality,quality_length,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	} else {
-	  queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength1,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
 				    /*quality*/NULL,/*quality_length*/0,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false);
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength2,
+	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength2,
 				       /*quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	}
@@ -1718,6 +1796,7 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
   T queryseq1;
   char *acc, *restofheader;
   int fulllength;
+  bool filterp;
 
   while (1) {
     if (*input == NULL || gzeof(*input)) {
@@ -1758,7 +1837,7 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
     }
 
     debug(printf("** Getting header\n"));
-    if ((acc = input_header_gzip(&restofheader,*input)) == NULL) {
+    if ((acc = input_header_gzip(&filterp,&restofheader,*input)) == NULL) {
       /* fprintf(stderr,"No header\n"); */
       /* File ends after >.  Don't process, but loop again */
       *nextchar = EOF;
@@ -1772,14 +1851,14 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
       /* No sequence1.  Don't process, but loop again */
       /* *nextchar = EOF; */
     } else {
-      queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength,
+      queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
 				/*quality*/NULL,/*quality_length*/0,barcode_length,
 				invert_first_p,/*copy_acc_p*/false);
       if ((fulllength = input_oneline_gzip(&(*nextchar),&(Read2[0]),*input,acc,
 					   /*possible_fasta_header_p*/true)) == 0) {
 	(*queryseq2) = (T) NULL;
       } else {
-	(*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength,
+	(*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
 				     /*quality*/NULL,/*quality_length*/0,barcode_length,
 				     invert_second_p,/*copy_acc_p*/false);
       }
@@ -1801,6 +1880,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
   char *acc, *restofheader;
   int nextchar2;
   int fulllength, quality_length;
+  bool filterp;
 
   while (1) {
     if (*input1 == NULL || feof(*input1)) {
@@ -1852,7 +1932,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
     }
 
     debug(printf("** Getting header\n"));
-    if ((acc = input_header_fastq(&restofheader,*input1)) == NULL) {
+    if ((acc = input_header_fastq(&filterp,&restofheader,*input1)) == NULL) {
       /* fprintf(stderr,"No header\n"); */
       /* File ends after >.  Don't process, but loop again */
       *nextchar = EOF;
@@ -1866,7 +1946,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 
       } else if (*nextchar != '+') {
 	/* No quality */
-	queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
 				  /*quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false);
       } else {
@@ -1880,7 +1960,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	  abort();
 	} else {
 	  /* Has quality */
-	  queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
 				    Quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false);
 	}
@@ -1890,7 +1970,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
     if (*input2 == NULL) {
       *queryseq2 = (T) NULL;
     } else {
-      if ((acc = input_header_fastq(&restofheader,*input2)) == NULL) {
+      if ((acc = input_header_fastq(&filterp,&restofheader,*input2)) == NULL) {
 	/* fprintf(stderr,"No header\n"); */
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
@@ -1912,7 +1992,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength,
+	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
 				       /*quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	} else {
@@ -1926,7 +2006,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength,
+	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
 					 Quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false);
 
@@ -1949,6 +2029,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
   char *acc, *restofheader;
   int nextchar2;
   int fulllength, quality_length;
+  bool filterp;
 
   while (1) {
     if (*input1 == NULL || gzeof(*input1)) {
@@ -2005,7 +2086,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
     }
 
     debug(printf("** Getting header\n"));
-    if ((acc = input_header_fastq_gzip(&restofheader,*input1)) == NULL) {
+    if ((acc = input_header_fastq_gzip(&filterp,&restofheader,*input1)) == NULL) {
       /* fprintf(stderr,"No header\n"); */
       /* File ends after >.  Don't process. */
       *nextchar = EOF;
@@ -2019,7 +2100,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 
       } else if (*nextchar != '+') {
 	/* No quality */
-	queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
 				  /*quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false);
       } else {
@@ -2033,7 +2114,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	  abort();
 	} else {
 	  /* Has quality */
-	  queryseq1 = Shortread_new(acc,restofheader,Read1,fulllength,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
 				    Quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false);
 	}
@@ -2043,7 +2124,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
     if (*input2 == NULL) {
       *queryseq2 = (T) NULL;
     } else {
-      if ((acc = input_header_fastq_gzip(&restofheader,*input2)) == NULL) {
+      if ((acc = input_header_fastq_gzip(&filterp,&restofheader,*input2)) == NULL) {
 	/* fprintf(stderr,"No header\n"); */
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
@@ -2065,7 +2146,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength,
+	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
 				       /*quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	} else {
@@ -2079,7 +2160,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,Read2,fulllength,
+	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
 					 Quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false);
 	  }

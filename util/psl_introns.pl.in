@@ -54,88 +54,130 @@ while (defined($line = <>)) {
 	print STDERR "Reported number of exons $fields[$opt_s + 7] != observed $nexons: Skipping $line\n";
 
     } else {
-	shift @starts;
-	pop @ends;
-
-	if ($strand eq "+") {
-	    for ($i = 0; $i < $nexons - 1; $i++) {
-		$intron_length = $starts[$i] - $ends[$i];
-		if (!defined($opt_d)) {
-		    printf ">%s.intron%d/%d %s:%u..%u\n",$acc,$i+1,$nexons-1,$chr,$ends[$i],$starts[$i]+1;
-
-		} else {
-		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ends[$i]+1,$ends[$i]+2;
-		    $donor_dinucl = `$command | tail -1`;
-		    chop $donor_dinucl;
-
-		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$starts[$i]-1,$starts[$i];
-		    $acceptor_dinucl = `$command | tail -1`;
-		    chop $acceptor_dinucl;
-
-		    if (defined($opt_C) && $donor_dinucl ne "GT" && $donor_dinucl ne "GC") {
-			printf STDERR "Skipping non-canonical donor $donor_dinucl for %s.intron%d/%d on plus strand\n",$acc,$i+1,$nexons-1;
-		    } elsif (defined($opt_C) && $acceptor_dinucl ne "AG") {
-			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl for %s.intron%d/%d on plus strand\n",$acc,$i+1,$nexons-1;
-		    } elsif (defined($opt_R)) {
-			if (($donor_dinucl ne "GT" && $donor_dinucl ne "GC") || $acceptor_dinucl ne "AG") {
-			    printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$ends[$i],$starts[$i]+1;
-			    print " $donor_dinucl-$acceptor_dinucl";
-			    print "\n";
-			}
-		    } else {
-			printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$ends[$i],$starts[$i]+1;
-			if (defined($opt_2)) {
-			    print " $donor_dinucl-$acceptor_dinucl";
-			}
-			print "\n";
-		    }
-		}
-	    }
-
-	} elsif ($strand eq "-") {
-	    @starts = reverse @starts;
-	    @ends = reverse @ends;
-	    for ($i = 0; $i < $nexons - 1; $i++) {
-		$intron_length = $starts[$i] - $ends[$i];
-		if (!defined($opt_d)) {
-		    printf ">%s.intron%d/%d %s:%u..%u\n",$acc,$i+1,$nexons-1,$chr,$starts[$i]+1,$ends[$i];
-
-		} else {
-		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$starts[$i],$starts[$i]-1;
-		    $donor_dinucl = `$command | tail -1`;
-		    chop $donor_dinucl;
-
-		    $command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ends[$i]+2,$ends[$i]+1;
-		    $acceptor_dinucl = `$command | tail -1`;
-		    chop $acceptor_dinucl;
-
-		    if (defined($opt_C) && $donor_dinucl ne "GT" && $donor_dinucl ne "GC") {
-			printf STDERR "Skipping non-canonical donor $donor_dinucl for %s.intron%d/%d on minus strand\n",$acc,$i+1,$nexons-1;
-		    } elsif (defined($opt_C) && $acceptor_dinucl ne "AG") {
-			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl for %s.intron%d/%d on minus strand\n",$acc,$i+1,$nexons-1;
-		    } elsif (defined($opt_R)) {
-			if (($donor_dinucl ne "GT" && $donor_dinucl ne "GC") || $acceptor_dinucl ne "AG") {
-			    printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$starts[$i]+1,$ends[$i];
-			    print " $donor_dinucl-$acceptor_dinucl";
-			    print "\n";
-			}
-		    } else {
-			printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$starts[$i]+1,$ends[$i];
-			if (defined($opt_2)) {
-			    print " $donor_dinucl-$acceptor_dinucl";
-			}
-			print "\n";
-		    }
-		}
-
-	    }
-
-	} else {
-	    print STDERR "Strand is neither + nor -: Skipping $line\n";
-	}
     }
 
 }
 
 exit;
+
+
+sub donor_okay_p {
+    my ($donor_dinucl, $acceptor_dinucl) = @_;
+
+    if ($donor_dinucl eq "GT") {
+	return 1;
+    } elsif ($donor_dinucl eq "GC") {
+	return 1;
+    } elsif ($donor_dinucl eq "AT" && $acceptor_dinucl eq "AC") {
+	return 1;
+    } else {
+	return 0;
+    }
+}
+
+sub acceptor_okay_p {
+    my ($donor_dinucl, $acceptor_dinucl) = @_;
+
+    if ($acceptor_dinucl eq "AG") {
+	return 1;
+    } elsif ($donor_dinucl eq "AT" && $acceptor_dinucl eq "AC") {
+	return 1;
+    } else {
+	return 0;
+    }
+}
+
+
+sub print_exons {
+    my ($starts, $ends, $acc, $chr, $strand) = @_;
+
+    shift @ {$starts};
+    pop @ {$ends};
+
+    if ($strand eq "+") {
+	for ($i = 0; $i < $nexons - 1; $i++) {
+	    $intron_length = $ {$starts}[$i] - $ {$ends}[$i];
+	    if ($intron_length < 0) {
+		die "Intron length for $acc is negative.  Exons on the plus strand must be in ascending chromosomal order.";
+
+	    } elsif (!defined($opt_d)) {
+		printf ">%s.intron%d/%d %s:%u..%u\n",$acc,$i+1,$nexons-1,$chr,$ {$ends}[$i],$ {$starts}[$i]+1;
+
+	    } else {
+		$command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ {$ends}[$i]+1,$ {$ends}[$i]+2;
+		$donor_dinucl = `$command | tail -1`;
+		chop $donor_dinucl;
+
+		$command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ {$starts}[$i]-1,$ {$starts}[$i];
+		$acceptor_dinucl = `$command | tail -1`;
+		chop $acceptor_dinucl;
+
+		if (defined($opt_C) && donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
+		    printf STDERR "Skipping non-canonical donor $donor_dinucl for %s.intron%d/%d on plus strand\n",$acc,$i+1,$nexons-1;
+		} elsif (defined($opt_C) && acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
+		    printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl for %s.intron%d/%d on plus strand\n",$acc,$i+1,$nexons-1;
+		} elsif (defined($opt_R)) {
+		    if (donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0 || acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
+			printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$ {$ends}[$i],$ {$starts}[$i]+1;
+			print " $donor_dinucl-$acceptor_dinucl";
+			print "\n";
+		    }
+		} else {
+		    printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$ {$ends}[$i],$ {$starts}[$i]+1;
+		    if (defined($opt_2)) {
+			print " $donor_dinucl-$acceptor_dinucl";
+		    }
+		    print "\n";
+		}
+	    }
+	}
+
+    } elsif ($strand eq "-") {
+	@starts = reverse @starts;
+	@ends = reverse @ends;
+	for ($i = 0; $i < $nexons - 1; $i++) {
+	    $intron_length = $ {$starts}[$i] - $ {$ends}[$i];
+	    if ($intron_length < 0) {
+		die "Intron length for $acc is negative.  Exons on the minus strand must be in descending chromosomal order.";
+
+	    } elsif (!defined($opt_d)) {
+		printf ">%s.intron%d/%d %s:%u..%u\n",$acc,$i+1,$nexons-1,$chr,$ {$starts}[$i]+1,$ {$ends}[$i];
+
+	    } else {
+		$command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ {$starts}[$i],$ {$starts}[$i]-1;
+		$donor_dinucl = `$command | tail -1`;
+		chop $donor_dinucl;
+
+		$command = sprintf "$GET_GENOME %s:%u..%u",$chr,$ {$ends}[$i]+2,$ {$ends}[$i]+1;
+		$acceptor_dinucl = `$command | tail -1`;
+		chop $acceptor_dinucl;
+
+		if (defined($opt_C) && donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
+		    printf STDERR "Skipping non-canonical donor $donor_dinucl for %s.intron%d/%d on minus strand\n",$acc,$i+1,$nexons-1;
+		} elsif (defined($opt_C) && acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
+		    printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl for %s.intron%d/%d on minus strand\n",$acc,$i+1,$nexons-1;
+		} elsif (defined($opt_R)) {
+		    if (donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0 || acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
+			printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$ {$starts}[$i]+1,$ {$ends}[$i];
+			print " $donor_dinucl-$acceptor_dinucl";
+			print "\n";
+		    }
+		} else {
+		    printf ">%s.intron%d/%d %s:%u..%u",$acc,$i+1,$nexons-1,$chr,$ {$starts}[$i]+1,$ {$ends}[$i];
+		    if (defined($opt_2)) {
+			print " $donor_dinucl-$acceptor_dinucl";
+		    }
+		    print "\n";
+		}
+	    }
+
+	}
+
+    } else {
+	print STDERR "Strand is neither + nor -: Skipping $line\n";
+    }
+
+    return;
+}
+
 

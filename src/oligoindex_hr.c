@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 44154 2011-08-02 20:52:17Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 48615 2011-09-29 03:48:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9810,7 +9810,10 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
-  if (startptr == endptr) {
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -10012,7 +10015,10 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
-  if (startptr == endptr) {
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -11629,7 +11635,10 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
-  if (startptr == endptr) {
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -11809,7 +11818,10 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
-  if (startptr == endptr) {
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);

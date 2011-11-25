@@ -19,6 +19,8 @@ Splicetrie_setup (
 		  UINT4 *splicecomp_in,
 #endif
 		  Genomicpos_T *splicesites_in, UINT4 *splicefrags_ref_in, UINT4 *splicefrags_alt_in,
+		  unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
+		  unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
 		  bool snpp_in, bool amb_closest_p_in);
 
 #ifdef GSNAP
@@ -85,18 +87,15 @@ Splicetrie_dump_coords_right (int *best_nmismatches, unsigned int *triestart, in
 extern Intlist_T
 Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 		      Genomicpos_T origleft, int pos5, int pos3, Genomicpos_T chroffset,
-		      unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		      unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		      Compress_T query_compress, char *queryptr, int querylength,
-		      int max_mismatches_allowed, bool plusp, bool collect_all_p);
+		      int max_mismatches_allowed, bool plusp, int genestrand,
+		      bool collect_all_p);
 
 extern Intlist_T
 Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 		       Genomicpos_T origleft, int pos5, int pos3, Genomicpos_T chrhigh,
-		       unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		       unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		       Compress_T query_compress, char *queryptr, int max_mismatches_allowed,
-		       bool plusp, bool collect_all_p);
+		       bool plusp, int genestrand, bool collect_all_p);
 #endif
 
 #endif

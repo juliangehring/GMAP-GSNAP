@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 47130 2011-09-13 20:49:44Z twu $";
+static char rcsid[] = "$Id: stage3.c 48822 2011-09-30 23:43:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -191,20 +191,24 @@ static int *splicesites_divint_crosstable;
 static int donor_typeint;
 static int acceptor_typeint;
 
+static Genomicpos_T *splicesites;
+
 static int min_intronlength;
 
 void
 Stage3_setup (bool splicingp_in,
 	      IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	      int donor_typeint_in, int acceptor_typeint_in,
+	      Genomicpos_T *splicesites_in,
 	      int min_intronlength_in) {
   splicingp = splicingp_in;
 
   splicesites_iit = splicesites_iit_in;
   splicesites_divint_crosstable = splicesites_divint_crosstable_in;
-
   donor_typeint = donor_typeint_in;
   acceptor_typeint = acceptor_typeint_in;
+
+  splicesites = splicesites_in;
 
   min_intronlength = min_intronlength_in;
 
@@ -5244,9 +5248,6 @@ distalmedial_ending5 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 		      int *finalscore, int *ambig_end_length, Splicetype_T *ambig_splicetype, List_T *pairs, 
 		      int leftquerypos, int leftgenomepos, Pair_T rightpair,
 		      Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		      Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		      unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		      unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		      Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5355,8 +5356,6 @@ distalmedial_ending5 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 							   &(genomicseg_ptr[genomedp3_medialgap]),&(genomicuc_ptr[genomedp3_medialgap]),
 							   queryjump,genomejump,querydp3_medialgap,genomedp3_medialgap,
 							   chroffset,chrpos,genomiclength,
-							   splicesites,splicetypes,nsplicesites,
-							   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 							   knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5419,9 +5418,6 @@ extend_ending5 (bool *knownsplicep, int *dynprogindex_minor,
 		int *finalscore, int *ambig_end_length, Splicetype_T *ambig_splicetype,
 		List_T *pairs, int leftquerypos, int leftgenomepos, Pair_T rightpair,
 		Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5494,8 +5490,6 @@ extend_ending5 (bool *knownsplicep, int *dynprogindex_minor,
 						       &(genomicseg_ptr[genomedp3_distalgap]),&(genomicuc_ptr[genomedp3_distalgap]),
 						       queryjump,genomejump,querydp3_distalgap,genomedp3_distalgap,
 						       chroffset,chrpos,genomiclength,
-						       splicesites,splicetypes,nsplicesites,
-						       trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 						       knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5534,9 +5528,6 @@ distalmedial_ending3 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 		      int *finalscore, int *ambig_end_length, Splicetype_T *ambig_splicetype, List_T *path,
 		      Pair_T leftpair, int rightquerypos, int rightgenomepos, int querylength, int genomiclength,
 		      Genomicpos_T chroffset, Genomicpos_T chrpos,
-		      Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		      unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		      unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		      Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5649,8 +5640,6 @@ distalmedial_ending3 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 							   &(genomicseg_ptr[genomedp5_medialgap]),&(genomicuc_ptr[genomedp5_medialgap]),
 							   queryjump,genomejump,querydp5_medialgap,genomedp5_medialgap,
 							   querylength,chroffset,chrpos,genomiclength,
-							   splicesites,splicetypes,nsplicesites,
-							   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 							   knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5714,9 +5703,6 @@ extend_ending3 (bool *knownsplicep, int *dynprogindex_minor, int *finalscore,
 		int *ambig_end_length, Splicetype_T *ambig_splicetype,
 		List_T *path, Pair_T leftpair, int rightquerypos, int rightgenomepos,
 		int querylength, int genomiclength, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5790,8 +5776,6 @@ extend_ending3 (bool *knownsplicep, int *dynprogindex_minor, int *finalscore,
 						       &(genomicseg_ptr[genomedp5_distalgap]),&(genomicuc_ptr[genomedp5_distalgap]),
 						       queryjump,genomejump,querydp5_distalgap,genomedp5_distalgap,
 						       querylength,chroffset,chrpos,genomiclength,
-						       splicesites,splicetypes,nsplicesites,
-						       trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 						       knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -5987,9 +5971,6 @@ build_path_end3 (bool *knownsplicep, int *ambig_end_length_3, Splicetype_T *ambi
 		 bool *chop_exon_p, int *dynprogindex_minor,
 		 List_T path, Genomicpos_T chroffset, Genomicpos_T chrpos,
 		 int querylength, int genomiclength,
-		 Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		 unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		 unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		 Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -6043,9 +6024,7 @@ build_path_end3 (bool *knownsplicep, int *ambig_end_length_3, Splicetype_T *ambi
     gappairs = extend_ending3(&(*knownsplicep),&(*dynprogindex_minor),&finalscore,
 			      &(*ambig_end_length_3),&(*ambig_splicetype_3),&path,
 			      leftpair,rightquerypos,genomiclength,querylength,genomiclength,
-			      chroffset,chrpos,splicesites,splicetypes,nsplicesites,
-			      trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-			      knownsplice_limit_low,knownsplice_limit_high,
+			      chroffset,chrpos,knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
 			      cutoff_level,queryptr,query_compress,
@@ -6061,9 +6040,7 @@ build_path_end3 (bool *knownsplicep, int *ambig_end_length_3, Splicetype_T *ambi
     gappairs = distalmedial_ending3(&(*knownsplicep),&(*chop_exon_p),&(*dynprogindex_minor),
 				    &finalscore,&(*ambig_end_length_3),&(*ambig_splicetype_3),
 				    &path,leftpair,rightquerypos,genomiclength,querylength,genomiclength,
-				    chroffset,chrpos,splicesites,splicetypes,nsplicesites,
-				    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-				    knownsplice_limit_low,knownsplice_limit_high,
+				    chroffset,chrpos,knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
 				    cutoff_level,queryptr,query_compress,
@@ -6104,9 +6081,6 @@ static List_T
 build_pairs_end5 (bool *knownsplicep, int *ambig_end_length_5, Splicetype_T *ambig_splicetype_5,
 		  bool *chop_exon_p, int *dynprogindex_minor, List_T pairs,
 		  Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		  Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		  unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		  unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		  Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -6157,10 +6131,7 @@ build_pairs_end5 (bool *knownsplicep, int *ambig_end_length_5, Splicetype_T *amb
     gappairs = extend_ending5(&(*knownsplicep),&(*dynprogindex_minor),
 			      &finalscore,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 			      &pairs,leftquerypos,/*leftgenomepos*/-1,rightpair,
-			      chroffset,chrpos,genomiclength,
-			      splicesites,splicetypes,nsplicesites,
-			      trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-			      knownsplice_limit_low,knownsplice_limit_high,
+			      chroffset,chrpos,genomiclength,knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
 			      cutoff_level,queryptr,query_compress,
@@ -6176,10 +6147,7 @@ build_pairs_end5 (bool *knownsplicep, int *ambig_end_length_5, Splicetype_T *amb
     gappairs = distalmedial_ending5(&(*knownsplicep),&(*chop_exon_p),&(*dynprogindex_minor),
 				    &finalscore,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 				    &pairs,leftquerypos,/*leftgenomepos*/-1,rightpair,
-				    chroffset,chrpos,genomiclength,
-				    splicesites,splicetypes,nsplicesites,
-				    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-				    knownsplice_limit_low,knownsplice_limit_high,
+				    chroffset,chrpos,genomiclength,knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
 				    cutoff_level,queryptr,query_compress,
@@ -7109,9 +7077,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 #endif
 	      char *queryseq_ptr, char *queryuc_ptr, char *genomicseg_ptr, char *genomicuc_ptr,
 	      bool use_genomicseg_p, Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
-	      Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-	      unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-	      unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 	      Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 	      Genome_T genome, int maxpeelback, int maxpeelback_distalmedial, int nullgap,
 	      int extramaterial_end, int extramaterial_paired,
@@ -7475,8 +7440,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
     pairs = build_pairs_end5(&knownsplice5p,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 			     &chop_exon_p,&dynprogindex_minor,pairs,
 			     chroffset,chrpos,genomiclength,
-			     splicesites,splicetypes,nsplicesites,
-			     trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 			     knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -7516,8 +7479,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
     path = build_path_end3(&knownsplice3p,&(*ambig_end_length_3),&(*ambig_splicetype_3),
 			   &chop_exon_p,&dynprogindex_minor,path,
 			   chroffset,chrpos,querylength,genomiclength,
-			   splicesites,splicetypes,nsplicesites,
-			   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 			   knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -7581,8 +7542,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
     pairs = build_pairs_end5(&knownsplice5p,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 			     &chop_exon_p,&dynprogindex_minor,pairs,
 			     chroffset,chrpos,genomiclength,
-			     splicesites,splicetypes,nsplicesites,
-			     trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 			     knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -7621,8 +7580,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
     path = build_path_end3(&knownsplice3p,&(*ambig_end_length_3),&(*ambig_splicetype_3),
 			   &chop_exon_p,&dynprogindex_minor,path,
 			   chroffset,chrpos,querylength,genomiclength,
-			   splicesites,splicetypes,nsplicesites,
-			   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 			   knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -7681,8 +7638,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
     path = build_path_end3(&knownsplice3p,&(*ambig_end_length_3),&(*ambig_splicetype_3),
 			   &chop_exon_p,&dynprogindex_minor,path,
 			   chroffset,chrpos,querylength,genomiclength,
-			   splicesites,splicetypes,nsplicesites,
-			   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 			   knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -7722,8 +7677,6 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
     pairs = build_pairs_end5(&knownsplice5p,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 			     &chop_exon_p,&dynprogindex_minor,pairs,
 			     chroffset,chrpos,genomiclength,
-			     splicesites,splicetypes,nsplicesites,
-			     trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 			     knownsplice_limit_low,knownsplice_limit_high,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -7785,9 +7738,6 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		int skiplength, int query_subseq_offset,
 		char *genomicseg_ptr, char *genomicuc_ptr,
 		Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 		Genome_T genome, bool usersegment_p, bool watsonp, bool jump_late_p,
 		int maxpeelback, int maxpeelback_distalmedial, int nullgap,
@@ -7886,9 +7836,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 			    queryaaseq_ptr,
 #endif
 			    queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,use_genomicseg_p,
-			    chrnum,chroffset,chrpos,splicesites,splicetypes,nsplicesites,
-			    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-			    knownsplice_limit_low,knownsplice_limit_high,genome,
+			    chrnum,chroffset,chrpos,knownsplice_limit_low,knownsplice_limit_high,genome,
 			    maxpeelback,maxpeelback_distalmedial,nullgap,
 			    extramaterial_end,extramaterial_paired,extraband_single,extraband_end,extraband_paired,
 			    minendexon,pairpool,dynprogL,dynprogM,dynprogR,stage3debug,do_final_p,
@@ -7933,9 +7881,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 #endif
 #endif
 			    queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,use_genomicseg_p,
-			    chrnum,chroffset,chrpos,splicesites,splicetypes,nsplicesites,
-			    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-			    knownsplice_limit_low,knownsplice_limit_high,genome,
+			    chrnum,chroffset,chrpos,knownsplice_limit_low,knownsplice_limit_high,genome,
 			    maxpeelback,maxpeelback_distalmedial,nullgap,
 			    extramaterial_end,extramaterial_paired,extraband_single,extraband_end,extraband_paired,
 			    minendexon,pairpool,dynprogL,dynprogM,dynprogR,stage3debug,do_final_p,

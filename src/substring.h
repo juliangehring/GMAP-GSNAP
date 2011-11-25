@@ -1,4 +1,4 @@
-/* $Id: substring.h 45943 2011-08-29 21:10:08Z twu $ */
+/* $Id: substring.h 48791 2011-09-30 18:39:38Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -33,7 +33,7 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
 	       int querystart, int queryend, int querylength,
 	       Genomicpos_T alignstart, Genomicpos_T alignend, int genomiclength,
 	       int extraleft, int extraright, bool exactp,
-	       bool plusp, bool trim_left_p, bool trim_right_p, int minlength);
+	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength);
 
 extern double
 Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string);
@@ -159,18 +159,19 @@ Substring_copy (T old);
 extern T
 Substring_new_donor (int splicesites_i, int splicesites_offset, int donor_pos, int donor_nmismatches,
 		     double donor_prob, Genomicpos_T left, Compress_T query_compress,
-		     int querylength, bool plusp, bool sensep,
+		     int querylength, bool plusp, int genestrand, bool sensep,
 		     Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh);
 extern T
 Substring_new_acceptor (int splicesites_i, int splicesites_offset, int acceptor_pos, int acceptor_nmismatches,
 			double acceptor_prob, Genomicpos_T left, Compress_T query_compress,
-			int querylength, bool plusp, bool sensep,
+			int querylength, bool plusp, int genestrand, bool sensep,
 			Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh);
 extern T
 Substring_new_shortexon (int acceptor_splicesites_i, int donor_splicesites_i, int splicesites_offset,
 			 int acceptor_pos, int donor_pos, int nmismatches,
 			 double acceptor_prob, double donor_prob, Genomicpos_T left,
-			 Compress_T query_compress, int querylength, bool plusp, bool sensep,
+			 Compress_T query_compress, int querylength,
+			 bool plusp, int genestrand, bool sensep,
 			 bool acceptor_ambp, bool donor_ambp,
 			 Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh);
 

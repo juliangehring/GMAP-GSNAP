@@ -1,8 +1,8 @@
-/* $Id: mode.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: mode.h 48805 2011-09-30 20:20:26Z twu $ */
 #ifndef MODE_INCLUDED
 #define MODE_INCLUDED
 
-typedef enum {STANDARD, CMET, ATOI} Mode_T;
+typedef enum {STANDARD, CMET_STRANDED, CMET_NONSTRANDED, ATOI_STRANDED, ATOI_NONSTRANDED} Mode_T;
 
 #endif
 

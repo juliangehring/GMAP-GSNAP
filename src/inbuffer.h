@@ -1,4 +1,4 @@
-/* $Id: inbuffer.h 46069 2011-08-30 20:43:46Z twu $ */
+/* $Id: inbuffer.h 49442 2011-10-08 01:32:38Z twu $ */
 #ifndef INBUFFER_INCLUDED
 #define INBUFFER_INCLUDED
 #include <stdio.h>
@@ -39,7 +39,8 @@ Inbuffer_new (int nextchar, FILE *input,
 #else
 	      bool maponlyp,
 #endif
-	      unsigned int nspaces, unsigned int maxchars, int part_interval, int part_modulus);
+	      unsigned int nspaces, unsigned int maxchars, int part_interval, int part_modulus,
+	      bool filter_if_both_p);
 
 extern void
 Inbuffer_set_outbuffer (T this, Outbuffer_T outbuffer);

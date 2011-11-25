@@ -6,7 +6,7 @@ use Getopt::Std;
 
 undef($opt_c);			# desired_chr
 $opt_w = 1;                     # item weight: 1 (more confident), 2, or 3 (less); allow $opt_w and lower
-undef($opt_e);			# exceptions file
+undef($opt_e);			# exceptions file (separate file provided for hg18 and earlier)
 getopts("c:e:w:");
 
 
@@ -44,25 +44,25 @@ if (defined($exceptions_file = $opt_e)) {
 	}
     }
     close($FP);
-
-    print STDERR "Exceptions to be allowed:\n";
-    foreach $exception_type (sort {$a cmp $b} keys %nallow_explicit) {
-	print STDERR "  $exception_type: $nallow_explicit{$exception_type}\n";
-    }
-    print STDERR "\n";
-
-    print STDERR "Exceptions to be excluded (explicitly listed in program):\n";
-    foreach $exception_type (sort {$a cmp $b} (keys %nexclude_explicit)) {
-	print STDERR "  $exception_type: $nexclude_explicit{$exception_type}\n";
-    }
-    print STDERR "\n";
-
-    print STDERR "Exceptions excluded implicitly (not listed in program):\n";
-    foreach $exception_type (sort {$a cmp $b} (keys %nexclude_implicit)) {
-	print STDERR "  $exception_type: $nexclude_implicit{$exception_type}\n";
-    }
-    print STDERR "\n";
 }
+
+print STDERR "Exceptions to be allowed:\n";
+foreach $exception_type (sort {$a cmp $b} keys %nallow_explicit) {
+    print STDERR "  $exception_type: $nallow_explicit{$exception_type}\n";
+}
+print STDERR "\n";
+
+print STDERR "Exceptions to be excluded (explicitly listed in program):\n";
+foreach $exception_type (sort {$a cmp $b} (keys %nexclude_explicit)) {
+    print STDERR "  $exception_type: $nexclude_explicit{$exception_type}\n";
+}
+print STDERR "\n";
+
+print STDERR "Exceptions excluded implicitly (not listed in program):\n";
+foreach $exception_type (sort {$a cmp $b} (keys %nexclude_implicit)) {
+    print STDERR "  $exception_type: $nexclude_implicit{$exception_type}\n";
+}
+print STDERR "\n";
 
 
 while (defined($line = <>)) {
@@ -76,26 +76,28 @@ while (defined($line = <>)) {
 	    $item_weight = $fields[17];
 	    if ($item_weight <= $opt_w) {
 		$rsid = $fields[4];
-		if (!defined($excludep{$rsid})) {
-		    if ($fields[9] =~ /^(.)\/(.)$/) {
-			# single base => single base
-			$alleleA = $1;
-			$alleleB = $2;
-			if (!defined($acgt{$alleleA}) || !defined($acgt{$alleleB})) {
-			    print STDERR "$rsid has alleles $fields[9] with non-ACGT character\n";
-			} else {
-			    if (($snp_strand = $fields[6]) eq "-") {
-				$alleleA = $revcomp{$alleleA};
-				$alleleB = $revcomp{$alleleB};
-			    }
-			    if ($alleleA le $alleleB) {
-				$snp_type = $alleleA . $alleleB;
-			    } else {
-				$snp_type = $alleleB . $alleleA;
-			    }
-			    $chrpos = $fields[2] + 1;	# because dbsnp file is 0-based
-			    print ">$rsid $chr:$chrpos $snp_type $snp_strand\n";
+		if (defined($excludep{$rsid})) {
+		    # Skip
+		} elsif (exclude_for_exceptions($fields[18]) == 1) {
+		    # Skip
+		} elsif ($fields[9] =~ /^(.)\/(.)$/) {
+		    # single base => single base
+		    $alleleA = $1;
+		    $alleleB = $2;
+		    if (!defined($acgt{$alleleA}) || !defined($acgt{$alleleB})) {
+			print STDERR "$rsid has alleles $fields[9] with non-ACGT character\n";
+		    } else {
+			if (($snp_strand = $fields[6]) eq "-") {
+			    $alleleA = $revcomp{$alleleA};
+			    $alleleB = $revcomp{$alleleB};
 			}
+			if ($alleleA le $alleleB) {
+			    $snp_type = $alleleA . $alleleB;
+			} else {
+			    $snp_type = $alleleB . $alleleA;
+			}
+			$chrpos = $fields[2] + 1;	# because dbsnp file is 0-based
+			print ">$rsid $chr:$chrpos $snp_type $snp_strand\n";
 		    }
 		}
 	    }
@@ -106,12 +108,32 @@ while (defined($line = <>)) {
 exit;
 
 
+sub exclude_for_exceptions {
+    my ($exceptions) = @_;
+
+    foreach $exception (split ",",$exceptions) {
+	if (!defined($allowp{$exception})) {
+	    # Exclude this SNP (implicitly)
+	    return 1;
+	} elsif ($allowp{$exception} == 0) {
+	    # Exclude this SNP (explicitly)
+	    return 1;
+	}
+    }
+
+    # Allow this SNP
+    return 0;
+}
+
+
 BEGIN {
     %acgt = ("A" => 1, "C" => 1, "G" => 1, "T" => 1);
 
     %revcomp = ("A" => "T", "C" => "G", "G" => "C", "T" => "A");
 
     # To allow an exception type, it must be listed below and have a value of 1
+    # These exceptions are taken from the *ExceptionDesc.txt file from UCSC
+
     %allowp = (
 	"RefAlleleMismatch" => 0, # The reference allele from dbSNP does not match the UCSC reference allele.
 	"RefAlleleRevComp" => 0,  # The reference allele from dbSNP matches the reverse complement of the UCSC reference allele.
@@ -131,6 +153,8 @@ BEGIN {
 	"ObservedContainsIupac" => 0, # Observed allele(s) from dbSNP contain IUPAC ambiguous bases.
 	"ObservedMismatch" => 0, # UCSC reference allele does not match any observed allele from dbSNP.
 	"MultipleAlignments" => 0, # This variant aligns in more than one location.
+	"NonIntegerChromCount" => 0, # At least one allele frequency corresponds to a non-integer (+-0.010000) count of chromosomes on which the allele was observed.  The reported total sample count for this SNP is probably incorrect.
+	"AlleleFreqSumNot1" => 0, # Allele frequencies do not sum to 1.0 (+-0.010000).  This SNP's allele frequency data are probably incomplete.
 	);
 }
 

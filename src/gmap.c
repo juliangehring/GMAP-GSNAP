@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 47129 2011-09-13 20:49:04Z twu $";
+static char rcsid[] = "$Id: gmap.c 49877 2011-10-17 03:26:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -678,8 +678,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 #endif
 			       /*genomicseg_ptr*/Sequence_fullpointer(genomicseg),
 			       /*genomicuc_ptr*/Sequence_fullpointer(genomicuc),
-			       chrnum,chroffset,chrpos,splicesites,splicetypes,nsplicesites,
-			       trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+			       chrnum,chroffset,chrpos,
 			       /*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
 			       genome,/*usersegment_p*/usersegment ? true : false,
 			       watsonp,/*jump_late_p*/watsonp ? false : true,
@@ -826,6 +825,26 @@ stage3_from_usersegment (int *npaths, bool lowidentityp, Sequence_T queryseq,
     return NULL;
   } else {
     return stage3array_from_list(&(*npaths),stage3list,/*chimerap*/false,/*remove_overlaps_p*/true);
+  }
+}
+
+
+static List_T
+stage3list_sort (List_T stage3list) {
+  List_T sorted = NULL;
+  Stage3_T *array;
+  int n, i;
+
+  if ((n = List_length(stage3list)) == 0) {
+    return (List_T) NULL;
+  } else {
+    array = (Stage3_T *) List_to_array(stage3list,NULL);
+    List_free(&stage3list);
+    qsort(array,n,sizeof(Stage3_T),Stage3_cmp);
+    for (i = n-1; i >= 0; i--) {
+      sorted = List_push(sorted,(void *) array[i]);
+    }
+    return sorted;
   }
 }
 
@@ -1002,6 +1021,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 #ifdef PMAP
   Sequence_free(&queryntseq);
 #endif
+
+  
 
   return stage3list;		/* if diag_debug == true, really diagonals */
 }
@@ -1556,6 +1577,9 @@ apply_stage3 (Chimera_T *chimera, List_T gregions, bool lowidentityp, Sequence_T
 				    usersegment,oligoindices_major,noligoindices_major,
 				    oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				    dynprogL,dynprogM,dynprogR,worker_stopwatch);
+  Stage3_recompute_goodness(stage3list);
+  stage3list = stage3list_sort(stage3list);
+
   debug2(printf("Initial search gives stage3list of length %d\n",List_length(stage3list)));
 
   if (diag_debug == true) {
@@ -2984,7 +3008,8 @@ main (int argc, char *argv[]) {
 
     /* Read in first batch of sequences */
     inbuffer = Inbuffer_new(/*nextchar*/'\0',input,files,nfiles,maponlyp,
-			    inbuffer_nspaces,inbuffer_maxchars,part_interval,part_modulus);
+			    inbuffer_nspaces,inbuffer_maxchars,part_interval,part_modulus,
+			    /*filter_if_both_p*/false);
     nread = Inbuffer_fill_init(inbuffer);
   }
 
@@ -3222,12 +3247,15 @@ main (int argc, char *argv[]) {
 #endif
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true);
   Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+		splicesites,splicetypes,splicedists,nsplicesites,
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		microexon_spliceprob);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
-	       min_intronlength);
-  Splicetrie_setup(splicesites,splicefrags_ref,splicefrags_alt,/*snpp*/false,
-		   amb_closest_p);
+	       splicesites,min_intronlength);
+  Splicetrie_setup(splicesites,splicefrags_ref,splicefrags_alt,
+		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+		   /*snpp*/false,amb_closest_p);
 
   /* Setup outbuffer */
 #ifndef PMAP

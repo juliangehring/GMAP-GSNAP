@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 46930 2011-09-09 16:36:18Z twu $";
+static char rcsid[] = "$Id: dynprog.c 48822 2011-09-30 23:43:27Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -283,21 +283,42 @@ typedef char Direction_T;
 
 static IIT_T splicesites_iit;
 static int *splicesites_divint_crosstable;
-
 static int donor_typeint;
 static int acceptor_typeint;
+
+static Genomicpos_T *splicesites;
+static Splicetype_T *splicetypes;
+static Genomicpos_T *splicedists;
+static int nsplicesites;
+static unsigned int *trieoffsets_obs;
+static unsigned int *triecontents_obs;
+static unsigned int *trieoffsets_max;
+static unsigned int *triecontents_max;
 
 static double microexon_spliceprob;
 
 
 void
 Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
-	       int donor_typeint_in, int acceptor_typeint_in, double microexon_spliceprob_in) {
+	       int donor_typeint_in, int acceptor_typeint_in,
+	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
+	       Genomicpos_T *splicedists_in, int nsplicesites_in,
+	       unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
+	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
+	       double microexon_spliceprob_in) {
   splicesites_iit = splicesites_iit_in;
   splicesites_divint_crosstable = splicesites_divint_crosstable_in;
-
   donor_typeint = donor_typeint_in;
   acceptor_typeint = acceptor_typeint_in;
+
+  splicesites = splicesites_in;
+  splicetypes = splicetypes_in;
+  splicedists = splicedists_in;
+  nsplicesites = nsplicesites_in;
+  trieoffsets_obs = trieoffsets_obs_in;
+  triecontents_obs = triecontents_obs_in;
+  trieoffsets_max = trieoffsets_max_in;
+  triecontents_max = triecontents_max_in;
 
   microexon_spliceprob = microexon_spliceprob_in;
 
@@ -4370,9 +4391,6 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore, int 
 		    char *revsequence2, char *revsequenceuc2,
 		    int length1, int length2, int revoffset1, int revoffset2, 
 		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 		    int cutoff_level, char *queryptr, int querylength, Compress_T query_compress,
 		    int cdna_direction, bool watsonp, bool jump_late_p,
@@ -4702,9 +4720,6 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore, int 
 		    char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2, 
 		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 		    int cutoff_level, char *queryptr, int querylength, Compress_T query_compress,
 		    int cdna_direction, bool watsonp,
@@ -5040,9 +5055,6 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *revsequence2, char *revsequenceuc2,
 		    int length1, int length2, int revoffset1, int revoffset2, 
 		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -5252,9 +5264,6 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2, int querylength,
 		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,

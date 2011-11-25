@@ -1,4 +1,4 @@
-/* $Id: shortread.h 47214 2011-09-14 17:08:30Z twu $ */
+/* $Id: shortread.h 49439 2011-10-08 00:46:54Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -13,12 +13,15 @@
 typedef struct T *T;
 
 extern void
-Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in);
+Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in,
+		 bool filter_chastity_p_in);
 
 extern char *
 Shortread_accession (T this);
 extern char *
 Shortread_header (T this);
+extern bool
+Shortread_filterp (T this);
 extern bool
 Shortread_invertedp (T this);
 
@@ -65,7 +68,7 @@ extern int
 Shortread_find_overlap (T queryseq1, T queryseq2);
 
 extern T
-Shortread_new (char *acc, char *restofheader,
+Shortread_new (char *acc, char *restofheader, bool filterp,
 	       char *sequence, int sequence_length, char *quality, int quality_length,
 	       int barcode_length, bool invertp, bool copy_acc_p);
 

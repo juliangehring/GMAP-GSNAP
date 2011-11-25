@@ -1,4 +1,4 @@
-/* $Id: iitdef.h 44063 2011-08-01 18:04:15Z twu $ */
+/* $Id: iitdef.h 48991 2011-10-04 17:56:02Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -116,6 +116,8 @@ struct T {
   UINT8 *annotpointers8;
 #endif
   char *annotations;
+
+  void **datapointers;
 };
 
 

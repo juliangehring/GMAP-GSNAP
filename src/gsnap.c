@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 47654 2011-09-17 05:22:31Z twu $";
+static char rcsid[] = "$Id: gsnap.c 49751 2011-10-13 19:27:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -66,6 +66,9 @@ static char rcsid[] = "$Id: gsnap.c 47654 2011-09-17 05:22:31Z twu $";
 #include "getopt.h"
 
 
+#define MIN_INDEXDB_SIZE_THRESHOLD 100
+
+
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -123,6 +126,8 @@ static bool invert_first_p = false;
 static bool invert_second_p = true;
 static int acc_fieldi_start = 0;
 static int acc_fieldi_end = 0;
+static bool filter_chastity_p = false;
+static bool filter_if_both_p = false;
 static bool gunzip_p = false;
 
 /* Compute options */
@@ -161,7 +166,7 @@ static int subopt_levels = 0;
 /* If negative, then hasn't been specified by user.  If between 0 and
    1, then treated as a fraction of the querylength.  Else, treated as
    an integer */
-static double usermax_level_float = -1.0;
+static double user_maxlevel_float = -1.0;
 
 static int terminal_threshold = 3;
 
@@ -182,7 +187,7 @@ static int distantsplicing_penalty = 3;
 static int min_distantsplicing_end_matches = 16;
 static double min_distantsplicing_identity = 0.95;
 static int min_shortend = 2;
-static bool find_novel_doublesplices_p = false;
+/* static bool find_novel_doublesplices_p = true; */
 static double microexon_spliceprob = 0.90;
 static int antistranded_penalty = 0; /* Most RNA-Seq is non-stranded */
 
@@ -328,6 +333,7 @@ static struct option long_options[] = {
   {"barcode-length", required_argument, 0, 0},	  /* barcode_length */
   {"fastq-id-start", required_argument, 0, 0},	  /* acc_fieldi_start */
   {"fastq-id-end", required_argument, 0, 0},	  /* acc_fieldi_end */
+  {"filter-chastity", required_argument, 0, 0},	/* filter_chastity_p, filter_if_both_p */
 
 #ifdef HAVE_ZLIB
   {"gunzip", no_argument, 0, 0}, /* gunzip_p */
@@ -355,9 +361,8 @@ static struct option long_options[] = {
 
   {"trim-mismatch-score", required_argument, 0, 0}, /* trim_mismatch_score */
   {"novelsplicing", required_argument, 0, 'N'}, /* novelsplicingp */
-  {"novel-doublesplices", no_argument, 0, 0},	/* find_novel_doublesplices_p */
 
-  {"max-mismatches", required_argument, 0, 'm'}, /* usermax_level_float */
+  {"max-mismatches", required_argument, 0, 'm'}, /* user_maxlevel_float */
   {"terminal-threshold", required_argument, 0, 0}, /* terminal_threshold */
 
 #if 0
@@ -554,28 +559,25 @@ process_request (Request_T request, Floors_T *floors_array,
 
   if (queryseq2 == NULL) {
     stage3array = Stage1_single_read(&npaths,queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-				     genome,floors_array,maxpaths,usermax_level_float,subopt_levels,
+				     genome,floors_array,maxpaths,user_maxlevel_float,subopt_levels,
 				     indel_penalty_middle,indel_penalty_end,
 				     max_middle_insertions,max_middle_deletions,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     shortsplicedist,localsplicing_penalty,distantsplicing_penalty,
 				     min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
-				     find_novel_doublesplices_p,splicesites,splicetypes,splicedists,nsplicesites,
-				     trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 				     /*keep_floors_p*/true);
+
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
     return Result_single_read_new(jobid,(void **) stage3array,npaths,worker_runtime);
 
   } else if ((stage3pairarray = Stage1_paired_read(&npaths,&final_pairtype,&stage3array5,&npaths5,&stage3array3,&npaths3,
 						   queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
-						   genome,floors_array,/*maxpaths*/maxpaths,usermax_level_float,subopt_levels,
+						   genome,floors_array,/*maxpaths*/maxpaths,user_maxlevel_float,subopt_levels,
 						   indel_penalty_middle,indel_penalty_end,
 						   max_middle_insertions,max_middle_deletions,
 						   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 						   shortsplicedist,localsplicing_penalty,distantsplicing_penalty,
 						   min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
-						   find_novel_doublesplices_p,splicesites,splicetypes,splicedists,nsplicesites,
-						   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 						   oligoindices_major,noligoindices_major,
 						   oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 						   dynprogL,dynprogM,dynprogR,
@@ -604,14 +606,12 @@ process_request (Request_T request, Floors_T *floors_array,
 
     if ((stage3pairarray = Stage1_paired_read(&npaths,&final_pairtype,&stage3array5,&npaths5,&stage3array3,&npaths3,
 					      queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
-					      genome,floors_array,/*maxpaths*/maxpaths,usermax_level_float,subopt_levels,
+					      genome,floors_array,/*maxpaths*/maxpaths,user_maxlevel_float,subopt_levels,
 					      indel_penalty_middle,indel_penalty_end,
 					      max_middle_insertions,max_middle_deletions,
 					      allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					      shortsplicedist,localsplicing_penalty,distantsplicing_penalty,
 					      min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
-					      find_novel_doublesplices_p,splicesites,splicetypes,splicedists,nsplicesites,
-					      trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 					      oligoindices_major,noligoindices_major,
 					      oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 					      dynprogL,dynprogM,dynprogR,
@@ -1157,7 +1157,7 @@ main (int argc, char *argv[]) {
 
 
   while ((opt = getopt_long(argc,argv,
-			    "D:d:k:Gq:o:a:N:M:m:i:y:Y:z:Z:w:E:e:J:K:l:g:S:s:V:v:B:p:t:A:j:0n:QO",
+			    "D:d:k:Gq:o:a:N:M:m:i:y:Y:z:Z:w:E:e:J:K:l:g:s:V:v:B:p:t:A:j:0n:QO",
 			    long_options, &long_option_index)) != -1) {
     switch (opt) {
     case 0:
@@ -1178,12 +1178,16 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"mode")) {
 	if (!strcmp(optarg,"standard")) {
 	  mode = STANDARD;
-	} else if (!strcmp(optarg,"cmet")) {
-	  mode = CMET;
-	} else if (!strcmp(optarg,"atoi")) {
-	  mode = ATOI;
+	} else if (!strcmp(optarg,"cmet-stranded")) {
+	  mode = CMET_STRANDED;
+	} else if (!strcmp(optarg,"cmet-nonstranded")) {
+	  mode = CMET_NONSTRANDED;
+	} else if (!strcmp(optarg,"atoi-stranded")) {
+	  mode = ATOI_STRANDED;
+	} else if (!strcmp(optarg,"atoi-nonstranded")) {
+	  mode = ATOI_NONSTRANDED;
 	} else {
-	  fprintf(stderr,"--mode must be standard, cmet, or atoi\n");
+	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi\n");
 	  exit(9);
 	}
 
@@ -1243,6 +1247,20 @@ main (int argc, char *argv[]) {
 	  fprintf(stderr,"Value for fastq-id-end must be 1 or greater\n");
 	  exit(9);
 	}
+      } else if (!strcmp(long_name,"filter-chastity")) {
+	if (!strcmp(optarg,"off")) {
+	  filter_chastity_p = false;
+	  filter_if_both_p = false;
+	} else if (!strcmp(optarg,"either")) {
+	  filter_chastity_p = true;
+	  filter_if_both_p = false;
+	} else if (!strcmp(optarg,"both")) {
+	  filter_chastity_p = true;
+	  filter_if_both_p = true;
+	} else {
+	  fprintf(stderr,"--filter-chastity values allowed: off, either, both\n");
+	  exit(9);
+	}
 
 #ifdef HAVE_ZLIB
       } else if (!strcmp(long_name,"gunzip")) {
@@ -1260,8 +1278,6 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"pairdev")) {
 	pairlength_deviation = atoi(check_valid_int(optarg));
 #endif
-      } else if (!strcmp(long_name,"novel-doublesplices")) {
-	find_novel_doublesplices_p = true;
       } else if (!strcmp(long_name,"indel-endlength")) {
 	min_indel_end_matches = atoi(check_valid_int(optarg));
 	if (min_indel_end_matches > 14) {
@@ -1454,9 +1470,9 @@ main (int argc, char *argv[]) {
 
     case 'M': subopt_levels = atoi(check_valid_int(optarg)); break;
     case 'm':
-      usermax_level_float = atof(check_valid_float(optarg));
-      if (usermax_level_float > 1.0 && usermax_level_float != rint(usermax_level_float)) {
-	fprintf(stderr,"Cannot specify fractional value %f for --max-mismatches except between 0.0 and 1.0\n",usermax_level_float);
+      user_maxlevel_float = atof(check_valid_float(optarg));
+      if (user_maxlevel_float > 1.0 && user_maxlevel_float != rint(user_maxlevel_float)) {
+	fprintf(stderr,"Cannot specify fractional value %f for --max-mismatches except between 0.0 and 1.0\n",user_maxlevel_float);
 	exit(9);
       }
       break;
@@ -1476,6 +1492,7 @@ main (int argc, char *argv[]) {
     case 'l': min_shortend = atoi(check_valid_int(optarg)); break;
 
     case 'g': genes_file = optarg; break;
+
     case 's': splicing_file = optarg; knownsplicingp = true; break;
 
     case 'V': user_snpsdir = optarg; break;
@@ -1594,7 +1611,7 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"--fastq-id-end must be equal to or greater than --fastq-id-start\n");
     exit(9);
   } else {
-    Shortread_setup(acc_fieldi_start,acc_fieldi_end);
+    Shortread_setup(acc_fieldi_start,acc_fieldi_end,filter_chastity_p);
   }
 
   if (novelsplicingp == true && knownsplicingp == true) {
@@ -1776,7 +1793,8 @@ main (int argc, char *argv[]) {
 #endif
 			  files,nfiles,fastq_format_p,creads_format_p,
 			  barcode_length,invert_first_p,invert_second_p,chop_primers_p,
-			  inbuffer_nspaces,inbuffer_maxchars,part_interval,part_modulus);
+			  inbuffer_nspaces,inbuffer_maxchars,part_interval,part_modulus,
+			  filter_if_both_p);
 
   nread = Inbuffer_fill_init(inbuffer);
 
@@ -1833,7 +1851,7 @@ main (int argc, char *argv[]) {
       indexdb2 = indexdb;
       print_ncolordiffs_p = true;
 
-    } else if (mode == CMET) {
+    } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
       if (user_cmetdir == NULL) {
 	modedir = genomesubdir;
       } else {
@@ -1854,7 +1872,7 @@ main (int argc, char *argv[]) {
 	exit(9);
       }
 
-    } else if (mode == ATOI) {
+    } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
       if (user_atoidir == NULL) {
 	modedir = genomesubdir;
       } else {
@@ -1905,7 +1923,7 @@ main (int argc, char *argv[]) {
       exit(9);
       print_ncolordiffs_p = true;
 
-    } else if (mode == CMET) {
+    } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
       if (user_cmetdir == NULL) {
 	modedir = snpsdir;
       } else {
@@ -1925,7 +1943,7 @@ main (int argc, char *argv[]) {
 	exit(9);
       }
 
-    } else if (mode == ATOI) {
+    } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
       if (user_atoidir == NULL) {
 	modedir = snpsdir;
       } else {
@@ -1992,9 +2010,12 @@ main (int argc, char *argv[]) {
   Compoundpos_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   Spanningelt_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   Stage1_init_positions_free(Indexdb_positions_fileio_p(indexdb));
+
   indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,mode,index1part));
   debug(printf("Size threshold is %d\n",indexdb_size_threshold));
-
+  if (indexdb_size_threshold < MIN_INDEXDB_SIZE_THRESHOLD) {
+    indexdb_size_threshold = MIN_INDEXDB_SIZE_THRESHOLD;
+  }
 
   if (genes_file != NULL) {
     if ((genes_iit = IIT_read(genes_file,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
@@ -2244,10 +2265,12 @@ main (int argc, char *argv[]) {
   Indexdb_setup(index1part);
   Indexdb_hr_setup(index1part);
   Oligo_setup(index1part);
-  Splicetrie_setup(splicecomp,splicesites,splicefrags_ref,splicefrags_alt,/*snpp*/snps_iit ? true : false,
-		   amb_closest_p);
+  Splicetrie_setup(splicecomp,splicesites,splicefrags_ref,splicefrags_alt,
+		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+		   /*snpp*/snps_iit ? true : false,amb_closest_p);
   Stage1hr_setup(index1part,chromosome_iit,nchromosomes,
 		 genomealt,mode,terminal_threshold,
+		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,shortsplicedist_known,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
 		 extramaterial_end,extramaterial_paired,gmap_mode,
@@ -2260,12 +2283,14 @@ main (int argc, char *argv[]) {
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
 		  output_sam_p,mode);
   Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+		splicesites,splicetypes,splicedists,nsplicesites,
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		microexon_spliceprob);
   Oligoindex_hr_setup(Genome_blocks(genome));
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
-	       min_intronlength);
+	       splicesites,min_intronlength);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
 		 mapq_unique_score,distances_observed_p,pairmax,antistranded_penalty,
@@ -2482,15 +2507,23 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
                                    (default 0)\n\
   -o, --orientation=STRING       Orientation of paired-end reads\n\
                                    Allowed values: FR (fwd-rev, or typical Illumina; default),\n\
-                                   FR (rev-fwd, for circularized inserts), or FF (fwd-fwd, same strand)\n\
+                                   RF (rev-fwd, for circularized inserts), or FF (fwd-fwd, same strand)\n\
   --fastq-id-start=INT           Starting position of identifier in FASTQ header, space-delimited (>= 1)\n\
   --fastq-id-end=INT             Ending position of identifier in FASTQ header, space-delimited (>= 1)\n\
                                  Examples:\n\
-                                   @HWUSI-EAS100R:6:73:941:1973#0/1                           start=1, end=1 (default)\n\
+                                   @HWUSI-EAS100R:6:73:941:1973#0/1\n\
+                                      start=1, end=1 (default) => identifier is HWUSI-EAS100R:6:73:941:1973#0\n\
                                    @SRR001666.1 071112_SLXA-EAS1_s_7:5:1:817:345 length=36\n\
                                       start=1, end=1  => identifier is SRR001666.1\n\
                                       start=2, end=2  => identifier is 071112_SLXA-EAS1_s_7:5:1:817:345\n\
                                       start=1, end=2  => identifier is SRR001666.1 071112_SLXA-EAS1_s_7:5:1:817:345\n\
+  --filter-chastity=STRING       Skips reads marked by the Illumina chastity program.  Expecting a string\n\
+                                   after the accession having a 'Y' after the first colon, like this:\n\
+                                         @accession 1:Y:0:CTTGTA\n\
+                                   where the 'Y' signifies filtering by chastity.\n\
+                                   Values: off (default), either, both.  For 'either', a 'Y' on either end\n\
+                                   of a paired-end read will be filtered.  For 'both', a 'Y' is required\n\
+                                   on both ends of a paired-end read (or on the only end of a single-end read).\n\
 ");
 #ifdef HAVE_ZLIB
   fprintf(stdout,"\
@@ -2597,7 +2630,9 @@ is still designed to be fast.\n\
                                    (default is location of genome index files specified using -D, -V, and -d)\n\
   -atoidir=STRING                Directory for A-to-I RNA editing index files (created using atoiindex)\n\
                                    (default is location of genome index files specified using -D, -V, and -d)\n\
-  --mode=STRING                  Alignment mode: standard (default), cmet, or atoi\n\
+  --mode=STRING                  Alignment mode: standard (default), cmet-stranded, cmet-nonstranded,\n\
+                                    atoi-stranded, or atoi-nonstranded.  Non-standard modes requires you\n\
+                                    to have previously run the cmetindex or atoiindex programs on the genome\n\
   --tallydir=STRING              Directory for tally IIT file to resolve concordant multiple results (default is\n\
                                    location of genome index files specified using -D and -d).  Note: can\n\
                                    just give full path name to --use-tally instead.\n\
@@ -2642,6 +2677,7 @@ is still designed to be fast.\n\
   fprintf(stdout,"\n");
 
 
+#if 0
   fprintf(stdout,"Genes options for RNA-Seq\n");
   fprintf(stdout,"\
   -g, --genes=STRING             Look for known genes in <STRING>.iit, to be used for resolving\n\
@@ -2652,25 +2688,21 @@ is still designed to be fast.\n\
                                    genes.  This favors spliced genes over psuedogenes.\n\
 ");
   fprintf(stdout,"\n");
+#endif
 
 
   /* Splicing options */
   fprintf(stdout,"Splicing options for RNA-Seq\n");
   fprintf(stdout,"\
   -N, --novelsplicing=INT              Look for novel splicing (0=no (default), 1=yes)\n\
-  -S, --splicesdir=STRING              Directory for splicing involving known sites or known introns,\n\
-                                         as specified by the -s or --use-splices flag (default is\n\
+  --splicingdir=STRING                 Directory for splicing involving known sites or known introns,\n\
+                                         as specified by the -s or --use-splicing flag (default is\n\
                                          directory computed from -D and -d flags).  Note: can\n\
                                          just give full pathname to the -s flag instead.\n\
-  -s, --use-splices=STRING             Look for splicing involving known sites or known introns\n\
+  -s, --use-splicing=STRING            Look for splicing involving known sites or known introns\n\
                                          (in <STRING>.iit), at short or long distances\n\
                                          See README instructions for the distinction between known sites\n\
                                          and known introns\n\
-  --novel-doublesplices                Allow GSNAP to look for two splices in a single-end involving novel\n\
-                                         splice sites (default is not to allow this).  Caution: this option\n\
-                                         can slow down the program considerably.  A better way to detect\n\
-                                         double splices is with known splice sites, using the\n\
-                                         --splicing option.\n\
   -w, --localsplicedist=INT            Definition of local novel splicing event (default 200000)\n\
   -e, --local-splice-penalty=INT       Penalty for a local splice (default 0).  Counts against mismatches allowed\n\
   -E, --distant-splice-penalty=INT     Penalty for a distant splice (default 3).  A distant splice is one where\n\

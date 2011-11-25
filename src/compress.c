@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c 46784 2011-09-07 23:06:49Z twu $";
+static char rcsid[] = "$Id: compress.c 48791 2011-09-30 18:39:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -613,10 +613,12 @@ struct T {
 
 void
 Compress_free (T *old) {
-  FREE((*old)->shift_array[0]);
-  FREE((*old)->shift_array);
-  FREE((*old)->blocks);
-  FREE(*old);
+  if (*old) {
+    FREE((*old)->shift_array[0]);
+    FREE((*old)->shift_array);
+    FREE((*old)->blocks);
+    FREE(*old);
+  }
   return;
 }
 

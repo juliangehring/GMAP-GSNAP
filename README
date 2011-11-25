@@ -979,7 +979,8 @@ need to get a dbsnp file, like this
 
     ftp://hgdownload.cse.ucsc.edu/goldenPath/hg18/database/snp130.txt.gz
 
-You may also want to exclude exceptions, which will require this file:
+For versions before snp132, you may also want to exclude exceptions,
+which will require this file:
 
     ftp://hgdownload.cse.ucsc.edu/goldenPath/hg18/database/snp130Exceptions.txt.gz
 
@@ -988,6 +989,10 @@ You can then process these files using dbsnp_iit, like this:
     gunzip -c snp130.txt.gz | dbsnp_iit [-w <weight>] [-e snp130Exceptions.txt.gz] > <snpfile>.txt, or
     gunzip -c snp130.txt.gz | dbsnp_iit [-w <weight>] [-e snp130Exceptions.txt] > <snpfile>.txt
 
+For versions starting with snp132, the exceptions are included in
+column 19 of the snp file, so the -e flag is not necessary.  The
+dbsnp_iit program will read the exceptions from that column.
+
 The option "-w <weight>" makes use of the dbSNP item weight, a value
 from 1 to 3, where lower weight means higher confidence.  Items will
 be included if the item weight is the given value <weight> or less.
@@ -995,13 +1000,12 @@ The default value of -w is 1, which is the criterion UCSC uses to
 build its ambiguous version of the genome.  To allow all item weights,
 specify "-w 3".
 
-The optional flag "-e <exceptions_file>" will exclude exceptions
-listed in the given file.  The exceptions file can be gzipped (ending
-in .gz) or not.  The exceptions file has different types of
-exceptions.  By default, dbsnp_iit will exclude all types.  However,
-if you want to include some types of exceptions, you will need to
-modify the dbsnp_iit program (written in Perl) to indicate a "1" for
-the type of exception you want to include.
+SNPs have various types of exceptions, as provided either by the "-e
+<exceptions_file>" flag, or starting with snp132, in the snp file
+itself.  By default, dbsnp_iit will exclude all types of exceptions.
+However, if you want to include some types of exceptions, you will
+need to modify the dbsnp_iit program (written in Perl) to indicate a
+"1" for the type of exception you want to include.
 
 Once you have built a <snpfile>.txt file using dbsnp_iit, you create
 an IIT file by doing this

@@ -49,7 +49,8 @@ am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/builtin.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
-	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/popcnt.m4 \
+	$(top_srcdir)/config/asm-bsr.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
@@ -141,6 +142,7 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
 PERL = @PERL@
+POPCNT_CFLAGS = @POPCNT_CFLAGS@
 PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@

@@ -51,7 +51,8 @@ am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/builtin.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
-	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/popcnt.m4 \
+	$(top_srcdir)/config/asm-bsr.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -373,6 +374,7 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
 PERL = @PERL@
+POPCNT_CFLAGS = @POPCNT_CFLAGS@
 PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@
@@ -478,7 +480,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 gmap_CC = $(PTHREAD_CC)
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 gmap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
 dist_gmap_SOURCES = $(GMAP_FILES)
@@ -514,7 +516,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 gsnap_CC = $(PTHREAD_CC)
-gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
+gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
 gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS) $(GOBY_LDFLAGS)
 gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(GOBY_LIBS)
 dist_gsnap_SOURCES = $(GSNAP_FILES)

@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 46162 2011-08-31 16:28:11Z twu $ */
+/* $Id: stage1hr.h 49094 2011-10-05 16:33:05Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -56,10 +56,6 @@ Stage1_single_read (int *npaths, Shortread_T queryseq, Indexdb_T indexdb, Indexd
 		    Genomicpos_T shortsplicedist,
 		    int localsplicing_penalty, int distantsplicing_penalty,
 		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
-		    bool find_novel_doublesplices_p, Genomicpos_T *splicesites, Splicetype_T *splicetypes,
-		    Genomicpos_T *splicedists, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    bool keep_floors_p);
 
 extern Stage3pair_T *
@@ -72,10 +68,6 @@ Stage1_paired_read (int *npaths, Pairtype_T *final_pairtype, Stage3end_T **stage
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    Genomicpos_T shortsplicedist, int localsplicing_penalty, int distantsplicing_penalty,
 		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
-		    bool find_novel_doublesplices_p, Genomicpos_T *splicesites, Splicetype_T *splicetypes,
-		    Genomicpos_T *splicedists, int nsplicesites,
-		    unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		    unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		    Oligoindex_T *oligoindices_major, int noligoindices_major,
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		    Pairpool_T pairpool, Diagpool_T diagpool,
@@ -85,8 +77,10 @@ Stage1_paired_read (int *npaths, Pairtype_T *final_pairtype, Stage3end_T **stage
 extern void
 Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,
 		Genome_T genomealt, Mode_T mode_in,
-
 		int terminal_threshold_in,
+
+		Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
+		Genomicpos_T *splicedists_in, int nsplicesites_in,
 
 		bool novelsplicingp_in, bool knownsplicingp_in,	int shortsplicedist_known_in,
 

@@ -1,4 +1,4 @@
-/* $Id: genome_hr.h 44877 2011-08-13 23:17:06Z twu $ */
+/* $Id: genome_hr.h 49447 2011-10-09 17:38:10Z twu $ */
 #ifndef GENOME_HR_INCLUDED
 #define GENOME_HR_INCLUDED
 #include "types.h"
@@ -19,20 +19,20 @@ extern int
 Genome_read_gamma (unsigned int **ptr, int ctr, unsigned int *cum);
 extern Positionsptr_T
 Genome_offsetptr_from_gammas (Positionsptr_T *end0, UINT4 *gammaptrs, Positionsptr_T *offsetscomp,
-			      int offsets_blocksize, Storedoligomer_T oligo);
+			      unsigned int offsets_blocksize, Storedoligomer_T oligo);
 extern Positionsptr_T
 Genome_offsetptr_only_from_gammas (UINT4 *gammaptrs, Positionsptr_T *offsetscomp,
-				   int offsets_blocksize, Storedoligomer_T oligo);
+				   unsigned int offsets_blocksize, Storedoligomer_T oligo);
 
 #ifdef WORDS_BIGENDIAN
 extern int
 Genome_read_gamma_bigendian (unsigned int **ptr, int ctr, unsigned int *cum);
 extern Positionsptr_T
 Genome_offsetptr_from_gammas_bigendian (Positionsptr_T *end0, UINT4 *gammaptrs, Positionsptr_T *offsetscomp,
-					int offsets_blocksize, Storedoligomer_T oligo);
+					unsigned int offsets_blocksize, Storedoligomer_T oligo);
 extern Positionsptr_T
 Genome_offsetptr_only_from_gammas_bigendian (UINT4 *gammaptrs, Positionsptr_T *offsetscomp,
-					     int offsets_blocksize, Storedoligomer_T oligo);
+					     unsigned int offsets_blocksize, Storedoligomer_T oligo);
 #endif
 
 
@@ -40,12 +40,13 @@ extern int
 Genome_count_mismatches (Compress_T query_compress, Genomicpos_T left, Genomicpos_T left_plus_length);
 extern int
 Genome_count_mismatches_limit (Compress_T query_compress, Genomicpos_T left, int pos5, int pos3,
-			       int max_mismatches, bool plusp);
+			       int max_mismatches, bool plusp, int genestrand);
 extern int
-Genome_count_mismatches_substring_ref (Compress_T query_compress, Genomicpos_T left, int pos5, int pos3, bool plusp);
+Genome_count_mismatches_substring_ref (Compress_T query_compress, Genomicpos_T left, int pos5, int pos3,
+				       bool plusp, int genestrand);
 extern int
 Genome_count_mismatches_substring (Compress_T query_compress, Genomicpos_T left, int pos5, int pos3,
-				   bool plusp);
+				   bool plusp, int genestrand);
 extern UINT4
 Genome_query_shift_fragment_right (UINT4 *flags, UINT4 *mask, Compress_T query_compress, int pos5, int pos3);
 extern UINT4
@@ -56,26 +57,26 @@ Genome_count_mismatches_fragment (UINT4 query_shifted, UINT4 flags, UINT4 mask,
 
 extern int
 Genome_mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
-			Genomicpos_T left, int pos5, int pos3, bool plusp);
+			Genomicpos_T left, int pos5, int pos3, bool plusp, int genestrand);
 extern int
 Genome_mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
-			 Genomicpos_T left, int pos5, int pos3, bool plusp);
+			 Genomicpos_T left, int pos5, int pos3, bool plusp, int genestrand);
 
 extern int
 Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_compress,
 			    Genomicpos_T left, int pos5, int pos3, int mismatch_offset,
-			    bool plusp);
+			    bool plusp, int genestrand);
 extern int
 Genome_mark_mismatches (char *genomic, int querylength, Compress_T query_compress,
-			Genomicpos_T left, int pos5, int pos3, int mismatch_offset, bool plusp);
+			Genomicpos_T left, int pos5, int pos3, int mismatch_offset, bool plusp, int genestrand);
 
 extern int
 Genome_trim_left (Compress_T query_compress, Genomicpos_T left, int pos5, int pos3,
-		  bool plusp);
+		  bool plusp, int genestrand);
 
 extern int
 Genome_trim_right (Compress_T query_compress, Genomicpos_T left, int pos5, int pos3,
-		   bool plusp);
+		   bool plusp, int genestrand);
 
 extern char
 Genome_get_dinucleotide (char *altdinucl, Genomicpos_T pos);

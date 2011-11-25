@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: inbuffer.c 47214 2011-09-14 17:08:30Z twu $";
+static char rcsid[] = "$Id: inbuffer.c 49442 2011-10-08 01:32:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,6 +32,7 @@ static char rcsid[] = "$Id: inbuffer.c 47214 2011-09-14 17:08:30Z twu $";
 
 struct T {
   Outbuffer_T outbuffer;
+  bool filter_if_both_p;
 
   FILE *input;
 #ifdef GSNAP
@@ -135,10 +136,12 @@ Inbuffer_new (int nextchar, FILE *input,
 #else
 	      bool maponlyp,
 #endif
-	      unsigned int nspaces, unsigned int maxchars, int part_interval, int part_modulus) {
+	      unsigned int nspaces, unsigned int maxchars, int part_interval, int part_modulus,
+	      bool filter_if_both_p) {
 
   T new = (T) MALLOC(sizeof(*new));
 
+  new->filter_if_both_p = filter_if_both_p;
   new->input = input;
 #ifdef GSNAP
   new->input2 = input2;
@@ -242,6 +245,21 @@ fill_buffer (T this) {
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+
+	} else if (this->filter_if_both_p == true &&
+		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
+	} else if (this->filter_if_both_p == false &&
+		   (Shortread_filterp(queryseq1) == true || (queryseq2 != NULL && Shortread_filterp(queryseq2) == true))) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
 	} else {
 	  this->buffer[nread++] = Request_new(this->requestid++,queryseq1,queryseq2);
 	  nchars += Shortread_fulllength(queryseq1);
@@ -267,6 +285,21 @@ fill_buffer (T this) {
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+
+	} else if (this->filter_if_both_p == true &&
+		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
+	} else if (this->filter_if_both_p == false &&
+		   (Shortread_filterp(queryseq1) == true || (queryseq2 != NULL && Shortread_filterp(queryseq2) == true))) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
 	} else {
 	  this->buffer[nread++] = Request_new(this->requestid++,queryseq1,queryseq2);
 	  nchars += Shortread_fulllength(queryseq1);
@@ -292,6 +325,21 @@ fill_buffer (T this) {
 	if (queryseq2 != NULL) {
 	  Shortread_free(&queryseq2);
 	}
+
+      } else if (this->filter_if_both_p == true &&
+		 Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
+	Shortread_free(&queryseq1);
+	if (queryseq2 != NULL) {
+	  Shortread_free(&queryseq2);
+	}
+
+      } else if (this->filter_if_both_p == false &&
+		 (Shortread_filterp(queryseq1) == true || (queryseq2 != NULL && Shortread_filterp(queryseq2) == true))) {
+	Shortread_free(&queryseq1);
+	if (queryseq2 != NULL) {
+	  Shortread_free(&queryseq2);
+	}
+
       } else {
 	this->buffer[nread++] = Request_new(this->requestid++,queryseq1,queryseq2);
 	nchars += Shortread_fulllength(queryseq1);
@@ -318,6 +366,21 @@ fill_buffer (T this) {
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+
+	} else if (this->filter_if_both_p == true &&
+		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
+	} else if (this->filter_if_both_p == false &&
+		   (Shortread_filterp(queryseq1) == true || (queryseq2 != NULL && Shortread_filterp(queryseq2) == true))) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
 	} else {
 	  this->buffer[nread++] = Request_new(this->requestid++,queryseq1,queryseq2);
 	  nchars += Shortread_fulllength(queryseq1);
@@ -342,6 +405,21 @@ fill_buffer (T this) {
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+
+	} else if (this->filter_if_both_p == true &&
+		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
+	} else if (this->filter_if_both_p == false &&
+		   (Shortread_filterp(queryseq1) == true || (queryseq2 != NULL && Shortread_filterp(queryseq2) == true))) {
+	  Shortread_free(&queryseq1);
+	  if (queryseq2 != NULL) {
+	    Shortread_free(&queryseq2);
+	  }
+
 	} else {
 	  debug(printf("inbuffer creating request %d\n",this->requestid));
 	  this->buffer[nread++] = Request_new(this->requestid++,queryseq1,queryseq2);

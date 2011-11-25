@@ -1,3 +1,290 @@
+2011-10-13  twu
+
+    * VERSION: Updated version number
+
+    * gsnap.c: Removed 'S' from getopt
+
+    * gsnap.c: Fixed naming of --splicingdir flag
+
+    * samprint.c: Not printing mate chr or mate chrpos when mate has an
+      excessive number of paths
+
+    * popcnt.m4: Changed test for -mpopcnt from a compiler test to a run test,
+      to make sure instruction is legal
+
+2011-10-12  twu
+
+    * dbsnp_iit.pl.in: Fixed syntax
+
+    * stage1hr.c: Fixed debugging statements
+
+    * VERSION: Updated version number
+
+    * README, dbsnp_iit.pl.in: Made changes to handle exceptions within the snp
+      file
+
+    * stage1hr.c: Fixed detection of novel splice ends for distant splicing
+
+    * maxent_hr.c: Fixed debugging commands
+
+    * stage3hr.c: Added comment
+
+    * stage3hr.c: Eliminating terminals in Stage3end_optimal_score when
+      non-terminals are present
+
+    * iit-read.c: Checking for case where nintervals is zero
+
+    * iit-write.c: Fixed memory leak in IIT_build
+
+2011-10-10  twu
+
+    * stage3hr.c: Removing -nindels from calculation of querylength_adj
+
+    * gsnap.c: Limiting minimum value of indexdb_size_threshold
+
+    * indexdb.c: Fixed bug in computing Indexdb_mean_size using compressed hash
+      table
+
+    * genome_hr.c: Adding +1 to ctr only when necessary
+
+2011-10-09  twu
+
+    * genome_hr.c, genome_hr.h: In gamma decoding, changed from division of
+      shift by 2 to using shift - 1, made all variables unsigned ints, and added
+      code for branchless computation.
+
+2011-10-08  twu
+
+    * gmap.c, gsnap.c, inbuffer.c, inbuffer.h: Generalized --filter-chastity to
+      work on either or both ends of a paired-end read
+
+    * index.html: Changed wording
+
+    * index.html: Added information about --filter-chastity option
+
+    * goby.c, gsnap.c, inbuffer.c, shortread.c, shortread.h, uniqscan.c:
+      Implemented --filter-chastity option
+
+2011-10-07  twu
+
+    * genome_hr.c: Implemented a 2-shift method for decoding gammas, which
+      avoids a branch
+
+    * config.site.rescomp.prd, config.site.rescomp.tst: Updated for new version
+
+    * index.html: Entered new version 2011-10-07
+
+    * VERSION: Updated version number
+
+    * splicetrie.c: Fixed a bug where splicesites_i was not being initialized to
+      NULL
+
+    * genome_hr.c: Removed dispatch procedures.  Moved part of read_gamma to top
+      of loop, to guarantee that the final ptr location is correct.
+
+    * genome_hr.c: Removed nbits.  Implemented macros for clear_lowbit and
+      clear_highbit.
+
+    * genome_hr.c: Implemented both dispatch and non-dispatch methods for
+      getting offsetptrs from gammas
+
+    * genome_hr.c: Rearranged order of gamma computations within loops
+
+    * genome_hr.c: For gamma commands, trying builtin clz first, then bsr in
+      assembly, then table lookup.
+
+    * Makefile.dna.am, Makefile.gsnaptoo.am: Added POPCNT_CFLAGS
+
+    * config.site: Made CFLAGS=-O3 and added comments about testing -mpopcnt
+
+    * acinclude.m4, asm-bsr.m4, configure.ac, popcnt.m4: Added tests for
+      -mpopcnt compiler flag and bsr function in assembly
+
+2011-10-06  twu
+
+    * genome_hr.c: Added assertion statements to make sure builtin_clz is not
+      called with a value of 0
+
+2011-10-05  twu
+
+    * VERSION: Updated version number
+
+    * index.html: Made changes for latest version
+
+    * configure.ac: Added gff3 utility programs
+
+    * stage3hr.c: Sped up comparison of overlapping and separate paired-end
+      alignments by using arrays instead of lists.
+
+    * stage3hr.c: Simplified procedure for finding bad superstretches
+
+    * stage1hr.c: Fixed bugs in pushing indels to low genomic position in
+      solve_middle_insertion and solve_middle_deletion
+
+    * gsnap.c: Commenting out --genes option
+
+    * stage3hr.c: Performing separate runs of Stage3pair_remove_overlaps on
+      overlapping and non-overlapping alignments
+
+    * stage3hr.c: Added check for bad superstretches in Stage3pair_overlap
+
+    * gsnap.c, stage1hr.c, stage1hr.h, uniqscan.c: Implemented a fast,
+      integrated method for novel and known double splicing, and using it by
+      default
+
+    * access.c: Added error messages when mmap fails
+
+    * stage3hr.c: Picking a winner in case of ties in Stage3pair_remove_overlaps
+
+2011-10-04  twu
+
+    * stage1hr.c: Fixed calculation of genomicstart and genomicend for GMAP
+      alignments, to extend as if there were no trimming
+
+    * stage3hr.c: Added debugging statements
+
+    * stage1hr.c: Made finding of novel doublesplices faster
+
+    * psl_introns.pl.in, psl_splicesites.pl.in: Moved print_exons into a
+      subroutine
+
+    * psl_introns.pl.in, psl_splicesites.pl.in: Using donor_okay_p and
+      acceptor_okay_p subroutines
+
+    * gtf_introns.pl.in: Changed warning message to refer to intron, not exon
+
+    * gtf_genes.pl.in: Removed unused variables
+
+    * Makefile.am, gff3_genes.pl.in, gff3_introns.pl.in, gff3_splicesites.pl.in:
+      Added programs to handle GFF3 files
+
+    * Makefile.dna.am: Removed programs for processing BAM files
+
+    * iitdef.h: Restored NUMERIC_ALPHA_SORT to sort types
+
+    * iit-write.c: Restored NUMERIC_ALPHA_SORT to sort types
+
+    * stage1hr.c: Fixed issue with finding novel doublesplices where not all
+      middle segments were tested
+
+2011-10-03  twu
+
+    * iitdef.h: Added code for creating IIT files internally
+
+    * iit-write.c, iit-write.h: Added code for creating IIT files internally
+
+    * archive.html, index.html: Made changes for version 2011-10-01
+
+2011-10-02  twu
+
+    * VERSION: Updated version number
+
+2011-10-01  twu
+
+    * sequence.c: Removed compiler directive to undef HAVE_ZLIB
+
+    * stage1hr.c: Allowing reads to be equal to index1part+2, not just greater
+      than
+
+    * Makefile.dna.am, uniqscan.c: Added program uniqscan
+
+2011-09-30  twu
+
+    * Makefile.dna.am, dynprog.c, dynprog.h, gmap.c, gsnap.c, splicetrie.c,
+      splicetrie.h, stage1hr.c, stage1hr.h, stage3.c, stage3.h: Moved
+      splicesites and trieoffsets into local static variables to avoid passing
+      them as parameters
+
+    * stage1hr.c: Moved check of genestrand value outside loop for retrieving
+      oligos
+
+    * substring.c: Created separate procedures for mark_mismatches for stranded
+      and non-stranded cases
+
+    * genome_hr.c, gsnap.c, indexdb.c, mode.h, stage1hr.c, substring.c:
+      Implemented stranded and non-stranded versions of cmet and atoi
+      substitutions
+
+    * VERSION, compress.c, config.site.rescomp.prd, config.site.rescomp.tst,
+      genome_hr.c, genome_hr.h, gsnap.c, mapq.c, mapq.h, splicetrie.c,
+      splicetrie.h, src, stage1hr.c, stage3hr.c, stage3hr.h, substring.c,
+      substring.h, trunk, util: Merged revisions 48527 to 48790 from
+      branches/2011-09-28-atoi
+
+2011-09-29  twu
+
+    * stage1hr.c: Previously returning NULL if either end of a paired-end read
+      had no oligos.  Now returning NULL if both ends have no oligos.
+
+    * stage3hr.c: Requiring that overlap be greater than both ends of a
+      paired-end read
+
+    * oligoindex_hr.c: Not computing oligoindex if left_plus_length <= left
+
+2011-09-28  twu
+
+    * psl_introns.pl.in, psl_splicesites.pl.in: Added warning if intron lengths
+      are negative
+
+    * splicetrie_build.c: Added check for negative distances in a splicing_iit
+      file
+
+    * genome_hr.c: Fixed assignment to predicate inside of assert statement
+
+2011-09-22  twu
+
+    * VERSION: Updated version number
+
+    * gsnap.c: Fixed typo in help statement
+
+    * table.c, uinttable.c: Allowing retrieval of keys to work, even if table is
+      empty
+
+    * substring.c: Allowing case where nothing is found in splicesites_iit,
+      because it is for introns and not splicesites
+
+    * splicetrie.c: Fixed case where splicetrie_obs is not NULL, but
+      splicetrie_max is NULL, which occurs if the splicing file is for introns,
+      and not splicesites
+
+    * splicetrie_build.c: Fixed memory leak in building splicetrie for introns
+      splicing file
+
+2011-09-20  twu
+
+    * cappaths.c, spliceclean.c: Moved cappaths and spliceclean programs to
+      GSTRUCT repository
+
+    * Makefile.dna.am, genecompare.c: Moved program genecompare to GSTRUCT
+      repository
+
+    * Makefile.dna.am: Moved cappaths to GSTRUCT repository
+
+    * Makefile.dna.am, splicegene.c, spliceturn.c: Moved spliceturn and
+      splicegene to GSTRUCT repository
+
+2011-09-17  twu
+
+    * gsnap.c: Provided further clarification in help statement about
+      min-localsplice-endlength
+
+    * gsnap.c: Checking that min_distantsplicing_end_matches is greater than or
+      equal to kmer size.  Clarified some help statements.
+
+    * README: Added recommendation to use known splice sites, rather than known
+      introns
+
+    * README: Clarified that a given set of known splice sites can find
+      alternative splicing.
+
+    * except.c: Fixed Except_advance_stack to return a value if pthreads not
+      available
+
+    * Makefile.dna.am: Moved instructions for spliceclean and splicealt to
+      GSTRUCT repository
+
+    * psl_introns.pl.in: Removed extraneous "v" at beginning of line
+
 2011-09-14  twu
 
     * VERSION: Updated version number

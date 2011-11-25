@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: table.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: table.c 48036 2011-09-22 22:12:35Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -220,7 +220,7 @@ Table_keys_by_timeindex (T table, void *end) {
   struct binding **buckets, *p;
 
   assert(table);
-  buckets = (struct binding **) CALLOC(table->length,sizeof(struct binding *));
+  buckets = (struct binding **) CALLOC(table->length+1,sizeof(struct binding *));
   for (i = 0; i < table->size; i++) {
     for (p = table->buckets[i]; p; p = p->link) {
       buckets[j++] = p;

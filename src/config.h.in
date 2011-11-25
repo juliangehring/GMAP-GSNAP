@@ -3,6 +3,9 @@
 /* Define if building universal (internal helper macro) */
 #undef AC_APPLE_UNIVERSAL_BUILD
 
+/* Define to 1 if bsr command is available in assembly */
+#undef HAVE_ASM_BSR
+
 /* Define to 1 if __builtin_clz works. */
 #undef HAVE_BUILTIN_CLZ
 

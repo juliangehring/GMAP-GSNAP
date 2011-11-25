@@ -52,14 +52,17 @@
 ## procedure will search for a suitable compiler, first for gcc and
 ## then for cc.  To override this choice, specify the name of your
 ## preferred C compiler here, for example, 'c89'.  
+## CC=gcc
+## or may want to specify another compiler
 ## CC=/usr/bin/cc
 
 
 ## Debugging and optimization options for the C compiler.  Use this to
 ## specify CFLAGS for the version of the C compiler specified above.
 ## If unspecified, defaults to '-g -O2' for gcc, and '-g' in all other
-## cases.  
-## CFLAGS='-g -O2'
+## cases.  For fastest speed, should select -O3.  The configure script
+## will also test whether -mpopcnt works and apply it if possible.
+CFLAGS='-O3'
 
 
 ## Search directory for header files ('-IDIR') and any other

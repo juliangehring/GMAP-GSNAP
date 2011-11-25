@@ -10,6 +10,14 @@ typedef enum {DONOR, ANTIDONOR, ACCEPTOR, ANTIACCEPTOR} Splicetype_T;
 #include "genome.h"
 #include "list.h"
 
+/* For offsets */
+/* #define USE_2BYTE_RELOFFSETS 1 */
+#ifdef USE_2BYTE_RELOFFSETS
+#define NULL_POINTER 65535
+#else
+#define NULL_POINTER -1U    /* Note: 0 does not work */
+#endif
+
 #define MAX_DUPLICATES 1000
 #define DUPLICATE_NODE -1000U	/* Needs to be -MAX_DUPLICATES */
 

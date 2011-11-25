@@ -1,11 +1,11 @@
-/* $Id: iit-write.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: iit-write.h 48925 2011-10-03 21:59:27Z twu $ */
 #ifndef IIT_WRITE_INCLUDED
 #define IIT_WRITE_INCLUDED
 #include "bool.h"
 #include "list.h"
 #include "uintlist.h"
 #include "table.h"
-#include "iitdef.h"		/* For Sorttype_T */
+#include "iitdef.h"
 
 #define T IIT_T
 #ifndef IIT_TYPEDEF
@@ -19,6 +19,9 @@ extern void
 IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Table_T intervaltable,
 	   Table_T labeltable, Table_T annottable, Sorttype_T divsort, int version,
 	   bool label_pointers_8p, bool annot_pointers_8p);
+extern T
+IIT_create (List_T divlist, List_T typelist, List_T fieldlist, Table_T intervaltable,
+	    Table_T labeltable, Table_T datatable, Sorttype_T divsort, int version);
 extern T
 IIT_new (List_T intervallist);
 extern void

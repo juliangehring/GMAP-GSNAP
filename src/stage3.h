@@ -1,4 +1,4 @@
-/* $Id: stage3.h 47130 2011-09-13 20:49:44Z twu $ */
+/* $Id: stage3.h 48822 2011-09-30 23:43:27Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -43,6 +43,7 @@ extern void
 Stage3_setup (bool splicingp_in,
 	      IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	      int donor_typeint_in, int acceptor_typeint_in,
+	      Genomicpos_T *splicesites_in,
 	      int min_intronlength_in);
 
 extern bool
@@ -228,9 +229,6 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		int skiplength, int query_subseq_offset,
 		char *genomicseg_ptr, char *genomicuc_ptr,
 		Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		Genomicpos_T *splicesites, Splicetype_T *splicetypes, int nsplicesites,
-		unsigned int *trieoffsets_obs, unsigned int *triecontents_obs,
-		unsigned int *trieoffsets_max, unsigned int *triecontents_max,
 		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 		Genome_T genome, bool usersegment_p, bool watsonp, bool jump_late_p,
 		int maxpeelback, int maxpeelback_distalmedial, int nullgap,

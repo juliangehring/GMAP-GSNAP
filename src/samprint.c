@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 47131 2011-09-13 20:50:18Z twu $";
+static char rcsid[] = "$Id: samprint.c 49749 2011-10-13 19:26:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2316,12 +2316,14 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
   substringM_length = Substring_match_length(substringM);
 
   if (substring1 == NULL) {
+    substring1_start = 0;
     substring1_length = 0;
   } else {
     substring1_start = Substring_querystart(substring1);
     substring1_length = Substring_match_length(substring1);
   }
   if (substring2 == NULL) {
+    substring2_start = 0;
     substring2_length = 0;
   } else {
     substring2_start = Substring_querystart(substring2);
@@ -2480,6 +2482,7 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
   } else {
     fprintf(stderr,"Stage3end_substring_low %p is neither donor %p or acceptor %p\n",
 	    Stage3end_substring_low(this),donor,acceptor);
+    concordant_chrpos = 0U;
   }
 
   halfdonor_dinucleotide(&donor1,&donor2,donor);
@@ -3010,10 +3013,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 #endif
 
       /* print first end results */
-      mate = (npaths2 == 0) ? (Stage3end_T) NULL : stage3array2[0];
-      if (mate == NULL) {
-	chrpos3 = 0;
+      if (npaths2 == 0) {
+	mate = (Stage3end_T) NULL;
+	chrpos3 = 0U;
+      } else if (quiet_if_excessive_p && npaths2 > maxpaths) {
+	mate = (Stage3end_T) NULL;
+	chrpos3 = 0U;
       } else {
+	mate = stage3array2[0];
 	hardclip3 = 0;
 	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,mate,
 				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq2));
@@ -3055,10 +3062,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 			  
       /* print second end results */
-      mate = (npaths1 == 0) ? (Stage3end_T) NULL : stage3array1[0];
-      if (mate == NULL) {
+      if (npaths1 == 0) {
+	mate = (Stage3end_T) NULL;
+	chrpos5 = 0U;
+      } else if (quiet_if_excessive_p && npaths1 > maxpaths) {
+	mate = (Stage3end_T) NULL;
 	chrpos5 = 0U;
       } else {
+	mate = stage3array1[0];
 	hardclip5 = 0;
 	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,mate,
 				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq1));
@@ -3140,10 +3151,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 
       /* print first end results */
-      mate = (npaths2 == 0) ? (Stage3end_T) NULL : stage3array2[0];
-      if (mate == NULL) {
+      if (npaths2 == 0) {
+	mate = (Stage3end_T) NULL;
+	chrpos3 = 0U;
+      } else if (quiet_if_excessive_p && npaths2 > maxpaths) {
+	mate = (Stage3end_T) NULL;
 	chrpos3 = 0U;
       } else {
+	mate = stage3array2[0];
 	hardclip3 = 0;
 	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,mate,
 				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq2));
@@ -3196,10 +3211,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 			  
       /* print second end results */
-      mate = (npaths1 == 0) ? (Stage3end_T) NULL : stage3array1[0];
-      if (mate == NULL) {
+      if (npaths1 == 0) {
+	mate = (Stage3end_T) NULL;
+	chrpos5 = 0U;
+      } else if (quiet_if_excessive_p && npaths1 > maxpaths) {
+	mate = (Stage3end_T) NULL;
 	chrpos5 = 0U;
       } else {
+	mate = stage3array1[0];
 	hardclip5 = 0;
 	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,mate,
 				     Stage3end_substring_low(mate),Shortread_fulllength(queryseq1));

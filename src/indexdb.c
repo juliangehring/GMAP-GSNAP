@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 46000 2011-08-30 01:29:25Z twu $";
+static char rcsid[] = "$Id: indexdb.c 49487 2011-10-10 20:58:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -223,7 +223,7 @@ Indexdb_mean_size (T this, Mode_T mode, int index1part) {
   n = oligospace = power(NAMINOACIDS,index1part);
 #else
   n = oligospace = power(4,index1part);
-  if (mode == CMET || mode == ATOI) {
+  if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED || mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
     n = power(3,index1part);
   }
 #endif
@@ -241,12 +241,12 @@ Indexdb_mean_size (T this, Mode_T mode, int index1part) {
   } else {
 #ifdef WORDS_BIGENDIAN
     if (this->offsetscomp_access == ALLOCATED) {
-      return (double) this->offsetscomp[oligospace/this->offsetscomp_blocksize]/(double) n;
+      return (double) this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]]/(double) n;
     } else {
-      return (double) Bigendian_convert_uint(this->offsetscomp[oligospace/this->offsetscomp_blocksize])/(double) n;
+      return (double) Bigendian_convert_uint(this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]])/(double) n;
     }
 #else
-    return (double) this->offsetscomp[oligospace/this->offsetscomp_blocksize]/(double) n;
+    return (double) this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]]/(double) n;
 #endif
   }
 }

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 46067 2011-08-30 20:42:23Z twu $";
+static char rcsid[] = "$Id: access.c 49085 2011-10-05 15:50:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,6 +8,8 @@ static char rcsid[] = "$Id: access.c 46067 2011-08-30 20:42:23Z twu $";
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>		/* For strerror */
+#include <errno.h>
 
 /* <unistd.h> and <sys/types.h> included in access.h */
 #include <sys/mman.h>		/* For mmap */
@@ -268,6 +270,8 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
+      fprintf(stderr,"Got mmap failure on len %lu from length %lu.  Error %d: %s\n",
+	      length,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",length,length));
       memory = NULL;
     } else if (randomp == true) {
@@ -331,6 +335,8 @@ Access_mmap_offset (int *remainder, int fd, off_t offset, size_t length, size_t 
 #endif
 		  ,fd,offset);
     if (memory == MAP_FAILED) {
+      fprintf(stderr,"Got mmap failure on fd %d, offset %lu, length %lu.  Error %d: %s\n",
+	      fd,offset,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on fd %d, offset %lu, length %lu\n",fd,offset,length));
       memory = NULL;
     } else if (randomp == true) {
@@ -399,6 +405,8 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
+      fprintf(stderr,"Got mmap failure on len %lu from length %lu.  Error %d: %s\n",
+	      *len,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
     } else if (randomp == true) {
@@ -460,6 +468,8 @@ Access_mmap_offset_rw (int *remainder, int fd, off_t offset, size_t length, size
 #endif
 		  ,fd,offset);
     if (memory == MAP_FAILED) {
+      fprintf(stderr,"Got mmap failure on offset %lu, length %lu.  Error %d: %s\n",
+	      offset,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on offset %lu, length %lu\n",offset,length));
       memory = NULL;
     } else if (randomp == true) {
@@ -543,6 +553,8 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
+      fprintf(stderr,"Got mmap failure on len %lu from length %lu.  Error %d: %s\n",
+	      *len,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
       Stopwatch_stop(stopwatch);

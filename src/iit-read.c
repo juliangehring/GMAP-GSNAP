@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 45993 2011-08-30 01:00:30Z twu $";
+static char rcsid[] = "$Id: iit-read.c 49619 2011-10-12 17:07:29Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3776,6 +3776,7 @@ IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y,
   int lambda, prev;
   int divno;
   int min1, max1 = 0, min2, max2 = 0;
+  int nintervals;
 
   divno = IIT_divint(this,divstring);
 #if 1
@@ -3787,7 +3788,12 @@ IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y,
     return (int *) NULL;
   }
 #endif
-  min1 = min2 = this->nintervals[divno] + 1;
+  if ((nintervals = this->nintervals[divno]) == 0) {
+    *nmatches = 0;
+    return (int *) NULL;
+  } else {
+    min1 = min2 = nintervals + 1;
+  }
 
   debug(printf("Entering IIT_get with query %u %u\n",x,y));
   fnode_query_aux(&min1,&max1,this,divno,0,x);

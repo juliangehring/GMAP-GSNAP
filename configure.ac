@@ -171,7 +171,6 @@ fi
 
 ACX_MMAP_FLAGS
 ACX_MADVISE_FLAGS
-ACX_BUILTIN
 
 AC_CHECK_FUNCS([ceil floor index log madvise memcpy memmove memset munmap pow rint stat64 strtoul sysconf sysctl sigaction])
 
@@ -181,6 +180,9 @@ ACX_PAGESIZE
 ACX_FUNC_FOPEN_BINARY
 ACX_FUNC_FOPEN_TEXT
 
+ACX_BUILTIN
+ACX_POPCNT
+ACX_ASM_BSR
 
 # Genome directory
 AC_MSG_CHECKING(gmapdb)
@@ -335,6 +337,9 @@ AC_CONFIG_FILES([util/psl_genes.pl])
 AC_CONFIG_FILES([util/gtf_splicesites.pl])
 AC_CONFIG_FILES([util/gtf_introns.pl])
 AC_CONFIG_FILES([util/gtf_genes.pl])
+AC_CONFIG_FILES([util/gff3_splicesites.pl])
+AC_CONFIG_FILES([util/gff3_introns.pl])
+AC_CONFIG_FILES([util/gff3_genes.pl])
 AC_CONFIG_FILES([util/dbsnp_iit.pl])
 AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/align.test],[chmod +x tests/align.test])

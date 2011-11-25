@@ -1,0 +1,74 @@
+#! @PERL@
+
+use warnings;
+
+
+$gene_name = "";
+$last_transcript_id = "";
+while (defined($line = <>)) {
+    chop $line;
+    @fields = split /\t/,$line;
+
+    if ($fields[2] eq "gene") {
+	($gene_name) = $fields[8] =~ /ID=([^;]+)/;
+	$chr = $fields[0];
+	@starts = ();
+	@ends = ();
+	
+    } elsif ($fields[2] eq "mRNA") {
+	if ($#starts > 0) {
+	    if ($strand eq "+") {
+		printf ">$last_transcript_id $chr:%u..%u\n",$starts[0],$ends[$#ends];
+	    } elsif ($strand eq "-") {
+		printf ">$last_transcript_id $chr:%u..%u\n",$ends[0],$starts[$#starts];
+	    } else {
+		die "strand $strand";
+	    }
+	    print "$gene_name\n";
+	    print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand);
+	}
+
+	($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
+	$strand = $fields[6];
+	@starts = ();
+	@ends = ();
+
+    } elsif ($fields[2] eq "exon") {
+	push @starts,$fields[3];
+	push @ends,$fields[4];
+    }
+}
+
+if ($#starts > 0) {
+    if ($strand eq "+") {
+	printf ">$last_transcript_id $chr:%u..%u\n",$starts[0],$ends[$#ends];
+    } elsif ($strand eq "-") {
+	printf ">$last_transcript_id $chr:%u..%u\n",$ends[0],$starts[$#starts];
+    } else {
+	die "strand $strand";
+    }
+    print "$gene_name\n";
+    print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand);
+}
+
+
+exit;
+
+
+sub print_exons {
+    my ($starts, $ends, $gene_name, $transcript_id, $chr, $strand) = @_;
+
+    $nexons = $#{$starts} + 1;
+    if ($strand eq "+") {
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ {$starts}[$i],$ {$ends}[$i];
+	}
+    } elsif ($strand eq "-") {
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ {$ends}[$i],$ {$starts}[$i];
+	}
+    }
+    
+    return;
+}
+

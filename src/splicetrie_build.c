@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 46071 2011-08-30 20:44:36Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 49816 2011-10-14 18:36:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,13 +18,6 @@ static char rcsid[] = "$Id: splicetrie_build.c 46071 2011-08-30 20:44:36Z twu $"
 
 #define MININTRONLEN 9
 #define SPLICEDIST_EXTRA 10 /* Reported intron length does not include dinucleotides */
-
-/* #define USE_2BYTE_RELOFFSETS 1 */
-#ifdef USE_2BYTE_RELOFFSETS
-#define NULL_POINTER 65535
-#else
-#define NULL_POINTER -1U    /* Note: 0 does not work */
-#endif
 
 #define EMPTY_POINTER 0U
 
@@ -344,10 +337,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 				     int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
 				     int donor_typeint, int acceptor_typeint, IIT_T chromosome_iit,
 				     Genome_T genome, Genome_T genomealt, Genomicpos_T shortsplicedist) {
-  Genomicpos_T *splicesites, chrlength, chroffset, position, chrpos;
+  Genomicpos_T *splicesites, chrlength, chroffset, chrhigh, position, chrpos;
   Genomicpos_T last_donor, last_antidonor, last_acceptor, last_antiacceptor;
   int last_donor_k, last_antidonor_k, last_acceptor_k, last_antiacceptor_k;
-  Genomicpos_T distance;
+  int distance;
   UINT4 refstring, altstring;
   int *splicesites1;
   int divno, nsplicesites1, i, k;
@@ -364,7 +357,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
   k = 0;
   for (chrnum = 1; chrnum <= IIT_total_nintervals(chromosome_iit); chrnum++) {
     if ((divno = splicing_divint_crosstable[chrnum]) > 0) {
-      chroffset = IIT_interval_low(chromosome_iit,chrnum);
+      IIT_interval_bounds(&chroffset,&chrhigh,chromosome_iit,chrnum);
       chrlength = IIT_length(chromosome_iit,chrnum);
       splicesites1 = IIT_get_with_divno(&nsplicesites1,splicing_iit,divno,
 					0U,chrlength-1U,/*sortp*/false);
@@ -374,7 +367,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	  if (restofheader[0] == '\0') {
 	    fprintf(stderr,"splice distances absent...");
 	    *distances_observed_p = false;
-	  } else if (sscanf(restofheader,"%u",&distance) < 1) {
+	  } else if (sscanf(restofheader,"%d",&distance) < 1) {
 	    fprintf(stderr,"splice distances absent...");
 	    *distances_observed_p = false;
 	  } else {
@@ -396,8 +389,16 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	last_donor = last_antidonor = last_acceptor = last_antiacceptor = 0U;
 	for (i = 0; i < nsplicesites1; i++) {
 	  interval = intervals[i];
-	  position = Interval_low(intervals[i]) + chroffset;
-	  if (Interval_type(interval) == donor_typeint) {
+	  chrpos = Interval_low(intervals[i]);
+	  position = chrpos + chroffset;
+
+	  if (position >= chrhigh) {
+	    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+	    fprintf(stderr,"\nSplice site %s:%u extends beyond chromosome length %u.  Discarding...",
+		    chr,chrpos,chrlength);
+	    if (allocp) FREE(chr);
+
+	  } else if (Interval_type(interval) == donor_typeint) {
 	    if (Interval_sign(interval) > 0) {
 	      if (position != last_donor) {
 		last_donor = position;
@@ -466,12 +467,11 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
   k = 0;
   for (chrnum = 1; chrnum <= IIT_total_nintervals(chromosome_iit); chrnum++) {
     if ((divno = splicing_divint_crosstable[chrnum]) > 0) {
-      chroffset = IIT_interval_low(chromosome_iit,chrnum);
+      IIT_interval_bounds(&chroffset,&chrhigh,chromosome_iit,chrnum);
       chrlength = IIT_length(chromosome_iit,chrnum);
       splicesites1 = IIT_get_with_divno(&nsplicesites1,splicing_iit,divno,
 					0U,chrlength-1U,/*sortp*/false);
       if (nsplicesites1 > 0) {
-	chr = IIT_label(chromosome_iit,chrnum,&allocp);
 	intervals = (Interval_T *) CALLOC(nsplicesites1,sizeof(Interval_T));
 	for (i = 0; i < nsplicesites1; i++) {
 	  /* intervals[i] = &(splicing_iit->intervals[divno][i]); */
@@ -482,8 +482,13 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	    /* Interval_store_length(intervals[i],shortsplicedist); */
 	  } else {
 	    annot = IIT_annotation(&restofheader,splicing_iit,splicesites1[i],&alloc_header_p);
-	    if (sscanf(restofheader,"%u",&distance) != 1) {
-	      fprintf(stderr,"splicesites file missing distance in an entry\n");
+	    if (sscanf(restofheader,"%d",&distance) != 1) {
+	      fprintf(stderr,"splicesites file missing distance in entry %s...exiting\n",
+		      IIT_label(splicing_iit,splicesites1[i],&allocp));
+	      exit(9);
+	    } else if (distance < 0) {
+	      fprintf(stderr,"splicesites file has a negative distance %d in entry %s...exiting\n",
+		      distance,IIT_label(splicing_iit,splicesites1[i],&allocp));
 	      exit(9);
 	    } else {
 	      Interval_store_length(intervals[i],distance + SPLICEDIST_EXTRA);
@@ -502,7 +507,16 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	  chrpos = Interval_low(intervals[i]);
 	  position = chrpos + chroffset;
 
-	  if (Interval_type(interval) == donor_typeint) {
+	  if (position >= chrhigh) {
+#if 0
+	    /* Warning given previously */
+	    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+	    fprintf(stderr,"\nSplice site %s:%u extends beyond chromosome length %u.  Discarding...",
+		    chr,chrpos,chrlength);
+	    if (allocp) FREE(chr);
+#endif
+
+	  } else if (Interval_type(interval) == donor_typeint) {
 	    if (Interval_sign(interval) > 0) {
 	      if (position == last_donor) {
 		if (Interval_length(interval) > (*splicedists)[last_donor_k]) {
@@ -513,6 +527,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_donor_k = k;
 		last_donor = splicesites[k] = position;
 #ifdef GSNAP
+		assert(position/32U < nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = DONOR;
@@ -527,8 +542,11 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		}
 
 		if (saw_n_p == true) {
-		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		  chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			  chr,chrpos);
+		  if (allocp) FREE(chr);
+
 		} else if (genomealt) {
 		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		  k++;
@@ -548,6 +566,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_antidonor_k = k;
 		last_antidonor = splicesites[k] = position;
 #ifdef GSNAP
+		assert(position/32U < nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = ANTIDONOR;
@@ -564,8 +583,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		}
 
 		if (saw_n_p == true) {
-		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		  chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			  chr,chrpos);
+		  if (allocp) FREE(chr);
 		} else if (genomealt) {
 		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		  k++;
@@ -587,6 +608,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_acceptor_k = k;
 		last_acceptor = splicesites[k] = position;
 #ifdef GSNAP
+		assert(position/32U < nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = ACCEPTOR;
@@ -603,8 +625,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		}
 
 		if (saw_n_p == true) {
-		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		  chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			  chr,chrpos);
+		  if (allocp) FREE(chr);
 		} else if (genomealt) {
 		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		  k++;
@@ -624,6 +648,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_antiacceptor_k = k;
 		last_antiacceptor = splicesites[k] = position;
 #ifdef GSNAP
+		assert(position/32U < nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = ANTIACCEPTOR;
@@ -638,8 +663,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		}
 
 		if (saw_n_p == true) {
-		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		  chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		  fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			  chr,chrpos);
+		  if (allocp) FREE(chr);
 		} else if (genomealt) {
 		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		  k++;
@@ -658,16 +685,13 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	}
 	FREE(intervals);
 	FREE(splicesites1);
-	if (allocp == true) {
-	  FREE(chr);
-	}
       }
     }
   }
 
   *nsplicesites = k;
   splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
-  fprintf(stderr,"%d splicesites without Ns...",*nsplicesites);
+  fprintf(stderr,"%d valid splicesites...",*nsplicesites);
 
   return splicesites;
 }
@@ -682,7 +706,7 @@ Splicetrie_retrieve_via_introns (
 				 List_T **splicestrings, UINT4 **splicefrags_ref, UINT4 **splicefrags_alt,
 				 int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
 				 IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt) {
-  Genomicpos_T *splicesites, chrlength, chroffset, position, chrpos;
+  Genomicpos_T *splicesites, chrlength, chroffset, chrhigh, position, chrpos;
   Genomicpos_T last_donor, last_antidonor, last_acceptor, last_antiacceptor;
   int last_donor_k, last_antidonor_k, last_acceptor_k, last_antiacceptor_k;
   UINT4 refstring, altstring;
@@ -700,7 +724,7 @@ Splicetrie_retrieve_via_introns (
   k = 0;
   for (chrnum = 1; chrnum <= IIT_total_nintervals(chromosome_iit); chrnum++) {
     if ((divno = splicing_divint_crosstable[chrnum]) > 0) {
-      chroffset = IIT_interval_low(chromosome_iit,chrnum);
+      IIT_interval_bounds(&chroffset,&chrhigh,chromosome_iit,chrnum);
       chrlength = IIT_length(chromosome_iit,chrnum);
       introns1 = IIT_get_with_divno(&nintrons1,splicing_iit,divno,0U,chrlength-1U,/*sortp*/false);
       if (nintrons1 > 0) {
@@ -713,8 +737,16 @@ Splicetrie_retrieve_via_introns (
 	last_donor = last_antiacceptor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  position = Interval_low(intervals[i]) + chroffset;
-	  if (Interval_sign(interval) > 0) {
+	  chrpos = Interval_low(intervals[i]);
+	  position = chrpos + chroffset;
+
+	  if (position >= chrhigh) {
+	    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+	    fprintf(stderr,"\nSplice site %s:%u extends beyond chromosome length %u.  Discarding...",
+		    chr,chrpos,chrlength);
+	    if (allocp) FREE(chr);
+
+	  } else if (Interval_sign(interval) > 0) {
 	    if (position != last_donor) {
 	      last_donor = position;
 	      k++;
@@ -731,8 +763,16 @@ Splicetrie_retrieve_via_introns (
 	last_acceptor = last_antidonor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  position = Interval_high(intervals[i]) + chroffset;
-	  if (Interval_sign(interval) > 0) {
+	  chrpos = Interval_high(intervals[i]);
+	  position = chrpos + chroffset;
+
+	  if (position >= chrhigh) {
+	    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+	    fprintf(stderr,"\nSplice site %s:%u extends beyond chromosome length %u.  Discarding...",
+		    chr,chrpos,chrlength);
+	    if (allocp) FREE(chr);
+
+	  } else if (Interval_sign(interval) > 0) {
 	    if (position != last_acceptor) {
 	      last_acceptor = position;
 	      k++;
@@ -789,11 +829,10 @@ Splicetrie_retrieve_via_introns (
   k = 0;
   for (chrnum = 1; chrnum <= IIT_total_nintervals(chromosome_iit); chrnum++) {
     if ((divno = splicing_divint_crosstable[chrnum]) > 0) {
-      chroffset = IIT_interval_low(chromosome_iit,chrnum);
+      IIT_interval_bounds(&chroffset,&chrhigh,chromosome_iit,chrnum);
       chrlength = IIT_length(chromosome_iit,chrnum);
       introns1 = IIT_get_with_divno(&nintrons1,splicing_iit,divno,0U,chrlength-1U,/*sortp*/false);
       if (nintrons1 > 0) {
-	chr = IIT_label(chromosome_iit,chrnum,&allocp);
 	intervals = (Interval_T *) CALLOC(nintrons1,sizeof(Interval_T));
 	for (i = 0; i < nintrons1; i++) {
 	  intervals[i] = &(splicing_iit->intervals[divno][i]);
@@ -806,7 +845,16 @@ Splicetrie_retrieve_via_introns (
 	  chrpos = Interval_low(intervals[i]);
 	  position = chrpos + chroffset;
 
-	  if (Interval_sign(interval) > 0) {
+	  if (position >= chrhigh) {
+#if 0
+	    /* Warning given previously */
+	    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+	    fprintf(stderr,"\nSplice site %s:%u extends beyond chromosome length %u.  Discarding...",
+		    chr,chrpos,chrlength);
+	    if (allocp) FREE(chr);
+#endif
+
+	  } else if (Interval_sign(interval) > 0) {
 	    if (position == last_donor) {
 	      if (Interval_length(interval) > (*splicedists)[last_donor_k]) {
 		(*splicedists)[last_donor_k] = Interval_length(interval);
@@ -816,6 +864,7 @@ Splicetrie_retrieve_via_introns (
 	      last_donor_k = k;
 	      last_donor = splicesites[k] = position;
 #ifdef GSNAP
+	      assert(position/32U < nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = DONOR;
@@ -830,8 +879,10 @@ Splicetrie_retrieve_via_introns (
 	      }
 
 	      if (saw_n_p == true) {
-		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			chr,chrpos);
+		if (allocp) FREE(chr);
 	      } else if (genomealt) {
 		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		k++;
@@ -851,6 +902,7 @@ Splicetrie_retrieve_via_introns (
 	      last_antiacceptor_k = k;
 	      last_antiacceptor = splicesites[k] = position;
 #ifdef GSNAP
+	      assert(position/32U < nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = ANTIACCEPTOR;
@@ -865,8 +917,10 @@ Splicetrie_retrieve_via_introns (
 	      }
 
 	      if (saw_n_p == true) {
-		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			chr,chrpos);
+		if (allocp) FREE(chr);
 	      } else if (genomealt) {
 		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		k++;
@@ -886,7 +940,16 @@ Splicetrie_retrieve_via_introns (
 	  chrpos = Interval_high(intervals[i]);
 	  position = chrpos + chroffset;
 
-	  if (Interval_sign(interval) > 0) {
+	  if (position >= chrhigh) {
+#if 0
+	    /* Warning given previously */
+	    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+	    fprintf(stderr,"\nSplice site %s:%u extends beyond chromosome length %u.  Discarding...",
+		    chr,chrpos,chrlength);
+	    if (allocp) FREE(chr);
+#endif
+
+	  } else if (Interval_sign(interval) > 0) {
 	    if (position == last_acceptor) {
 	      if (Interval_length(interval) > (*splicedists)[last_acceptor_k]) {
 		(*splicedists)[last_acceptor_k] = Interval_length(interval);
@@ -896,6 +959,7 @@ Splicetrie_retrieve_via_introns (
 	      last_acceptor_k = k;
 	      last_acceptor = splicesites[k] = position;
 #ifdef GSNAP
+	      assert(position/32U < nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = ACCEPTOR;
@@ -912,8 +976,10 @@ Splicetrie_retrieve_via_introns (
 	      }
 
 	      if (saw_n_p == true) {
-		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			chr,chrpos);
+		if (allocp) FREE(chr);
 	      } else if (genomealt) {
 		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		k++;
@@ -933,6 +999,7 @@ Splicetrie_retrieve_via_introns (
 	      last_antidonor_k = k;
 	      last_antidonor = splicesites[k] = position;
 #ifdef GSNAP
+	      assert(position/32U < nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = ANTIDONOR;
@@ -949,8 +1016,10 @@ Splicetrie_retrieve_via_introns (
 	      }
 
 	      if (saw_n_p == true) {
-		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...\n",
+		chr = IIT_label(chromosome_iit,chrnum,&allocp);
+		fprintf(stderr,"\nNon-standard nucleotide N near splice site %s:%u.  Discarding...",
 			chr,chrpos);
+		if (allocp) FREE(chr);
 	      } else if (genomealt) {
 		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
 		k++;
@@ -970,7 +1039,7 @@ Splicetrie_retrieve_via_introns (
 
   *nsplicesites = k;
   splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
-  fprintf(stderr,"%d splicesites without Ns...",*nsplicesites);
+  fprintf(stderr,"%d valid splicesites...",*nsplicesites);
 
   return splicesites;
 }
@@ -1081,6 +1150,8 @@ Trie_new (Splicestring_T *sites, int nsites, int charpos) {
 
 
 /* Combination of Trie_new and Trie_output */
+/* Note that when *ptr = NULL_POINTER, we do not need to advance
+   nprinted, because no entry is made into triecontents_list */
 static Uintlist_T
 Trie_output_new (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list,
 		 Splicestring_T *sites, int nsites, int charpos) {
@@ -2276,27 +2347,34 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 	}
 	j1++;
       }
-      assert(k == ncoords);
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
 
-      sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
-      nsites = 0;
-      j1 = j + 1;
-      k = 0;
-      while (j1 < nsplicesites && k < ncoords) {
-	if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    sites[nsites++] = (Splicestring_T) List_head(p);
+      if (nsites == 0) {
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+
+      } else {
+	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	nsites = 0;
+	j1 = j + 1;
+	k = 0;
+	while (j1 < nsplicesites && k < ncoords) {
+	  if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	    k++;
 	  }
-	  k++;
+	  j1++;
 	}
-	j1++;
+
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+					      sites,nsites,/*charpos*/0);
+	FREE(sites);
       }
 
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-
+      FREE(coords);
       break;
 
     case ACCEPTOR:
@@ -2312,27 +2390,34 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 	}
 	j1--;
       }
-      assert(k == ncoords);
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
 
-      sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
-      nsites = 0;
-      j1 = j - 1;
-      k = 0;
-      while (j1 >= 0 && k < ncoords) {
-	if (splicetypes[j1] == DONOR && splicesites[j1] == coords[k] + chroffset) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    sites[nsites++] = (Splicestring_T) List_head(p);
+      if (nsites == 0) {
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+
+      } else {
+	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	nsites = 0;
+	j1 = j - 1;
+	k = 0;
+	while (j1 >= 0 && k < ncoords) {
+	  if (splicetypes[j1] == DONOR && splicesites[j1] == coords[k] + chroffset) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	    k++;
 	  }
-	  k++;
+	  j1--;
 	}
-	j1--;
+
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						sites,nsites,/*charpos*/0);
+	FREE(sites);
       }
 
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-
+      FREE(coords);
       break;
 
     case ANTIDONOR:
@@ -2348,27 +2433,34 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 	}
 	j1--;
       }
-      assert(k == ncoords);
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
 
-      sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
-      nsites = 0;
-      j1 = j - 1;
-      k = 0;
-      while (j1 >= 0 && k < ncoords) {
-	if (splicetypes[j1] == ANTIACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    sites[nsites++] = (Splicestring_T) List_head(p);
+      if (nsites == 0) {
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+
+      } else {
+	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	nsites = 0;
+	j1 = j - 1;
+	k = 0;
+	while (j1 >= 0 && k < ncoords) {
+	  if (splicetypes[j1] == ANTIACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	    k++;
 	  }
-	  k++;
+	  j1--;
 	}
-	j1--;
+
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						sites,nsites,/*charpos*/0);
+	FREE(sites);
       }
 
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-
+      FREE(coords);
       break;
 
     case ANTIACCEPTOR:
@@ -2384,27 +2476,34 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 	}
 	j1++;
       }
-      assert(k == ncoords);
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
 
-      sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
-      nsites = 0;
-      j1 = j + 1;
-      k = 0;
-      while (j1 < nsplicesites && k < ncoords) {
-	if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] + chroffset) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    sites[nsites++] = (Splicestring_T) List_head(p);
+      if (nsites == 0) {
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+
+      } else {
+	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	nsites = 0;
+	j1 = j + 1;
+	k = 0;
+	while (j1 < nsplicesites && k < ncoords) {
+	  if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] + chroffset) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	    k++;
 	  }
-	  k++;
+	  j1++;
 	}
-	j1++;
+
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						sites,nsites,/*charpos*/0);
+	FREE(sites);
       }
 
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-
+      FREE(coords);
       break;
 
     default: 

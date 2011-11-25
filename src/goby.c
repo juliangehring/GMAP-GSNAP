@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: goby.c 42518 2011-07-08 21:11:34Z twu $";
+static char rcsid[] = "$Id: goby.c 49439 2011-10-08 00:46:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -169,11 +169,11 @@ Goby_read (Shortread_T *queryseq2, Gobyreader_T reader, int barcode_length,
 	  );
   }
 
-  *queryseq2 = Shortread_new(/*acc*/NULL,/*description*/NULL,
+  *queryseq2 = Shortread_new(/*acc*/NULL,/*description*/NULL,/*filterp*/false,
 			     sequence2,sequence2_length,quality2,quality2_length,
 			     barcode_length,invert_second_p, /*copy_acc*/false);
 
-  return Shortread_new(acc,description,
+  return Shortread_new(acc,description,/*filterp*/false,
 		       sequence1,sequence1_length,quality1,quality1_length,
 		       barcode_length,invert_first_p,/*copy_acc*/false);
 #else

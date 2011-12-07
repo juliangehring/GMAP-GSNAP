@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 49751 2011-10-13 19:27:32Z twu $";
+static char rcsid[] = "$Id: gsnap.c 53585 2011-12-02 18:55:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -60,6 +60,7 @@ static char rcsid[] = "$Id: gsnap.c 49751 2011-10-13 19:27:32Z twu $";
 #include "datadir.h"
 #include "inbuffer.h"
 #include "outbuffer.h"
+#include "samprint.h"		/* For SAM_setup */
 
 #include "stage3.h"		/* To get EXTRAQUERYGAP */
 
@@ -85,14 +86,19 @@ static int maxpeelback = 11;
 static int maxpeelback_distalmedial = 24;
 static int extramaterial_end = 10;
 static int extramaterial_paired = 8;
-static int max_gmap_pairsearch = 3;
-static int max_gmap_terminal = 3;
-static int max_gmap_improvement = 3;
+static int max_gmap_pairsearch = 10;
+static int max_gmap_terminal = 5;
+static int max_gmap_improvement = 5;
+
+static double microexon_spliceprob = 0.95;
+static int suboptimal_score_start = -1; /* Determined by simulations to have minimal effect */
+static int suboptimal_score_end = 3; /* Determined by simulations to have diminishing returns above 3 */
 
 static int trigger_score_for_gmap = 5;
 /* static int trigger_score_for_terminals = 5; -- obsolete */
 
 static int min_intronlength = 9;
+static int max_deletionlength = 50;
 
 
 /************************************************************************
@@ -135,9 +141,10 @@ static bool chop_primers_p = false;
 static bool query_unk_mismatch_p = false;
 static bool genome_unk_mismatch_p = true;
 static bool novelsplicingp = false;
+
 static int trim_mismatch_score = -3;
-static Genomicpos_T expected_pairlength = 200;
-static Genomicpos_T pairlength_deviation = 50;
+static int trim_indel_score = -4;
+
 
 static Access_mode_T offsetscomp_access = USE_ALLOCATE;
 static bool expand_offsets_p = false;
@@ -154,6 +161,9 @@ static int pairmax;
 static int pairmax_dna = 1000;
 static int pairmax_rna = 200000;
 
+static Genomicpos_T expected_pairlength = 200;
+static Genomicpos_T pairlength_deviation = 25;
+
 #ifdef HAVE_PTHREAD
 static pthread_t output_thread_id, *worker_thread_ids;
 static pthread_key_t global_request_key;
@@ -168,7 +178,7 @@ static int subopt_levels = 0;
    an integer */
 static double user_maxlevel_float = -1.0;
 
-static int terminal_threshold = 3;
+static int terminal_threshold = 2;
 
 /* Really have only one indel penalty */
 static int indel_penalty_middle = 2;
@@ -188,7 +198,6 @@ static int min_distantsplicing_end_matches = 16;
 static double min_distantsplicing_identity = 0.95;
 static int min_shortend = 2;
 /* static bool find_novel_doublesplices_p = true; */
-static double microexon_spliceprob = 0.90;
 static int antistranded_penalty = 0; /* Most RNA-Seq is non-stranded */
 
 static int index1part;
@@ -210,6 +219,7 @@ static char *user_splicingdir = (char *) NULL;
 static char *splicing_file = (char *) NULL;
 static IIT_T splicing_iit = NULL;
 static bool amb_closest_p = false;
+static bool amb_clip_p = true;
 
 static int donor_typeint = -1;		/* for splicing_iit */
 static int acceptor_typeint = -1;	/* for splicing_iit */
@@ -223,6 +233,7 @@ static List_T *splicestrings = NULL;
 static UINT4 *splicefrags_ref = NULL;
 static UINT4 *splicefrags_alt = NULL;
 static int nsplicesites = 0;
+
 
 /* Splicing via splicesites */
 static int *nsplicepartners_skip = NULL;
@@ -272,7 +283,6 @@ static bool output_goby_p = false;
 static bool user_quality_score_adj = false;
 static bool user_quality_shift = false;
 static int quality_shift = 0;   /* For printing, may want -31 */
-static int mapq_unique_score = 1000; /* Should be higher than largest possible MAPQ score (96) */
 
 static bool exception_raise_p = true;
 static bool quiet_if_excessive_p = false;
@@ -288,6 +298,7 @@ static bool print_snplabels_p = false;
 
 static bool show_refdiff_p = false;
 static bool clip_overlap_p = false;
+static bool merge_samechr_p = false;
 
 /* SAM */
 static int sam_headers_batch = -1;
@@ -345,12 +356,8 @@ static struct option long_options[] = {
 #endif
   {"pairmax-dna", required_argument, 0, 0}, /* pairmax_dna */
   {"pairmax-rna", required_argument, 0, 0}, /* pairmax_rna */
-#if 0
-  {"pairexpect", required_argument, 0, 'p'}, /* expected_pairlength -- now obsolete */
-#endif
-#ifdef USE_BINGO
-  {"pairdev", required_argument, 0, 0}, /* pairlength_deviation -- now obsolete */
-#endif
+  {"pairexpect", required_argument, 0, 0}, /* expected_pairlength */
+  {"pairdev", required_argument, 0, 0}, /* pairlength_deviation */
 #ifdef HAVE_PTHREAD
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
 #endif
@@ -360,6 +367,7 @@ static struct option long_options[] = {
   {"genome-unk-mismatch", required_argument, 0, 0}, /* genome_unk_mismatch_p */
 
   {"trim-mismatch-score", required_argument, 0, 0}, /* trim_mismatch_score */
+  {"trim-indel-score", required_argument, 0, 0}, /* trim_indel_score */
   {"novelsplicing", required_argument, 0, 'N'}, /* novelsplicingp */
 
   {"max-mismatches", required_argument, 0, 'm'}, /* user_maxlevel_float */
@@ -383,6 +391,7 @@ static struct option long_options[] = {
   {"localsplicedist", required_argument, 0, 'w'}, /* shortsplicedist */
   {"splicingdir", required_argument, 0, 0},	  /* user_splicingdir */
   {"use-splicing", required_argument, 0, 's'}, /* splicing_iit, knownsplicingp */
+  {"ambig-splice-noclip", no_argument, 0, 0},  /* amb_clip_p */
   {"genes", required_argument, 0, 'g'}, /* genes_iit */
   {"favor-multiexon", no_argument, 0, 0}, /* favor_multiexon_p */
 
@@ -391,6 +400,7 @@ static struct option long_options[] = {
   {"distant-splice-endlength", required_argument, 0, 'K'}, /* min_distantsplicing_end_matches */
   {"shortend-splice-endlength", required_argument, 0, 'l'}, /* min_shortend */
   {"antistranded-penalty", required_argument, 0, 0},	    /* antistranded_penalty */
+  {"merge-distant-samechr", no_argument, 0, 0},		    /* merge_samechr_p */
 
   {"cmetdir", required_argument, 0, 0}, /* user_cmetdir */
   {"atoidir", required_argument, 0, 0}, /* user_atoidir */
@@ -411,6 +421,8 @@ static struct option long_options[] = {
   {"max-gmap-terminal", required_argument, 0, 0}, /* max_gmap_terminal */
   {"max-gmap-improvement", required_argument, 0, 0}, /* max_gmap_improvement */
   {"microexon-spliceprob", required_argument, 0, 0}, /* microexon_spliceprob */
+  {"stage2-start", required_argument, 0, 0},	     /* suboptimal_score_start */
+  {"stage2-end", required_argument, 0, 0},	     /* suboptimal_score_end */
 
   /* Output options */
   {"output-buffer-size", required_argument, 0, 0}, /* output_buffer_size */
@@ -419,7 +431,6 @@ static struct option long_options[] = {
   {"quality-protocol", required_argument, 0, 0}, /* quality_score_adj, quality_shift */
   {"quality-zero-score", required_argument, 0, 'J'}, /* quality_score_adj */
   {"quality-print-shift", required_argument, 0, 'j'}, /* quality_shift */
-  {"mapq-unique-score", required_argument, 0, 0},     /* mapq_unique_score */
   {"sam-headers-batch", required_argument, 0, 0},	/* sam_headers_batch */
   {"no-sam-headers", no_argument, 0, 0},	/* sam_headers_p */
   {"read-group-id", required_argument, 0, 0},	/* sam_read_group_id */
@@ -544,6 +555,7 @@ process_request (Request_T request, Floors_T *floors_array,
   Stage3pair_T *stage3pairarray;
 
   int npaths, npaths5, npaths3, i;
+  int second_absmq, second_absmq5, second_absmq3;
   Pairtype_T final_pairtype;
   double worker_runtime;
 
@@ -558,19 +570,24 @@ process_request (Request_T request, Floors_T *floors_array,
   }
 
   if (queryseq2 == NULL) {
-    stage3array = Stage1_single_read(&npaths,queryseq1,indexdb,indexdb2,indexdb_size_threshold,
+    stage3array = Stage1_single_read(&npaths,&second_absmq,queryseq1,indexdb,indexdb2,indexdb_size_threshold,
 				     genome,floors_array,maxpaths,user_maxlevel_float,subopt_levels,
 				     indel_penalty_middle,indel_penalty_end,
 				     max_middle_insertions,max_middle_deletions,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     shortsplicedist,localsplicing_penalty,distantsplicing_penalty,
 				     min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
+				     oligoindices_major,noligoindices_major,
+				     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
+				     dynprogL,dynprogM,dynprogR,
 				     /*keep_floors_p*/true);
 
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-    return Result_single_read_new(jobid,(void **) stage3array,npaths,worker_runtime);
+    return Result_single_read_new(jobid,(void **) stage3array,npaths,second_absmq,worker_runtime);
 
-  } else if ((stage3pairarray = Stage1_paired_read(&npaths,&final_pairtype,&stage3array5,&npaths5,&stage3array3,&npaths3,
+  } else if ((stage3pairarray = Stage1_paired_read(&npaths,&second_absmq,&final_pairtype,
+						   &stage3array5,&npaths5,&second_absmq5,
+						   &stage3array3,&npaths3,&second_absmq3,
 						   queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
 						   genome,floors_array,/*maxpaths*/maxpaths,user_maxlevel_float,subopt_levels,
 						   indel_penalty_middle,indel_penalty_end,
@@ -581,16 +598,17 @@ process_request (Request_T request, Floors_T *floors_array,
 						   oligoindices_major,noligoindices_major,
 						   oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 						   dynprogL,dynprogM,dynprogR,
-						   pairmax,expected_pairlength,/*keep_floors_p*/true)) != NULL) {
+						   pairmax,/*keep_floors_p*/true)) != NULL) {
     /* Paired or concordant hits found */
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-    return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,final_pairtype,worker_runtime);
+    return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,second_absmq,final_pairtype,worker_runtime);
 
   } else if (chop_primers_p == false || Shortread_chop_primers(queryseq1,queryseq2) == false) {
     /* No paired or concordant hits found, and no adapters found */
     /* Report ends as unpaired */
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-    return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,(void **) stage3array3,npaths3,worker_runtime);
+    return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,second_absmq5,
+					(void **) stage3array3,npaths3,second_absmq3,worker_runtime);
 
   } else {
     /* Try with potential primers chopped.  queryseq1 and queryseq2 altered by Shortread_chop_primers. */
@@ -604,7 +622,9 @@ process_request (Request_T request, Floors_T *floors_array,
     }
     FREE_OUT(stage3array3);
 
-    if ((stage3pairarray = Stage1_paired_read(&npaths,&final_pairtype,&stage3array5,&npaths5,&stage3array3,&npaths3,
+    if ((stage3pairarray = Stage1_paired_read(&npaths,&second_absmq,&final_pairtype,
+					      &stage3array5,&npaths5,&second_absmq5,
+					      &stage3array3,&npaths3,&second_absmq3,
 					      queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
 					      genome,floors_array,/*maxpaths*/maxpaths,user_maxlevel_float,subopt_levels,
 					      indel_penalty_middle,indel_penalty_end,
@@ -615,15 +635,16 @@ process_request (Request_T request, Floors_T *floors_array,
 					      oligoindices_major,noligoindices_major,
 					      oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 					      dynprogL,dynprogM,dynprogR,
-					      pairmax,expected_pairlength,/*keep_floors_p*/false)) != NULL) {
+					      pairmax,/*keep_floors_p*/false)) != NULL) {
       /* Paired or concordant hits found, after chopping adapters */
       worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-      return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,final_pairtype,worker_runtime);
+      return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,second_absmq,final_pairtype,worker_runtime);
 
     } else {
       /* No paired or concordant hits found, after chopping adapters */
       worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-      return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,(void **) stage3array3,npaths3,worker_runtime);
+      return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,second_absmq5,
+					  (void **) stage3array3,npaths3,second_absmq3,worker_runtime);
     }
   }
 }
@@ -779,6 +800,7 @@ single_thread () {
 
 #ifdef MEMUSAGE
     Outbuffer_print_result(outbuffer,result,request,noutput+1);
+    printf("***%s\n",Shortread_accession(Request_queryseq1(request)));
 #else
     Outbuffer_print_result(outbuffer,result,request);
 #endif
@@ -1157,7 +1179,7 @@ main (int argc, char *argv[]) {
 
 
   while ((opt = getopt_long(argc,argv,
-			    "D:d:k:Gq:o:a:N:M:m:i:y:Y:z:Z:w:E:e:J:K:l:g:s:V:v:B:p:t:A:j:0n:QO",
+			    "D:d:k:Gq:o:a:N:M:m:i:y:Y:z:Z:w:E:e:J:K:l:g:s:V:v:B:t:A:j:0n:QO",
 			    long_options, &long_option_index)) != -1) {
     switch (opt) {
     case 0:
@@ -1198,6 +1220,8 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"splicingdir")) {
 	user_splicingdir = optarg;
+      } else if (!strcmp(long_name,"ambig-splice-noclip")) {
+	amb_clip_p = false;
 
       } else if (!strcmp(long_name,"tallydir")) {
 	user_tallydir = optarg;
@@ -1228,6 +1252,10 @@ main (int argc, char *argv[]) {
 	max_gmap_improvement = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"microexon-spliceprob")) {
 	microexon_spliceprob = atof(check_valid_float(optarg));
+      } else if (!strcmp(long_name,"stage2-start")) {
+	suboptimal_score_start = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"stage2-end")) {
+	suboptimal_score_end = atoi(check_valid_int(optarg));
 
       } else if (!strcmp(long_name,"input-buffer-size")) {
 	inbuffer_nspaces = atoi(check_valid_int(optarg));
@@ -1274,10 +1302,10 @@ main (int argc, char *argv[]) {
 	pairmax_dna = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"pairmax-rna")) {
 	pairmax_rna = atoi(check_valid_int(optarg));
-#ifdef USE_BINGO
+      } else if (!strcmp(long_name,"pairexpect")) {
+	expected_pairlength = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"pairdev")) {
 	pairlength_deviation = atoi(check_valid_int(optarg));
-#endif
       } else if (!strcmp(long_name,"indel-endlength")) {
 	min_indel_end_matches = atoi(check_valid_int(optarg));
 	if (min_indel_end_matches > 14) {
@@ -1292,6 +1320,9 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"favor-multiexon")) {
 	favor_multiexon_p = true;
+
+      } else if (!strcmp(long_name,"merge-distant-samechr")) {
+	merge_samechr_p = true;
 
       } else if (!strcmp(long_name,"query-unk-mismatch")) {
 	if (!strcmp(optarg,"1")) {
@@ -1314,6 +1345,9 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"trim-mismatch-score")) {
 	trim_mismatch_score = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"trim-indel-score")) {
+	trim_indel_score = atoi(check_valid_int(optarg));
+
       } else if (!strcmp(long_name,"show-refdiff")) {
 	show_refdiff_p = true;
       } else if (!strcmp(long_name,"clip-overlap")) {
@@ -1346,8 +1380,6 @@ main (int argc, char *argv[]) {
 	  exit(9);
 	}
 
-      } else if (!strcmp(long_name,"mapq-unique-score")) {
-	mapq_unique_score = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"read-group-id")) {
 	sam_read_group_id = optarg;
       } else if (!strcmp(long_name,"read-group-name")) {
@@ -1530,10 +1562,6 @@ main (int argc, char *argv[]) {
       }
       break;
 
-#if 0
-    case 'p': expected_pairlength = atoi(check_valid_int(optarg)); break;
-#endif
-
 #ifdef HAVE_PTHREAD
     case 't': nworkers = atoi(check_valid_int(optarg)); break;
 #endif
@@ -1643,7 +1671,7 @@ main (int argc, char *argv[]) {
   }
 
   if (fails_as_input_p == true && (sevenway_root == NULL && failsonlyp == false)) {
-    fprintf(stderr,"The --fails-as-input option makes sense only with the --7-way-output or --failsonly option.  Turning it off.\n");
+    fprintf(stderr,"The --fails-as-input option makes sense only with the --split-output or --failsonly option.  Turning it off.\n");
     fails_as_input_p = false;
   }
 
@@ -2267,7 +2295,7 @@ main (int argc, char *argv[]) {
   Oligo_setup(index1part);
   Splicetrie_setup(splicecomp,splicesites,splicefrags_ref,splicefrags_alt,
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-		   /*snpp*/snps_iit ? true : false,amb_closest_p);
+		   /*snpp*/snps_iit ? true : false,amb_closest_p,amb_clip_p,min_shortend);
   Stage1hr_setup(index1part,chromosome_iit,nchromosomes,
 		 genomealt,mode,terminal_threshold,
 		 splicesites,splicetypes,splicedists,nsplicesites,
@@ -2284,17 +2312,20 @@ main (int argc, char *argv[]) {
 		  output_sam_p,mode);
   Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-		microexon_spliceprob);
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
   Oligoindex_hr_setup(Genome_blocks(genome));
-  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true);
+  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
+	       suboptimal_score_start,suboptimal_score_end);
+  Pair_setup(trim_mismatch_score,trim_indel_score);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
-	       splicesites,min_intronlength);
+	       splicesites,min_intronlength,max_deletionlength,
+	       expected_pairlength,pairlength_deviation);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
-		 mapq_unique_score,distances_observed_p,pairmax,antistranded_penalty,
-		 favor_multiexon_p);
+		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
+		 antistranded_penalty,favor_multiexon_p);
+  SAM_setup(quiet_if_excessive_p,maxpaths);
   Goby_setup(show_refdiff_p);
 
 
@@ -2321,7 +2352,8 @@ main (int argc, char *argv[]) {
 			    output_sam_p,sam_headers_p,sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
 			    gobywriter,nofailsp,failsonlyp,fails_as_input_p,
-			    fastq_format_p,clip_overlap_p,maxpaths,quiet_if_excessive_p,quality_shift,
+			    fastq_format_p,clip_overlap_p,merge_samechr_p,
+			    maxpaths,quiet_if_excessive_p,quality_shift,
 			    invert_first_p,invert_second_p,pairmax);
 
   Inbuffer_set_outbuffer(inbuffer,outbuffer);
@@ -2584,8 +2616,14 @@ is still designed to be fast.\n\
 #else
   fprintf(stdout,"\
   --terminal-threshold=INT       Threshold for searching for a terminal alignment (from one end of the\n\
-                                   read to the best possible position at the other end) (default 3).\n\
-                                   To turn off terminal alignments, set this to a high value.\n\
+                                   read to the best possible position at the other end) (default 2).\n\
+                                   For example, if this value is 2, then if GSNAP finds an exact or\n\
+                                   1-mismatch alignment, it will not try to find a terminal alignment.\n\
+                                   Note that this default value may not be low enough if you want to\n\
+                                   obtain terminal alignments for very short reads, although such reads\n\
+                                   probably don't have enough specificity for terminal alignments anyway.\n\
+                                   To turn off terminal alignments, set this to a high value, greater\n\
+                                   than the value for --max-mismatches.\n\
   -i, --indel-penalty=INT        Penalty for an indel (default 2).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches.\n\
@@ -2621,7 +2659,11 @@ is still designed to be fast.\n\
                                    concordant or paired alignment cannot be found from the original read.\n\
                                    To turn off, use the value \"off\".\n\
   --trim-mismatch-score=INT      Score to use for mismatches when trimming at ends (default is -3;\n\
-                                   to turn off trimming, specify 0)\n\
+                                   to turn off trimming, specify 0).  Warning: turning trimming off\n\
+                                   will give false positive mismatches at the ends of reads\n\
+  --trim-indel-score=INT         Score to use for indels when trimming at ends (default is -4;\n\
+                                   to turn off trimming, specify 0).  Warning: turning trimming off\n\
+                                   will give false positive indels at the ends of reads\n\
   -V, --snpsdir=STRING           Directory for SNPs index files (created using snpindex) (default is\n\
                                    location of genome index files specified using -D and -d)\n \
   -v, --use-snps=STRING          Use database containing known SNPs (in <STRING>.iit, built\n\
@@ -2703,6 +2745,10 @@ is still designed to be fast.\n\
                                          (in <STRING>.iit), at short or long distances\n\
                                          See README instructions for the distinction between known sites\n\
                                          and known introns\n\
+  --ambig-splice-noclip                For ambiguous known splicing at ends of the read, do not clip at the\n\
+                                         splice site, but extend instead into the intron.  This flag makes\n\
+                                         sense only if you provide the --use-splicing flag, and you are trying\n\
+                                         to eliminate all soft clipping with --trim-mismatch-score=0\n\
   -w, --localsplicedist=INT            Definition of local novel splicing event (default 200000)\n\
   -e, --local-splice-penalty=INT       Penalty for a local splice (default 0).  Counts against mismatches allowed\n\
   -E, --distant-splice-penalty=INT     Penalty for a distant splice (default 3).  A distant splice is one where\n\
@@ -2719,6 +2765,9 @@ is still designed to be fast.\n\
                                          A positive value, such as 1, expects antisense on the first read\n\
                                          and sense on the second read.  Default is 0, which treats sense and antisense\n\
                                          equally well\n\
+  --merge-distant-samechr              Report distant splices on the same chromosome as a single splice, if possible.\n\
+                                         Will produce a single SAM line instead of two SAM lines, which is also done\n\
+                                         for translocations, inversions, and scramble events\n\
 ");
   fprintf(stdout,"\n");
 
@@ -2731,23 +2780,13 @@ is still designed to be fast.\n\
   --pairmax-rna=INT              Max total genomic length for RNA-Seq paired reads, or other reads\n\
                                    that could have a splice (default 200000).  Used if -N or -s is specified.\n\
                                    Should probably match the value for -w, --localsplicedist.\n\
-");
-
-#if 0
-  /* Now obsolete */
-  fprintf(stdout,"\
-  -p, --pairexpect=INT           Expected paired-end length (default 200)\n\
-");
-#endif
-
-
-#ifdef USE_BINGO
-  fprintf(stdout,"\
+  --pairexpect=INT               Expected paired-end length, used for calling splices in medial part of\n\
+                                   paired-end reads (default 200)\n\
   --pairdev=INT                  Allowable deviation from expected paired-end length, used for\n\
-                                    discriminating between alternative alignments (default 50)\n\
+                                   calling splices in medial part of paired-end reads (default 25)\n\
 ");
-#endif
   fprintf(stdout,"\n");
+
 
   /* Quality score options */
   fprintf(stdout,"Options for quality scores\n");
@@ -2764,9 +2803,6 @@ is still designed to be fast.\n\
   -j, --quality-print-shift=INT  Shift FASTQ quality scores by this amount in output\n\
                                    (default is 0 for sanger protocol; to change Illumina input\n\
                                    to Sanger output, select -31)\n\
-  --mapq-unique-score=INT        For multiple results, consider as a unique result if only one of\n\
-                                   the results has a MAPQ score equal or greater than this\n\
-                                   (if not selected, then reports all multiple results, up to npaths)\n\
 ");
 
   /* Output options */

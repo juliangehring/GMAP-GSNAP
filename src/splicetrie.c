@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 49813 2011-10-14 18:00:41Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 53582 2011-12-02 18:23:14Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -77,7 +77,8 @@ static unsigned int *triecontents_max;
 
 static bool snpp;
 static bool amb_closest_p;
-
+static int min_shortend;
+static bool amb_clip_p;
 
 void
 Splicetrie_setup (
@@ -87,7 +88,7 @@ Splicetrie_setup (
 		  Genomicpos_T *splicesites_in, UINT4 *splicefrags_ref_in, UINT4 *splicefrags_alt_in,
 		  unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
 		  unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
-		  bool snpp_in, bool amb_closest_p_in) {
+		  bool snpp_in, bool amb_closest_p_in, bool amb_clip_p_in, int min_shortend_in) {
 
 #ifdef GSNAP
   splicecomp = splicecomp_in;
@@ -103,6 +104,8 @@ Splicetrie_setup (
 
   snpp = snpp_in;
   amb_closest_p = amb_closest_p_in;
+  amb_clip_p = amb_clip_p_in;
+  min_shortend = min_shortend_in;
 
   return;
 }
@@ -1829,6 +1832,8 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
     debug2(printf("Splicetrie_find_left returning NULL, because pos5 == pos3\n"));
     /* *penalty = 0; */
     return (Intlist_T) NULL;
+  } else if (amb_clip_p == false && pos3 - pos5 < min_shortend) {
+    return (Intlist_T) NULL;
   }
 
   debug2(printf("max_mismatches_allowed %d",max_mismatches_allowed));
@@ -1934,6 +1939,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
   }
 #endif
 
+  debug2(printf("Final number of splices: %d\n",Intlist_length(splicesites_i)));
   if (Intlist_length(splicesites_i) > 1) {
     if (snpp == true) {
       array_mm = Intlist_array_dual_ascending_by_key(&n,&array_i,*nmismatches_list,splicesites_i);
@@ -1973,6 +1979,11 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
       Intlist_free(&(*nmismatches_list));
       splicesites_i = Intlist_push(NULL,closesti);
       *nmismatches_list = Intlist_push(NULL,nmismatches);
+
+    } else if (amb_clip_p == false && Intlist_length(splicesites_i) > 1) {
+      Intlist_free(&splicesites_i);
+      Intlist_free(&(*nmismatches_list));
+      splicesites_i = (Intlist_T) NULL;
     }
   }
 
@@ -2008,6 +2019,8 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
   if (pos5 == pos3) {
     debug2(printf("Splicetrie_find_right returning NULL, because pos5 == pos3\n"));
     /* *penalty = 0; */
+    return (Intlist_T) NULL;
+  } else if (amb_clip_p == false && pos3 - pos5 < min_shortend) {
     return (Intlist_T) NULL;
   }
 
@@ -2115,6 +2128,7 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
   }
 #endif
 
+  debug2(printf("Final number of splices: %d\n",Intlist_length(splicesites_i)));
   if (Intlist_length(splicesites_i) > 1) {
     if (snpp == true) {
       array_mm = Intlist_array_dual_ascending_by_key(&n,&array_i,*nmismatches_list,splicesites_i);
@@ -2154,8 +2168,16 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
       Intlist_free(&(*nmismatches_list));
       splicesites_i = Intlist_push(NULL,closesti);
       *nmismatches_list = Intlist_push(NULL,nmismatches);
+
+    } else if (amb_clip_p == false && Intlist_length(splicesites_i) > 1) {
+      Intlist_free(&splicesites_i);
+      Intlist_free(&(*nmismatches_list));
+      splicesites_i = (Intlist_T) NULL;
     }
+
   }
+
+    
 
   debug2(printf("Splicetrie_find_right returning %s (best_nmismatches %d)\n",
 		Intlist_to_string(splicesites_i),*best_nmismatches));

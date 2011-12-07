@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 49094 2011-10-05 16:33:05Z twu $ */
+/* $Id: stage1hr.h 52862 2011-11-20 23:53:04Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -7,7 +7,6 @@
 #include "genomicpos.h"
 #include "indexdb.h"
 #include "shortread.h"
-#include "list.h"
 #include "iit-read.h"
 #include "genome.h"
 #include "splicetrie.h"
@@ -48,7 +47,8 @@ Stage1_free (T *old, int querylength);
 
 
 extern Stage3end_T *
-Stage1_single_read (int *npaths, Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
+Stage1_single_read (int *npaths, int *second_mapq,
+		    Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
 		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
 		    int maxpaths, double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
@@ -56,10 +56,16 @@ Stage1_single_read (int *npaths, Shortread_T queryseq, Indexdb_T indexdb, Indexd
 		    Genomicpos_T shortsplicedist,
 		    int localsplicing_penalty, int distantsplicing_penalty,
 		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
+		    Oligoindex_T *oligoindices_major, int noligoindices_major,
+		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
+		    Pairpool_T pairpool, Diagpool_T diagpool,
+		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    bool keep_floors_p);
 
 extern Stage3pair_T *
-Stage1_paired_read (int *npaths, Pairtype_T *final_pairtype, Stage3end_T **stage3array5, int *nhits5, Stage3end_T **stage3array3, int *nhits3,
+Stage1_paired_read (int *npaths, int *second_mapq, Pairtype_T *final_pairtype,
+		    Stage3end_T **stage3array5, int *nhits5, int *second_mapq5,
+		    Stage3end_T **stage3array3, int *nhits3, int *second_mapq3,
 		    Shortread_T queryseq5, Shortread_T queryseq3,
 		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
 		    Genome_T genome, Floors_T *floors_array,
@@ -72,7 +78,7 @@ Stage1_paired_read (int *npaths, Pairtype_T *final_pairtype, Stage3end_T **stage
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		    Pairpool_T pairpool, Diagpool_T diagpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		    Genomicpos_T pairmax, Genomicpos_T expected_pairlength, bool keep_floors_p);
+		    Genomicpos_T pairmax, bool keep_floors_p);
 
 extern void
 Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,

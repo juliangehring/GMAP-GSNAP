@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c 44154 2011-08-02 20:52:17Z twu $";
+static char rcsid[] = "$Id: smooth.c 51378 2011-11-01 18:38:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,7 +26,13 @@ static char rcsid[] = "$Id: smooth.c 44154 2011-08-02 20:52:17Z twu $";
 
 /* Will delete internal exons smaller than this at ends */
 #define SHORTEXONLEN_END 10
+
+#ifdef GSNAP
+/* Allow more intron predictions in ends of short reads */
+#define SHORTEXONPROB_END 0.10
+#else
 #define SHORTEXONPROB_END 0.05
+#endif
 
 #define BIGGAP 9
 
@@ -364,8 +370,7 @@ delete_and_mark_exons (List_T pairs,
 #ifdef WASTE
 		       Pairpool_T pairpool,
 #endif
-		       int *exonstatus, int *exonmatches, int nexons,
-		       bool markp, bool bysizep) {
+		       int *exonstatus, bool markp, bool bysizep) {
   List_T newpairs = NULL, pairptr;
   Pair_T pair;
   int currstatus, prevstatus;
@@ -410,7 +415,7 @@ delete_and_mark_exons (List_T pairs,
       newpairs = List_push_existing(newpairs,pairptr);
 #endif
     } else if (currstatus == MARK) {
-      debug(printf("Marking position %d as short\n",pair->querypos));
+      debug(printf("Marking position %d as short in pair %p\n",pair->querypos,pair));
       if (markp == true) {
 	pair->shortexonp = true;
       }
@@ -442,6 +447,10 @@ delete_and_mark_exons (List_T pairs,
     debug(printf("Popping gap at beginning\n"));
     newpairs = Pairpool_pop(newpairs,&pair);
   }
+
+  debug(printf("Result of delete_and_mark_exons:\n"));
+  debug(Pair_dump_list(newpairs,/*zerobasedp*/true));
+  debug(printf("\n"));
 
   return newpairs;
 }
@@ -494,9 +503,11 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool) {
 #ifdef WASTE
 				    pairpool,
 #endif
-				    exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/false);
+				    exonstatus,/*markp*/false,/*bysizep*/false);
     }
     
+#if 0
+    /* This is not correct */
     debug(
 	  printf("After removing internal shorts:\n");
 	  for (i = 0; i < nexons-1; i++) {
@@ -505,6 +516,7 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool) {
 	  }
 	  printf("Exon %d of length %d\n",nexons-1,exonlengths[nexons-1]);
 	  );
+#endif
 
     FREE(exonstatus);
     FREE(intronlengths);
@@ -543,7 +555,7 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
 #ifdef WASTE
 				    pairpool,
 #endif
-				    exonstatus,exonmatches,nexons,/*markp*/false,/*bysizep*/true);
+				    exonstatus,/*markp*/false,/*bysizep*/true);
     }
 
     FREE(exonstatus);
@@ -578,7 +590,7 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
 #ifdef WASTE
 				    pairpool,
 #endif
-				    exonstatus,exonmatches,nexons,/*markp*/true,/*bysizep*/true);
+				    exonstatus,/*markp*/true,/*bysizep*/true);
     }
 
     debug(

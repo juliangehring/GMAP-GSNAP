@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 45310 2011-08-19 19:00:59Z twu $
+# $Id: gmap_build.pl.in 53700 2011-12-05 19:43:10Z twu $
 
 use warnings;	
 
@@ -91,7 +91,11 @@ exit;
 
 
 sub create_coords {
-    system("$bindir/fa_coords $gunzip_flag -o $dbname.coords $genome_fasta");
+    $cmd = "$bindir/fa_coords $gunzip_flag -o $dbname.coords $genome_fasta";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
     sleep($opt_w);
     return;
 }
@@ -114,13 +118,21 @@ sub create_genome_version {
 
 sub make_contig {
     check_coords_exists();
-    system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -A $chr_order_flag");
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -A $chr_order_flag";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
     sleep($opt_w);
     return;
 }
 
 sub compress_genome {
-    system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -G");
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -G";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
     sleep($opt_w);
     return;
 }
@@ -129,19 +141,31 @@ sub full_ASCII_genome {
     check_coords_exists();
     make_contig();
 	
-    system("$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -l -G");
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -l -G";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
     sleep($opt_w);
     return;
 }
 
 sub create_index_offsets {
-    system("cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -O");
+    $cmd = "cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -O";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
     sleep($opt_w);
     return;
 }
 
 sub create_index_positions {
-    system("cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -P");
+    "cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -P";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
     sleep($opt_w);
     return;
 }

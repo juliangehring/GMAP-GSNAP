@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c 43367 2011-07-21 20:47:54Z twu $";
+static char rcsid[] = "$Id: resulthr.c 51812 2011-11-06 18:17:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,8 +24,10 @@ struct T {
   int id;
   void **array;
   int npaths;
+  int second_absmq;
   void **array2;
   int npaths2;
+  int second_absmq2;
   double worker_runtime;
 };
 
@@ -70,15 +72,17 @@ Result_id (T this) {
 
 
 void **
-Result_array (int *npaths, T this) {
+Result_array (int *npaths, int *second_absmq, T this) {
   *npaths = this->npaths;
+  *second_absmq = this->second_absmq;
   return this->array;
 }
 
 
 void **
-Result_array2 (int *npaths, T this) {
+Result_array2 (int *npaths, int *second_absmq, T this) {
   *npaths = this->npaths2;
+  *second_absmq = this->second_absmq2;
   return this->array2;
 }
 
@@ -89,7 +93,7 @@ Result_worker_runtime (T this) {
 
 
 T
-Result_single_read_new (int id, void **resultarray, int npaths, double worker_runtime) {
+Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   if (npaths == 0) {
@@ -112,13 +116,14 @@ Result_single_read_new (int id, void **resultarray, int npaths, double worker_ru
   new->id = id;
   new->array = resultarray;
   new->npaths = npaths;
+  new->second_absmq = second_absmq;
   new->worker_runtime = worker_runtime;
 
   return new;
 }
 
 T
-Result_paired_read_new (int id, void **resultarray, int npaths, Pairtype_T final_pairtype, double worker_runtime) {
+Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq, Pairtype_T final_pairtype, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   if (npaths == 0) {
@@ -150,13 +155,15 @@ Result_paired_read_new (int id, void **resultarray, int npaths, Pairtype_T final
   new->id = id;
   new->array = resultarray;
   new->npaths = npaths;
+  new->second_absmq = second_absmq;
   new->worker_runtime = worker_runtime;
 
   return new;
 }
 
 T
-Result_paired_as_singles_new (int id, void **hits5, int npaths5, void **hits3, int npaths3, double worker_runtime) {
+Result_paired_as_singles_new (int id, void **hits5, int npaths5, int second_absmq5,
+			      void **hits3, int npaths3, int second_absmq3, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   debug(printf("npaths5 = %d, npaths3 = %d\n",npaths5,npaths3));
@@ -190,8 +197,10 @@ Result_paired_as_singles_new (int id, void **hits5, int npaths5, void **hits3, i
   new->id = id;
   new->array = hits5;
   new->npaths = npaths5;
+  new->second_absmq = second_absmq5;
   new->array2 = hits3;
   new->npaths2 = npaths3;
+  new->second_absmq2 = second_absmq3;
   new->worker_runtime = worker_runtime;
 
   return new;

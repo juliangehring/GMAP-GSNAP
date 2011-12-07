@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c 40328 2011-05-30 17:33:00Z twu $";
+static char rcsid[] = "$Id: list.c 50911 2011-10-27 22:15:37Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -61,6 +61,12 @@ List_next (T list) {
 void
 List_head_set (T this, void *x) {
   this->first = x;
+  return;
+}
+
+void
+List_tail_set (T this, T rest) {
+  this->rest = rest;
   return;
 }
 

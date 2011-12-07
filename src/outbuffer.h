@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 43367 2011-07-21 20:47:54Z twu $ */
+/* $Id: outbuffer.h 52247 2011-11-11 16:53:27Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -33,7 +33,8 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
 	       Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp, bool fails_as_input_p,
-	       bool fastq_format_p, bool clip_overlap_p, int maxpaths, bool quiet_if_excessive_p, int quality_shift,
+	       bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
+	       int maxpaths, bool quiet_if_excessive_p, int quality_shift,
 	       bool invert_first_p, bool invert_second_p, Genomicpos_T pairmax);
 
 #else
@@ -45,7 +46,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	       Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
 #ifndef PMAP
-	       bool sam_headers_p, int quality_shift, bool sam_paired_p, bool cigar_noncanonical_splices_p,
+	       bool sam_headers_p, int quality_shift, bool sam_paired_p,
 	       char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
 #endif

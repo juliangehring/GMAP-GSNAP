@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 49816 2011-10-14 18:36:23Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 50982 2011-10-28 16:39:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,7 +20,7 @@ static char rcsid[] = "$Id: splicetrie_build.c 49816 2011-10-14 18:36:23Z twu $"
 #define SPLICEDIST_EXTRA 10 /* Reported intron length does not include dinucleotides */
 
 #define EMPTY_POINTER 0U
-
+#define INTRON_HIGH_TO_LOW 1U /* Because splicesites based on Interval_low (x..x+1 and y..y+1), but introns go from low to high (x..y+1) */
 
 
 /* Generating trie */
@@ -35,6 +35,13 @@ static char rcsid[] = "$Id: splicetrie_build.c 49816 2011-10-14 18:36:23Z twu $"
 #define debug0(x) x
 #else
 #define debug0(x)
+#endif
+
+/* Full dump */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
 #endif
 
 
@@ -350,6 +357,11 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
   char *restofheader, *annot;
   bool firstp = true, saw_n_p, allocp, alloc_header_p;
 
+#ifdef DEBUG2
+  List_T p;
+  Splicestring_T splicestring;
+#endif
+
 #ifdef GSNAP
   int nblocks;
 #endif
@@ -527,7 +539,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_donor_k = k;
 		last_donor = splicesites[k] = position;
 #ifdef GSNAP
-		assert(position/32U < nblocks);
+		assert(position/32U < (unsigned int) nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = DONOR;
@@ -566,7 +578,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_antidonor_k = k;
 		last_antidonor = splicesites[k] = position;
 #ifdef GSNAP
-		assert(position/32U < nblocks);
+		assert(position/32U < (unsigned int) nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = ANTIDONOR;
@@ -608,7 +620,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_acceptor_k = k;
 		last_acceptor = splicesites[k] = position;
 #ifdef GSNAP
-		assert(position/32U < nblocks);
+		assert(position/32U < (unsigned int) nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = ACCEPTOR;
@@ -648,7 +660,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		last_antiacceptor_k = k;
 		last_antiacceptor = splicesites[k] = position;
 #ifdef GSNAP
-		assert(position/32U < nblocks);
+		assert(position/32U < (unsigned int) nblocks);
 		(*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 		(*splicetypes)[k] = ANTIACCEPTOR;
@@ -693,6 +705,16 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
   splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
   fprintf(stderr,"%d valid splicesites...",*nsplicesites);
 
+#ifdef DEBUG2
+  for (k = 0; k < *nsplicesites; k++) {
+    printf("%u %d %08X\n",splicesites[k],(*splicetypes)[k],(*splicefrags_ref)[k]);
+    for (p = (*splicestrings)[k]; p != NULL; p = List_next(p)) {
+      splicestring = (Splicestring_T) List_head(p);
+      printf("  %u %u %u\n",splicestring->string,splicestring->splicesite,splicestring->splicesite_i);
+    }
+  }
+#endif
+
   return splicesites;
 }
 
@@ -716,6 +738,11 @@ Splicetrie_retrieve_via_introns (
   Interval_T *intervals, interval;
   char gbuffer_ref[17], gbuffer_alt[17], *chr;
   bool saw_n_p, allocp;
+
+#ifdef DEBUG2
+  List_T p;
+  Splicestring_T splicestring;
+#endif
 
 #ifdef GSNAP
   int nblocks;
@@ -763,7 +790,7 @@ Splicetrie_retrieve_via_introns (
 	last_acceptor = last_antidonor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_high(intervals[i]);
+	  chrpos = Interval_high(intervals[i]) - INTRON_HIGH_TO_LOW;
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -864,7 +891,7 @@ Splicetrie_retrieve_via_introns (
 	      last_donor_k = k;
 	      last_donor = splicesites[k] = position;
 #ifdef GSNAP
-	      assert(position/32U < nblocks);
+	      assert(position/32U < (unsigned int) nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = DONOR;
@@ -902,7 +929,7 @@ Splicetrie_retrieve_via_introns (
 	      last_antiacceptor_k = k;
 	      last_antiacceptor = splicesites[k] = position;
 #ifdef GSNAP
-	      assert(position/32U < nblocks);
+	      assert(position/32U < (unsigned int) nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = ANTIACCEPTOR;
@@ -937,7 +964,7 @@ Splicetrie_retrieve_via_introns (
 	last_acceptor = last_antidonor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_high(intervals[i]);
+	  chrpos = Interval_high(intervals[i]) - INTRON_HIGH_TO_LOW;
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -959,7 +986,7 @@ Splicetrie_retrieve_via_introns (
 	      last_acceptor_k = k;
 	      last_acceptor = splicesites[k] = position;
 #ifdef GSNAP
-	      assert(position/32U < nblocks);
+	      assert(position/32U < (unsigned int) nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = ACCEPTOR;
@@ -999,7 +1026,7 @@ Splicetrie_retrieve_via_introns (
 	      last_antidonor_k = k;
 	      last_antidonor = splicesites[k] = position;
 #ifdef GSNAP
-	      assert(position/32U < nblocks);
+	      assert(position/32U < (unsigned int) nblocks);
 	      (*splicecomp)[position/32U] |= (1 << (position % 32));
 #endif
 	      (*splicetypes)[k] = ANTIDONOR;
@@ -1040,6 +1067,16 @@ Splicetrie_retrieve_via_introns (
   *nsplicesites = k;
   splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
   fprintf(stderr,"%d valid splicesites...",*nsplicesites);
+
+#ifdef DEBUG2
+  for (k = 0; k < *nsplicesites; k++) {
+    printf("%u %d %08X\n",splicesites[k],(*splicetypes)[k],(*splicefrags_ref)[k]);
+    for (p = (*splicestrings)[k]; p != NULL; p = List_next(p)) {
+      splicestring = (Splicestring_T) List_head(p);
+      printf("  %u %u %u\n",splicestring->string,splicestring->splicesite,splicestring->splicesite_i);
+    }
+  }
+#endif
 
   return splicesites;
 }
@@ -1452,6 +1489,7 @@ Splicetrie_npartners (int **nsplicepartners_skip, int **nsplicepartners_obs, int
   Genomicpos_T chroffset, chrhigh, leftbound_obs, leftbound_max, rightbound_obs, rightbound_max;
   Genomicpos_T leftbound_min, rightbound_min;
   Chrnum_T chrnum;
+
 
   (*nsplicepartners_skip) = (int *) CALLOC(nsplicesites,sizeof(int));
   if (distances_observed_p == true) {
@@ -2341,7 +2379,7 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
       j1 = j + 1;
       k = 0;
       while (j1 < nsplicesites && k < ncoords) {
-	if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
+	if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
 	  nsites += List_length(splicestrings[j1]);
 	  k++;
 	}
@@ -2359,7 +2397,7 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 	j1 = j + 1;
 	k = 0;
 	while (j1 < nsplicesites && k < ncoords) {
-	  if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
+	  if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
 	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
 	      sites[nsites++] = (Splicestring_T) List_head(p);
 	    }
@@ -2379,7 +2417,7 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 
     case ACCEPTOR:
       nsites = 0;
-      coords = IIT_get_lows_for_high(&ncoords,splicing_iit,divno,splicesites[j]-chroffset);
+      coords = IIT_get_lows_for_high(&ncoords,splicing_iit,divno,splicesites[j] + INTRON_HIGH_TO_LOW - chroffset);
 
       j1 = j - 1;
       k = 0;
@@ -2422,7 +2460,7 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 
     case ANTIDONOR:
       nsites = 0;
-      coords = IIT_get_lows_for_high(&ncoords,splicing_iit,divno,splicesites[j]-chroffset);
+      coords = IIT_get_lows_for_high(&ncoords,splicing_iit,divno,splicesites[j] + INTRON_HIGH_TO_LOW - chroffset);
 
       j1 = j - 1;
       k = 0;
@@ -2470,7 +2508,7 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
       j1 = j + 1;
       k = 0;
       while (j1 < nsplicesites && k < ncoords) {
-	if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] + chroffset) {
+	if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
 	  nsites += List_length(splicestrings[j1]);
 	  k++;
 	}
@@ -2488,7 +2526,7 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 	j1 = j + 1;
 	k = 0;
 	while (j1 < nsplicesites && k < ncoords) {
-	  if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] + chroffset) {
+	  if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
 	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
 	      sites[nsites++] = (Splicestring_T) List_head(p);
 	    }
@@ -2519,6 +2557,4 @@ Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **tr
 
   return;
 }
-
-
 

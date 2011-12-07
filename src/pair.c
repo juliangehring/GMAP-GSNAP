@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 47131 2011-09-13 20:50:18Z twu $";
+static char rcsid[] = "$Id: pair.c 53584 2011-12-02 18:51:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -84,6 +84,13 @@ static char rcsid[] = "$Id: pair.c 47131 2011-09-13 20:50:18Z twu $";
 #define debug3(x)
 #endif
 
+/* compute_md_string */
+#ifdef DEBUG4
+#define debug4(x) x
+#else
+#define debug4(x)
+#endif
+
 /* trimming */
 #ifdef DEBUG8
 #define debug8(x) x
@@ -98,6 +105,20 @@ static char rcsid[] = "$Id: pair.c 47131 2011-09-13 20:50:18Z twu $";
 #else
 #define debug10(x)
 #endif
+
+
+
+#define TRIM_MATCH_SCORE 1
+static int trim_mismatch_score;
+static int trim_indel_score;
+
+
+void
+Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in) {
+  trim_mismatch_score = trim_mismatch_score_in;
+  trim_indel_score = trim_indel_score_in;
+  return;
+}
 
 
 
@@ -1123,6 +1144,10 @@ Pair_dump_one (T this, bool zerobasedp) {
     printf(" %c",this->genome);
   }
 
+  if (this->shortexonp == true) {
+    printf(" shortexon");
+  }
+
   if (this->state == BAD) {
     printf(" bad");
   }
@@ -1142,6 +1167,7 @@ Pair_dump_list (List_T pairs, bool zerobasedp) {
     Pair_dump_one(this,zerobasedp);
     printf("\n");
   }
+  printf("***End of list***\n");
   return;
 }  
 
@@ -1364,7 +1390,7 @@ make_complement_inplace (char *sequence, unsigned int length) {
 
 
 static double
-donor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T chromosome_iit) {
+donor_score (Genomicpos_T genomicpos, Genomicpos_T chroffset, bool revcomp, Genome_T genome, IIT_T chromosome_iit) {
   Genomicpos_T left;
   Chrnum_T chrnum;
   int nunknowns;
@@ -1374,7 +1400,7 @@ donor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T chrom
   if (revcomp == false) {
     if ((genome_blocks = Genome_blocks(genome)) != NULL) {
       /* Add 1 to get from exon end to intron start */
-      return Maxent_hr_donor_prob(genomicpos + 1U);
+      return Maxent_hr_donor_prob(genomicpos + 1U,chroffset);
     } else {
       left = genomicpos + 1 - DONOR_MODEL_LEFT_MARGIN; /* Add 1 to get from exon end to intron start */
       Genome_fill_buffer(&chrnum,&nunknowns,genome,left,DONOR_MODEL_LEFT_MARGIN+DONOR_MODEL_RIGHT_MARGIN+1,gbuffer,chromosome_iit);
@@ -1388,7 +1414,7 @@ donor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T chrom
 
   } else {
     if ((genome_blocks = Genome_blocks(genome)) != NULL) {
-      return Maxent_hr_antidonor_prob(genomicpos);
+      return Maxent_hr_antidonor_prob(genomicpos,chroffset);
     } else {
       left = genomicpos - DONOR_MODEL_RIGHT_MARGIN - 1;
       Genome_fill_buffer(&chrnum,&nunknowns,genome,left,DONOR_MODEL_LEFT_MARGIN+DONOR_MODEL_RIGHT_MARGIN+1,gbuffer,chromosome_iit);
@@ -1405,7 +1431,7 @@ donor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T chrom
 
 
 static double
-acceptor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T chromosome_iit) {
+acceptor_score (Genomicpos_T genomicpos, Genomicpos_T chroffset, bool revcomp, Genome_T genome, IIT_T chromosome_iit) {
   Genomicpos_T left;
   Chrnum_T chrnum;
   int nunknowns;
@@ -1415,7 +1441,7 @@ acceptor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T ch
   if (revcomp == false) {
     /* sense on plus strand, or antisense on minus strand */
     if ((genome_blocks = Genome_blocks(genome)) != NULL) {
-      return Maxent_hr_acceptor_prob(genomicpos);
+      return Maxent_hr_acceptor_prob(genomicpos,chroffset);
     } else {
       left = genomicpos - ACCEPTOR_MODEL_LEFT_MARGIN;
       Genome_fill_buffer(&chrnum,&nunknowns,genome,left,ACCEPTOR_MODEL_LEFT_MARGIN+ACCEPTOR_MODEL_RIGHT_MARGIN+1,gbuffer,chromosome_iit);
@@ -1430,7 +1456,7 @@ acceptor_score (Genomicpos_T genomicpos, bool revcomp, Genome_T genome, IIT_T ch
   } else {
     if ((genome_blocks = Genome_blocks(genome)) != NULL) {
       /* Add 1 to get from exon end to intron start */
-      return Maxent_hr_antiacceptor_prob(genomicpos + 1U);
+      return Maxent_hr_antiacceptor_prob(genomicpos + 1U,chroffset);
     } else {
       left = genomicpos - ACCEPTOR_MODEL_RIGHT_MARGIN;
       Genome_fill_buffer(&chrnum,&nunknowns,genome,left,ACCEPTOR_MODEL_LEFT_MARGIN+ACCEPTOR_MODEL_RIGHT_MARGIN+1,gbuffer,chromosome_iit);
@@ -1459,7 +1485,7 @@ unknown_base (char c) {
 void
 Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 			Genomicpos_T chroffset, Genome_T genome, IIT_T chromosome_iit,
-			bool watsonp, bool genomefirstp, int invertmode) {
+			bool watsonp, int cdna_direction, bool genomefirstp, int invertmode) {
   bool in_exon = false;
   struct T *save = NULL, *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_genomestart = -1, exon_queryend, exon_genomeend, intron_start, intron_end;
@@ -1467,7 +1493,7 @@ Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
   char *chrstring = NULL;
   int last_querypos = -1;
   Genomicpos_T last_genomepos = -1U;
-  bool sensep;
+
 
   if (watsonp == true) {
     ptr = pairs;
@@ -1529,28 +1555,28 @@ Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 	}
 	if (this->comp == FWD_CANONICAL_INTRON_COMP) {
 	  fprintf(fp," ->");
-	  sensep = true;
+	  /* sensep = true; */
 	} else if (this->comp == REV_CANONICAL_INTRON_COMP) {
 	  fprintf(fp," <-");
-	  sensep = false;
+	  /* sensep = false; */
 	} else if (this->comp == FWD_GCAG_INTRON_COMP) {
 	  fprintf(fp," -)");
-	  sensep = true;
+	  /* sensep = true; */
 	} else if (this->comp == REV_GCAG_INTRON_COMP) {
 	  fprintf(fp," (-");
-	  sensep = false;
+	  /* sensep = false; */
 	} else if (this->comp == FWD_ATAC_INTRON_COMP) {
 	  fprintf(fp," -]");
-	  sensep = true;
+	  /* sensep = true; */
 	} else if (this->comp == REV_ATAC_INTRON_COMP) {
 	  fprintf(fp," [-");
-	  sensep = false;
+	  /* sensep = false; */
 	} else if (this->comp == NONINTRON_COMP) {
 	  fprintf(fp," ==");
-	  sensep = true;
+	  /* sensep = true; */
 	} else {
 	  fprintf(fp," ##");
-	  sensep = true;
+	  /* sensep = true; */
 	}
 	in_exon = false;
       }
@@ -1579,14 +1605,14 @@ Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 	  }
 
 	  if (genome != NULL) {
-	    if (sensep == true) {
+	    if (cdna_direction >= 0) {
 	      fprintf(fp,"  %.3f, %.3f",
-		      donor_score(chroffset+exon_genomeend-1,!watsonp,genome,chromosome_iit),
-		      acceptor_score(chroffset+exon_genomestart-1,!watsonp,genome,chromosome_iit));
+		      donor_score(chroffset+exon_genomeend-1,chroffset,!watsonp,genome,chromosome_iit),
+		      acceptor_score(chroffset+exon_genomestart-1,chroffset,!watsonp,genome,chromosome_iit));
 	    } else {
 	      fprintf(fp,"  %.3f, %.3f",
-		      acceptor_score(chroffset+exon_genomeend-1,watsonp,genome,chromosome_iit),
-		      donor_score(chroffset+exon_genomestart-1,watsonp,genome,chromosome_iit));
+		      acceptor_score(chroffset+exon_genomeend-1,chroffset,watsonp,genome,chromosome_iit),
+		      donor_score(chroffset+exon_genomestart-1,chroffset,watsonp,genome,chromosome_iit));
 	    }
 	  }
 
@@ -2679,16 +2705,16 @@ print_endtypes (FILE *fp,
     if (watsonp == true) {
       prev_splicesitepos = exon_genomestart-1U;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_donor_prob(chroffset+exon_genomestart);
+	prob = Maxent_hr_donor_prob(chroffset+exon_genomestart,chroffset);
       } else {
-	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomestart-1U);
+	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomestart-1U,chroffset);
       }
     } else {
       prev_splicesitepos = exon_genomestart;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomestart-1U);
+	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomestart-1U,chroffset);
       } else {
-	prob = Maxent_hr_donor_prob(chroffset+exon_genomestart);
+	prob = Maxent_hr_donor_prob(chroffset+exon_genomestart,chroffset);
       }
     }
     fprintf(fp,"donor:%.2f",prob);
@@ -2697,16 +2723,16 @@ print_endtypes (FILE *fp,
     if (watsonp == true) {
       prev_splicesitepos = exon_genomestart-1U;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomestart-1U);
+	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomestart-1U,chroffset);
       } else {
-	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomestart);
+	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomestart,chroffset);
       }
     } else {
       prev_splicesitepos = exon_genomestart;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomestart);
+	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomestart,chroffset);
       } else {
-	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomestart-1U);
+	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomestart-1U,chroffset);
       }
     }
     fprintf(fp,"acceptor:%.2f",prob);
@@ -2727,16 +2753,16 @@ print_endtypes (FILE *fp,
     if (watsonp == true) {
       splicesitepos = exon_genomeend;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_donor_prob(chroffset+exon_genomeend);
+	prob = Maxent_hr_donor_prob(chroffset+exon_genomeend,chroffset);
       } else {
-	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomeend-1U);
+	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomeend-1U,chroffset);
       }
     } else {
       splicesitepos = exon_genomeend-1U;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomeend-1U);
+	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomeend-1U,chroffset);
       } else {
-	prob = Maxent_hr_donor_prob(chroffset+exon_genomeend);
+	prob = Maxent_hr_donor_prob(chroffset+exon_genomeend,chroffset);
       }
     }
     fprintf(fp,"donor:%.2f",prob);
@@ -2745,16 +2771,16 @@ print_endtypes (FILE *fp,
     if (watsonp == true) {
       splicesitepos = exon_genomeend;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomeend-1U);
+	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomeend-1U,chroffset);
       } else {
-	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomeend);
+	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomeend,chroffset);
       }
     } else {
       splicesitepos = exon_genomeend-1U;
       if (cdna_direction > 0) {
-	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomeend);
+	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomeend,chroffset);
       } else {
-	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomeend-1U);
+	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomeend-1U,chroffset);
       }
     }
     fprintf(fp,"acceptor:%.2f",prob);
@@ -3491,14 +3517,14 @@ print_quality_revcomp (FILE *fp, char *quality, int querylength,
 static void
 print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
 		bool watsonp, int cdna_direction, List_T cigar_tokens, List_T md_tokens,
-		int nmismatches, bool intronp, char *queryseq_ptr, char *quality_string,
+		int nmismatches, int nindels, bool intronp, char *queryseq_ptr, char *quality_string,
 		int hardclip_low, int hardclip_high, int querylength, Chimera_T chimera, int quality_shift,
-		int npaths, unsigned int flag,
+		int pathnum, int npaths, int absmq_score, int second_absmq, unsigned int flag,
 #ifdef GSNAP
 		int pair_mapq_score, int end_mapq_score,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
 #else
-		struct T *pairarray, int npairs,
+		int mapq_score, struct T *pairarray, int npairs,
 #endif
 		char *sam_read_group_id) {
 
@@ -3533,7 +3559,7 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
 #ifdef GSNAP
   fprintf(fp,"%d\t",pair_mapq_score);
 #else
-  fprintf(fp,"%d\t",40);
+  fprintf(fp,"%d\t",mapq_score);
 #endif
 
   /* 6. CIGAR */
@@ -3597,9 +3623,13 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
   fprintf(fp,"\t");
   fprintf(fp,"NH:i:%d",npaths);
 
+  /* 12. TAGS: HI */
+  fprintf(fp,"\t");
+  fprintf(fp,"HI:i:%d",pathnum);
+
   /* 12. TAGS: NM */
   fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",nmismatches);
+  fprintf(fp,"NM:i:%d",nmismatches + nindels);
 
   /* 12. TAGS: SM */
   fprintf(fp,"\t");
@@ -3608,6 +3638,14 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
 #else
   fprintf(fp,"SM:i:%d",40);
 #endif
+
+  /* 12. TAGS: XQ */
+  fprintf(fp,"\t");
+  fprintf(fp,"XQ:i:%d",absmq_score);
+
+  /* 12. TAGS: X2 */
+  fprintf(fp,"\t");
+  fprintf(fp,"X2:i:%d",second_absmq);
 
   /* 12. TAGS: XS */
   if (intronp == true) {
@@ -3701,11 +3739,12 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
 
 static List_T
 compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *pairs, int npairs, int querylength_given,
-	       bool watsonp, int cdna_direction, int chimera_part, bool cigar_noncanonical_splices_p) {
-  List_T tokens = NULL;
-  char token[10];
-  int Mlength = 0, Ilength = 0, Dlength = 0;
-  bool in_exon = false, deletionp;
+	       bool watsonp, int cdna_direction, int chimera_part) {
+  List_T tokens = NULL, unique, p;
+  char token[10], *curr_token, *last_token;
+  int type, last_type;
+  int Mlength = 0, Ilength = 0, Dlength = 0, length;
+  bool in_exon = false, deletionp, duplicatep;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_genomestart = -1, exon_queryend = -1, exon_genomeend;
   int intron_start, intron_end;
@@ -3803,6 +3842,7 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
 	  genome_gap = abs(intron_end - intron_start) + 1;
 
 	  deletionp = false;
+#ifdef CONVERT_INTRONS_TO_DELETIONS
 	  if (cdna_direction > 0) {
 	    if (prev->comp == FWD_CANONICAL_INTRON_COMP ||
 		prev->comp == FWD_GCAG_INTRON_COMP ||
@@ -3836,6 +3876,10 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
 	    sprintf(token,"%uD",genome_gap);
 	    deletionp = true;
 	  }
+#else
+	  sprintf(token,"%uN",genome_gap);
+	  *intronp = true;
+#endif
 	  tokens = push_token(tokens,token);
 
 	  /* Check for dual gap.  Doesn't work for hard clipping. */
@@ -3959,6 +4003,67 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
     }
   }
 
+
+  /* Merge duplicates */
+  last_type = ' ';
+  duplicatep = false;
+  length = 0;
+  unique = (List_T) NULL;
+
+  for (p = tokens; p != NULL; p = List_next(p)) {
+    curr_token = (char *) List_head(p);
+    type = curr_token[strlen(curr_token)-1];
+    if (type == last_type) {
+      length += atoi(last_token);
+      FREE(last_token);
+      duplicatep = true;
+    } else {
+      if (last_type == ' ') {
+	/* Skip */
+      } else if (duplicatep == false) {
+	unique = List_push(unique,(void *) last_token);
+      } else {
+	length += atoi(last_token);
+	FREE(last_token);
+	sprintf(token,"%d%c",length,last_type);
+	unique = push_token(unique,token);
+      }
+      last_type = type;
+      duplicatep = false;
+      length = 0;
+    }
+    last_token = curr_token;
+  }
+  if (last_type == ' ') {
+    /* Skip */
+  } else if (duplicatep == false) {
+    unique = List_push(unique,(void *) last_token);
+  } else {
+    length += atoi(last_token);
+    FREE(last_token);
+    sprintf(token,"%d%c",length,last_type);
+    unique = push_token(unique,token);
+  }
+  List_free(&tokens);
+
+
+  /* Insert "0M" between adjacent I and D operations */
+  last_type = ' ';
+  tokens = (List_T) NULL;
+  for (p = unique; p != NULL; p = List_next(p)) {
+    curr_token = (char *) List_head(p);
+    type = curr_token[strlen(curr_token)-1];
+    if (last_type == 'I' && type == 'D') {
+      tokens = push_token(tokens,"0M");
+    } else if (last_type == 'D' && type == 'I') {
+      tokens = push_token(tokens,"0M");
+    }
+    tokens = List_push(tokens,(void *) curr_token);
+    last_type = type;
+  }
+
+
+  /* Return result */
   if (watsonp) {
     /* Put tokens in forward order */
     return List_reverse(tokens);
@@ -3971,8 +4076,10 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
 
 typedef enum {IN_MATCHES, IN_MISMATCHES, IN_DELETION} MD_state_T;
 
+
+#if 0
 static List_T
-compute_md_string (int *nmismatches, struct T *pairs, int npairs, bool watsonp) {
+compute_md_string_old (int *nmismatches, struct T *pairs, int npairs, bool watsonp) {
   List_T tokens = NULL;
   char token[10], *first_token;
   int nmatches = 0;
@@ -4140,6 +4247,212 @@ compute_md_string (int *nmismatches, struct T *pairs, int npairs, bool watsonp) 
   
   return tokens;
 }
+#endif
+
+
+static List_T
+compute_md_string (int *nmismatches, int *nindels, struct T *pairs, int npairs, bool watsonp,
+		   List_T cigar_tokens) {
+  List_T md_tokens = NULL, p;
+  char *cigar_token, token[10], *first_token, type;
+  Pair_T this;
+  int nmatches = 0, length;
+  MD_state_T state = IN_MISMATCHES;
+  int i, k = 0;
+
+  *nmismatches = *nindels = 0;
+
+  debug4(Pair_dump_array(pairs,npairs,true));
+  debug4(printf("watsonp %d\n",watsonp));
+
+  if (watsonp == true) {
+    for (p = cigar_tokens; p != NULL; p = List_next(p)) {
+      cigar_token = (char *) List_head(p);
+      debug4(printf("token is %s\n",cigar_token));
+      type = cigar_token[strlen(cigar_token)-1];
+      length = atoi(cigar_token);
+    
+      if (type == 'H') {
+	/* k += length; */
+
+      } else if (type == 'S') {
+	/* k += length; */
+
+      } else if (type == 'M') {
+	for (i = 0; i < length; i++, k++) {
+	  this = &(pairs[k]);
+	  debug4(printf("M %d/%d comp %c\n",i,length,this->comp));
+	  if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
+	    nmatches++;
+	    state = IN_MATCHES;
+
+	  } else if (this->comp == MISMATCH_COMP) {
+	    *nmismatches += 1;
+	    if (state == IN_MATCHES) {
+	      sprintf(token,"%d",nmatches);
+	      md_tokens = push_token(md_tokens,token);
+	      nmatches = 0;
+	    } else if (state == IN_DELETION) {
+	      md_tokens = push_token(md_tokens,"0");
+	    }
+	    state = IN_MISMATCHES;
+
+	    sprintf(token,"%c",this->genome);
+	    md_tokens = push_token(md_tokens,token);
+
+	  } else {
+	    fprintf(stderr,"Unexpected comp '%c'\n",this->comp);
+	    exit(9);
+	  }
+	}
+
+      } else if (type == 'I') {
+	while (k < npairs && pairs[k].comp == INDEL_COMP && pairs[k].genome == ' ') {
+	  *nindels += 1;
+	  k++;
+	}
+
+      } else if (type == 'N') {
+	while (k < npairs && pairs[k].gapp == true) {
+	  k++;
+	}
+
+      } else if (type == 'D') {
+	if (state == IN_MATCHES) {
+	  if (nmatches > 0) {
+	    sprintf(token,"%d",nmatches);
+	    md_tokens = push_token(md_tokens,token);
+	    nmatches = 0;
+	  }
+	}
+
+	if (state != IN_DELETION) {
+	  md_tokens = push_token(md_tokens,"^");
+	}
+	for (i = 0; i < length; i++, k++) {
+	  this = &(pairs[k]);
+	  sprintf(token,"%c",this->genome);
+	  md_tokens = push_token(md_tokens,token);
+	  *nindels += 1;
+	}
+
+	state = IN_DELETION;
+
+      } else {
+	fprintf(stderr,"Don't recognize type %c\n",type);
+	abort();
+      }
+    }
+
+    if (nmatches > 0) {
+      sprintf(token,"%d",nmatches);
+      md_tokens = push_token(md_tokens,token);
+    }
+
+    md_tokens = List_reverse(md_tokens);
+
+  } else {
+    cigar_tokens = List_reverse(cigar_tokens);
+    for (p = cigar_tokens; p != NULL; p = List_next(p)) {
+      cigar_token = (char *) List_head(p);
+      debug4(printf("token is %s\n",cigar_token));
+      type = cigar_token[strlen(cigar_token)-1];
+      length = atoi(cigar_token);
+    
+      if (type == 'H') {
+	/* k += length; */
+
+      } else if (type == 'S') {
+	/* k += length; */
+
+      } else if (type == 'M') {
+	if (state == IN_DELETION) {
+	  md_tokens = push_token(md_tokens,"^");
+	}
+
+	for (i = 0; i < length; i++, k++) {
+	  this = &(pairs[k]);
+	  debug4(printf("M %d/%d comp %c\n",i,length,this->comp));
+	  if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
+	    nmatches++;
+	    state = IN_MATCHES;
+
+	  } else if (this->comp == MISMATCH_COMP) {
+	    *nmismatches += 1;
+	    if (state == IN_MATCHES) {
+	      sprintf(token,"%d",nmatches);
+	      md_tokens = push_token(md_tokens,token);
+	      nmatches = 0;
+	    }
+	    state = IN_MISMATCHES;
+
+	    sprintf(token,"%c",complCode[(int) this->genome]);
+	    md_tokens = push_token(md_tokens,token);
+
+	  } else {
+	    fprintf(stderr,"Unexpected comp '%c'\n",this->comp);
+	    abort();
+	  }
+	}
+
+      } else if (type == 'I') {
+	while (k < npairs && pairs[k].comp == INDEL_COMP && pairs[k].genome == ' ') {
+	  *nindels += 1;
+	  k++;
+	}
+
+      } else if (type == 'N') {
+	while (k < npairs && pairs[k].gapp == true) {
+	  k++;
+	}
+
+      } else if (type == 'D') {
+	if (state == IN_MATCHES) {
+	  if (nmatches > 0) {
+	    sprintf(token,"%d",nmatches);
+	    md_tokens = push_token(md_tokens,token);
+	    nmatches = 0;
+	  }
+	} else if (state == IN_MISMATCHES) {
+	  md_tokens = push_token(md_tokens,"0");
+	}
+
+	for (i = 0; i < length; i++, k++) {
+	  this = &(pairs[k]);
+	  sprintf(token,"%c",complCode[(int) this->genome]);
+	  md_tokens = push_token(md_tokens,token);
+	  *nindels += 1;
+	}
+	state = IN_DELETION;
+
+      } else {
+	fprintf(stderr,"Don't recognize type %c\n",type);
+	abort();
+      }
+    }
+
+    if (nmatches > 0) {
+      sprintf(token,"%d",nmatches);
+      md_tokens = push_token(md_tokens,token);
+    }
+
+    /* Restore cigar_tokens */
+    cigar_tokens = List_reverse(cigar_tokens);
+  }
+
+  assert(k == npairs);
+
+  /* Insert initial 0 token if necessary */
+  if (md_tokens != NULL) {
+    first_token = (char *) List_head(md_tokens);
+    if (!isdigit(first_token[0])) {
+      md_tokens = push_token(md_tokens,"0");
+    }
+  }
+
+  return md_tokens;
+}
+
 
 
 
@@ -4149,14 +4462,14 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *queryseq_ptr, char *quality_string,
 		int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
-		int quality_shift, bool firstp, int npaths,
+		int quality_shift, bool firstp, int pathnum, int npaths, int absmq_score, int second_absmq,
 #ifdef GSNAP
 		unsigned int flag, int pair_mapq_score, int end_mapq_score,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
 #else
-		int pathnum, bool sam_paired_p,
+		int mapq_score, bool sam_paired_p,
 #endif
-		bool cigar_noncanonical_splices_p, char *sam_read_group_id) {
+		char *sam_read_group_id) {
 
   char *chrstring = NULL;
 #ifndef GSNAP
@@ -4164,7 +4477,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 #endif
 
   List_T cigar_tokens = NULL, md_tokens = NULL;
-  int nmismatches;
+  int nmismatches, nindels;
   bool intronp;
   int hardclip_low, hardclip_high;
   struct T *clipped_pairs;
@@ -4197,18 +4510,19 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 
   /* Cigar updates hardclip5 and hardclip3 for chimeras */
   cigar_tokens = compute_cigar(&intronp,&hardclip_low,&hardclip_high,clipped_pairs,clipped_npairs,querylength_given,
-			       watsonp,cdna_direction,chimera_part,cigar_noncanonical_splices_p);
+			       watsonp,cdna_direction,chimera_part);
 
-  md_tokens = compute_md_string(&nmismatches,clipped_pairs,clipped_npairs,watsonp);
+  md_tokens = compute_md_string(&nmismatches,&nindels,clipped_pairs,clipped_npairs,watsonp,cigar_tokens);
 
   print_sam_line(fp,firstp,accession,chrstring,
-		 watsonp,cdna_direction,cigar_tokens,md_tokens,nmismatches,
+		 watsonp,cdna_direction,cigar_tokens,md_tokens,nmismatches,nindels,
 		 intronp,queryseq_ptr,quality_string,hardclip_low,hardclip_high,
-		 querylength_given,chimera,quality_shift,npaths,flag,
+		 querylength_given,chimera,quality_shift,pathnum,npaths,
+		 absmq_score,second_absmq,flag,
 #ifdef GSNAP
 		 pair_mapq_score,end_mapq_score,chrpos,mate_chrpos,pairedlength,
 #else
-		 clipped_pairs,clipped_npairs,
+		 mapq_score,clipped_pairs,clipped_npairs,
 #endif
 		 sam_read_group_id);
 
@@ -4398,6 +4712,7 @@ count_psl_blocks_nt (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tSta
 
   return nblocks;
 }
+
 
 static int
 count_psl_blocks_pro (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tStarts, struct T *pairs_directional,
@@ -4844,13 +5159,16 @@ Pair_print_exons (FILE *fp, struct T *pairs, int npairs, int wraplength, int nga
 int
 Pair_nmatches (List_T pairs) {
   int nmatches = 0;
-  bool in_intron = false;
+  bool in_intron = false, indelp = false;
   List_T p;
   T this;
 
   for (p = pairs; p != NULL; p = p->rest) {
     this = p->first;
     if (this->gapp) {
+      if (this->donor_prob < 0.90 && this->acceptor_prob < 0.90) {
+	nmatches -= 2;
+      }
       if (!in_intron) {
 	in_intron = true;
       }
@@ -4859,6 +5177,7 @@ Pair_nmatches (List_T pairs) {
 	in_intron = false;
       }
       if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
+	indelp = true;
 #ifndef PMAP
       } else if (unknown_base(this->cdna) || unknown_base(this->genome) || this->comp == AMBIGUOUS_COMP) {
 	/* (*unknowns)++; */
@@ -4872,6 +5191,10 @@ Pair_nmatches (List_T pairs) {
 	abort();
       }
     }
+  }
+
+  if (indelp == true) {
+    nmatches -= 2;
   }
 
   return nmatches;
@@ -6361,11 +6684,6 @@ Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap) {
 
 
 
-#define TRIM_MATCH_SCORE 1
-static int trim_mismatch_score = -3;
-#define TRIM_INDEL_SCORE -4
-
-
 List_T
 Pair_trim_ends (List_T pairs) {
   List_T trimmed = NULL;
@@ -6388,7 +6706,7 @@ Pair_trim_ends (List_T pairs) {
 
     if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
       if (in_indelp == false) {
-	score += TRIM_INDEL_SCORE;
+	score += trim_indel_score;
 	if (score < 0) {
 	  score = 0;
 	}
@@ -6405,7 +6723,7 @@ Pair_trim_ends (List_T pairs) {
 
       } else if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
 	score += TRIM_MATCH_SCORE;
-	if (score > bestscore) {
+	if (score >= bestscore) { /* Want >= and not >, so extend to ends */
 	  bestscore = score;
 	  trim_right = pairi;
 	}
@@ -6414,6 +6732,9 @@ Pair_trim_ends (List_T pairs) {
 	score += trim_mismatch_score;
 	if (score < 0) {
 	  score = 0;
+	} else if (score >= bestscore) { /* Want >= and not >, so extend to ends */
+	  bestscore = score;
+	  trim_right = pairi;
 	}
 	
       } else {
@@ -6446,7 +6767,7 @@ Pair_trim_ends (List_T pairs) {
 
     if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
       if (in_indelp == false) {
-	score += TRIM_INDEL_SCORE;
+	score += trim_indel_score;
 	if (score < 0) {
 	  score = 0;
 	}
@@ -6464,7 +6785,7 @@ Pair_trim_ends (List_T pairs) {
 
       } else if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
 	score += TRIM_MATCH_SCORE;
-	if (score > bestscore) {
+	if (score >= bestscore) { /* Want >= and not >, so extend to ends */
 	  bestscore = score;
 	  trim_left = pairi;
 	}
@@ -6473,6 +6794,9 @@ Pair_trim_ends (List_T pairs) {
 	score += trim_mismatch_score;
 	if (score < 0) {
 	  score = 0;
+	} else if (score >= bestscore) { /* Want >= and not >, so extend to ends */
+	  bestscore = score;
+	  trim_left = pairi;
 	}
 
       } else {

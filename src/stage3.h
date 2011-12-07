@@ -1,4 +1,4 @@
-/* $Id: stage3.h 48822 2011-09-30 23:43:27Z twu $ */
+/* $Id: stage3.h 52863 2011-11-20 23:53:35Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -44,7 +44,8 @@ Stage3_setup (bool splicingp_in,
 	      IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	      int donor_typeint_in, int acceptor_typeint_in,
 	      Genomicpos_T *splicesites_in,
-	      int min_intronlength_in);
+	      int min_intronlength_in, int max_deletionlength_in,
+	      int expected_pairlength_in, int pairlength_deviation_in);
 
 extern bool
 Stage3_watsonp (T this);
@@ -54,6 +55,10 @@ extern int
 Stage3_straintype (T this);
 extern int
 Stage3_goodness (T this);
+extern int
+Stage3_absmq_score (T this);
+extern int
+Stage3_mapq_score (T this);
 extern struct Pair_T *
 Stage3_pairarray (T this);
 extern int
@@ -155,10 +160,10 @@ Stage3_print_gff3 (FILE *fp, T this, int pathnum, IIT_T chromosome_iit, Sequence
 #ifndef PMAP
 extern void
 Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
+		  int absmq_score, int second_mapq, int mapq_score,
 		  IIT_T chromosome_iit, Sequence_T usersegment,
 		  Sequence_T queryseq, int chimera_part, Chimera_T chimera,
-		  int quality_shift, bool sam_paired_p, bool cigar_noncanonical_splices_p,
-		  char *sam_read_group_id);
+		  int quality_shift, bool sam_paired_p, char *sam_read_group_id);
 #endif
 extern void
 Stage3_print_iit_map (FILE *fp, T this, IIT_T chromosome_iit, Sequence_T queryseq);
@@ -211,7 +216,8 @@ Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_directi
 
 extern struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
-		int *nmatches_pretrim, int *ambig_end_length_5, int *ambig_end_length_3,
+		int *nmatches_pretrim, int *nmatches_posttrim,
+		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, 
@@ -238,7 +244,8 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		int ngap, Stage3debug_T stage3debug, bool diagnosticp, bool checkp,
 		bool do_final_p, int sense_try, int sense_filter,
 		Oligoindex_T *oligoindices_minor, int noligoindices_minor, Diagpool_T diagpool,
-		int sufflookback, int nsufflookback, int maxintronlen, int close_indels_mode);
+		int sufflookback, int nsufflookback, int maxintronlen, int close_indels_mode,
+		int paired_favor_mode, int zero_offset);
 
 #ifndef GSNAP
 extern T

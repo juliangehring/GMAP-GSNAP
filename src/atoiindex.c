@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: atoiindex.c 46506 2011-09-03 00:01:21Z twu $";
+static char rcsid[] = "$Id: atoiindex.c 52835 2011-11-19 00:18:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -714,13 +714,14 @@ Usage: atoiindex [OPTIONS...] -d <genome>\n\
   /* Input options */
   fprintf(stdout,"Options (must include -d)\n");
   fprintf(stdout,"\
-  -F, --sourcedir=directory      Directory where to read atoi index files (default is\n\
+  -F, --sourcedir=directory      Directory where to read cmet index files (default is\n\
                                    GMAP genome directory specified at compile time)\n\
-  -D, --destdir=directory        Directory where to write atoi index files (default is\n\
+  -D, --destdir=directory        Directory where to write cmet index files (default is\n\
+                                   value of -F, if provided; otherwise the value of the\n\
                                    GMAP genome directory specified at compile time)\n\
   -d, --db=STRING                Genome database\n\
   -k, --kmer=INT                 kmer size to use for genome database (allowed values: 12-15)\n\
-                                   (default 14)\n\
+                                   (default: largest kmer found in genome database specified by -d)\n\
   -v, --use-snps=STRING          Use database containing known SNPs (in <STRING>.iit, built\n\
                                    previously using snpindex) for tolerance to SNPs\n\
 \n\

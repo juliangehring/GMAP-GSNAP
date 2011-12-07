@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 49439 2011-10-08 00:46:54Z twu $";
+static char rcsid[] = "$Id: shortread.c 53717 2011-12-05 23:11:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -432,11 +432,11 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
     slash2 = q[-2];
 
     if (slash1 != slash2 || isdigit(slash1)) {
-      fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2);
+      /* fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2); */
       stripp = false;
 
     } else if (p[-1] != '1' || q[-1] != '2') {
-      fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2);
+      /* fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2); */
       stripp = false;
 
     } else {
@@ -1519,6 +1519,16 @@ Shortread_find_primers (T queryseq1, T queryseq2) {
 
 
 int
+Shortread_max_overlap (T queryseq1, T queryseq2) {
+  if (queryseq1->fulllength < queryseq2->fulllength) {
+    return queryseq1->fulllength;
+  } else {
+    return queryseq2->fulllength;
+  }
+}
+
+
+int
 Shortread_find_overlap (T queryseq1, T queryseq2) {
   int overlap = 0;
   int nmatches, nmismatches;
@@ -2273,7 +2283,7 @@ Shortread_print_query_pairedend_fastq (FILE *fp1, FILE *fp2, T queryseq1, T quer
   }
 
   /* Second end */
-  fprintf(fp2,"@%s/2\n",queryseq2->acc);
+  fprintf(fp2,"@%s/2\n",queryseq1->acc); /* Acc stored only for first end, not second end */
 
   if (invert_second_p == true) {
     Shortread_print_oneline_revcomp(fp2,queryseq2);

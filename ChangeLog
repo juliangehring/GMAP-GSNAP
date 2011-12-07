@@ -1,4 +1,562 @@
+2011-12-05  twu
+
+    * shortread.c: Fixed bug in printing null accession for second end when
+      using --fails-as-input flag
+
+    * gmap_build.pl.in: Checking return codes from system calls
+
+2011-12-02  twu
+
+    * VERSION, index.html: Updated version number
+
+    * gsnap.c: Changed name of flag from --ambig-splice-notrim to
+      --ambig-splice-noclip
+
+    * pair.c: Pushing "0M" between adjacent I and D operations in a cigar string
+
+    * gmap.c, gsnap.c, uniqscan.c: Using new interface to Splicetrie_setup. 
+      Providing --ambig-splice-notrim flag in GSNAP.
+
+    * splicetrie.c, splicetrie.h: Providing behavior to turn clipping off at
+      ambiguous known splice sites, useful if trying to turn off all soft
+      clipping
+
+    * stage1hr.c: Fixed debugging statement
+
+2011-11-30  twu
+
+    * stage1.c: Fixed variable name so PMAP could compile
+
+2011-11-29  twu
+
+    * dynprog.c, maxent_hr.c, maxent_hr.h, pair.c, stage1hr.c, stage3.c,
+      substring.c: Checking for case where splice_pos minus margin goes beyond
+      beginning of chromosome
+
+    * VERSION, index.html: Updated version number
+
+    * maxent_hr.c: Checking for case where splice_pos is smaller than margin
+
+    * pair.c, samprint.c: Changed value of NM tag in SAM output to be edit
+      distance (mismatches plus gaps)
+
+    * stage1hr.c: Fixed debugging statement
+
+2011-11-28  twu
+
+    * VERSION, index.html: Updated version number
+
+    * gsnap.c: Calling SAM_setup
+
+    * outbuffer.c: For GMAP, when quiet_if_excessive_p is true and npaths >
+      maxpaths, not printing any output
+
+    * pair.c, pair.h, stage3.c: Printing HI tag in SAM output
+
+    * samprint.c, samprint.h: When quiet_if_excessive_p is true and npaths_mate
+      > maxpaths, setting MATE_UNMAPPED in flag.  Printing HI tag.  Added
+      function SAM_setup.
+
+2011-11-25  twu
+
+    * VERSION, index.html: Updated version number
+
+    * stage3.c: For GMAP, using QUERYEND_INDELS instead of QUERYEND_NOGAPS
+
+    * stage1.c: Added check for querylength being too short
+
+    * gmap.c: Changed information in --help about how to turn off chimera
+      detection
+
+    * stage3.c: In Stage3_mergeable, added check for firstpart_npairs or
+      secondpart_npairs being 0
+
+2011-11-23  twu
+
+    * index.html: Updated version number
+
+    * VERSION: Updated version number
+
+    * stage1.c: Made direct calls to fields in Match_T objects for speed.  Made
+      changes so debugging macros work.
+
+    * dynprog.c: Made special traceback procedure for queryend_nogaps
+
+2011-11-21  twu
+
+    * stage3hr.c: Fixed bug where Stage3end_remove_overlaps was not keeping ends
+      where paired_usedp was true.  In Stage3end_remove_overlaps and
+      Stage3pair_remove_overlaps, terminal alignments lose to all other types.
+
+    * stage3hr.h: Put GMAP hittype before TERMINAL hittype
+
+    * gsnap.c: Increased default values for max_gmap_pairsearch,
+      max_gmap_terminal, and max_gmap_improvement
+
+    * stage3hr.c: Changed code for Stage3end_remove_overlaps to parallel that
+      for Stage3pair_remove_overlaps
+
+    * samprint.c: Allowing for GMAP alignments to be printed for single-end
+      reads
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst: Updated version
+      number
+
+    * stage3.c: Added comment about pass 8 and 9
+
+    * index.html: Made changes for 2011-11-20 version
+
+    * uniqscan.c: Using new interface to Stage1_single_read
+
+    * stage3hr.c: Changed the code for Stage3end_optimal_score to be consistent
+      with that of Stage3pair_optimal_score.  Allowing terminal alignments to be
+      considered along with other alignments.
+
+    * stage1hr.c: For single-end alignment, initializing done_level to
+      user_maxlevel, rather than opt_level, to be consistent with the code for
+      paired-end alignment.  However, the values are the same anyway.
+
+    * gsnap.c: Changed the default value for terminal_threshold from 3 to 2.
+      Expanded the --help entry for --terminal-threshold.
+
+    * index.html: Made changes for version 2011-11-17
+
+    * stage3.c: Added more restrictions on non-canonical splices at ends of read
+
+2011-11-20  twu
+
+    * stage3hr.c, stage3hr.h: Added functions Stage1end_start_endtype and
+      Stage1end_end_endtype for terminal alignments
+
+    * gsnap.c: Using new interface to Stage1_single_read
+
+    * gmap.c, stage3.c, stage3.h: Changed name of variable
+
+    * stage1hr.c, stage1hr.h: Implemented GMAP terminal mode for single-end
+      reads
+
+    * dynprog.c: Lowered rewards for canonical introns, to help find
+      non-canonical introns
+
+    * stage3.c: In fill_in_gaps, if splicingp is false, then filling in a
+      deletion, not an intron
+
+2011-11-19  twu
+
+    * stage3.c: Moved trim_noncanonical procedures from path_trim to
+      path_compute. After trim_noncanonical procedures, doing an extension using
+      QUERYEND_NOGAPS.
+
+    * stage1hr.c: Using -3*nmismatches and -4 for an indel in evaluating end
+      indels, corresponding to default values for trim_mismatch_score and
+      trim_indel_score.
+
+    * stage3.c: Using endalign instead of to_queryend_p.  When endalign is
+      QUERY_NOGAPS, not doing peelback.  In pass 8, changed extendp from false
+      to true (QUERYEND_INDELS).
+
+    * gsnap.c, uniqscan.c: Added flag --trim-indel-score
+
+    * dynprog.c, dynprog.h: Replaced to_queryend_p with endalign, with types
+      BEST_LOCAL, QUERYEND_INDELS, and QUERYEND_NOGAPS.  For extensions to
+      queryend, always returning gappairs.
+
+    * atoiindex.c, cmetindex.c: Updated --help to indicate how --kmer and -D are
+      chosen by default
+
+2011-11-17  twu
+
+    * VERSION: Updated version number
+
+    * gmap.c, gsnap.c, stage1hr.c, stage3.c, stage3.h, uniqscan.c: Revised
+      calculation of insertlength inside trim_noncanonical_ends procedures to
+      compensate for using maximum overlap in computing genomicseg.
+
+    * stage3.c: Made fill_in_gaps procedure replace short non-canonical introns
+      with deletions.  Removed this feature from assign_gap_types.  Added
+      additional checks on translation coordinates to stay within array bounds.
+
+    * dynprog.c: Added debugging statements
+
+    * substring.c: Added comment
+
+    * shortread.c, shortread.h, stage1hr.c: For GMAP algorithm in GSNAP,
+      assuming maximum overlap, rather than trying to compute overlap
+
+    * outbuffer.c: Printing all paths when -E flag is given to GMAP
+
+    * stage3hr.c: Improved error message when ambig end splicetype has an
+      unexpected value
+
+    * dynprog.c: Removed unused code for END_KNOWNSPLICING_SHORTCUT.  Always
+      assigning *ambig_end_length in Dynprog_end5_known and Dynprog_end3_known.
+
+2011-11-14  twu
+
+    * uniqscan.c: Using new interface to Stage3hr_setup
+
+    * stage3.c: Not substituting for long deletions at end of path_compute
+
+    * stage1hr.c, stage3hr.c, stage3hr.h: Removed end_indel_p parameters to
+      Stage3end_new_insertion and Stage3end_new_deletion
+
+    * stage1hr.c: Preventing call to Genome_count_mismatches_limit by
+      find_doublesplices where pos5 >= pos3
+
+    * VERSION: Updated version number
+
+    * configure.ac: Added flag --enable-popcnt
+
+    * dynprog.c: Initialing value of ambig_end_length
+
+    * stage3.c: Skipping gap pairs at the beginning of alignments in
+      fill_in_gaps
+
+    * goby.c: Using new interface to Result_array
+
+2011-11-12  twu
+
+    * VERSION: Updated version number
+
+    * stage1hr.c, stage3hr.c: Checking in Stage3end_new_gmap if genomicstart or
+      genomicend exceeds chrhigh, and if so, returns NULL.
+
+    * stage3.c: Moved assigning of gap types to end of path_compute, rather than
+      beginning of path_trim
+
+    * stage3.c: Inserting gap pairs and adding gap types at beginning of
+      path_trim
+
+2011-11-11  twu
+
+    * gsnap.c, outbuffer.c, outbuffer.h, samprint.c, samprint.h, stage1hr.c,
+      stage3hr.c, stage3hr.h: Divided DISTANT_SPLICE type to SAMECHR_SPLICE and
+      TRANSLOC_SPLICE. Making merge_samechr_p act only at print time, which
+      allows SAMECHR_SPLICE to undergo pair_up_concordant again.  Stopping
+      clip-overlap on distant splices.
+
+    * VERSION: Updated version number
+
+    * stage3hr.c: Keeping hits in optimal scoring if nmatches_posttrim is
+      sufficiently high relative to the best hit
+
+    * gsnap.c, uniqscan.c: Increased value of max_deletionlength from 30 to 50
+
+    * gmap.c, stage1hr.c: Using new interface to Stage3_compute
+
+    * stage3.c, stage3.h: Changed flow to path_compute on both cdna directions,
+      then pick_cdna_direction, then path_trim, which removes non-canonical end
+      exons.
+
+    * stage3hr.c, stage3hr.h, substring.c, substring.h: Added nmatches_posttrim
+      and using it to break ties resulting from equal values of nmatches.  Added
+      a general test for Substring_new based on matches and mismatches before
+      trimming.
+
+    * pair.c: Modified Pair_nmatches to add penalties for an indel and for a
+      splice site with low probabilities.  Modified compute_md_string on I
+      tokens to skip only for insertion pairs.
+
+    * dynprog.c: Fixed procedure find_best_endpoint_to_queryend to look only at
+      r == length1
+
+2011-11-10  twu
+
+    * stage3hr.c: Turned off separate treatment of terminal alignments in
+      Stage3pair_optimal_score.  Always trimming ends of insertions and
+      deletions (previously depended on value of end_indel_p).
+
+2011-11-09  twu
+
+    * stage3.c: Using a sliding scale in trimming end exons
+
+    * pair.c: Added debugging macro for compute_md_string
+
+    * pair.c, pair.h: Taking cdna_direction as a parameter in
+      Pair_print_exonsummary, instead of determining sense separately for each
+      intron
+
+    * stage3.c: Restored alignment score in pick_cdna_direction with different
+      values of significant difference for GMAP and GSNAP.  Considering a
+      non-canonical intron as canonical if both splice site probabilities are
+      high.
+
+    * splicing-score.c: Fixed getopt so -D takes an argument
+
+    * pairpool.c, pairpool.h: Revised Pairpool_count_bounded to return number of
+      pairs at start.
+
+    * gmap.c: Added comments
+
+    * stage3.c: Restored use of alignment scores in pick_cdna_direction, after
+      comparing number of noncanonical splices
+
+    * VERSION: Updated version number
+
+    * shortread.c: No longer printing warning message about not finding "/1" or
+      "/2" endings
+
+    * gsnap.c, uniqscan.c: Added max_deletionlength variable
+
+    * gmap.c, outbuffer.c, outbuffer.h, pair.c, pair.h, samprint.c: No longer
+      converting short noncanonical splices from type N to type D, since this is
+      now performed in stage 3.  Removed cigar_noncanonical_splices_p variable.
+
+    * stage3.c, stage3.h: In assign_gap_types, converting noncanonical splices
+      smaller than max_deletionlength into deletions
+
+    * gsnap.c, stage3hr.c, stage3hr.h, uniqscan.c: Treating distant splices on
+      the same chromosome as a translocation by default.  Added a flag
+      --merge-distant-samechr to get previous behavior.
+
+2011-11-08  twu
+
+    * stage3.c: Using maxintronlen in trimming end exons
+
+    * stage3.c: Removed alignment scores from pick_cdna_direction.  Revised
+      procedures for trimming noncanonical end exons and doing distal/medial
+      comparison by adding procedures canonicalp and good_end_intron_p, with
+      latter using probabilities.
+
+    * gmap.c: Increased parameter for maxpeelback_distalmedial from 24 to 100
+
+    * dynprog.c: Added debugging statements
+
+    * pair.c: Computing MD string from cigar tokens
+
+    * stage2.c: Restored querydist penalty
+
+2011-11-07  twu
+
+    * VERSION: Revised version number
+
+    * index.html: Added entry for new version
+
+    * stage1hr.c: Commented out second round of terminal alignments
+
+    * gmap.c, gsnap.c, uniqscan.c: Set trim_indel_score to -4 to be consistent
+      with previous value
+
+    * gmap.c, gsnap.c, uniqscan.c: Calling Pair_setup
+
+    * substring.c: Extending trimming toward ends in case of ties
+
+    * stage3.c: Extending ends completely before final trim
+
+    * pair.h: Extending trimming toward ends in case of ties.  Added Pair_setup
+      function to use trim_mismatch_score value provided by user.
+
+    * pair.c: Extending trimming toward ends in case of ties.  Added Pair_setup
+      function to use trim_mismatch_score value provided by user.
+
+    * stage2.c: Put code for suboptimal starts into a compiler directive
+
+    * gmap.c, gsnap.c, uniqscan.c: Provided new defaults for
+      suboptimal_score_start and suboptimal_score_end, based on simulations
+
+    * gmap.c, gsnap.c, stage2.c, stage2.h, uniqscan.c: Introduced parameters for
+      suboptimal_score_end and suboptimal_score_start
+
+    * gmap.c: Added flag for --suboptimal-score
+
+2011-11-06  twu
+
+    * gmap.c, gsnap.c, outbuffer.c, pair.c, pair.h, result.c, result.h,
+      resulthr.c, resulthr.h, samprint.c, samprint.h, stage1hr.c, stage3.c,
+      stage3.h, stage3hr.c, stage3hr.h, uniqscan.c: Restoring old MAPQ score. 
+      Making absolute MAPQ score a separate calculation, and printing it in an
+      XQ flag.
+
+2011-11-05  twu
+
+    * stage1hr.c: Added comments
+
+    * stage3hr.c: Added field indel_low, and using to prefer indels at low
+      genomic coords
+
+    * stage1hr.c: Fixed computation of firstbound and lastbound so end indels
+      are found on short reads, such as 36-mers.
+
+2011-11-04  twu
+
+    * pair.c: Added code to compute_cigar to merge duplicate token types
+
+    * stage2.c: Fixed uninitialized value for last_canonicalp
+
+    * stage2.c: Implemented ability to generate suboptimal paths based on
+      different initial positions
+
+    * gmapindex.c: Removed unnecessary file open for -P flag
+
+    * gmapindex.c: Fixed memory leaks for -G flag
+
+    * gmapindex.c: Fixed memory leaks for -A flag
+
+2011-11-01  twu
+
+    * pairpool.c: Commented out copy of shortexonp
+
+    * dynprog.c, dynprog.h, gmap.c, gsnap.c, stage3.c, uniqscan.c: Removed
+      endlength requirement for microexons.  Returning prob2 and prob3 from
+      Dynprog_microexon_int and applying two standards, depending on whether an
+      indel was originally present
+
+    * pair.c: Printing shortexon information
+
+    * pairpool.c: Copying shortexon information in copying pairs
+
+    * smooth.c: Removed unused parameters
+
+    * stage3.c: Adding endlength requirement for finding microexons
+
+    * smooth.c: Printing result of smoothing as pairs
+
+    * stage3.c: Made penalties harsher for indels at end near poor splice sites
+
+    * stage2.c: Computing best overall score during dynamic programming process
+
+    * uniqscan.c: Using new interface to Stage3hr_setup
+
+    * stage2.c: Made changes so PMAP could compile
+
+    * stage3.h: Added parameter favor_mode to Stage3_compute
+
+    * stage3.c: Counting indel near splice as 2 mismatches.  Added endlength
+      requirement of 12 for indel near splice.
+
+    * stage2.c: Going through all hits to accumulate cells.  No longer using
+      number of links to set root scores.
+
+    * gmap.c, stage1hr.c: Passing value of favor_mode to Stage3_compute
+
+    * smooth.c: Relaxing probability requirement for end exons in GSNAP from
+      0.05 to 0.10.
+
+2011-10-31  twu
+
+    * stage3.c: In trimming non-canonical end exons, not combining nearindelp
+      with splice probs, requiring 1 mismatch or less for bingop, and allowing
+      AT-AC introns.  Extending alignments to queryend before trimming
+      non-canonical end exons.
+
+    * stage3.c: In trimming end exons, using a sliding scale based on intron
+      length. Also penalizing for indels and mismatches close to exon-exon
+      boundary.
+
+2011-10-28  twu
+
+    * gsnap.c, stage1hr.c, stage1hr.h, stage3hr.c, stage3hr.h: Providing
+      expected_pairlength and pairlength_deviation values in Stage3hr_setup, and
+      removing from Stage1hr procedures.
+
+    * stage3.c: In end exons, checking if indel present, and if so, requiring
+      that splice probabilities both be greater than 0.9.
+
+    * gsnap.c, stage3hr.c, stage3hr.h: Restoring pairlength deviation.  Using
+      expected pairlength and pairlength deviation to discriminate among
+      paired-end reads.
+
+    * stage2.c: Adding all hits from final querypos directly to celllist, rather
+      than updating rootscores.  Fixed update of rootscore information to use
+      current querypos and hit.  Dynamic programming starting from querypos 0,
+      rather than querypos 1.
+
+    * diag.c: Restricted update of diagonal in middle region, to avoid affecting
+      subsequent beginning and end regions
+
+    * splicetrie_build.c: Fixed handling of intron intervals, by introducing
+      INTRON_HIGH_TO_LOW
+
+    * stage3hr.c: Made other fixes to allow copying of GMAP hit types
+
+    * stage1hr.c: Making copies where necessary for multiple GMAP subpaths, and
+      freeing old Stage3pair_T objects at the appropriate time.  Calling
+      Stage3pair_remove_overlaps on double GMAP alignments.
+
+    * pairpool.c: Using CALLOC_OUT in Pairpool_copy_array
+
+    * gsnap.c: Printing sequence name when debugging memusage
+
+    * stage1hr.c: Handling multiple subpaths from stage 2 computation
+
+    * stage2.c: Removed restriction on number of positions for final non-zero
+      querypos
+
+    * stage3hr.c: Allowing Stage3end_T objects of type GMAP to be copied
+
+    * pairpool.c, pairpool.h: Added function Pairpool_copy_array
+
+2011-10-27  twu
+
+    * stage2.c: Fixed location of compiler directive for PMAP
+
+    * stage3.c: Restoring negative points for non-canonical introns in computing
+      goodness
+
+    * stage2.c: Adding root scores for final non-zero and specific querypos
+
+    * gmap.c, list.c, list.h, stage1hr.c, stage1hr.h, stage2.c, stage2.h: Going
+      back to changes from revision 50508 for multiple subpaths from stage2,
+      plus revisions 50504 to 50909 from branches/gmap-2011-10-24-mult-stage2
+      for a root position method for finding optimal and suboptimal subpaths
+
+2011-10-26  twu
+
+    * gmap.c, list.c, list.h, src, stage1hr.c, stage1hr.h, stage2.c, stage2.h:
+      Reverted to version 50507, before changes made to allow multiple paths
+      from a stage2 computation
+
+2011-10-24  twu
+
+    * VERSION: Updated version number
+
+    * archive.html, index.html: Added changes for 2011-10-24 version
+
+    * gmap.c, list.c, list.h, stage1hr.c, stage1hr.h, stage2.c, stage2.h: Merged
+      revisions 50469 to 50504 from branches/2011-10-24-mult-stage2 to allow for
+      multiple stage2 results from the same genomic segment for GMAP.
+
+    * stage3.c: Assigning sensedir in all cases, based on intron scores if
+      necessary
+
+    * gmap.c, gsnap.c, outbuffer.c, pair.c, pair.h, result.c, result.h,
+      resulthr.c, resulthr.h, samprint.c, samprint.h, stage1hr.c, stage1hr.h,
+      stage3hr.c, stage3hr.h, uniqscan.c: Computing MAPQ score relative to best
+      alignment.  Printing X2 field in SAM output to provide second best MAPQ
+      score.
+
+    * stage3.c, stage3.h: When sense_try is provided, assigning sensedir
+
+2011-10-17  twu
+
+    * VERSION: Updated version number
+
+    * index.html: Added comment about change to GMAP
+
+    * gmap.c: Sorting stage3list before evaluating for chimeras
+
+2011-10-14  twu
+
+    * VERSION: Updated version number
+
+    * index.html: Updated for new version
+
+    * configure.ac: Grouped together checks for built-in procedures
+
+    * splicetrie_build.c, splicetrie_build.h: Checking for splice sites being
+      beyond the chromosome length boundary
+
+    * splicetrie.c: Handling case where trieoffsets has a NULL_POINTER, which
+      can occur with intron-type splicing
+
+    * splicetrie_build.c: Handling case where nsites from a given splice site is
+      zero
+
 2011-10-13  twu
+
+    * popcnt.m4: Checking each built-in instruction only if available
+
+    * asm-bsr.m4: Assigning a value to x
 
     * VERSION: Updated version number
 

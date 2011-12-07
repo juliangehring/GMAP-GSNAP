@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 48822 2011-09-30 23:43:27Z twu $";
+static char rcsid[] = "$Id: dynprog.c 53340 2011-11-29 23:07:16Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -243,13 +243,13 @@ typedef enum {PAIRED_HIGHQ, PAIRED_MEDQ, PAIRED_LOWQ,
 
 /* Don't want to make too high, otherwise we will harm evaluation of
    dual introns vs. single intron */
-#define CANONICAL_INTRON_HIGHQ 20 /* GT-AG */
-#define CANONICAL_INTRON_MEDQ  26
-#define CANONICAL_INTRON_LOWQ  32
+#define CANONICAL_INTRON_HIGHQ 10 /* GT-AG */
+#define CANONICAL_INTRON_MEDQ  16
+#define CANONICAL_INTRON_LOWQ  22
 
-#define FINAL_CANONICAL_INTRON_HIGHQ 50 /* GT-AG */
-#define FINAL_CANONICAL_INTRON_MEDQ  56
-#define FINAL_CANONICAL_INTRON_LOWQ  62
+#define FINAL_CANONICAL_INTRON_HIGHQ 30 /* GT-AG */
+#define FINAL_CANONICAL_INTRON_MEDQ  36
+#define FINAL_CANONICAL_INTRON_LOWQ  42
 
 #define KNOWN_SPLICESITE_REWARD 20
 
@@ -257,9 +257,9 @@ typedef enum {PAIRED_HIGHQ, PAIRED_MEDQ, PAIRED_LOWQ,
    introduce mismatches or gaps to identify */
 #define GCAG_INTRON 15
 #define ATAC_INTRON 12
-#define FINAL_GCAG_INTRON 40    /* Amount above regular should approximately
+#define FINAL_GCAG_INTRON 20    /* Amount above regular should approximately
 				   match FINAL_CANONICAL_INTRON - CANONICAL_INTRON */
-#define FINAL_ATAC_INTRON 20
+#define FINAL_ATAC_INTRON 12
 
 /* .01 = Prob(noncanonical) > Prob(sequence gap) = 0.003*(.20) */
 #define MAXHORIZJUMP_HIGHQ 1
@@ -295,8 +295,6 @@ static unsigned int *triecontents_obs;
 static unsigned int *trieoffsets_max;
 static unsigned int *triecontents_max;
 
-static double microexon_spliceprob;
-
 
 void
 Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
@@ -304,8 +302,7 @@ Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
 	       Genomicpos_T *splicedists_in, int nsplicesites_in,
 	       unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
-	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
-	       double microexon_spliceprob_in) {
+	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in) {
   splicesites_iit = splicesites_iit_in;
   splicesites_divint_crosstable = splicesites_divint_crosstable_in;
   donor_typeint = donor_typeint_in;
@@ -319,8 +316,6 @@ Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
   triecontents_obs = triecontents_obs_in;
   trieoffsets_max = trieoffsets_max_in;
   triecontents_max = triecontents_max_in;
-
-  microexon_spliceprob = microexon_spliceprob_in;
 
   return;
 }
@@ -1444,16 +1439,14 @@ find_best_endpoint (int *finalscore, int *bestr, int *bestc, int **matrix,
 
 
 static void
-find_best_endpoint_to_queryend (int *finalscore, int *bestr, int *bestc, int **matrix, 
-				int length1, int length2, int extraband_end_or_paired,
-				bool jump_late_p) {
-  int bestscore = 0;
+find_best_endpoint_to_queryend_indels (int *finalscore, int *bestr, int *bestc, int **matrix, 
+				       int length1, int length2, int extraband_end_or_paired,
+				       bool jump_late_p) {
+  int bestscore = -1000000;
   int r, c;
   int rband, lband, clo, chigh;
   /* No need for loffset or cmid because they apply only for cdnaend
      == FIVE, which doesn't require searching */
-
-  *bestr = *bestc = 0;
 
   if (length2 >= length1) {
     /* Widen band to right to reach destination */
@@ -1465,51 +1458,61 @@ find_best_endpoint_to_queryend (int *finalscore, int *bestr, int *bestc, int **m
     rband = extraband_end_or_paired;
   }
 
+  *bestr = r = length1;
+  *bestc = 0;
+
   if (jump_late_p == false) {
-    /* use > */
-    for (r = length1; r >= 1; r--) {
-      if ((clo = r - lband) < 1) {
-	clo = 1;
-      }
-      if ((chigh = r + rband) > length2) {
-	chigh = length2;
-      }
-      if (clo <= chigh) {
-	for (c = clo; c <= chigh; c++) {
-	  if (matrix[r][c] > bestscore) {
-	    *bestr = r;
-	    *bestc = c;
-	    bestscore = matrix[r][c];
-	  }
+    if ((clo = r - lband) < 1) {
+      clo = 1;
+    }
+    if ((chigh = r + rband) > length2) {
+      chigh = length2;
+    }
+    if (clo <= chigh) {
+      for (c = clo; c <= chigh; c++) {
+	/* use > */
+	if (matrix[r][c] > bestscore) {
+	  *bestr = r;
+	  *bestc = c;
+	  bestscore = matrix[r][c];
 	}
-	*finalscore = bestscore;
-	return;
       }
     }
+
   } else {
-    /* use >= */
-    for (r = length1; r >= 1; r--) {
-      if ((clo = r - lband) < 1) {
-	clo = 1;
-      }
-      if ((chigh = r + rband) > length2) {
-	chigh = length2;
-      }
-      if (clo <= chigh) {
-	for (c = clo; c <= chigh; c++) {
-	  if (matrix[r][c] >= bestscore) {
-	    *bestr = r;
-	    *bestc = c;
-	    bestscore = matrix[r][c];
-	  }
+    if ((clo = r - lband) < 1) {
+      clo = 1;
+    }
+    if ((chigh = r + rband) > length2) {
+      chigh = length2;
+    }
+    if (clo <= chigh) {
+      for (c = clo; c <= chigh; c++) {
+	/* use >= */
+	if (matrix[r][c] >= bestscore) {
+	  *bestr = r;
+	  *bestc = c;
+	  bestscore = matrix[r][c];
 	}
-	*finalscore = bestscore;
-	return;
       }
     }
   }
 
   *finalscore = bestscore;
+  return;
+}
+
+
+static void
+find_best_endpoint_to_queryend_nogaps (int *bestr, int *bestc, int length1, int length2) {
+  if (length2 < length1) {
+    *bestr = length2;
+    *bestc = length2;
+  } else {
+    *bestr = length1;
+    *bestc = length1;
+  }
+
   return;
 }
 
@@ -1887,107 +1890,56 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 }
 
 
-#ifdef DEBUG6
+/* revp means both rev1p and rev2p, which must have equal values */
+/* Iterative version */
 static List_T
-traceback_debug (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nindels,
-		 Direction_T **directions, int **jump, int r, int c, 
-		 char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
-		 int queryoffset, int genomeoffset, Pairpool_T pairpool, 
-		 bool revp, bool cdna_gap_p, int cdna_direction, int dynprogindex) {
+traceback_nogaps (List_T pairs, int *nmatches, int *nmismatches,
+		  int r, int c, char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
+		  int queryoffset, int genomeoffset, Pairpool_T pairpool, 
+		  bool revp, int dynprogindex) {
   char c1, c2;
-  int dist;
-  bool add_dashes_p;
   int querycoord, genomecoord;
 
-  printf("Starting traceback at r=%d,c=%d (offset1=%d, offset2=%d)\n",r,c,queryoffset,genomeoffset);
+  debug(printf("Starting traceback at r=%d,c=%d (offset1=%d, offset2=%d)\n",r,c,queryoffset,genomeoffset));
 
-  while (directions[r][c] != STOP) {
-    if (directions[r][c] == DIAG) {
-      if (cdna_gap_p == false) {
-	querycoord = r-1;
-	genomecoord = c-1;
-      } else {
-	querycoord = c-1;
-	genomecoord = r-1;
-      }
-      if (revp == true) {
-	querycoord = -querycoord;
-	genomecoord = -genomecoord;
-      }
+  while (r > 0 && c > 0) {
+    querycoord = r-1;
+    genomecoord = c-1;
+    if (revp == true) {
+      querycoord = -querycoord;
+      genomecoord = -genomecoord;
+    }
 
-      c1 = querysequence[querycoord];
-      c2 = genomesequence[genomecoord];
+    c1 = querysequence[querycoord];
+    c2 = genomesequence[genomecoord];
 
-      if (querysequenceuc[querycoord] == genomesequenceuc[genomecoord]) {
-	printf("D%d: Pushing %d,%d [%d,%d] (%c,%c) - match\n",
-	       jump[r][c],r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2);
-	*nmatches += 1;
-	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,c1,DYNPROG_MATCH_COMP,c2,
-			      dynprogindex);
-
-      } else if (consistent_array[(int) c1][(int) c2] == true) {
-	printf("D%d: Pushing %d,%d [%d,%d] (%c,%c) - ambiguous\n",
-	       jump[r][c],r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2);
-	*nmatches += 1;
-	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,c1,AMBIGUOUS_COMP,c2,
-			      dynprogindex);
-
-      } else {
-	printf("D%d: Pushing %d,%d [%d,%d] (%c,%c) - mismatch\n",
-	       jump[r][c],r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2);
-	*nmismatches += 1;
-	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,c1,MISMATCH_COMP,c2,
-			      dynprogindex);
-      }
-      r--; c--;
-
-    } else if (directions[r][c] == HORIZ) {
-      dist = jump[r][c];
-      printf("H%d: ",dist);
-      if (cdna_gap_p == false) {
-	pairs = add_genomeskip(&add_dashes_p,pairs,r,c,dist,genomesequence,genomesequenceuc,
-			       queryoffset,genomeoffset,pairpool,revp,cdna_gap_p,
-			       cdna_direction,dynprogindex);
-	if (add_dashes_p == true) {
-	  *nopens += 1;
-	  *nindels += dist;
-	}
-      } else {
-	pairs = add_queryskip(pairs,r,c,dist,querysequence,
-			      queryoffset,genomeoffset,pairpool,revp,cdna_gap_p,dynprogindex);
-	*nopens += 1;
-	*nindels += dist;
-      }
-      c -= dist;
-      printf("\n");
-
-    } else if (directions[r][c] == VERT) {
-      dist = jump[r][c];
-      printf("V%d: ",dist);
-      if (cdna_gap_p == false) {
-	pairs = add_queryskip(pairs,r,c,dist,querysequence,
-			      queryoffset,genomeoffset,pairpool,revp,cdna_gap_p,dynprogindex);
-	*nopens += 1;
-	*nindels += dist;
-      } else {
-	pairs = add_genomeskip(&add_dashes_p,pairs,r,c,dist,genomesequence,genomesequenceuc,
-			       queryoffset,genomeoffset,pairpool,revp,cdna_gap_p,
-			       cdna_direction,dynprogindex);
-	if (add_dashes_p == true) {
-	  *nopens += 1;
-	  *nindels += dist;
-	}
-      }
-      r -= dist;
-      printf("\n");
+    if (querysequenceuc[querycoord] == genomesequenceuc[genomecoord]) {
+      debug(printf("D: Pushing %d,%d [%d,%d] (%c,%c) - match\n",
+		   r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2));
+      *nmatches += 1;
+      pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,c1,DYNPROG_MATCH_COMP,c2,
+			    dynprogindex);
+      
+    } else if (consistent_array[(int) c1][(int) c2] == true) {
+      debug(printf("D: Pushing %d,%d [%d,%d] (%c,%c) - ambiguous\n",
+		   r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2));
+      *nmatches += 1;
+      pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,c1,AMBIGUOUS_COMP,c2,
+			    dynprogindex);
 
     } else {
-      abort();
+      debug(printf("D: Pushing %d,%d [%d,%d] (%c,%c) - mismatch\n",
+		   r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2));
+      *nmismatches += 1;
+      pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,c1,MISMATCH_COMP,c2,
+			    dynprogindex);
     }
+    r--; c--;
   }
+
   return pairs;
 }
-#endif
+
 
 
 #if 0
@@ -2184,7 +2136,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
   } else if (watsonp == true) {
     splicesitepos = chrpos + leftoffset + cL;
     if (cdna_direction > 0) {
-      *left_prob = Maxent_hr_donor_prob(chroffset + splicesitepos);
+      *left_prob = Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("1. donor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
 		    splicesites_iit &&
@@ -2192,7 +2144,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
 						       splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/+1)));
 
     } else {
-      *left_prob = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos);
+      *left_prob = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("2. antiacceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
 		    splicesites_iit &&
@@ -2203,7 +2155,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
   } else {
     splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
     if (cdna_direction > 0) {
-      *left_prob = Maxent_hr_antidonor_prob(chroffset + splicesitepos);
+      *left_prob = Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("3. antidonor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
 		    splicesites_iit &&
@@ -2211,7 +2163,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
 						       splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/-1)));
 
     } else {
-      *left_prob = Maxent_hr_acceptor_prob(chroffset + splicesitepos);
+      *left_prob = Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("4. acceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
 		    splicesites_iit &&
@@ -2237,14 +2189,14 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
   } else if (watsonp == true) {
     splicesitepos = chrpos + rightoffset - cR + 1;
     if (cdna_direction > 0) {
-      *right_prob = Maxent_hr_acceptor_prob(chroffset + splicesitepos);
+      *right_prob = Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("5. acceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
 		    splicesites_iit &&
 		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
 						       splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/+1)));
     } else {
-      *right_prob = Maxent_hr_antidonor_prob(chroffset + splicesitepos);
+      *right_prob = Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("6. antidonor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
 		    splicesites_iit &&
@@ -2255,7 +2207,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
   } else {
     splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
     if (cdna_direction > 0) {
-      *right_prob = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos);
+      *right_prob = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("7. antiacceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
 		    splicesites_iit &&
@@ -2263,7 +2215,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
 						       splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/-1)));
 
     } else {
-      *right_prob = Maxent_hr_donor_prob(chroffset + splicesitepos);
+      *right_prob = Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
       debug9(printf("8. donor splicesitepos is %u (%c%c), prob %f, known %d\n",
 		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
 		    splicesites_iit &&
@@ -2297,6 +2249,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   double *left_probabilities, *right_probabilities, probL, probR, bestprob;
   Genomicpos_T splicesitepos;
 
+
+  debug(printf("Running bridge_intron_gap with use_probabilities_p %d\n",use_probabilities_p));
 
   if (length2L+1 <= 0) {
     fprintf(stderr,"Problem with length2L = %d\n",length2L);
@@ -2615,23 +2569,23 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
       if (cdna_direction > 0) {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + leftoffset + cL;
-	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_donor_prob(chroffset + splicesitepos);
+	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
 	}
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + rightoffset - cR + 1;
-	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_acceptor_prob(chroffset + splicesitepos);
+	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
 	}
 
       } else {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + leftoffset + cL;
-	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_antiacceptor_prob(chroffset + splicesitepos);
+	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
 	}
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + rightoffset - cR + 1;
-	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_antidonor_prob(chroffset + splicesitepos);
+	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
 	}
       }
 
@@ -2639,23 +2593,23 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
       if (cdna_direction > 0) {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
-	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_antidonor_prob(chroffset + splicesitepos);
+	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
 	}
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
-	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_antiacceptor_prob(chroffset + splicesitepos);
+	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
 	}
 
       } else {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
-	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_acceptor_prob(chroffset + splicesitepos);
+	  left_probabilities[cL] = left_known[cL] ? 1.0 : Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
 	}
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
-	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_donor_prob(chroffset + splicesitepos);
+	  right_probabilities[cR] = right_known[cR] ? 1.0 : Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
 	}
       }
     }
@@ -2838,6 +2792,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
   debug3(printf("Returning final score of %d at (%d,%d) left to (%d,%d) right, with probs %f and %f\n",
 		*finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
+  debug(printf("Returning final score of %d at (%d,%d) left to (%d,%d) right, with probs %f and %f\n",
+	       *finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
   FREE(right_known);
   FREE(left_known);
 
@@ -3788,7 +3744,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *queryaaseq,
 #endif
 		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
-		  int extraband_end, double defect_rate, bool to_queryend_p) {
+		  int extraband_end, double defect_rate, Endalign_T endalign) {
   List_T pairs = NULL;
 #ifdef PMAP
   char *instsequence1, *instrevsequence1;
@@ -3805,7 +3761,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 
   debug6(
 	printf("%c:  ",*dynprogindex > 0 ? (*dynprogindex-1)%26+'a' : (-(*dynprogindex)-1)%26+'A');
-	printf("Aligning 5' end gap, watsonp %d\n",watsonp)
+	printf("Aligning 5' end gap with endalign %d\n",endalign);
 	);
 
   mismatchtype = ENDQ;
@@ -3820,6 +3776,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
   /* We can just chop lengths to work, since we're not constrained on 5' end */
   if (length1 < 0) {
     /* Needed to avoid abort by Matrix_alloc */
+    debug6(printf("length1 %d < 0, so returning NULL\n",length1));
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
     return (List_T) NULL;
@@ -3829,6 +3786,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
   }
   if (length2 < 0) {
     /* Needed to avoid abort by Matrix_alloc */
+    debug6(printf("length2 %d < 0, so returning NULL\n",length2));
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
     return (List_T) NULL;
@@ -3849,25 +3807,40 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		revoffset2-length2+1,revoffset2,length2,&(revsequence2[-length2+1])));
 
 
-  /* Can set extraband_end to zero if we are not allowing gaps */
-  matrix = compute_scores_lookup(&directions,&jump,dynprog,
+  if (endalign == BEST_LOCAL) {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
 #ifdef PMAP
-				 instrevsequence1,revsequence2,
+				   instrevsequence1,revsequence2,
 #else
-				 revsequence1,revsequence2,
+				   revsequence1,revsequence2,
 #endif
-				 /*revp*/true,length1,length2,mismatchtype,jumptype,
-				 /*init_jump_penalty_p*/true,
-				 extraband_end,/*widebandp*/true,/*onesidegapp*/false,
-				 /*for revp true*/!jump_late_p);
-
-  if (to_queryend_p == true) {
-    find_best_endpoint_to_queryend(&(*finalscore),&bestr,&bestc,matrix,length1,length2,extraband_end,
-				   !jump_late_p);
-  } else {
+				   /*revp*/true,length1,length2,mismatchtype,jumptype,
+				   /*init_jump_penalty_p*/true,
+				   extraband_end,/*widebandp*/true,/*onesidegapp*/false,
+				   /*for revp true*/!jump_late_p);
     find_best_endpoint(&(*finalscore),&bestr,&bestc,matrix,length1,length2,extraband_end,
 		       !jump_late_p);
+
+  } else if (endalign == QUERYEND_INDELS) {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+#ifdef PMAP
+				   instrevsequence1,revsequence2,
+#else
+				   revsequence1,revsequence2,
+#endif
+				   /*revp*/true,length1,length2,mismatchtype,jumptype,
+				   /*init_jump_penalty_p*/true,
+				   extraband_end,/*widebandp*/true,/*onesidegapp*/false,
+				   /*for revp true*/!jump_late_p);
+    find_best_endpoint_to_queryend_indels(&(*finalscore),&bestr,&bestc,matrix,length1,length2,extraband_end,
+					  !jump_late_p);
+    *finalscore = 0;
+
+  } else if (endalign == QUERYEND_NOGAPS) {
+    find_best_endpoint_to_queryend_nogaps(&bestr,&bestc,length1,length2);
+    *finalscore = 0;		/* Always use this */
   }
+
 
 #ifdef PMAP
   initpos = revoffset1-(bestc-1);
@@ -3882,38 +3855,37 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #endif
 
   *nmatches = *nmismatches = *nopens = *nindels = 0;
-#ifdef DEBUG6
-  pairs = traceback_debug(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-			  directions,jump,bestr,bestc,
+  if (endalign == QUERYEND_NOGAPS) {
+    pairs = traceback_nogaps(NULL,&(*nmatches),&(*nmismatches),bestr,bestc,
 #ifdef PMAP
-			  instrevsequence1,instrevsequence1,revsequence2,revsequenceuc2,
+			     instrevsequence1,instrevsequence1,revsequence2,revsequenceuc2,
 #else
-			  revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
+			     revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
-			  revoffset1,revoffset2,pairpool,/*revp*/true,/*cdna_gap_p*/false,
-			  cdna_direction,*dynprogindex);
-#else
-  pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-		    directions,jump,bestr,bestc,
+			     revoffset1,revoffset2,pairpool,/*revp*/true,*dynprogindex);
+  } else {
+    pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+		      directions,jump,bestr,bestc,
 #ifdef PMAP
-		    instrevsequence1,instrevsequence1,revsequence2,revsequenceuc2,
+		      instrevsequence1,instrevsequence1,revsequence2,revsequenceuc2,
 #else
-		    revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
+		      revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
-		    revoffset1,revoffset2,pairpool,/*revp*/true,/*cdna_gap_p*/false,
-		    cdna_direction,*dynprogindex);
-#endif
+		      revoffset1,revoffset2,pairpool,/*revp*/true,/*cdna_gap_p*/false,
+		      cdna_direction,*dynprogindex);
+  }
 
-  if ((*nmatches + 1) >= *nmismatches) {
+
+  if (endalign == BEST_LOCAL && (*nmatches + 1) < *nmismatches) {
+    *finalscore = 0;
+    /* No need to free pairs */
+    pairs = NULL;
+  } else {
     /* Add 1 to count the match already in the alignment */
     pairs = List_reverse(pairs); /* Look at 5' end to remove excess gaps */
     while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
       pairs = List_next(pairs);
     }
-  } else {
-    *finalscore = 0;
-    /* No need to free pairs */
-    pairs = NULL;
   }
 
   /*
@@ -3942,7 +3914,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *queryaaseq,
 #endif
 		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
-		  int extraband_end, double defect_rate, bool to_queryend_p) {
+		  int extraband_end, double defect_rate, Endalign_T endalign) {
   List_T pairs = NULL;
 #ifdef PMAP
   char *instsequence1;
@@ -3959,7 +3931,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 
   debug6(
 	printf("%c:  ",*dynprogindex > 0 ? (*dynprogindex-1)%26+'a' : (-(*dynprogindex)-1)%26+'A');
-	printf("Aligning 3' end gap, watsonp %d\n",watsonp)
+	printf("Aligning 3' end gap with endalign = %d\n",endalign);
 	);
 
   mismatchtype = ENDQ;
@@ -4001,24 +3973,39 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
   debug6(printf("At genomic offset %d-%d, %.*s\n",
 		offset2,offset2+length2-1,length2,sequence2));
 
-  /* Can set extraband_end to zero if we are not allowing gaps */
-  matrix = compute_scores_lookup(&directions,&jump,dynprog,
-#ifdef PMAP
-				 instsequence1,sequence2,
-#else
-				 sequence1,sequence2,
-#endif
-				 /*revp*/false,length1,length2,mismatchtype,jumptype,
-				 /*init_jump_penalty_p*/true,
-				 extraband_end,/*widebandp*/true,/*onesidegapp*/false,
-				 jump_late_p);
 
-  if (to_queryend_p == true) {
-    find_best_endpoint_to_queryend(&(*finalscore),&bestr,&bestc,matrix,length1,length2,extraband_end,
+  if (endalign == BEST_LOCAL) {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+#ifdef PMAP
+				   instsequence1,sequence2,
+#else
+				   sequence1,sequence2,
+#endif
+				   /*revp*/false,length1,length2,mismatchtype,jumptype,
+				   /*init_jump_penalty_p*/true,
+				   extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				   jump_late_p);
-  } else {
     find_best_endpoint(&(*finalscore),&bestr,&bestc,matrix,length1,length2,extraband_end,
 		       jump_late_p);
+
+  } else if (endalign == QUERYEND_INDELS) {
+    matrix = compute_scores_lookup(&directions,&jump,dynprog,
+#ifdef PMAP
+				   instsequence1,sequence2,
+#else
+				   sequence1,sequence2,
+#endif
+				   /*revp*/false,length1,length2,mismatchtype,jumptype,
+				   /*init_jump_penalty_p*/true,
+				   extraband_end,/*widebandp*/true,/*onesidegapp*/false,
+				   jump_late_p);
+    find_best_endpoint_to_queryend_indels(&(*finalscore),&bestr,&bestc,matrix,length1,length2,extraband_end,
+					  jump_late_p);
+    *finalscore = 0;
+
+  } else if (endalign == QUERYEND_NOGAPS) {
+    find_best_endpoint_to_queryend_nogaps(&bestr,&bestc,length1,length2);
+    *finalscore = 0;		/* Always use this */
   }
 
 #ifdef PMAP
@@ -4034,38 +4021,37 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #endif
 
   *nmatches = *nmismatches = *nopens = *nindels = 0;
-#ifdef DEBUG6
-  pairs = traceback_debug(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-			  directions,jump,bestr,bestc,
+  if (endalign == QUERYEND_NOGAPS) {
+    pairs = traceback_nogaps(NULL,&(*nmatches),&(*nmismatches),bestr,bestc,
 #ifdef PMAP
-			  instsequence1,instsequence1,sequence2,sequenceuc2,
+			     instsequence1,instsequence1,sequence2,sequenceuc2,
 #else
-			  sequence1,sequenceuc1,sequence2,sequenceuc2,
+			     sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
-			  offset1,offset2,pairpool,/*revp*/false,/*cdna_gap_p*/false,
-			  cdna_direction,*dynprogindex);
-#else
-  pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-		    directions,jump,bestr,bestc,
+			     offset1,offset2,pairpool,/*revp*/false,*dynprogindex);
+  } else {
+    pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+		      directions,jump,bestr,bestc,
 #ifdef PMAP
-		    instsequence1,instsequence1,sequence2,sequenceuc2,
+		      instsequence1,instsequence1,sequence2,sequenceuc2,
 #else
-		    sequence1,sequenceuc1,sequence2,sequenceuc2,
+		      sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
-		    offset1,offset2,pairpool,/*revp*/false,/*cdna_gap_p*/false,
-		    cdna_direction,*dynprogindex);
-#endif
+		      offset1,offset2,pairpool,/*revp*/false,/*cdna_gap_p*/false,
+		      cdna_direction,*dynprogindex);
+  }
 
-  if ((*nmatches + 1) >= *nmismatches) {
+  if (endalign == BEST_LOCAL && (*nmatches + 1) < *nmismatches) {
+    *finalscore = 0;
+    /* No need to free pairs */
+    pairs = NULL;
+
+  } else {
     /* Add 1 to count the match already in the alignment */
     pairs = List_reverse(pairs); /* Look at 3' end to remove excess gaps */
     while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
       pairs = List_next(pairs);
     }
-  } else {
-    *finalscore = 0;
-    /* No need to free pairs */
-    pairs = NULL;
   }
 
   /*
@@ -4381,672 +4367,6 @@ Dynprog_add_known_splice_3 (int *length_distal, List_T pairs, Genomicpos_T ancho
 }
 
 
-#ifdef END_KNOWNSPLICING_SHORTCUT
-
-/* GSNAP version with shortcut */
-List_T
-Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore, int *ambig_end_matches,
-		    int *nmatches, int *nmismatches, int *nopens, int *nindels, T dynprog, 
-		    char *revsequence1, char *revsequenceuc1,
-		    char *revsequence2, char *revsequenceuc2,
-		    int length1, int length2, int revoffset1, int revoffset2, 
-		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
-		    int cutoff_level, char *queryptr, int querylength, Compress_T query_compress,
-		    int cdna_direction, bool watsonp, bool jump_late_p,
-		    Pairpool_T pairpool, int extraband_end, double defect_rate) {
-  List_T best_pairs = NULL, orig_pairs, pairs = NULL, ptr;
-  Genomicpos_T low, high, splicecoord;
-  Splicetype_T anchor_splicetype, far_splicetype;
-  int contlength, splicelength;
-  Uintlist_T splicecoords, p;
-  char *splicejunction;
-  int jstart, j;
-  Pair_T pair;
-
-  int score, orig_score, threshold_miss_score, miss_score, perfect_score;
-  int nmatches0, nmismatches0, nopens0, nindels0, nmatches_distal;
-  int splicepos;
-  int obsmax_penalty;
-
-  int best_nmismatches;
-  bool foundp = false;
-
-  debug7(
-	printf("%c:  ",*dynprogindex > 0 ? (*dynprogindex-1)%26+'a' : (-(*dynprogindex)-1)%26+'A');
-	printf("Aligning 5' end gap\n")
-	);
-
-  /* We can just chop lengths to work, since we're not constrained on 5' end */
-  if (length1 < 0) {
-    /* Needed to avoid abort by Matrix_alloc */
-    *finalscore = 0;
-    *knownsplicep = false;
-    *ambig_end_matches = 0;
-    return (List_T) NULL;
-  } else if (length1 > dynprog->maxlength1) {
-    debug7(printf("length1 %d is too long.  Chopping to %d\n",length1,dynprog->maxlength1));
-    length1 = dynprog->maxlength1;
-  }
-  if (length2 < 0) {
-    /* Needed to avoid abort by Matrix_alloc */
-    *finalscore = 0;
-    *knownsplicep = false;
-    *ambig_end_matches = 0;
-    return (List_T) NULL;
-  } else if (length2 > dynprog->maxlength2) {
-    debug7(printf("length2 %d is too long.  Chopping to %d\n",length2,dynprog->maxlength2));
-    length2 = dynprog->maxlength2;
-  }
-
-  debug7(printf("At query offset %d-%d, %.*s\n",revoffset1-length1+1,revoffset1,length1,&(revsequence1[-length1+1])));
-  debug7(printf("At genomic offset %d-%d, %.*s\n",
-		revoffset2-length2+1,revoffset2,length2,&(revsequence2[-length2+1])));
-
-  perfect_score = length1*FULLMATCH;
-
-  /* Try without splicing */
-  best_pairs = Dynprog_end5_gap(&(*dynprogindex),&(*finalscore),&(*nmatches),&(*nmismatches),
-				&(*nopens),&(*nindels),dynprog, 
-				revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
-				length1,length2,revoffset1,revoffset2, 
-				cdna_direction,watsonp,pairpool,extraband_end,defect_rate);
-  orig_score = *finalscore;
-  orig_pairs = best_pairs;
-  threshold_miss_score = perfect_score - orig_score;
-  debug7(printf("perfect score %d - score %d = threshold %d\n",
-		perfect_score,orig_score,threshold_miss_score));
-  *knownsplicep = false;
-  /* *ambig_end_matches = 0; */
-
-
-  if (threshold_miss_score > 0) {
-    /* Try known splicing */
-    splicejunction = (char *) CALLOC(length2+1,sizeof(char));
-    strncpy(splicejunction,&(revsequence2[-length2+1]),length2);
-
-    if (watsonp == true) {
-      low = chroffset + chrpos + revoffset2-length2+1;
-      high = chroffset + chrpos + revoffset2;
-      if (cdna_direction > 0) {
-	anchor_splicetype = ACCEPTOR;
-	far_splicetype = DONOR;
-      } else {
-	anchor_splicetype = ANTIDONOR;
-	far_splicetype = ANTIACCEPTOR;
-      }
-    } else {
-      low = chroffset + chrpos + (genomiclength - 1) - revoffset2;
-      high = chroffset + chrpos + (genomiclength - 1) - (revoffset2-length2+1);
-      if (cdna_direction > 0) {
-	anchor_splicetype = ANTIACCEPTOR;
-	far_splicetype = ANTIDONOR;
-      } else {
-	anchor_splicetype = DONOR;
-	far_splicetype = ACCEPTOR;
-      }
-    }
-
-    debug7(printf("Genomic positions: %u..%u (%u..%u), looking for anchor splicetype %s\n",
-		  low,high,low-chroffset,high-chroffset,Splicetype_string(anchor_splicetype)));
-    j = jstart = binary_search(0,nsplicesites,splicesites,low);
-    while (j < nsplicesites && splicesites[j] < high) {
-      if (splicetypes[j] == anchor_splicetype) {
-	if (watsonp == true) {
-	  contlength = high + 1 - splicesites[j];
-
-	  debug7(printf("Start of search for splicepos, 5' plus\n"));
-	  ptr = orig_pairs;
-	  while (ptr->rest != NULL && ((Pair_T) ptr->first)->genomepos >= splicesites[j] - chroffset - chrpos) {
-	    debug7(pair = (Pair_T) List_head(ptr));
-	    debug7(printf("%c %c  %d %d %u %u\n",
-			  pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			  chroffset + chrpos + pair->genomepos,chrpos + pair->genomepos));
-	    ptr = ptr->rest;
-	  }
-
-	  pair = (Pair_T) ptr->first;
-	  debug7(printf("Final pair: %c %c  %d %d %u %u\n",
-			pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			chroffset + chrpos + pair->genomepos,chrpos + pair->genomepos));
-	  splicepos = pair->querypos + (splicesites[j] - chroffset - chrpos) - pair->genomepos;
-	  debug7(printf("splicepos %d = querypos %d + splicesite %u - chroffset %u - chrpos %u - genomepos %u\n",
-			splicepos,pair->querypos,splicesites[j],chroffset,chrpos,pair->genomepos));
-	  debug7(printf("\n"));
-
-	} else {
-	  contlength = splicesites[j] - low;
-
-	  debug7(printf("Start of search for splicepos, 5' minus\n"));
-	  ptr = orig_pairs;
-	  while (ptr->rest != NULL && ((Pair_T) ptr->first)->genomepos > chroffset + chrpos + (genomiclength - 1) - splicesites[j]) {
-	    debug7(pair = (Pair_T) List_head(ptr));
-	    debug7(printf("%c %c  %d %d %u %u\n",
-			  pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			  chroffset + chrpos + (genomiclength - 1) - pair->genomepos,
-			  chrpos + (genomiclength - 1) - pair->genomepos));
-	    ptr = ptr->rest;
-	  }
-	  
-	  pair = (Pair_T) ptr->first;
-	  debug7(printf("Final pair: %c %c  %d %d %u %u\n",
-			pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			chroffset + chrpos + (genomiclength - 1) - pair->genomepos,
-			chrpos + (genomiclength - 1) - pair->genomepos));
-	  splicepos = pair->querypos + (chroffset + chrpos - splicesites[j]) - pair->genomepos + (genomiclength /*- 1*/) /*+ 1*/;
-	  debug7(printf("splicepos = %d\n",splicepos));
-	  debug7(printf("\n"));
-	}
-	debug7(printf("cont: %.*s\n",contlength,&(revsequence2[-contlength+1])));
-
-	splicelength = length2 - contlength;
-	debug7(printf("  Saw %u (%u) of type %s (cont length %d, splice length %d)\n",
-		      splicesites[j],splicesites[j]-chroffset,Splicetype_string(splicetypes[j]),contlength,splicelength));
-
-	if (trieoffsets_obs != NULL) {
-	  if (watsonp == true) {
-	    splicecoords = Splicetrie_dump_coords_left(&best_nmismatches,&(triecontents_obs[trieoffsets_obs[j]]),
-						       /*pos5*/0,/*pos3*/splicepos,
-						       query_compress,queryptr,/*plusp*/true,
-						       knownsplice_limit_low,knownsplice_limit_high);
-
-	  } else {
-	    splicecoords = Splicetrie_dump_coords_right(&best_nmismatches,&(triecontents_obs[trieoffsets_obs[j]]),
-							/*pos5*/querylength-splicepos,/*pos3*/querylength,
-							query_compress,queryptr,/*plusp*/false,
-							knownsplice_limit_low,knownsplice_limit_high);
-	  }
-
-	  debug7(printf("Observed splice sites: %d\n",Uintlist_length(splicecoords)));
-	  if (splicecoords != NULL && best_nmismatches <= cutoff_level) {
-	    foundp = true;
-	    for (p = splicecoords; p != NULL; p = Uintlist_next(p)) {
-	      splicecoord = Uintlist_head(p);
-	      debug7(printf("intron length %d, ",splicecoord - splicesites[j]));
-	      Dynprog_make_splicejunction_5(splicejunction,splicecoord,splicelength,far_splicetype,watsonp);
-	      pairs = Dynprog_end5_gap(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
-				       &nopens0,&nindels0,dynprog,revsequence1,revsequenceuc1,
-				       /*revsequence2*/&(splicejunction[length2-1]),/*revsequenceuc2*/&(splicejunction[length2-1]),
-				       length1,length2,revoffset1,revoffset2, 
-				       cdna_direction,watsonp,pairpool,extraband_end,defect_rate);
-	      miss_score = perfect_score - score;
-	      debug7(printf("perfect score %d - score %d = miss %d\n",
-			    perfect_score,score,miss_score));
-	      if (miss_score < threshold_miss_score) {
-		debug7(printf("miss %d < threshold %d\n",miss_score,threshold_miss_score));
-		pairs = Dynprog_add_known_splice_5(&nmatches_distal,pairs,splicesites[j],splicecoord,chroffset,chrpos,
-						   genomiclength,watsonp,pairpool);
-		best_pairs = pairs;
-		*finalscore = score;
-		*nmatches = nmatches0;
-		*nmismatches = nmismatches0;
-		*nopens = nopens0;
-		*nindels = nindels0;
-		*knownsplicep = true;
-		*ambig_end_matches = nmatches_distal;
-		threshold_miss_score = miss_score;
-	      } else if (miss_score == threshold_miss_score) {
-		debug7(printf("miss %d == threshold %d, so ambiguous\n",miss_score,threshold_miss_score));
-		best_pairs = (List_T) NULL;
-	      }
-	    }
-	  }
-	  Uintlist_free(&splicecoords);
-	}
-
-	if (threshold_miss_score - FULLMATCH > 0 && trieoffsets_max != NULL) {
-	  if (watsonp == true) {
-	    splicecoords = Splicetrie_dump_coords_left(&best_nmismatches,&(triecontents_max[trieoffsets_max[j]]),
-						       /*pos5*/0,/*pos3*/splicepos,
-						       query_compress,queryptr,/*plusp*/true,
-						       knownsplice_limit_low,knownsplice_limit_high);
-	  } else {
-	    splicecoords = Splicetrie_dump_coords_right(&best_nmismatches,&(triecontents_max[trieoffsets_max[j]]),
-							/*pos5*/querylength-splicepos,/*pos3*/querylength,
-							query_compress,queryptr,/*plusp*/false,
-							knownsplice_limit_low,knownsplice_limit_high);
-	  }
-
-	  debug7(printf("Maxdistance splice sites: %d\n",Uintlist_length(splicecoords)));
-	  if (splicecoords != NULL && best_nmismatches <= cutoff_level) {
-	    foundp = true;
-	    for (p = splicecoords; p != NULL; p = Uintlist_next(p)) {
-	      splicecoord = Uintlist_head(p);
-	      debug7(printf("intron length %d, ",splicecoord - splicesites[j]));
-	      Dynprog_make_splicejunction_5(splicejunction,splicecoord,splicelength,far_splicetype,watsonp);
-	      pairs = Dynprog_end5_gap(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
-				       &nopens0,&nindels0,dynprog,revsequence1,revsequenceuc1,
-				       /*revsequence2*/&(splicejunction[length2-1]),/*revsequenceuc2*/&(splicejunction[length2-1]),
-				       length1,length2,revoffset1,revoffset2, 
-				       cdna_direction,watsonp,pairpool,extraband_end,defect_rate);
-	      miss_score = perfect_score - score;
-	      debug7(printf("perfect score %d - score %d = miss %d\n",
-			    perfect_score,score,miss_score));
-	      if (miss_score < threshold_miss_score - FULLMATCH) {
-		debug7(printf("miss %d < threshold %d - %d\n",miss_score,threshold_miss_score,FULLMATCH));
-		pairs = Dynprog_add_known_splice_5(&nmatches_distal,pairs,splicesites[j],splicecoord,chroffset,chrpos,
-						   genomiclength,watsonp,pairpool);
-		best_pairs = pairs;
-		*finalscore = score;
-		*nmatches = nmatches0;
-		*nmismatches = nmismatches0;
-		*nopens = nopens0;
-		*nindels = nindels0;
-		*knownsplicep = true;
-		*ambig_end_matches = nmatches_distal;
-		threshold_miss_score = miss_score + FULLMATCH;
-	      } else if (miss_score == threshold_miss_score - FULLMATCH) {
-		debug7(printf("miss %d == threshold %d - %d, so ambiguous\n",miss_score,threshold_miss_score,FULLMATCH));
-		best_pairs = (List_T) NULL;
-	      }
-	    }
-	  }
-	  Uintlist_free(&splicecoords);
-	}
-      }
-      j++;
-    }
-
-    if (foundp == false) {
-      j = jstart;
-      while (j < nsplicesites && splicesites[j] < high) {
-	if (splicetypes[j] == anchor_splicetype) {
-	  if (watsonp == true) {
-	    contlength = high + 1 - splicesites[j];
-	  } else {
-	    contlength = splicesites[j] - low;
-	  }
-	  debug7(printf("cont: %.*s\n",contlength,&(revsequence2[-contlength+1])));
-
-	  splicelength = length2 - contlength;
-	  debug7(printf("  Saw %u (%u) of type %s (cont length %d, splice length %d)\n",
-			splicesites[j],splicesites[j]-chroffset,Splicetype_string(splicetypes[j]),contlength,splicelength));
-
-	  obsmax_penalty = 0;
-	  if (trieoffsets_obs != NULL) {
-	    best_pairs = Splicetrie_solve_end5(best_pairs,/*triestart*/&(triecontents_obs[trieoffsets_obs[j]]),
-					       knownsplice_limit_low,knownsplice_limit_high,
-					       &(*finalscore),&(*nmatches),&(*nmismatches),
-					       &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_matches),
-					       &threshold_miss_score,/*obsmax_penalty*/0,perfect_score,
-					       /*anchor_splicesite*/splicesites[j],splicejunction,
-					       splicelength,far_splicetype,
-					       chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
-					       revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-					       cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	    obsmax_penalty += FULLMATCH;
-	  }
-
-	  if (threshold_miss_score - obsmax_penalty > 0 && trieoffsets_max != NULL) {
-	    best_pairs = Splicetrie_solve_end5(best_pairs,/*triestart*/&(triecontents_max[trieoffsets_max[j]]),
-					       knownsplice_limit_low,knownsplice_limit_high,
-					       &(*finalscore),&(*nmatches),&(*nmismatches),
-					       &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_matches),
-					       &threshold_miss_score,obsmax_penalty,perfect_score,
-					       /*anchor_splicesite*/splicesites[j],splicejunction,
-					       splicelength,far_splicetype,
-					       chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
-					       revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-					       cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	  }
-	}
-	j++;
-      }
-    }
-
-    FREE(splicejunction);
-  }
-
-
-  if (best_pairs == NULL) {
-    *knownsplicep = false;
-    *finalscore = orig_score;
-    return orig_pairs;
-  } else {
-    *ambig_end_matches = 0;
-    if (*knownsplicep == true) {
-      return Pair_protect(best_pairs);
-    } else {
-      return best_pairs;
-    }
-  }
-}
-
-
-/* GSNAP version with shortcut */
-List_T
-Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore, int *ambig_end_matches,
-		    int *nmatches, int *nmismatches, int *nopens, int *nindels, T dynprog, 
-		    char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
-		    int length1, int length2, int offset1, int offset2, 
-		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
-		    int cutoff_level, char *queryptr, int querylength, Compress_T query_compress,
-		    int cdna_direction, bool watsonp,
-		    Pairpool_T pairpool, int extraband_end, double defect_rate) {
-  List_T best_pairs = NULL, orig_pairs, pairs, ptr;
-  Genomicpos_T low, high, splicecoord;
-  Splicetype_T anchor_splicetype, far_splicetype;
-  int contlength, splicelength;
-  Uintlist_T splicecoords, p;
-  char *splicejunction;
-  int jstart, j;
-  Pair_T pair;
-
-  int score, orig_score, threshold_miss_score, miss_score, perfect_score;
-  int nmatches0, nmismatches0, nopens0, nindels0, nmatches_distal;
-  int splicepos;
-
-  int best_nmismatches;
-  bool foundp = false;
-
-
-  debug7(
-	printf("%c:  ",*dynprogindex > 0 ? (*dynprogindex-1)%26+'a' : (-(*dynprogindex)-1)%26+'A');
-	printf("Aligning 3' end gap\n")
-	);
-
-  /* We can just chop lengths to work, since we're not constrained on 3' end */
-  if (length1 < 0) {
-    /* Needed to avoid abort by Matrix_alloc */
-    *finalscore = 0;
-    *knownsplicep = false;
-    *ambig_end_matches = 0;
-    return (List_T) NULL;
-  } else if (length1 > dynprog->maxlength1) {
-    debug7(printf("length1 %d is too long.  Chopping to %d\n",length1,dynprog->maxlength1));
-    length1 = dynprog->maxlength1;
-  }
-  if (length2 < 0) {
-    /* Needed to avoid abort by Matrix_alloc */
-    *finalscore = 0;
-    *knownsplicep = false;
-    *ambig_end_matches = 0;
-    return (List_T) NULL;
-  } else if (length2 > dynprog->maxlength2) {
-    debug7(printf("length2 %d is too long.  Chopping to %d\n",length2,dynprog->maxlength2));
-    length2 = dynprog->maxlength2;
-  }
-
-
-  debug7(printf("At query offset %d-%d, %.*s\n",offset1,offset1+length1-1,length1,sequence1));
-  debug7(printf("At genomic offset %d-%d, %.*s\n",
-		offset2,offset2+length2-1,length2,sequence2));
-
-  perfect_score = length1*FULLMATCH;
-
-  /* Try without splicing */
-  best_pairs = Dynprog_end3_gap(&(*dynprogindex),&(*finalscore),&(*nmatches),&(*nmismatches),
-				&(*nopens),&(*nindels),dynprog,
-				sequence1,sequenceuc1,sequence2,sequenceuc2,
-				length1,length2,offset1,offset2,
-				cdna_direction,watsonp,pairpool,extraband_end,defect_rate);
-  orig_score = *finalscore;
-  orig_pairs = best_pairs;
-
-  threshold_miss_score = perfect_score - orig_score;
-  debug7(printf("perfect score %d - score %d = threshold %d\n",
-		perfect_score,orig_score,threshold_miss_score));
-  *knownsplicep = false;
-  /* *ambig_end_matches = 0; */
-
-
-  if (threshold_miss_score > 0) {
-    /* Try known splicing */
-    splicejunction = (char *) CALLOC(length2+1,sizeof(char));
-    strncpy(splicejunction,sequence2,length2);
-
-    if (watsonp == true) {
-      low = chroffset + chrpos + offset2;
-      high = chroffset + chrpos + offset2+length2-1;
-      if (cdna_direction > 0) {
-	anchor_splicetype = DONOR;
-	far_splicetype = ACCEPTOR;
-      } else {
-	anchor_splicetype = ANTIACCEPTOR;
-	far_splicetype = ANTIDONOR;
-      }
-    } else {
-      low = chroffset + chrpos + (genomiclength - 1) - (offset2+length2-1);
-      high = chroffset + chrpos + (genomiclength - 1) - offset2;
-      if (cdna_direction > 0) {
-	anchor_splicetype = ANTIDONOR;
-	far_splicetype = ANTIACCEPTOR;
-      } else {
-	anchor_splicetype = ACCEPTOR;
-	far_splicetype = DONOR;
-      }
-    }
-
-    debug7(printf("Genomic positions: %u..%u (%u..%u), looking for anchor splicetype %s\n",
-		  low,high,low-chroffset,high-chroffset,Splicetype_string(anchor_splicetype)));
-    j = jstart = binary_search(0,nsplicesites,splicesites,low);
-    while (j < nsplicesites && splicesites[j] < high) {
-      if (splicetypes[j] == anchor_splicetype) {
-	if (watsonp == true) {
-	  contlength = splicesites[j] - low;
-
-	  debug7(printf("Start of search for splicepos, 3' plus\n"));
-	  ptr = orig_pairs;
-	  while (ptr->rest != NULL && ((Pair_T) ptr->first)->genomepos >= splicesites[j] - chroffset - chrpos) {
-	    debug7(pair = (Pair_T) List_head(ptr));
-	    debug7(printf("%c %c  %d %d %u %u\n",
-			  pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			  chroffset + chrpos + pair->genomepos,chrpos + pair->genomepos));
-	    ptr = List_next(ptr);
-	  }
-
-	  pair = (Pair_T) ptr->first;
-	  debug7(printf("Final pair: %c %c  %d %d %u %u\n",
-			pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			chroffset + chrpos + pair->genomepos,chrpos + pair->genomepos));
-	  splicepos = pair->querypos + (splicesites[j] - chroffset - chrpos) - pair->genomepos;
-	  debug7(printf("splicepos %d = querypos %d + splicesite %u - chroffset %u - chrpos %u - genomepos %u\n",
-			splicepos,pair->querypos,splicesites[j],chroffset,chrpos,pair->genomepos));
-	  debug7(printf("\n"));
-
-	} else {
-	  contlength = high + 1 - splicesites[j];
-
-	  debug7(printf("Start of search for splicepos, 3' minus\n"));
-	  ptr = orig_pairs;
-	  while (ptr->rest != NULL && ((Pair_T) ptr->first)->genomepos > chroffset + chrpos + (genomiclength - 1) - splicesites[j]) {
-	    debug7(pair = (Pair_T) List_head(ptr));
-	    debug7(printf("%c %c  %d %d %u %u\n",
-			  pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			  chroffset + chrpos + (genomiclength - 1) - pair->genomepos,
-			  chrpos + (genomiclength - 1) - pair->genomepos));
-	    ptr = ptr->rest;
-	  }
-
-	  pair = (Pair_T) ptr->first;
-	  debug7(printf("Final pair: %c %c  %d %d %u %u\n",
-			pair->cdna,pair->genome,pair->querypos,pair->genomepos,
-			chroffset + chrpos + (genomiclength - 1) - pair->genomepos,
-			chrpos + (genomiclength - 1) - pair->genomepos));
-	  splicepos = pair->querypos + (chroffset + chrpos - splicesites[j]) - pair->genomepos + (genomiclength /*- 1*/) /*+ 1*/;
-	  debug7(printf("splicepos = %d\n",splicepos));
-	  debug7(printf("\n"));
-	}
-	debug7(printf("cont: %.*s\n",contlength,sequence2));
-
-	splicelength = length2 - contlength;
-	debug7(printf("  Saw %u (%u) of type %s (cont length %d, splice length %d)\n",
-		      splicesites[j],splicesites[j]-chroffset,Splicetype_string(splicetypes[j]),contlength,splicelength));
-
-	if (trieoffsets_obs != NULL) {
-	  if (watsonp == true) {
-	    splicecoords = Splicetrie_dump_coords_right(&best_nmismatches,&(triecontents_obs[trieoffsets_obs[j]]),
-							/*pos5*/splicepos,/*pos3*/querylength,
-							query_compress,queryptr,/*plusp*/true,
-							knownsplice_limit_low,knownsplice_limit_high);
-
-	  } else {
-	    splicecoords = Splicetrie_dump_coords_left(&best_nmismatches,&(triecontents_obs[trieoffsets_obs[j]]),
-						       /*pos5*/0,/*pos3*/querylength-splicepos,
-						       query_compress,queryptr,/*plusp*/false,
-						       knownsplice_limit_low,knownsplice_limit_high);
-	  }
-
-	  debug7(printf("Observed splice sites: %d\n",Uintlist_length(splicecoords)));
-	  if (splicecoords != NULL && best_nmismatches <= cutoff_level) {
-	    foundp = true;
-	    for (p = splicecoords; p != NULL; p = Uintlist_next(p)) {
-	      splicecoord = Uintlist_head(p);
-	      debug7(printf("intron length %d, ",splicecoord - splicesites[j]));
-	      Dynprog_make_splicejunction_3(splicejunction,splicecoord,splicelength,contlength,far_splicetype,watsonp);
-	      pairs = Dynprog_end3_gap(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
-				       &nopens0,&nindels0,dynprog,sequence1,sequenceuc1,
-				       /*sequence2*/splicejunction,/*sequenceuc2*/splicejunction,
-				       length1,length2,offset1,offset2,
-				       cdna_direction,watsonp,pairpool,extraband_end,defect_rate);
-	      miss_score = perfect_score - score;
-	      debug7(printf("perfect score %d - score %d = miss %d\n",
-			    perfect_score,score,miss_score));
-	      if (miss_score < threshold_miss_score) {
-		debug7(printf("miss %d < threshold %d - %d\n",miss_score,threshold_miss_score,FULLMATCH));
-		pairs = Dynprog_add_known_splice_3(&nmatches_distal,pairs,splicesites[j],splicecoord,chroffset,chrpos,
-						   genomiclength,watsonp,pairpool);
-		best_pairs = pairs;
-		*finalscore = score;
-		*nmatches = nmatches0;
-		*nmismatches = nmismatches0;
-		*nopens = nopens0;
-		*nindels = nindels0;
-		*knownsplicep = true;
-		*ambig_end_matches = nmatches_distal;
-		threshold_miss_score = miss_score;
-	      } else if (miss_score == threshold_miss_score) {
-		debug7(printf("miss %d == threshold %d, so ambiguous\n",miss_score,threshold_miss_score));
-		best_pairs = (List_T) NULL;
-	      }
-	    }
-	  }
-	  Uintlist_free(&splicecoords);
-	}
-
-	if (threshold_miss_score - FULLMATCH > 0 && trieoffsets_max != NULL) {
-	  if (watsonp == true) {
-	    splicecoords = Splicetrie_dump_coords_right(&best_nmismatches,&(triecontents_max[trieoffsets_max[j]]),
-							/*pos5*/splicepos,/*pos3*/querylength,
-							query_compress,queryptr,/*plusp*/true,
-							knownsplice_limit_low,knownsplice_limit_high);
-
-	  } else {
-	    splicecoords = Splicetrie_dump_coords_left(&best_nmismatches,&(triecontents_max[trieoffsets_max[j]]),
-						       /*pos5*/0,/*pos3*/querylength-splicepos,
-						       query_compress,queryptr,/*plusp*/false,
-						       knownsplice_limit_low,knownsplice_limit_high);
-	  }
-
-	  debug7(printf("Maxdistance splice sites: %d\n",Uintlist_length(splicecoords)));
-	  if (splicecoords != NULL && best_nmismatches <= cutoff_level) {
-	    foundp = true;
-	    for (p = splicecoords; p != NULL; p = Uintlist_next(p)) {
-	      splicecoord = Uintlist_head(p);
-	      debug7(printf("intron length %d, ",splicecoord - splicesites[j]));
-	      Dynprog_make_splicejunction_3(splicejunction,splicecoord,splicelength,contlength,far_splicetype,watsonp);
-	      pairs = Dynprog_end3_gap(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
-				       &nopens0,&nindels0,dynprog,sequence1,sequenceuc1,
-				       /*sequence2*/splicejunction,/*sequenceuc2*/splicejunction,
-				       length1,length2,offset1,offset2,
-				       cdna_direction,watsonp,pairpool,extraband_end,defect_rate);
-	      miss_score = perfect_score - score;
-	      debug7(printf("perfect score %d - score %d = miss %d\n",
-			    perfect_score,score,miss_score));
-	      if (miss_score < threshold_miss_score - FULLMATCH) {
-		debug7(printf("miss %d < threshold %d - %d\n",miss_score,threshold_miss_score,FULLMATCH));
-		pairs = Dynprog_add_known_splice_3(&nmatches_distal,pairs,splicesites[j],splicecoord,chroffset,chrpos,
-						   genomiclength,watsonp,pairpool);
-		best_pairs = pairs;
-		*finalscore = score;
-		*nmatches = nmatches0;
-		*nmismatches = nmismatches0;
-		*nopens = nopens0;
-		*nindels = nindels0;
-		*knownsplicep = true;
-		*ambig_end_matches = nmatches_distal;
-		threshold_miss_score = miss_score + FULLMATCH;
-	      } else if (miss_score == threshold_miss_score - FULLMATCH) {
-		debug7(printf("miss %d == threshold %d - %d, so ambiguous\n",miss_score,threshold_miss_score,FULLMATCH));
-		best_pairs = (List_T) NULL;
-	      }
-	    }
-	  }
-	  Uintlist_free(&splicecoords);
-	}
-      }
-      j++;
-    }
-
-    if (foundp == false) {
-      j = jstart;
-      while (j < nsplicesites && splicesites[j] < high) {
-	if (splicetypes[j] == anchor_splicetype) {
-	  if (watsonp == true) {
-	    contlength = splicesites[j] - low;
-	  } else {
-	    contlength = high + 1 - splicesites[j];
-	  }
-	  debug7(printf("cont: %.*s\n",contlength,sequence2));
-
-	  splicelength = length2 - contlength;
-	  debug7(printf("  Saw %u (%u) of type %s (cont length %d, splice length %d)\n",
-			splicesites[j],splicesites[j]-chroffset,Splicetype_string(splicetypes[j]),contlength,splicelength));
-
-	  obsmax_penalty = 0;
-	  if (trieoffsets_obs != NULL) {
-	    best_pairs = Splicetrie_solve_end3(best_pairs,/*triestart*/&(triecontents_obs[trieoffsets_obs[j]]),
-					       knownsplice_limit_low,knownsplice_limit_high,
-					       &(*finalscore),&(*nmatches),&(*nmismatches),
-					       &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_matches),
-					       &threshold_miss_score,/*obsmax_penalty*/0,perfect_score,
-					       /*anchor_splicesite*/splicesites[j],splicejunction,
-					       splicelength,contlength,far_splicetype,
-					       chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
-					       sequence1,sequenceuc1,length1,length2,offset1,offset2,
-					       cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	    obsmax_penalty += FULLMATCH;
-	  }
-
-	  if (threshold_miss_score - obsmax_penalty > 0 && trieoffsets_max != NULL) {
-	    best_pairs = Splicetrie_solve_end3(best_pairs,/*triestart*/&(triecontents_max[trieoffsets_max[j]]),
-					       knownsplice_limit_low,knownsplice_limit_high,
-					       &(*finalscore),&(*nmatches),&(*nmismatches),
-					       &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_matches),
-					       &threshold_miss_score,obsmax_penalty,perfect_score,
-					       /*anchor_splicesite*/splicesites[j],splicejunction,
-					       splicelength,contlength,far_splicetype,
-					       chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
-					       sequence1,sequenceuc1,length1,length2,offset1,offset2,
-					       cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	  }
-	}
-
-	j++;
-      }
-    }
-
-    FREE(splicejunction);
-  }
-
-
-  if (best_pairs == NULL) {
-    *knownsplicep = false;
-    *finalscore = orig_score;
-    return orig_pairs;
-  } else {
-    *ambig_end_matches = 0;
-    if (*knownsplicep == true) {
-      return Pair_protect(best_pairs);
-    } else {
-      return best_pairs;
-    }
-  }
-}
-
-#else
-
 List_T
 Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    int *ambig_end_length, Splicetype_T *ambig_splicetype,
@@ -5078,12 +4398,13 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 	printf("Aligning 5' end gap\n")
 	);
 
+  *ambig_end_length = 0;
+
   /* We can just chop lengths to work, since we're not constrained on 5' end */
   if (length1 < 0) {
     /* Needed to avoid abort by Matrix_alloc */
     *finalscore = 0;
     *knownsplicep = false;
-    *ambig_end_length = 0;
     return (List_T) NULL;
   } else if (length1 > dynprog->maxlength1) {
     debug7(printf("length1 %d is too long.  Chopping to %d\n",length1,dynprog->maxlength1));
@@ -5093,7 +4414,6 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
     /* Needed to avoid abort by Matrix_alloc */
     *finalscore = 0;
     *knownsplicep = false;
-    *ambig_end_length = 0;
     return (List_T) NULL;
   } else if (length2 > dynprog->maxlength2) {
     debug7(printf("length2 %d is too long.  Chopping to %d\n",length2,dynprog->maxlength2));
@@ -5287,12 +4607,13 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 	printf("Aligning 3' end gap\n")
 	);
 
+  *ambig_end_length = 0;
+
   /* We can just chop lengths to work, since we're not constrained on 3' end */
   if (length1 < 0) {
     /* Needed to avoid abort by Matrix_alloc */
     *finalscore = 0;
     *knownsplicep = false;
-    *ambig_end_length = 0;
     return (List_T) NULL;
   } else if (length1 > dynprog->maxlength1) {
     debug7(printf("length1 %d is too long.  Chopping to %d\n",length1,dynprog->maxlength1));
@@ -5302,7 +4623,6 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
     /* Needed to avoid abort by Matrix_alloc */
     *finalscore = 0;
     *knownsplicep = false;
-    *ambig_end_length = 0;
     return (List_T) NULL;
   } else if (length2 > dynprog->maxlength2) {
     debug7(printf("length2 %d is too long.  Chopping to %d\n",length2,dynprog->maxlength2));
@@ -5462,9 +4782,6 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
     }
   }
 }
-
-
-#endif
 
 
 
@@ -5910,7 +5227,8 @@ make_microexon_pairs_single (int offset1L, int offset1R,
 }
 
 List_T
-Dynprog_microexon_int (int *dynprogindex, int *microintrontype, char *sequence1, char *sequenceuc1,
+Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, int *microintrontype,
+		       char *sequence1, char *sequenceuc1,
 		       char *sequence2L, char *sequenceuc2L,
 		       char *revsequence2R, char *revsequenceuc2R,
 		       int length1, int length2L, int length2R,
@@ -5926,13 +5244,16 @@ Dynprog_microexon_int (int *dynprogindex, int *microintrontype, char *sequence1,
   char *instsequence1;
 #endif
   Intlist_T hits = NULL, p;
+  int bestcL = -1, bestcR = -1, best_middlelength;
   int middlelength, cL, cR, mincR, maxcR, leftbound, rightbound, textleft, textright, candidate, i;
   int min_microexon_length, span, nmismatches;
   char left1, left2, right2, right1;
   char intron1, intron2, intron3, intron4, gapchar;
-  double pvalue, prob2, prob3;
+  double pvalue, bestprob = 0.0, prob2, prob3;
   Genomicpos_T splicesitepos;
 
+
+  *bestprob2 = *bestprob3 = 0.0;
 
   if (defect_rate < DEFECT_HIGHQ) {
     pvalue = MICROEXON_PVALUE_HIGHQ;
@@ -6100,47 +5421,37 @@ Dynprog_microexon_int (int *dynprogindex, int *microintrontype, char *sequence1,
 	      } else if (watsonp == true) {
 		if (cdna_direction > 0) {
 		  splicesitepos = chrpos + (candidate-1) + 1;
-		  prob2 = Maxent_hr_acceptor_prob(chroffset + splicesitepos);
+		  prob2 = Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
 		  splicesitepos = chrpos + candidate+middlelength;
-		  prob3 = Maxent_hr_donor_prob(chroffset + splicesitepos);
+		  prob3 = Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
 		} else {
 		  splicesitepos = chrpos + (candidate-1) + 1;
-		  prob2 = Maxent_hr_antidonor_prob(chroffset + splicesitepos);
+		  prob2 = Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
 		  splicesitepos = chrpos + candidate+middlelength;
-		  prob3 = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos);
+		  prob3 = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
 		}
 	      } else {
 		if (cdna_direction > 0) {
 		  splicesitepos = chrpos + (genomiclength - 1) - (candidate-1);
-		  prob2 = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos);
+		  prob2 = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
 		  splicesitepos = chrpos + (genomiclength - 1) - (candidate+middlelength) + 1;
-		  prob3 = Maxent_hr_antidonor_prob(chroffset + splicesitepos);
+		  prob3 = Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
 		} else {
 		  splicesitepos = chrpos + (genomiclength - 1) - (candidate-1);
-		  prob2 = Maxent_hr_donor_prob(chroffset + splicesitepos);
+		  prob2 = Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
 		  splicesitepos = chrpos + (genomiclength - 1) - (candidate+middlelength) + 1;
-		  prob3 = Maxent_hr_acceptor_prob(chroffset + splicesitepos);
+		  prob3 = Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
 		}
 	      }
 	      
 	      debug(printf("microexon probabilities: prob2 = %f, prob3 = %f\n",prob2,prob3));
-	      if (prob2 > microexon_spliceprob || prob3 > microexon_spliceprob) {
-		Intlist_free(&hits);
-		pairs = make_microexon_pairs_double(offset1,offset1+cL,offset1+cL+middlelength,
-						    offset2L,candidate,revoffset2R-cR+1,
-						    /*lengthL*/cL,/*lengthM*/middlelength,/*lengthR*/cR,
-#ifdef PMAP
-						    &(instsequence1[-offset1]),&(instsequence1[-offset1]),
-#else
-						    queryseq,queryuc,
-#endif
-						    genomicseg,genomicuc,
-						    pairpool,gapchar,*dynprogindex);
-#ifdef PMAP
-		FREE(instsequence1);
-#endif
-		*dynprogindex += (*dynprogindex > 0 ? +1 : -1);
-		return pairs;
+	      if (prob2 + prob3 > bestprob) {
+		bestcL = cL;
+		bestcR = cR;
+		best_middlelength = middlelength;
+		*bestprob2 = prob2;
+		*bestprob3 = prob3;
+		bestprob = prob2 + prob3;
 	      }
 	    }
 	  }
@@ -6150,14 +5461,33 @@ Dynprog_microexon_int (int *dynprogindex, int *microintrontype, char *sequence1,
     }
   }
 
+  if (bestcL < 0 || bestcR < 0) {
+    debug(printf("End of dynprog microexon int\n"));
+
 #ifdef PMAP
-  FREE(instsequence1);
+    FREE(instsequence1);
 #endif
 
-  debug(printf("End of dynprog microexon int\n"));
+    *microintrontype = NONINTRON;
+    return NULL;
 
-  *microintrontype = NONINTRON;
-  return NULL;
+  } else {
+    pairs = make_microexon_pairs_double(offset1,offset1+bestcL,offset1+bestcL+best_middlelength,
+					offset2L,candidate,revoffset2R-bestcR+1,
+					/*lengthL*/bestcL,/*lengthM*/best_middlelength,/*lengthR*/bestcR,
+#ifdef PMAP
+					&(instsequence1[-offset1]),&(instsequence1[-offset1]),
+#else
+					queryseq,queryuc,
+#endif
+					genomicseg,genomicuc,
+					pairpool,gapchar,*dynprogindex);
+#ifdef PMAP
+    FREE(instsequence1);
+#endif
+    *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
+    return pairs;
+  }
 }
 
 

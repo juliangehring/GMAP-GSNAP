@@ -1,4 +1,4 @@
-/* $Id: shortread.h 49439 2011-10-08 00:46:54Z twu $ */
+/* $Id: shortread.h 52714 2011-11-17 17:35:30Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -64,6 +64,8 @@ extern bool
 Shortread_chop_primers (T queryseq1, T queryseq2);
 extern bool
 Shortread_find_primers (T queryseq1, T queryseq2);
+extern int
+Shortread_max_overlap (T queryseq1, T queryseq2);
 extern int
 Shortread_find_overlap (T queryseq1, T queryseq2);
 

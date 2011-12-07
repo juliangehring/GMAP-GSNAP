@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 49877 2011-10-17 03:26:57Z twu $";
+static char rcsid[] = "$Id: gmap.c 53583 2011-12-02 18:23:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -132,7 +132,6 @@ static int maxpeelback = 12;	/* Needs to be at least indexsize
 				   Also should exceed length of
 				   repeated nucleotides (e.g., a
 				   string of consecutive T's) */
-static int maxpeelback_distalmedial = 24;
 #else
 /* Making minindexsize too small can lead to spurious exons in stage 2 */
 /* FOOBAR */
@@ -145,8 +144,8 @@ static int maxpeelback = 11;	/* Needs to be at least indexsize
 				   Also should exceed length of
 				   repeated nucleotides (e.g., a
 				   string of consecutive T's) */
-static int maxpeelback_distalmedial = 24; /* Needs to be longer to fix bad end exons */
 #endif
+static int maxpeelback_distalmedial = 100; /* Needs to be longer to fix bad end exons */
 
 /* static int stuttercycles = 2; */
 static int stutterhits = 3;
@@ -203,6 +202,7 @@ static Access_mode_T genome_access = USE_ALLOCATE;
 #endif
 
 static int min_intronlength = 9;
+static int max_deletionlength = 50;
 static int maxtotallen_bound = 2400000;
 static int maxintronlen_bound = 1000000;
 static int chimera_margin = 40;	/* Useful for finding readthroughs */
@@ -234,7 +234,12 @@ static int canonical_mode = 1;
 static bool use_shifted_canonical_p = false; /* Use this for cross-species */
 static char *user_chrsubsetname = NULL;
 static int close_indels_mode = +1;
-static double microexon_spliceprob = 0.90;
+static double microexon_spliceprob = 0.95;
+static int suboptimal_score_start = -1; /* Determined by simulations to have minimal effect */
+static int suboptimal_score_end = 3; /* Determined by simulations to have diminishing returns above 3 */
+
+static int trim_mismatch_score = -3;
+static int trim_indel_score = -4;
 
 
 /* Output options */
@@ -249,6 +254,7 @@ static bool diagnosticp = false;
 static bool checkp = false;
 static int maxpaths = 5;	/* 0 means 1 if nonchimeric, 2 if chimeric */
 static bool quiet_if_excessive_p = false;
+static int suboptimal_score = 1000000;
 
 
 /* SAM */
@@ -256,7 +262,6 @@ static bool quiet_if_excessive_p = false;
 static bool sam_paired_p = false;
 static bool user_quality_shift = false;
 static int quality_shift = 0;
-static bool cigar_noncanonical_splices_p = true;
 static bool sam_headers_p = true;
 static char *sam_read_group_id = NULL;
 static char *sam_read_group_name = NULL;
@@ -384,6 +389,8 @@ static struct option long_options[] = {
 #endif
   {"allow-close-indels", required_argument, 0, 0}, /* close_indels_mode, extraband_single */
   {"microexon-spliceprob", required_argument, 0, 0}, /* microexon_spliceprob */
+  {"stage2-start", required_argument, 0, 0},	     /* suboptimal_score_start */
+  {"stage2-end", required_argument, 0, 0},	     /* suboptimal_score_end */
 
   /* Output options */
   {"output-buffer-size", required_argument, 0, 0}, /* output_buffer_size */
@@ -402,12 +409,12 @@ static struct option long_options[] = {
   {"nofails", no_argument, 0, 0}, /* nofailsp */
   {"fails-as-input", no_argument, 0, 0}, /* fails_as_input_p */
   {"split-output", required_argument, 0, 0}, /* sevenway_root */
+  {"suboptimal-score", required_argument, 0, 0}, /* suboptimal_score */
 
 #ifndef PMAP
   {"quality-protocol", required_argument, 0, 0}, /* quality_shift */
   {"quality-print-shift", required_argument, 0, 'j'}, /* quality_shift */
   {"no-sam-headers", no_argument, 0, 0},	/* sam_headers_p */
-  {"noncanonical-splices", required_argument, 0, 0}, /* cigar_noncanonical_splices_p */
   {"read-group-id", required_argument, 0, 0},	/* sam_read_group_id */
   {"read-group-name", required_argument, 0, 0},	/* sam_read_group_name */
   {"read-group-library", required_argument, 0, 0}, /* sam_read_group_library */
@@ -513,21 +520,27 @@ print_program_usage ();
 
 
 static Stage3_T *
-stage3array_from_list (int *npaths, List_T stage3list, bool chimerap, bool remove_overlaps_p) {
+stage3array_from_list (int *npaths, int *second_absmq, List_T stage3list, bool chimerap, bool remove_overlaps_p) {
   Stage3_T *array1, *array0, x, y;
   bool *eliminate;
   int norig, i, j;
+  int threshold_score;
+
 
   Stage3_recompute_goodness(stage3list);
 
   if ((norig = List_length(stage3list)) == 0) {
+    *second_absmq = 0;
     return (Stage3_T *) NULL;
 
   } else if (chimerap == true) {
     array0 = (Stage3_T *) List_to_array(stage3list,NULL);
     List_free(&stage3list);
-    if (norig > 2) {
+    if (norig <= 2) {
+      *second_absmq = 0;
+    } else {
       qsort(&(array0[2]),norig-2,sizeof(Stage3_T),Stage3_cmp);
+      *second_absmq = Stage3_absmq_score(array0[2]);
     }
     *npaths = norig;
     return array0;
@@ -536,7 +549,20 @@ stage3array_from_list (int *npaths, List_T stage3list, bool chimerap, bool remov
     array0 = (Stage3_T *) List_to_array(stage3list,NULL);
     List_free(&stage3list);
     qsort(array0,norig,sizeof(Stage3_T),Stage3_cmp);
-    *npaths = norig;
+
+    threshold_score = Stage3_goodness(array0[0]) - suboptimal_score;
+    i = 1;
+    while (i < norig && Stage3_goodness(array0[i]) >= threshold_score) {
+      i++;
+    }
+    *npaths = i;
+
+    if (*npaths < 2) {
+      *second_absmq = 0;
+    } else {
+      *second_absmq = Stage3_absmq_score(array0[1]);
+    }
+
     return array0;
 
   } else {
@@ -576,6 +602,18 @@ stage3array_from_list (int *npaths, List_T stage3list, bool chimerap, bool remov
     FREE(array0);
     FREE(eliminate);
 
+    threshold_score = Stage3_goodness(array1[0]) - suboptimal_score;
+    i = 1;
+    while (i < *npaths && Stage3_goodness(array1[i]) >= threshold_score) {
+      i++;
+    }
+    *npaths = i;
+
+    if (*npaths < 2) {
+      *second_absmq = 0;
+    } else {
+      *second_absmq = Stage3_absmq_score(array1[1]);
+    }
     return array1;
   }
 }
@@ -599,14 +637,14 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 
   Sequence_T genomicuc;
   Genomicpos_T genomicend;
-  List_T path;
+  List_T all_paths, path, p;
   Stage3_T stage3;
 
   struct Pair_T *pairarray;
   List_T pairs;
   int npairs, cdna_direction, matches, unknowns, mismatches, qopens, qindels, topens, tindels,
     ncanonical, nsemicanonical, nnoncanonical;
-  int nmatches_pretrim;
+  int nmatches_pretrim, nmatches_posttrim;
   int sensedir;
   int ambig_end_length_5, ambig_end_length_3;
   Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
@@ -625,85 +663,94 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
   } else {
     genomicend = genomicstart + Sequence_fulllength(genomicseg);
   }
-  path = Stage2_compute(&stage2_source,&stage2_indexsize,
-			Sequence_trimpointer(queryseq),Sequence_trimpointer(queryuc),
-			Sequence_trimlength(queryseq),/*query_offset*/0,
 
-			Sequence_fullpointer(genomicseg),Sequence_fullpointer(genomicuc),
-			genomicstart,genomicend,/*mappingstart*/genomicstart,/*mappingend*/genomicend,
-			/*plusp*/watsonp,/*genomiclength*/Sequence_fulllength(genomicseg),
-			/*genomic_offset*/0,
+  all_paths = Stage2_compute(&stage2_source,&stage2_indexsize,
+			     Sequence_trimpointer(queryseq),Sequence_trimpointer(queryuc),
+			     Sequence_trimlength(queryseq),/*query_offset*/0,
 
-			oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
-			pairpool,diagpool,sufflookback,nsufflookback,maxintronlen_bound,
-			/*localp*/true,/*skip_repetitive_p*/true,use_shifted_canonical_p,
-			/*favor_right_p*/false,debug_graphic_p,diagnosticp,
-			worker_stopwatch,diag_debug);
-  if (diag_debug == true) {
-    stage3list = path;		/* really diagonals */
+			     Sequence_fullpointer(genomicseg),Sequence_fullpointer(genomicuc),
+			     genomicstart,genomicend,/*mappingstart*/genomicstart,/*mappingend*/genomicend,
+			     /*plusp*/watsonp,/*genomiclength*/Sequence_fulllength(genomicseg),
+			     /*genomic_offset*/0,
 
-  } else if (path != NULL) {
-    debug(printf("Beginning Stage3_compute\n"));
+			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
+			     pairpool,diagpool,sufflookback,nsufflookback,maxintronlen_bound,
+			     /*localp*/true,/*skip_repetitive_p*/true,use_shifted_canonical_p,
+			     /*favor_right_p*/false,/*just_one_p*/false,debug_graphic_p,
+			     diagnosticp,worker_stopwatch,diag_debug);
 
-    if (canonical_mode == 0) {
-      do_final_p = false;
-    } else if (canonical_mode == 1) {
-      do_final_p = true;
-    } else if (lowidentityp == false) {
-      do_final_p = false;
-    } else {
-      do_final_p = true;
-    }
+  for (p = all_paths; p != NULL; p = List_next(p)) {
+    path = (List_T) List_head(p);
+    if (diag_debug == true) {
+      stage3list = path;		/* really diagonals */
 
-    Stopwatch_start(worker_stopwatch);
-    pairarray = Stage3_compute(&pairs,&npairs,&cdna_direction,&sensedir,&matches,
-			       &nmatches_pretrim,&ambig_end_length_5,&ambig_end_length_3,
-			       &ambig_splicetype_5,&ambig_splicetype_3,
-			       &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
-			       &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
-			       path,genomiclength,
+    } else if (path != NULL) {
+      debug(printf("Beginning Stage3_compute\n"));
+
+      if (canonical_mode == 0) {
+	do_final_p = false;
+      } else if (canonical_mode == 1) {
+	do_final_p = true;
+      } else if (lowidentityp == false) {
+	do_final_p = false;
+      } else {
+	do_final_p = true;
+      }
+
+      Stopwatch_start(worker_stopwatch);
+      pairarray = Stage3_compute(&pairs,&npairs,&cdna_direction,&sensedir,&matches,
+				 &nmatches_pretrim,&nmatches_posttrim,
+				 &ambig_end_length_5,&ambig_end_length_3,
+				 &ambig_splicetype_5,&ambig_splicetype_3,
+				 &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
+				 &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
+				 path,genomiclength,
 #ifdef PMAP
-			       /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
-			       /*queryseq_ptr*/Sequence_fullpointer(queryntseq),
-			       /*queryuc_ptr*/Sequence_fullpointer(queryntseq),
-			       /*querylength*/Sequence_fulllength(queryntseq),
-			       /*skiplength*/Sequence_skiplength(queryntseq),
-			       /*query_subseq_offset*/Sequence_subseq_offset(queryntseq),
+				 /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
+				 /*queryseq_ptr*/Sequence_fullpointer(queryntseq),
+				 /*queryuc_ptr*/Sequence_fullpointer(queryntseq),
+				 /*querylength*/Sequence_fulllength(queryntseq),
+				 /*skiplength*/Sequence_skiplength(queryntseq),
+				 /*query_subseq_offset*/Sequence_subseq_offset(queryntseq),
 #else
-			       /*queryseq_ptr*/Sequence_fullpointer(queryseq),
-			       /*queryuc_ptr*/Sequence_fullpointer(queryuc),
-			       /*querylength*/Sequence_fulllength(queryseq),
-			       /*skiplength*/Sequence_skiplength(queryseq),
-			       /*query_subseq_offset*/Sequence_subseq_offset(queryseq),
+				 /*queryseq_ptr*/Sequence_fullpointer(queryseq),
+				 /*queryuc_ptr*/Sequence_fullpointer(queryuc),
+				 /*querylength*/Sequence_fulllength(queryseq),
+				 /*skiplength*/Sequence_skiplength(queryseq),
+				 /*query_subseq_offset*/Sequence_subseq_offset(queryseq),
 #endif
-			       /*genomicseg_ptr*/Sequence_fullpointer(genomicseg),
-			       /*genomicuc_ptr*/Sequence_fullpointer(genomicuc),
-			       chrnum,chroffset,chrpos,
-			       /*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
-			       genome,/*usersegment_p*/usersegment ? true : false,
-			       watsonp,/*jump_late_p*/watsonp ? false : true,
-			       maxpeelback,maxpeelback_distalmedial,nullgap,
-			       extramaterial_end,extramaterial_paired,
-			       extraband_single,extraband_end,extraband_paired,
-			       minendexon,pairpool,dynprogL,dynprogM,dynprogR,ngap,
-			       stage3debug,diagnosticp,checkp,do_final_p,sense_try,sense_filter,
-			       oligoindices_minor,noligoindices_minor,diagpool,
-			       sufflookback,nsufflookback,maxintronlen_bound,close_indels_mode);
-    stage3_runtime = Stopwatch_stop(worker_stopwatch);
-    if (pairarray == NULL) {
-      /* Skip */
-    } else if (matches < min_matches) {
-      FREE_OUT(pairarray);
-    } else if ((stage3 = Stage3_new(pairarray,pairs,npairs,cdna_direction,genomicstart,genomiclength,
-				    stage2_source,stage2_indexsize,matches,unknowns,mismatches,
-				    qopens,qindels,topens,tindels,ncanonical,nsemicanonical,nnoncanonical,
-				    defect_rate,chrnum,chroffset,chrpos,watsonp,
-				    /*skiplength*/Sequence_skiplength(queryseq),
-				    /*trimlength*/Sequence_trimlength(queryseq),
-				    stage3_runtime,straintype,strain,altstrain_iit)) != NULL) {
-      stage3list = List_push(stage3list,stage3);
+				 /*genomicseg_ptr*/Sequence_fullpointer(genomicseg),
+				 /*genomicuc_ptr*/Sequence_fullpointer(genomicuc),
+				 chrnum,chroffset,chrpos,
+				 /*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
+				 genome,/*usersegment_p*/usersegment ? true : false,
+				 watsonp,/*jump_late_p*/watsonp ? false : true,
+				 maxpeelback,maxpeelback_distalmedial,nullgap,
+				 extramaterial_end,extramaterial_paired,
+				 extraband_single,extraband_end,extraband_paired,
+				 minendexon,pairpool,dynprogL,dynprogM,dynprogR,ngap,
+				 stage3debug,diagnosticp,checkp,do_final_p,sense_try,sense_filter,
+				 oligoindices_minor,noligoindices_minor,diagpool,
+				 sufflookback,nsufflookback,maxintronlen_bound,close_indels_mode,
+				 /*paired_favor_mode*/0,/*zero_offset*/0);
+      stage3_runtime = Stopwatch_stop(worker_stopwatch);
+      if (pairarray == NULL) {
+	/* Skip */
+      } else if (matches < min_matches) {
+	FREE_OUT(pairarray);
+      } else if ((stage3 = Stage3_new(pairarray,pairs,npairs,cdna_direction,genomicstart,genomiclength,
+				      stage2_source,stage2_indexsize,matches,unknowns,mismatches,
+				      qopens,qindels,topens,tindels,ncanonical,nsemicanonical,nnoncanonical,
+				      defect_rate,chrnum,chroffset,chrpos,watsonp,
+				      /*skiplength*/Sequence_skiplength(queryseq),
+				      /*trimlength*/Sequence_trimlength(queryseq),
+				      stage3_runtime,straintype,strain,altstrain_iit)) != NULL) {
+	stage3list = List_push(stage3list,(void *) stage3);
+      }
     }
   }
+
+  List_free(&all_paths);
 
   Sequence_free(&genomicuc);
 
@@ -772,7 +819,7 @@ index_compare (const void *a, const void *b) {
 
 
 static Stage3_T *
-stage3_from_usersegment (int *npaths, bool lowidentityp, Sequence_T queryseq,
+stage3_from_usersegment (int *npaths, int *second_absmq, bool lowidentityp, Sequence_T queryseq,
 			 Sequence_T queryuc, Sequence_T usersegment,
 			 Oligoindex_T *oligoindices_major, int noligoindices_major,
 			 Oligoindex_T *oligoindices_minor, int noligoindices_minor,
@@ -824,7 +871,7 @@ stage3_from_usersegment (int *npaths, bool lowidentityp, Sequence_T queryseq,
     *npaths = 0;
     return NULL;
   } else {
-    return stage3array_from_list(&(*npaths),stage3list,/*chimerap*/false,/*remove_overlaps_p*/true);
+    return stage3array_from_list(&(*npaths),&(*second_absmq),stage3list,/*chimerap*/false,/*remove_overlaps_p*/true);
   }
 }
 
@@ -837,6 +884,8 @@ stage3list_sort (List_T stage3list) {
 
   if ((n = List_length(stage3list)) == 0) {
     return (List_T) NULL;
+  } else if (n == 1) {
+    return stage3list;
   } else {
     array = (Stage3_T *) List_to_array(stage3list,NULL);
     List_free(&stage3list);
@@ -844,6 +893,8 @@ stage3list_sort (List_T stage3list) {
     for (i = n-1; i >= 0; i--) {
       sorted = List_push(sorted,(void *) array[i]);
     }
+    FREE(array);
+
     return sorted;
   }
 }
@@ -1520,7 +1571,7 @@ check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, i
     /* Check to see if we can merge chimeric parts */
     if (Stage3_mergeable(&comp,&genomegap,stage3array_sub1[bestfrom],stage3array_sub2[bestto],
 			 exonexonpos,queryntlength,cdna_direction,donor_prob,acceptor_prob) == true) {
-      debug2(printf("Mergeable! -- Merging left and right readthrough\n"));
+      debug2(printf("Mergeable! -- Merging left and right as a readthrough\n"));
       List_free(&stage3list);
       stage3list = merge_left_and_right_readthrough(stage3array_sub1,npaths_sub1,bestfrom,
 						    stage3array_sub2,npaths_sub2,bestto,
@@ -1540,7 +1591,7 @@ check_for_chimera (Chimera_T *chimera, List_T stage3list, int effective_start, i
 	       Stage3_test_bounds(stage3array_sub2[bestto],chimerapos+1-chimera_overlap,queryntlength) == true) {
       *chimera = Chimera_new(chimerapos,chimeraequivpos,exonexonpos,cdna_direction,
 			     donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
-      debug2(printf("Merging left and right transloc\n"));
+      debug2(printf("Not mergeable -- Merging left and right as a transloc\n"));
       List_free(&stage3list);
       stage3list = merge_left_and_right_transloc(stage3array_sub1,npaths_sub1,bestfrom,
 						 stage3array_sub2,npaths_sub2,bestto,
@@ -1570,6 +1621,7 @@ apply_stage3 (Chimera_T *chimera, List_T gregions, bool lowidentityp, Sequence_T
   Stage3_T nonchimericbest;
   bool testchimerap = false;
   int effective_start, effective_end;
+
   
   *chimera = NULL;
 
@@ -1649,7 +1701,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 
   List_T gregions, stage3list;
   Stage3_T *stage3array;
-  int npaths;
+  int npaths, second_absmq;
 
   jobid = Request_id(request);
   queryseq = Request_queryseq(request);
@@ -1658,8 +1710,8 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
   Diagpool_reset(diagpool);
 
   if (Sequence_fulllength_given(queryseq) <= 0) {
-    result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,0,/*diagnostic*/NULL,
-			EMPTY_SEQUENCE);
+    result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,/*npaths*/0,/*second_absmq*/0,
+			/*diagnostic*/NULL,EMPTY_SEQUENCE);
       
   } else if (Sequence_fulllength_given(queryseq) < 
 #ifdef PMAP
@@ -1668,8 +1720,8 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 	     index1part
 #endif
 	     ) {
-    result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,0,/*diagnostic*/NULL,
-			SHORT_SEQUENCE);
+    result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,/*npaths*/0,/*second_absmq*/0,
+			/*diagnostic*/NULL,SHORT_SEQUENCE);
 
   } else {			/* Sequence_fulllength_given(queryseq) > 0 */
     queryuc = Sequence_uppercase(queryseq);
@@ -1710,10 +1762,12 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 
 #ifndef PMAP
     if (poorp == true && prune_poor_p == true) {
-      result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,0,diagnostic,POOR_SEQUENCE);
+      result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,/*npaths*/0,/*second_absmq*/0,
+			  diagnostic,POOR_SEQUENCE);
 
     } else if (repetitivep == true && prune_repetitive_p == true) {
-      result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,0,diagnostic,REPETITIVE);
+      result = Result_new(jobid,(Chimera_T) NULL,(Stage3_T *) NULL,/*npaths*/0,/*second_absmq*/0,
+			  diagnostic,REPETITIVE);
 
     }
 #endif
@@ -1726,10 +1780,10 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
       Sequence_trim(queryuc,diagnostic->query_trim_start,diagnostic->query_trim_end);
 #endif
 #endif
-      stage3array = stage3_from_usersegment(&npaths,/*lowidentityp*/false,queryseq,queryuc,usersegment,
+      stage3array = stage3_from_usersegment(&npaths,&second_absmq,/*lowidentityp*/false,queryseq,queryuc,usersegment,
 					    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 					    pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
-      result = Result_new(jobid,(Chimera_T) NULL,stage3array,npaths,diagnostic,NO_FAILURE);
+      result = Result_new(jobid,(Chimera_T) NULL,stage3array,npaths,second_absmq,diagnostic,NO_FAILURE);
 
     } else {		/* Not user segment and not maponly */
 #ifndef PMAP
@@ -1758,15 +1812,13 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 	if (diag_debug == true) {
 	  result = Result_new_diag_debug(jobid,/*diagonals*/stage3list,diagnostic,NO_FAILURE);
 	} else if (stage3list == NULL) {
-	  npaths = 0;
-	  stage3array = (Stage3_T *) NULL;
-	  result = Result_new(jobid,chimera,stage3array,npaths,diagnostic,NO_FAILURE);
+	  result = Result_new(jobid,chimera,/*stage3array*/NULL,/*npaths*/0,/*second_absmq*/0,diagnostic,NO_FAILURE);
 	} else if (chimera == NULL) {
-	  stage3array = stage3array_from_list(&npaths,stage3list,/*chimerap*/false,/*remove_overlaps_p*/true);
-	  result = Result_new(jobid,chimera,stage3array,npaths,diagnostic,NO_FAILURE);
+	  stage3array = stage3array_from_list(&npaths,&second_absmq,stage3list,/*chimerap*/false,/*remove_overlaps_p*/true);
+	  result = Result_new(jobid,/*chimera*/NULL,stage3array,npaths,second_absmq,diagnostic,NO_FAILURE);
 	} else {
-	  stage3array = stage3array_from_list(&npaths,stage3list,/*chimerap*/true,/*remove_overlaps_p*/false);
-	  result = Result_new(jobid,chimera,stage3array,npaths,diagnostic,NO_FAILURE);
+	  stage3array = stage3array_from_list(&npaths,&second_absmq,stage3list,/*chimerap*/true,/*remove_overlaps_p*/false);
+	  result = Result_new(jobid,chimera,stage3array,npaths,second_absmq,diagnostic,NO_FAILURE);
 	}
       }
 
@@ -2407,6 +2459,9 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"cmdline")) {
 	user_cmdline = optarg; break;
 
+      } else if (!strcmp(long_name,"suboptimal-score")) {
+	suboptimal_score = atoi(check_valid_int(optarg));
+
       } else if (!strcmp(long_name,"splicingdir")) {
 	user_splicingdir = optarg;
 
@@ -2435,6 +2490,10 @@ main (int argc, char *argv[]) {
 	}
       } else if (!strcmp(long_name,"microexon-spliceprob")) {
 	microexon_spliceprob = atof(check_valid_float(optarg));
+      } else if (!strcmp(long_name,"stage2-start")) {
+	suboptimal_score_start = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"stage2-end")) {
+	suboptimal_score_end = atoi(check_valid_int(optarg));
 
       } else if (!strcmp(long_name,"canonical-mode")) {
 	if (!strcmp(optarg,"0")) {
@@ -2480,15 +2539,6 @@ main (int argc, char *argv[]) {
 #ifndef PMAP
       } else if (!strcmp(long_name,"no-sam-headers")) {
 	sam_headers_p = false;
-      } else if (!strcmp(long_name,"noncanonical-splices")) {
-	if (optarg[0] == 'N') {
-	  cigar_noncanonical_splices_p = true;
-	} else if (optarg[0] == 'D') {
-	  cigar_noncanonical_splices_p = false;
-	} else {
-	  fprintf(stderr,"Argument %s to --noncanonical-splices not recognized.  Allowed values: N, D.\n",optarg);
-	  exit(9);
-	}
       } else if (!strcmp(long_name,"quality-protocol")) {
 	if (user_quality_shift == true) {
 	  fprintf(stderr,"Cannot specify both -j (--quality-print-shift) and --quality-protocol\n");
@@ -3245,17 +3295,19 @@ main (int argc, char *argv[]) {
   Indexdb_setup(index1part);
   Stage1_setup(index1part);
 #endif
-  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true);
+  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
+	       suboptimal_score_start,suboptimal_score_end);
   Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-		microexon_spliceprob);
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
+  Pair_setup(trim_mismatch_score,trim_indel_score);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
-	       splicesites,min_intronlength);
+	       splicesites,min_intronlength,max_deletionlength,
+	       /*expected_pairlength*/0,/*pairlength_deviation*/0);
   Splicetrie_setup(splicesites,splicefrags_ref,splicefrags_alt,
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-		   /*snpp*/false,amb_closest_p);
+		   /*snpp*/false,amb_closest_p,/*amb_clip_p*/true,/*min_shortend*/2);
 
   /* Setup outbuffer */
 #ifndef PMAP
@@ -3274,7 +3326,7 @@ main (int argc, char *argv[]) {
 			    chrsubset,contig_iit,altstrain_iit,map_iit,
 			    map_divint_crosstable,printtype,checksump,chimera_margin,
 #ifndef PMAP
-			    sam_headers_p,quality_shift,sam_paired_p,cigar_noncanonical_splices_p,
+			    sam_headers_p,quality_shift,sam_paired_p,
 			    sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
 #endif
@@ -3506,7 +3558,8 @@ Input options (must include -d or -g)\n\
   -x, --chimera-margin=INT       Amount of unaligned sequence that triggers\n\
                                    search for the remaining sequence (default 40).\n\
                                    Enables alignment of chimeric reads, and may help\n\
-                                   with some non-chimeric reads.  To turn off, set to 0.\n\
+                                   with some non-chimeric reads.  To turn off, set to\n\
+                                   a large value (greater than the query length).\n\
 ");
 
 #if 0
@@ -3614,6 +3667,9 @@ Output options\n\
                                  prints two paths if chimera detected, else one.\n\
   --quiet-if-excessive           If more than maximum number of paths are found,\n\
                                    then nothing is printed.\n\
+  --suboptimal-score=INT         Report only paths whose score is within this value of the\n\
+                                   best path.  By default, if this option is not provided,\n\
+                                   the program prints all paths found.\n\
   -O, --ordered                  Print output in same order as input (relevant\n\
                                    only if there is more than one worker thread)\n\
   -5, --md5                      Print MD5 checksum for each query sequence\n\
@@ -3655,8 +3711,6 @@ Output options\n\
   fprintf(stdout,"Options for SAM output\n");
   fprintf(stdout,"\
   --no-sam-headers               Do not print headers beginning with '@'\n\
-  --noncanonical-splices=STRING  Print non-canonical genomic gaps greater than 20 nt\n\
-                                   in CIGAR string as STRING.  Allowed values: N (default), D.\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
   --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\

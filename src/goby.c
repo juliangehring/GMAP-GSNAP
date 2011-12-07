@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: goby.c 49439 2011-10-08 00:46:54Z twu $";
+static char rcsid[] = "$Id: goby.c 52336 2011-11-14 18:00:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1351,6 +1351,7 @@ Goby_print_paired (Gobywriter_T writer, Result_T result, Resulttype_T resulttype
   Stage3pair_T *stage3pairarray, stage3pair;
   Stage3end_T *stage3array1, *stage3array2, stage3, mate;
   int npaths, npaths1, npaths2, pathnum;
+  int second_absmq;
   char *acc;
   UINT4 query_aligned_length;
   unsigned long goby_read_index;
@@ -1358,7 +1359,7 @@ Goby_print_paired (Gobywriter_T writer, Result_T result, Resulttype_T resulttype
   acc = Shortread_accession(queryseq1);
 
   if (resulttype == CONCORDANT_UNIQ || resulttype == CONCORDANT_TRANSLOC) {
-    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
     /* Stage3pair_eval(stage3pairarray,npaths,maxpaths,queryseq1,queryseq2); */
 
     stage3pair = stage3pairarray[0];
@@ -1380,7 +1381,7 @@ Goby_print_paired (Gobywriter_T writer, Result_T result, Resulttype_T resulttype
 		    invert_second_p,invert_first_p);
 
   } else if (resulttype == CONCORDANT_MULT) {
-    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,result);
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
 
     if (npaths > maxpaths) {
       /* No output if excessive for Gobyweb, but output TMH. */
@@ -1418,8 +1419,8 @@ Goby_print_paired (Gobywriter_T writer, Result_T result, Resulttype_T resulttype
 
   } else if (resulttype == UNPAIRED_UNIQ || resulttype == UNPAIRED_TRANSLOC) {
     /* Should print mate information in this situation */
-    stage3array1 = (Stage3end_T *) Result_array(&npaths1,result);
-    stage3array2 = (Stage3end_T *) Result_array2(&npaths2,result);
+    stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
+    stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq,result);
 
     /* print first end */
     /* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
@@ -1440,8 +1441,8 @@ Goby_print_paired (Gobywriter_T writer, Result_T result, Resulttype_T resulttype
 		    invert_second_p,invert_first_p);
 
   } else if (resulttype == UNPAIRED_MULT) {
-    stage3array1 = (Stage3end_T *) Result_array(&npaths1,result);
-    stage3array2 = (Stage3end_T *) Result_array2(&npaths2,result);
+    stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
+    stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq,result);
 
 #if 0
     /* Do eval and sorting first */
@@ -1525,8 +1526,8 @@ Goby_print_paired (Gobywriter_T writer, Result_T result, Resulttype_T resulttype
       abort();
     }
 
-    stage3array1 = (Stage3end_T *) Result_array(&npaths1,result);
-    stage3array2 = (Stage3end_T *) Result_array2(&npaths2,result);
+    stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
+    stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq,result);
 
 #if 0
     /* Do eval and sorting first */

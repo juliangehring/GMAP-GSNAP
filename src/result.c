@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c 40330 2011-05-30 17:40:46Z twu $";
+static char rcsid[] = "$Id: result.c 51812 2011-11-06 18:17:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -25,6 +25,7 @@ struct T {
   List_T diagonals;		/* For debugging of diag */
   Stage3_T *array;
   int npaths;
+  int second_absmq;
   Diagnostic_T diagnostic;
   Failure_T failuretype;
 };
@@ -43,8 +44,9 @@ Result_chimera (T this) {
 
 
 Stage3_T *
-Result_array (int *npaths, T this) {
+Result_array (int *npaths, int *second_absmq, T this) {
   *npaths = this->npaths;
+  *second_absmq = this->second_absmq;
   return this->array;
 }
 
@@ -74,7 +76,7 @@ Result_failuretype (T this) {
 
 T
 Result_new (int id, Chimera_T chimera, Stage3_T *array,
-	    int npaths, Diagnostic_T diagnostic, Failure_T failuretype) {
+	    int npaths, int second_absmq, Diagnostic_T diagnostic, Failure_T failuretype) {
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
@@ -83,6 +85,7 @@ Result_new (int id, Chimera_T chimera, Stage3_T *array,
   new->diagonals = (List_T) NULL;
   new->array = array;
   new->npaths = npaths;
+  new->second_absmq = second_absmq;
   new->diagnostic = diagnostic;
   new->failuretype = failuretype;
 

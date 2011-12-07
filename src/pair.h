@@ -1,4 +1,4 @@
-/* $Id: pair.h 47131 2011-09-13 20:50:18Z twu $ */
+/* $Id: pair.h 53169 2011-11-28 02:56:15Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -18,8 +18,11 @@ typedef struct Pair_T *Pair_T;
 
 #define MATCHESPERGAP 3
 
+
 #define T Pair_T
 
+extern void
+Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in);
 extern int
 Pair_querypos (T this);
 extern int
@@ -100,7 +103,7 @@ Pair_check_array (struct T *pairs, int npairs);
 extern void
 Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 			Genomicpos_T chroffset, Genome_T genome, IIT_T chromosome_iit,
-			bool watsonp, bool genomefirstp, int invertmode);
+			bool watsonp, int cdna_direction, bool genomefirstp, int invertmode);
 extern void
 Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *accession, 
 		 T start, T end, Chrnum_T chrnum, IIT_T chromosome_iit, Sequence_T usersegment,
@@ -128,14 +131,14 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *queryseq_ptr, char *quality_string,
 		int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
-		int quality_shift, bool firstp, int npaths,
+		int quality_shift, bool firstp, int pathnum, int npaths, int absmq_score, int second_absmq,
 #ifdef GSNAP
 		unsigned int flag, int pair_mapq_score, int end_mapq_score,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
 #else
-		int pathnum, bool sam_paired_p,
+		int mapq_score, bool sam_paired_p,
 #endif
-		bool cigar_noncanonical_splices_p, char *sam_read_group_id);
+		char *sam_read_group_id);
 
 extern void
 Pair_print_sam_nomapping (FILE *fp, char *accession, char *queryseq_ptr,

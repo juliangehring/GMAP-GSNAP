@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 48816 2011-09-30 22:44:44Z twu $";
+static char rcsid[] = "$Id: substring.c 53340 2011-11-29 23:07:16Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -74,7 +74,7 @@ static char rcsid[] = "$Id: substring.c 48816 2011-09-30 22:44:44Z twu $";
 #endif
 
 
-/* trimming */
+/* trimming.  may also want to turn on DEBUG8 in pair.c */
 #ifdef DEBUG8
 #define debug8(x) x
 #else
@@ -546,7 +546,7 @@ trim_left_end (Compress_T query_compress, Genomicpos_T left, int querystart, int
     for (i = 0; i < nmismatches; i++) {
       pos = mismatch_positions[i] + 1; /* the position just after the mismatch */
       score += (prevpos - pos)*TRIM_MATCH_SCORE;
-      if (score > bestscore) {
+      if (score >= bestscore) {	/* want >= and not >, so ties go to end */
 	bestscore = score;
 	trim5 = pos;
       }
@@ -576,7 +576,7 @@ trim_left_end (Compress_T query_compress, Genomicpos_T left, int querystart, int
     for (i = 0; i < nmismatches; i++) {
       pos = (querylength - 1 - mismatch_positions[i]) + 1; /* the position just after the mismatch */
       score += (prevpos - pos)*TRIM_MATCH_SCORE;
-      if (score > bestscore) {
+      if (score >= bestscore) {	/* want >= and not >, so ties go to end */
 	bestscore = score;
 	trim5 = pos;
       }
@@ -591,7 +591,7 @@ trim_left_end (Compress_T query_compress, Genomicpos_T left, int querystart, int
   }
 
   score += prevpos*TRIM_MATCH_SCORE;
-  if (score > bestscore) {
+  if (score >= bestscore) {	/* want >= and not >, so ties go to end */
     bestscore = score;
     trim5 = 0;
   }
@@ -640,7 +640,7 @@ trim_right_end (Compress_T query_compress, Genomicpos_T left, int querystart, in
     for (i = 0; i < nmismatches; i++) {
       pos = mismatch_positions[i] - 1; /* the position just before the mismatch */
       score += (pos - prevpos)*TRIM_MATCH_SCORE;
-      if (score > bestscore) {
+      if (score >= bestscore) {	/* want >= and not >, so ties go to end */
 	bestscore = score;
 	trim3 = querylength - pos - 1;
       }
@@ -670,7 +670,7 @@ trim_right_end (Compress_T query_compress, Genomicpos_T left, int querystart, in
     for (i = 0; i < nmismatches; i++) {
       pos = (querylength - 1 - mismatch_positions[i]) - 1; /* the position just before the mismatch */
       score += (pos - prevpos)*TRIM_MATCH_SCORE;
-      if (score > bestscore) {
+      if (score >= bestscore) {	/* want >= and not >, so ties go to end */
 	bestscore = score;
 	trim3 = querylength - pos - 1;
       }
@@ -685,7 +685,7 @@ trim_right_end (Compress_T query_compress, Genomicpos_T left, int querystart, in
   }
 
   score += (queryend - 1 - prevpos)*TRIM_MATCH_SCORE;
-  if (score > bestscore) {
+  if (score >= bestscore) { /* want >= and not >, so ties go to end */
     bestscore = score;
     trim3 = 0;
   }
@@ -1629,10 +1629,20 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
 	       Genomicpos_T alignstart, Genomicpos_T alignend, int genomiclength,
 	       int extraleft, int extraright, bool exactp,
 	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength) {
-  T new = (T) MALLOC_OUT(sizeof(*new));
+  T new;
   int aligndiff;
   int nmatches;
 
+
+  /* General test for goodness over original region */
+  nmatches = queryend - querystart - nmismatches_whole;
+  if (nmatches - 3*nmismatches_whole < 0) {
+    debug2(printf("Substring fails general test for goodness with %d matches and %d mismatches\n",
+		  nmatches,nmismatches_whole));
+    return (T) NULL;
+  } else {
+    new = (T) MALLOC_OUT(sizeof(*new));
+  }
 
   new->exactp = exactp;
 
@@ -1767,7 +1777,7 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
 					/*pos3*/new->alignstart_trim-left,plusp,genestrand);
   }
 
-  /* General test for goodness.  nmatches here only within trimmed region */
+  /* General test for goodness over trimmed region */
   nmatches = new->queryend - new->querystart - new->nmismatches_bothdiff;
   if (nmatches - 3*new->nmismatches_bothdiff < 0) {
     debug2(printf("Substring fails general test for goodness with %d matches and %d mismatches\n",
@@ -1776,7 +1786,6 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
 
     return (T) NULL;
   }
-
 
   return new;
 }
@@ -2010,6 +2019,12 @@ int
 Substring_nmatches (T this) {
   return this->nmatches;
 }
+
+int
+Substring_nmatches_posttrim (T this) {
+  return this->queryend - this->querystart - this->nmismatches_bothdiff;
+}
+
 
 void
 Substring_set_nmismatches_terminal (T this, int nmismatches_whole) {
@@ -2626,9 +2641,9 @@ Substring_assign_donor_prob (T donor) {
   if (donor->chimera_knownp == false) {
     /* Prob already assigned */
   } else if (donor->plusp == donor->chimera_sensep) {
-    donor->chimera_prob = Maxent_hr_donor_prob(donor->chimera_modelpos);
+    donor->chimera_prob = Maxent_hr_donor_prob(donor->chimera_modelpos,donor->chroffset);
   } else {
-    donor->chimera_prob = Maxent_hr_antidonor_prob(donor->chimera_modelpos);
+    donor->chimera_prob = Maxent_hr_antidonor_prob(donor->chimera_modelpos,donor->chroffset);
   }
 
   return;
@@ -2644,9 +2659,9 @@ Substring_assign_acceptor_prob (T acceptor) {
   if (acceptor->chimera_knownp == false) {
     /* Prob already assigned */
   } else if (acceptor->plusp == acceptor->chimera_sensep) {
-    acceptor->chimera_prob = Maxent_hr_acceptor_prob(acceptor->chimera_modelpos);
+    acceptor->chimera_prob = Maxent_hr_acceptor_prob(acceptor->chimera_modelpos,acceptor->chroffset);
   } else {
-    acceptor->chimera_prob = Maxent_hr_antiacceptor_prob(acceptor->chimera_modelpos);
+    acceptor->chimera_prob = Maxent_hr_antiacceptor_prob(acceptor->chimera_modelpos,acceptor->chroffset);
   }
 
   return;
@@ -2659,18 +2674,18 @@ Substring_assign_shortexon_prob (T shortexon) {
   if (shortexon->chimera_knownp == false) {
     /* Prob1 already assigned */
   } else if (shortexon->plusp == shortexon->chimera_sensep) {
-    shortexon->chimera_prob = Maxent_hr_acceptor_prob(shortexon->chimera_modelpos);
+    shortexon->chimera_prob = Maxent_hr_acceptor_prob(shortexon->chimera_modelpos,shortexon->chroffset);
   } else {
-    shortexon->chimera_prob = Maxent_hr_antiacceptor_prob(shortexon->chimera_modelpos);
+    shortexon->chimera_prob = Maxent_hr_antiacceptor_prob(shortexon->chimera_modelpos,shortexon->chroffset);
   }
 
 
   if (shortexon->chimera_knownp_2 == false) {
     /* Prob2 already assigned */
   } else if (shortexon->plusp == shortexon->chimera_sensep) {
-    shortexon->chimera_prob_2 = Maxent_hr_donor_prob(shortexon->chimera_modelpos_2);
+    shortexon->chimera_prob_2 = Maxent_hr_donor_prob(shortexon->chimera_modelpos_2,shortexon->chroffset);
   } else {
-    shortexon->chimera_prob_2 = Maxent_hr_antidonor_prob(shortexon->chimera_modelpos_2);
+    shortexon->chimera_prob_2 = Maxent_hr_antidonor_prob(shortexon->chimera_modelpos_2,shortexon->chroffset);
   }
 
   return;

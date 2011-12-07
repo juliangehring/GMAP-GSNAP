@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 44181 2011-08-03 09:19:12Z twu $";
+static char rcsid[] = "$Id: pairpool.c 52068 2011-11-09 19:32:06Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,6 +6,7 @@ static char rcsid[] = "$Id: pairpool.c 44181 2011-08-03 09:19:12Z twu $";
 #include "pairpool.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>		/* For memcpy */
 #include "mem.h"
 #include "comp.h"
 #include "pairdef.h"
@@ -488,24 +489,26 @@ Pairpool_transfer_n (List_T dest, List_T source, int n) {
 }
 
 int
-Pairpool_count_bounded (List_T source, int minpos, int maxpos) {
+Pairpool_count_bounded (int *nstart, List_T source, int minpos, int maxpos) {
   int npairs = 0;
   List_T p, next;
   Pair_T pair;
 
+  *nstart = 0;
   for (p = source; p != NULL; p = next) {
     pair = List_head(p);
     next = p->rest;
-    if (pair->querypos == minpos) {
-      npairs = 1;
-    } else if (pair->querypos == maxpos) {
-      p = NULL;			/* Terminate transfer */
-    } else if (pair->querypos > minpos && pair->querypos < maxpos) {
+    if (pair->querypos < minpos) {
+      *nstart += 1;
+    } else if (pair->querypos < maxpos) {
       npairs++;
+    } else {
+      p = NULL;			/* Terminate transfer */
     }
   }
   return npairs;
 }
+
 
 List_T
 Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
@@ -555,6 +558,12 @@ Pairpool_copy (List_T source, T this) {
       abort();
     } else {
       dest = Pairpool_push(dest,this,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome,/*gapp*/false);
+#if 0
+      /* Not sure if this is necessary */
+      if (pair->shortexonp == true) {
+	((Pair_T) (dest->first))->shortexonp = true;
+      }
+#endif
       debug(printf("Copying %p: %d %d %c %c %c\n",
 		   pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome));
     }
@@ -563,5 +572,14 @@ Pairpool_copy (List_T source, T this) {
   return List_reverse(dest);
 }
 
+
+struct Pair_T *
+Pairpool_copy_array (struct Pair_T *source, int npairs) {
+  struct Pair_T *dest;
+
+  dest = (struct Pair_T *) CALLOC_OUT(npairs,sizeof(struct Pair_T));
+  memcpy(dest,source,npairs*sizeof(struct Pair_T));
+  return dest;
+}
 
 

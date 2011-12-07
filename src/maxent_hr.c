@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: maxent_hr.c 49625 2011-10-12 18:18:20Z twu $";
+static char rcsid[] = "$Id: maxent_hr.c 53340 2011-11-29 23:07:16Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -27215,33 +27215,37 @@ static Handler3_T donor_plus_table[32] =
    donor_plus_28, donor_plus_29, donor_plus_30, donor_plus_31};
 
 double
-Maxent_hr_donor_prob (Genomicpos_T splice_pos) {
+Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T startpos;
   Genomicpos_T ptr;
   int shift;
   UINT4 high, low, nextlow;
 
-  startpos = splice_pos - DONOR_MODEL_LEFT_MARGIN;
-  ptr = startpos/32U*3;
-  shift = startpos % 32;
+  if (splice_pos < chroffset + DONOR_MODEL_LEFT_MARGIN) {
+    return 0.0;
+  } else {
+    startpos = splice_pos - DONOR_MODEL_LEFT_MARGIN;
+    ptr = startpos/32U*3;
+    shift = startpos % 32;
 
-  debug(printf("splice_pos = %u, donor dinucleotide is %c%c\n",
-	       splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
+    debug(printf("splice_pos = %u, donor dinucleotide is %c%c\n",
+		 splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
 
-  debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
-  debug(printf("startpos is %u, shift is %d\n",startpos,shift));
+    debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
+    debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN
-  high = Bigendian_convert_uint(ref_blocks[ptr]);
-  low = Bigendian_convert_uint(ref_blocks[ptr+1]);
-  nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-  high = ref_blocks[ptr];
-  low = ref_blocks[ptr+1];
-  nextlow = ref_blocks[ptr+4];
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
 #endif
 
-  return (donor_plus_table[shift])(low,high,nextlow);
+    return (donor_plus_table[shift])(low,high,nextlow);
+  }
 }
 
 static Handler4_T acceptor_plus_table[32] =
@@ -27255,35 +27259,39 @@ static Handler4_T acceptor_plus_table[32] =
    acceptor_plus_28, acceptor_plus_29, acceptor_plus_30, acceptor_plus_31};
 
 double
-Maxent_hr_acceptor_prob (Genomicpos_T splice_pos) {
+Maxent_hr_acceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T startpos;
   Genomicpos_T ptr;
   int shift;
   UINT4 low, high, nextlow, nexthigh;
 
-  startpos = splice_pos - ACCEPTOR_MODEL_LEFT_MARGIN;
-  ptr = startpos/32U*3;
-  shift = startpos % 32;
+  if (splice_pos < chroffset + ACCEPTOR_MODEL_LEFT_MARGIN) {
+    return 0.0;
+  } else {
+    startpos = splice_pos - ACCEPTOR_MODEL_LEFT_MARGIN;
+    ptr = startpos/32U*3;
+    shift = startpos % 32;
 
-  debug(printf("splice_pos = %u, acceptor dinucleotide is %c%c\n",
-	       splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
+    debug(printf("splice_pos = %u, acceptor dinucleotide is %c%c\n",
+		 splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
 
-  debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
-  debug(printf("startpos is %u, shift is %d\n",startpos,shift));
+    debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
+    debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN
-  high = Bigendian_convert_uint(ref_blocks[ptr]);
-  low = Bigendian_convert_uint(ref_blocks[ptr+1]);
-  nexthigh = Bigendian_convert_uint(ref_blocks[ptr+3]);
-  nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nexthigh = Bigendian_convert_uint(ref_blocks[ptr+3]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-  high = ref_blocks[ptr];
-  low = ref_blocks[ptr+1];
-  nexthigh = ref_blocks[ptr+3];
-  nextlow = ref_blocks[ptr+4];
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nexthigh = ref_blocks[ptr+3];
+    nextlow = ref_blocks[ptr+4];
 #endif
 
-  return (acceptor_plus_table[shift])(low,high,nextlow,nexthigh);
+    return (acceptor_plus_table[shift])(low,high,nextlow,nexthigh);
+  }
 }
 
 static Handler3_T donor_minus_table[32] =
@@ -27297,33 +27305,37 @@ static Handler3_T donor_minus_table[32] =
    donor_minus_28, donor_minus_29, donor_minus_30, donor_minus_31};
 
 double
-Maxent_hr_antidonor_prob (Genomicpos_T splice_pos) {
+Maxent_hr_antidonor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T startpos;
   Genomicpos_T ptr;
   int shift;
   UINT4 high, low, nextlow;
 
-  startpos = splice_pos - DONOR_MODEL_RIGHT_MARGIN;
-  ptr = startpos/32U*3;
-  shift = startpos % 32;
+  if (splice_pos < chroffset + DONOR_MODEL_RIGHT_MARGIN) {
+    return 0.0;
+  } else {
+    startpos = splice_pos - DONOR_MODEL_RIGHT_MARGIN;
+    ptr = startpos/32U*3;
+    shift = startpos % 32;
 
-  debug(printf("splice_pos = %u, antidonor dinucleotide is %c%c\n",
-	       splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
+    debug(printf("splice_pos = %u, antidonor dinucleotide is %c%c\n",
+		 splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
 
-  debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
-  debug(printf("startpos is %u, shift is %d\n",startpos,shift));
+    debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
+    debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN
-  high = Bigendian_convert_uint(ref_blocks[ptr]);
-  low = Bigendian_convert_uint(ref_blocks[ptr+1]);
-  nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-  high = ref_blocks[ptr];
-  low = ref_blocks[ptr+1];
-  nextlow = ref_blocks[ptr+4];
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
 #endif
 
-  return (donor_minus_table[shift])(low,high,nextlow);
+    return (donor_minus_table[shift])(low,high,nextlow);
+  }
 }
 
 static Handler4_T acceptor_minus_table[32] =
@@ -27337,34 +27349,38 @@ static Handler4_T acceptor_minus_table[32] =
    acceptor_minus_28, acceptor_minus_29, acceptor_minus_30, acceptor_minus_31};
 
 double
-Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos) {
+Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T startpos;
   Genomicpos_T ptr;
   int shift;
   UINT4 low, high, nextlow, nexthigh;
 
-  startpos = splice_pos - ACCEPTOR_MODEL_RIGHT_MARGIN;
-  ptr = startpos/32U*3;
-  shift = startpos % 32;
+  if (splice_pos < chroffset + ACCEPTOR_MODEL_RIGHT_MARGIN) {
+    return 0.0;
+  } else {
+    startpos = splice_pos - ACCEPTOR_MODEL_RIGHT_MARGIN;
+    ptr = startpos/32U*3;
+    shift = startpos % 32;
 
-  debug(printf("splice_pos = %u, antiacceptor dinucleotide is %c%c\n",
-	       splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
+    debug(printf("splice_pos = %u, antiacceptor dinucleotide is %c%c\n",
+		 splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
 
-  debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
-  debug(printf("startpos is %u, shift is %d\n",startpos,shift));
+    debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
+    debug(printf("startpos is %u, shift is %d\n",startpos,shift));
 
 #ifdef WORDS_BIGENDIAN
-  high = Bigendian_convert_uint(ref_blocks[ptr]);
-  low = Bigendian_convert_uint(ref_blocks[ptr+1]);
-  nexthigh = Bigendian_convert_uint(ref_blocks[ptr+3]);
-  nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nexthigh = Bigendian_convert_uint(ref_blocks[ptr+3]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-  high = ref_blocks[ptr];
-  low = ref_blocks[ptr+1];
-  nexthigh = ref_blocks[ptr+3];
-  nextlow = ref_blocks[ptr+4];
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nexthigh = ref_blocks[ptr+3];
+    nextlow = ref_blocks[ptr+4];
 #endif
 
-  return (acceptor_minus_table[shift])(low,high,nextlow,nexthigh);
+    return (acceptor_minus_table[shift])(low,high,nextlow,nexthigh);
+  }
 }
 

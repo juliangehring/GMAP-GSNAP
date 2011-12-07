@@ -1,7 +1,8 @@
-/* $Id: dynprog.h 48822 2011-09-30 23:43:27Z twu $ */
+/* $Id: dynprog.h 52836 2011-11-19 00:20:07Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
+typedef enum {BEST_LOCAL, QUERYEND_INDELS, QUERYEND_NOGAPS} Endalign_T;
 typedef struct Dynprog_T *Dynprog_T;
 
 #include "bool.h"
@@ -31,8 +32,7 @@ Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
 	       Genomicpos_T *splicedists_in, int nsplicesites_in,
 	       unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
-	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
-	       double microexon_spliceprob_in);
+	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in);
 
 extern int
 Dynprog_score (int matches, int mismatches, int qopens, int qindels, int topens, int tindels,
@@ -111,7 +111,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *queryaaseq,
 #endif
 		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
-		  int extraband_end, double defect_rate, bool to_queryend_p);
+		  int extraband_end, double defect_rate, Endalign_T endalign);
 
 extern List_T
 Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
@@ -123,7 +123,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *queryaaseq,
 #endif
 		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
-		  int extraband_end, double defect_rate, bool to_queryend_p);
+		  int extraband_end, double defect_rate, Endalign_T endalign);
 
 extern void
 Dynprog_make_splicejunction_5 (char *splicejunction, Genomicpos_T splicecoord,
@@ -214,7 +214,7 @@ Dynprog_dual_break (int *dynprogindex, int *finalscore, T dynprogL, T dynprogR,
 #endif
 
 extern List_T
-Dynprog_microexon_int (int *dynprogindex, int *microintrontype,
+Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, int *microintrontype,
 		       char *sequence1, char *sequenceuc1,
 		       char *sequence2L, char *sequenceuc2L,
 		       char *revsequence2R, char *revsequenceuc2R,

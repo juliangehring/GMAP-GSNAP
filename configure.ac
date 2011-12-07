@@ -181,8 +181,30 @@ ACX_FUNC_FOPEN_BINARY
 ACX_FUNC_FOPEN_TEXT
 
 ACX_BUILTIN
-ACX_POPCNT
 ACX_ASM_BSR
+
+AC_MSG_CHECKING(for popcnt feature)
+AC_ARG_ENABLE([popcnt],
+              AC_HELP_STRING([--enable-popcnt],
+                             [Enable -mpopcnt if it compiles and runs (default=yes).  May want to disable if compiling on one machine and running on another.]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+	xyes)
+        AC_MSG_RESULT(enabled)
+	ACX_POPCNT
+	;;
+	
+	xno)
+	AC_MSG_RESULT(disabled)
+	;;
+
+	x)
+	AC_MSG_RESULT([not specified so enabled by default])
+	ACX_POPCNT
+	;;
+esac	
+
 
 # Genome directory
 AC_MSG_CHECKING(gmapdb)

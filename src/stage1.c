@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 44376 2011-08-05 04:17:20Z twu $";
+static char rcsid[] = "$Id: stage1.c 53380 2011-11-30 13:36:11Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -85,7 +85,6 @@ static char rcsid[] = "$Id: stage1.c 44376 2011-08-05 04:17:20Z twu $";
 #ifdef DEBUG
 #define debug(x) x
 static IIT_T global_chromosome_iit;
-static Genome_T global_genome;
 static char *queryuc_ptr;
 #else
 #define debug(x)
@@ -385,6 +384,7 @@ Stage1_free (T *old) {
 
 
 
+/* This procedure is called a lot.  Replacing calls to Match_chrnum and so on with direct calls to Match_T object */
 static bool
 connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
   Genomicpos_T position5, position3;
@@ -395,12 +395,12 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
 		Match_chrnum(match5),Match_chrpos(match5),Match_querypos(match5),
 		Match_chrnum(match3),Match_chrpos(match3),Match_querypos(match3)));
 
-  if (Match_chrnum(match5) != Match_chrnum(match3)) {
+  if (match5->chrnum != match3->chrnum) {
     debug5(printf("No, different chromosomes\n\n"));
     return false;
   } else {
-    querypos5 = Match_querypos(match5);
-    querypos3 = Match_querypos(match3);
+    querypos5 = match5->querypos;
+    querypos3 = match3->querypos;
     exonlen = querypos3 - querypos5;
 #if 0
     if (exonlen < matchinterval) {
@@ -408,8 +408,8 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
       return false;
     } else {
 #endif
-      position5 = Match_position(match5);
-      position3 = Match_position(match3);
+      position5 = match5->position;
+      position3 = match3->position;
       /* intronlen = abs(position3 - position5) - exonlen; -- shouldn't subtract unsigned ints */
       if (position3 > position5) {
 	/* intronlen = position3 - position5 - exonlen; -- Don't subtract into a signed int */
@@ -428,8 +428,8 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
 	  return false;
 	}
       }
-      forwardp5 = Match_forwardp(match5);
-      forwardp3 = Match_forwardp(match3);
+      forwardp5 = match5->forwardp;
+      forwardp3 = match3->forwardp;
 
       if (forwardp5 != forwardp3) {
 	debug5(printf("No, forwardp different\n\n"));
@@ -440,9 +440,9 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
       } else if (forwardp5 == false && position5 < position3) {
 	debug5(printf("No, forwardp false, but positions wrong\n\n"));
 	return false;
-      } else if (Match_weight(match5) < MIN_MATCH_WEIGHT || Match_weight(match3) < MIN_MATCH_WEIGHT) {
+      } else if (match5->weight < MIN_MATCH_WEIGHT || match3->weight < MIN_MATCH_WEIGHT) {
 	debug5(printf("Yes, but weights are too small: %.1f %.1f\n\n",
-		      Match_weight(match5),Match_weight(match3)));
+		      match5->weight,match3->weight));
 	return false;
       } else {
 	debug5(printf("Yes\n\n"));
@@ -456,6 +456,7 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
 
 
 
+/* This procedure is called a lot.  Replacing calls to Match_npairings and so on with direct calls to Match_T object */
 /* Updates a list of Stage1_T objects */
 static List_T
 pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
@@ -473,9 +474,11 @@ pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
 
   /* Do N vs N */
   for (q = newmatches5; q != NULL; q = q->rest) {
-    if (Match_npairings(match5 = q->first) < PROMISCUOUS) {
+    match5 = (Match_T) q->first;
+    if (match5->npairings < PROMISCUOUS) {
       for (s = newmatches3; s != NULL; s = s->rest) {
-	if (Match_npairings(match3 = s->first) < PROMISCUOUS) {
+	match3 = (Match_T) s->first;
+	if (match3->npairings < PROMISCUOUS) {
 	  if (connectable_p(match5,match3,maxtotallen)) {
 #if 1
 	    if (Match_acceptable_pair(match5,match3,trimlength,matchsize) == true) {
@@ -493,9 +496,11 @@ pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
 
   /* Do N vs (N-1..1) */
   for (q = newmatches5; q != NULL; q = q->rest) {
-    if (Match_npairings(match5 = q->first) < PROMISCUOUS) {
+    match5 = (Match_T) q->first;
+    if (match5->npairings < PROMISCUOUS) {
       for (s = matches3; s != NULL; s = s->rest) {
-	if (Match_npairings(match3 = s->first) < PROMISCUOUS) {
+	match3 = (Match_T) s->first;
+	if (match3->npairings < PROMISCUOUS) {
 	  if (connectable_p(match5,match3,maxtotallen)) {
 #if 1
 	    if (Match_acceptable_pair(match5,match3,trimlength,matchsize) == true) {
@@ -513,9 +518,11 @@ pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
 
   /* Do (N-1..1) vs N */
   for (q = matches5; q != NULL; q = q->rest) {
-    if (Match_npairings(match5 = q->first) < PROMISCUOUS) {
+    match5 = (Match_T) q->first;
+    if (match5->npairings < PROMISCUOUS) {
       for (s = newmatches3; s != NULL; s = s->rest) {
-	if (Match_npairings(match3 = s->first) < PROMISCUOUS) {
+	match3 = (Match_T) s->first;
+	if (match3->npairings < PROMISCUOUS) {
 	  if (connectable_p(match5,match3,maxtotallen)) {
 #if 1
 	    if (Match_acceptable_pair(match5,match3,trimlength,matchsize) == true) {
@@ -656,7 +663,6 @@ identify_singles (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
 
 	debug(
 	      Match_print(match,chromosome_iit);
-	      Match_print_mer(match,queryuc_ptr,global_genome,chromosome_iit,matchsize);
 	      printf("\n");
 	      );
       }
@@ -856,7 +862,6 @@ identify_doubles (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
 	Match_set_weight(match,weight);
 	debug(
 	      Match_print(match,chromosome_iit);
-	      Match_print_mer(match,queryuc_ptr,global_genome,chromosome_iit,matchsize);
 	      printf("\n");
 	      );
       }
@@ -1310,6 +1315,9 @@ stutter (List_T gregionlist, T this, int matchsize,
   bool foundpairp;
   double n5hits = 0.0, n3hits = 0.0;
   int nnew;
+#ifdef DEBUG1
+  int i;
+#endif
 
   start5 = Block_querypos(this->block5);
   start3 = Block_querypos(this->block3);
@@ -3345,11 +3353,21 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc,
   global_chromosome_iit = chromosome_iit;
 #endif
 
+#ifdef PMAP
+  if (Sequence_fulllength_given(queryuc) < index1part_aa) {
+    return (List_T) NULL;
+  }
+#else
+  if (Sequence_fulllength(queryuc) < index1part) {
+    return (List_T) NULL;
+  }
+#endif
+
+
   Stopwatch_start(stopwatch);
   diagnostic->sampling_rounds = 0;
   diagnostic->sampling_nskip = 0;
 
-  debug(global_genome = genome);
   debug(queryuc_ptr = Sequence_fullpointer(queryuc));
 
   /* Don't multiply trimlength by 3 in PMAP */

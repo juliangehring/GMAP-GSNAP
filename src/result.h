@@ -1,4 +1,4 @@
-/* $Id: result.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: result.h 51812 2011-11-06 18:17:08Z twu $ */
 #ifndef RESULT_INCLUDED
 #define RESULT_INCLUDED
 
@@ -16,7 +16,7 @@ Result_id (T this);
 extern Chimera_T
 Result_chimera (T this);
 extern Stage3_T *
-Result_array (int *npaths, T this);
+Result_array (int *npaths, int *second_absmq, T this);
 extern List_T
 Result_gregionlist (T this);
 extern List_T
@@ -28,7 +28,7 @@ Result_failuretype (T this);
 
 extern T
 Result_new (int id, Chimera_T chimera, Stage3_T *array,
-	    int npaths, Diagnostic_T diagnostic, Failure_T failuretype);
+	    int npaths, int second_absmq, Diagnostic_T diagnostic, Failure_T failuretype);
 extern T
 Result_new_stage1debug (int id, List_T gregionlist,
 			Diagnostic_T diagnostic, Failure_T failuretype);

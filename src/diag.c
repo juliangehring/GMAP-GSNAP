@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c 44154 2011-08-02 20:52:17Z twu $";
+static char rcsid[] = "$Id: diag.c 51052 2011-10-28 20:00:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -508,7 +508,8 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
       print_segments_for_R_array(array,nunique,"red");
     }
 
-    /* Set minactive */
+
+    /* Find end regions */
 #ifdef ACTIVE_BUFFER
     /* Allow buffer on 5' end to make sure we identify the best initial exon */
     if ((activestart = array[0]->querystart) < ACTIVE_BUFFER) {
@@ -517,10 +518,22 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 	activestart = querylength;
       }
     }
+
+    /* Allow buffer on 3' end to make sure we identify the best final exon */
+    if ((activeend = array[nunique-1]->queryend) > querylength-ACTIVE_BUFFER) {
+      activeend = querylength-ACTIVE_BUFFER;
+      if (activeend < 0) {
+	activeend = 0;
+      }
+    }
 #else
     activestart = array[0]->querystart;
+    activeend = array[nunique-1]->queryend;
+    debug1(printf("activestart = %d, activeend = %d\n",activestart,activeend));
 #endif
 
+
+    /* Set minactive */
     for (querypos = 0; querypos < activestart; querypos++) {
       minactive[querypos] = 0U;
       debug1(printf("active end: minactive at querypos %d is %u\n",querypos,minactive[querypos]));
@@ -550,8 +563,8 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
       while (j < nunique && array[j]->queryend <= array[i]->queryend) {
 	j++;
       }
-      diagonal = array[i]->diagonal;
       if (j < nunique) {
+	diagonal = array[i]->diagonal; /* Use this diagonal for end of query only if j < nunique */
 	for ( ; querypos <= array[j]->queryend; querypos++) {
 #ifdef PMAP
 	  if (diagonal + 3*querypos < EXTRA_BOUNDS) {
@@ -572,6 +585,7 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
       i = j;
     }
 
+    debug1(printf("diagonal for region to end of query is %u\n",diagonal));
     for ( ; querypos < querylength; querypos++) {
 #ifdef PMAP
       if (diagonal + 3*querypos < EXTRA_BOUNDS) {
@@ -589,18 +603,8 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
       debug1(printf("to end of query: minactive at querypos %d is %u\n",querypos,minactive[querypos]));
     }
 
+
     /* Set maxactive */
-#ifdef ACTIVE_BUFFER
-    /* Allow buffer on 3' end to make sure we identify the best final exon */
-    if ((activeend = array[nunique-1]->queryend) > querylength-ACTIVE_BUFFER) {
-      activeend = querylength-ACTIVE_BUFFER;
-      if (activeend < 0) {
-	activeend = 0;
-      }
-    }
-#else
-    activeend = array[nunique-1]->queryend;
-#endif
 
     for (querypos = querylength-1; querypos > activeend; --querypos) {
       maxactive[querypos] = genomiclength;
@@ -631,8 +635,8 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
       while (j >= 0 && array[j]->querystart > Diag_querystart(array[i])) {
 	--j;
       }
-      diagonal = array[i]->diagonal;
       if (j >= 0) {
+	diagonal = array[i]->diagonal; /* Use this diagonal to beginning of query only if j >= 0 */
 	for ( ; querypos >= array[j]->querystart; --querypos) {
 #ifdef PMAP
 	  if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
@@ -653,6 +657,7 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
       i = j;
     }
 
+    debug1(printf("diagonal for region to beginning of query is %u\n",diagonal));
     for ( ; querypos >= 0; --querypos) {
 #ifdef PMAP
       if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
@@ -667,7 +672,7 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 	maxactive[querypos] = (unsigned int) position;
       }
 #endif
-      debug1(printf("to beginning: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
+      debug1(printf("to beginning of query: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
     }
 
     FREE(array);

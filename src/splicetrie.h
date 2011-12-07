@@ -21,7 +21,7 @@ Splicetrie_setup (
 		  Genomicpos_T *splicesites_in, UINT4 *splicefrags_ref_in, UINT4 *splicefrags_alt_in,
 		  unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
 		  unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
-		  bool snpp_in, bool amb_closest_p_in);
+		  bool snpp_in, bool amb_closest_p_in, bool amb_clip_p_in, int min_shortend_in);
 
 #ifdef GSNAP
 extern bool

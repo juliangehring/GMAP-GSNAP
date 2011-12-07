@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 44962 2011-08-16 14:14:07Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 51753 2011-11-04 02:05:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -644,6 +644,7 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
     annotlist = List_push(annotlist,(void *) annot);
 
   }
+  fclose(textfp);
 
 #if 0
   FREE(contigtypes);
@@ -737,29 +738,27 @@ chrlength_table_gc (Tableint_T *chrlength_table) {
 
 static void
 accsegmentpos_table_gc (Table_T *accsegmentpos_table) {
-#if 0
   int n, i = 0;
   char *accession;
   Segmentpos_T segmentpos;
   void **keys, **values;
-#endif
 
-#if 0
-  /* For some reason, this fails on some computers */
-  n = Table_length(*accsegmentpos_table);
-  keys = Table_keys(*accsegmentpos_table,NULL);
-  values = Table_values(*accsegmentpos_table,NULL);
-  for (i = 0; i < n; i++) {
-    accession = (char *) keys[i];
-    FREE(accession);
+  /* For some reason, this was failing on some computers, perhaps
+     because we weren't checking for n > 0 */
+  if ((n = Table_length(*accsegmentpos_table)) > 0) {
+    keys = Table_keys(*accsegmentpos_table,NULL);
+    values = Table_values(*accsegmentpos_table,NULL);
+    for (i = 0; i < n; i++) {
+      accession = (char *) keys[i];
+      FREE(accession);
+    }
+    for (i = 0; i < n; i++) {
+      segmentpos = (Segmentpos_T) values[i];
+      Segmentpos_free(&segmentpos);
+    }
+    FREE(values);
+    FREE(keys);
   }
-  for (i = 0; i < n; i++) {
-    segmentpos = (Segmentpos_T) values[i];
-    Segmentpos_free(&segmentpos);
-  }
-  FREE(values);
-  FREE(keys);
-#endif
 
   Table_free(&(*accsegmentpos_table));
   return;
@@ -793,12 +792,12 @@ main (int argc, char *argv[]) {
   int ncontigs;
   Table_T accsegmentpos_table;
   Tableint_T chrlength_table;
-  List_T contigtypelist = NULL;
+  List_T contigtypelist = NULL, p;
   IIT_T chromosome_iit, contig_iit;
   char *typestring;
   unsigned int genomelength;
-  char *chromosomefile, *iitfile, *old_offsetsfile, *positionsfile, *gammaptrsfile, *offsetsfile, interval_char;
-  FILE *old_offsets_fp, *fp;
+  char *chromosomefile, *iitfile, *positionsfile, *gammaptrsfile, *offsetsfile, interval_char;
+  FILE *fp;
 
   int c;
   extern int optind;
@@ -917,6 +916,12 @@ main (int argc, char *argv[]) {
     write_chromosome_file(destdir,fileroot,chrlength_table);
     write_contig_file(destdir,fileroot,accsegmentpos_table,chrlength_table,contigtypelist);
 
+    for (p = contigtypelist; p != NULL; p = List_next(p)) {
+      typestring = (char *) List_head(p);
+      FREE(typestring);
+    }
+    List_free(&contigtypelist);
+
     chrlength_table_gc(&chrlength_table);
     accsegmentpos_table_gc(&accsegmentpos_table);
 
@@ -936,6 +941,7 @@ main (int argc, char *argv[]) {
       exit(9);
     }
     genomelength = IIT_totallength(chromosome_iit);
+    IIT_free(&chromosome_iit);
     FREE(chromosomefile);
 
     iitfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
@@ -1085,11 +1091,6 @@ main (int argc, char *argv[]) {
 				   strlen("offsetscomp")+1,sizeof(char));
       sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
 	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp");
-    }
-
-    if ((old_offsets_fp = FOPEN_READ_BINARY(offsetsfile)) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",offsetsfile);
-      exit(9);
     }
 
     if (mask_lowercase_p == true) {

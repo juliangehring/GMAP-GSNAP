@@ -1,3 +1,31 @@
+2011-12-13  twu
+
+    * index.html: Made update for new version
+
+    * VERSION: Updated version number
+
+    * stage3.c: Fixed issue in trying to solve dual introns with negative query
+      coordinates
+
+2011-12-09  twu
+
+    * spanningelt.c, spanningelt.h, stage1hr.c: Alternate fix to problem with
+      positions being NULL, while npositions > 0.  Fixed Spanningelt_set so it
+      updates npositions along with positions.
+
+    * VERSION: Updated version number
+
+    * archive.html: Moved old version here
+
+    * index.html: Added new version.  Added information about users group.
+
+    * stage1hr.c: Added an extra check for positions[querypos] not being NULL,
+      needed for nonstranded modes
+
+2011-12-08  twu
+
+    * gmap_build.pl.in: Fixed bug in not assigning cmd variable
+
 2011-12-05  twu
 
     * shortread.c: Fixed bug in printing null accession for second end when

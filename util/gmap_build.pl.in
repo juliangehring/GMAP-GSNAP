@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 53700 2011-12-05 19:43:10Z twu $
+# $Id: gmap_build.pl.in 53892 2011-12-08 04:19:59Z twu $
 
 use warnings;	
 
@@ -161,7 +161,7 @@ sub create_index_offsets {
 }
 
 sub create_index_positions {
-    "cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -P";
+    $cmd = "cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -P";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";

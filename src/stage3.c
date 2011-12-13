@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 53340 2011-11-29 23:07:16Z twu $";
+static char rcsid[] = "$Id: stage3.c 54207 2011-12-13 19:40:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6873,22 +6873,26 @@ build_pairs_dualintrons (bool *singlep, int *dynprogindex, List_T path,
 	  midquerypos = midrightpair->querypos - (midrightpair->genomepos - midgenomepos);
 	  leftpair = path->first;
 	  rightpair = pairs->first;
+	  if (midquerypos <= leftpair->querypos || midquerypos >= rightpair->querypos) {
+	    /* Skip */
+
+	  } else {	  
+	    debug(printf("Stage 3 (dir %d): Traversing dual intron gap: leftquerypos = %d, midquerypos = %d, rightquerypos = %d, leftgenomepos = %d, midgenomepos = %d, rightgenomepos = %d\n",
+			 cdna_direction,leftpair->querypos,midquerypos,rightpair->querypos,
+			 leftpair->genomepos,midgenomepos,rightpair->genomepos));
 	  
-	  debug(printf("Stage 3 (dir %d): Traversing dual intron gap: leftquerypos = %d, midquerypos = %d, rightquerypos = %d, leftgenomepos = %d, midgenomepos = %d, rightgenomepos = %d\n",
-		       cdna_direction,leftpair->querypos,midquerypos,rightpair->querypos,
-		       leftpair->genomepos,midgenomepos,rightpair->genomepos));
-	  
-	  pairs = traverse_dual_genome_gap(&(*singlep),&(*dynprogindex),pairs,&path,leftpair,rightpair,
-					   chrnum,chroffset,chrpos,genomiclength,
-					   midquerypos,midgenomepos,
+	    pairs = traverse_dual_genome_gap(&(*singlep),&(*dynprogindex),pairs,&path,leftpair,rightpair,
+					     chrnum,chroffset,chrpos,genomiclength,
+					     midquerypos,midgenomepos,
 #ifdef PMAP
-					   queryaaseq_ptr,
+					     queryaaseq_ptr,
 #endif
-					   queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-					   use_genomicseg_p,cdna_direction,watsonp,
-					   jump_late_p,pairpool,dynprogL,dynprogR,
-					   maxpeelback,nullgap,extramaterial_paired,extraband_paired,
-					   defect_rate);
+					     queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
+					     use_genomicseg_p,cdna_direction,watsonp,
+					     jump_late_p,pairpool,dynprogL,dynprogR,
+					     maxpeelback,nullgap,extramaterial_paired,extraband_paired,
+					     defect_rate);
+	  }
 	}
       }
     }

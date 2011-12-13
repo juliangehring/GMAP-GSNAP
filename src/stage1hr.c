@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 53580 2011-12-02 18:20:06Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 54069 2011-12-09 22:44:05Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2080,7 +2080,7 @@ find_spanning_exact_matches (int *found_score, T this, int genestrand,
   for (mod = 0; mod < 3; mod++) {
     chrhigh = 0U;
     spanningset = Spanningelt_set(&minscore,this->forward_oligos,&this->plus_retrievedp,&this->plus_positions,
-				  this->plus_npositions,indexdb_fwd,query_lastpos,querylength,mod,/*plusp*/true);
+				  &this->plus_npositions,indexdb_fwd,query_lastpos,querylength,mod,/*plusp*/true);
     nelts = List_length(spanningset);
     array = (Spanningelt_T *) List_to_array(spanningset,NULL);
     List_free(&spanningset);
@@ -2169,7 +2169,7 @@ find_spanning_exact_matches (int *found_score, T this, int genestrand,
   for (mod = 0; mod < 3; mod++) {
     chrhigh = 0U;
     spanningset = Spanningelt_set(&minscore,this->revcomp_oligos,&this->minus_retrievedp,&this->minus_positions,
-				  this->minus_npositions,indexdb_rev,query_lastpos,querylength,mod,/*plusp*/false);
+				  &this->minus_npositions,indexdb_rev,query_lastpos,querylength,mod,/*plusp*/false);
     nelts = List_length(spanningset);
     array = (Spanningelt_T *) List_to_array(spanningset,NULL);
     List_free(&spanningset);

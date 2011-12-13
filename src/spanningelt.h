@@ -1,4 +1,4 @@
-/* $Id: spanningelt.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: spanningelt.h 54069 2011-12-09 22:44:05Z twu $ */
 #ifndef SPANNINGELT_INCLUDED
 #define SPANNINGELT_INCLUDED
 #include "bool.h"
@@ -58,7 +58,7 @@ Spanningelt_print_set (List_T spanningset);
 
 extern List_T
 Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
-		 Genomicpos_T ***stage1_positions, int *stage1_npositions,
+		 Genomicpos_T ***stage1_positions, int **stage1_npositions,
 		 Indexdb_T indexdb, int query_lastpos, int querylength,
 		 int mod, bool plusp);
 

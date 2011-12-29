@@ -784,8 +784,8 @@ events.  At the intron level, GSNAP finds splicing only between the
 set of given donor-acceptor pairs, so it is constrained not to find
 alternative splicing events, only introns included in the given list.
 For most purposes, I would recommend using known splice sites, rather
-than known introns.  Using known splice sites has been well tested,
-whereas using known introns is somewhat new and may be buggy.
+than known introns, unless you are certain that all alternative
+splicing events are known are represented in your file.
 
 GSNAP can tell the difference between known site-level and known
 intron-level splicing based on the format of the input file.  To

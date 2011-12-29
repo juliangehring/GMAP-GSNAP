@@ -1,3 +1,22 @@
+2011-12-29  twu
+
+    * README: Changed comment about splicing file with known introns possibly
+      being buggy
+
+    * VERSION: Updated version number
+
+    * index.html: Added changes for new version
+
+    * iit-read.c: If add_iit_p is true, trying filename with .iit suffix first
+      before trying filename as given
+
+    * stage3hr.c: Added check for low coordinate of new GMAP object being to the
+      left of coordinate 0
+
+2011-12-21  twu
+
+    * shortread.c: Allowing for /3 endings in second end of Illumina short reads
+
 2011-12-13  twu
 
     * index.html: Made update for new version

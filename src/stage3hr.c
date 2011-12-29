@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 52912 2011-11-21 19:18:55Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 55058 2011-12-29 02:54:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2816,11 +2816,19 @@ Stage3end_new_gmap (int nmismatches_whole, int nmatches_pretrim, int nmatches_po
     if ((genomicend = left + genomiclength) > chrhigh) {
       return (T) NULL;
     }
+    if (genomicstart > genomicend) {
+      /* Must have started before coordinate 0 */
+      return (T) NULL;
+    }
   } else {
     if ((genomicstart = left + genomiclength) > chrhigh) {
       return (T) NULL;
     }
     genomicend = left;
+    if (genomicend > genomicstart) {
+      /* Must have started before coordinate 0 */
+      return (T) NULL;
+    }
   }
 
   new = (T) MALLOC_OUT(sizeof(*new));

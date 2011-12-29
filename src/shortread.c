@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 53717 2011-12-05 23:11:31Z twu $";
+static char rcsid[] = "$Id: shortread.c 54791 2011-12-21 17:02:14Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -410,7 +410,7 @@ input_header_gzip (bool *filterp, char **restofheader, gzFile fp) {
 
 static bool stripp = true;
 
-/* Deletes /\D1/ or /\D2/ endings. */
+/* Deletes /\D1/ or /\D2 or 3/ endings. */
 static void
 strip_illumina_acc_ending (char *acc1, char *acc2) {
   char *p, *q;
@@ -427,7 +427,7 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
       q++;
     }
 
-    /* Delete "/1" or "/2" endings */
+    /* Delete "/1" or "/2 or /3" endings */
     slash1 = p[-2];
     slash2 = q[-2];
 
@@ -435,7 +435,7 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
       /* fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2); */
       stripp = false;
 
-    } else if (p[-1] != '1' || q[-1] != '2') {
+    } else if (p[-1] != '1' || (q[-1] != '2' && q[-1] != '3')) {
       /* fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2); */
       stripp = false;
 

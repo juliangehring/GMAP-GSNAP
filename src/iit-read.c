@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 49619 2011-10-12 17:07:29Z twu $";
+static char rcsid[] = "$Id: iit-read.c 55060 2011-12-29 06:27:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2261,20 +2261,19 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
   unsigned int *divpointers, stringlen, start;
   char *divstrings;
 
-  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
-    if (add_iit_p == false) {
-      /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+  if (add_iit_p == true) {
+    newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
+    sprintf(newfile,"%s.iit",filename);
+    if ((fp = FOPEN_READ_BINARY(newfile)) != NULL) {
+      filename = newfile;
+    } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+      /* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
+      FREE(newfile);
       return -1;
-    } else {
-      newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
-      sprintf(newfile,"%s.iit",filename);
-      if ((fp = FOPEN_READ_BINARY(newfile)) == NULL) {
-	/* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
-	return -1;
-      } else {
-	filename = newfile;
-      }
     }
+  } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+    return -1;
   }
 
   filesize = Access_filesize(filename);
@@ -2513,20 +2512,19 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 #endif
 
   /* printf("Reading IIT file %s\n",filename); */
-  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
-    if (add_iit_p == false) {
-      /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+  if (add_iit_p == true) {
+    newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
+    sprintf(newfile,"%s.iit",filename);
+    if ((fp = FOPEN_READ_BINARY(newfile)) != NULL) {
+      filename = newfile;
+    } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+      /* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
+      FREE(newfile);
       return NULL;
-    } else {
-      newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
-      sprintf(newfile,"%s.iit",filename);
-      if ((fp = FOPEN_READ_BINARY(newfile)) == NULL) {
-	FREE(newfile);
-	return NULL;
-      } else {
-	filename = newfile;
-      }
     }
+  } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+    return NULL;
   }
 
   new = (T) MALLOC(sizeof(*new));
@@ -2918,20 +2916,19 @@ IIT_debug (char *filename) {
   Interval_T interval;
 #endif
 
-  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
-    if (add_iit_p == false) {
-      /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+  if (add_iit_p == true) {
+    newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
+    sprintf(newfile,"%s.iit",filename);
+    if ((fp = FOPEN_READ_BINARY(newfile)) != NULL) {
+      filename = newfile;
+    } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+      /* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
+      FREE(newfile);
       return;
-    } else {
-      newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
-      sprintf(newfile,"%s.iit",filename);
-      if ((fp = FOPEN_READ_BINARY(newfile)) == NULL) {
-	/* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
-	return;
-      } else {
-	filename = newfile;
-      }
     }
+  } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+    return;
   }
 
   new = (T) MALLOC(sizeof(*new));

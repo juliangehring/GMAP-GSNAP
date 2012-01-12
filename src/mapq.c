@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mapq.c 48791 2011-09-30 18:39:38Z twu $";
+static char rcsid[] = "$Id: mapq.c 55735 2012-01-11 22:38:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -161,8 +161,8 @@ MAPQ_loglik (Compress_T query_compress, Genomicpos_T left, int querystart, int q
   int mismatch_positions[MAX_READLENGTH+1];
 
 
-  debug(printf("Computing loglik on %s from %d to %d (querystart = %d)\n",
-	       query,querystart,queryend,querystart));
+  debug(printf("Computing loglik from %d to %d (querystart = %d)\n",
+	       querystart,queryend,querystart));
   debug(
 	if (quality_string != NULL) {
 	  printf("Quality string is   %s\n",quality_string);

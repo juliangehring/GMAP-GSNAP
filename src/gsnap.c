@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 53585 2011-12-02 18:55:24Z twu $";
+static char rcsid[] = "$Id: gsnap.c 55706 2012-01-11 19:31:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -303,6 +303,7 @@ static bool merge_samechr_p = false;
 /* SAM */
 static int sam_headers_batch = -1;
 static bool sam_headers_p = true;
+static bool sam_insert_0M_p = false;
 static char *sam_read_group_id = NULL;
 static char *sam_read_group_name = NULL;
 static char *sam_read_group_library = NULL;
@@ -433,6 +434,7 @@ static struct option long_options[] = {
   {"quality-print-shift", required_argument, 0, 'j'}, /* quality_shift */
   {"sam-headers-batch", required_argument, 0, 0},	/* sam_headers_batch */
   {"no-sam-headers", no_argument, 0, 0},	/* sam_headers_p */
+  {"sam-use-0M", no_argument, 0, 0},		/* sam_insert_0M_p */
   {"read-group-id", required_argument, 0, 0},	/* sam_read_group_id */
   {"read-group-name", required_argument, 0, 0},	/* sam_read_group_name */
   {"read-group-library", required_argument, 0, 0},	/* sam_read_group_library */
@@ -1356,6 +1358,8 @@ main (int argc, char *argv[]) {
 	sam_headers_p = false;
       } else if (!strcmp(long_name,"sam-headers-batch")) {
 	sam_headers_batch = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"sam-use-0M")) {
+	sam_insert_0M_p = true;
       } else if (!strcmp(long_name,"quality-protocol")) {
 	if (user_quality_score_adj == true) {
 	  fprintf(stderr,"Cannot specify both -J (--quality-zero-score) and --quality-protocol\n");
@@ -1936,7 +1940,7 @@ main (int argc, char *argv[]) {
   } else {
     if (user_snpsdir == NULL) {
       snpsdir = genomesubdir;
-      mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,dbroot);
+      mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,fileroot);
     } else {
       snpsdir = user_snpsdir;
       mapdir = user_snpsdir;
@@ -2050,7 +2054,7 @@ main (int argc, char *argv[]) {
 			      /*divstring*/NULL,/*add_iit_p*/true,/*labels_read_p*/true)) != NULL) {
       fprintf(stderr,"Reading genes file %s locally...",genes_file);
     } else {
-      mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,dbroot);
+      mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,fileroot);
       iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
 				strlen(genes_file)+1,sizeof(char));
       sprintf(iitfile,"%s/%s",mapdir,genes_file);
@@ -2087,7 +2091,7 @@ main (int argc, char *argv[]) {
     }
 
     if (splicing_iit == NULL) {
-      mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,dbroot);
+      mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,fileroot);
       iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
 				strlen(splicing_file)+1,sizeof(char));
       sprintf(iitfile,"%s/%s",mapdir,splicing_file);
@@ -2310,21 +2314,23 @@ main (int argc, char *argv[]) {
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
 		  output_sam_p,mode);
-  Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+  Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
+		donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
 		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
   Oligoindex_hr_setup(Genome_blocks(genome));
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
 	       suboptimal_score_start,suboptimal_score_end);
-  Pair_setup(trim_mismatch_score,trim_indel_score);
-  Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
+  Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p);
+  Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
 	       splicesites,min_intronlength,max_deletionlength,
-	       expected_pairlength,pairlength_deviation);
+	       expected_pairlength,pairlength_deviation,output_sam_p);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
-		 antistranded_penalty,favor_multiexon_p);
+		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
+		 favor_multiexon_p);
   SAM_setup(quiet_if_excessive_p,maxpaths);
   Goby_setup(show_refdiff_p);
 
@@ -2855,6 +2861,8 @@ is still designed to be fast.\n\
   fprintf(stdout,"\
   --no-sam-headers               Do not print headers beginning with '@'\n\
   --sam-headers-batch=INT        Print headers only for this batch, as specified by -q\n\
+  --sam-use-0M                   Insert 0M in CIGAR between adjacent insertions and deletions\n\
+                                   Required by Picard, but can cause errors in other tools\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
   --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\

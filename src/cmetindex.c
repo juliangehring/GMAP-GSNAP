@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: cmetindex.c 52835 2011-11-19 00:18:52Z twu $";
+static char rcsid[] = "$Id: cmetindex.c 55475 2012-01-07 00:01:37Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -190,7 +190,7 @@ shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
 
 static Positionsptr_T *
 compute_offsets_ct (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T mask) {
-  Positionsptr_T *offsets, *sizes;
+  Positionsptr_T *offsets;
   Storedoligomer_T reduced;
   int i;
 #ifdef DEBUG
@@ -199,7 +199,6 @@ compute_offsets_ct (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T
 
   /* Fill with sizes */
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
-  sizes = (Positionsptr_T *) CALLOC(oligospace,sizeof(Positionsptr_T));
 
   for (i = 0; i < oligospace; i++) {
 #if 0
@@ -211,15 +210,15 @@ compute_offsets_ct (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T
     debug(
 	  nt1 = shortoligo_nt(i,index1part);
 	  nt2 = shortoligo_nt(reduced,index1part);
-	  printf("For oligo %s, updating sizes for %s from %d",nt1,nt2,sizes[reduced]);
+	  printf("For oligo %s, updating sizes for %s from %d",nt1,nt2,offsets[reduced+1]);
 	  );
 #ifdef WORDS_BIGENDIAN
-    sizes[reduced] += (Bigendian_convert_uint(oldoffsets[i+1]) - Bigendian_convert_uint(oldoffsets[i]));
+    /*size*/offsets[reduced+1] += (Bigendian_convert_uint(oldoffsets[i+1]) - Bigendian_convert_uint(oldoffsets[i]));
 #else
-    sizes[reduced] += (oldoffsets[i+1] - oldoffsets[i]);
+    /*size*/offsets[reduced+1] += (oldoffsets[i+1] - oldoffsets[i]);
 #endif
     debug(
-	  printf(" to %d\n",sizes[reduced]);
+	  printf(" to %d\n",offsets[reduced+1]);
 	  FREE(nt2);
 	  FREE(nt1);
 	  );
@@ -227,19 +226,19 @@ compute_offsets_ct (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T
 
   offsets[0] = 0U;
   for (i = 1; i <= oligospace; i++) {
-    offsets[i] = sizes[i-1] + offsets[i-1];
+    offsets[i] = offsets[i-1] + /*size*/offsets[i];
     debug(if (offsets[i] != offsets[i-1]) {
 	    printf("Offset for %06X: %u\n",i,offsets[i]);
 	  });
   }
 
-  FREE(sizes);
   return offsets;
 }
 
+
 static Positionsptr_T *
 compute_offsets_ga (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T mask) {
-  Positionsptr_T *offsets, *sizes;
+  Positionsptr_T *offsets;
   Storedoligomer_T reduced;
   int i;
 #ifdef DEBUG
@@ -248,22 +247,21 @@ compute_offsets_ga (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T
 
   /* Fill with sizes */
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
-  sizes = (Positionsptr_T *) CALLOC(oligospace,sizeof(Positionsptr_T));
 
   for (i = 0; i < oligospace; i++) {
     reduced = Cmet_reduce_ga(i) & mask;
     debug(
 	  nt1 = shortoligo_nt(i,index1part);
 	  nt2 = shortoligo_nt(reduced,index1part);
-	  printf("For oligo %s, updating sizes for %s from %d",nt1,nt2,sizes[reduced]);
+	  printf("For oligo %s, updating sizes for %s from %d",nt1,nt2,offsets[reduced+1]);
 	  );
 #ifdef WORDS_BIGENDIAN
-    sizes[reduced] += (Bigendian_convert_uint(oldoffsets[i+1]) - Bigendian_convert_uint(oldoffsets[i]));
+    /*size*/offsets[reduced+1] += (Bigendian_convert_uint(oldoffsets[i+1]) - Bigendian_convert_uint(oldoffsets[i]));
 #else
-    sizes[reduced] += (oldoffsets[i+1] - oldoffsets[i]);
+    /*size*/offsets[reduced+1] += (oldoffsets[i+1] - oldoffsets[i]);
 #endif
     debug(
-	  printf(" to %d\n",sizes[reduced]);
+	  printf(" to %d\n",offsets[reduced+1]);
 	  FREE(nt2);
 	  FREE(nt1);
 	  );
@@ -271,29 +269,30 @@ compute_offsets_ga (Positionsptr_T *oldoffsets, int oligospace, Storedoligomer_T
 
   offsets[0] = 0U;
   for (i = 1; i <= oligospace; i++) {
-    offsets[i] = sizes[i-1] + offsets[i-1];
+    offsets[i] = offsets[i-1] + /*size*/offsets[i];
     debug(if (offsets[i] != offsets[i-1]) {
 	    printf("Offset for %06X: %u\n",i,offsets[i]);
 	  });
   }
 
-  FREE(sizes);
   return offsets;
 }
 
 
 static void
-compute_positions_ct (char *gammaptrs_filename, char *offsetscomp_filename,
-		      FILE *positions_fp, Positionsptr_T *offsets, Positionsptr_T *oldoffsets,
-		      Genomicpos_T *oldpositions, int oligospace, Storedoligomer_T mask) {
+compute_ct (char *gammaptrs_filename, char *offsetscomp_filename,
+	    FILE *positions_fp, Positionsptr_T *oldoffsets, Genomicpos_T *oldpositions,
+	    int oligospace, Storedoligomer_T mask) {
   Genomicpos_T *positions;
   Positionsptr_T *snpoffsets, j;
   Storedoligomer_T reduced;
   int i, k;
-  Positionsptr_T *pointers, preunique_totalcounts, block_start, block_end, npositions, offsets_ptr;
+  Positionsptr_T *pointers, *offsets, preunique_totalcounts, block_start, block_end, npositions, offsets_ptr;
 #ifdef DEBUG
   char *nt1, *nt2;
 #endif
+
+  offsets = compute_offsets_ct(oldoffsets,oligospace,mask);
 
   preunique_totalcounts = offsets[oligospace];
   if (preunique_totalcounts == 0) {
@@ -310,13 +309,10 @@ compute_positions_ct (char *gammaptrs_filename, char *offsetscomp_filename,
     }
   }
 
-  /* Copy offsets */
-  pointers = (Positionsptr_T *) CALLOC(oligospace,sizeof(Positionsptr_T));
-  for (i = 0; i < oligospace; i++) {
-    pointers[i] = offsets[i];
-  }
-
+  /* Point to offsets and revise (previously copied) */
+  pointers = offsets;
   fprintf(stderr,"Rearranging CT positions...");
+
   for (i = 0; i < oligospace; i++) {
     if (i % MONITOR_INTERVAL == 0) {
       fprintf(stderr,".");
@@ -346,10 +342,13 @@ compute_positions_ct (char *gammaptrs_filename, char *offsetscomp_filename,
     }
 #endif
   }
+  FREE(offsets);
   fprintf(stderr,"done\n");
 
 
   fprintf(stderr,"Sorting CT positions...");
+  offsets = compute_offsets_ct(oldoffsets,oligospace,mask);
+
   /* Sort positions in each block */
   if (snps_root) {
     k = 0;
@@ -398,23 +397,26 @@ compute_positions_ct (char *gammaptrs_filename, char *offsetscomp_filename,
     FREE(snpoffsets);
   }
 
+  FREE(offsets);
   FREE(positions);
 
   return;
 }
 
 static void
-compute_positions_ga (char *gammaptrs_filename, char *offsetscomp_filename,
-		      FILE *positions_fp, Positionsptr_T *offsets, Positionsptr_T *oldoffsets,
-		      Genomicpos_T *oldpositions, int oligospace, Storedoligomer_T mask) {
+compute_ga (char *gammaptrs_filename, char *offsetscomp_filename,
+	    FILE *positions_fp, Positionsptr_T *oldoffsets, Genomicpos_T *oldpositions,
+	    int oligospace, Storedoligomer_T mask) {
   Genomicpos_T *positions;
   Positionsptr_T *snpoffsets, j;
   Storedoligomer_T reduced;
   int i, k;
-  Positionsptr_T *pointers, preunique_totalcounts, block_start, block_end, npositions, offsets_ptr;
+  Positionsptr_T *pointers, *offsets, preunique_totalcounts, block_start, block_end, npositions, offsets_ptr;
 #ifdef DEBUG
   char *nt1, *nt2;
 #endif
+
+  offsets = compute_offsets_ga(oldoffsets,oligospace,mask);
 
   preunique_totalcounts = offsets[oligospace];
   if (preunique_totalcounts == 0) {
@@ -431,13 +433,10 @@ compute_positions_ga (char *gammaptrs_filename, char *offsetscomp_filename,
     }
   }
 
-  /* Copy offsets */
-  pointers = (Positionsptr_T *) CALLOC(oligospace,sizeof(Positionsptr_T));
-  for (i = 0; i < oligospace; i++) {
-    pointers[i] = offsets[i];
-  }
-
+  /* Point to offsets and revise (previously copied) */
+  pointers = offsets;
   fprintf(stderr,"Rearranging GA positions...");
+
   for (i = 0; i < oligospace; i++) {
     if (i % MONITOR_INTERVAL == 0) {
       fprintf(stderr,".");
@@ -468,10 +467,13 @@ compute_positions_ga (char *gammaptrs_filename, char *offsetscomp_filename,
     }
 #endif
   }
+  FREE(offsets);
   fprintf(stderr,"done\n");
 
 
   fprintf(stderr,"Sorting GA positions...");
+  offsets = compute_offsets_ga(oldoffsets,oligospace,mask);
+
   /* Sort positions in each block */
   if (snps_root) {
     k = 0;
@@ -520,6 +522,7 @@ compute_positions_ga (char *gammaptrs_filename, char *offsetscomp_filename,
     FREE(snpoffsets);
   }
 
+  FREE(offsets);
   FREE(positions);
   return;
 }
@@ -536,7 +539,7 @@ main (int argc, char *argv[]) {
     *gammaptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
     *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
   char *new_gammaptrs_filename, *new_offsetscomp_filename;
-  Positionsptr_T *offsets_ct, *offsets_ga, *ref_offsets;
+  Positionsptr_T *ref_offsets;
   Storedoligomer_T mask;
   Genomicpos_T *ref_positions;
   int oligospace;
@@ -644,10 +647,8 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Compute and write CT files */
-  offsets_ct = compute_offsets_ct(ref_offsets,oligospace,mask);
-  compute_positions_ct(new_gammaptrs_filename,new_offsetscomp_filename,
-		       positions_fp,offsets_ct,ref_offsets,ref_positions,oligospace,mask);
-  FREE(offsets_ct);
+  compute_ct(new_gammaptrs_filename,new_offsetscomp_filename,
+	     positions_fp,ref_offsets,ref_positions,oligospace,mask);
   fclose(positions_fp);
   FREE(new_offsetscomp_filename);
   if (index1part != offsetscomp_basesize) {
@@ -680,10 +681,8 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Compute and write GA files */
-  offsets_ga = compute_offsets_ga(ref_offsets,oligospace,mask);
-  compute_positions_ga(new_gammaptrs_filename,new_offsetscomp_filename,
-		       positions_fp,offsets_ga,ref_offsets,ref_positions,oligospace,mask);
-  FREE(offsets_ga);
+  compute_ga(new_gammaptrs_filename,new_offsetscomp_filename,
+	     positions_fp,ref_offsets,ref_positions,oligospace,mask);
   fclose(positions_fp);
   FREE(new_offsetscomp_filename);
   if (index1part != offsetscomp_basesize) {
@@ -693,12 +692,18 @@ main (int argc, char *argv[]) {
 
 
   /* Clean up */
+  FREE(ref_offsets);
+
   munmap((void *) ref_positions,ref_positions_len);
   close(ref_positions_fd);
 
   FREE(positions_filename);
   FREE(offsetscomp_filename);
   FREE(gammaptrs_filename);
+
+  FREE(dbversion);
+  FREE(fileroot);
+  FREE(sourcedir);
 
   return 0;
 }

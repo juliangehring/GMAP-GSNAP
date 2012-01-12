@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 51753 2011-11-04 02:05:22Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 55351 2012-01-05 20:38:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -260,11 +260,11 @@ skip_sequence (Genomicpos_T seglength) {
 }
 
 static bool
-process_sequence_aux (Table_T accsegmentpos_table, Tableint_T chrlength_table, char *fileroot,
-		      int ncontigs) {
+process_sequence_aux (Genomicpos_T *seglength, Table_T accsegmentpos_table, Tableint_T chrlength_table,
+		      char *fileroot, int ncontigs) {
   char Buffer[BUFFERSIZE], accession_p[BUFFERSIZE], *accession, 
     chrpos_string[BUFFERSIZE], *chr_string, *coords;
-  Genomicpos_T chrpos1, chrpos2, lower, upper, seglength;
+  Genomicpos_T chrpos1, chrpos2, lower, upper;
   Genomicpos_T universal_coord = 0U;
   bool revcompp;
   int nitems;
@@ -347,14 +347,14 @@ process_sequence_aux (Table_T accsegmentpos_table, Tableint_T chrlength_table, c
   }
 
   if (rawp == true) {
-    seglength = upper - lower;
-    fprintf(stderr,"Skipping %u characters\n",seglength);
-    skip_sequence(seglength);
+    *seglength = upper - lower;
+    fprintf(stderr,"Skipping %u characters\n",*seglength);
+    skip_sequence(*seglength);
   } else {
-    seglength = count_sequence();
-    if (seglength != upper - lower) {
+    *seglength = count_sequence();
+    if (*seglength != upper - lower) {
       fprintf(stderr,"%s has expected sequence length %u-%u=%u but actual length %u\n",
-	      accession,upper,lower,upper-lower,seglength);
+	      accession,upper,lower,upper-lower,*seglength);
     }
   }
 
@@ -364,7 +364,7 @@ process_sequence_aux (Table_T accsegmentpos_table, Tableint_T chrlength_table, c
 
   store_accession(accsegmentpos_table,chrlength_table,
 		  accession,chr_string,lower,upper,revcompp,
-		  seglength,/*contigtype*/0,universal_coord);
+		  *seglength,/*contigtype*/0,universal_coord);
 
   return true;
 }
@@ -797,6 +797,7 @@ main (int argc, char *argv[]) {
   char *typestring;
   unsigned int genomelength;
   char *chromosomefile, *iitfile, *positionsfile, *gammaptrsfile, *offsetsfile, interval_char;
+  Genomicpos_T totalnts, seglength;
   FILE *fp;
 
   int c;
@@ -905,9 +906,20 @@ main (int argc, char *argv[]) {
     contigtypelist = List_push(NULL,typestring);
 
     ncontigs = 0;
-    while (process_sequence_aux(accsegmentpos_table,chrlength_table,fileroot,ncontigs) == true) {
+    totalnts = 0U;
+    while (process_sequence_aux(&seglength,accsegmentpos_table,chrlength_table,fileroot,ncontigs) == true) {
+      if (totalnts + seglength < totalnts) {
+	/* Exceeds 32 bits */
+	fprintf(stderr,"The total length of genomic sequence exceeds 2^32 = 4,294,967,296 bp, which the GMAP index format cannot handle\n");
+	exit(9);
+      } else {
+	totalnts = totalnts + seglength;
+      }
+
       ncontigs++;
     }
+    fprintf(stderr,"Total genomic length = %u bp\n",totalnts);
+
     if (ncontigs == 0) {
       fprintf(stderr,"No contig information was provided to gmapindex\n");
       exit(9);

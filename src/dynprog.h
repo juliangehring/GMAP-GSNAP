@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 52836 2011-11-19 00:20:07Z twu $ */
+/* $Id: dynprog.h 55442 2012-01-06 22:16:29Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -27,7 +27,8 @@ typedef struct Dynprog_T *Dynprog_T;
 #define T Dynprog_T
 
 extern void
-Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
+Dynprog_setup (bool novelsplicingp_in,
+	       IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	       int donor_typeint_in, int acceptor_typeint_in,
 	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
 	       Genomicpos_T *splicedists_in, int nsplicesites_in,

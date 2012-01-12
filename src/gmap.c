@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 53583 2011-12-02 18:23:41Z twu $";
+static char rcsid[] = "$Id: gmap.c 55706 2012-01-11 19:31:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -268,6 +268,7 @@ static char *sam_read_group_name = NULL;
 static char *sam_read_group_library = NULL;
 static char *sam_read_group_platform = NULL;
 #endif
+static bool sam_insert_0M_p = false;
 
 static bool orderedp = false;
 static bool failsonlyp = false;
@@ -415,6 +416,7 @@ static struct option long_options[] = {
   {"quality-protocol", required_argument, 0, 0}, /* quality_shift */
   {"quality-print-shift", required_argument, 0, 'j'}, /* quality_shift */
   {"no-sam-headers", no_argument, 0, 0},	/* sam_headers_p */
+  {"sam-use-0M", no_argument, 0, 0},		/* sam_insert_0M_p */
   {"read-group-id", required_argument, 0, 0},	/* sam_read_group_id */
   {"read-group-name", required_argument, 0, 0},	/* sam_read_group_name */
   {"read-group-library", required_argument, 0, 0}, /* sam_read_group_library */
@@ -2539,6 +2541,8 @@ main (int argc, char *argv[]) {
 #ifndef PMAP
       } else if (!strcmp(long_name,"no-sam-headers")) {
 	sam_headers_p = false;
+      } else if (!strcmp(long_name,"sam-use-0M")) {
+	sam_insert_0M_p = true;
       } else if (!strcmp(long_name,"quality-protocol")) {
 	if (user_quality_shift == true) {
 	  fprintf(stderr,"Cannot specify both -j (--quality-print-shift) and --quality-protocol\n");
@@ -2955,7 +2959,7 @@ main (int argc, char *argv[]) {
       }
 
       if (splicing_iit == NULL) {
-	mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,dbroot);
+	mapdir = Datadir_find_mapdir(/*user_mapdir*/NULL,genomesubdir,fileroot);
 	iitfile = (char *) CALLOC(strlen(mapdir)+strlen("/")+
 				  strlen(splicing_file)+1,sizeof(char));
 	sprintf(iitfile,"%s/%s",mapdir,splicing_file);
@@ -3297,14 +3301,16 @@ main (int argc, char *argv[]) {
 #endif
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
 	       suboptimal_score_start,suboptimal_score_end);
-  Dynprog_setup(splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+  Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
+		donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
 		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
-  Pair_setup(trim_mismatch_score,trim_indel_score);
-  Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
+  Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p);
+  Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
 	       splicesites,min_intronlength,max_deletionlength,
-	       /*expected_pairlength*/0,/*pairlength_deviation*/0);
+	       /*expected_pairlength*/0,/*pairlength_deviation*/0,
+	       /*output_sam_p*/printtype == SAM ? true : false);
   Splicetrie_setup(splicesites,splicefrags_ref,splicefrags_alt,
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		   /*snpp*/false,amb_closest_p,/*amb_clip_p*/true,/*min_shortend*/2);
@@ -3711,6 +3717,8 @@ Output options\n\
   fprintf(stdout,"Options for SAM output\n");
   fprintf(stdout,"\
   --no-sam-headers               Do not print headers beginning with '@'\n\
+  --sam-use-0M                   Insert 0M in CIGAR between adjacent insertions and deletions\n\
+                                   Required by Picard, but can cause errors in other tools\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
   --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\

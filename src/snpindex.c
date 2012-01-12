@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 44869 2011-08-13 18:55:02Z twu $";
+static char rcsid[] = "$Id: snpindex.c 55337 2012-01-05 16:46:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -772,7 +772,10 @@ main (int argc, char *argv[]) {
   char *sourcedir = NULL, *destdir = NULL, *mapdir = NULL;
   IIT_T chromosome_iit, snps_iit;
   Genome_T genome;
-  Positionsptr_T *offsets, *snp_offsets, *ref_offsets, npositions;
+  Positionsptr_T *offsets, *snp_offsets, *ref_offsets;
+#ifdef EXTRA_ALLOCATION
+  Positionsptr_T npositions;
+#endif
   Genomicpos_T *snp_positions, *ref_positions, nblocks;
   UINT4 *snp_blocks;
   int oligospace, i;
@@ -935,6 +938,7 @@ main (int argc, char *argv[]) {
   fprintf(stderr,"Writing filename %s...",filename);
   FWRITE_UINTS(snp_blocks,nblocks*3,genome_fp);
   fclose(genome_fp);
+  FREE(snp_blocks);
   FREE(filename);
   fprintf(stderr,"done\n");
 
@@ -945,8 +949,8 @@ main (int argc, char *argv[]) {
 
 
   /* Read reference offsets and update */
+#ifdef EXTRA_ALLOCATION
   ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
-
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
   offsets[0] = 0U;
   for (i = 1; i <= oligospace; i++) {
@@ -958,6 +962,22 @@ main (int argc, char *argv[]) {
 #endif
     offsets[i] = offsets[i-1] + npositions;
   }
+
+#else
+  /* This version saves on one allocation of oligospace * sizeof(Positionsptr_T) */
+  offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
+  for (i = oligospace; i >= 1; i--) {
+#ifdef WORDS_BIGENDIAN
+    offsets[i] = Bigendian_convert_uint(offsets[i]) - Bigendian_convert_uint(offsets[i-1]);
+#else
+    offsets[i] = offsets[i] - offsets[i-1];
+#endif
+  }
+
+  for (i = 1; i <= oligospace; i++) {
+    offsets[i] = offsets[i-1] + offsets[i] + (snp_offsets[i] - snp_offsets[i-1]);
+  }
+#endif
 
 
   /* Write offsets */
@@ -1002,6 +1022,10 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   fprintf(stderr,"Merging snp positions with reference positions\n");
+#ifndef EXTRA_ALLOCATION
+  ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
+#endif
+
   for (i = 0; i < oligospace; i++) {
 
 #ifdef WORDS_BIGENDIAN
@@ -1014,6 +1038,7 @@ main (int argc, char *argv[]) {
 		    &(ref_positions[ref_offsets[i]]),&(ref_positions[ref_offsets[i+1]]),i,index1part);
 #endif
   }
+  FREE(ref_offsets);
   fclose(positions_fp);
 
 
@@ -1044,8 +1069,13 @@ main (int argc, char *argv[]) {
     sprintf(filename,"%s/%s.iit",destdir,snps_root);
   }
 
+  FREE(dbversion);
+  FREE(fileroot);
+  FREE(sourcedir);
+
+
   if (Access_file_exists_p(filename) == true) {
-    fprintf(stderr,"SNP genome indices created.  IIT file already present as %s\n",filename);
+    fprintf(stderr,"SNP genome indices created.  IIT file already present as %s, so no need to install\n",filename);
   } else if (argc > 1) {
     fprintf(stderr,"SNP genome indices created.  Need to install IIT file %s as %s\n",
 	    argv[1],filename);
@@ -1054,6 +1084,8 @@ main (int argc, char *argv[]) {
 	    mapdir,snps_root,filename);
     FREE(mapdir);
   }
+
+  FREE(filename);
 
   return 0;
 }

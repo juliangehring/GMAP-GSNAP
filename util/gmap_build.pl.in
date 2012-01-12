@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 53892 2011-12-08 04:19:59Z twu $
+# $Id: gmap_build.pl.in 55632 2012-01-10 20:00:04Z twu $
 
 use warnings;	
 
@@ -180,7 +180,9 @@ sub install_db {
 	"genomecomp", 
 	"version");
 	
-    push @suffixes,sprintf "ref%d%d3gammaptrs",$basesize,$kmersize;
+    if ($kmersize > $basesize) {
+	push @suffixes,sprintf "ref%d%d3gammaptrs",$basesize,$kmersize;
+    }
     push @suffixes,sprintf "ref%d%d3offsetscomp",$basesize,$kmersize;
     push @suffixes,sprintf "ref%d%d3positions",$basesize,$kmersize;
 

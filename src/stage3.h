@@ -1,4 +1,4 @@
-/* $Id: stage3.h 52863 2011-11-20 23:53:35Z twu $ */
+/* $Id: stage3.h 55702 2012-01-11 19:10:27Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -40,12 +40,13 @@ typedef enum {NO_STAGE3DEBUG, POST_STAGE2, POST_SMOOTHING, POST_SINGLES,
 #define T Stage3_T
 
 extern void
-Stage3_setup (bool splicingp_in,
+Stage3_setup (bool splicingp_in, bool novelsplicingp_in,
 	      IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	      int donor_typeint_in, int acceptor_typeint_in,
 	      Genomicpos_T *splicesites_in,
 	      int min_intronlength_in, int max_deletionlength_in,
-	      int expected_pairlength_in, int pairlength_deviation_in);
+	      int expected_pairlength_in, int pairlength_deviation_in,
+	      bool output_sam_p_in);
 
 extern bool
 Stage3_watsonp (T this);

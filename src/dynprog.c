@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 53340 2011-11-29 23:07:16Z twu $";
+static char rcsid[] = "$Id: dynprog.c 55442 2012-01-06 22:16:29Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -92,6 +92,7 @@ static char rcsid[] = "$Id: dynprog.c 53340 2011-11-29 23:07:16Z twu $";
 
 
 
+#define NEG_INFINITY -1000000
 #define ONESIDEGAP 1
 
 /*
@@ -281,8 +282,8 @@ typedef char Direction_T;
 #define STOP 0
 
 
-static IIT_T splicesites_iit;
-static int *splicesites_divint_crosstable;
+static IIT_T splicing_iit;
+static int *splicing_divint_crosstable;
 static int donor_typeint;
 static int acceptor_typeint;
 
@@ -295,16 +296,21 @@ static unsigned int *triecontents_obs;
 static unsigned int *trieoffsets_max;
 static unsigned int *triecontents_max;
 
+static bool novelsplicingp;
+
 
 void
-Dynprog_setup (IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
+Dynprog_setup (bool novelsplicingp_in,
+	       IIT_T splicing_iit_in, int *splicing_divint_crosstable_in,
 	       int donor_typeint_in, int acceptor_typeint_in,
 	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
 	       Genomicpos_T *splicedists_in, int nsplicesites_in,
 	       unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
 	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in) {
-  splicesites_iit = splicesites_iit_in;
-  splicesites_divint_crosstable = splicesites_divint_crosstable_in;
+  novelsplicingp = novelsplicingp_in;
+
+  splicing_iit = splicing_iit_in;
+  splicing_divint_crosstable = splicing_divint_crosstable_in;
   donor_typeint = donor_typeint_in;
   acceptor_typeint = acceptor_typeint_in;
 
@@ -1442,7 +1448,7 @@ static void
 find_best_endpoint_to_queryend_indels (int *finalscore, int *bestr, int *bestc, int **matrix, 
 				       int length1, int length2, int extraband_end_or_paired,
 				       bool jump_late_p) {
-  int bestscore = -1000000;
+  int bestscore = NEG_INFINITY;
   int r, c;
   int rband, lband, clo, chigh;
   /* No need for loffset or cmid because they apply only for cdnaend
@@ -1522,7 +1528,7 @@ static void
 find_best_endpoint_onegap (int *finalscore, int *bestr, int *bestc, int **matrix, 
 			   int length1, int length2, int extraband_end,
 			   bool extend_mismatch_p) {
-  int bestscore = -1000000;
+  int bestscore = NEG_INFINITY;
   int r, c;
   int rband, lband, clo, chigh;
   /* No need for loffset or cmid because they apply only for cdnaend
@@ -1571,7 +1577,7 @@ find_best_endpoint_onegap (int *finalscore, int *bestr, int *bestc, int **matrix
 static void
 find_best_endpoint_nogap_fwd (int *finalscore, int *bestr, int *bestc, int **matrix, int diaglength,
 			      char *sequenceuc2, char *dinucleotide) {
-  int bestscore = -1000000, score;
+  int bestscore = NEG_INFINITY, score;
   int rc;
   /* No need for loffset or cmid because they apply only for cdnaend
      == FIVE, which doesn't require searching */
@@ -1600,7 +1606,7 @@ find_best_endpoint_nogap_fwd (int *finalscore, int *bestr, int *bestc, int **mat
 static void
 find_best_endpoint_nogap_rev (int *finalscore, int *bestr, int *bestc, int **matrix, int diaglength,
 			      char *revsequenceuc2, char *dinucleotide) {
-  int bestscore = -1000000, score;
+  int bestscore = NEG_INFINITY, score;
   int rc;
   /* No need for loffset or cmid because they apply only for cdnaend
      == FIVE, which doesn't require searching */
@@ -1630,7 +1636,7 @@ find_best_endpoint_nogap_rev (int *finalscore, int *bestr, int *bestc, int **mat
 static void
 find_best_endpoint_length2 (int *finalscore, int *bestr, int **matrix, Direction_T **directions,
 			    int length1, int length2, int extraband_end) {
-  int bestscore = -1000000;
+  int bestscore = NEG_INFINITY;
   int r;
   /* No need for loffset or cmid because they apply only for cdnaend
      == FIVE, which doesn't require searching */
@@ -2137,38 +2143,26 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
     splicesitepos = chrpos + leftoffset + cL;
     if (cdna_direction > 0) {
       *left_prob = Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("1. donor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/+1)));
+      debug9(printf("1. donor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*left_prob,left_known[cL]));
 
     } else {
       *left_prob = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("2. antiacceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/-1)));
+      debug9(printf("2. antiacceptor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*left_prob,left_known[cL]));
 
     }
   } else {
     splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
     if (cdna_direction > 0) {
       *left_prob = Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("3. antidonor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/-1)));
+      debug9(printf("3. antidonor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*left_prob,left_known[cL]));
 
     } else {
       *left_prob = Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("4. acceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,sequenceuc2L[cL],sequenceuc2L[cL+1],*left_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/+1)));
+      debug9(printf("4. acceptor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*left_prob,left_known[cL]));
     }
   }
 
@@ -2190,37 +2184,25 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
     splicesitepos = chrpos + rightoffset - cR + 1;
     if (cdna_direction > 0) {
       *right_prob = Maxent_hr_acceptor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("5. acceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/+1)));
+      debug9(printf("5. acceptor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*right_prob,right_known[cR]));
     } else {
       *right_prob = Maxent_hr_antidonor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("6. antidonor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/-1)));
+      debug9(printf("6. antidonor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*right_prob,right_known[cR]));
 
     }
   } else {
     splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
     if (cdna_direction > 0) {
       *right_prob = Maxent_hr_antiacceptor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("7. antiacceptor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/-1)));
+      debug9(printf("7. antiacceptor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*right_prob,right_known[cR]));
 
     } else {
       *right_prob = Maxent_hr_donor_prob(chroffset + splicesitepos,chroffset);
-      debug9(printf("8. donor splicesitepos is %u (%c%c), prob %f, known %d\n",
-		    splicesitepos,revsequenceuc2R[-cR-1],revsequenceuc2R[-cR],*right_prob,
-		    splicesites_iit &&
-		    IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-						       splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/+1)));
+      debug9(printf("8. donor splicesitepos is %u, prob %f, known %d\n",
+		    splicesitepos,*right_prob,right_known[cR]));
     }
   }
 
@@ -2228,7 +2210,7 @@ get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
 }
 
 
-static void
+static bool
 bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *bestcR,
 		   int *best_introntype, double *left_prob, double *right_prob,
 		   int **matrixL, int **matrixR, Direction_T **directionsL, Direction_T **directionsR, 
@@ -2239,6 +2221,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
 		   Genomicpos_T genomiclength, char *genomicuc_ptr, bool use_genomicseg_p,
 		   bool halfp, bool finalp, bool use_probabilities_p, int score_threshold) {
+  bool result;
   int bestscore = -100000, scoreL, scoreR, scoreI, bestscoreI = -100000;
   int rL, rR, cL, cR;
   int lbandL, rbandL, cloL, chighL;
@@ -2247,7 +2230,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   int *leftdi, *rightdi, introntype;
   int *left_known, *right_known;
   double *left_probabilities, *right_probabilities, probL, probR, bestprob;
-  Genomicpos_T splicesitepos;
+  Genomicpos_T splicesitepos, splicesitepos1, splicesitepos2;
+  bool bestp;
 
 
   debug(printf("Running bridge_intron_gap with use_probabilities_p %d\n",use_probabilities_p));
@@ -2300,15 +2284,15 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   }
   rightdi[length2R-1] = rightdi[length2R] = 0x00;
 
-  /* Handle known splice sites */
   left_known = (int *) CALLOC(length2L+1,sizeof(int));
   right_known = (int *) CALLOC(length2R+1,sizeof(int));
-  if (splicesites_iit != NULL) {
+  if (splicing_iit != NULL && donor_typeint >= 0 && acceptor_typeint >= 0) {
+    /* Handle known splicing, splice site level */
     if (watsonp == true) {
       if (cdna_direction > 0) {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + leftoffset + cL;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/+1) == true) {
 	    debug5(printf("Found known donor at %u\n",splicesitepos));
 	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
@@ -2317,7 +2301,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + rightoffset - cR + 1;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/+1) == true) {
 	    debug5(printf("Found known acceptor at %u\n",splicesitepos));
 	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
@@ -2327,7 +2311,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
       } else {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + leftoffset + cL;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/-1) == true) {
 	    debug5(printf("Found known antiacceptor at %u\n",splicesitepos));
 	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
@@ -2336,7 +2320,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + rightoffset - cR + 1;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/-1) == true) {
 	    debug5(printf("Found known antidonor at %u\n",splicesitepos));
 	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
@@ -2348,7 +2332,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
       if (cdna_direction > 0) {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/-1) == true) {
 	    debug5(printf("Found known antidonor at %u\n",splicesitepos));
 	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
@@ -2357,7 +2341,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/-1) == true) {
 	    debug5(printf("Found known antiacceptor at %u\n",splicesitepos));
 	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
@@ -2367,7 +2351,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
       } else {
 	for (cL = 0; cL < length2L - 1; cL++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,acceptor_typeint,/*sign*/+1) == true) {
 	    debug5(printf("Found known acceptor at %u\n",splicesitepos));
 	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
@@ -2376,8 +2360,91 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
 	for (cR = 0; cR < length2R - 1; cR++) {
 	  splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
-	  if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
+	  if (IIT_exists_with_divno_typed_signed(splicing_iit,splicing_divint_crosstable[chrnum],
 						 splicesitepos,splicesitepos+1U,donor_typeint,/*sign*/+1) == true) {
+	    debug5(printf("Found known donor at %u\n",splicesitepos));
+	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+      }
+    }
+
+  } else if (splicing_iit != NULL) {
+    /* Handle known splicing, intron level */
+    if (watsonp == true) {
+      if (cdna_direction > 0) {
+	for (cL = 0; cL < length2L - 1; cL++) {
+	  splicesitepos = chrpos + leftoffset + cL;
+	  if (IIT_low_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				      splicesitepos,/*sign*/+1) == true) {
+	    debug5(printf("Found known donor at %u\n",splicesitepos));
+	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+
+	for (cR = 0; cR < length2R - 1; cR++) {
+	  splicesitepos = chrpos + rightoffset - cR + 1;
+	  if (IIT_high_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				       splicesitepos+1U,/*sign*/+1) == true) {
+	    debug5(printf("Found known acceptor at %u\n",splicesitepos+1U));
+	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+
+      } else {
+	for (cL = 0; cL < length2L - 1; cL++) {
+	  splicesitepos = chrpos + leftoffset + cL;
+	  if (IIT_low_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				      splicesitepos,/*sign*/-1) == true) {
+	    debug5(printf("Found known antiacceptor at %u\n",splicesitepos));
+	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+
+	for (cR = 0; cR < length2R - 1; cR++) {
+	  splicesitepos = chrpos + rightoffset - cR + 1;
+	  if (IIT_high_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				       splicesitepos+1U,/*sign*/-1) == true) {
+	    debug5(printf("Found known antidonor at %u\n",splicesitepos+1U));
+	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+      }
+
+    } else {
+      if (cdna_direction > 0) {
+	for (cL = 0; cL < length2L - 1; cL++) {
+	  splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
+	  if (IIT_high_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				       splicesitepos+1U,/*sign*/-1) == true) {
+	    debug5(printf("Found known antidonor at %u\n",splicesitepos+1U));
+	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+
+	for (cR = 0; cR < length2R - 1; cR++) {
+	  splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
+	  if (IIT_low_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				      splicesitepos,/*sign*/-1) == true) {
+	    debug5(printf("Found known antiacceptor at %u\n",splicesitepos));
+	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+
+      } else {
+	for (cL = 0; cL < length2L - 1; cL++) {
+	  splicesitepos = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
+	  if (IIT_high_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				       splicesitepos+1U,/*sign*/+1) == true) {
+	    debug5(printf("Found known acceptor at %u\n",splicesitepos));
+	    left_known[cL] = KNOWN_SPLICESITE_REWARD;
+	  }
+	}
+
+	for (cR = 0; cR < length2R - 1; cR++) {
+	  splicesitepos = chrpos + (genomiclength - 1) - rightoffset + cR;
+	  if (IIT_low_exists_signed_p(splicing_iit,splicing_divint_crosstable[chrnum],
+				      splicesitepos,/*sign*/+1) == true) {
 	    debug5(printf("Found known donor at %u\n",splicesitepos));
 	    right_known[cR] = KNOWN_SPLICESITE_REWARD;
 	  }
@@ -2394,7 +2461,94 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   lbandR = extraband_paired;
 
 
-  if (use_probabilities_p == false) {
+  if (novelsplicingp == false && splicing_iit != NULL && (donor_typeint < 0 || acceptor_typeint < 0)) {
+    /* Constrain to given introns */
+    for (rL = 1, rR = length1-1; rL < length1; rL++, rR--) {
+      debug3(printf("\nGenomic insert: At row %d on left and %d on right\n",rL,rR));
+      if ((cloL = rL - lbandL) < 1) {
+	cloL = 1;
+      }
+      if ((chighL = rL + rbandL) > length2L-1) {
+	chighL = length2L-1;
+      }
+
+      if ((cloR = rR - lbandR) < 1) {
+	cloR = 1;
+      }
+      if ((chighR = rR + rbandR) > length2R-1) {
+	chighR = length2R-1;
+      }
+
+      for (cL = cloL; cL <= chighL; cL++) {
+	/* The following check limits genomic inserts (horizontal) and
+	   multiple cDNA inserts (vertical). */
+	if (left_known[cL] > 0 &&
+	    (directionsL[rL][cL] == DIAG ||
+	     (directionsL[rL][cL] == HORIZ && jumpL[rL][cL] <= maxhorizjump) ||
+	     (directionsL[rL][cL] == VERT && jumpL[rL][cL] <= maxvertjump) ||
+	     directionsL[rL][cL] == STOP)) {
+	  scoreL = matrixL[rL][cL];
+
+	  if (directionsL[rL][cL] == HORIZ || directionsL[rL][cL] == VERT) {
+	    /* Favor gaps away from intron if possible */
+	    scoreL -= 1;
+	  }
+
+	  /* Disallow leftoffset + cL >= rightoffset - cR, or cR >= rightoffset - leftoffset - cL */
+	  debug3(printf("  Disallowing cR to be >= %d\n",rightoffset-leftoffset-cL));
+	  for (cR = cloR; cR <= chighR && cR < rightoffset-leftoffset-cL; cR++) {
+	    if (right_known[cR] > 0 &&
+		(directionsR[rR][cR] == DIAG ||
+		 (directionsR[rR][cR] == HORIZ && jumpR[rR][cR] <= maxhorizjump) ||
+		 (directionsR[rR][cR] == VERT && jumpR[rR][cR] <= maxvertjump) ||
+		 directionsR[rR][cR] == STOP)) {
+	      scoreR = matrixR[rR][cR];
+
+	      if (directionsR[rR][cR] == HORIZ || directionsR[rR][cR] == VERT) {
+		/* Favor gaps away from intron if possible */
+		scoreR -= 1;
+	      }
+
+	      if (scoreL + scoreR > bestscore) {
+		bestp = false;
+		if (watsonp == true) {
+		  splicesitepos1 = chrpos + leftoffset + cL;
+		  splicesitepos2 = chrpos + rightoffset - cR + 1;
+		  if (IIT_exists_with_divno_signed(splicing_iit,splicing_divint_crosstable[chrnum],
+						   splicesitepos1,splicesitepos2+1U,/*sign*/cdna_direction) == true) {
+		    bestp = true;
+		  }
+		} else {
+		  splicesitepos1 = chrpos + (genomiclength - 1) - leftoffset - cL + 1;
+		  splicesitepos2 = chrpos + (genomiclength - 1) - rightoffset + cR;
+		  if (IIT_exists_with_divno_signed(splicing_iit,splicing_divint_crosstable[chrnum],
+						   splicesitepos2,splicesitepos1+1U,/*sign*/-cdna_direction) == true) {
+		    bestp = true;
+		  }
+		}
+		if (bestp == true) {
+		  debug3(printf("At %d left to %d right, score is (%d)+(%d) = %d (bestscore)\n",
+				cL,cR,scoreL,scoreR,scoreL+scoreR));
+		  bestscore = scoreL + scoreR;
+		  *bestrL = rL;
+		  *bestrR = rR;
+		  *bestcL = cL;
+		  *bestcR = cR;
+		} else {
+		  debug3(printf("At %d left to %d right, score is (%d)+(%d) = %d\n",
+				cL,cR,scoreL,scoreR,scoreL+scoreR));
+		}
+	      }
+	    }
+	  }
+	}
+      }
+    }
+
+    *finalscore = bestscore;
+    *best_introntype = NONINTRON;
+
+  } else if (use_probabilities_p == false) {
     /* Check for genomic insertion */
     for (rL = 1, rR = length1-1; rL < length1; rL++, rR--) {
       debug3(printf("\nGenomic insert: At row %d on left and %d on right\n",rL,rR));
@@ -2455,7 +2609,6 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		*bestcL = cL;
 		*bestcR = cR;
 		*best_introntype = introntype;
-
 	      } else {
 		debug3(printf("At %d left to %d right, score is (%d)+(%d)+(%d) = %d\n",
 			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
@@ -2784,7 +2937,28 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
     }
   }
 
-  if (finalp == true) {
+  /* Determine if result meets given constraints */
+  if (*finalscore < 0) {
+    result = false;
+  } else if (novelsplicingp == true) {
+    result = true;
+  } else if (splicing_iit == NULL) {
+    result = true;
+  } else if (donor_typeint >= 0 && acceptor_typeint >= 0) {
+    /* If novelsplicingp is false and using splicing at splice site level, require sites to be known */
+    if (left_known[*bestcL] == 0 || right_known[*bestcR] == 0) {
+      debug(printf("Novel splicing not allowed, so bridge_intron_gap returning false\n"));
+      result = false;
+    } else {
+      result = true;
+    }
+  } else {
+    /* If novelsplicingp is false and using splicing at splice site level, result was already constrained */
+    result = true;
+  }
+
+
+  if (finalp == true && result == true) {
     get_splicesite_probs(&(*left_prob),&(*right_prob),*bestcL,*bestcR,
 			 left_known,right_known,leftoffset,rightoffset,chroffset,chrpos,
 			 genomiclength,cdna_direction,watsonp,use_genomicseg_p,genomicuc_ptr);
@@ -2794,20 +2968,21 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		*finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
   debug(printf("Returning final score of %d at (%d,%d) left to (%d,%d) right, with probs %f and %f\n",
 	       *finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
+
   FREE(right_known);
   FREE(left_known);
 
   FREE(rightdi);
   FREE(leftdi);
 
-  return;
+  return result;
 }
 
 
 static void
 bridge_dual_break_nogap (int *finalscore, int *bestrcL, int *bestrcR, int **matrixL, int **matrixR,
 			 int diaglength, char *sequenceuc2L, char *revsequenceuc2R, int cdna_direction) {
-  int bestscore = -1000000, scoreL, scoreR, scoreI;
+  int bestscore = NEG_INFINITY, scoreL, scoreR, scoreI;
   int rcL, rcR;
   char left1, left2, right2, right1;
   int introntype, leftdi, rightdi;
@@ -2877,7 +3052,7 @@ bridge_dual_break_fwd (int *finalscore, int *bestrcL, int *bestrcR, int **matrix
   *bestrcL = *bestrcR = 0;
 
   bestrcL_GT = bestrcL_GC = bestrcL_AT = bestrcL_XX = 0;
-  bestscoreL_GT = bestscoreL_GC = bestscoreL_AT = bestscoreL_XX = -1000000;
+  bestscoreL_GT = bestscoreL_GC = bestscoreL_AT = bestscoreL_XX = NEG_INFINITY;
 
   for (rcL = 1; rcL <= diaglength; rcL++) {
     if ((scoreL = matrixL[rcL][rcL]) >= bestscoreL_XX) {
@@ -2906,7 +3081,7 @@ bridge_dual_break_fwd (int *finalscore, int *bestrcL, int *bestrcR, int **matrix
 
 
   bestrcR_AG = bestrcR_AC = bestrcR_XX = 0;
-  bestscoreR_AG = bestscoreR_AC = bestscoreR_XX = -1000000;
+  bestscoreR_AG = bestscoreR_AC = bestscoreR_XX = NEG_INFINITY;
 
   for (rcR = 1; rcR <= diaglength; rcR++) {
     if ((scoreR = matrixR[rcR][rcR]) >= bestscoreR_XX) {
@@ -2986,7 +3161,7 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR, int **matrix
   *bestrcL = *bestrcR = 0;
 
   bestrcL_CT = bestrcL_GT = bestrcL_XX = 0;
-  bestscoreL_CT = bestscoreL_GT = bestscoreL_XX = -1000000;
+  bestscoreL_CT = bestscoreL_GT = bestscoreL_XX = NEG_INFINITY;
 
   for (rcL = 1; rcL <= diaglength; rcL++) {
     if ((scoreL = matrixL[rcL][rcL]) >= bestscoreL_XX) {
@@ -3010,7 +3185,7 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR, int **matrix
 
 
   bestrcR_AC = bestrcR_GC = bestrcR_AT = bestrcR_XX = 0;
-  bestscoreR_AC = bestscoreR_GC = bestscoreR_AT = bestscoreR_XX = -1000000;
+  bestscoreR_AC = bestscoreR_GC = bestscoreR_AT = bestscoreR_XX = NEG_INFINITY;
 
   for (rcR = 1; rcR <= diaglength; rcR++) {
     if ((scoreR = matrixR[rcR][rcR]) >= bestscoreR_XX) {
@@ -3565,7 +3740,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
     */
 #endif
     *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
-    *finalscore = -1000000;
+    *finalscore = NEG_INFINITY;
     return (List_T) NULL;
   }
 
@@ -3600,73 +3775,75 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 				  extraband_paired,/*widebandp*/true,/*onesidegapp*/false,
 				  /*for revp true*/!jump_late_p);
 
-  bridge_intron_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,
-		    &(*introntype),&(*left_prob),&(*right_prob),matrixL,matrixR,
-		    directionsL,directionsR,jumpL,jumpR,sequenceuc2L,revsequenceuc2R,
-		    length1,length2L,length2R,cdna_direction,watsonp,extraband_paired,
-		    canonical_reward,maxhorizjump,maxvertjump,offset2L,revoffset2R,
-		    chrnum,chroffset,chrpos,genomiclength,
-		    genomicuc_ptr,use_genomicseg_p,halfp,finalp,use_probabilities_p,
-		    score_threshold);
+  if (bridge_intron_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,
+			&(*introntype),&(*left_prob),&(*right_prob),matrixL,matrixR,
+			directionsL,directionsR,jumpL,jumpR,sequenceuc2L,revsequenceuc2R,
+			length1,length2L,length2R,cdna_direction,watsonp,extraband_paired,
+			canonical_reward,maxhorizjump,maxvertjump,offset2L,revoffset2R,
+			chrnum,chroffset,chrpos,genomiclength,
+			genomicuc_ptr,use_genomicseg_p,halfp,finalp,use_probabilities_p,
+			score_threshold) == false) {
+    return (List_T) NULL;
+  } else {
+    *new_leftgenomepos = offset2L+(bestcL-1);
+    *new_rightgenomepos = revoffset2R-(bestcR-1);
+    debug(printf("New leftgenomepos = %d, New rightgenomepos = %d\n",*new_leftgenomepos,*new_rightgenomepos));
 
-  *new_leftgenomepos = offset2L+(bestcL-1);
-  *new_rightgenomepos = revoffset2R-(bestcR-1);
-  debug(printf("New leftgenomepos = %d, New rightgenomepos = %d\n",*new_leftgenomepos,*new_rightgenomepos));
+    *exonhead = revoffset1-(bestrR-1);
 
-  *exonhead = revoffset1-(bestrR-1);
-
-  pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-		    directionsR,jumpR,bestrR,bestcR,
+    pairs = traceback(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+		      directionsR,jumpR,bestrR,bestcR,
 #ifdef PMAP
-		    instrevsequence1,instrevsequence1,revsequence2R,revsequenceuc2R,
+		      instrevsequence1,instrevsequence1,revsequence2R,revsequenceuc2R,
 #else
-		    revsequence1,revsequenceuc1,revsequence2R,revsequenceuc2R,
+		      revsequence1,revsequenceuc1,revsequence2R,revsequenceuc2R,
 #endif
-		    revoffset1,revoffset2R,pairpool,/*revp*/true,/*cdna_gap_p*/false,
-		    cdna_direction,*dynprogindex);
-  pairs = List_reverse(pairs);
+		      revoffset1,revoffset2R,pairpool,/*revp*/true,/*cdna_gap_p*/false,
+		      cdna_direction,*dynprogindex);
+    pairs = List_reverse(pairs);
 
-  /* queryjump = (revoffset1-bestrR) - (offset1+bestrL) + 1; */
-  /* genomejump = (revoffset2R-bestcR) - (offset2L+bestcL) + 1; */
-  /* No need to revise queryjump or genomejump, because the above
-     coordinates are internal to the gap. */
+    /* queryjump = (revoffset1-bestrR) - (offset1+bestrL) + 1; */
+    /* genomejump = (revoffset2R-bestcR) - (offset2L+bestcL) + 1; */
+    /* No need to revise queryjump or genomejump, because the above
+       coordinates are internal to the gap. */
 
-  debug(printf("Pushing a gap\n"));
+    debug(printf("Pushing a gap\n"));
 #ifndef NOGAPHOLDER
-  /* pairs = Pairpool_push_gapholder(pairs,pairpool,queryjump,genomejump); */
-  pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/UNKNOWNJUMP,/*genomejump*/UNKNOWNJUMP);
+    /* pairs = Pairpool_push_gapholder(pairs,pairpool,queryjump,genomejump); */
+    pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/UNKNOWNJUMP,/*genomejump*/UNKNOWNJUMP);
 #endif
 
-  pairs = traceback(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-		    directionsL,jumpL,bestrL,bestcL,
+    pairs = traceback(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+		      directionsL,jumpL,bestrL,bestcL,
 #ifdef PMAP
-		    instsequence1,instsequence1,sequence2L,sequenceuc2L,
+		      instsequence1,instsequence1,sequence2L,sequenceuc2L,
 #else
-		    sequence1,sequenceuc1,sequence2L,sequenceuc2L,
+		      sequence1,sequenceuc1,sequence2L,sequenceuc2L,
 #endif
-		    offset1,offset2L,pairpool,/*revp*/false,/*cdna_gap_p*/false,
-		    cdna_direction,*dynprogindex);
+		      offset1,offset2L,pairpool,/*revp*/false,/*cdna_gap_p*/false,
+		      cdna_direction,*dynprogindex);
 
-  /*
-  Directions_free(directionsR);
-  Directions_free(directionsL);
-  Matrix_free(matrixR);
-  Matrix_free(matrixL);
-  */
+    /*
+      Directions_free(directionsR);
+      Directions_free(directionsL);
+      Matrix_free(matrixR);
+      Matrix_free(matrixL);
+    */
 
 #ifdef PMAP
-  FREE(instsequence1);
+    FREE(instsequence1);
 #endif
 
-  if (List_length(pairs) == 1) {
-    /* Only a gap inserted */
-    pairs = (List_T) NULL;
+    if (List_length(pairs) == 1) {
+      /* Only a gap inserted */
+      pairs = (List_T) NULL;
+    }
+
+    debug(printf("End of dynprog genome gap\n"));
+
+    *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
+    return List_reverse(pairs);
   }
-
-  debug(printf("End of dynprog genome gap\n"));
-
-  *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
-  return List_reverse(pairs);
 }
 
 

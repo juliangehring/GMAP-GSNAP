@@ -1,4 +1,4 @@
-/* $Id: pair.h 53169 2011-11-28 02:56:15Z twu $ */
+/* $Id: pair.h 55706 2012-01-11 19:31:49Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -22,7 +22,7 @@ typedef struct Pair_T *Pair_T;
 #define T Pair_T
 
 extern void
-Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in);
+Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in, bool sam_insert_0M_p_in);
 extern int
 Pair_querypos (T this);
 extern int

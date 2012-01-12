@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 55060 2011-12-29 06:27:56Z twu $";
+static char rcsid[] = "$Id: iit-read.c 55440 2012-01-06 22:13:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1548,7 +1548,7 @@ skip_trees (off_t offset, off_t filesize, FILE *fp, char *filename,
   skipsize += skip_nnodes * sizeof(struct FNode_T);
 
   if ((offset += skipsize) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after skip_trees %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after skip_trees %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
@@ -1575,7 +1575,7 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
 
   } else {
     if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after alphas %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after alphas %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       exit(9);
     } else {
@@ -1588,7 +1588,7 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
     }
 
     if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after betas %lu, filesize %lu\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after betas %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       exit(9);
     } else {
@@ -1610,7 +1610,7 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
   }
 
   if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after sigmas %lu, filesize %lu\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after sigmas %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
@@ -1631,7 +1631,7 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
   }
 
   if ((offset += sizeof(int)*(new->nintervals[divno]+1)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after omegas %lu, filesize %lu\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after omegas %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
@@ -1680,7 +1680,7 @@ read_tree (off_t offset, off_t filesize, FILE *fp, char *filename, T new, int di
     }
 #endif
     if (offset > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nodes %lu, filesize %lu\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nodes %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       exit(9);
     }
@@ -1717,7 +1717,7 @@ skip_intervals (int *skip_nintervals, off_t offset, off_t filesize, FILE *fp, ch
   }
 
   if ((offset += skipsize) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after skip_intervals %lu, filesize %lu\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after skip_intervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   } else {
@@ -1772,7 +1772,7 @@ read_intervals (off_t offset, off_t filesize, FILE *fp, char *filename, T new, i
   }
 #endif
   if (offset > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after intervals %lu, filesize %lu\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after intervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     exit(9);
   }
@@ -2283,7 +2283,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return -1;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     return -1;
   }
@@ -2299,7 +2299,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	      version,IIT_LATEST_VERSION);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after version %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
@@ -2311,7 +2311,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return -1;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 		filename,(unsigned long) offset,(unsigned long) filesize);
 	return -1;
       }
@@ -2320,7 +2320,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return -1;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 		filename,(unsigned long) offset,(unsigned long) filesize);
 	return -1;
       }
@@ -2347,7 +2347,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
@@ -2368,7 +2368,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return -1;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     return -1;
   }
@@ -2385,7 +2385,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to have a negative number of fields\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nfields %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
@@ -2405,7 +2405,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to have a negative number of divs\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ndivs %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
@@ -2434,7 +2434,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
       fprintf(stderr,"IIT file %s appears to have a negative value for divsort\n",filename);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after divsort %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
@@ -2542,7 +2542,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     return NULL;
   }
@@ -2560,7 +2560,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	      new->version,IIT_LATEST_VERSION);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after version %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
@@ -2577,7 +2577,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return NULL;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 		filename,(unsigned long) offset,(unsigned long) filesize);
 	return NULL;
       }
@@ -2586,7 +2586,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return NULL;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 		filename,(unsigned long) offset,(unsigned long) filesize);
 	return NULL;
       }
@@ -2615,7 +2615,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
@@ -2636,7 +2636,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     return NULL;
   }
@@ -2653,7 +2653,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative number of fields\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nfields %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
@@ -2678,7 +2678,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative number of nodes\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nnodes %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nnodes %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
@@ -2704,7 +2704,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative number of divs\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ndivs %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
@@ -2757,7 +2757,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       fprintf(stderr,"IIT file %s appears to have a negative value for divsort\n",filename);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after divsort %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
     }
@@ -2941,7 +2941,7 @@ IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after first byte %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     return;
   }
@@ -2957,7 +2957,7 @@ IIT_debug (char *filename) {
 	      new->version,IIT_LATEST_VERSION);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after version %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after version %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
@@ -2974,7 +2974,7 @@ IIT_debug (char *filename) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 		filename,(unsigned long) offset,(unsigned long) filesize);
 	return;
       }
@@ -2983,7 +2983,7 @@ IIT_debug (char *filename) {
 	fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
 	return;
       } else if ((offset += sizeof(int)) > filesize) {
-	fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+	fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 		filename,(unsigned long) offset,(unsigned long) filesize);
 	return;
       }
@@ -3012,7 +3012,7 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to be truncated\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nintervals %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nintervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
@@ -3038,7 +3038,7 @@ IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ntypes %lu, filesize %lu)\n",
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	    filename,(unsigned long) offset,(unsigned long) filesize);
     return;
   }
@@ -3055,7 +3055,7 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative number of fields\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nfields %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nfields %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
@@ -3080,7 +3080,7 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative number of nodes\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after nnodes %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nnodes %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
@@ -3106,7 +3106,7 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative number of divs\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after ndivs %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ndivs %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
@@ -3151,7 +3151,7 @@ IIT_debug (char *filename) {
       fprintf(stderr,"IIT file %s appears to have a negative value for divsort\n",filename);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
-      fprintf(stderr,"IIT file %s appears to have an offset that is too large (offset after divsort %lu, filesize %lu)\n",
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after divsort %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
     }
@@ -3766,6 +3766,82 @@ IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
 }
 
 
+bool
+IIT_low_exists_signed_p (T this, int divno, unsigned int x, int sign) {
+  int match, lambda, min1, max1 = 0;
+  struct Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    return false;
+  }
+  min1 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_get_highs_for_low with divno %d and query %u\n",divno,x));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  debug(printf("min1=%d max1=%d\n",min1,max1));
+
+  if (max1 < min1) {
+    return false;
+  } else {
+    for (lambda = min1; lambda <= max1; lambda++) {
+      match = this->sigmas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.low == x && interval.sign == sign) {
+	return true;
+      }
+
+      match = this->omegas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.low == x && interval.sign == sign) {
+	return true;
+      }
+    }
+
+    return false;
+  }
+}
+
+bool
+IIT_high_exists_signed_p (T this, int divno, unsigned int x, int sign) {
+  int match, lambda, min1, max1 = 0;
+  struct Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    return false;
+  }
+  min1 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_get_lows_for_high with divno %d and query %u\n",divno,x));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  debug(printf("min1=%d max1=%d\n",min1,max1));
+
+  if (max1 < min1) {
+    return false;
+  } else {
+    for (lambda = min1; lambda <= max1; lambda++) {
+      match = this->sigmas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.high == x && interval.sign == sign) {
+	return true;
+      }
+
+      match = this->omegas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.high == x && interval.sign == sign) {
+	return true;
+      }
+    }
+
+    return false;
+  }
+}
+
 
 int *
 IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, bool sortp) {
@@ -3892,6 +3968,45 @@ IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y) {
   return false;
 }
 
+
+bool
+IIT_exists_with_divno_signed (T this, int divno, unsigned int x, unsigned int y, int sign) {
+  int match;
+  int lambda;
+  int min1, max1 = 0, min2, max2 = 0;
+  Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    return false;
+  }
+  min1 = min2 = this->nintervals[divno] + 1;
+
+  debug(printf("Entering IIT_exists_with_divno_signed with divno %d and query %u %u\n",divno,x,y));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  fnode_query_aux(&min2,&max2,this,divno,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  for (lambda = min1; lambda <= max2; lambda++) {
+    match = this->sigmas[divno][lambda];
+    interval = &(this->intervals[divno][match - 1]);
+    if (Interval_low(interval) == x && Interval_high(interval) == y &&
+	Interval_sign(interval) == sign) {
+      return true;
+    }
+
+    match = this->omegas[divno][lambda];
+    interval = &(this->intervals[divno][match - 1]);
+    if (Interval_low(interval) == x && Interval_high(interval) == y &&
+	Interval_sign(interval) == sign) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
 bool
 IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign) {
   int match;
@@ -3905,7 +4020,7 @@ IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned 
   }
   min1 = min2 = this->nintervals[divno] + 1;
 
-  debug(printf("Entering IIT_exists_typed_with_divno with divno %d and query %u %u\n",divno,x,y));
+  debug(printf("Entering IIT_exists_with_divno_typed_signed with divno %d and query %u %u\n",divno,x,y));
   fnode_query_aux(&min1,&max1,this,divno,0,x);
   fnode_query_aux(&min2,&max2,this,divno,0,y);
   debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));

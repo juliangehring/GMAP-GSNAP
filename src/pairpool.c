@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 52068 2011-11-09 19:32:06Z twu $";
+static char rcsid[] = "$Id: pairpool.c 55441 2012-01-06 22:14:07Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -208,6 +208,7 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
 
   pair->state = GOOD;
   pair->protectedp = false;
+  pair->disallowedp = false;
   pair->donor_prob = 0.0;
   pair->acceptor_prob = 0.0;
 
@@ -274,6 +275,7 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
 
   pair->state = GOOD;
   pair->protectedp = false;
+  pair->disallowedp = false;
   pair->donor_prob = 0.0;
   pair->acceptor_prob = 0.0;
 
@@ -339,6 +341,7 @@ Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump) {
 
   pair->state = GOOD;
   pair->protectedp = false;
+  pair->disallowedp = false;
   pair->donor_prob = 0.0;
   pair->acceptor_prob = 0.0;
 

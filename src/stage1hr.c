@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 54069 2011-12-09 22:44:05Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 55728 2012-01-11 22:05:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10967,7 +10967,8 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_pretrim,nmatches_posttrim,
 					ambig_end_length_5,ambig_end_length_3,
 					ambig_splicetype_5,ambig_splicetype_3,
-					pairarray,npairs,nsegments,/*left*/start,/*genomiclength*/end - start + 1,
+					pairarray,npairs,nsegments,nintrons,nindelbreaks,
+					/*left*/start,/*genomiclength*/end - start + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
 	    FREE_OUT(pairarray);
 	  } else {
@@ -10979,7 +10980,8 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_pretrim,nmatches_posttrim,
 					ambig_end_length_5,ambig_end_length_3,
 					ambig_splicetype_5,ambig_splicetype_3,
-					pairarray,npairs,nsegments,/*left*/end,/*genomiclength*/start - end + 1,
+					pairarray,npairs,nsegments,nintrons,nindelbreaks,
+					/*left*/end,/*genomiclength*/start - end + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
 	    FREE_OUT(pairarray);
 	  } else {
@@ -11226,7 +11228,8 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
       /* Mark ambiguous splices only for single-end reads */
       singlesplicing = Stage3end_mark_ambiguous_splices(&ambiguousp,singlesplicing);
 #endif
-      singlesplicing = Stage3end_optimal_score(singlesplicing,/*cutoff_level*/opt_level,subopt_levels);
+      singlesplicing = Stage3end_optimal_score(singlesplicing,/*cutoff_level*/opt_level,subopt_levels,
+					       /*keep_gmap_p*/true);
 
       if (singlesplicing) {
 	opt_level = (found_score < opt_level) ? found_score : opt_level;
@@ -11253,7 +11256,8 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
       /* Mark ambiguous splices only for single-end reads */
       doublesplicing = Stage3end_mark_ambiguous_splices(&ambiguousp,doublesplicing);
 #endif
-      doublesplicing = Stage3end_optimal_score(doublesplicing,/*cutoff_level*/opt_level,subopt_levels);
+      doublesplicing = Stage3end_optimal_score(doublesplicing,/*cutoff_level*/opt_level,subopt_levels,
+					       /*keep_gmap_p*/true);
 
       if (doublesplicing) {
 	opt_level = (found_score < opt_level) ? found_score : opt_level;
@@ -11412,7 +11416,8 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
 	distantsplicing = Stage3end_mark_ambiguous_splices(&ambiguousp,distantsplicing);
 #endif
 	/* Excess distant splicing should be freed already in free_splicepairs_distant */
-	distantsplicing = Stage3end_optimal_score(distantsplicing,opt_level,subopt_levels);
+	distantsplicing = Stage3end_optimal_score(distantsplicing,opt_level,subopt_levels,
+						  /*keep_gmap_p*/true);
 	if (distantsplicing) {
 	  opt_level = (found_score < opt_level) ? found_score : opt_level;
 	  if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
@@ -11545,6 +11550,7 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
       }
     }
   }
+  debug13(printf("Have %d good GMAP hits\n",List_length(good_gmap_hits)));
 
   if (alloc_floors_p == true) {
     Floors_free(&floors);
@@ -11639,7 +11645,9 @@ single_read (int *npaths, int *second_absmq,
 		       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 		       allvalidp,keep_floors_p,/*genestrand*/0);
       debug(printf("Before remove_overlaps at cutoff level %d: %d\n",cutoff_level,List_length(hits)));
-      hits = Stage3end_remove_overlaps(Stage3end_optimal_score(hits,cutoff_level,subopt_levels));
+      hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/true);
+      hits = Stage3end_remove_overlaps(hits);
+      hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/false);
       hits = Stage3end_resolve_multimapping(hits);
       debug(printf("After remove_overlaps: %d\n",List_length(hits)));
 
@@ -11754,7 +11762,9 @@ single_read_tolerant_nonstranded (int *npaths, int *second_absmq,
     }
 
     hits = List_append(hits_geneplus,hits_geneminus);
-    hits = Stage3end_remove_overlaps(Stage3end_optimal_score(hits,cutoff_level,subopt_levels));
+    hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/true);
+    hits = Stage3end_remove_overlaps(hits);
+    hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/false);
     hits = Stage3end_resolve_multimapping(hits);
 
 
@@ -12453,7 +12463,8 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_pretrim,nmatches_posttrim,
 					ambig_end_length_5,ambig_end_length_3,
 					ambig_splicetype_5,ambig_splicetype_3,
-					pairarray,npairs,nsegments,/*left*/start,/*genomiclength*/end - start + 1,
+					pairarray,npairs,nsegments,nintrons,nindelbreaks,
+					/*left*/start,/*genomiclength*/end - start + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
 	    FREE_OUT(pairarray);
 	  } else {
@@ -12465,7 +12476,8 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_pretrim,nmatches_posttrim,
 					ambig_end_length_5,ambig_end_length_3,
 					ambig_splicetype_5,ambig_splicetype_3,
-					pairarray,npairs,nsegments,/*left*/end,/*genomiclength*/start - end + 1,
+					pairarray,npairs,nsegments,nintrons,nindelbreaks,
+					/*left*/end,/*genomiclength*/start - end + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
 	    FREE_OUT(pairarray);
 	  } else {
@@ -14316,7 +14328,9 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *second_absmq5,
 			    max_middle_insertions,max_middle_deletions,
 			    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			    allvalidp5,keep_floors_p,genestrand);
-    singlehits5 = Stage3end_remove_overlaps(Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels));
+    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/true);
+    singlehits5 = Stage3end_remove_overlaps(singlehits5);
+    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/false);
     singlehits5 = Stage3end_resolve_multimapping(singlehits5);
   }
 
@@ -14347,7 +14361,9 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *second_absmq5,
 			    max_middle_insertions,max_middle_deletions,
 			    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			    allvalidp3,keep_floors_p,genestrand);
-    singlehits3 = Stage3end_remove_overlaps(Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels));
+    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/true);
+    singlehits3 = Stage3end_remove_overlaps(singlehits3);
+    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/false);
     singlehits3 = Stage3end_resolve_multimapping(singlehits3);
   }
 
@@ -14415,7 +14431,9 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
     }
 
     debug13(printf("Before removing overlaps, %d results\n",List_length(hitpairs)));
-    result = Stage3pair_remove_overlaps(Stage3pair_optimal_score(hitpairs,/*cutoff*/1000000,subopt_levels));
+    result = Stage3pair_optimal_score(hitpairs,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/true);
+    result = Stage3pair_remove_overlaps(result);
+    result = Stage3pair_optimal_score(result,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/false);
     result = Stage3pair_resolve_multimapping(result);
     /* result = Stage3pair_sort_distance(result); */
     debug13(printf("After removing overlaps, %d results\n",List_length(result)));
@@ -14435,7 +14453,9 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
 					  oligoindices_minor,noligoindices_minor,
 					  pairpool,diagpool,dynprogL,dynprogM,dynprogR,
 					  pairmax,shortsplicedist);
-      result = Stage3pair_remove_overlaps(Stage3pair_optimal_score(result,/*cutoff*/1000000,subopt_levels));
+      result = Stage3pair_optimal_score(result,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/true);
+      result = Stage3pair_remove_overlaps(result);
+      result = Stage3pair_optimal_score(result,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/false);
       result = Stage3pair_resolve_multimapping(result);
     }
 
@@ -14454,7 +14474,9 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
     }
     List_free(&conc_transloc);
 
-    result = Stage3pair_remove_overlaps(Stage3pair_optimal_score(samechr,/*cutoff*/1000000,subopt_levels));
+    result = Stage3pair_optimal_score(samechr,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/true);
+    result = Stage3pair_remove_overlaps(result);
+    result = Stage3pair_optimal_score(result,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/false);
     result = Stage3pair_resolve_multimapping(result);
 
   } else if (*final_pairtype == CONCORDANT_TRANSLOC) {
@@ -14471,7 +14493,9 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
     }
     List_free(&samechr);
 
-    result = Stage3pair_remove_overlaps(Stage3pair_optimal_score(conc_transloc,/*cutoff*/1000000,subopt_levels));
+    result = Stage3pair_optimal_score(conc_transloc,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/true);
+    result = Stage3pair_remove_overlaps(result);
+    result = Stage3pair_optimal_score(result,/*cutoff*/1000000,subopt_levels,/*keep_gmap_p*/false);
     result = Stage3pair_resolve_multimapping(result);
 
   } else {
@@ -14487,10 +14511,14 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
 
 
   if (result == NULL) {
-    singlehits5 = Stage3end_remove_overlaps(Stage3end_optimal_score(hits5,cutoff_level_5,subopt_levels));
+    singlehits5 = Stage3end_optimal_score(hits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/true);
+    singlehits5 = Stage3end_remove_overlaps(singlehits5);
+    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/false);
     singlehits5 = Stage3end_resolve_multimapping(singlehits5);
 
-    singlehits3 = Stage3end_remove_overlaps(Stage3end_optimal_score(hits3,cutoff_level_3,subopt_levels));
+    singlehits3 = Stage3end_optimal_score(hits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/true);
+    singlehits3 = Stage3end_remove_overlaps(singlehits3);
+    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/false);
     singlehits3 = Stage3end_resolve_multimapping(singlehits3);
 
     debug13(printf("5' end has %d hits and 3' end has %d hits\n",

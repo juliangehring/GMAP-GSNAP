@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 55058 2011-12-29 02:54:38Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 55734 2012-01-11 22:37:43Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -155,6 +155,8 @@ static int pairmax;
 static int expected_pairlength;
 static int pairlength_deviation;
 
+static int localsplicing_penalty;
+static int indel_penalty_middle;
 static int antistranded_penalty;
 static bool favor_multiexon_p;
 
@@ -172,6 +174,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		IIT_T runlength_iit_in, int *runlength_divint_crosstable_in,
 		bool distances_observed_p,
 		int pairmax_in, int expected_pairlength_in, int pairlength_deviation_in,
+		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in) {
   invert_first_p = invert_first_p_in;
   invert_second_p = invert_second_p_in;
@@ -181,6 +184,8 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
   tally_divint_crosstable = tally_divint_crosstable_in;
   runlength_iit = runlength_iit_in;
   runlength_divint_crosstable = runlength_divint_crosstable_in;
+  localsplicing_penalty = localsplicing_penalty_in;
+  indel_penalty_middle = indel_penalty_middle_in;
   antistranded_penalty = antistranded_penalty_in;
   favor_multiexon_p = favor_multiexon_p_in;
 
@@ -2805,8 +2810,8 @@ T
 Stage3end_new_gmap (int nmismatches_whole, int nmatches_pretrim, int nmatches_posttrim,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
-		    struct Pair_T *pairarray, int npairs, int nsegments, Genomicpos_T left, int genomiclength,
-		    bool plusp, int genestrand, int querylength,
+		    struct Pair_T *pairarray, int npairs, int nsegments, int nintrons, int nindelbreaks,
+		    Genomicpos_T left, int genomiclength, bool plusp, int genestrand, int querylength,
 		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, int sensedir) {
   T new;
   Genomicpos_T genomicstart, genomicend;
@@ -2879,12 +2884,13 @@ Stage3end_new_gmap (int nmismatches_whole, int nmatches_pretrim, int nmatches_po
   new->nmismatches_whole = nmismatches_whole;
   new->ntscore = nmismatches_whole;
 
-#if 0
+#if 1
+  /* Going back to this method to compute score, since GMAP results are retained now by Stage3end_optimal_score */
   new->score = nmismatches_whole;
-  new->score += splicing_penalty * nintrons;
-  new->score += indel_penalty * nindelbreaks;
+  new->score += localsplicing_penalty * nintrons;
+  new->score += indel_penalty_middle * nindelbreaks;
   debug0(printf("gmap score = %d = %d + %d*%d + %d*%d\n",
-		new->score,nmismatches_whole,splicing_penalty,nintrons,indel_penalty,nindelbreaks));
+		new->score,nmismatches_whole,localsplicing_penalty,nintrons,indel_penalty_middle,nindelbreaks));
 #else
   /* This is a better way to score GMAP.  Using nmatches_pretrim puts all GMAP entries on an even level. */
   new->score = querylength - nmatches_pretrim;
@@ -2954,13 +2960,13 @@ Stage3end_output_cmp (const void *a, const void *b) {
   T x = * (T *) a;
   T y = * (T *) b;
 
-  if (x->mapq_loglik > y->mapq_loglik) {
-    return -1;
-  } else if (y->mapq_loglik > x->mapq_loglik) {
-    return +1;
-  } else if (x->nmatches > y->nmatches) {
+  if (x->nmatches > y->nmatches) {
     return -1;
   } else if (y->nmatches > x->nmatches) {
+    return +1;
+  } else if (x->mapq_loglik > y->mapq_loglik) {
+    return -1;
+  } else if (y->mapq_loglik > x->mapq_loglik) {
     return +1;
   } else if (x->nmatches_posttrim > y->nmatches_posttrim) {
     return -1;
@@ -3003,7 +3009,11 @@ Stage3pair_output_cmp (const void *a, const void *b) {
   }
 #endif
 
-  if (x->mapq_loglik > y->mapq_loglik) {
+  if (x->nmatches > y->nmatches) {
+    return -1;
+  } else if (y->nmatches > x->nmatches) {
+    return +1;
+  } else if (x->mapq_loglik > y->mapq_loglik) {
     return -1;
   } else if (y->mapq_loglik > x->mapq_loglik) {
     return +1;
@@ -3014,10 +3024,6 @@ Stage3pair_output_cmp (const void *a, const void *b) {
   } else if (x->insertlength < y->insertlength) {
     return -1;
   } else if (y->insertlength < x->insertlength) {
-    return +1;
-  } else if (x->nmatches > y->nmatches) {
-    return -1;
-  } else if (y->nmatches > x->nmatches) {
     return +1;
   } else if (x->nmatches_posttrim > y->nmatches_posttrim) {
     return -1;
@@ -3191,8 +3197,13 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
 			     quality_string);
     }
 
-    /* Sort by mapq */
+    /* Sort by nmatches, then mapq.  Enforce monotonicity. */
     qsort(stage3array,*npaths,sizeof(Stage3end_T),Stage3end_output_cmp);
+    for (i = *npaths - 1; i > 0; i--) {
+      if (stage3array[i-1]->mapq_loglik < stage3array[i]->mapq_loglik) {
+	stage3array[i-1]->mapq_loglik = stage3array[i]->mapq_loglik;
+      }
+    }
     maxlik = stage3array[0]->mapq_loglik;
     
     /* Subtract maxlik to avoid underflow */
@@ -3271,7 +3282,7 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
    paired-end reads are searched for concordance, which can accumulate
    terminal alignments */
 List_T
-Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches) {
+Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches, bool keep_gmap_p) {
   List_T optimal = NULL, p;
   T hit;
   int n;
@@ -3326,7 +3337,13 @@ Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismat
 
   for (p = hitlist; p != NULL; p = p->rest) {
     hit = (T) p->first;
-    if (hit->chrnum == 0 && non_translocation_p == true) {
+
+    if (keep_gmap_p == true && hit->hittype == GMAP) {
+      /* GMAP hits already found to be better than their corresponding terminals */
+      debug4(printf("Keeping a hit of type GMAP with score %d\n",hit->score));
+      optimal = List_push(optimal,hit);
+
+    } else if (hit->chrnum == 0 && non_translocation_p == true) {
       debug4(printf("Eliminating a hit with splice translocation\n"));
       Stage3end_free(&hit);
 
@@ -3351,6 +3368,7 @@ Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismat
       debug4(printf("Eliminating a hit with score %d and type %s\n",
 		    hit->score,hittype_string(hit->hittype)));
       Stage3end_free(&hit);
+
     } else {
       debug4(printf("Keeping a hit with score %d and type %s\n",
 		    hit->score,hittype_string(hit->hittype)));
@@ -8493,8 +8511,13 @@ Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
 			     quality_string_3);
     }
 
-    /* Sort by mapq and then insert length */
+    /* Sort by nmatches, then mapq, and then insert length.  Enforce monotonicity. */
     qsort(stage3pairarray,*npaths,sizeof(Stage3pair_T),Stage3pair_output_cmp);
+    for (i = *npaths - 1; i > 0; i--) {
+      if (stage3pairarray[i-1]->mapq_loglik < stage3pairarray[i]->mapq_loglik) {
+	stage3pairarray[i-1]->mapq_loglik = stage3pairarray[i]->mapq_loglik;
+      }
+    }
     maxlik = stage3pairarray[0]->mapq_loglik;
 
     /* Subtract maxlik to avoid underflow */
@@ -8625,7 +8648,7 @@ Stage3pair_remove_excess_terminals (List_T hitpairlist) {
 
 /* terminal alignments need to win on nmatches */
 List_T
-Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches) {
+Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches, bool keep_gmap_p) {
   List_T optimal = NULL, p;
   Stage3pair_T hitpair;
   int n;
@@ -8710,7 +8733,12 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
   for (p = hitpairlist; p != NULL; p = p->rest) {
     hitpair = (Stage3pair_T) p->first;
 
-    if ((hitpair->hit5->chrnum == 0 || hitpair->hit3->chrnum == 0) && non_translocation_p == true) {
+    if (keep_gmap_p == true && (hitpair->hit5->hittype == GMAP || hitpair->hit3->hittype == GMAP)) {
+      /* GMAP hits already found to be better than their corresponding terminals */
+      debug6(printf("Keeping a hit pair of type GMAP with score %d\n",hitpair->score));
+      optimal = List_push(optimal,hitpair);
+
+    } else if ((hitpair->hit5->chrnum == 0 || hitpair->hit3->chrnum == 0) && non_translocation_p == true) {
       debug6(printf("Eliminating a hit pair at %u..%u  %u..%u|%u..%u with splice translocation\n",
 		    hitpair->low,hitpair->high,
 		    hitpair->hit5->low - hitpair->hit5->chroffset,hitpair->hit5->high - hitpair->hit5->chroffset,

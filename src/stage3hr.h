@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 52911 2011-11-21 19:17:27Z twu $ */
+/* $Id: stage3hr.h 55728 2012-01-11 22:05:46Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -37,6 +37,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		IIT_T runlength_iit_in, int *runlength_divint_crosstable_in,
 		bool distances_observed_p,
 		int pairmax_in, int expected_pairlength_in, int pairlength_deviation_in,
+		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in);
 
 extern Hittype_T
@@ -232,8 +233,8 @@ extern T
 Stage3end_new_gmap (int nmismatches_whole, int nmatches_pretrim, int nmatches_posttrim,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
-		    struct Pair_T *pairarray, int npairs, int nsegments, Genomicpos_T left, int genomiclength,
-		    bool plusp, int genestrand, int querylength,
+		    struct Pair_T *pairarray, int npairs, int nsegments, int nintrons, int nindelbreaks,
+		    Genomicpos_T left, int genomiclength, bool plusp, int genestrand, int querylength,
 		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, int sensedir);
 
 extern List_T
@@ -247,7 +248,7 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
 extern List_T
 Stage3pair_remove_excess_terminals (List_T hitpairlist);
 extern List_T
-Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches);
+Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches, bool keep_gmap_p);
 extern int
 Stage3end_noptimal (List_T hitlist);
 extern List_T
@@ -309,7 +310,7 @@ Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
 			  Genome_T genome, char *quality_string_5, char *quality_string_3);
 
 extern List_T
-Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches);
+Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches, bool keep_gmap_p);
 
 extern List_T
 Stage3_pair_up_concordant (bool *abort_pairing_p, int *found_score, int *nconcordant,

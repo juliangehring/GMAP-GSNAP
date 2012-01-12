@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 53584 2011-12-02 18:51:17Z twu $";
+static char rcsid[] = "$Id: pair.c 55706 2012-01-11 19:31:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -111,12 +111,15 @@ static char rcsid[] = "$Id: pair.c 53584 2011-12-02 18:51:17Z twu $";
 #define TRIM_MATCH_SCORE 1
 static int trim_mismatch_score;
 static int trim_indel_score;
+static bool sam_insert_0M_p = false;
 
 
 void
-Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in) {
+Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in,
+	    bool sam_insert_0M_p_in) {
   trim_mismatch_score = trim_mismatch_score_in;
   trim_indel_score = trim_indel_score_in;
+  sam_insert_0M_p = sam_insert_0M_p_in;
   return;
 }
 
@@ -1142,6 +1145,10 @@ Pair_dump_one (T this, bool zerobasedp) {
       putchar(this->comp);
     }
     printf(" %c",this->genome);
+  }
+
+  if (this->disallowedp == true) {
+    printf(" disallowed");
   }
 
   if (this->shortexonp == true) {
@@ -2889,6 +2896,7 @@ Pair_print_gsnap (FILE *fp, struct T *pairs_querydir, int npairs, int nsegments,
   Endtype_T endtype, prev_endtype;
   bool allocp, firstp = true;
 
+
   if (invertedp == true) {
     pairs = invert_and_revcomp_path_and_coords(pairs_querydir,npairs,querylength);
     watsonp = !watsonp;
@@ -3888,7 +3896,7 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
 	  query_gap = this->querypos - exon_queryend;
 	  assert(query_gap >= 0);
 	  if (query_gap > 0) {
-	    if (deletionp == true) {
+	    if (deletionp == true && sam_insert_0M_p == true) {
 	      /* Put zero matches between deletion and insertion, since some programs will complain */
 	      sprintf(token,"0M");
 	      tokens = push_token(tokens,token);
@@ -4047,29 +4055,41 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
   List_free(&tokens);
 
 
-  /* Insert "0M" between adjacent I and D operations */
-  last_type = ' ';
-  tokens = (List_T) NULL;
-  for (p = unique; p != NULL; p = List_next(p)) {
-    curr_token = (char *) List_head(p);
-    type = curr_token[strlen(curr_token)-1];
-    if (last_type == 'I' && type == 'D') {
-      tokens = push_token(tokens,"0M");
-    } else if (last_type == 'D' && type == 'I') {
-      tokens = push_token(tokens,"0M");
+  if (sam_insert_0M_p == false) {
+    /* Return result */
+    if (watsonp) {
+      /* Put tokens in forward order */
+      return unique;
+    } else {
+      /* Keep tokens in reverse order */
+      return List_reverse(unique);
     }
-    tokens = List_push(tokens,(void *) curr_token);
-    last_type = type;
-  }
 
-
-  /* Return result */
-  if (watsonp) {
-    /* Put tokens in forward order */
-    return List_reverse(tokens);
   } else {
-    /* Keep tokens in reverse order */
-    return tokens;
+    /* Insert "0M" between adjacent I and D operations */
+    last_type = ' ';
+    tokens = (List_T) NULL;
+    for (p = unique; p != NULL; p = List_next(p)) {
+      curr_token = (char *) List_head(p);
+      type = curr_token[strlen(curr_token)-1];
+      if (last_type == 'I' && type == 'D') {
+	tokens = push_token(tokens,"0M");
+      } else if (last_type == 'D' && type == 'I') {
+	tokens = push_token(tokens,"0M");
+      }
+      tokens = List_push(tokens,(void *) curr_token);
+      last_type = type;
+    }
+
+
+    /* Return result */
+    if (watsonp) {
+      /* Put tokens in forward order */
+      return List_reverse(tokens);
+    } else {
+      /* Keep tokens in reverse order */
+      return tokens;
+    }
   }
 }
 
@@ -4311,6 +4331,7 @@ compute_md_string (int *nmismatches, int *nindels, struct T *pairs, int npairs, 
 	  *nindels += 1;
 	  k++;
 	}
+	state = IN_MATCHES;
 
       } else if (type == 'N') {
 	while (k < npairs && pairs[k].gapp == true) {
@@ -4400,6 +4421,7 @@ compute_md_string (int *nmismatches, int *nindels, struct T *pairs, int npairs, 
 	  *nindels += 1;
 	  k++;
 	}
+	state = IN_MATCHES;
 
       } else if (type == 'N') {
 	while (k < npairs && pairs[k].gapp == true) {

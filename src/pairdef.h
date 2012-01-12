@@ -1,4 +1,4 @@
-/* $Id: pairdef.h 44181 2011-08-03 09:19:12Z twu $ */
+/* $Id: pairdef.h 55441 2012-01-06 22:14:07Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
@@ -37,6 +37,7 @@ struct T {
   State_T vstate_bad;
 
   bool protectedp;		/* Protected against trimming, because found using splicetrie */
+  bool disallowedp;		/* Used when novelsplicingp is false and intron is not allowed */
 
   double donor_prob;		/* Set for an intron gap */
   double acceptor_prob;

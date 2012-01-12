@@ -1,4 +1,4 @@
-/* $Id: iit-read.h 44320 2011-08-04 21:14:59Z twu $ */
+/* $Id: iit-read.h 55440 2012-01-06 22:13:36Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -125,23 +125,26 @@ IIT_find_linear (T this, char *label);
 extern int
 IIT_find_one (T this, char *label);
 
-unsigned int *
+extern unsigned int *
 IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x);
-unsigned int *
+extern unsigned int *
 IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x);
+extern bool
+IIT_low_exists_signed_p (T this, int divno, unsigned int x, int sign);
+extern bool
+IIT_high_exists_signed_p (T this, int divno, unsigned int x, int sign);
+
 
 extern int *
 IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, bool sortp);
 extern bool
 IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y);
 extern bool
+IIT_exists_with_divno_signed (T this, int divno, unsigned int x, unsigned int y, int sign);
+extern bool
 IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign);
 extern int *
 IIT_get_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp);
-extern int *
-IIT_get_low (int *nmatches, T this, int divno, unsigned int x, bool sortp);
-extern int *
-IIT_get_high (int *nmatches, T this, int divno, unsigned int x, bool sortp);
 extern int *
 IIT_get_signed_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp,
 			   int sign);

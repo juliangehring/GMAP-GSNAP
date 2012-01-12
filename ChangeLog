@@ -1,3 +1,91 @@
+2012-01-11  twu
+
+    * VERSION: Updated version
+
+    * index.html: Updated Web page for latest version
+
+    * mapq.c: Fixed debugging statement
+
+    * stage3hr.c: In output_cmp procedures, sorting first by nmatches (pretrim),
+      and then by mapq.  Added procedure to enforce monotonicity of mapq scores.
+
+    * stage1hr.c, stage3hr.c, stage3hr.h: Running optimal_score first allowing
+      all GMAP alignments, then removing overlaps, and then running
+      optimal_score again without special provision for GMAP alignments.
+
+    * gmap.c, gsnap.c, pair.c, pair.h, uniqscan.c: Added flag --sam-use-0M to
+      control printing of 0M in CIGAR strings
+
+    * gmap.c, gsnap.c, stage3.h, uniqscan.c: Providing output_sam_p to
+      Stage3_setup
+
+    * stage3.c: In fill_in_gaps, handling dual breaks by inserting query and
+      genomic segments when output_sam_p is true.
+
+    * pair.c: In compute_md_string, setting state to be IN_MATCHES after seeing
+      I token, so we don't print two successive ^ tokens.
+
+    * stage3.c: Added a pass to remove adjacent insertions and deletions and fix
+      single gaps again.
+
+2012-01-10  twu
+
+    * gmap_build.pl.in: Doing chmod on gammaptrs only if kmersize > basesize
+
+2012-01-09  twu
+
+    * gsnap.c, stage1hr.c, stage3hr.c, stage3hr.h: Computing GMAP alignment
+      score using standard splicing penalties and indel penalties
+
+2012-01-07  twu
+
+    * README: Added information about maximum genome length.  Added information
+      about SAM fields.
+
+    * atoiindex.c, cmetindex.c: Eliminated memory leaks and reduced memory usage
+      from 20 GB to 12 GB for a human-sized genome
+
+2012-01-06  twu
+
+    * gmap.c, gsnap.c, uniqscan.c: Using new interfaces to Dynprog_setup and
+      Stage3_setup to provide information about novelsplicingp.  Passing
+      fileroot instead of dbroot to Datadir_find_mapdir.
+
+    * stage3hr.c: Stage3end_optimal_score and Stage3pair_optimal_score now
+      keeping all GMAP results
+
+    * stage3.c, stage3.h: Marking pairs as disallowed when novelsplicingp is
+      false and dynamic programming cannot find a solution provided by the
+      splicing_iit file. Trimming end introns that are disallowed.
+
+    * stage1hr.c: Added debugging message
+
+    * dynprog.c, dynprog.h: The bridge_intron_gap function now handling runs
+      where novelsplicingp is false and known splicing is at intron level. 
+      Dynprog_genome_gap returning NULL in such cases.
+
+    * pair.c, pairdef.h, pairpool.c: Added field disallowedp to Pair_T object
+
+    * iit-read.c, iit-read.h: Added functions IIT_low_exists and
+      IIT_high_exists, used for intron-level known splicing.  Improved warning
+      message for invalid IIT files.
+
+2012-01-05  twu
+
+    * gmapindex.c: Added check for total genomic length exceeding 4 GB
+
+    * snpindex.c: Reduced maximum memory usage for human genome from 12 GB to 8
+      GB. Eliminated memory leaks.
+
+2012-01-03  twu
+
+    * src, trunk, util: Merged revisions 50470 to 50909 from
+      branches/gmap-2011-10-24-mult-stage2
+
+    * config.site.rescomp.tst: Changed date
+
+    * config.site.rescomp.prd: Changed date
+
 2011-12-29  twu
 
     * README: Changed comment about splicing file with known introns possibly

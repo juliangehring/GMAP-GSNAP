@@ -117,7 +117,17 @@ is equal to the base size, then the gammaptrs file will be absent.
 3.  Setting up to build a GMAP/GSNAP database (one chromosome per FASTA entry)
 ==============================================================================
 
-There are two utility programs provided for making a GMAP database.
+You can also build your own genomic database, using one of two utility
+programs provided with this package: gmap_build (the newer, one-step
+method) or gmap_setup (the older way that uses Makefile and requires
+multiple steps).  Note that the total sequence length in your database
+cannot exceed 2^32 = 4,294,967,296 (about 4 billion) bp.  This is
+because the format uses 32-bit pointers.  If your total sequence
+provided to the utility programs exceeds 4 billion bp, the programs
+will abort.  Below I use the "genome" and "chromosome", but the input
+sequences can be anything you wish to align to, including transcripts
+or small fragments.
+
 You will need to start with a set of FASTA files containing either
 entire chromosomes or contigs that represent pieces of chromosomes.
 If your FASTA entries each contain a single chromosome, and the
@@ -584,35 +594,58 @@ This extended FASTA format is useful if paired-end information needs
 to be piped into GSNAP via stdin.
 
 
-Output formats in GSNAP
+SAM output format
 =======================
 
-By default, GSNAP prints its output in a FASTA-like format, which we
-describe below.  We have also implemented SAM output format, which you
-can obtain by using the "-A sam" flag to GSNAP.
-
-In addition, GMAP can also print its alignments in SAM output, using
-the "-f samse" or "-f sampe" options, for single-end or paired-end
-data.  The sampe option will generate SAM flags to indicate whether
-the read is the first or second end of a pair, which requires that you
-provide GMAP with an extended FASTA format having a ">" or "<"
-character in the header to indicate that information.  However, the
-sampe option will change only the SAM flags, and not change the
+GSNAP can generate SAM output format, by providing the "-A sam" flag
+to GSNAP.  In addition, GMAP can also print its alignments in SAM
+output, using the "-f samse" or "-f sampe" options, for single-end or
+paired-end data.  The sampe option will generate SAM flags to indicate
+whether the read is the first or second end of a pair, which requires
+that you provide GMAP with an extended FASTA format having a ">" or
+"<" character in the header to indicate that information.  However,
+the sampe option will change only the SAM flags, and not change the
 underlying alignment algorithm.  GMAP does not know how to find
 concordance between paired-end reads like GSNAP does.
 
-GSNAP output has some advantages over SAM output, though, in showing
+GSNAP provides some special SAM flags as follows:
+
+XQ: A non-normalized mapping quality score
+
+X2: The second best XQ score among all multimapping alignments for a
+given read.  If there is only a single alignment, this value is 0.
+
+XB: Prints the barcode extracted from the end of the read.  Applies only
+if --barcode-length is not 0.
+
+XP: Prints the primer inferred from a paired-end read.  Applies only
+if the --adapter-strip flag is specified.
+
+XS: Prints the strand orientation (+ or -) for a splice.  Appears only
+if splicing is allowed (-N or -s flag provided), and only for reads
+containing a splice.  The value "+" means the expected GT-AG, GC-AG,
+or AT-AC dinucleotide pair is on the plus strand of the genome, and
+"-" means the dinucleotides are on the minus strand.  If the
+orientation is not obvious, because the dinucleotides do not match
+GT-AG, GC-AG, AT-AC, or their complements, then the program applies a
+probabilistic splice model to determine the orientation.
+
+XT: Prints the intron dinucleotides and splice probabilities around a
+distant splicing event (genomic deletion, inversion, scramble, or
+translocation).
+
+
+GSNAP output format
+===================
+
+By default, GSNAP prints its output in a FASTA-like format, which we
+developed before we incorporated the SAM format.  The default GSNAP
+output has some advantages over SAM output, especially for debugging
+purposes.
+
 the orientation of splice junctions, in indicating translocations that
 occur in a single read, and in reflecting information about known
-splice sites or known SNPs.  To provide splice orientation, though,
-our SAM output includes information about splice orientation in an
-extra "XS" field, which has possible values "+" (meaning the expected
-GT-AG, GC-AG, or AT-AC dinucleotide pair is on the plus strand of the
-genome), "-" (the dinucleotides are on the minus strand), or "?" (the
-direction is unknown, because the dinucleotides do not match GT-AG,
-GC-AG, AT-AC, or their complements).  Likewise, for translocations,
-our SAM output includes an "XT" flag that provides information about
-the intron dinucleotides and splice site probabilities.
+splice sites or known SNPs.  
 
 Here is some output from GSNAP on a paired-end read:
 

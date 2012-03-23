@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genomicpos.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: genomicpos.c 56964 2012-02-02 17:57:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,7 +20,7 @@ static char rcsid[] = "$Id: genomicpos.c 40271 2011-05-28 02:29:18Z twu $";
 #define BUFSIZE 100
 
 char *
-Genomicpos_commafmt (T N) {
+Genomicpos_commafmt (size_t N) {
   char *string, *buffer;
   int len, posn = 1;
   char *ptr, *start;
@@ -29,13 +29,13 @@ Genomicpos_commafmt (T N) {
   start = ptr = &(buffer[BUFSIZE]);
   buffer[BUFSIZE] = '\0';
 
-  if (N == 0U) {
+  if (N == 0UL) {
     *--ptr = '0';
   } else {
-    while (N > 0U) {
-      *--ptr = (char)((N % 10U) + '0');
-      N /= 10U;
-      if (N > 0U) {
+    while (N > 0UL) {
+      *--ptr = (char)((N % 10UL) + '0');
+      N /= 10UL;
+      if (N > 0UL) {
 	if ((posn % 3) == 0) {
 	  *--ptr = ',';
 	}
@@ -50,6 +50,7 @@ Genomicpos_commafmt (T N) {
   FREE(buffer);
   return string;
 }
+
 
 int
 Genomicpos_compare (const void *a, const void *b) {

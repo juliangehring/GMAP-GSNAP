@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 55728 2012-01-11 22:05:46Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 60284 2012-03-22 21:59:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -74,6 +74,7 @@ static int nsplicesites;
 
 /* GMAP parameters */
 static bool gmap_pairsearch_p;
+static bool gmap_indel_knownsplice_p;
 static bool gmap_terminal_p;
 static bool gmap_improvement_p;
 
@@ -110,11 +111,18 @@ static int ngap = 3;  /* 0? */
 
 #define NREQUIRED_FAST 2	/* For candidate generation using
 				   multimiss.  A value of 2 implies 
-				   specificty of a 24-mer, which
+				   specificity of a 24-mer, which
 				   should be low for a human-sized
 				   genome */
 
+#define MAX_INDEX1INTERVAL 3
+#define STAGE2_MIN_OLIGO 3	/* Actually 6, but we are adding index1interval to this */
+
 static int index1part;
+static int index1interval;
+static int spansize;
+static int two_index1intervals;
+static int min_readlength;
 static IIT_T chromosome_iit;
 static int nchromosomes;
 
@@ -127,10 +135,10 @@ static int end_miss_two;	/* Used for computing max_terminal_length */
 
 
 /* On 5' end, x = querypos.  On 3' end, x = (query_lastpos - querypos). */
-#define FLOOR_END(x) ((x < 3) ? 0 : (x + index1part - 3)/index1part)
+#define FLOOR_END(x) ((x < index1interval) ? 0 : (x + spansize - index1interval)/spansize)
 
 /* Here, x = (querypos - last_querypos).  Was (x-3)/12, but the new formula handles indels. */
-#define FLOOR_MIDDLE(x) ((x < 6) ? 0 : (x + index1part - 6)/index1part)
+#define FLOOR_MIDDLE(x) ((x < two_index1intervals) ? 0 : (x + spansize - two_index1intervals)/spansize)
 
 
 #define MAX_LOCALSPLICING_HITS 10000
@@ -382,13 +390,13 @@ Floors_print (Floors_T floors, int query_lastpos) {
   int from, to;
 
   if (floors->prev_omitted) {
-    for (to = -3; to <= query_lastpos+3; to++) {
+    for (to = -index1interval; to <= query_lastpos+index1interval; to++) {
       printf("querypos %d, prev_omitted %d\n",to,floors->prev_omitted[to]);
     }
   }
 
-  for (from = -3; from <= query_lastpos+3; from++) {
-    for (to = from+1; to <= query_lastpos+3; to++) {
+  for (from = -index1interval; from <= query_lastpos+index1interval; from++) {
+    for (to = from+1; to <= query_lastpos+index1interval; to++) {
       printf("from %d to %d, floor_score %d or %d",
 	     from,to,floors->scorefrom[from][to],floors->scoreto[to][from]);
       if (floors->prev_omitted) {
@@ -407,7 +415,15 @@ static Floors_T
 Floors_new_standard (int querylength, int max_end_insertions, bool keep_floors_p) {
   Floors_T new;
   int query_lastpos, pos, from, to;
-  int extra = 1 + max_end_insertions + max_end_insertions;
+  int halfextra, extra;
+
+  if (max_end_insertions < index1interval) {
+    halfextra = index1interval;
+  } else {
+    halfextra = max_end_insertions;
+  }
+  extra = 1 + halfextra + halfextra;
+
 
   query_lastpos = querylength - index1part;
 
@@ -426,11 +442,11 @@ Floors_new_standard (int querylength, int max_end_insertions, bool keep_floors_p
     new->allocated2 = (int **) CALLOC(query_lastpos+extra,sizeof(int *));
     new->allocated1 = (int *) CALLOC((query_lastpos+extra)*(query_lastpos+extra),sizeof(int));
   }
-  new->allocated2[0] = &(new->allocated1[max_end_insertions]);
+  new->allocated2[0] = &(new->allocated1[halfextra]);
   for (pos = 1; pos < query_lastpos+extra; pos++) {
     new->allocated2[pos] = &(new->allocated2[pos-1][query_lastpos+extra]);
   }
-  new->scorefrom = &(new->allocated2[max_end_insertions]);
+  new->scorefrom = &(new->allocated2[halfextra]);
 
 
   if (keep_floors_p == true) {
@@ -440,14 +456,14 @@ Floors_new_standard (int querylength, int max_end_insertions, bool keep_floors_p
     new->allocated4 = (int **) CALLOC(query_lastpos+extra,sizeof(int *));
     new->allocated3 = (int *) CALLOC((query_lastpos+extra)*(query_lastpos+extra),sizeof(int));
   }
-  new->allocated4[0] = &(new->allocated3[max_end_insertions]);
+  new->allocated4[0] = &(new->allocated3[halfextra]);
   for (pos = 1; pos < query_lastpos+extra; pos++) {
     new->allocated4[pos] = &(new->allocated4[pos-1][query_lastpos+extra]);
   }
-  new->scoreto = &(new->allocated4[max_end_insertions]);
+  new->scoreto = &(new->allocated4[halfextra]);
 
-  for (to = -max_end_insertions; to <= query_lastpos+max_end_insertions; to++) {
-    for (from = -max_end_insertions; from < to; from++) {
+  for (to = -halfextra; to <= query_lastpos+halfextra; to++) {
+    for (from = -halfextra; from < to; from++) {
       new->scorefrom[from][to] = new->scoreto[to][from] = FLOOR_MIDDLE(to - from);
     }
   }
@@ -463,34 +479,41 @@ Floors_new_omitted (int querylength, int max_end_insertions, bool *omitted) {
   Floors_T new;
   int query_lastpos, querypos, pos, from, to;
   int prev;
-  int extra = 1 + max_end_insertions + max_end_insertions;
+  int halfextra, extra;
+
+  if (max_end_insertions < index1interval) {
+    halfextra = index1interval;
+  } else {
+    halfextra = max_end_insertions;
+  }
+  extra = 1 + halfextra + halfextra;
 
   query_lastpos = querylength - index1part;
   new = (Floors_T) MALLOC(sizeof(*new));
   new->allocated0 = (int *) CALLOC(query_lastpos+extra,sizeof(int));
-  new->prev_omitted = &(new->allocated0[max_end_insertions]);
+  new->prev_omitted = &(new->allocated0[halfextra]);
 
   new->allocated2 = (int **) CALLOC(query_lastpos+extra,sizeof(int *));
   new->allocated1 = (int *) CALLOC((query_lastpos+extra)*(query_lastpos+extra),sizeof(int));
-  new->allocated2[0] = &(new->allocated1[max_end_insertions]);
+  new->allocated2[0] = &(new->allocated1[halfextra]);
   for (pos = 1; pos < query_lastpos+extra; pos++) {
     new->allocated2[pos] = &(new->allocated2[pos-1][query_lastpos+extra]);
   }
-  new->scorefrom = &(new->allocated2[max_end_insertions]);
+  new->scorefrom = &(new->allocated2[halfextra]);
 
 
   new->allocated4 = (int **) CALLOC(query_lastpos+extra,sizeof(int *));
   new->allocated3 = (int *) CALLOC((query_lastpos+extra)*(query_lastpos+extra),sizeof(int));
-  new->allocated4[0] = &(new->allocated3[max_end_insertions]);
+  new->allocated4[0] = &(new->allocated3[halfextra]);
   for (pos = 1; pos < query_lastpos+extra; pos++) {
     new->allocated4[pos] = &(new->allocated4[pos-1][query_lastpos+extra]);
   }
-  new->scoreto = &(new->allocated4[max_end_insertions]);
+  new->scoreto = &(new->allocated4[halfextra]);
 
 
   /* Set up omitted.  Save for middle_indels computation. */
   prev = -1;
-  for (querypos = -max_end_insertions; querypos < 0; querypos++) {
+  for (querypos = -halfextra; querypos < 0; querypos++) {
     new->prev_omitted[querypos] = -1;
   }
   for ( ; querypos <= query_lastpos; querypos++) {
@@ -499,14 +522,14 @@ Floors_new_omitted (int querylength, int max_end_insertions, bool *omitted) {
       prev = querypos;
     }
   }
-  for ( ; querypos <= query_lastpos+max_end_insertions; querypos++) {
+  for ( ; querypos <= query_lastpos+halfextra; querypos++) {
     new->prev_omitted[querypos] = prev;
   }
 
 
-  for (to = -max_end_insertions; to <= query_lastpos+max_end_insertions; to++) {
+  for (to = -halfextra; to <= query_lastpos+halfextra; to++) {
     prev = new->prev_omitted[to];
-    for (from = -max_end_insertions; from < prev; from++) {
+    for (from = -halfextra; from < prev; from++) {
       new->scorefrom[from][to] = new->scorefrom[from][prev] + FLOOR_MIDDLE(to - prev);
     }
     for ( ; from < to; from++) {
@@ -514,8 +537,8 @@ Floors_new_omitted (int querylength, int max_end_insertions, bool *omitted) {
     }
   }
 
-  for (to = -max_end_insertions; to <= query_lastpos+max_end_insertions; to++) {
-    for (from = -max_end_insertions; from < to; from++) {
+  for (to = -halfextra; to <= query_lastpos+halfextra; to++) {
+    for (from = -halfextra; from < to; from++) {
       new->scoreto[to][from] = new->scorefrom[from][to];
     }
   }
@@ -539,37 +562,37 @@ Floors_new_omitted (int querylength, int max_end_insertions, bool *omitted) {
 
 #define T Stage1_T
 struct T {
-  List_T plus_spanningset[3];
-  List_T minus_spanningset[3];
+  List_T plus_spanningset[MAX_INDEX1INTERVAL];
+  List_T minus_spanningset[MAX_INDEX1INTERVAL];
 
   Genomicpos_T **plus_positions_allocated;
-  Genomicpos_T **plus_positions; /* points to above[2] */
+  Genomicpos_T **plus_positions; /* points to above[index1interval-1] */
   Genomicpos_T **minus_positions_allocated;
-  Genomicpos_T **minus_positions; /* points to above[2] */
+  Genomicpos_T **minus_positions; /* points to above[index1interval-1] */
 
   int *plus_npositions_allocated;
-  int *plus_npositions;		/* points to above[2] */
+  int *plus_npositions;		/* points to above[index1interval-1] */
 
   int *minus_npositions_allocated;
-  int *minus_npositions;	/* points to above[2] */
+  int *minus_npositions;	/* points to above[index1interval-1] */
 
   bool *plus_retrievedp_allocated;
-  bool *plus_retrievedp;	/* points to above[2] */
+  bool *plus_retrievedp;	/* points to above[index1interval-1] */
   bool *minus_retrievedp_allocated;
-  bool *minus_retrievedp;	/* points to above[2] */
+  bool *minus_retrievedp;	/* points to above[index1interval-1] */
 
   bool *plus_allocp_allocated;
-  bool *plus_allocp;		/* points to above[2] */
+  bool *plus_allocp;		/* points to above[index1interval-1] */
   bool *minus_allocp_allocated;
-  bool *minus_allocp;		/* points to above[2] */
+  bool *minus_allocp;		/* points to above[index1interval-1] */
 
   bool *validp;
   bool *omitted;
 
   Storedoligomer_T *forward_oligos_allocated;
-  Storedoligomer_T *forward_oligos; /* points to above[2] */
+  Storedoligomer_T *forward_oligos; /* points to above[index1interval-1] */
   Storedoligomer_T *revcomp_oligos_allocated;
-  Storedoligomer_T *revcomp_oligos; /* points to above[2] */
+  Storedoligomer_T *revcomp_oligos; /* points to above[index1interval-1] */
 
   struct Segment_T *plus_segments;
   struct Segment_T *minus_segments;
@@ -632,7 +655,7 @@ Stage1_free (T *old, int querylength) {
     FREE((*old)->plus_segments);
     FREE((*old)->minus_segments);
 
-    for (mod = 0; mod < 3; mod++) {
+    for (mod = 0; mod < index1interval; mod++) {
       for (p = (*old)->plus_spanningset[mod]; p; p = p->rest) {
 	spanningelt = (Spanningelt_T) p->first;
 	Spanningelt_free(&spanningelt);
@@ -647,7 +670,7 @@ Stage1_free (T *old, int querylength) {
     }
 
     if (free_positions_p == true) {
-      for (i = -2; i < querylength; i++) {
+      for (i = -index1interval+1; i < querylength; i++) {
 	if ((*old)->plus_retrievedp[i] == true) {
 	  FREE((*old)->plus_positions[i]);
 	}
@@ -656,7 +679,7 @@ Stage1_free (T *old, int querylength) {
 	}
       }
     } else {
-      for (i = -2; i < querylength; i++) {
+      for (i = -index1interval+1; i < querylength; i++) {
 	if ((*old)->plus_allocp[i] == true) {
 	  FREE((*old)->plus_positions[i]);
 	}
@@ -772,8 +795,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
   /* This estimate may be too high */
   /* this->maxfloor = 1 + querylength/oligobase * 2; */
 
-  reader = Reader_new(queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
-		      /*reader_overlap*/index1part);
+  reader = Reader_new(queryuc_ptr,/*querystart*/0,/*queryend*/querylength);
 
   /* Prevents us from processing invalid query 12-mers */
   for (querypos = 0; querypos <= query_lastpos; querypos++) {
@@ -788,7 +810,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
   *all_omitted_p = true;
 #endif
   if (mode == STANDARD) {
-    while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+    while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				    reader,/*cdnaend*/FIVE)) != DONE) {
       this->plus_positions[querypos] = (Genomicpos_T *) NULL;
       this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -810,7 +832,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
     }
 
   } else if (mode == CMET_STRANDED) {
-    while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+    while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				    reader,/*cdnaend*/FIVE)) != DONE) {
       this->plus_positions[querypos] = (Genomicpos_T *) NULL;
       this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -833,7 +855,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
 
   } else if (mode == CMET_NONSTRANDED) {
     if (genestrand == +1) {
-      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				      reader,/*cdnaend*/FIVE)) != DONE) {
 	this->plus_positions[querypos] = (Genomicpos_T *) NULL;
 	this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -854,7 +876,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
 	}
       }
     } else {
-      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				      reader,/*cdnaend*/FIVE)) != DONE) {
 	this->plus_positions[querypos] = (Genomicpos_T *) NULL;
 	this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -877,7 +899,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
     }
 
   } else if (mode == ATOI_STRANDED) {
-    while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+    while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				    reader,/*cdnaend*/FIVE)) != DONE) {
       this->plus_positions[querypos] = (Genomicpos_T *) NULL;
       this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -900,7 +922,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
 
   } else if (mode == ATOI_NONSTRANDED) {
     if (genestrand == +1) {
-      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				      reader,/*cdnaend*/FIVE)) != DONE) {
 	this->plus_positions[querypos] = (Genomicpos_T *) NULL;
 	this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -921,7 +943,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
 	}
       }
     } else {
-      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,index1part,
+      while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				      reader,/*cdnaend*/FIVE)) != DONE) {
 	this->plus_positions[querypos] = (Genomicpos_T *) NULL;
 	this->minus_positions[querypos] = (Genomicpos_T *) NULL;
@@ -1020,7 +1042,7 @@ omit_oligos (bool *all_omitted_p, bool *any_omitted_p, T this, int query_lastpos
 
   if (frequentp == true) {
     /* Omit frequent oligos, but only in the middle */
-    for (querypos = 3; querypos <= query_lastpos-3; querypos++) {
+    for (querypos = index1interval; querypos <= query_lastpos-index1interval; querypos++) {
       if (this->plus_npositions[querypos] > indexdb_size_threshold &&
 	  this->minus_npositions[querypos] > indexdb_size_threshold) {
 	debug(printf("Querypos %d is frequent with %d plus positions > %d and %d minus positions > %d\n",
@@ -1034,7 +1056,7 @@ omit_oligos (bool *all_omitted_p, bool *any_omitted_p, T this, int query_lastpos
 #if 0
     if (*any_omitted_p == true) {
       nconsecutive = 0;
-      for (querypos = 3; querypos <= query_lastpos-3; querypos += 3) {
+      for (querypos = index1interval; querypos <= query_lastpos-index1interval; querypos += index1interval) {
 	if (this->omitted[querypos] == false) {
 	  nconsecutive = 0;
 	} else {
@@ -1048,7 +1070,7 @@ omit_oligos (bool *all_omitted_p, bool *any_omitted_p, T this, int query_lastpos
       }
 
       nconsecutive = 0;
-      for (querypos = 4; querypos <= query_lastpos-3; querypos += 3) {
+      for (querypos = index1interval+1; querypos <= query_lastpos-index1interval; querypos += index1interval) {
 	if (this->omitted[querypos] == false) {
 	  nconsecutive = 0;
 	} else {
@@ -1062,7 +1084,7 @@ omit_oligos (bool *all_omitted_p, bool *any_omitted_p, T this, int query_lastpos
       }
 
       nconsecutive = 0;
-      for (querypos = 5; querypos <= query_lastpos-3; querypos += 3) {
+      for (querypos = index1interval+index1interval-1; querypos <= query_lastpos-index1interval; querypos += index1interval) {
 	if (this->omitted[querypos] == false) {
 	  nconsecutive = 0;
 	} else {
@@ -1158,46 +1180,47 @@ static T
 Stage1_new (int querylength) {
   T new = (T) MALLOC(sizeof(*new));
   int querypos, mod;
+  int overhang = index1interval-1;
 
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     new->plus_spanningset[mod] = (List_T) NULL;
     new->minus_spanningset[mod] = (List_T) NULL;
   }
 
-  new->plus_positions_allocated = (Genomicpos_T **) CALLOC(querylength+2,sizeof(Genomicpos_T *));
-  new->plus_positions = &(new->plus_positions_allocated[2]);
-  new->minus_positions_allocated = (Genomicpos_T **) CALLOC(querylength+2,sizeof(Genomicpos_T *));
-  new->minus_positions = &(new->minus_positions_allocated[2]);
+  new->plus_positions_allocated = (Genomicpos_T **) CALLOC(querylength+overhang,sizeof(Genomicpos_T *));
+  new->plus_positions = &(new->plus_positions_allocated[overhang]);
+  new->minus_positions_allocated = (Genomicpos_T **) CALLOC(querylength+overhang,sizeof(Genomicpos_T *));
+  new->minus_positions = &(new->minus_positions_allocated[overhang]);
 
-  new->plus_npositions_allocated = (int *) CALLOC(querylength+2,sizeof(int));
-  new->plus_npositions = &(new->plus_npositions_allocated[2]);
-  new->minus_npositions_allocated = (int *) CALLOC(querylength+2,sizeof(int));
-  new->minus_npositions = &(new->minus_npositions_allocated[2]);
+  new->plus_npositions_allocated = (int *) CALLOC(querylength+overhang,sizeof(int));
+  new->plus_npositions = &(new->plus_npositions_allocated[overhang]);
+  new->minus_npositions_allocated = (int *) CALLOC(querylength+overhang,sizeof(int));
+  new->minus_npositions = &(new->minus_npositions_allocated[overhang]);
 
-  for (querypos = -2; querypos < querylength; querypos++) {
+  for (querypos = -index1interval+1; querypos < querylength; querypos++) {
     new->plus_positions[querypos] = (Genomicpos_T *) NULL;
     new->plus_npositions[querypos] = 0;
     new->minus_positions[querypos] = (Genomicpos_T *) NULL;
     new->minus_npositions[querypos] = 0;
   }
 
-  new->plus_retrievedp_allocated = (bool *) CALLOC(querylength+2,sizeof(bool));
-  new->minus_retrievedp_allocated = (bool *) CALLOC(querylength+2,sizeof(bool));
-  new->plus_retrievedp = &(new->plus_retrievedp_allocated[2]);
-  new->minus_retrievedp = &(new->minus_retrievedp_allocated[2]);
+  new->plus_retrievedp_allocated = (bool *) CALLOC(querylength+overhang,sizeof(bool));
+  new->minus_retrievedp_allocated = (bool *) CALLOC(querylength+overhang,sizeof(bool));
+  new->plus_retrievedp = &(new->plus_retrievedp_allocated[overhang]);
+  new->minus_retrievedp = &(new->minus_retrievedp_allocated[overhang]);
 
-  new->plus_allocp_allocated = (bool *) CALLOC(querylength+2,sizeof(bool));
-  new->minus_allocp_allocated = (bool *) CALLOC(querylength+2,sizeof(bool));
-  new->plus_allocp = &(new->plus_allocp_allocated[2]);
-  new->minus_allocp = &(new->minus_allocp_allocated[2]);
+  new->plus_allocp_allocated = (bool *) CALLOC(querylength+overhang,sizeof(bool));
+  new->minus_allocp_allocated = (bool *) CALLOC(querylength+overhang,sizeof(bool));
+  new->plus_allocp = &(new->plus_allocp_allocated[overhang]);
+  new->minus_allocp = &(new->minus_allocp_allocated[overhang]);
 
   new->validp = (bool *) CALLOC(querylength,sizeof(bool));
   new->omitted = (bool *) CALLOC(querylength,sizeof(bool));
 
-  new->forward_oligos_allocated = (Storedoligomer_T *) CALLOC(querylength+2,sizeof(Storedoligomer_T));
-  new->forward_oligos = &(new->forward_oligos_allocated[2]);
-  new->revcomp_oligos_allocated = (Storedoligomer_T *) CALLOC(querylength+2,sizeof(Storedoligomer_T));
-  new->revcomp_oligos = &(new->revcomp_oligos_allocated[2]);
+  new->forward_oligos_allocated = (Storedoligomer_T *) CALLOC(querylength+overhang,sizeof(Storedoligomer_T));
+  new->forward_oligos = &(new->forward_oligos_allocated[overhang]);
+  new->revcomp_oligos_allocated = (Storedoligomer_T *) CALLOC(querylength+overhang,sizeof(Storedoligomer_T));
+  new->revcomp_oligos = &(new->revcomp_oligos_allocated[overhang]);
 
   new->plus_segments = (struct Segment_T *) NULL;
   new->minus_segments = (struct Segment_T *) NULL;
@@ -1281,13 +1304,16 @@ Batch_init (Batch_T batch, int querypos, int diagterm, Genomicpos_T *positions, 
 
   while (batch->npositions > 0 && batch->diagonal < (unsigned int) querylength) {
     debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Batch_init)\n",batch->diagonal));
-#ifdef WORDS_BIGENDIAN
-    batch->diagonal = Bigendian_convert_uint(*(++batch->positions)) + diagterm;
-#else
-    batch->diagonal = *(++batch->positions) + diagterm;
-#endif
     batch->npositions--;
+    if (batch->npositions > 0) {
+#ifdef WORDS_BIGENDIAN
+      batch->diagonal = Bigendian_convert_uint(*(++batch->positions)) + diagterm;
+#else
+      batch->diagonal = *(++batch->positions) + diagterm;
+#endif
+    }
   }
+
 
 #ifdef HAVE_64_BIT
   batch->diagonal_add_querypos = (UINT8) batch->diagonal;
@@ -1309,9 +1335,11 @@ Batch_init_simple (Batch_T batch, Genomicpos_T *diagonals, int ndiagonals, int q
 
   while (batch->npositions > 0 && batch->diagonal < (unsigned int) querylength) {
     debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Batch_init)\n",batch->diagonal));
-    /* positions are really diagonals, already in correct endianness */
-    batch->diagonal = *(++batch->positions);
     batch->npositions--;
+    if (batch->npositions > 0) {
+      /* positions are really diagonals, already in correct endianness */
+      batch->diagonal = *(++batch->positions);
+    }
   }
 
   return;
@@ -1404,15 +1432,7 @@ report_perfect_segment (int *found_score, List_T hits, Genomicpos_T left,
       return List_push(hits,(void *) hit);
     }
 
-  } else if (mode == STANDARD) {
-    if ((hit = Stage3end_new_exact(&(*found_score),left,/*genomiclength*/querylength,
-				   query_compress,plusp,genestrand,chrnum,chroffset,chrhigh)) == NULL) {
-      return hits;
-    } else {
-      return List_push(hits,(void *) hit);
-    }
-
-  } else {
+  } else if (mode != STANDARD || spansize != index1part) {
     /* Count actual number of mismatches.  May not be a perfect segment. */
     nmismatches = Genome_count_mismatches_limit(query_compress,left,/*pos5*/0,/*pos3*/querylength,
 						/*max_mismatches_allowed*/nmisses_allowed,plusp,
@@ -1428,6 +1448,15 @@ report_perfect_segment (int *found_score, List_T hits, Genomicpos_T left,
       } else {
 	return List_push(hits,(void *) hit);
       }
+    }
+
+  } else {
+    /* mode == STANDARD && spansize == index1part */
+    if ((hit = Stage3end_new_exact(&(*found_score),left,/*genomiclength*/querylength,
+				   query_compress,plusp,genestrand,chrnum,chroffset,chrhigh)) == NULL) {
+      return hits;
+    } else {
+      return List_push(hits,(void *) hit);
     }
   }
 }
@@ -1896,7 +1925,7 @@ identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Genomicpos_T *chrof
       return hits;
 
     } else {
-      if (snpp || mode != STANDARD) {
+      if (snpp || mode != STANDARD || spansize != index1part) {
 	debug7(printf("  Testing in entire query\n"));
 	nmismatches = Genome_count_mismatches_substring(query_compress,left,/*pos5*/0,/*pos3*/querylength,
 							plusp,genestrand);
@@ -1927,11 +1956,150 @@ identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Genomicpos_T *chrof
 }
 
 
+/* Since querypos -1 and query_lastpos+1 are now
+   stored as compoundpos, we no longer want to use them for boosting */
+static void
+most_specific_oligomer_1 (int *best_plus_querypos, int *best_minus_querypos, T this,
+			  int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
+  int querypos;
+  int best_plus_count, best_minus_count;
+
+  /* Not needed, since this is the first procedure called */
+  /* Block_restore(this->block5); */
+
+  best_plus_querypos[0] = -1;
+  best_minus_querypos[0] = -1;
+
+  best_plus_count = 0;
+  best_minus_count = 0;
+
+  for (querypos = 0; querypos <= query_lastpos; querypos++) {
+#if 0
+    if (this->validp[querypos] == true) {
+#endif
+      this->plus_npositions[querypos] = Indexdb_count_no_subst(indexdb_fwd,this->forward_oligos[querypos]);
+      this->minus_npositions[querypos] = Indexdb_count_no_subst(indexdb_rev,this->revcomp_oligos[querypos]);
+      debug(printf("Counting at querypos %d, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
+		   querypos,this->plus_npositions[querypos],this->forward_oligos[querypos],
+		   this->minus_npositions[querypos],this->revcomp_oligos[querypos]));
+
+      if (best_plus_querypos[0] < 0 || this->plus_npositions[querypos] < best_plus_count) {
+	best_plus_querypos[0] = querypos;
+	best_plus_count = this->plus_npositions[querypos];
+      }
+      if (best_minus_querypos[0] < 0 || this->minus_npositions[querypos] < best_minus_count) {
+	best_minus_querypos[0] = querypos;
+	best_minus_count = this->minus_npositions[querypos];
+      }
+#if 0
+    }
+#endif
+  }
+
+  return;
+}
+
+
+/* Since querypos -1 and query_lastpos+1 are now
+   stored as compoundpos, we no longer want to use them for boosting */
+static void
+most_specific_oligomer_2 (int *best_plus_querypos, int *best_minus_querypos, T this,
+			  int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
+  int querypos, mod;
+  int best_plus_count[2], best_minus_count[2];
+
+  /* Not needed, since this is the first procedure called */
+  /* Block_restore(this->block5); */
+
+  best_plus_querypos[0] = -2;
+  best_plus_querypos[1] = -2;
+  best_minus_querypos[0] = -2;
+  best_minus_querypos[1] = -2;
+
+  best_plus_count[0] = best_plus_count[1] = 0;
+  best_minus_count[0] = best_minus_count[1] = 0;
+
+#if 0
+  if (this->validp[0] == false) {
+    debug(printf("Not counting at querypos 0, neg 2 or neg 1 because validp is false at querypos 0\n"));
+    this->plus_npositions[-1] = 0;
+    this->minus_npositions[-1] = 0;
+  } else {
+#endif
+    this->plus_npositions[-1] = Indexdb_count_left_subst_1(indexdb_fwd,this->forward_oligos[0]);
+    this->minus_npositions[-1] = Indexdb_count_right_subst_1(indexdb_rev,this->revcomp_oligos[0]);
+    debug(printf("Counting at querypos 0, neg 1, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
+		 this->plus_npositions[-1],this->forward_oligos[0],this->minus_npositions[-1],this->revcomp_oligos[0]));
+    best_plus_count[2] = this->plus_npositions[-1];
+    best_minus_count[2] = this->minus_npositions[-1];
+#if 0
+  }
+#endif
+
+  for (querypos = 0; querypos <= query_lastpos; querypos++) {
+#if 0
+    if (this->validp[querypos] == true) {
+#endif
+      mod = querypos % 2;
+      this->plus_npositions[querypos] = Indexdb_count_no_subst(indexdb_fwd,this->forward_oligos[querypos]);
+      this->minus_npositions[querypos] = Indexdb_count_no_subst(indexdb_rev,this->revcomp_oligos[querypos]);
+      debug(printf("Counting at querypos %d, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
+		   querypos,this->plus_npositions[querypos],this->forward_oligos[querypos],
+		   this->minus_npositions[querypos],this->revcomp_oligos[querypos]));
+
+      if (best_plus_querypos[mod] < 0 || this->plus_npositions[querypos] < best_plus_count[mod]) {
+	best_plus_querypos[mod] = querypos;
+	best_plus_count[mod] = this->plus_npositions[querypos];
+      }
+      if (best_minus_querypos[mod] < 0 || this->minus_npositions[querypos] < best_minus_count[mod]) {
+	best_minus_querypos[mod] = querypos;
+	best_minus_count[mod] = this->minus_npositions[querypos];
+      }
+#if 0
+    }
+#endif
+  }
+
+  querypos = query_lastpos;
+#if 0
+  if (this->validp[querypos] == false) {
+    debug(printf("Not counting at querypos %d (pos 1) or %d (pos 2) because validp is false at querypos %d\n",
+		 querypos+1,querypos+2,querypos));
+    this->plus_npositions[querypos+1] = 0;
+    this->minus_npositions[querypos+1] = 0;
+  } else {
+#endif
+    mod = (querypos+1) % 2;
+    this->plus_npositions[querypos+1] = Indexdb_count_right_subst_1(indexdb_fwd,this->forward_oligos[querypos]);
+    this->minus_npositions[querypos+1] = Indexdb_count_left_subst_1(indexdb_rev,this->revcomp_oligos[querypos]);
+    debug(printf("Counting at querypos %d, pos 1, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
+		 querypos,this->plus_npositions[querypos+1],this->forward_oligos[querypos],
+		 this->minus_npositions[querypos+1],this->revcomp_oligos[querypos]));
+
+#if 0
+    /* Don't want boostpos to be a compoundpos */
+    if (best_plus_querypos[mod] < 0 || this->plus_npositions[querypos+1] < best_plus_count[mod]) {
+      best_plus_querypos[mod] = querypos+1;
+      best_plus_count[mod] = this->plus_npositions[querypos+1];
+    }
+    if (best_minus_querypos[mod] < 0 || this->minus_npositions[querypos+1] < best_minus_count[mod]) {
+      best_minus_querypos[mod] = querypos+1;
+      best_minus_count[mod] = this->minus_npositions[querypos+1];
+    }
+#endif
+
+#if 0
+  }
+#endif
+
+  return;
+}
+
 /* Since querypos -2, -1, query_lastpos+1, and query_lastpos+2 are now
    stored as compoundpos, we no longer want to use them for boosting */
 static void
-most_specific_oligomer (int *best_plus_querypos, int *best_minus_querypos, T this,
-			int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
+most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T this,
+			  int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
   int querypos, mod;
   int best_plus_count[3], best_minus_count[3];
 
@@ -2062,7 +2230,7 @@ find_spanning_exact_matches (int *found_score, T this, int genestrand,
   List_T hits = NULL;
   List_T spanningset, sorted;
   Spanningelt_T *array;
-  int best_plus_querypos[3], best_minus_querypos[3];
+  int best_plus_querypos[MAX_INDEX1INTERVAL], best_minus_querypos[MAX_INDEX1INTERVAL];
   Genomicpos_T *diagonals0, *positions0, diagonal0;
   int diagterm0, ndiagonals0, npositions0;
   int boostpos, mod, nelts, minscore, i;
@@ -2074,10 +2242,16 @@ find_spanning_exact_matches (int *found_score, T this, int genestrand,
   debug(printf("Starting find_spanning_exact_matches\n"));
 
   /* Use shortest list for candidate generation */
-  most_specific_oligomer(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+  if (index1interval == 3) {
+    most_specific_oligomer_3(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+  } else if (index1interval == 2) {
+    most_specific_oligomer_2(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+  } else {
+    most_specific_oligomer_1(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+  }
 
   /* Plus */
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     chrhigh = 0U;
     spanningset = Spanningelt_set(&minscore,this->forward_oligos,&this->plus_retrievedp,&this->plus_positions,
 				  &this->plus_npositions,indexdb_fwd,query_lastpos,querylength,mod,/*plusp*/true);
@@ -2166,7 +2340,7 @@ find_spanning_exact_matches (int *found_score, T this, int genestrand,
   }
 
   /* Minus */
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     chrhigh = 0U;
     spanningset = Spanningelt_set(&minscore,this->revcomp_oligos,&this->minus_retrievedp,&this->minus_positions,
 				  &this->minus_npositions,indexdb_rev,query_lastpos,querylength,mod,/*plusp*/false);
@@ -2275,7 +2449,7 @@ find_spanning_onemiss_matches (int *found_score, List_T hits, T this, int genest
   debug(printf("Starting find_spanning_onemiss_matches\n"));
 
   /* Plus */
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     debug(printf("Onemiss plus mod %d\n",mod));
 
     spanningset = this->plus_spanningset[mod];
@@ -2363,7 +2537,7 @@ find_spanning_onemiss_matches (int *found_score, List_T hits, T this, int genest
   }
 
   /* Minus */
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     debug(printf("Onemiss minus mod %d\n",mod));
 
     spanningset = this->minus_spanningset[mod];
@@ -2481,7 +2655,7 @@ find_spanning_multimiss_matches (int *found_score, List_T hits, T this, int gene
   heap = (Batch_T *) CALLOC(2*(nunion+1)+1+1,sizeof(Batch_T)); /* being liberal with allocation */
 
   /* Plus */
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     debug(printf("Multimiss plus mod %d\n",mod));
 
     spanningset = this->plus_spanningset[mod];
@@ -2642,7 +2816,7 @@ find_spanning_multimiss_matches (int *found_score, List_T hits, T this, int gene
   }
 
   /* Minus */
-  for (mod = 0; mod < 3; mod++) {
+  for (mod = 0; mod < index1interval; mod++) {
     debug(printf("Multimiss minus mod %d\n",mod));
 
     spanningset = this->minus_spanningset[mod];
@@ -2901,13 +3075,16 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
   int heapsize = 0;
   int parenti, smallesti, righti, i;
   int querypos, first_querypos, last_querypos;
-  int halfquerylength, halfquery_lastpos;
   int floor, floor_xfirst, floor_xlast;
   int floor_left, floor_right, floor_incr;
   int *floors_from_neg3, *floors_from_xfirst, *floors_to_xlast, *floors_to_pos3;
   /* int exclude_xfirst, exclude_xlast; */
   Genomicpos_T diagonal, segment_left, last_diagonal, chroffset = 0U, chrhigh = 0U;
   Chrnum_T chrnum;
+#ifdef OLD_FLOOR_ENDS
+  int halfquerylength, halfquery_lastpos;
+#endif
+
 #ifdef HAVE_64_BIT
   UINT8 diagonal_add_querypos;
 #endif
@@ -2934,8 +3111,10 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
     nsplicesites_local = nsplicesites;
   }
 
+#ifdef OLD_FLOOR_ENDS
   halfquerylength = querylength / 2;
   halfquery_lastpos = halfquerylength - index1part;
+#endif
 
   /* Create sentinel */
 #ifdef HAVE_64_BIT
@@ -3025,22 +3204,22 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
 
 #if 0
   /* Should account for firstbound and lastbound */
-  floors_from_xfirst = floors->scorefrom[/* xfirst_from = */ firstbound-3+max_end_insertions];
-  floors_to_xlast = floors->scoreto[/* xlast_to = */ lastbound+4-index1part-max_end_insertions];
+  floors_from_xfirst = floors->scorefrom[/* xfirst_from = */ firstbound-index1interval+max_end_insertions];
+  floors_to_xlast = floors->scoreto[/* xlast_to = */ lastbound+1+index1interval-index1part-max_end_insertions];
 #else
-  if (index1part /* +max_end_insertions */ > query_lastpos + 3) {
-    floors_from_xfirst = floors->scorefrom[query_lastpos+3];
+  if (spansize /* +max_end_insertions */ > query_lastpos + index1interval) {
+    floors_from_xfirst = floors->scorefrom[query_lastpos+index1interval];
   } else {
-    floors_from_xfirst = floors->scorefrom[index1part /* +max_end_insertions */];
+    floors_from_xfirst = floors->scorefrom[spansize /* +max_end_insertions */];
   }
-  if (query_lastpos-index1part /* -max_end_insertions */ < -3) {
-    floors_to_xlast = floors->scoreto[-3];
+  if (query_lastpos-spansize /* -max_end_insertions */ < -index1interval) {
+    floors_to_xlast = floors->scoreto[-index1interval];
   } else {
-    floors_to_xlast = floors->scoreto[query_lastpos-index1part /* -max_end_insertions */];
+    floors_to_xlast = floors->scoreto[query_lastpos-spansize /* -max_end_insertions */];
   }
 #endif
-  floors_from_neg3 = floors->scorefrom[-3];
-  floors_to_pos3 = floors->scoreto[query_lastpos+3];
+  floors_from_neg3 = floors->scorefrom[-index1interval];
+  floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
 
   /* Initialize loop */
@@ -3057,12 +3236,12 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
   if (querypos < halfquery_lastpos) {
     floor_left = floor_incr;
   } else {
-    floor_left = floors->scorefrom[-3][halfquery_lastpos];
+    floor_left = floors->scorefrom[-index1interval][halfquery_lastpos];
   }
   if (querypos < halfquerylength) {
-    floor_right = floors->scorefrom[halfquerylength-3][query_lastpos];
+    floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos];
   } else {
-    floor_right = floors->scorefrom[halfquerylength-3][first_querypos];
+    floor_right = floors->scorefrom[halfquerylength-index1interval][first_querypos];
   }
 #else
   floor_left = floor_incr;
@@ -3152,12 +3331,12 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
 	floor_left += floor_incr;
       } else if (last_querypos < halfquery_lastpos) {
 	/* Finish floor_left */
-	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+3];
+	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+index1interval];
       }
       if (querypos >= halfquerylength) {
 	if (last_querypos < halfquerylength) {
 	  /* Start floor_right */
-	  floor_right = floors->scorefrom[halfquerylength-3][querypos];
+	  floor_right = floors->scorefrom[halfquerylength-index1interval][querypos];
 	} else {
 	  floor_right += floor_incr;
 	}
@@ -3170,15 +3349,15 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
 		    plusp ? "plus" : "minus",diagonal,querypos,floor,floor_xfirst,floor_xlast,floor_left,floor_right));
     } else {
       /* End of diagonal */
-      floor_incr = floors_to_pos3[last_querypos]  /* floors->score[last_querypos][query_lastpos+3] */;
+      floor_incr = floors_to_pos3[last_querypos]  /* floors->score[last_querypos][query_lastpos+index1interval] */;
       floor += floor_incr;
       floor_xfirst += floor_incr;
       floor_xlast += floors_to_xlast[last_querypos];  /* floors->score[last_querypos][xlast_to]; */
 
 #ifdef OLD_FLOOR_ENDS
       if (last_querypos < halfquery_lastpos) {
-	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+3];
-	floor_right = floors->scorefrom[halfquerylength-3][query_lastpos+3];
+	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+index1interval];
+	floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos+index1interval];
       }
       if (last_querypos >= halfquerylength) {
 	floor_right += floor_incr;
@@ -3260,7 +3439,7 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
       /* Prepare next diagonal */
       first_querypos = querypos;
       last_diagonal = diagonal;
-      floor_incr = floors_from_neg3[first_querypos] /* floors->score[-3][first_querypos] */;
+      floor_incr = floors_from_neg3[first_querypos] /* floors->score[-index1interval][first_querypos] */;
       floor = floor_incr;
       floor_xlast = floor_incr;
       floor_xfirst = floors_from_xfirst[first_querypos];  /* floors->score[xfirst_from][first_querypos]; */
@@ -3269,12 +3448,12 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
       if (querypos < halfquery_lastpos) {
 	floor_left = floor_incr;
       } else {
-	floor_left = floors->scorefrom[-3][halfquery_lastpos];
+	floor_left = floors->scorefrom[-index1interval][halfquery_lastpos];
       }
       if (querypos < halfquerylength) {
-	floor_right = floors->scorefrom[halfquerylength-3][query_lastpos];
+	floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos];
       } else {
-	floor_right = floors->scorefrom[halfquerylength-3][first_querypos];
+	floor_right = floors->scorefrom[halfquerylength-index1interval][first_querypos];
       }
 #else
       floor_left = floor_incr;
@@ -3348,15 +3527,15 @@ identify_all_segments (int *nsegments, Genomicpos_T **positions, int *npositions
   }
 
   /* Terminate loop. */
-  floor_incr = floors_to_pos3[last_querypos];   /* floors->score[last_querypos][query_lastpos+3]; */
+  floor_incr = floors_to_pos3[last_querypos];   /* floors->score[last_querypos][query_lastpos+index1interval]; */
   floor += floor_incr;
   floor_xfirst += floor_incr;
   floor_xlast += floors_to_xlast[last_querypos];  /* floors->score[last_querypos][xlast_to]; */
 
 #ifdef OLD_FLOOR_ENDS
   if (last_querypos < halfquery_lastpos) {
-    floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+3];
-    floor_right = floors->scorefrom[halfquerylength-3][query_lastpos+3];
+    floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+index1interval];
+    floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos+index1interval];
   }
   if (last_querypos >= halfquerylength) {
     floor_right += floor_incr;
@@ -3484,12 +3663,14 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
   int heapsize = 0;
   int parenti, smallesti, righti, i;
   int querypos, first_querypos, last_querypos;
-  int halfquerylength, halfquery_lastpos;
   int floor_left, floor_right, floor_incr;
   int *floors_from_neg3, *floors_from_xfirst, *floors_to_xlast, *floors_to_pos3;
   /* int exclude_xfirst, exclude_xlast; */
   Genomicpos_T diagonal, last_diagonal, chroffset = 0U, chrhigh = 0U;
   Chrnum_T chrnum;
+#ifdef OLD_FLOOR_ENDS
+  int halfquerylength, halfquery_lastpos;
+#endif
 #ifdef HAVE_64_BIT
   UINT8 diagonal_add_querypos;
 #endif
@@ -3498,8 +3679,10 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
 
   debug(printf("*** Starting identify_all_segments ***\n"));
 
+#ifdef OLD_FLOOR_ENDS
   halfquerylength = querylength / 2;
   halfquery_lastpos = halfquerylength - index1part;
+#endif
 
   /* Create sentinel */
 #ifdef HAVE_64_BIT
@@ -3577,32 +3760,32 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
   ptr_chrstart = ptr = &(segments[0]);
 
   /*
-  if ((exclude_xfirst = firstbound-2-index1part-max_end_insertions) < 3) {
-    exclude_xfirst = 3;
+  if ((exclude_xfirst = firstbound-2-index1part-max_end_insertions) < index1interval) {
+    exclude_xfirst = index1interval;
   }
-  if ((exclude_xlast = lastbound+1+max_end_insertions) > query_lastpos-3) {
-    exclude_xlast = query_lastpos-3;
+  if ((exclude_xlast = lastbound+1+max_end_insertions) > query_lastpos-index1interval) {
+    exclude_xlast = query_lastpos-index1interval;
   }
   */
 
 #if 0
   /* Should account for firstbound and lastbound */
-  floors_from_xfirst = floors->scorefrom[/* xfirst_from = */ firstbound-3+max_end_insertions];
-  floors_to_xlast = floors->scoreto[/* xlast_to = */ lastbound+4-index1part-max_end_insertions];
+  floors_from_xfirst = floors->scorefrom[/* xfirst_from = */ firstbound-index1interval+max_end_insertions];
+  floors_to_xlast = floors->scoreto[/* xlast_to = */ lastbound+1+index1interval-index1part-max_end_insertions];
 #else
-  if (index1part /* +max_end_insertions */ > query_lastpos + 3) {
-    floors_from_xfirst = floors->scorefrom[query_lastpos+3];
+  if (spansize /* +max_end_insertions */ > query_lastpos + index1interval) {
+    floors_from_xfirst = floors->scorefrom[query_lastpos+index1interval];
   } else {
-    floors_from_xfirst = floors->scorefrom[index1part /* +max_end_insertions */];
+    floors_from_xfirst = floors->scorefrom[spansize /* +max_end_insertions */];
   }
-  if (query_lastpos-index1part /* -max_end_insertions */ < -3) {
-    floors_to_xlast = floors->scoreto[-3];
+  if (query_lastpos-spansize /* -max_end_insertions */ < -index1interval) {
+    floors_to_xlast = floors->scoreto[-index1interval];
   } else {
-    floors_to_xlast = floors->scoreto[query_lastpos-index1part /* -max_end_insertions */];
+    floors_to_xlast = floors->scoreto[query_lastpos-spansize /* -max_end_insertions */];
   }
 #endif
-  floors_from_neg3 = floors->scorefrom[-3];
-  floors_to_pos3 = floors->scoreto[query_lastpos+3];
+  floors_from_neg3 = floors->scorefrom[-index1interval];
+  floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
 
   /* Initialize loop */
@@ -3621,12 +3804,12 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
   if (querypos < halfquery_lastpos) {
     floor_left = floor_incr;
   } else {
-    floor_left = floors->scorefrom[-3][halfquery_lastpos];
+    floor_left = floors->scorefrom[-index1interval][halfquery_lastpos];
   }
   if (querypos < halfquerylength) {
-    floor_right = floors->scorefrom[halfquerylength-3][query_lastpos];
+    floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos];
   } else {
-    floor_right = floors->scorefrom[halfquerylength-3][first_querypos];
+    floor_right = floors->scorefrom[halfquerylength-index1interval][first_querypos];
   }
 #else
   floor_left = floor_incr;
@@ -3718,12 +3901,12 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
 	floor_left += floor_incr;
       } else if (last_querypos < halfquery_lastpos) {
 	/* Finish floor_left */
-	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+3];
+	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+index1interval];
       }
       if (querypos >= halfquerylength) {
 	if (last_querypos < halfquerylength) {
 	  /* Start floor_right */
-	  floor_right = floors->scorefrom[halfquerylength-3][querypos];
+	  floor_right = floors->scorefrom[halfquerylength-index1interval][querypos];
 	} else {
 	  floor_right += floor_incr;
 	}
@@ -3736,7 +3919,7 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
 		    plusp ? "plus" : "minus",diagonal,querypos,floor_left,floor_right));
     } else {
       /* End of diagonal */
-      floor_incr = floors_to_pos3[last_querypos]  /* floors->score[last_querypos][query_lastpos+3] */;
+      floor_incr = floors_to_pos3[last_querypos]  /* floors->score[last_querypos][query_lastpos+index1interval] */;
 #if 0
       floor += floor_incr;
       floor_xfirst += floor_incr;
@@ -3745,8 +3928,8 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
 
 #ifdef OLD_FLOOR_ENDS
       if (last_querypos < halfquery_lastpos) {
-	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+3];
-	floor_right = floors->scorefrom[halfquerylength-3][query_lastpos+3];
+	floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+index1interval];
+	floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos+index1interval];
       }
       if (last_querypos >= halfquerylength) {
 	floor_right += floor_incr;
@@ -3802,7 +3985,7 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
       /* Prepare next diagonal */
       first_querypos = querypos;
       last_diagonal = diagonal;
-      floor_incr = floors_from_neg3[first_querypos] /* floors->score[-3][first_querypos] */;
+      floor_incr = floors_from_neg3[first_querypos] /* floors->score[-index1interval][first_querypos] */;
 #if 0
       floor = floor_incr;
       floor_xlast = floor_incr;
@@ -3813,12 +3996,12 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
       if (querypos < halfquery_lastpos) {
 	floor_left = floor_incr;
       } else {
-	floor_left = floors->scorefrom[-3][halfquery_lastpos];
+	floor_left = floors->scorefrom[-index1interval][halfquery_lastpos];
       }
       if (querypos < halfquerylength) {
-	floor_right = floors->scorefrom[halfquerylength-3][query_lastpos];
+	floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos];
       } else {
-	floor_right = floors->scorefrom[halfquerylength-3][first_querypos];
+	floor_right = floors->scorefrom[halfquerylength-index1interval][first_querypos];
       }
 #else
       floor_left = floor_incr;
@@ -3892,7 +4075,7 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
   }
 
   /* Terminate loop. */
-  floor_incr = floors_to_pos3[last_querypos];   /* floors->score[last_querypos][query_lastpos+3]; */
+  floor_incr = floors_to_pos3[last_querypos];   /* floors->score[last_querypos][query_lastpos+index1interval]; */
 #if 0
   floor += floor_incr;
   floor_xfirst += floor_incr;
@@ -3901,8 +4084,8 @@ identify_all_segments_for_terminals (int *nsegments, Genomicpos_T **positions, i
 
 #ifdef OLD_FLOOR_ENDS
   if (last_querypos < halfquery_lastpos) {
-    floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+3];
-    floor_right = floors->scorefrom[halfquerylength-3][query_lastpos+3];
+    floor_left += floors->scorefrom[last_querypos][halfquery_lastpos+index1interval];
+    floor_right = floors->scorefrom[halfquerylength-index1interval][query_lastpos+index1interval];
   }
   if (last_querypos >= halfquerylength) {
     floor_right += floor_incr;
@@ -4345,8 +4528,8 @@ find_middle_indels (int *found_score, List_T hits,
 	       querylength,max_mismatches_allowed));
 
   if (plus_nsegments > 1) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segmenti = plus_segments; segmenti < &(plus_segments[plus_nsegments]); segmenti++) {
       if (segmenti->diagonal < -1U) {
@@ -4368,7 +4551,7 @@ find_middle_indels (int *found_score, List_T hits,
 	  if (segmentj->querypos3 < segmenti->querypos5) {
 	    indels = segmentj->diagonal - segmenti->diagonal; /* positive */
 	    floor = floors_from_neg3[segmentj->querypos5] + floors_to_pos3[segmenti->querypos3]
-	      /* floors->score[-3][segmentj->querypos5] + floors->score[segmenti->querypos3][query_lastpos+3] */ ;
+	      /* floors->score[-index1interval][segmentj->querypos5] + floors->score[segmenti->querypos3][query_lastpos+index1interval] */ ;
 	    if (floors->prev_omitted == NULL) {
 	      if ((middle = FLOOR_MIDDLE(segmenti->querypos5 - segmentj->querypos3 - indels)) > 0) {
 		middle--;	/* for insertion, which looks like a mismatch */
@@ -4393,8 +4576,8 @@ find_middle_indels (int *found_score, List_T hits,
 	    }
 	    if (floor <= max_mismatches_allowed) {
 	      debug2(printf("successful insertion, floor = %d+middle+%d=%d, indels = %d\n",
-			    floors->scorefrom[-3][segmentj->querypos5],
-			    floors->scorefrom[segmenti->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmentj->querypos5],
+			    floors->scorefrom[segmenti->querypos3][query_lastpos+index1interval],
 			    floor,indels));
 	      hits = solve_middle_insertion(&foundp,&(*found_score),hits,segmenti,indels,
 					    /*query_compress*/query_compress_fwd,
@@ -4409,8 +4592,8 @@ find_middle_indels (int *found_score, List_T hits,
 	      }
 	    } else {
 	      debug2(printf("too many mismatches, because floor %d+middle+%d=%d > %d\n",
-			    floors->scorefrom[-3][segmentj->querypos5],
-			    floors->scorefrom[segmenti->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmentj->querypos5],
+			    floors->scorefrom[segmenti->querypos3][query_lastpos+index1interval],
 			    floor,max_mismatches_allowed));
 	    }
 	  } else {
@@ -4431,7 +4614,7 @@ find_middle_indels (int *found_score, List_T hits,
 	  if (segmenti->querypos3 < segmentj->querypos5) {
 	    indels = segmenti->diagonal - segmentj->diagonal; /* negative */
 	    floor = floors_from_neg3[segmenti->querypos5] + floors_to_pos3[segmentj->querypos3]
-	      /* floors->score[-3][segmenti->querypos5] + floors->score[segmentj->querypos3][query_lastpos+3] */;
+	      /* floors->score[-index1interval][segmenti->querypos5] + floors->score[segmentj->querypos3][query_lastpos+index1interval] */;
 	    if (floors->prev_omitted == NULL) {
 	      if ((middle = FLOOR_MIDDLE(segmentj->querypos5 - segmenti->querypos3 /*- indels*/)) > 0) {
 		middle--;	/* for deletion, which looks like a mismatch */
@@ -4456,8 +4639,8 @@ find_middle_indels (int *found_score, List_T hits,
 	    }
 	    if (floor <= max_mismatches_allowed) {
 	      debug2(printf("successful deletion, floor = %d+middle+%d=%d, indels = %d\n",
-			    floors->scorefrom[-3][segmenti->querypos5],
-			    floors->scorefrom[segmentj->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmenti->querypos5],
+			    floors->scorefrom[segmentj->querypos3][query_lastpos+index1interval],
 			    floor,indels));
 	      hits = solve_middle_deletion(&foundp,&(*found_score),hits,segmenti,indels,
 					   /*query_compress*/query_compress_fwd,
@@ -4471,8 +4654,8 @@ find_middle_indels (int *found_score, List_T hits,
 	      }
 	    } else {
 	      debug2(printf("too many mismatches, because floor = %d+middle+%d=%d > %d\n",
-			    floors->scorefrom[-3][segmenti->querypos5],
-			    floors->scorefrom[segmentj->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmenti->querypos5],
+			    floors->scorefrom[segmentj->querypos3][query_lastpos+index1interval],
 			    floor,max_mismatches_allowed));
 	    }
 	  } else {
@@ -4485,8 +4668,8 @@ find_middle_indels (int *found_score, List_T hits,
   }
 
   if (minus_nsegments > 1) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segmenti = minus_segments; segmenti < &(minus_segments[minus_nsegments]); segmenti++) {
       if (segmenti->diagonal < -1U) {
@@ -4507,7 +4690,7 @@ find_middle_indels (int *found_score, List_T hits,
 	  if (segmentj->querypos3 < segmenti->querypos5) {
 	    indels = segmenti->diagonal - segmentj->diagonal; /* negative */
 	    floor = floors_from_neg3[segmentj->querypos5] + floors_to_pos3[segmenti->querypos3]
-	      /* floors->score[-3][segmentj->querypos5] + floors->score[segmenti->querypos3][query_lastpos+3] */;
+	      /* floors->score[-index1interval][segmentj->querypos5] + floors->score[segmenti->querypos3][query_lastpos+index1interval] */;
 	    if (floors->prev_omitted == NULL) {
 	      if ((middle = FLOOR_MIDDLE(segmenti->querypos5 - segmentj->querypos3 /*- indels*/)) > 0) {
 		middle--;	/* for deletion, which looks like a mismatch */
@@ -4532,8 +4715,8 @@ find_middle_indels (int *found_score, List_T hits,
 	    }
 	    if (floor <= max_mismatches_allowed) {
 	      debug2(printf("successful deletion, floor = %d+middle+%d=%d, indels = %d\n",
-			    floors->scorefrom[-3][segmentj->querypos5],
-			    floors->scorefrom[segmenti->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmentj->querypos5],
+			    floors->scorefrom[segmenti->querypos3][query_lastpos+index1interval],
 			    floor,indels));
 	      hits = solve_middle_deletion(&foundp,&(*found_score),hits,segmenti,indels,
 					   /*query_compress*/query_compress_rev,
@@ -4547,8 +4730,8 @@ find_middle_indels (int *found_score, List_T hits,
 	      }
 	    } else {
 	      debug2(printf("too many mismatches, because floor = %d+middle+%d=%d > %d\n",
-			    floors->scorefrom[-3][segmentj->querypos5],
-			    floors->scorefrom[segmenti->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmentj->querypos5],
+			    floors->scorefrom[segmenti->querypos3][query_lastpos+index1interval],
 			    floor,max_mismatches_allowed));
 	      debug2(printf("too many mismatches, because floor %d > %d\n",floor,max_mismatches_allowed));
 	    }
@@ -4570,7 +4753,7 @@ find_middle_indels (int *found_score, List_T hits,
 	  if (segmenti->querypos3 < segmentj->querypos5) {
 	    indels = segmentj->diagonal - segmenti->diagonal; /* positive */
 	    floor = floors_from_neg3[segmenti->querypos5] + floors_to_pos3[segmentj->querypos3]
-	      /* floors->score[-3][segmenti->querypos5] + floors->score[segmentj->querypos3][query_lastpos+3] */;
+	      /* floors->score[-index1interval][segmenti->querypos5] + floors->score[segmentj->querypos3][query_lastpos+index1interval] */;
 	    if (floors->prev_omitted == NULL) {
 	      if ((middle = FLOOR_MIDDLE(segmentj->querypos5 - segmenti->querypos3 - indels)) > 0) {
 		middle--;	/* for insertion, which looks like a mismatch */
@@ -4595,8 +4778,8 @@ find_middle_indels (int *found_score, List_T hits,
 	    }
 	    if (floor <= max_mismatches_allowed) {
 	      debug2(printf("successful insertion, floor = %d+middle+%d=%d, indels = %d\n",
-			    floors->scorefrom[-3][segmenti->querypos5],
-			    floors->scorefrom[segmentj->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmenti->querypos5],
+			    floors->scorefrom[segmentj->querypos3][query_lastpos+index1interval],
 			    floor,indels));
 	      hits = solve_middle_insertion(&foundp,&(*found_score),hits,segmenti,indels,
 					    /*query_compress*/query_compress_rev,
@@ -4610,8 +4793,8 @@ find_middle_indels (int *found_score, List_T hits,
 	      }
 	    } else {
 	      debug2(printf("too many mismatches, because floor %d+middle+%d=%d > %d\n",
-			    floors->scorefrom[-3][segmenti->querypos5],
-			    floors->scorefrom[segmentj->querypos3][query_lastpos+3],
+			    floors->scorefrom[-index1interval][segmenti->querypos5],
+			    floors->scorefrom[segmentj->querypos3][query_lastpos+index1interval],
 			    floor,max_mismatches_allowed));
 	    }
 	  } else {
@@ -7073,8 +7256,8 @@ find_singlesplices_plus (int *found_score, List_T hits, struct Segment_T *plus_s
   nhits = List_length(hits);
 
   if (plus_nsegments > 1) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segmenti = plus_segments; segmenti < &(plus_segments[plus_nsegments]) && nhits < MAX_LOCALSPLICING_HITS; segmenti++) {
       if (segmenti->diagonal < -1U) {
@@ -7131,13 +7314,13 @@ find_singlesplices_plus (int *found_score, List_T hits, struct Segment_T *plus_s
 	    segmentj->left_splice_p = true;
 	    if (floor_outer_i + floors_to_pos3[segmentj->querypos3] > max_mismatches_allowed) {
 	      /* Fail outer floor test */
-	      /* floors->score[-3][segmenti->querypos5] +floors->score[segmentj->querypos3][query_lastpos+3] */
+	      /* floors->score[-index1interval][segmenti->querypos5] +floors->score[segmentj->querypos3][query_lastpos+index1interval] */
 
 	      debug4s(printf("too many mismatches, outer floor = %d+%d=%d > %d\n",
-			     floors->scorefrom[-3][segmenti->querypos5],
-			     floors->scorefrom[segmentj->querypos3][query_lastpos+3],
-			     floors->scorefrom[-3][segmenti->querypos5] +
-			     floors->scorefrom[segmentj->querypos3][query_lastpos+3],
+			     floors->scorefrom[-index1interval][segmenti->querypos5],
+			     floors->scorefrom[segmentj->querypos3][query_lastpos+index1interval],
+			     floors->scorefrom[-index1interval][segmenti->querypos5] +
+			     floors->scorefrom[segmentj->querypos3][query_lastpos+index1interval],
 			     max_mismatches_allowed));
 
 	    } else {
@@ -7252,8 +7435,8 @@ find_singlesplices_minus (int *found_score, List_T hits, struct Segment_T *minus
   if (minus_nsegments > 1) {
     nhits = List_length(hits);
 
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segmenti = minus_segments; segmenti < &(minus_segments[minus_nsegments]) && nhits < MAX_LOCALSPLICING_HITS; segmenti++) {
       if (segmenti->diagonal < -1U) {
@@ -7310,13 +7493,13 @@ find_singlesplices_minus (int *found_score, List_T hits, struct Segment_T *minus
 	    segmentj->left_splice_p = true;
 	    if (floors_from_neg3[segmentj->querypos5] + floor_outer_i > max_mismatches_allowed) {
 	      /* Fail outer floor test */
-	      /* floors->score[-3][segmentj->querypos5] + floors->score[segmenti->querypos3][query_lastpos+3] */;
+	      /* floors->score[-index1interval][segmentj->querypos5] + floors->score[segmenti->querypos3][query_lastpos+index1interval] */;
 	  
 	      debug4s(printf("too many mismatches, outer floor = %d+%d=%d > %d\n",
-			     floors->scorefrom[-3][segmentj->querypos5],
-			     floors->scorefrom[segmenti->querypos3][query_lastpos+3],
-			     floors->scorefrom[-3][segmentj->querypos5] +
-			     floors->scorefrom[segmenti->querypos3][query_lastpos+3],
+			     floors->scorefrom[-index1interval][segmentj->querypos5],
+			     floors->scorefrom[segmenti->querypos3][query_lastpos+index1interval],
+			     floors->scorefrom[-index1interval][segmentj->querypos5] +
+			     floors->scorefrom[segmenti->querypos3][query_lastpos+index1interval],
 			     max_mismatches_allowed));
 
 	    } else {
@@ -7443,8 +7626,8 @@ find_doublesplices (int *found_score, List_T hits, struct Segment_T *segments, i
   nhits = List_length(hits);
 
   if (nsegments > 0) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segmentm = segments; segmentm < &(segments[nsegments]) && nhits < MAX_LOCALSPLICING_HITS; segmentm++) {
       if (segmentm->diagonal < -1U) {
@@ -8020,8 +8203,8 @@ find_doublesplices_old (int *found_score, List_T hits, struct Segment_T *segment
   nhits = List_length(hits);
 
   if (nsegments > 2) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segmentm = &(segments[1]); segmentm < &(segments[nsegments]); segmentm++) {
       if (segmentm->diagonal < -1U &&
@@ -8157,8 +8340,8 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
   debug4e(printf("Entering find_spliceends_shortend with %d segments\n",nsegments));
 
   if (nsegments > 0) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segment = segments; segment < &(segments[nsegments]); segment++) {
       if (segment->diagonal == -1U) {
@@ -8390,8 +8573,8 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
   debug4e(printf("Entering find_spliceends_distant with %d segments\n",nsegments));
 
   if (nsegments > 0) {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     for (segment = segments; segment < &(segments[nsegments]); segment++) {
       if (segment->diagonal < -1U) {
@@ -8837,8 +9020,8 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
     return (List_T) NULL;
 
   } else {
-    floors_from_neg3 = floors->scorefrom[-3];
-    floors_to_pos3 = floors->scoreto[query_lastpos+3];
+    floors_from_neg3 = floors->scorefrom[-index1interval];
+    floors_to_pos3 = floors->scoreto[query_lastpos+index1interval];
 
     if (max_terminal_length > querylength/2) {
       max_terminal_length = querylength/2;
@@ -10264,7 +10447,7 @@ find_12mer_bounds (int *firstbound, int *lastbound, bool *omitted, int query_las
 
   querypos = 0;
   nconsecutive = 0;
-  while (nconsecutive < 3 && querypos <= query_lastpos) {
+  while (nconsecutive < index1interval && querypos <= query_lastpos) {
     if (omitted[querypos]) {
       nconsecutive = 0;
     } else {
@@ -10272,20 +10455,20 @@ find_12mer_bounds (int *firstbound, int *lastbound, bool *omitted, int query_las
     }
     querypos++;
   }
-  if (nconsecutive < 3) {
+  if (nconsecutive < index1interval) {
     *firstbound = 0;
     /* *lastbound = query_lastpos; */
     debug(printf("nconsecutive from left < 3, so setting firstbound 0\n"));
     /* return false; */
   } else {
-    *firstbound = querypos+2 + index1part; /* From trial-and-error, this is the correct value */
-    debug(printf("Assigning firstbound to be querypos %d + 2 + index1part = %d\n",
-		 querypos,*firstbound));
+    *firstbound = querypos + (index1interval-1) + index1part; /* From trial-and-error, this is the correct value */
+    debug(printf("Assigning firstbound to be querypos %d + (%d - 1) + index1part = %d\n",
+		 querypos,index1interval,*firstbound));
   }
 
   querypos = query_lastpos;
   nconsecutive = 0;
-  while (nconsecutive < 3 && querypos >= 0) {
+  while (nconsecutive < index1interval && querypos >= 0) {
     if (omitted[querypos]) {
       nconsecutive = 0;
     } else {
@@ -10294,10 +10477,11 @@ find_12mer_bounds (int *firstbound, int *lastbound, bool *omitted, int query_las
     querypos--;
   }
 
-  if (nconsecutive < 3) {
+  if (nconsecutive < index1interval) {
     /* *firstbound = 0 + index1part; */
     *lastbound = query_lastpos;
-    debug(printf("nconsecutive from right < 3, so setting lastbound %d\n",query_lastpos));
+    debug(printf("nconsecutive from right < %d, so setting lastbound %d\n",
+		 index1interval,query_lastpos));
     /* return false; */
   } else {
     *lastbound = querypos-1; /* From trial-and-error, this is the correct value */
@@ -10640,7 +10824,333 @@ complete_set_doublesplicing (int *found_score, Floors_T floors,
 
 
 static List_T
-align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
+align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_right_p,
+			    char *queryuc_ptr, int querylength, int query_lastpos,
+#ifdef END_KNOWNSPLICING_SHORTCUT
+			    char *queryrc, bool invertedp,
+			    Compress_T query_compress_fwd, Compress_T query_compress_rev,
+#endif
+			    struct Segment_T *plus_segments, int plus_nsegments,
+			    struct Segment_T *minus_segments, int minus_nsegments,
+			    Oligoindex_T *oligoindices_major, int noligoindices_major,
+			    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
+			    Pairpool_T pairpool, Diagpool_T diagpool,
+			    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+			    Genomicpos_T shortsplicedist, int genestrand) {
+  List_T hits = NULL;
+  struct Pair_T *pairarray;
+  int npairs, nsegments, nmismatches_whole, nindels, nintrons, nindelbreaks;
+  Genomicpos_T start, end;
+  int cdna_direction;
+  int sensedir;
+
+  List_T all_paths, pairs, path, p;
+  char *genomicseg;
+  int genomiclength;
+  int stage2_source, stage2_indexsize;
+  Genomicpos_T genomicstart, genomicend, mappingstart, mappingend,
+    chroffset, chrhigh;
+  Genomicpos_T knownsplice_limit_low, knownsplice_limit_high;
+  Chrnum_T chrnum;
+  bool watsonp, favor_right_p;
+
+  int matches, unknowns, mismatches, qopens, qindels, topens, tindels;
+  int nmatches_pretrim, nmatches_posttrim;
+  int ambig_end_length_5, ambig_end_length_3;
+  Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
+  int ncanonical, nsemicanonical, nnoncanonical;
+  double defect_rate;
+
+  int starti, endi, i;
+
+
+  chrnum = Stage3end_chrnum(hit);
+  chroffset = Stage3end_chroffset(hit);
+  chrhigh = Stage3end_chrhigh(hit);
+  assert(chrnum != 0);
+
+  if ((watsonp = Stage3end_plusp(hit)) == true) {
+
+    if (extend_left_p == true) {
+      knownsplice_limit_low = mappingstart = genomicstart =
+	subtract_bounded(Stage3end_genomicstart(hit),shortsplicedist + querylength,chroffset);
+    } else {
+      knownsplice_limit_low = mappingstart = genomicstart =
+	subtract_bounded(Stage3end_genomicstart(hit),querylength,chroffset);
+    }
+
+    if (extend_right_p == true) {
+      knownsplice_limit_high = mappingend = genomicend =
+	add_bounded(Stage3end_genomicend(hit),shortsplicedist + querylength,chrhigh);
+    } else {
+      knownsplice_limit_high = mappingend = genomicend =
+	add_bounded(Stage3end_genomicend(hit),querylength,chrhigh);
+    }
+
+    debug13(printf("plus hit %u..%u (extend_left_p %d, extend_right_p %d) (sensedir %d) => genomicbounds %u..%u\n",
+		   Stage3end_genomicstart(hit) - chroffset,Stage3end_genomicend(hit) - chroffset,
+		   extend_left_p,extend_right_p,Stage3end_sensedir(hit),genomicstart - chroffset,genomicend - chroffset));
+
+    if (plus_nsegments > 0) {
+      /* Use segments to bound */
+      debug13(printf("Finding segments from mappingstart %u to mappingend %u (plus_nsegments %d)\n",
+		     mappingstart - chroffset,mappingend - chroffset,plus_nsegments));
+      starti = endi = -1;
+      i = binary_search_segments(0,plus_nsegments-1,plus_segments,mappingend);
+      while (i >= 0 && plus_segments[i].diagonal >= mappingend) {
+	i--;
+      }
+      while (i >= 0 && plus_segments[i].diagonal > mappingstart) {
+	if (plus_segments[i].diagonal < -1U) {
+	  debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			 plus_segments[i].diagonal - chroffset,plus_segments[i].diagonal,
+			 plus_segments[i].querypos5,plus_segments[i].querypos3));
+	  if (starti == -1) {
+	    starti = i;
+	  }
+	  endi = i;
+	}
+	i--;
+      }
+      if (endi >= 0) {
+	debug13(printf("Originally genomicstart was %u\n",genomicstart - chroffset));
+	if (plus_segments[endi].querypos5 >= STAGE2_MIN_OLIGO + index1interval) {
+	  /* Case 3. Missing start of query, so there could be a middle splice */
+	  debug13(printf("  querypos5 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			 plus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
+	  mappingstart = subtract_bounded(plus_segments[endi].diagonal,shortsplicedist,chroffset);
+	  knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,querylength,chroffset);
+	} else {
+	  debug13(printf("  querypos5 %d < %d + %d, so using this diagonal\n",
+			 plus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
+	  mappingstart = subtract_bounded(plus_segments[endi].diagonal,querylength,chroffset);
+	  knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,shortsplicedist_known + querylength,chroffset);
+	}
+	debug13(printf("  Redefining genomicstart to %u, mappingstart to %u\n",
+		       genomicstart - chroffset,mappingstart - chroffset));
+      }
+      if (starti >= 0) {
+	debug13(printf("Originally genomicend was %u\n",genomicend - chroffset));
+	if (query_lastpos - plus_segments[starti].querypos3 >= STAGE2_MIN_OLIGO + index1interval) {
+	  /* Case 1. Missing end of query, so there could be a middle splice */
+	  debug13(printf("  query_lastpos %d - querypos3 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			 query_lastpos,plus_segments[starti].querypos3,STAGE2_MIN_OLIGO,index1interval));
+	  mappingend = add_bounded(plus_segments[starti].diagonal,shortsplicedist,chrhigh);
+	  knownsplice_limit_high = genomicend = add_bounded(mappingend,querylength,chrhigh);
+	  
+	} else {
+	  debug13(printf("  query_lastpos %d - querypos3 %d < %d + %d, so using this diagonal\n",
+			 query_lastpos,plus_segments[starti].querypos3,STAGE2_MIN_OLIGO,index1interval));
+	  mappingend = add_bounded(plus_segments[starti].diagonal,querylength,chrhigh);
+	  knownsplice_limit_high = genomicend = add_bounded(mappingend,shortsplicedist_known + querylength,chrhigh);
+	}
+	debug13(printf("  Redefining genomicend to %u, mappingend to %u\n",
+		       genomicend - chroffset,mappingend - chroffset));
+      }
+    }
+
+    genomiclength = genomicend - genomicstart;
+    favor_right_p = false;
+
+    genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
+    Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
+
+  } else {
+    
+    if (extend_right_p == true) {
+      knownsplice_limit_low = mappingstart = genomicstart =
+	subtract_bounded(Stage3end_genomicend(hit),shortsplicedist + querylength,chroffset);
+    } else {
+      knownsplice_limit_low = mappingstart = genomicstart =
+	subtract_bounded(Stage3end_genomicend(hit),querylength,chroffset);
+    }
+    if (extend_left_p == true) {
+      knownsplice_limit_high = mappingend = genomicend =
+	add_bounded(Stage3end_genomicstart(hit),shortsplicedist + querylength,chrhigh);
+    } else {
+      knownsplice_limit_high = mappingend = genomicend =
+	add_bounded(Stage3end_genomicstart(hit),querylength,chrhigh);
+    }
+
+    debug13(printf("minus hit %u..%u (extend_left_p %d, extend_right_p %d) (sensedir %d), => genomicbounds %u..%u\n",
+		   Stage3end_genomicstart(hit) - chroffset,Stage3end_genomicend(hit) - chroffset,
+		   extend_left_p,extend_right_p,Stage3end_sensedir(hit),genomicstart - chroffset,genomicend - chroffset));
+
+    if (minus_nsegments > 0) {
+      /* Use segments to bound */
+      debug13(printf("Finding segments from mappingstart %u to mappingend %u, (minus_nsegments %d)\n",
+		     mappingstart - chroffset,mappingend - chroffset,minus_nsegments));
+      starti = endi = -1;
+      i = binary_search_segments(0,minus_nsegments-1,minus_segments,mappingend);
+      while (i >= 0 && minus_segments[i].diagonal >= mappingend) {
+	i--;
+      }
+      while (i >= 0 && minus_segments[i].diagonal > mappingstart) {
+	if (minus_segments[i].diagonal < -1U) {
+	  debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			 minus_segments[i].diagonal - chroffset,minus_segments[i].diagonal,
+			 minus_segments[i].querypos5,minus_segments[i].querypos3));
+	  if (starti == -1) {
+	    starti = i;
+	  }
+	  endi = i;
+	}
+	i--;
+      }
+      if (endi >= 0) {
+	debug13(printf("Originally genomicstart was %u\n",genomicstart - chroffset));
+	if (query_lastpos - minus_segments[endi].querypos3 >= STAGE2_MIN_OLIGO + index1interval) {
+	  /* Case 2. Missing end of query, so there could be a middle splice */
+	  debug13(printf("  query_lastpos %d - querypos3 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			 query_lastpos,minus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
+	  mappingstart = subtract_bounded(minus_segments[endi].diagonal,shortsplicedist,chroffset);
+	  knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,querylength,chroffset);
+	} else {
+	  debug13(printf("  query_lastpos %d - querypos3 %d < %d + %d, so using this diagonal\n",
+			 query_lastpos,minus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
+	  mappingstart = subtract_bounded(minus_segments[endi].diagonal,querylength,chroffset);
+	  knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,shortsplicedist_known + querylength,chroffset);
+	}
+	debug13(printf("  Redefining genomicstart to %u, mappingstart to %u\n",
+		       genomicstart - chroffset,mappingstart - chroffset));
+      }
+      if (starti >= 0) {
+	debug13(printf("Originally genomicend was %u\n",genomicend - chroffset));
+	if (minus_segments[starti].querypos5 >= STAGE2_MIN_OLIGO + index1interval) {
+	  /* Missing start of query, so there could be a middle splice */
+	  debug13(printf("  querypos5 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			 minus_segments[starti].querypos5,STAGE2_MIN_OLIGO,index1interval));
+	  mappingend = add_bounded(minus_segments[starti].diagonal,shortsplicedist,chrhigh);
+	  knownsplice_limit_high = genomicend = add_bounded(mappingend,querylength,chrhigh);
+	} else {
+	  debug13(printf("  querypos5 %d < %d + %d, so using this diagonal\n",
+			 minus_segments[starti].querypos5,STAGE2_MIN_OLIGO,index1interval));
+	  mappingend = add_bounded(minus_segments[starti].diagonal,querylength,chrhigh);
+	  knownsplice_limit_high = genomicend = add_bounded(mappingend,shortsplicedist_known + querylength,chrhigh);
+	}
+	debug13(printf("  Redefining genomicend to %u, mappingend to %u\n",
+		       genomicend - chroffset,mappingend - chroffset));
+      }
+    }
+
+    genomiclength = genomicend - genomicstart;
+    favor_right_p = true;
+
+    genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
+    Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
+    make_complement_inplace(genomicseg,genomiclength);
+  }
+
+  debug13(printf("Running GMAP at %u (%u) + %d, watsonp %d, sense_try 0, querylength %d, limits %u..%u\n",
+		 genomicstart,genomicstart-chroffset,genomiclength,watsonp,querylength,
+		 knownsplice_limit_low,knownsplice_limit_high));
+
+  /* Note: Use nmatches post-trim to decide if the alignment is high
+     quality or worth keeping.  But if so, then use nmatches_pretrim
+     for ranking and scoring purposes. */
+
+  all_paths = Stage2_compute(&stage2_source,&stage2_indexsize,
+			     /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*query_offset*/0,
+
+			     /*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+			     genomicstart,genomicend,mappingstart,mappingend,
+			     /*plusp*/watsonp,genomiclength,/*genomic_offset*/0,
+			     
+			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
+			     pairpool,diagpool,sufflookback,nsufflookback,
+			     /*maxintronlen_bound*/shortsplicedist,/*localp*/true,
+			     /*skip_repetitive_p*/true,/*use_shifted_canonical_p*/false,
+			     favor_right_p,/*just_one_p*/false,/*debug_graphic_p*/false,/*diagnosticp*/false,
+			     /*worker_stopwatch*/NULL,/*diag_debug*/false);
+
+  for (p = all_paths; p != NULL; p = List_next(p)) {
+    path = (List_T) List_head(p);
+
+    if ((pairarray = Stage3_compute(&pairs,&npairs,&cdna_direction,&sensedir,&matches,
+				    &nmatches_pretrim,&nmatches_posttrim,
+				    &ambig_end_length_5,&ambig_end_length_3,
+				    &ambig_splicetype_5,&ambig_splicetype_3,
+				    &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
+				    &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
+				    path,genomiclength,
+#ifdef END_KNOWNSPLICING_SHORTCUT
+				    cutoff_level,/*queryptr*/watsonp ? queryuc_ptr : queryrc,
+				    watsonp ? query_compress_fwd : query_compress_rev,
+#endif
+				    /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*skiplength*/0,
+				    /*query_subseq_offset*/0,/*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
+				    knownsplice_limit_low,knownsplice_limit_high,
+				    /*genome*/NULL,/*usersegment_p*/false,watsonp,
+				    /*jump_late_p*/watsonp ? false : true,
+				    maxpeelback,maxpeelback_distalmedial,nullgap,
+				    extramaterial_end,extramaterial_paired,
+				    extraband_single,extraband_end,extraband_paired,
+				    minendexon,pairpool,dynprogL,dynprogM,dynprogR,ngap,
+				    /*stage3debug*/false,/*diagnosticp*/false,/*checkp*/false,
+				    /*do_final_p*/true,/*sense_try*/0,/*sense_filter*/0,
+				    oligoindices_minor,noligoindices_minor,diagpool,
+				    sufflookback,nsufflookback,/*maxintronlen_bound*/shortsplicedist,
+				    /*close_indels_mode*/+1,/*paired_favor_mode*/0,
+				    /*zero_offset*/0)) != NULL) {
+
+      if (Stage3_short_alignment_p(pairarray,npairs,querylength) == true) {
+	/* Very bad alignment */
+	debug13(printf("Very bad alignment\n"));
+	FREE_OUT(pairarray);
+
+      } else {
+#if 0
+	Pair_print_gsnap(stdout,pairarray,npairs,invertedp,chrnum,chroffset,chrhigh,
+			 querylength,watsonp,cdna_direction,chromosome_iit);
+#endif
+
+	nsegments = Pair_gsnap_nsegments(&nmismatches_whole,&nindels,&nintrons,&nindelbreaks,
+					 pairarray,npairs);
+	if (watsonp == true) {
+	  start = chroffset + Pair_genomepos(&(pairarray[0])) - Pair_querypos(&(pairarray[0]));
+	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) + (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
+	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_pretrim,nmatches_posttrim,
+					ambig_end_length_5,ambig_end_length_3,
+					ambig_splicetype_5,ambig_splicetype_3,
+					pairarray,npairs,nsegments,nintrons,nindelbreaks,
+					/*left*/start,/*genomiclength*/end - start + 1,
+					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
+	    FREE_OUT(pairarray);
+	  } else {
+	    hits = List_push(hits,(void *) hit);
+	  }
+	} else {
+	  start = chroffset + Pair_genomepos(&(pairarray[0])) + Pair_querypos(&(pairarray[0]));
+	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) - (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
+	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_pretrim,nmatches_posttrim,
+					ambig_end_length_5,ambig_end_length_3,
+					ambig_splicetype_5,ambig_splicetype_3,
+					pairarray,npairs,nsegments,nintrons,nindelbreaks,
+					/*left*/end,/*genomiclength*/start - end + 1,
+					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
+	    FREE_OUT(pairarray);
+	  } else {
+	    hits = List_push(hits,(void *) hit);
+	  }
+	}
+	/* Don't free pairarray */
+      }
+    }
+  }
+
+  List_free(&all_paths);
+  FREE(genomicseg);
+
+  return hits;
+}
+
+
+
+#if 0
+/* Replaced by align_single_hit_with_gmap */
+static List_T
+align_single_terminal_with_gmap (Stage3end_T terminal,
 				 char *queryuc_ptr, int querylength, int query_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 				 char *queryrc, bool invertedp,
@@ -10648,13 +11158,11 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 #endif
 				 struct Segment_T *plus_segments, int plus_nsegments,
 				 struct Segment_T *minus_segments, int minus_nsegments,
-				 int cutoff_level, int indel_penalty, int splicing_penalty,
 				 Oligoindex_T *oligoindices_major, int noligoindices_major,
 				 Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 				 Pairpool_T pairpool, Diagpool_T diagpool,
 				 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-				 Genomicpos_T shortsplicedist, bool want_high_quality_p,
-				 int genestrand) {
+				 Genomicpos_T shortsplicedist, int genestrand) {
   List_T hits = NULL;
   Stage3end_T hit;
   struct Pair_T *pairarray;
@@ -10683,8 +11191,6 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
   int endi, i;
 
 
-  *high_quality_p = false;
-
   assert(Stage3end_gmap_triedp(terminal) == false);
 
   chrnum = Stage3end_chrnum(terminal);
@@ -10707,7 +11213,7 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
       if (plus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (plus_nsegments %d)\n",
-		       mappingstart,mappingend,plus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,plus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,plus_nsegments-1,plus_segments,mappingend);
 	while (i >= 0 && plus_segments[i].diagonal >= mappingend) {
@@ -10715,23 +11221,29 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 	}
 	while (i >= 0 && plus_segments[i].diagonal > mappingstart) {
 	  if (plus_segments[i].diagonal < -1U) {
-	    debug13(printf("diagonal %u, querypos %d..%d\n",
-			   plus_segments[i].diagonal,plus_segments[i].querypos5,plus_segments[i].querypos3));
+	    debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			   plus_segments[i].diagonal - chroffset,plus_segments[i].diagonal,
+			   plus_segments[i].querypos5,plus_segments[i].querypos3));
 	    endi = i;
 	  }
 	  i--;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicstart was %u\n",genomicstart - chroffset));
-	  if (plus_segments[endi].querypos5 > 6) {
+	  if (plus_segments[endi].querypos5 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 3. Missing start of query, so there could be a middle splice */
+	    debug13(printf("  querypos5 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   plus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(plus_segments[endi].diagonal,shortsplicedist,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,querylength,chroffset);
 	  } else {
+	    debug13(printf("  querypos5 %d < %d + %d, so using this diagonal\n",
+			   plus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(plus_segments[endi].diagonal,querylength,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,shortsplicedist_known + querylength,chroffset);
 	  }
-	  debug13(printf("Redefining genomicstart to %u, mappingstart to %u\n",genomicstart - chroffset,mappingstart - chroffset));
+	  debug13(printf("  Redefining genomicstart to %u, mappingstart to %u\n",
+			 genomicstart - chroffset,mappingstart - chroffset));
 	}
       }
 
@@ -10748,30 +11260,36 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
       if (plus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (plus_nsegments %d)\n",
-		       mappingstart,mappingend,plus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,plus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,plus_nsegments-1,plus_segments,mappingstart);
 	while (i < plus_nsegments - 1 && plus_segments[i].diagonal == -1U) {
 	  i++;
 	}
 	while (plus_segments[i].diagonal < mappingend) {
-	  debug13(printf("diagonal %u, querypos %d..%d\n",
-			 plus_segments[i].diagonal,plus_segments[i].querypos5,plus_segments[i].querypos3));
+	  debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			 plus_segments[i].diagonal - chroffset,plus_segments[i].diagonal,
+			 plus_segments[i].querypos5,plus_segments[i].querypos3));
 	  endi = i;
 	  i++;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicend was %u\n",genomicend - chroffset));
-	  if (query_lastpos - plus_segments[endi].querypos3 > 6) {
+	  if (query_lastpos - plus_segments[endi].querypos3 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 1. Missing end of query, so there could be a middle splice */
+	    debug13(printf("  query_lastpos %d - querypos3 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   query_lastpos,plus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(plus_segments[endi].diagonal,shortsplicedist,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,querylength,chrhigh);
 
 	  } else {
+	    debug13(printf("  query_lastpos %d - querypos3 %d < %d + %d, so using this diagonal\n",
+			   query_lastpos,plus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(plus_segments[endi].diagonal,querylength,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,shortsplicedist_known + querylength,chrhigh);
 	  }
-	  debug13(printf("Redefining genomicend to %u, mappingend to %u\n",genomicend - chroffset,mappingend - chroffset));
+	  debug13(printf("  Redefining genomicend to %u, mappingend to %u\n",
+			 genomicend - chroffset,mappingend - chroffset));
 	}
       }
     }
@@ -10797,7 +11315,7 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
       if (minus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (minus_nsegments %d)\n",
-		       mappingstart,mappingend,minus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,minus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,minus_nsegments-1,minus_segments,mappingend);
 	while (i >= 0 && minus_segments[i].diagonal >= mappingend) {
@@ -10805,23 +11323,29 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 	}
 	while (i >= 0 && minus_segments[i].diagonal > mappingstart) {
 	  if (minus_segments[i].diagonal < -1U) {
-	    debug13(printf("diagonal %u, querypos %d..%d\n",
-			   minus_segments[i].diagonal,minus_segments[i].querypos5,minus_segments[i].querypos3));
+	    debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			   minus_segments[i].diagonal - chroffset,minus_segments[i].diagonal,
+			   minus_segments[i].querypos5,minus_segments[i].querypos3));
 	    endi = i;
 	  }
 	  i--;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicstart was %u\n",genomicstart - chroffset));
-	  if (query_lastpos - minus_segments[endi].querypos3 > 6) {
+	  if (query_lastpos - minus_segments[endi].querypos3 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 2. Missing end of query, so there could be a middle splice */
+	    debug13(printf("  query_lastpos %d - querypos3 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   query_lastpos,minus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(minus_segments[endi].diagonal,shortsplicedist,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,querylength,chroffset);
 	  } else {
+	    debug13(printf("  query_lastpos %d - querypos3 %d < %d + %d, so using this diagonal\n",
+			   query_lastpos,minus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(minus_segments[endi].diagonal,querylength,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,shortsplicedist_known + querylength,chroffset);
 	  }
-	  debug13(printf("Redefining genomicstart to %u, mappingstart to %u\n",genomicstart - chroffset,mappingstart - chroffset));
+	  debug13(printf("  Redefining genomicstart to %u, mappingstart to %u\n",
+			 genomicstart - chroffset,mappingstart - chroffset));
 	}
       }
 
@@ -10838,29 +11362,35 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
       if (minus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (minus_nsegments %d)\n",
-		       mappingstart,mappingend,minus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,minus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,minus_nsegments-1,minus_segments,mappingstart);
 	while (i < minus_nsegments - 1 && minus_segments[i].diagonal == -1U) {
 	  i++;
 	}
 	while (minus_segments[i].diagonal < mappingend) {
-	  debug13(printf("diagonal %u, querypos %d..%d\n",
-			 minus_segments[i].diagonal,minus_segments[i].querypos5,minus_segments[i].querypos3));
+	  debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			 minus_segments[i].diagonal - chroffset,minus_segments[i].diagonal,
+			 minus_segments[i].querypos5,minus_segments[i].querypos3));
 	  endi = i;
 	  i++;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicend was %u\n",genomicend - chroffset));
-	  if (minus_segments[endi].querypos5 > 6) {
+	  if (minus_segments[endi].querypos5 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 4. Missing start of query, so there could be a middle splice */
+	    debug13(printf("  querypos5 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   minus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(minus_segments[endi].diagonal,shortsplicedist,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,querylength,chrhigh);
 	  } else {
+	    debug13(printf("  querypos5 %d < %d + %d, so using this diagonal\n",
+			   minus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(minus_segments[endi].diagonal,querylength,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,shortsplicedist_known + querylength,chrhigh);
 	  }
-	  debug13(printf("Redefining genomicend to %u, mappingend to %u\n",genomicend - chroffset,mappingend - chroffset));
+	  debug13(printf("  Redefining genomicend to %u, mappingend to %u\n",
+			 genomicend - chroffset,mappingend - chroffset));
 	}
       }
     }
@@ -10871,11 +11401,6 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
     genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
     Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
     make_complement_inplace(genomicseg,genomiclength);
-  }
-
-  if (want_high_quality_p == false) {
-    /* If true, then allow a lower-quality attempt later */
-    Stage3end_set_gmap_triedp(terminal);
   }
 
 
@@ -10932,25 +11457,9 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 				    /*close_indels_mode*/+1,/*paired_favor_mode*/0,
 				    /*zero_offset*/0)) != NULL) {
 
-      /* Measure high_quality_p over entire reade */
-      if (querylength - matches - ambig_end_length_5 - ambig_end_length_3 - unknowns <= cutoff_level) {
-	*high_quality_p = true;
-      }
-
-      if (want_high_quality_p == true && mismatches + qopens + topens > cutoff_level + GMAP_ALLOWANCE) {
-	/* Bad alignment */
-#ifdef DEBUG13
-	printf("querylength %d - nmatches %d - ambig_end_length_5 %d - ambig_end_length_3 %d - unknowns %d > cutoff_level %d\n",
-	       querylength,matches,ambig_end_length_5,ambig_end_length_3,unknowns,cutoff_level);
-#endif
-	FREE_OUT(pairarray);
-      
-      } else if (matches + ambig_end_length_5 + ambig_end_length_3 + unknowns < querylength/2) {
+      if (Stage3_short_alignment_p(pairarray,npairs,querylength) == true) {
 	/* Very bad alignment */
-#ifdef DEBUG13
-	printf("nmatches %d + ambig_end_length_5 %d + ambig_end_length_3 %d + unknowns %d < querylength %d/2\n",
-	       matches,ambig_end_length_5,ambig_end_length_3,unknowns,querylength);
-#endif
+	debug13(printf("Very bad alignment\n"));
 	FREE_OUT(pairarray);
 
       } else {
@@ -10998,8 +11507,105 @@ align_single_terminal_with_gmap (bool *high_quality_p, Stage3end_T terminal,
 
   return hits;
 }
+#endif
 
 
+
+
+static List_T
+align_singleend_with_gmap (List_T result, T this, Compress_T query_compress_fwd, Compress_T query_compress_rev,
+			   char *queryuc_ptr, int querylength, int query_lastpos,
+			   Oligoindex_T *oligoindices_major, int noligoindices_major,
+			   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
+			   Pairpool_T pairpool, Diagpool_T diagpool,
+			   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+			   Genomicpos_T shortsplicedist) {
+  List_T new_result = NULL, gmap_hits = NULL;
+  Stage3end_T hit, gmap;
+  List_T p, a;
+  int genestrand;
+  int i;
+  bool gmap_better_p;
+
+
+  debug13(printf("Sorting hits by nmatches\n"));
+  result = Stage3end_sort_bymatches(result);
+
+  for (p = result, i = 0; p != NULL && i < max_gmap_improvement; p = p->rest, i++) {
+    hit = (Stage3end_T) List_head(p);
+    genestrand = Stage3end_genestrand(hit);
+
+    debug13(printf("Entering align_singleend_with_gmap with hittype %d\n",
+		   Stage3end_hittype(hit)));
+
+    /* Was querylength5 - Stage3end_matches(hit5) > 5 */
+    if (Stage3end_hittype(hit) == GMAP) {
+      /* Skip */
+      debug13(printf("Skipping hit of type GMAP\n"));
+      new_result = List_push(new_result,(void *) hit);
+
+    } else if (Stage3end_terminal_trim(hit) < 8
+#if 1
+	       && Stage3end_bad_stretch_p(hit,query_compress_fwd,query_compress_rev) == false
+#endif
+	       && Stage3end_contains_known_splicesite(hit) == false
+	       ) {
+      debug13(printf("Skipping good hit\n"));
+      new_result = List_push(new_result,(void *) hit);
+
+    } else {
+      debug13(printf("To correct hit terminalp %d or bad stretchp %d or known_splicesite %d, running GMAP on 5' to match with 3' end\n",
+		     Stage3end_hittype(hit) == TERMINAL,
+		     Stage3end_bad_stretch_p(hit,query_compress_fwd,query_compress_rev),
+		     Stage3end_contains_known_splicesite(hit)));
+    
+      /* Want high quality because we already have a pretty good answer */
+      gmap_hits = align_single_hit_with_gmap(hit,/*extend_left_p*/true,/*extend_right_p*/true,
+					     queryuc_ptr,querylength,query_lastpos,
+#ifdef END_KNOWNSPLICING_SHORTCUT
+					     queryrc,Shortread_invertedp(queryseq),
+					     query_compress_fwd,query_compress_rev,
+#endif
+					     this->plus_segments,this->plus_nsegments,
+					     this->minus_segments,this->minus_nsegments,
+					     oligoindices_major,noligoindices_major,
+					     oligoindices_minor,noligoindices_minor,
+					     pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+					     shortsplicedist,genestrand);
+
+      gmap_better_p = false;
+      for (a = gmap_hits; a != NULL; a = List_next(a)) {
+	gmap = (Stage3end_T) List_head(a);
+	if (Stage3end_nmatches(gmap) <= Stage3end_nmatches(hit)) {
+	  debug13(printf("GMAP with %d matches is worse than hit with %d matches\n",
+			 Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
+	  Stage3end_free(&gmap);
+
+	} else {
+	  debug13(printf("GMAP with %d matches is better than hit with %d matches\n",
+			 Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
+	  gmap_better_p = true;
+	  new_result = List_push(new_result,(void *) gmap);
+	}
+      }
+      List_free(&gmap_hits);
+
+      if (gmap_better_p == false) {
+	new_result = List_push(new_result,(void *) hit);
+      } else {
+	Stage3end_free(&hit);
+      }
+    }
+  }
+
+  for ( ; p != NULL; p = p->rest) {
+    hit = (Stage3end_T) List_head(p);
+    new_result = List_push(new_result,(void *) hit);
+  }
+
+  List_free(&result);
+  return new_result;
+}
 
 
 /* done_level should probably be renamed final_level.  opt_level
@@ -11021,7 +11627,8 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
 	   int max_middle_insertions, int max_middle_deletions,
 	   bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 	   bool allvalidp, bool keep_floors_p, int genestrand) {
-  List_T subs = NULL, indels = NULL, singlesplicing = NULL, doublesplicing = NULL, shortendsplicing = NULL,
+  List_T hits, subs = NULL, indels = NULL, new_indels,
+    singlesplicing = NULL, doublesplicing = NULL, shortendsplicing = NULL,
     distantsplicing = NULL, good_gmap_hits = NULL, terminals = NULL;
   List_T gmap_hits, p, a;
   Stage3end_T hit, gmap;
@@ -11032,12 +11639,12 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
     *donors_minus, *antidonors_minus, *acceptors_minus, *antiacceptors_minus;
   bool any_omitted_p, ambiguousp, alloc_floors_p = false, floors_computed_p = false;
   Floors_T floors;
-  bool segments_computed_p = false, high_quality_p;
+  bool segments_computed_p = false, gmap_better_p, extend_left_p, extend_right_p;
 
   found_score = querylength;
-  fast_level = (querylength + 2)/index1part - NREQUIRED_FAST;
-  debug(printf("fast_level %d = (querylength %d + 2)/index1part %d - 2\n",
-	       fast_level,querylength,index1part));
+  fast_level = (querylength + index1interval - 1)/spansize - NREQUIRED_FAST;
+  debug(printf("fast_level %d = (querylength %d + 2)/spansize %d - (%d - 1)\n",
+	       fast_level,querylength,spansize,index1interval));
 #if 0
   /* This prevents complete_mm procedure, needed for short reads */
   if (fast_level < 1 && user_maxlevel < 0) {
@@ -11229,7 +11836,7 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
       singlesplicing = Stage3end_mark_ambiguous_splices(&ambiguousp,singlesplicing);
 #endif
       singlesplicing = Stage3end_optimal_score(singlesplicing,/*cutoff_level*/opt_level,subopt_levels,
-					       /*keep_gmap_p*/true);
+					       query_compress_fwd,query_compress_rev,/*keep_gmap_p*/true);
 
       if (singlesplicing) {
 	opt_level = (found_score < opt_level) ? found_score : opt_level;
@@ -11257,7 +11864,7 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
       doublesplicing = Stage3end_mark_ambiguous_splices(&ambiguousp,doublesplicing);
 #endif
       doublesplicing = Stage3end_optimal_score(doublesplicing,/*cutoff_level*/opt_level,subopt_levels,
-					       /*keep_gmap_p*/true);
+					       query_compress_fwd,query_compress_rev,/*keep_gmap_p*/true);
 
       if (doublesplicing) {
 	opt_level = (found_score < opt_level) ? found_score : opt_level;
@@ -11417,7 +12024,7 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
 #endif
 	/* Excess distant splicing should be freed already in free_splicepairs_distant */
 	distantsplicing = Stage3end_optimal_score(distantsplicing,opt_level,subopt_levels,
-						  /*keep_gmap_p*/true);
+						  query_compress_fwd,query_compress_rev,/*keep_gmap_p*/true);
 	if (distantsplicing) {
 	  opt_level = (found_score < opt_level) ? found_score : opt_level;
 	  if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
@@ -11462,8 +12069,58 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
   debug(printf("  distantsplicing: %d\n",List_length(distantsplicing)));
   debug(printf("  done_level: %d\n",done_level));
 
+  /* 9.  GMAP indels_plus_knownsplicing */
+  if (indels != NULL && gmap_indel_knownsplice_p == true) {
+    debug13(printf("GMAP indels plus known splicing: %d indels\n",List_length(indels)));
+    new_indels = (List_T) NULL;
+    for (p = indels; p != NULL; p = List_next(p)) {
+      hit = (Stage3end_T) List_head(p);
+      if (Stage3end_indel_contains_known_splicesite(&extend_left_p,&extend_right_p,hit) == false) {
+	new_indels = List_push(new_indels,(void *) hit);
+      } else {
+	gmap_hits = align_single_hit_with_gmap(hit,extend_left_p,extend_right_p,
+					       queryuc_ptr,querylength,query_lastpos,
+#ifdef END_KNOWNSPLICING_SHORTCUT
+					       queryrc,Shortread_invertedp(queryseq),
+					       query_compress_fwd,query_compress_rev,
+#endif
+					       this->plus_segments,this->plus_nsegments,this->minus_segments,this->minus_nsegments,
+					       oligoindices_major,noligoindices_major,
+					       oligoindices_minor,noligoindices_minor,
+					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+					       shortsplicedist,genestrand);
+
+	gmap_better_p = false;
+	for (a = gmap_hits; a != NULL; a = List_next(a)) {
+	  gmap = (Stage3end_T) List_head(a);
+	  if (Stage3end_nmatches(gmap) <= Stage3end_nmatches(hit)) {
+	    debug13(printf("GMAP with %d matches is worse than indel with %d matches\n",
+			   Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
+	    Stage3end_free(&gmap);
+
+	  } else {
+	    debug13(printf("GMAP with %d matches is better than indel with %d matches\n",
+			   Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
+	    good_gmap_hits = List_push(good_gmap_hits,(void *) gmap);
+	    gmap_better_p = true;
+	  }
+	}
+	List_free(&gmap_hits);
+
+	if (gmap_better_p == true) {
+	  Stage3end_free(&hit);
+	} else {
+	  new_indels = List_push(new_indels,(void *) hit);
+	}
+      }
+    }
+    List_free(&indels);
+    indels = new_indels;
+  }
+
+
   /* 10.  Terminals */
-  if (subs || indels || singlesplicing || doublesplicing || shortendsplicing || distantsplicing) {
+  if (subs || indels || good_gmap_hits || singlesplicing || doublesplicing || shortendsplicing || distantsplicing) {
     /* Don't find terminals */
   } else if (done_level < terminal_threshold) {
     /* Don't find terminals */
@@ -11515,23 +12172,24 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
 
     if (List_length(terminals) <= max_gmap_terminal) {
       i = 0;
-      debug13(printf("%d hits on 5' end\n",List_length(terminals)));
+      debug13(printf("%d hits\n",List_length(terminals)));
       debug13(printf("For terminals, running GMAP on single end to match with terminal\n"));
 
       for (p = terminals; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	gmap_hits = align_single_terminal_with_gmap(&high_quality_p,hit,
-						    queryuc_ptr,querylength,query_lastpos,
+	/* Was align_single_terminal_with_gmap() */
+	gmap_hits = align_single_hit_with_gmap(hit,/*extend_left_p*/Stage3end_start_endtype(hit) == TERM,
+					       /*extend_right_p*/Stage3end_end_endtype(hit) == TERM,
+					       queryuc_ptr,querylength,query_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
-						    queryrc,Shortread_invertedp(queryseq),
-						    query_compress_fwd,query_compress_rev,
+					       queryrc,Shortread_invertedp(queryseq),
+					       query_compress_fwd,query_compress_rev,
 #endif
-						    this->plus_segments,this->plus_nsegments,this->minus_segments,this->minus_nsegments,
-						    *cutoff_level,indel_penalty_middle,localsplicing_penalty,
-						    oligoindices_major,noligoindices_major,
-						    oligoindices_minor,noligoindices_minor,
-						    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						    shortsplicedist,/*want_high_quality_p*/true,genestrand);
+					       this->plus_segments,this->plus_nsegments,this->minus_segments,this->minus_nsegments,
+					       oligoindices_major,noligoindices_major,
+					       oligoindices_minor,noligoindices_minor,
+					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+					       shortsplicedist,genestrand);
 
 	for (a = gmap_hits; a != NULL; a = List_next(a)) {
 	  gmap = (Stage3end_T) List_head(a);
@@ -11556,13 +12214,38 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
     Floors_free(&floors);
   }
 
-  return List_append(subs,
+  hits = List_append(subs,
 		     List_append(indels,
 				 List_append(singlesplicing,
 					     List_append(doublesplicing,
 							 List_append(shortendsplicing,
 								     List_append(distantsplicing,
 										 List_append(good_gmap_hits,terminals)))))));
+
+  debug(printf("Before remove_overlaps at cutoff level %d: %d\n",*cutoff_level,List_length(hits)));
+  hits = Stage3end_optimal_score(hits,*cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
+				 /*keep_gmap_p*/true);
+  hits = Stage3end_remove_overlaps(hits);
+  hits = Stage3end_optimal_score(hits,*cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
+				 /*keep_gmap_p*/false);
+  hits = Stage3end_resolve_multimapping(hits);
+  debug(printf("After remove_overlaps: %d\n",List_length(hits)));
+  
+  if (gmap_improvement_p == true) {
+    hits = align_singleend_with_gmap(hits,this,query_compress_fwd,query_compress_rev,
+				     queryuc_ptr,querylength,query_lastpos,
+				     oligoindices_major,noligoindices_major,
+				     oligoindices_minor,noligoindices_minor,
+				     pairpool,diagpool,dynprogL,dynprogM,dynprogR,shortsplicedist);
+    hits = Stage3end_optimal_score(hits,*cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
+				   /*keep_gmap_p*/true);
+    hits = Stage3end_remove_overlaps(hits);
+    hits = Stage3end_optimal_score(hits,*cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
+				   /*keep_gmap_p*/false);
+    hits = Stage3end_resolve_multimapping(hits);
+  }
+
+  return hits;
 }
 
 
@@ -11591,8 +12274,8 @@ single_read (int *npaths, int *second_absmq,
   Compress_T query_compress_fwd = NULL, query_compress_rev = NULL;
   bool allvalidp;
 
-  if ((querylength = Shortread_fulllength(queryseq)) < index1part+2) {
-    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",index1part+2);
+  if ((querylength = Shortread_fulllength(queryseq)) < min_readlength) {
+    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",min_readlength);
     *npaths = 0;
     return (Stage3end_T *) NULL;
 
@@ -11644,12 +12327,6 @@ single_read (int *npaths, int *second_absmq,
 		       max_middle_insertions,max_middle_deletions,
 		       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 		       allvalidp,keep_floors_p,/*genestrand*/0);
-      debug(printf("Before remove_overlaps at cutoff level %d: %d\n",cutoff_level,List_length(hits)));
-      hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/true);
-      hits = Stage3end_remove_overlaps(hits);
-      hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/false);
-      hits = Stage3end_resolve_multimapping(hits);
-      debug(printf("After remove_overlaps: %d\n",List_length(hits)));
 
       if ((*npaths = List_length(hits)) == 0) {
 	stage3array = (Stage3end_T *) NULL;
@@ -11695,8 +12372,8 @@ single_read_tolerant_nonstranded (int *npaths, int *second_absmq,
   Compress_T query_compress_fwd = NULL, query_compress_rev = NULL;
   bool allvalidp;
 
-  if ((querylength = Shortread_fulllength(queryseq)) < index1part+2) {
-    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",index1part+2);
+  if ((querylength = Shortread_fulllength(queryseq)) < min_readlength) {
+    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",min_readlength);
     *npaths = 0;
     return (Stage3end_T *) NULL;
 
@@ -11762,11 +12439,12 @@ single_read_tolerant_nonstranded (int *npaths, int *second_absmq,
     }
 
     hits = List_append(hits_geneplus,hits_geneminus);
-    hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/true);
+    hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
+				   /*keep_gmap_p*/true);
     hits = Stage3end_remove_overlaps(hits);
-    hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,/*keep_gmap_p*/false);
+    hits = Stage3end_optimal_score(hits,cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
+				   /*keep_gmap_p*/false);
     hits = Stage3end_resolve_multimapping(hits);
-
 
     if ((*npaths = List_length(hits)) == 0) {
       stage3array = (Stage3end_T *) NULL;
@@ -11836,7 +12514,7 @@ Stage1_single_read (int *npaths, int *second_absmq,
 
 
 static List_T
-align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T hit3, 
+align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3, 
 			     Shortread_T queryseq5, Shortread_T queryseq3,
 			     char *queryuc_ptr, int querylength, int query_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -11845,13 +12523,11 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 #endif
 			     struct Segment_T *plus_segments, int plus_nsegments,
 			     struct Segment_T *minus_segments, int minus_nsegments,
-			     int cutoff_level, int indel_penalty, int splicing_penalty,
 			     Oligoindex_T *oligoindices_major, int noligoindices_major,
 			     Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 			     Pairpool_T pairpool, Diagpool_T diagpool,
 			     Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-			     int pairmax, Genomicpos_T shortsplicedist, bool want_high_quality_p,
-			     int genestrand) {
+			     int pairmax, Genomicpos_T shortsplicedist, int genestrand) {
   List_T hits = NULL;
   Stage3end_T hit;
   struct Pair_T *pairarray;
@@ -11881,8 +12557,6 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 
   int endi, i;
 
-
-  *high_quality_p = false;
 
   if (hit3 == NULL) {
     if (Stage3end_gmap_triedp(hit5) == true) {
@@ -11956,39 +12630,35 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
       if (plus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (plus_nsegments %d)\n",
-		       mappingstart,mappingend,plus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,plus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,plus_nsegments-1,plus_segments,mappingstart);
 	while (i < plus_nsegments - 1 && plus_segments[i].diagonal == -1U) {
 	  i++;
 	}
 	while (plus_segments[i].diagonal < mappingend) {
-	  debug13(printf("diagonal %u, querypos %d..%d\n",
-			 plus_segments[i].diagonal,plus_segments[i].querypos5,plus_segments[i].querypos3));
+	  debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			 plus_segments[i].diagonal - chroffset,plus_segments[i].diagonal,
+			 plus_segments[i].querypos5,plus_segments[i].querypos3));
 	  endi = i;
 	  i++;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicend was %u\n",genomicend - chroffset));
-	  if (query_lastpos - plus_segments[endi].querypos3 > 6) {
+	  if (query_lastpos - plus_segments[endi].querypos3 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 1. Missing end of query, so there could be a middle splice */
-#ifdef OLD_ARITHMETIC
-	    knownsplice_limit_high = mappingend = genomicend = plus_segments[endi].diagonal + shortsplicedist;
-#else
+	    debug13(printf("  query_lastpos %d - querypos3 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   query_lastpos,plus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(plus_segments[endi].diagonal,shortsplicedist,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,querylength,chrhigh);
-#endif
-
 	  } else {
-#ifdef OLD_ARITHMETIC
-	    mappingend = plus_segments[endi].diagonal + querylength;
-	    knownsplice_limit_high = genomicend = mappingend + shortsplicedist_known;
-#else
+	    debug13(printf("  query_lastpos %d - querypos3 %d < %d + %d, so using this diagonal\n",
+			   query_lastpos,plus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(plus_segments[endi].diagonal,querylength,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,shortsplicedist_known + querylength,chrhigh);
-#endif
 	  }
-	  debug13(printf("Redefining genomicend to %u, mappingend to %u\n",genomicend - chroffset,mappingend - chroffset));
+	  debug13(printf("  Redefining genomicend to %u, mappingend to %u\n",
+			 genomicend - chroffset,mappingend - chroffset));
 	}
       }
 
@@ -12065,7 +12735,7 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
       if (minus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (minus_nsegments %d)\n",
-		       mappingstart,mappingend,minus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,minus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,minus_nsegments-1,minus_segments,mappingend);
 	while (i >= 0 && minus_segments[i].diagonal >= mappingend) {
@@ -12073,32 +12743,29 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 	}
 	while (i >= 0 && minus_segments[i].diagonal > mappingstart) {
 	  if (minus_segments[i].diagonal < -1U) {
-	    debug13(printf("diagonal %u, querypos %d..%d\n",
-			   minus_segments[i].diagonal,minus_segments[i].querypos5,minus_segments[i].querypos3));
+	    debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			   minus_segments[i].diagonal - chroffset,minus_segments[i].diagonal,
+			   minus_segments[i].querypos5,minus_segments[i].querypos3));
 	    endi = i;
 	  }
 	  i--;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicstart was %u\n",genomicstart - chroffset));
-	  if (query_lastpos - minus_segments[endi].querypos3 > 6) {
+	  if (query_lastpos - minus_segments[endi].querypos3 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 2. Missing end of query, so there could be a middle splice */
-#ifdef OLD_ARITHMETIC
-	    knownsplice_limit_low = mappingstart = genomicstart = minus_segments[endi].diagonal - shortsplicedist;
-#else
+	    debug13(printf("  query_lastpos %d - querypos3 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   query_lastpos,minus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(minus_segments[endi].diagonal,shortsplicedist,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,querylength,chroffset);
-#endif
 	  } else {
-#ifdef OLD_ARITHMETIC
-	    mappingstart = minus_segments[endi].diagonal - querylength;
-	    knownsplice_limit_low = genomicstart = mappingstart - shortsplicedist_known;
-#else
+	    debug13(printf("  query_lastpos %d - querypos3 %d < %d + %d, so using this diagonal\n",
+			   query_lastpos,minus_segments[endi].querypos3,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(minus_segments[endi].diagonal,querylength,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,shortsplicedist_known + querylength,chroffset);
-#endif
 	  }
-	  debug13(printf("Redefining genomicstart to %u, mappingstart to %u\n",genomicstart - chroffset,mappingstart - chroffset));
+	  debug13(printf("  Redefining genomicstart to %u, mappingstart to %u\n",
+			 genomicstart - chroffset,mappingstart - chroffset));
 	}
       }
 
@@ -12119,11 +12786,6 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
       sense_try = -1;
     } else {
       abort();
-    }
-
-    if (want_high_quality_p == false) {
-      /* If true, then allow a lower-quality attempt later */
-      Stage3end_set_gmap_triedp(hit5);
     }
 
   } else if (hit5 == NULL) {
@@ -12198,7 +12860,7 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
       if (plus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (plus_nsegments %d)\n",
-		       mappingstart,mappingend,plus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,plus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,plus_nsegments-1,plus_segments,mappingend);
 	while (i >= 0 && plus_segments[i].diagonal >= mappingend) {
@@ -12206,32 +12868,29 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 	}
 	while (i >= 0 && plus_segments[i].diagonal > mappingstart) {
 	  if (plus_segments[i].diagonal < -1U) {
-	    debug13(printf("diagonal %u, querypos %d..%d\n",
-			   plus_segments[i].diagonal,plus_segments[i].querypos5,plus_segments[i].querypos3));
+	    debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			   plus_segments[i].diagonal - chroffset,plus_segments[i].diagonal,
+			   plus_segments[i].querypos5,plus_segments[i].querypos3));
 	    endi = i;
 	  }
 	  i--;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicstart was %u\n",genomicstart - chroffset));
-	  if (plus_segments[endi].querypos5 > 6) {
+	  if (plus_segments[endi].querypos5 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 3. Missing start of query, so there could be a middle splice */
-#ifdef OLD_ARITHMETIC
-	    knownsplice_limit_low = mappingstart = genomicstart = plus_segments[endi].diagonal - shortsplicedist;
-#else
+	    debug13(printf("  querypos5 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   plus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(plus_segments[endi].diagonal,shortsplicedist,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,querylength,chroffset);
-#endif
 	  } else {
-#ifdef OLD_ARITHMETIC
-	    mappingstart = plus_segments[endi].diagonal - querylength;
-	    knownsplice_limit_low = genomicstart = mappingstart - shortsplicedist_known;
-#else
+	    debug13(printf("  querypos5 %d < %d + %d, so using this diagonal\n",
+			   plus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingstart = subtract_bounded(plus_segments[endi].diagonal,querylength,chroffset);
 	    knownsplice_limit_low = genomicstart = subtract_bounded(mappingstart,shortsplicedist_known + querylength,chroffset);
-#endif
 	  }
-	  debug13(printf("Redefining genomicstart to %u, mappingstart to %u\n",genomicstart - chroffset,mappingstart - chroffset));
+	  debug13(printf("  Redefining genomicstart to %u, mappingstart to %u\n",
+			 genomicstart - chroffset,mappingstart - chroffset));
 	}
       }
 	  
@@ -12307,38 +12966,35 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
       if (minus_nsegments > 0) {
 	/* Use segments to bound */
 	debug13(printf("Finding segments from mappingstart %u to mappingend %u (minus_nsegments %d)\n",
-		       mappingstart,mappingend,minus_nsegments));
+		       mappingstart - chroffset,mappingend - chroffset,minus_nsegments));
 	endi = -1;
 	i = binary_search_segments(0,minus_nsegments-1,minus_segments,mappingstart);
 	while (i < minus_nsegments - 1 && minus_segments[i].diagonal == -1U) {
 	  i++;
 	}
 	while (minus_segments[i].diagonal < mappingend) {
-	  debug13(printf("diagonal %u, querypos %d..%d\n",
-			 minus_segments[i].diagonal,minus_segments[i].querypos5,minus_segments[i].querypos3));
+	  debug13(printf("diagonal %u (%u), querypos %d..%d\n",
+			 minus_segments[i].diagonal - chroffset,minus_segments[i].diagonal,
+			 minus_segments[i].querypos5,minus_segments[i].querypos3));
 	  endi = i;
 	  i++;
 	}
 	if (endi >= 0) {
 	  debug13(printf("Originally genomicend was %u\n",genomicend - chroffset));
-	  if (minus_segments[endi].querypos5 > 6) {
+	  if (minus_segments[endi].querypos5 >= STAGE2_MIN_OLIGO + index1interval) {
 	    /* Case 4. Missing start of query, so there could be a middle splice */
-#ifdef OLD_ARITHMETIC
-	    knownsplice_limit_high = mappingend = genomicend = minus_segments[endi].diagonal + shortsplicedist;
-#else
+	    debug13(printf("  querypos5 %d >= %d + %d, so using this diagonal plus shortsplicedist\n",
+			   minus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(minus_segments[endi].diagonal,shortsplicedist,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,querylength,chrhigh);
-#endif
 	  } else {
-#ifdef OLD_ARITHMETIC
-	    mappingend = minus_segments[endi].diagonal + querylength;
-	    knownsplice_limit_high = genomicend = mappingend + shortsplicedist_known;
-#else
+	    debug13(printf("  querypos5 %d < %d + %d, so using this diagonal\n",
+			   minus_segments[endi].querypos5,STAGE2_MIN_OLIGO,index1interval));
 	    mappingend = add_bounded(minus_segments[endi].diagonal,querylength,chrhigh);
 	    knownsplice_limit_high = genomicend = add_bounded(mappingend,shortsplicedist_known + querylength,chrhigh);
-#endif
 	  }
-	  debug13(printf("Redefining genomicend to %u, mappingend to %u\n",genomicend - chroffset,mappingend - chroffset));
+	  debug13(printf("  Redefining genomicend to %u, mappingend to %u\n",
+			 genomicend - chroffset,mappingend - chroffset));
 	}
       }
 
@@ -12359,11 +13015,6 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
       sense_try = -1;
     } else {
       abort();
-    }
-
-    if (want_high_quality_p == false) {
-      /* If true, then allow a lower-quality attempt later */
-      Stage3end_set_gmap_triedp(hit3);
     }
 
   } else {
@@ -12396,6 +13047,7 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 			     /*skip_repetitive_p*/true,/*use_shifted_canonical_p*/false,
 			     favor_right_p,/*just_one_p*/false,/*debug_graphic_p*/false,/*diagnosticp*/false,
 			     /*worker_stopwatch*/NULL,/*diag_debug*/false);
+  debug13(printf("Got %d stage2 paths\n",List_length(all_paths)));
 
   for (p = all_paths; p != NULL; p = List_next(p)) {
     path = (List_T) List_head(p);
@@ -12426,27 +13078,14 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 				    oligoindices_minor,noligoindices_minor,diagpool,
 				    sufflookback,nsufflookback,/*maxintronlen_bound*/shortsplicedist,
 				    /*close_indels_mode*/+1,/*paired_favor_mode*/favor_right_p == true ? +1 : -1,
-				    zero_offset)) != NULL) {
+				    zero_offset)) == NULL) {
+      debug13(printf("stage3 is NULL\n"));
+    } else {
+      debug13(printf("stage3 is not NULL\n"));
 
-      /* Measure high_quality_p over entire reade */
-      if (querylength - matches - ambig_end_length_5 - ambig_end_length_3 - unknowns <= cutoff_level) {
-	*high_quality_p = true;
-      }
-
-      if (want_high_quality_p == true && mismatches + qopens + topens > cutoff_level + GMAP_ALLOWANCE) {
-	/* Bad alignment */
-#ifdef DEBUG13
-	printf("querylength %d - nmatches %d - ambig_end_length_5 %d - ambig_end_length_3 %d - unknowns %d > cutoff_level %d\n",
-	       querylength,matches,ambig_end_length_5,ambig_end_length_3,unknowns,cutoff_level);
-#endif
-	FREE_OUT(pairarray);
-      
-      } else if (matches + ambig_end_length_5 + ambig_end_length_3 + unknowns < querylength/2) {
+      if (Stage3_short_alignment_p(pairarray,npairs,querylength) == true) {
 	/* Very bad alignment */
-#ifdef DEBUG13
-	printf("nmatches %d + ambig_end_length_5 %d + ambig_end_length_3 %d + unknowns %d < querylength %d/2\n",
-	       matches,ambig_end_length_5,ambig_end_length_3,unknowns,querylength);
-#endif
+	debug13(printf("Very bad alignment\n"));
 	FREE_OUT(pairarray);
 
       } else {
@@ -12466,6 +13105,7 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/start,/*genomiclength*/end - start + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
+	    debug13(printf("Stage3end_new_gmap returns NULL\n"));
 	    FREE_OUT(pairarray);
 	  } else {
 	    hits = List_push(hits,(void *) hit);
@@ -12479,6 +13119,7 @@ align_halfmapping_with_gmap (bool *high_quality_p, Stage3end_T hit5, Stage3end_T
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/end,/*genomiclength*/start - end + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,sensedir)) == NULL) {
+	    debug13(printf("Stage3end_new_gmap returns NULL\n"));
 	    FREE_OUT(pairarray);
 	  } else {
 	    hits = List_push(hits,(void *) hit);
@@ -12506,8 +13147,7 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
 			    Shortread_T queryseq5, Shortread_T queryseq3,
 			    char *queryuc_ptr_5, char *queryuc_ptr_3,
 			    int querylength5, int querylength3, int query5_lastpos, int query3_lastpos,
-			    int cutoff_level_5, int cutoff_level_3,
-			    int indel_penalty_middle, int localsplicing_penalty,
+			    int localsplicing_penalty,
 			    Oligoindex_T *oligoindices_major, int noligoindices_major,
 			    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 			    Pairpool_T pairpool, Diagpool_T diagpool,
@@ -12516,7 +13156,6 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
   Stage3pair_T newpair, stage3pair;
   List_T gmap5_hits = NULL, gmap3_hits = NULL, good_gmap5_hits = NULL, good_gmap3_hits = NULL;
   Stage3end_T hit5, hit3, gmap5, gmap3;
-  bool high_quality_p;
   List_T p, a, b, rest;
   int genestrand;
   int i;
@@ -12541,17 +13180,18 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
       /* Skip */
       debug13(printf("Skipping hit5 of type GMAP\n"));
     } else if (Stage3end_terminal_trim(hit5) >= 8
-#if 0
+#if 1
 	       || Stage3end_bad_stretch_p(hit5,query5_compress_fwd,query5_compress_rev)
 #endif
 	       || Stage3end_contains_known_splicesite(hit5)
 	       ) {
-      debug13(printf("To correct hit5 terminalp %d or known_splicesite %d, running GMAP on 5' to match with 3' end\n",
+      debug13(printf("To correct hit5 terminalp %d or bad stretchp %d or known_splicesite %d, running GMAP on 5' to match with 3' end\n",
 		     Stage3end_hittype(hit5) == TERMINAL,
+		     Stage3end_bad_stretch_p(hit5,query5_compress_fwd,query5_compress_rev),
 		     Stage3end_contains_known_splicesite(hit5)));
     
       /* Want high quality because we already have a pretty good answer */
-      gmap5_hits = align_halfmapping_with_gmap(&high_quality_p,/*hit5*/NULL,hit3,queryseq5,queryseq3,
+      gmap5_hits = align_halfmapping_with_gmap(/*hit5*/NULL,hit3,queryseq5,queryseq3,
 					       queryuc_ptr_5,/*querylength*/querylength5,query5_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 					       queryrc5,Shortread_invertedp(queryseq5),
@@ -12561,12 +13201,10 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
 					       plus_nsegments_genestrand_5[genestrand],
 					       minus_segments_genestrand_5[genestrand],
 					       minus_nsegments_genestrand_5[genestrand],
-					       cutoff_level_5,indel_penalty_middle,localsplicing_penalty,
 					       oligoindices_major,noligoindices_major,
 					       oligoindices_minor,noligoindices_minor,
 					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					       pairmax,shortsplicedist,/*want_high_quality_p*/true,
-					       genestrand);
+					       pairmax,shortsplicedist,genestrand);
 
       for (a = gmap5_hits; a != NULL; a = List_next(a)) {
 	gmap5 = (Stage3end_T) List_head(a);
@@ -12588,17 +13226,18 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
       /* Skip */
       debug13(printf("Skipping hit3 of type GMAP\n"));
     } else if (Stage3end_terminal_trim(hit3) >= 8
-#if 0
+#if 1
 	       || Stage3end_bad_stretch_p(hit3,query3_compress_fwd,query3_compress_rev)
 #endif
 	       || Stage3end_contains_known_splicesite(hit3)
 	       ) {
-      debug13(printf("To correct hit3 terminal %d or known_splicesite %d, running GMAP on 3' to match with 5' end\n",
+      debug13(printf("To correct hit3 terminal %d or bad stretchp %d or known_splicesite %d, running GMAP on 3' to match with 5' end\n",
 		     Stage3end_hittype(hit3) == TERMINAL,
+		     Stage3end_bad_stretch_p(hit3,query3_compress_fwd,query3_compress_rev),
 		     Stage3end_contains_known_splicesite(hit3)));
 
       /* Want high quality because we already have a pretty good answer */
-      gmap3_hits = align_halfmapping_with_gmap(&high_quality_p,hit5,/*hit3*/NULL,queryseq5,queryseq3,
+      gmap3_hits = align_halfmapping_with_gmap(hit5,/*hit3*/NULL,queryseq5,queryseq3,
 					       queryuc_ptr_3,/*querylength*/querylength3,query3_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 					       queryrc3,Shortread_invertedp(queryseq3),
@@ -12608,12 +13247,10 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
 					       plus_nsegments_genestrand_3[genestrand],
 					       minus_segments_genestrand_3[genestrand],
 					       minus_nsegments_genestrand_3[genestrand],
-					       cutoff_level_3,indel_penalty_middle,localsplicing_penalty,
 					       oligoindices_major,noligoindices_major,
 					       oligoindices_minor,noligoindices_minor,
 					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					       pairmax,shortsplicedist,/*want_high_quality_p*/true,
-					       genestrand);
+					       pairmax,shortsplicedist,genestrand);
 
       for (b = gmap3_hits; b != NULL; b = List_next(b)) {
 	gmap3 = (Stage3end_T) List_head(b);
@@ -12799,7 +13436,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
   bool alloc_floors_p_5 = false, alloc_floors_p_3 = false, floors5_computed_p = false, floors3_computed_p = false,
     segments5_computed_p = false, segments3_computed_p = false, alloc5p, alloc3p;
   int best_score_paired;
-  bool found_terminals_p = false, high_quality_p;
+  bool found_terminals_p = false;
   int nconcordant = 0, nsalvage = 0;
 
   *samechr = (List_T) NULL;
@@ -12811,8 +13448,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
   *found_score = querylength5 + querylength3;
   ignore_found_score = querylength5 + querylength3;
 
-  fast_level_5 = (querylength5 + 2)/index1part - NREQUIRED_FAST;
-  fast_level_3 = (querylength3 + 2)/index1part - NREQUIRED_FAST;
+  fast_level_5 = (querylength5 + index1interval - 1)/spansize - NREQUIRED_FAST;
+  fast_level_3 = (querylength3 + index1interval - 1)/spansize - NREQUIRED_FAST;
 
 #if 0
   /* This prevents complete_mm procedure, needed for short reads */
@@ -13576,37 +14213,35 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	if (Stage3end_hittype(hit5) == TRANSLOC_SPLICE) {
 	  debug13(printf("No GMAP on transloc splice\n"));
 	} else if (Stage3end_paired_usedp(hit5) == false && Stage3end_score(hit5) <= best_score_paired) {
-	  gmap3_hits = align_halfmapping_with_gmap(&high_quality_p,hit5,/*hit3*/NULL,queryseq5,queryseq3,
+	  gmap3_hits = align_halfmapping_with_gmap(hit5,/*hit3*/NULL,queryseq5,queryseq3,
 						   queryuc_ptr_3,/*querylength*/querylength3,query3_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 						   queryrc3,Shortread_invertedp(queryseq3),
-						   query_compress_fwd,query_compress_rev,
+						   query3_compress_fwd,query3_compress_rev,
 #endif
 						   this3->plus_segments,this3->plus_nsegments,this3->minus_segments,this3->minus_nsegments,
-						   *cutoff_level_3,indel_penalty_middle,localsplicing_penalty,
 						   oligoindices_major,noligoindices_major,
 						   oligoindices_minor,noligoindices_minor,
 						   pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						   pairmax,shortsplicedist,/*want_high_quality_p*/true,
-						   genestrand);
+						   pairmax,shortsplicedist,genestrand);
 	  for (a = gmap3_hits; a != NULL; a = List_next(a)) {
 	    gmap3 = (Stage3end_T) List_head(a);
-	    debug13(printf("=> Successful GMAP on hit3\n"));
+	    debug13(printf("=> Successful pairsearch GMAP on hit3\n"));
 	    if ((newpair = Stage3pair_new(Stage3end_copy(hit5),gmap3,splicesites,
 					  query5_compress_fwd,query5_compress_rev,
 					  query3_compress_fwd,query3_compress_rev,genestrand,
 					  /*pairtype*/CONCORDANT,localsplicing_penalty,
 					  /*private5p*/true,/*private3p*/true,/*expect_concordant_p*/true)) == NULL) {
 	      /* Stage3end_free(&gmap3); -- done by Stage3pair_new */
+	    } else if (Stage3end_score(gmap3) > *cutoff_level_3) {
+	      nsalvage += 1;
+	      debug13(printf("Not high quality (score %d) => nconcordant %d, nsalvage %d\n",
+			     Stage3end_score(gmap3),nconcordant,nsalvage));
+	      hitpairs = List_push(hitpairs,(void *) newpair);
 	    } else {
 	      /* Save hit5-gmap3 */
-	      if (high_quality_p == true) {
-		nconcordant += 1;
-		debug13(printf("High quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
-	      } else {
-		nsalvage += 1;
-		debug13(printf("Not high quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
-	      }
+	      nconcordant += 1;
+	      debug13(printf("High quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
 	      hitpairs = List_push(hitpairs,(void *) newpair);
 	    }
 	  }
@@ -13625,37 +14260,35 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	if (Stage3end_hittype(hit3) == TRANSLOC_SPLICE) {
 	  debug13(printf("Not GMAP on transloc splice\n"));
 	} else if (Stage3end_paired_usedp(hit3) == false && Stage3end_score(hit3) <= best_score_paired) {
-	  gmap5_hits = align_halfmapping_with_gmap(&high_quality_p,/*hit5*/NULL,hit3,queryseq5,queryseq3,
+	  gmap5_hits = align_halfmapping_with_gmap(/*hit5*/NULL,hit3,queryseq5,queryseq3,
 						   queryuc_ptr_5,/*querylength*/querylength5,query5_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 						   queryrc5,Shortread_invertedp(queryseq5),
-						   query_compress_fwd,query_compress_rev,
+						   query5_compress_fwd,query5_compress_rev,
 #endif
 						   this5->plus_segments,this5->plus_nsegments,this5->minus_segments,this5->minus_nsegments,
-						   *cutoff_level_5,indel_penalty_middle,localsplicing_penalty,
 						   oligoindices_major,noligoindices_major,
 						   oligoindices_minor,noligoindices_minor,
 						   pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						   pairmax,shortsplicedist,/*want_high_quality_p*/true,
-						   genestrand);
+						   pairmax,shortsplicedist,genestrand);
 	  for (a = gmap5_hits; a != NULL; a = List_next(a)) {
 	    gmap5 = (Stage3end_T) List_head(a);
-	    debug13(printf("=> Successful GMAP on hit5\n"));
+	    debug13(printf("=> Successful pairsearch GMAP on hit5\n"));
 	    if ((newpair = Stage3pair_new(gmap5,Stage3end_copy(hit3),splicesites,
 					  query5_compress_fwd,query5_compress_rev,
 					  query3_compress_fwd,query3_compress_rev,genestrand,
 					  /*pairtype*/CONCORDANT,localsplicing_penalty,
 					  /*private5p*/true,/*private3p*/true,/*expect_concordant_p*/true)) == NULL) {
 	      /* Stage3end_free(&gmap5); -- done by Stage3pair_new */
+	    } else if (Stage3end_score(gmap5) > *cutoff_level_5) {
+	      nsalvage += 1;
+	      debug13(printf("Not high quality (score %d) => nconcordant %d, nsalvage %d\n",
+			     Stage3end_score(gmap5),nconcordant,nsalvage));
+	      hitpairs = List_push(hitpairs,(void *) newpair);
 	    } else {
 	      /* Save gmap5-hit3 */
-	      if (high_quality_p == true) {
-		nconcordant += 1;
-		debug13(printf("High quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
-	      } else {
-		nsalvage += 1;
-		debug13(printf("Not high quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
-	      }
+	      nconcordant += 1;
+	      debug13(printf("High quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
 	      hitpairs = List_push(hitpairs,(void *) newpair);
 	    }
 	  }
@@ -13921,7 +14554,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 								    floors5,max_mismatches_allowed,/*plusp*/false);
       }
 
-      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found */
+      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found, but do run Stage3end_remove_overlaps */
       terminals5 = find_terminals(this5->plus_segments,this5->plus_nsegments,this5->minus_segments,this5->minus_nsegments,
 #ifdef DEBUG4T
 				  queryuc_ptr_5,queryrc5,
@@ -13929,7 +14562,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 				  floors5,querylength5,query5_lastpos,
 				  query5_compress_fwd,query5_compress_rev,
 				  max_mismatches_allowed,/*max_terminal_length*/end_miss_one,genestrand);
-      *hits5 = List_append(*hits5,terminals5);
+      *hits5 = Stage3end_remove_overlaps(List_append(*hits5,terminals5));
     }
 
     if (done_level_3 >= terminal_threshold) {
@@ -13952,7 +14585,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 								    floors3,max_mismatches_allowed,/*plusp*/false);
       }
 
-      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found */
+      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found, but do run Stage3end_remove_overlaps */
       terminals3 = find_terminals(this3->plus_segments,this3->plus_nsegments,this3->minus_segments,this3->minus_nsegments,
 #ifdef DEBUG4T
 				  queryuc_ptr_3,queryrc3,
@@ -13960,7 +14593,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 				  floors3,querylength3,query3_lastpos,
 				  query3_compress_fwd,query3_compress_rev,
 				  max_mismatches_allowed,/*max_terminal_length*/end_miss_one,genestrand);
-      *hits3 = List_append(*hits3,terminals3);
+      *hits3 = Stage3end_remove_overlaps(List_append(*hits3,terminals3));
     }
 
     if (terminals5 != NULL || terminals3 != NULL) {
@@ -14019,7 +14652,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 								    floors5,max_mismatches_allowed,/*plusp*/false);
       }
 
-      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found */
+      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found, but do run Stage3end_remove_overlaps */
       terminals5 = find_terminals(this5->plus_segments,this5->plus_nsegments,this5->minus_segments,this5->minus_nsegments,
 #ifdef DEBUG4T
 				  queryuc_ptr_5,queryrc5,
@@ -14027,7 +14660,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 				  floors5,querylength5,query5_lastpos,
 				  query5_compress_fwd,query5_compress_rev,
 				  max_mismatches_allowed,/*max_terminal_length*/end_miss_two,genestrand);
-      *hits5 = List_append(*hits5,terminals5);
+      *hits5 = Stage3end_remove_overlaps(List_append(*hits5,terminals5));
     }
 
 
@@ -14050,7 +14683,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 								    floors3,max_mismatches_allowed,/*plusp*/false);
       }
 
-      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found */
+      /* Don't run Stage3end_remove_duplicates until after concordant pairs are found, but do run Stage3end_remove_overlaps */
       terminals3 = find_terminals(this3->plus_segments,this3->plus_nsegments,this3->minus_segments,this3->minus_nsegments,
 #ifdef DEBUG4T
 				  queryuc_ptr_3,queryrc3,
@@ -14058,7 +14691,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 				  floors3,querylength3,query3_lastpos,
 				  query3_compress_fwd,query3_compress_rev,
 				  max_mismatches_allowed,/*max_terminal_length*/end_miss_two,genestrand);
-      *hits3 = List_append(*hits3,terminals3);
+      *hits3 = Stage3end_remove_overlaps(List_append(*hits3,terminals3));
     }
 
     if (terminals5 != NULL || terminals3 != NULL) {
@@ -14114,22 +14747,20 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
     for (p = *hits5; p != NULL && i < max_gmap_terminal; p = List_next(p)) {
       hit5 = (Stage3end_T) List_head(p);
       if (Stage3end_hittype(hit5) == TERMINAL /* && Stage3end_paired_usedp(hit5) == false && Stage3end_score(hit5) <= best_score_paired */) {
-	gmap3_hits = align_halfmapping_with_gmap(&high_quality_p,hit5,/*hit3*/NULL,queryseq5,queryseq3,
+	gmap3_hits = align_halfmapping_with_gmap(hit5,/*hit3*/NULL,queryseq5,queryseq3,
 						 queryuc_ptr_3,/*querylength*/querylength3,query3_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 						 queryrc3,Shortread_invertedp(queryseq3),
-						 query_compress_fwd,query_compress_rev,
+						 query3_compress_fwd,query3_compress_rev,
 #endif
 						 this3->plus_segments,this3->plus_nsegments,this3->minus_segments,this3->minus_nsegments,
-						 *cutoff_level_3,indel_penalty_middle,localsplicing_penalty,
 						 oligoindices_major,noligoindices_major,
 						 oligoindices_minor,noligoindices_minor,
 						 pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						 pairmax,shortsplicedist,/*want_high_quality_p*/true,
-						 genestrand);
+						 pairmax,shortsplicedist,genestrand);
 	for (a = gmap3_hits; a != NULL; a = List_next(a)) {
 	  gmap3 = (Stage3end_T) List_head(a);
-	  debug13(printf("=> Successful GMAP on hit3\n"));
+	  debug13(printf("=> Successful terminal GMAP on hit3\n"));
 	  if ((newpair = Stage3pair_new(Stage3end_copy(hit5),gmap3,splicesites,
 					query5_compress_fwd,query5_compress_rev,
 					query3_compress_fwd,query3_compress_rev,genestrand,
@@ -14138,14 +14769,6 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	    /* Stage3end_free(&gmap3); -- done by Stage3pair_new */
 	  } else {
 	    /* Save hit5-gmap3 */
-#if 0
-	    /* Not looking at these anymore */
-	    if (high_quality_p == true) {
-	      nconcordant += 1;
-	    } else {
-	      nsalvage += 1;
-	    }
-#endif
 	    hitpairs = List_push(hitpairs,(void *) newpair);
 	  }
 	}
@@ -14160,22 +14783,20 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
     for (p = *hits3; p != NULL && i < max_gmap_terminal; p = List_next(p)) {
       hit3 = (Stage3end_T) List_head(p);
       if (Stage3end_hittype(hit3) == TERMINAL /* && Stage3end_paired_usedp(hit3) == false && Stage3end_score(hit3) <= best_score_paired */) {
-	gmap5_hits = align_halfmapping_with_gmap(&high_quality_p,/*hit5*/NULL,hit3,queryseq5,queryseq3,
+	gmap5_hits = align_halfmapping_with_gmap(/*hit5*/NULL,hit3,queryseq5,queryseq3,
 						 queryuc_ptr_5,/*querylength*/querylength5,query5_lastpos,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 						 queryrc5,Shortread_invertedp(queryseq5),
-						 query_compress_fwd,query_compress_rev,
+						 query5_compress_fwd,query5_compress_rev,
 #endif
 						 this5->plus_segments,this5->plus_nsegments,this5->minus_segments,this5->minus_nsegments,
-						 *cutoff_level_5,indel_penalty_middle,localsplicing_penalty,
 						 oligoindices_major,noligoindices_major,
 						 oligoindices_minor,noligoindices_minor,
 						 pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						 pairmax,shortsplicedist,/*want_high_quality_p*/true,
-						 genestrand);
+						 pairmax,shortsplicedist,genestrand);
 	for (a = gmap5_hits; a != NULL; a = List_next(a)) {
 	  gmap5 = (Stage3end_T) List_head(a);
-	  debug13(printf("=> Successful GMAP on hit5\n"));
+	  debug13(printf("=> Successful terminal GMAP on hit5\n"));
 	  if ((newpair = Stage3pair_new(gmap5,Stage3end_copy(hit3),splicesites,
 					query5_compress_fwd,query5_compress_rev,
 					query3_compress_fwd,query3_compress_rev,genestrand,
@@ -14184,14 +14805,6 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	    /* Stage3end_free(&gmap5); -- done by Stage3pair_new */
 	  } else {
 	    /* Save gmap5-hit3 */
-#if 0
-	    /* Not looking at these anymore */
-	    if (high_quality_p == true) {
-	      nconcordant += 1;
-	    } else {
-	      nsalvage += 1;
-	    }
-#endif
 	    hitpairs = List_push(hitpairs,(void *) newpair);
 	  }
 	}
@@ -14328,10 +14941,6 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *second_absmq5,
 			    max_middle_insertions,max_middle_deletions,
 			    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			    allvalidp5,keep_floors_p,genestrand);
-    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/true);
-    singlehits5 = Stage3end_remove_overlaps(singlehits5);
-    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/false);
-    singlehits5 = Stage3end_resolve_multimapping(singlehits5);
   }
 
   if ((*nhits5 = List_length(singlehits5)) == 0) {
@@ -14361,10 +14970,6 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *second_absmq5,
 			    max_middle_insertions,max_middle_deletions,
 			    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			    allvalidp3,keep_floors_p,genestrand);
-    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/true);
-    singlehits3 = Stage3end_remove_overlaps(singlehits3);
-    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/false);
-    singlehits3 = Stage3end_resolve_multimapping(singlehits3);
   }
 
   if ((*nhits3 = List_length(singlehits3)) == 0) {
@@ -14396,7 +15001,7 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
 			    Shortread_T queryseq5, char *queryuc_ptr_5, char *quality_string_5, int querylength5, int query5_lastpos,
 			    Shortread_T queryseq3, char *queryuc_ptr_3, char *quality_string_3, int querylength3, int query3_lastpos,
 			    Genome_T genome, int maxpaths, int subopt_levels,
-			    int cutoff_level_5, int cutoff_level_3, int indel_penalty_middle,
+			    int cutoff_level_5, int cutoff_level_3,
 			    Genomicpos_T shortsplicedist, int localsplicing_penalty,
 			    Oligoindex_T *oligoindices_major, int noligoindices_major,
 			    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
@@ -14447,8 +15052,7 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
 					  minus_segments_genestrand_3,minus_nsegments_genestrand_3,
 					  queryseq5,queryseq3,queryuc_ptr_5,queryuc_ptr_3,
 					  querylength5,querylength3,query5_lastpos,query3_lastpos,
-					  cutoff_level_5,cutoff_level_3,
-					  indel_penalty_middle,localsplicing_penalty,
+					  localsplicing_penalty,
 					  oligoindices_major,noligoindices_major,
 					  oligoindices_minor,noligoindices_minor,
 					  pairpool,diagpool,dynprogL,dynprogM,dynprogR,
@@ -14511,14 +15115,18 @@ consolidate_paired_results (int *npaths, int *second_absmq, Pairtype_T *final_pa
 
 
   if (result == NULL) {
-    singlehits5 = Stage3end_optimal_score(hits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/true);
+    singlehits5 = Stage3end_optimal_score(hits5,cutoff_level_5,subopt_levels,query5_compress_fwd,query5_compress_rev,
+					  /*keep_gmap_p*/true);
     singlehits5 = Stage3end_remove_overlaps(singlehits5);
-    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,/*keep_gmap_p*/false);
+    singlehits5 = Stage3end_optimal_score(singlehits5,cutoff_level_5,subopt_levels,query5_compress_fwd,query5_compress_rev,
+					  /*keep_gmap_p*/false);
     singlehits5 = Stage3end_resolve_multimapping(singlehits5);
 
-    singlehits3 = Stage3end_optimal_score(hits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/true);
+    singlehits3 = Stage3end_optimal_score(hits3,cutoff_level_3,subopt_levels,query3_compress_fwd,query3_compress_rev,
+					  /*keep_gmap_p*/true);
     singlehits3 = Stage3end_remove_overlaps(singlehits3);
-    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,/*keep_gmap_p*/false);
+    singlehits3 = Stage3end_optimal_score(singlehits3,cutoff_level_3,subopt_levels,query3_compress_fwd,query3_compress_rev,
+					  /*keep_gmap_p*/false);
     singlehits3 = Stage3end_resolve_multimapping(singlehits3);
 
     debug13(printf("5' end has %d hits and 3' end has %d hits\n",
@@ -14646,8 +15254,8 @@ paired_read (int *npaths, int *second_absmq, Pairtype_T *final_pairtype,
   querylength5 = Shortread_fulllength(queryseq5);
   querylength3 = Shortread_fulllength(queryseq3);
 
-  if (querylength5 < index1part+2 || querylength3 < index1part+2) {
-    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",index1part+2);
+  if (querylength5 < min_readlength || querylength3 < min_readlength) {
+    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",min_readlength);
     *npaths = *nhits5 = *nhits3 = 0;
     *stage3array5 = *stage3array3 = (Stage3end_T *) NULL;
     return (Stage3pair_T *) NULL;
@@ -14766,7 +15374,7 @@ paired_read (int *npaths, int *second_absmq, Pairtype_T *final_pairtype,
 						     &this3->plus_segments,&this3->plus_nsegments,&this3->minus_segments,&this3->minus_nsegments,
 						     queryseq5,queryuc_ptr_5,quality_string_5,querylength5,query5_lastpos,
 						     queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
-						     genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,indel_penalty_middle,
+						     genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,
 						     shortsplicedist,localsplicing_penalty,
 						     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 						     pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax);
@@ -14831,8 +15439,8 @@ paired_read_tolerant_nonstranded (int *npaths, int *second_absmq, Pairtype_T *fi
   querylength5 = Shortread_fulllength(queryseq5);
   querylength3 = Shortread_fulllength(queryseq3);
 
-  if (querylength5 < index1part+2 || querylength3 < index1part+2) {
-    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",index1part+2);
+  if (querylength5 < min_readlength || querylength3 < min_readlength) {
+    fprintf(stderr,"GSNAP cannot handle reads shorter than %d bp\n",min_readlength);
     *npaths = *nhits5 = *nhits3 = 0;
     *stage3array5 = *stage3array3 = (Stage3end_T *) NULL;
     return (Stage3pair_T *) NULL;
@@ -14998,7 +15606,7 @@ paired_read_tolerant_nonstranded (int *npaths, int *second_absmq, Pairtype_T *fi
 						     plus_segments_genestrand_3,plus_nsegments_genestrand_3,minus_segments_genestrand_3,minus_nsegments_genestrand_3,
 						     queryseq5,queryuc_ptr_5,quality_string_5,querylength5,query5_lastpos,
 						     queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
-						     genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,indel_penalty_middle,
+						     genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,
 						     shortsplicedist,localsplicing_penalty,
 						     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 						     pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax);
@@ -15067,7 +15675,7 @@ paired_read_tolerant_nonstranded (int *npaths, int *second_absmq, Pairtype_T *fi
 						     plus_segments_genestrand_3,plus_nsegments_genestrand_3,minus_segments_genestrand_3,minus_nsegments_genestrand_3,
 						     queryseq5,queryuc_ptr_5,quality_string_5,querylength5,query5_lastpos,
 						     queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
-						     genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,indel_penalty_middle,
+						     genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,
 						     shortsplicedist,localsplicing_penalty,
 						     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 						     pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax);
@@ -15117,7 +15725,7 @@ paired_read_tolerant_nonstranded (int *npaths, int *second_absmq, Pairtype_T *fi
 						   plus_segments_genestrand_3,plus_nsegments_genestrand_3,minus_segments_genestrand_3,minus_nsegments_genestrand_3,
 						   queryseq5,queryuc_ptr_5,quality_string_5,querylength5,query5_lastpos,
 						   queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
-						   genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,indel_penalty_middle,
+						   genome,maxpaths,subopt_levels,cutoff_level_5,cutoff_level_3,
 						   shortsplicedist,localsplicing_penalty,
 						   oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 						   pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax);
@@ -15191,7 +15799,8 @@ Stage1_paired_read (int *npaths, int *second_absmq, Pairtype_T *final_pairtype,
 
 
 void
-Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,
+Stage1hr_setup (int index1part_in, int index1interval_in, int spansize_in,
+		IIT_T chromosome_iit_in, int nchromosomes_in,
 		Genome_T genomealt, Mode_T mode_in,
 		int terminal_threshold_in,
 
@@ -15209,20 +15818,25 @@ Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,
   bool gmapp = false;
 
   index1part = index1part_in;
+  index1interval = index1interval_in;
+  two_index1intervals = index1interval_in + index1interval_in;
+  spansize = spansize_in;
+
+  min_readlength = index1part_in + index1interval_in - 1;
   chromosome_iit = chromosome_iit_in;
   nchromosomes = nchromosomes_in;
 
   leftreadshift = 32 - index1part - index1part; /* For 12-mers, 8 */
-  oligobase_mask = ~(~0U << 2*index1part);  /* For 12-mers, was 0x00FFFFFF */
-  one_miss_querylength = index1part + index1part - 2; /* For 12-mers, 22 */
+  oligobase_mask = ~(~0UL << 2*index1part);  /* For 12-mers, was 0x00FFFFFF */
+  one_miss_querylength = spansize + spansize - (index1interval - 1); /* For 12-mers, 22 */
 
 #if 0
   /* Should be 2 index1parts to handle a mismatch, plus a shift of 2, minus 3 if second one aligns */
   /* But this leads to many false positives, and GMAP can handle these other cases. */
-  end_miss_two = index1part + 2 + index1part - 3;
+  end_miss_two = spansize + (index1interval - 1) + spansize - index1interval;
 #else
-  end_miss_one = index1part + 2;
-  end_miss_two = index1part + 2 + index1part - 3;
+  end_miss_one = spansize + (index1interval - 1);
+  end_miss_two = spansize + (index1interval - 1) + spansize - index1interval;
 #endif
   
   mode = mode_in;
@@ -15245,6 +15859,7 @@ Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,
   extramaterial_paired = extramaterial_paired_in;
 
   gmap_pairsearch_p = false;
+  gmap_indel_knownsplice_p = false;
   gmap_terminal_p = false;
   gmap_improvement_p = false;
 
@@ -15257,6 +15872,15 @@ Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,
     }
     fprintf(stderr," pairsearch");
     gmap_pairsearch_p = true;
+  }
+  if ((gmap_mode & GMAP_INDEL_KNOWNSPLICE) != 0) {
+    if (gmapp == true) {
+      fprintf(stderr,",");
+    } else {
+      gmapp = true;
+    }
+    fprintf(stderr," indel+knownsplice");
+    gmap_indel_knownsplice_p = true;
   }
   if ((gmap_mode & GMAP_TERMINAL) != 0) {
     if (gmapp == true) {

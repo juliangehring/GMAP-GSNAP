@@ -1,4 +1,4 @@
-/* $Id: block.h 41938 2011-06-29 18:53:08Z twu $ */
+/* $Id: block.h 55892 2012-01-13 23:05:01Z twu $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"
@@ -37,9 +37,7 @@ Block_reset_ends (T this);
 
 extern T
 Block_new (cDNAEnd_T cdnaend, int oligosize,
-#ifdef PMAP
-	   unsigned int msb,
-#else
+#ifndef PMAP
 	   int leftreadshift,
 #endif
 	   Reader_T reader, int querylength);

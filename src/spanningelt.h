@@ -1,4 +1,4 @@
-/* $Id: spanningelt.h 54069 2011-12-09 22:44:05Z twu $ */
+/* $Id: spanningelt.h 57025 2012-02-03 01:59:44Z twu $ */
 #ifndef SPANNINGELT_INCLUDED
 #define SPANNINGELT_INCLUDED
 #include "bool.h"
@@ -45,6 +45,8 @@ struct T {
   int npositions_reset;
 };
 
+extern int
+Spanningelt_setup (int index1part_in, int index1interval_in);
 extern void
 Spanningelt_init_positions_free (bool positions_fileio_p);
 extern void

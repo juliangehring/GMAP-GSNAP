@@ -1,4 +1,4 @@
-/* $Id: types.h 44854 2011-08-13 06:42:25Z twu $ */
+/* $Id: types.h 56964 2012-02-02 17:57:52Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -13,18 +13,30 @@ typedef unsigned int UINT4;
 typedef int INT4;
 
 /* An 8-byte word */
+/* Oligospace_T needs to hold 1 more than maximum Storedoligomer_T.
+   If 8-byte words are not available, then maximum k-mer is 15 */
 #if (SIZEOF_UNSIGNED_LONG == 8)
 #define HAVE_64_BIT
+#define MAXIMUM_KMER 16
 typedef unsigned long UINT8;
+typedef unsigned long Oligospace_T;
 #elif (SIZEOF_UNSIGNED_LONG_LONG == 8)
 #define HAVE_64_BIT
+#define MAXIMUM_KMER 16
 typedef unsigned long long UINT8;
+typedef unsigned long long Oligospace_T;
+#else
+#define MAXIMUM_KMER 15
+typedef unsigned int Oligospace_T;
 #endif
 
 /* An offset into the positions file of an IndexDB.  Typically, 3
    billion divided by sampling interval, requiring a maximum of 32
    bits or 4 bytes */
 typedef UINT4 Positionsptr_T;
+
+/* Typically 12 nt or 24 bits, requiring 3 bytes */
+typedef UINT4 Storedoligomer_T;
 
 #endif
 

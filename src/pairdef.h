@@ -1,4 +1,4 @@
-/* $Id: pairdef.h 55441 2012-01-06 22:14:07Z twu $ */
+/* $Id: pairdef.h 56992 2012-02-02 22:23:45Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
@@ -41,6 +41,7 @@ struct T {
 
   double donor_prob;		/* Set for an intron gap */
   double acceptor_prob;
+  bool end_intron_p;
 };
 
 #undef T

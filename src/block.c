@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c 41938 2011-06-29 18:53:08Z twu $";
+static char rcsid[] = "$Id: block.c 57093 2012-02-03 19:41:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,7 +40,6 @@ struct T {
 
 #ifdef PMAP
   unsigned int aaindex;
-  unsigned int msb;
 #else
   int leftreadshift;
   Storedoligomer_T forward;
@@ -171,9 +170,7 @@ Block_reset_ends (T this) {
 
 T
 Block_new (cDNAEnd_T cdnaend, int oligosize,
-#ifdef PMAP
-	   unsigned int msb,
-#else
+#ifndef PMAP
 	   int leftreadshift,
 #endif
 	   Reader_T reader, int querylength) {
@@ -182,10 +179,8 @@ Block_new (cDNAEnd_T cdnaend, int oligosize,
   new->reader = reader;
   new->cdnaend = cdnaend;
   new->oligosize = oligosize;
-#ifdef PMAP
-  new->msb = msb;
-#else
-  new->oligomask = ~(~0U << 2*oligosize);
+#ifndef PMAP
+  new->oligomask = ~(~0UL << 2*oligosize);
   new->leftreadshift = leftreadshift;
 #endif
 
@@ -241,12 +236,12 @@ Block_next (T this) {
 
 #ifdef PMAP
     this->last_state = Oligo_next(this->last_state,&this->last_querypos,
-				  &this->aaindex,this->oligosize,this->msb,this->reader,this->cdnaend);
+				  &this->aaindex,this->reader,this->cdnaend);
     debug(printf("Block has aaindex %u at querypos %d\n",
 		 this->aaindex,this->last_querypos));
 #else
     this->last_state = Oligo_next(this->last_state,&this->last_querypos,
-				  &this->forward,&this->revcomp,this->oligosize,this->reader,this->cdnaend);
+				  &this->forward,&this->revcomp,this->reader,this->cdnaend);
     debug(
 	  if (this->cdnaend == THREE) {
 	    nt_fwd = Oligo_one_nt(this->forward >> this->leftreadshift,12);
@@ -283,13 +278,12 @@ Block_skip (T this, int nskip) {
     init_querypos = this->last_querypos;
 #ifdef PMAP
     this->last_state = Oligo_skip(this->last_state,&this->last_querypos,
-				  &this->aaindex,this->oligosize,this->msb,
-				  this->reader,this->cdnaend,nskip);
+				  &this->aaindex,this->reader,this->cdnaend,nskip);
     debug(printf("Block has aaindex %u at querypos %d\n",
 		 this->aaindex,this->last_querypos));
 #else
     this->last_state = Oligo_skip(this->last_state,&this->last_querypos,
-				  &this->forward,&this->revcomp,this->oligosize,
+				  &this->forward,&this->revcomp,
 				  this->reader,this->cdnaend,nskip);
     debug(printf("Block has oligo %08X at querypos %d\n",
 		 this->forward,this->last_querypos));

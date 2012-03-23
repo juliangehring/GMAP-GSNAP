@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: inbuffer.c 49442 2011-10-08 01:32:38Z twu $";
+static char rcsid[] = "$Id: inbuffer.c 59606 2012-03-13 17:00:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -523,4 +523,41 @@ Inbuffer_get_request (T this) {
   return request;
 }
 
+
+
+/* Same as Inbuffer_get_request, but leaves sequence in buffer */
+Request_T
+Inbuffer_first_request (T this) {
+  Request_T request;
+  unsigned int nread;
+
+#ifdef HAVE_PTHREAD
+  pthread_mutex_lock(&this->lock);
+#endif
+  
+  if (this->nleft > 0) {
+    request = this->buffer[this->ptr/*++*/];
+    /* this->nleft -= 1; */
+
+  } else {
+    debug(printf("inbuffer filling\n"));
+    nread = fill_buffer(this);
+    Outbuffer_add_nread(this->outbuffer,nread);
+    debug(printf("inbuffer read %d sequences\n",nread));
+    
+    if (nread == 0) {
+      /* Still empty */
+      request = NULL;
+    } else {
+      request = this->buffer[this->ptr/*++*/];
+      /* this->nleft -= 1; */
+    }
+  }
+
+#ifdef HAVE_PTHREAD
+  pthread_mutex_unlock(&this->lock);
+#endif
+
+  return request;
+}
 

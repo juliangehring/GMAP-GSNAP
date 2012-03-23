@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 53380 2011-11-30 13:36:11Z twu $";
+static char rcsid[] = "$Id: stage1.c 57636 2012-02-14 16:26:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -158,23 +158,11 @@ static char *queryuc_ptr;
 #ifdef PMAP
 static int index1part_aa;
 static int leftreadshift;
-static int msb;
-
-static int
-power (int base, int exponent) {
-  int result = 1, i;
-
-  for (i = 0; i < exponent; i++) {
-    result *= base;
-  }
-  return result;
-}
 
 void
 Stage1_setup (int index1part_aa_in) {
   index1part_aa = index1part_aa_in;
   leftreadshift = 32 - 2*index1part_aa_in; /* chars are shifted into left of a 32 bit word */
-  msb = power(NAMINOACIDS,index1part_aa_in-1);
   return;
 }
 
@@ -187,7 +175,7 @@ void
 Stage1_setup (int index1part_in) {
   index1part = index1part_in;
   leftreadshift = 32 - 2*index1part_in; /* chars are shifted into left of a 32 bit word */
-  oligobase_mask = ~(~0U << 2*index1part_in);
+  oligobase_mask = ~(~0UL << 2*index1part_in);
   return;
 }
 #endif
@@ -304,15 +292,13 @@ Stage1_new (Sequence_T queryuc, int maxtotallen, int maxentries) {
   debug(Sequence_print(stdout,queryuc,/*uppercasep*/true,/*wraplength*/50,/*trimmedp*/true));
 #endif
 #ifdef PMAP
-  reader = Reader_new(Sequence_fullpointer(queryuc),new->querystart,new->queryend,
-		      /*reader_overlap*/index1part_aa);
-  new->block5 = Block_new(FIVE,index1part_aa,msb,reader,3*new->querylength);
-  new->block3 = Block_new(THREE,index1part_aa,msb,reader,3*new->querylength);
+  reader = Reader_new(Sequence_fullpointer(queryuc),new->querystart,new->queryend);
+  new->block5 = Block_new(FIVE,/*oligosize*/index1part_aa,reader,3*new->querylength);
+  new->block3 = Block_new(THREE,/*oligosize*/index1part_aa,reader,3*new->querylength);
 #else
-  reader = Reader_new(Sequence_fullpointer(queryuc),new->querystart,new->queryend,
-		      /*reader_overlap*/index1part);
-  new->block5 = Block_new(FIVE,index1part,leftreadshift,reader,new->querylength);
-  new->block3 = Block_new(THREE,index1part,leftreadshift,reader,new->querylength);
+  reader = Reader_new(Sequence_fullpointer(queryuc),new->querystart,new->queryend);
+  new->block5 = Block_new(FIVE,/*oligosize*/index1part,leftreadshift,reader,new->querylength);
+  new->block3 = Block_new(THREE,/*oligosize*/index1part,leftreadshift,reader,new->querylength);
 #endif
   new->matches5 = NULL;
   new->matches3 = NULL;
@@ -2140,8 +2126,7 @@ read_oligos (T this, Sequence_T queryuc) {
   this->validp = (bool *) CALLOC(this->querylength,sizeof(bool));
 #ifdef PMAP
   this->oligos = (Storedoligomer_T *) CALLOC(this->querylength,sizeof(Storedoligomer_T));
-  reader = Reader_new(Sequence_fullpointer(queryuc),/*querystart*/0,/*queryend*/this->querylength,
-		      /*reader_overlap*/index1part_aa);
+  reader = Reader_new(Sequence_fullpointer(queryuc),/*querystart*/0,/*queryend*/this->querylength);
   /* Prevents us from processing invalid query 12-mers */
   for (querypos = 0; querypos <= this->querylength - index1part_aa; querypos++) {
     this->validp[querypos] = false;
@@ -2149,8 +2134,7 @@ read_oligos (T this, Sequence_T queryuc) {
 #else
   this->forward_oligos = (Storedoligomer_T *) CALLOC(this->querylength,sizeof(Storedoligomer_T));
   this->revcomp_oligos = (Storedoligomer_T *) CALLOC(this->querylength,sizeof(Storedoligomer_T));
-  reader = Reader_new(Sequence_fullpointer(queryuc),/*querystart*/0,/*queryend*/this->querylength,
-		      /*reader_overlap*/index1part);
+  reader = Reader_new(Sequence_fullpointer(queryuc),/*querystart*/0,/*queryend*/this->querylength);
   debug(printf("oligobase is %d, oligobase_mask is %08X\n",index1part,oligobase_mask));
   /* Prevents us from processing invalid query 12-mers */
   for (querypos = 0; querypos <= this->querylength - index1part; querypos++) {
@@ -2161,9 +2145,9 @@ read_oligos (T this, Sequence_T queryuc) {
   /* Note: leftshifting is done here, rather than in Oligo_lookup */
   while ((last_state = Oligo_next(last_state,&querypos,
 #ifdef PMAP
-				  &aaindex,index1part_aa,msb,
+				  &aaindex,
 #else
-				  &forward,&revcomp,index1part,
+				  &forward,&revcomp,
 #endif
 				  reader,/*cdnaend*/FIVE)) != DONE) {
     

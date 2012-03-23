@@ -1,7 +1,9 @@
-/* $Id: dynprog.h 55442 2012-01-06 22:16:29Z twu $ */
+/* $Id: dynprog.h 59997 2012-03-20 19:43:38Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
+/* BEST_LOCAL is a local alignment, whereas QUERYEND_INDELS and
+   QUERYEND_NOGAPS are global */
 typedef enum {BEST_LOCAL, QUERYEND_INDELS, QUERYEND_NOGAPS} Endalign_T;
 typedef struct Dynprog_T *Dynprog_T;
 

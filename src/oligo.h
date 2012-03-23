@@ -1,4 +1,4 @@
-/* $Id: oligo.h 41938 2011-06-29 18:53:08Z twu $ */
+/* $Id: oligo.h 57094 2012-02-03 19:42:33Z twu $ */
 #ifndef OLIGO_INCLUDED
 #define OLIGO_INCLUDED
 #include "bool.h"
@@ -19,10 +19,10 @@ Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T stor
 
 extern Oligostate_T
 Oligo_next (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward, 
-	    Storedoligomer_T *revcomp, int oligosize, Reader_T reader, cDNAEnd_T cdnaend);
+	    Storedoligomer_T *revcomp, Reader_T reader, cDNAEnd_T cdnaend);
 extern Oligostate_T
 Oligo_skip (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward,
-	    Storedoligomer_T *revcomp, int oligosize, Reader_T reader, cDNAEnd_T cdnaend, int nskip);
+	    Storedoligomer_T *revcomp, Reader_T reader, cDNAEnd_T cdnaend, int nskip);
 
 extern bool
 Oligo_repetitive_p (Storedoligomer_T oligo);

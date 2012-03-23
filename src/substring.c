@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 53340 2011-11-29 23:07:16Z twu $";
+static char rcsid[] = "$Id: substring.c 59899 2012-03-19 17:29:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -228,16 +228,16 @@ struct T {
   Endtype_T start_endtype;
   Endtype_T end_endtype;
 
-  int querystart_orig;
+  int querystart_orig;		/* For part that aligns to genome, pre-trim */
   int queryend_orig;
-  int querystart;		/* For part that aligns to genome */
+  int querystart;		/* For part that aligns to genome, post-trim */
   int queryend;
   int querylength;
 
-  Genomicpos_T alignstart;	/* For part that aligns to genome, including part that is trimmed */
+  Genomicpos_T alignstart;	/* For part that aligns to genome, including part that is trimmed (pre-trim) */
   Genomicpos_T alignend;
 
-  Genomicpos_T alignstart_trim;	/* For part that aligns to genome, excluding part that is trimmed */
+  Genomicpos_T alignstart_trim;	/* For part that aligns to genome, excluding part that is trimmed (post-trim) */
   Genomicpos_T alignend_trim;
 
   int alignoffset;
@@ -698,6 +698,7 @@ trim_right_end (Compress_T query_compress, Genomicpos_T left, int querystart, in
 
 
 /* Uses hmm */
+/* Modified for Stage3_bad_stretch_p */
 bool
 Substring_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query_compress_rev) {
   int alignlength, startpos, endpos, pos, i;
@@ -1985,6 +1986,11 @@ Substring_splicesites_i_D (T this) {
 bool
 Substring_plusp (T this) {
   return this->plusp;
+}
+
+int
+Substring_genestrand (T this) {
+  return this->genestrand;
 }
 
 char *
@@ -3862,5 +3868,42 @@ Substring_runlength_p (T this, IIT_T runlength_iit, int *runlength_divint_crosst
   /* chr = IIT_label(chromosome_iit,this->chrnum,&alloc_chr_p); */
   return IIT_exists_with_divno(runlength_iit,runlength_divint_crosstable[this->chrnum],
 				coordstart,coordend);
+}
+
+
+int
+Substring_count_mismatches_region (T this, int trim_left, int trim_right,
+				   Compress_T query_compress_fwd, Compress_T query_compress_rev) {
+  int left_bound, right_bound;
+
+  if (this == NULL) {
+    return 0;
+  }
+
+  left_bound = trim_left;
+  right_bound = this->querylength - trim_right;
+
+  if (this->queryend_orig < left_bound) {
+    return 0;
+  } else if (this->querystart_orig > right_bound) {
+    return 0;
+  } else {
+    if (this->querystart_orig > left_bound) {
+      left_bound = this->querystart_orig;
+    }
+    if (this->queryend_orig < right_bound) {
+      right_bound = this->queryend_orig;
+    }
+
+    if (this->plusp) {
+      return Genome_count_mismatches_substring(query_compress_fwd,this->left,/*pos5*/left_bound,
+					       /*pos3*/right_bound,/*plusp*/true,this->genestrand);
+    } else {
+      return Genome_count_mismatches_substring(query_compress_rev,this->left,
+					       /*pos5*/this->querylength - right_bound,
+					       /*pos3*/this->querylength - left_bound,
+					       /*plusp*/false,this->genestrand);
+    }
+  }
 }
 

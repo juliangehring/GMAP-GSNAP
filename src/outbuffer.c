@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 53170 2011-11-28 02:56:47Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 60021 2012-03-20 22:07:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -345,13 +345,15 @@ sevenway_open_paired (T this) {
   char *filename;
 
   if (this->fails_as_input_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping.1.fq")+1,sizeof(char));
-    sprintf(filename,"%s.nomapping.1.fq",this->sevenway_root);
-    if ((this->fp_nomapping_1 = fopen(filename,"w")) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
+    if (this->fp_nomapping_1 == NULL) {
+      filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping.1.fq")+1,sizeof(char));
+      sprintf(filename,"%s.nomapping.1.fq",this->sevenway_root);
+      if ((this->fp_nomapping_1 = fopen(filename,"w")) == NULL) {
+	fprintf(stderr,"Cannot open file %s for writing\n",filename);
+	exit(9);
+      }
+      FREE(filename);
     }
-    FREE(filename);
 
     filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping.2.fq")+1,sizeof(char));
     sprintf(filename,"%s.nomapping.2.fq",this->sevenway_root);
@@ -362,13 +364,15 @@ sevenway_open_paired (T this) {
     FREE(filename);
 
   } else {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping")+1,sizeof(char));
-    sprintf(filename,"%s.nomapping",this->sevenway_root);
-    if ((this->fp_nomapping_1 = fopen(filename,"w")) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
+    if (this->fp_nomapping_1 == NULL) {
+      filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping")+1,sizeof(char));
+      sprintf(filename,"%s.nomapping",this->sevenway_root);
+      if ((this->fp_nomapping_1 = fopen(filename,"w")) == NULL) {
+	fprintf(stderr,"Cannot open file %s for writing\n",filename);
+	exit(9);
+      }
+      FREE(filename);
     }
-    FREE(filename);
 
     if (this->output_sam_p == true && this->sam_headers_p == true) {
       IIT_dump_sam(this->fp_nomapping_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
@@ -670,6 +674,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	       int maxpaths, bool quiet_if_excessive_p, int quality_shift,
 	       bool invert_first_p, bool invert_second_p, Genomicpos_T pairmax) {
   T new = (T) MALLOC(sizeof(*new));
+  FILE *fp_capture = NULL, *fp_ignore = NULL;
 
   new->chromosome_iit = chromosome_iit;
 
@@ -735,6 +740,24 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
   /* Initialize output streams */
   if (sevenway_root != NULL) {
     sevenway_open_single(new);
+
+  } else if (new->gobywriter != NULL) {
+    Goby_file_handles(&fp_capture,&fp_ignore,new->gobywriter);
+    new->fp_nomapping_1 = fp_ignore;
+    new->fp_nomapping_2 = fp_ignore;
+    new->fp_halfmapping_uniq = fp_capture;
+    new->fp_halfmapping_transloc = fp_capture;
+    new->fp_halfmapping_mult = fp_capture;
+    new->fp_unpaired_uniq = fp_capture;
+    new->fp_unpaired_transloc = fp_capture;
+    new->fp_unpaired_mult = fp_capture;
+    new->fp_paired_uniq_inv = fp_capture;
+    new->fp_paired_uniq_scr = fp_capture;
+    new->fp_paired_uniq_long = fp_capture;
+    new->fp_paired_mult = fp_capture;
+    new->fp_concordant_uniq = fp_capture;
+    new->fp_concordant_transloc = fp_capture;
+    new->fp_concordant_mult = fp_capture;
 
   } else {
     new->fp_nomapping_1 = stdout;
@@ -1135,80 +1158,6 @@ print_result_sam (T this, Result_T result, Request_T request) {
 
 
 static void
-print_result_goby (T this, Result_T result, Request_T request) {
-
-  Resulttype_T resulttype;
-  Shortread_T queryseq1;
-  Stage3end_T *stage3array, stage3;
-  int npaths, pathnum, second_absmq;
-
-  resulttype = Result_resulttype(result);
-
-  if (resulttype == SINGLEEND_NOMAPPING || resulttype == PAIREDEND_NOMAPPING) {
-    /* No output in Goby */
-
-  } else if (resulttype == SINGLEEND_UNIQ || resulttype == SINGLEEND_TRANSLOC) {
-    if (this->failsonlyp == true) {
-      /* Skip */
-
-    } else {
-      stage3array = (Stage3end_T *) Result_array(&npaths,&second_absmq,result);
-      stage3 = stage3array[0];
-      queryseq1 = Request_queryseq1(request);
-#if 0
-      Stage3end_eval_and_sort(stage3array,/*npaths*/1,this->maxpaths,queryseq1);
-#endif
-
-      Goby_observe_aligned(this->gobywriter);
-      Goby_print_single(this->gobywriter,stage3,Stage3end_score(stage3),
-			this->chromosome_iit,queryseq1,this->invert_first_p,
-			/*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
-			/*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
-			Stage3end_mapq_score(stage3));
-    }
-
-  } else if (resulttype == SINGLEEND_MULT) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&second_absmq,result);
-    queryseq1 = Request_queryseq1(request);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-      
-    } else if (npaths > this->maxpaths) {
-      Goby_observe_aligned(this->gobywriter);
-      Goby_print_tmh(this->gobywriter,stage3array[0],queryseq1,npaths);
-
-    } else {
-#if 0
-      Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths,queryseq1);
-#endif
-      Goby_observe_aligned(this->gobywriter);
-      for (pathnum = 1; pathnum <= npaths; pathnum++) {
-	stage3 = stage3array[pathnum-1];
-	Goby_print_single(this->gobywriter,stage3,Stage3end_score(stage3),
-			  this->chromosome_iit,queryseq1,this->invert_first_p,
-			  /*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
-			  /*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
-			  Stage3end_mapq_score(stage3));
-      }
-    }
-
-  } else {
-    Goby_observe_aligned(this->gobywriter);
-    Goby_print_paired(this->gobywriter,result,resulttype,this->chromosome_iit,
-		      Request_queryseq1(request),Request_queryseq2(request),
-                      this->maxpaths,this->quiet_if_excessive_p,
-                      this->invert_first_p,this->invert_second_p,
-                      this->nofailsp,this->failsonlyp,this->fails_as_input_p,
-                      this->fastq_format_p,this->quality_shift,
-		      this->sam_read_group_id);
-  }
-
-  return;
-}
-
-
-static void
 print_result_gsnap (T this, Result_T result, Request_T request) {
   Resulttype_T resulttype;
   bool translocationp;
@@ -1311,6 +1260,74 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
   return;
 }
 
+
+static void
+print_result_goby (T this, Result_T result, Request_T request) {
+  Resulttype_T resulttype;
+  Shortread_T queryseq1;
+  Stage3end_T *stage3array1, *stage3array2;
+  Stage3pair_T *stage3pairarray;
+  int npaths1 = 0, npaths2 = 0, second_absmq;
+  bool output_alignment = true;
+
+  resulttype = Result_resulttype(result);
+  queryseq1 = Request_queryseq1(request);
+  switch (resulttype) {
+    /* Determine if we are in a TMH situation or some other condition where we */
+    /* don't want to output the alignment. */
+    case SINGLEEND_NOMAPPING:
+    case PAIREDEND_NOMAPPING:
+      /* Goby does nothing with no-mapping results. */
+      output_alignment = false;
+      break;
+    case SINGLEEND_MULT:
+      /* Check single end Too Many Hits (TMH) */
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
+      if (npaths1 > this->maxpaths) {
+        Goby_print_tmh(this->gobywriter,stage3array1[0],queryseq1,npaths1);
+        output_alignment = false;
+      }
+      break;
+    case CONCORDANT_UNIQ:
+    case CONCORDANT_TRANSLOC:
+    case UNPAIRED_UNIQ:
+    case UNPAIRED_TRANSLOC:
+    case PAIRED_UNIQ:
+    case HALFMAPPING_UNIQ:
+      /* output alignment but no need to check TMH. */
+      break;
+    case CONCORDANT_MULT:
+    case PAIRED_MULT:
+      stage3pairarray = (Stage3pair_T *) Result_array(&npaths1,&second_absmq,result);
+      if (npaths1 > this->maxpaths) {
+        Goby_print_pair_tmh(this->gobywriter,resulttype,stage3pairarray[0],queryseq1,npaths1);
+        output_alignment = false;
+      }
+      break;
+    case UNPAIRED_MULT:
+    case HALFMAPPING_TRANSLOC:
+    case HALFMAPPING_MULT:
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq,result);
+      if (npaths1 >= this->maxpaths) {
+        Goby_print_tmh(this->gobywriter,stage3array1[0],queryseq1,npaths1);
+      }
+      if (npaths2 >= this->maxpaths) {
+        Goby_print_tmh(this->gobywriter,stage3array2[0],queryseq1,npaths2);
+      }
+      if (npaths1 >= this->maxpaths && npaths2 >= this->maxpaths) {
+        output_alignment = false;
+      }
+      break;
+  }
+
+  if (output_alignment) {
+    Goby_start_capture(this->gobywriter);
+    print_result_gsnap(this,result,request);
+    Goby_finish_capture(this->gobywriter);
+  }
+  return;
+}
 
 
 void
@@ -1474,9 +1491,12 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
       chimera_cdna_direction = Chimera_cdna_direction(chimera);
 
       Stage3_translate_chimera(stage3array[0],stage3array[1],
-			       queryseq,querylength,this->fulllengthp,
+#ifdef PMAP
+			       queryseq,this->diagnosticp,
+#endif
+			       querylength,this->fulllengthp,
 			       this->cds_startpos,this->truncatep,this->strictp,
-			       this->diagnosticp,this->maponlyp);
+			       this->maponlyp);
     }
 
   } else if (this->maxpaths == 0) {
@@ -1494,9 +1514,13 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
     } else {
       printp = true;
 
-      Stage3_translate(stage3array[0],queryseq,querylength,this->fulllengthp,
+      Stage3_translate(stage3array[0],
+#ifdef PMAP
+		       queryseq,this->diagnosticp,
+#endif
+		       querylength,this->fulllengthp,
 		       this->cds_startpos,this->truncatep,this->strictp,
-		       this->diagnosticp,this->maponlyp);
+		       this->maponlyp);
     }
 
   } else {
@@ -1520,9 +1544,13 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
       printp = true;
 
       for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_translate(stage3array[pathnum-1],queryseq,querylength,this->fulllengthp,
+	Stage3_translate(stage3array[pathnum-1],
+#ifdef PMAP
+			 queryseq,this->diagnosticp,
+#endif
+			 querylength,this->fulllengthp,
 			 this->cds_startpos,this->truncatep,this->strictp,
-			 this->diagnosticp,this->maponlyp);
+			 this->maponlyp);
       }
     }
   }
@@ -1557,12 +1585,12 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
       fprintf(fp,"Alignments:\n");
       for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
 	fprintf(fp,"  Alignment for path %d:\n\n",pathnum);
-	Stage3_print_alignment(fp,stage3array[pathnum-1],queryseq,
+	Stage3_print_alignment(fp,stage3array[pathnum-1],
 			       this->genome,this->chromosome_iit,this->printtype,
 			       /*continuousp*/false,/*continuous_by_exon_p*/false,
-			       this->diagnosticp,this->strictp,/*flipgenomep*/true,
+			       this->diagnosticp,/*flipgenomep*/true,
 			       this->invertmode,this->nointronlenp,
-			       this->wraplength,this->maponlyp);
+			       this->wraplength);
       }
     }
 
@@ -1580,8 +1608,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
       Stage3_print_compressed(fp,stage3array[pathnum-1],queryseq,this->chromosome_iit,
 			      this->dbversion,this->usersegment,pathnum,npaths,
 			      this->checksump,chimerapos,chimeraequivpos,
-			      donor_prob,acceptor_prob,chimera_cdna_direction,
-			      this->truncatep,this->strictp);
+			      donor_prob,acceptor_prob,chimera_cdna_direction);
     }
 
   } else if (this->printtype == CONTINUOUS) {
@@ -1590,11 +1617,11 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
     if (npaths == 0) {
       fprintf(fp,"\n\n\n");
     } else {
-      Stage3_print_alignment(fp,stage3array[0],queryseq,this->genome,this->chromosome_iit,this->printtype,
+      Stage3_print_alignment(fp,stage3array[0],this->genome,this->chromosome_iit,this->printtype,
 			     /*continuousp*/true,/*continuous_by_exon_p*/false,
-			     this->diagnosticp,this->strictp,/*flipgenomep*/true,
+			     this->diagnosticp,/*flipgenomep*/true,
 			     this->invertmode,this->nointronlenp,
-			     this->wraplength,this->maponlyp);
+			     this->wraplength);
     }
 
   } else if (this->printtype == CONTINUOUS_BY_EXON) {
@@ -1611,11 +1638,11 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 			       this->diagnosticp,this->maponlyp);
       fprintf(fp,"Alignments:\n");
       fprintf(fp,"  Alignment for path %d:\n\n",/*pathnum*/1);
-      Stage3_print_alignment(fp,stage3array[0],queryseq,this->genome,this->chromosome_iit,this->printtype,
+      Stage3_print_alignment(fp,stage3array[0],this->genome,this->chromosome_iit,this->printtype,
 			     /*continuousp*/false,/*continuous_by_exon_p*/true,
-			     this->diagnosticp,this->strictp,/*flipgenomep*/true,
+			     this->diagnosticp,/*flipgenomep*/true,
 			     this->invertmode,this->nointronlenp,
-			     this->wraplength,this->maponlyp);
+			     this->wraplength);
     }
 
   } else if (this->printtype == EXONS_CDNA) {
@@ -1642,14 +1669,14 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
     for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
       putc('>',fp);
       Sequence_print_header(fp,queryseq,this->checksump);
-      Stage3_print_cdna(fp,stage3array[pathnum-1],queryseq,this->wraplength);
+      Stage3_print_cdna(fp,stage3array[pathnum-1],this->wraplength);
     }
 
   } else if (this->printtype == PROTEIN_GENOMIC) {
     for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
       putc('>',fp);
       Sequence_print_header(fp,queryseq,this->checksump);
-      Stage3_print_protein_genomic(fp,stage3array[pathnum-1],queryseq,this->wraplength);
+      Stage3_print_protein_genomic(fp,stage3array[pathnum-1],this->wraplength);
     }
 
   } else if (this->printtype == PSL_NT) {
@@ -1718,8 +1745,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
     for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
       fprintf(fp,">");
       Sequence_print_header(fp,queryseq,this->checksump);
-      Stage3_print_coordinates(fp,stage3array[pathnum-1],queryseq,
-			       this->chromosome_iit,this->invertmode);
+      Stage3_print_coordinates(fp,stage3array[pathnum-1],this->chromosome_iit,this->invertmode);
     }
 
   } else if (this->printtype == SPLICESITES) {

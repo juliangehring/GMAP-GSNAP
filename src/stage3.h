@@ -1,4 +1,4 @@
-/* $Id: stage3.h 55702 2012-01-11 19:10:27Z twu $ */
+/* $Id: stage3.h 60021 2012-03-20 22:07:00Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -107,6 +107,8 @@ Stage3_chimeric_goodness (int *matches1, int *matches2, T part1, T part2, int br
 extern int
 Stage3_cmp (const void *a, const void *b);
 extern int
+Stage3_position_cmp (const void *a, const void *b);
+extern int
 Stage3_identity_cmp (const void *a, const void *b);
 extern bool
 Stage3_overlap (T x, T y);
@@ -138,13 +140,21 @@ Stage3_translate_cdna_via_reference (T this, T reference, bool literalrefp);
 extern void
 Stage3_fix_cdna_direction (T this, T reference);
 extern void
-Stage3_translate (T this, Sequence_T queryseq, int querylength, bool fulllengthp,
+Stage3_translate (T this,
+#ifdef PMAP
+		  Sequence_T queryseq, bool diagnosticp,
+#endif
+		  int querylength, bool fulllengthp,
 		  int cds_startpos, bool truncatep, bool strictp,
-		  bool diagnosticp, bool maponlyp);
+		  bool maponlyp);
 extern void
-Stage3_translate_chimera (T this, T mate, Sequence_T queryseq, int querylength, bool fulllengthp,
+Stage3_translate_chimera (T this, T mate,
+#ifdef PMAP
+			  Sequence_T queryseq, bool diagnosticp,
+#endif
+			  int querylength, bool fulllengthp,
 			  int cds_startpos, bool truncatep, bool strictp,
-			  bool diagnosticp, bool maponlyp);
+			  bool maponlyp);
 extern void
 Stage3_print_pathsummary (FILE *fp, T this, int pathnum, IIT_T chromosome_iit, IIT_T contig_iit, 
 			  IIT_T altstrain_iit, Sequence_T queryseq,
@@ -184,26 +194,24 @@ extern void
 Stage3_print_map (FILE *fp, T this, IIT_T map_iit, int *map_divint_crosstable, IIT_T chromosome_iit,
 		  int pathnum, bool map_exons_p, bool map_bothstrands_p, int nflanking, bool print_comment_p);
 extern void
-Stage3_print_alignment (FILE *fp, T this, Sequence_T queryaaseq, Genome_T genome,
+Stage3_print_alignment (FILE *fp, T this, Genome_T genome,
 			IIT_T chromosome_iit, Printtype_T printtype,
-			bool continuousp, bool continuous_by_exon_p, bool diagnosticp, bool strictp, bool genomefirstp,
-			int invertmode, bool nointronlenp, int wraplength, bool maponlyp);
+			bool continuousp, bool continuous_by_exon_p, bool diagnosticp, bool genomefirstp,
+			int invertmode, bool nointronlenp, int wraplength);
 
 extern void
-Stage3_print_coordinates (FILE *fp, T this, Sequence_T queryaaseq, IIT_T chromosome_iit,
-			  int invertmode);
+Stage3_print_coordinates (FILE *fp, T this, IIT_T chromosome_iit, int invertmode);
 extern void
-Stage3_print_cdna (FILE *fp, T this, Sequence_T queryaaseq, int wraplength);
+Stage3_print_cdna (FILE *fp, T this, int wraplength);
 
 extern void
-Stage3_print_protein_genomic (FILE *fp, T this, Sequence_T queryaaseq, int wraplength);
+Stage3_print_protein_genomic (FILE *fp, T this, int wraplength);
 
 extern void
 Stage3_print_compressed (FILE *fp, T this, Sequence_T queryseq, IIT_T chromosome_iit,
 			 char *dbversion, Sequence_T usersegment, int pathnum, int npaths,
 			 bool checksump, int chimerapos, int chimeraequivpos,
-			 double donor_prob, double acceptor_prob, 
-			 int chimera_cdna_direction, bool truncatep, bool strictp);
+			 double donor_prob, double acceptor_prob, int chimera_cdna_direction);
 extern T
 Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_direction,
 	    Genomicpos_T stage1_genomicstart, Genomicpos_T stage1_genomiclength, 
@@ -214,6 +222,12 @@ Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_directi
 	    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, bool watsonp,
 	    int skiplength, int trimlength, double stage3_runtime,
 	    int straintype, char *strain, IIT_T altstrain_iit);
+
+extern bool
+Stage3_short_alignment_p (struct Pair_T *pairarray, int npairs, int querylength);
+
+extern bool
+Stage3_bad_stretch_p (struct Pair_T *pairarray, int npairs);
 
 extern struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
@@ -266,9 +280,20 @@ Stage3_mergeable (char *comp, Genomicpos_T *genomegap, Stage3_T firstpart, Stage
 		  double donor_prob, double acceptor_prob);
 
 extern void
-Stage3_merge_readthrough (T this_left, T this_right, char comp, Genomicpos_T genomegap,
-			  int minpos1, int maxpos1, int minpos2, int maxpos2,
-			  Pairpool_T pairpool, Genome_T genome, int ngap);
+Stage3_merge_single (T this_left, T this_right,
+		     int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+#ifdef PMAP
+		     char *queryaaseq_ptr,
+#endif
+		     char *queryseq_ptr, char *queryuc_ptr,
+		     Pairpool_T pairpool, Dynprog_T dynprogM, Genome_T genome,
+		     int maxpeelback, int extraband_single);
+
+extern void
+Stage3_merge_splice (T this_left, T this_right, char comp,
+		     int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+		     Pairpool_T pairpool, Genome_T genome, int ngap);
+
 
 #undef T
 #endif

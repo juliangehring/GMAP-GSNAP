@@ -25,36 +25,45 @@ if (defined($opt_d)) {
 	    $FP = new IO::File("| @BINDIR@/get-genome -d $opt_d > get-genome.out");
 	}
 
+	@exons = ();
+	$sortp = 0;
 	$last_transcript_id = "";
 	while (defined($line = <>)) {
-            $line =~ s/\r\n/\n/;
-	    push @lines,$line;
-	    chop $line;
-	    @fields = split /\t/,$line;
+	    if ($line =~ /^\#/) {
+		# Skip
+	    } else {
+		$line =~ s/\r\n/\n/;
+		push @lines,$line;
+		chop $line;
+		@fields = split /\t/,$line;
 
-	    if ($fields[2] eq "exon") {
-		@info = ();
-		parse_info($fields[8]);
-		$transcript_id = get_info(\@info,"transcript_id");
-		if ($transcript_id ne $last_transcript_id) {
-		    if ($last_transcript_id =~ /\S/) {
-			query_dinucleotides(\@starts,\@ends,$chr,$strand,$FP);
+		if ($fields[2] eq "exon") {
+		    @info = ();
+		    parse_info($fields[8]);
+		    $transcript_id = get_info(\@info,"transcript_id");
+		    if ($transcript_id ne $last_transcript_id) {
+			if ($last_transcript_id =~ /\S/) {
+			    query_dinucleotides(\@exons,$chr,$strand,$FP,$sortp);
+			}
+			@exons = ();
+			$sortp = 0;
+			$last_transcript_id = $transcript_id;
+			$chr = $fields[0];
+			$strand = $fields[6];
 		    }
-		    @starts = ();
-		    @ends = ();
-		    $last_transcript_id = $transcript_id;
-		    $chr = $fields[0];
-		    $strand = $fields[6];
+		    if (defined($exon_number = get_info_optional(\@info,"exon_number"))) {
+			$exons[$exon_number-1] = "$fields[3] $fields[4]";
+		    } else {
+			$sortp = 1;
+			push @exons,"$fields[3] $fields[4]";
+		    }
 		}
-		$exon_number = get_info(\@info,"exon_number");
-		$starts[$exon_number-1] = $fields[3];
-		$ends[$exon_number-1] = $fields[4];
 	    }
 	}
     }
 
     if ($last_transcript_id =~ /\S/) {
-	query_dinucleotides(\@starts,\@ends,$chr,$strand,$FP);
+	query_dinucleotides(\@exons,$chr,$strand,$FP,$sortp);
     }
 
     close($FP);
@@ -78,35 +87,44 @@ if (defined($opt_d)) {
 
 
 
+@exons = ();
+$sortp = 0;
 $last_transcript_id = "";
 while (defined($line = get_line())) {
-    chop $line;
-    @fields = split /\t/,$line;
+    if ($line =~ /^\#/) {
+	# Skip
+    } else {
+	chop $line;
+	@fields = split /\t/,$line;
 
-    if ($fields[2] eq "exon") {
-	@info = ();
-	parse_info($fields[8]);
-	$transcript_id = get_info(\@info,"transcript_id");
-	if ($transcript_id ne $last_transcript_id) {
-	    if ($last_transcript_id =~ /\S/) {
-		print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+	if ($fields[2] eq "exon") {
+	    @info = ();
+	    parse_info($fields[8]);
+	    $transcript_id = get_info(\@info,"transcript_id");
+	    if ($transcript_id ne $last_transcript_id) {
+		if ($last_transcript_id =~ /\S/) {
+		    print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP,$sortp);
+		}
+		@exons = ();
+		$sortp = 0;
+		$gene_name = get_info(\@info,"gene_name","gene_id");
+		$last_transcript_id = $transcript_id;
+		$chr = $fields[0];
+		$strand = $fields[6];
 	    }
-	    @starts = ();
-	    @ends = ();
-	    $gene_name = get_info(\@info,"gene_name","gene_id");
-	    $last_transcript_id = $transcript_id;
-	    $chr = $fields[0];
-	    $strand = $fields[6];
+	    
+	    if (defined($exon_number = get_info_optional(\@info,"exon_number"))) {
+		$exons[$exon_number-1] = "$fields[3] $fields[4]";
+	    } else {
+		$sortp = 1;
+		push @exons,"$fields[3] $fields[4]";
+	    }
 	}
-
-	$exon_number = get_info(\@info,"exon_number");
-	$starts[$exon_number-1] = $fields[3];
-	$ends[$exon_number-1] = $fields[4];
     }
 }
 
 if ($last_transcript_id =~ /\S/) {
-    print_exons(\@starts,\@ends,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+    print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP,$sortp);
 }
 
 if (defined($opt_d)) {
@@ -172,6 +190,23 @@ sub get_info {
 }
 
 
+sub get_info_optional {
+    my $info = shift @_;
+    my @desired_keys = @_;
+    
+    foreach $item (@ {$info}) {
+	($key,$value) = $item =~ /(\S+) (.+)/;
+	foreach $desired_key (@desired_keys) {
+	    if ($key eq $desired_key) {
+		return $value;
+	    }
+	}
+    }
+
+    return;
+}
+
+
 sub get_dinucleotide {
     my ($query, $FP) = @_;
     my $dinucl;
@@ -206,13 +241,69 @@ sub get_dinucleotide {
 
 
 
-sub query_dinucleotides {
-    my ($starts, $ends, $chr, $strand, $FP) = @_;
+sub ascending_cmp {
+    ($starta) = $a =~ /(\d+) \d+/;
+    ($startb) = $b =~ /(\d+) \d+/;
+    return $starta <=> $startb;
+}
 
-    $nexons = $#{$starts} + 1;
+sub get_intron_bounds_plus {
+    my ($exons, $sortp) = @_;
+    my @starts = ();
+    my @ends = ();
+
+    if ($sortp == 1) {
+	foreach $exon (sort ascending_cmp (@ {$exons})) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    } else {
+	foreach $exon (@ {$exons}) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    }
+
+    shift @starts;
+    pop @ends;
+
+    return (\@starts,\@ends);
+}
+
+sub get_intron_bounds_minus {
+    my ($exons, $sortp) = @_;
+    my @starts = ();
+    my @ends = ();
+
+    if ($sortp == 1) {
+	foreach $exon (reverse sort ascending_cmp (@ {$exons})) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    } else {
+	foreach $exon (@ {$exons}) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    }
+
+    pop @starts;
+    shift @ends;
+
+    return (\@starts,\@ends);
+}
+
+
+sub query_dinucleotides {
+    my ($exons, $chr, $strand, $FP, $sortp) = @_;
+
+    $nexons = $#{$exons} + 1;
     if ($strand eq "+") {
-	shift @ {$starts};
-	pop @ {$ends};
+	($starts,$ends) = get_intron_bounds_plus($exons,$sortp);
 	for ($i = 0; $i < $nexons - 1; $i++) {
 	    $query = sprintf("%s:%u..%u",$chr,$ends[$i]+1,$ends[$i]+2);
 	    print $FP $query . "\n";
@@ -222,8 +313,7 @@ sub query_dinucleotides {
 	}
 
     } elsif ($strand eq "-") {
-	pop @ {$starts};
-	shift @ {$ends};
+	($starts,$ends) = get_intron_bounds_minus($exons,$sortp);
 	for ($i = 0; $i < $nexons - 1; $i++) {
 	    $query = sprintf("%s:%u..%u",$chr,$starts[$i]-1,$starts[$i]-2);
 	    print $FP $query . "\n";
@@ -266,12 +356,11 @@ sub acceptor_okay_p {
 
 
 sub print_exons {
-    my ($starts, $ends, $gene_name, $transcript_id, $chr, $strand, $FP) = @_;
+    my ($exons, $gene_name, $transcript_id, $chr, $strand, $FP, $sortp) = @_;
 
-    $nexons = $#{$starts} + 1;
+    $nexons = $#{$exons} + 1;
     if ($strand eq "+") {
-	shift @ {$starts};
-	pop @ {$ends};
+	($starts,$ends) = get_intron_bounds_plus($exons,$sortp);
 	for ($i = 0; $i < $nexons - 1; $i++) {
 	    $intron_length = $ {$starts}[$i] - $ {$ends}[$i] - 1;
 	    if (!defined($opt_d)) {
@@ -306,8 +395,7 @@ sub print_exons {
 	}
 
     } elsif ($strand eq "-") {
-	pop @ {$starts};
-	shift @ {$ends};
+	($starts,$ends) = get_intron_bounds_minus($exons,$sortp);
 	for ($i = 0; $i < $nexons - 1; $i++) {
 	    $intron_length = $ {$starts}[$i] - $ {$ends}[$i] - 1;
 	    if (!defined($opt_d)) {

@@ -3,7 +3,7 @@ CLEANFILES = fa_coords gmap_process
 
 
 bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump \
-               gsnap snpindex cmetindex atoiindex gsnap_tally 
+               gsnap snpindex cmetindex atoiindex
 
 GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -221,23 +221,5 @@ iit_dump_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_dump_LDADD = $(PTHREAD_LIBS)
 dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
-
-
-GSNAP_TALLY_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
- littleendian.c littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- complement.h chrom.c chrom.h genomicpos.c genomicpos.h \
- md5.c md5.h complement.h sequence.c sequence.h genome.c genome.h \
- gsnapread.c gsnapread.h \
- datadir.h datadir.c \
- getopt.c getopt1.c getopt.h gsnap_tally.c
-
-gsnap_tally_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
-gsnap_tally_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-gsnap_tally_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
-dist_gsnap_tally_SOURCES = $(GSNAP_TALLY_FILES)
 
 

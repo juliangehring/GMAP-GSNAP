@@ -20,10 +20,10 @@ else
     echo "Difference found between chr17test.genomecomp and setup.genomecomp.ok" >& 2
     exit 1
 fi
-if diff chr17test/chr17test.ref12123positions ${srcdir}/setup.ref12123positions.ok; then
+if diff chr17test/chr17test.ref123positions ${srcdir}/setup.ref123positions.ok; then
     :
 else
-    echo "Difference found between chr17test.ref12123positions and setup.ref12123positions.ok" >& 2
+    echo "Difference found between chr17test.ref123positions and setup.ref123positions.ok" >& 2
     exit 1
 fi
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 53582 2011-12-02 18:23:14Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 59558 2012-03-12 23:11:37Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -789,7 +789,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 }
 
 List_T
-Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triestart,
+Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned int *trieoffsets, int j,
 		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 
 		       int *finalscore, int *nmatches, int *nmismatches,
@@ -808,9 +808,16 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triestart,
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate) {
   Genomicpos_T *coordsptr, *coords, splicecoord0;
+  unsigned int *triestart;
   int size, i;
 
   debug7(printf("Entering Splicetrie_solve_end5 with limits %u..%u\n",knownsplice_limit_low,knownsplice_limit_high));
+  if (trieoffsets[j] == NULL_POINTER) {
+    return best_pairs;
+  } else {
+    triestart = &(triecontents[trieoffsets[j]]);
+  }
+
   if ((size = splicetrie_size(triestart)) == 0) {
     return best_pairs;
   } else {
@@ -851,7 +858,7 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triestart,
 
 
 List_T
-Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triestart,
+Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned int *trieoffsets, int j,
 		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 
 		       int *finalscore, int *nmatches, int *nmismatches,
@@ -870,9 +877,16 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triestart,
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate) {
   Genomicpos_T *coordsptr, *coords, splicecoord0;
+  unsigned int *triestart;
   int size, i;
 
   debug7(printf("Entering Splicetrie_solve_end3 with limits %u..%u\n",knownsplice_limit_low,knownsplice_limit_high));
+  if (trieoffsets[j] == NULL_POINTER) {
+    return best_pairs;
+  } else {
+    triestart = &(triecontents[trieoffsets[j]]);
+  }
+
   if ((size = splicetrie_size(triestart)) == 0) {
     return best_pairs;
   } else {

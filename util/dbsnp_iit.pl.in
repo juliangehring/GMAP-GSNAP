@@ -78,7 +78,7 @@ while (defined($line = <>)) {
 		$rsid = $fields[4];
 		if (defined($excludep{$rsid})) {
 		    # Skip
-		} elsif (exclude_for_exceptions($fields[18]) == 1) {
+		} elsif (defined($fields[18]) && exclude_for_exceptions($fields[18]) == 1) {
 		    # Skip
 		} elsif ($fields[9] =~ /^(.)\/(.)$/) {
 		    # single base => single base

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 55337 2012-01-05 16:46:48Z twu $";
+static char rcsid[] = "$Id: snpindex.c 56964 2012-02-02 17:57:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -63,7 +63,6 @@ static char rcsid[] = "$Id: snpindex.c 55337 2012-01-05 16:46:48Z twu $";
 #include "datadir.h"
 #include "iit-read.h"
 #include "indexdb.h"
-#include "indexdbdef.h"
 #include "getopt.h"
 
 
@@ -93,9 +92,11 @@ static char *user_destdir = NULL;
 static char *dbroot = NULL;
 static char *fileroot = NULL;
 static int offsetscomp_basesize = 12;
+static int required_basesize = 0;
 static int index1part = 15;
 static int required_index1part = 0;
 static int index1interval = 3;
+static int required_interval = 0;
 
 static char *dbversion = NULL;
 
@@ -108,6 +109,9 @@ static struct option long_options[] = {
   /* Input options */
   {"sourcedir", required_argument, 0, 'D'},	/* user_sourcedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"basesize", required_argument, 0, 'b'}, /* required_basesize */
+  {"kmer", required_argument, 0, 'k'},	   /* required_index1part */
+  {"sampling", required_argument, 0, 'q'},  /* required_interval */
   {"destdir", required_argument, 0, 'V'},	/* user_destdir */
   {"snpsdb", required_argument, 0, 'v'}, /* snps_root */
 
@@ -138,9 +142,10 @@ print_program_usage ();
 
 
 
-static int
+static Oligospace_T
 power (int base, int exponent) {
-  int result = 1, i;
+  Oligospace_T result = 1UL;
+  int i;
 
   for (i = 0; i < exponent; i++) {
     result *= base;
@@ -544,11 +549,12 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 
 static Positionsptr_T *
 compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *snp_blocks,
-		 int oligospace, int index1part) {
+		 Oligospace_T oligospace, int index1part) {
   Positionsptr_T *offsets;
 
   Interval_T *intervals;
   int nintervals, nerrors, divno, i, j;
+  Oligospace_T oligoi;
   char *divstring;
   Chrnum_T chrnum;
   Genomicpos_T chroffset;
@@ -592,10 +598,10 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
 
   /* Do not add extra for sentinel */
 
-  for (i = 1; i <= oligospace; i++) {
-    offsets[i] = offsets[i] + offsets[i-1];
-    debug(if (offsets[i] != offsets[i-1]) {
-	    printf("Offset for %06X: %u\n",i,offsets[i]);
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
+    offsets[oligoi] = offsets[oligoi] + offsets[oligoi-1];
+    debug(if (offsets[oligoi] != offsets[oligoi-1]) {
+	    printf("Offset for %X: %u\n",oligoi,offsets[oligoi]);
 	  });
   }
 
@@ -605,11 +611,12 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
 
 static Genomicpos_T *
 compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit,
-		   Genome_T genome, int oligospace) {
+		   Genome_T genome, Oligospace_T oligospace) {
   Genomicpos_T *positions;
 
   Interval_T *intervals;
   int nintervals, divno, i, j;
+  Oligospace_T oligoi;
   char *divstring;
   Chrnum_T chrnum;
   Genomicpos_T chroffset;
@@ -678,9 +685,9 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
   FREE(pointers);
 
   /* Sort positions in each block */
-  for (i = 0; i < oligospace; i++) {
-    block_start = offsets[i];
-    block_end = offsets[i+1];
+  for (oligoi = 0; oligoi < oligospace; oligoi++) {
+    block_start = offsets[oligoi];
+    block_end = offsets[oligoi+1];
     if ((npositions = block_end - block_start) > 1) {
       qsort(&(positions[block_start]),npositions,sizeof(Genomicpos_T),Genomicpos_compare);
     }
@@ -692,7 +699,7 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
 
 static void
 merge_positions (FILE *positions_fp, Genomicpos_T *start1, Genomicpos_T *end1,
-		 Genomicpos_T *start2, Genomicpos_T *end2, Positionsptr_T oligo, int index1part) {
+		 Genomicpos_T *start2, Genomicpos_T *end2, Storedoligomer_T oligo, int index1part) {
   Genomicpos_T *ptr1 = start1, *ptr2 = start2;
   char *nt;
 #ifdef WORDS_BIGENDIAN
@@ -778,7 +785,7 @@ main (int argc, char *argv[]) {
 #endif
   Genomicpos_T *snp_positions, *ref_positions, nblocks;
   UINT4 *snp_blocks;
-  int oligospace, i;
+  Oligospace_T oligospace, oligoi;
 
   char *filename, *filename1, *filename2;
   char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
@@ -797,7 +804,7 @@ main (int argc, char *argv[]) {
   int long_option_index = 0;
   const char *long_name;
 
-  while ((opt = getopt_long(argc,argv,"D:d:k:V:v:w:",
+  while ((opt = getopt_long(argc,argv,"D:d:b:k:q:V:v:w:",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 0: 
@@ -817,7 +824,9 @@ main (int argc, char *argv[]) {
 
     case 'D': user_sourcedir = optarg; break;
     case 'd': dbroot = optarg; break;
+    case 'b': required_basesize = atoi(optarg); break;
     case 'k': required_index1part = atoi(optarg); break;
+    case 'q': required_interval = atoi(optarg); break;
     case 'V': user_destdir = optarg; break;
     case 'v': snps_root = optarg; break;
     case 'w': max_warnings = atoi(optarg); break;
@@ -922,7 +931,7 @@ main (int argc, char *argv[]) {
 			&gammaptrs_index1info_ptr,&offsetscomp_index1info_ptr,&positions_index1info_ptr,
 			&offsetscomp_basesize,&index1part,&index1interval,
 			sourcedir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-			required_index1part,/*required_interval*/0);
+			required_basesize,required_index1part,required_interval);
 
   /* Compute offsets and write genome */
   oligospace = power(4,index1part);
@@ -953,29 +962,29 @@ main (int argc, char *argv[]) {
   ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
   offsets[0] = 0U;
-  for (i = 1; i <= oligospace; i++) {
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
 #ifdef WORDS_BIGENDIAN
-    npositions = (Bigendian_convert_uint(ref_offsets[i]) - Bigendian_convert_uint(ref_offsets[i-1])) + 
-      (snp_offsets[i] - snp_offsets[i-1]);
+    npositions = (Bigendian_convert_uint(ref_offsets[oligoi]) - Bigendian_convert_uint(ref_offsets[oligoi-1])) + 
+      (snp_offsets[oligoi] - snp_offsets[oligoi-1]);
 #else
-    npositions = (ref_offsets[i] - ref_offsets[i-1]) + (snp_offsets[i] - snp_offsets[i-1]);
+    npositions = (ref_offsets[oligoi] - ref_offsets[oligoi-1]) + (snp_offsets[oligoi] - snp_offsets[oligoi-1]);
 #endif
-    offsets[i] = offsets[i-1] + npositions;
+    offsets[oligoi] = offsets[oligoi-1] + npositions;
   }
 
 #else
   /* This version saves on one allocation of oligospace * sizeof(Positionsptr_T) */
   offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
-  for (i = oligospace; i >= 1; i--) {
+  for (oligoi = oligospace; oligoi >= 1; oligoi--) {
 #ifdef WORDS_BIGENDIAN
-    offsets[i] = Bigendian_convert_uint(offsets[i]) - Bigendian_convert_uint(offsets[i-1]);
+    offsets[oligoi] = Bigendian_convert_uint(offsets[oligoi]) - Bigendian_convert_uint(offsets[oligoi-1]);
 #else
-    offsets[i] = offsets[i] - offsets[i-1];
+    offsets[oligoi] = offsets[oligoi] - offsets[oligoi-1];
 #endif
   }
 
-  for (i = 1; i <= oligospace; i++) {
-    offsets[i] = offsets[i-1] + offsets[i] + (snp_offsets[i] - snp_offsets[i-1]);
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
+    offsets[oligoi] = offsets[oligoi-1] + offsets[oligoi] + (snp_offsets[oligoi] - snp_offsets[oligoi-1]);
   }
 #endif
 
@@ -1026,16 +1035,16 @@ main (int argc, char *argv[]) {
   ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
 #endif
 
-  for (i = 0; i < oligospace; i++) {
+  for (oligoi = 0; oligoi < oligospace; oligoi++) {
 
 #ifdef WORDS_BIGENDIAN
-    offset1 = Bigendian_convert_uint(ref_offsets[i]);
-    offset2 = Bigendian_convert_uint(ref_offsets[i+1]);
-    merge_positions(positions_fp,&(snp_positions[snp_offsets[i]]),&(snp_positions[snp_offsets[i+1]]),
-		    &(ref_positions[offset1]),&(ref_positions[offset2]),i,index1part);
+    offset1 = Bigendian_convert_uint(ref_offsets[oligoi]);
+    offset2 = Bigendian_convert_uint(ref_offsets[oligoi+1]);
+    merge_positions(positions_fp,&(snp_positions[snp_offsets[oligoi]]),&(snp_positions[snp_offsets[oligoi+1]]),
+		    &(ref_positions[offset1]),&(ref_positions[offset2]),oligoi,index1part);
 #else
-    merge_positions(positions_fp,&(snp_positions[snp_offsets[i]]),&(snp_positions[snp_offsets[i+1]]),
-		    &(ref_positions[ref_offsets[i]]),&(ref_positions[ref_offsets[i+1]]),i,index1part);
+    merge_positions(positions_fp,&(snp_positions[snp_offsets[oligoi]]),&(snp_positions[snp_offsets[oligoi+1]]),
+		    &(ref_positions[ref_offsets[oligoi]]),&(ref_positions[ref_offsets[oligoi+1]]),oligoi,index1part);
 #endif
   }
   FREE(ref_offsets);
@@ -1108,6 +1117,15 @@ for <genome>.\n\
   -D, --sourcedir=directory      Directory where to read genome index files (default is\n\
                                    GMAP genome directory specified at compile time)\n\
   -d, --db=STRING                Genome database\n\
+  -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less).\n\
+                                   If not specified, the program will find the highest available\n\
+                                   kmer size in the genome database\n\
+  -b, --basesize=INT             Base size to use in genome database.  If not specified, the program\n\
+                                   will find the highest available base size in the genome database\n\
+                                   within selected k-mer size\n\
+  -q, --sampling=INT             Sampling to use in genome database.  If not specified, the program\n\
+                                   will find the smallest available sampling value in the genome database\n\
+                                   within selected basesize and k-mer size\n\
   -V, --destdir=directory        Directory where to write SNP index files (default is\n\
                                    GMAP genome directory specified at compile time)\n\
   -v, --snpsdb=STRING            Name of SNP database\n\

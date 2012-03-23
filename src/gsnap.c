@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 55706 2012-01-11 19:31:49Z twu $";
+static char rcsid[] = "$Id: gsnap.c 60140 2012-03-21 21:41:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -80,7 +80,7 @@ static char rcsid[] = "$Id: gsnap.c 55706 2012-01-11 19:31:49Z twu $";
  *   GMAP parameters
  ************************************************************************/
 
-static int gmap_mode = GMAP_PAIRSEARCH | GMAP_TERMINAL | GMAP_IMPROVEMENT;
+static int gmap_mode = GMAP_PAIRSEARCH | GMAP_INDEL_KNOWNSPLICE | GMAP_TERMINAL | GMAP_IMPROVEMENT;
 static int nullgap = 600;
 static int maxpeelback = 11;
 static int maxpeelback_distalmedial = 24;
@@ -193,15 +193,20 @@ static int min_indel_end_matches = 4;
 static Genomicpos_T shortsplicedist = 200000;
 static Genomicpos_T shortsplicedist_known;
 static int localsplicing_penalty = 0;
-static int distantsplicing_penalty = 3;
+static int distantsplicing_penalty = 1;
 static int min_distantsplicing_end_matches = 16;
 static double min_distantsplicing_identity = 0.95;
 static int min_shortend = 2;
 /* static bool find_novel_doublesplices_p = true; */
 static int antistranded_penalty = 0; /* Most RNA-Seq is non-stranded */
 
+static int basesize;
+static int required_basesize = 0;
 static int index1part;
 static int required_index1part = 0;
+static int index1interval;
+static int required_index1interval = 0;
+static int spansize;
 static int indexdb_size_threshold;
 
 
@@ -337,7 +342,9 @@ static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'},	/* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"basesize", required_argument, 0, 0}, /* required_basesize, basesize */
   {"kmer", required_argument, 0, 'k'}, /* required_index1part, index1part */
+  {"sampling", required_argument, 0, 0}, /* required_index1interval, index1interval */
   {"genomefull", no_argument, 0, 'G'}, /* uncompressedp */
   {"part", required_argument, 0, 'q'}, /* part_modulus, part_interval */
   {"orientation", required_argument, 0, 'o'}, /* invert_first_p, invert_second_p */
@@ -1193,6 +1200,12 @@ main (int argc, char *argv[]) {
 	print_program_usage();
 	exit(0);
 
+      } else if (!strcmp(long_name,"basesize")) {
+	required_basesize = atoi(check_valid_int(optarg));
+
+      } else if (!strcmp(long_name,"sampling")) {
+	required_index1interval = atoi(check_valid_int(optarg));
+
       } else if (!strcmp(long_name,"time")) {
 	timingp = true;
 
@@ -1432,10 +1445,8 @@ main (int argc, char *argv[]) {
       break;
     case 'k':
       required_index1part = atoi(check_valid_int(optarg));
-      if (required_index1part >= 12 && required_index1part <= 15) {
-	/* Okay */
-      } else {
-	fprintf(stderr,"The only values allowed for -k are 12, 13, 14, or 15\n");
+      if (required_index1part > 16) {
+	fprintf(stderr,"The value for k-mer size must be 16 or less\n");
 	exit(9);
       }
       break;
@@ -1874,8 +1885,9 @@ main (int argc, char *argv[]) {
     if (dibasep == true) {
       fprintf(stderr,"No longer supporting 2-base encoding\n");
       exit(9);
-      if ((indexdb = Indexdb_new_genome(&index1part,genomesubdir,fileroot,/*idx_filesuffix*/"dibase",/*snps_root*/NULL,
-					required_index1part,/*required_interval*/0,
+      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					genomesubdir,fileroot,/*idx_filesuffix*/"dibase",/*snps_root*/NULL,
+					required_basesize,required_index1part,required_index1interval,
 					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find offsets file %s.%s*offsets, needed for GSNAP color mode\n",fileroot,"dibase");
 	exit(9);
@@ -1890,15 +1902,17 @@ main (int argc, char *argv[]) {
 	modedir = user_cmetdir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"metct",/*snps_root*/NULL,
-					required_index1part,/*required_interval*/3,
+      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"metct",/*snps_root*/NULL,
+					required_basesize,required_index1part,required_index1interval,
 					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
 	exit(9);
       }
 
-      if ((indexdb2 = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"metga",/*snps_root*/NULL,
-					 required_index1part,/*required_interval*/3,
+      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"metga",/*snps_root*/NULL,
+					 required_basesize,required_index1part,required_index1interval,
 					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
 	exit(9);
@@ -1911,15 +1925,17 @@ main (int argc, char *argv[]) {
 	modedir = user_atoidir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
-					required_index1part,/*required_interval*/3,
+      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
+					required_basesize,required_index1part,required_index1interval,
 					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
-      if ((indexdb2 = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
-					 required_index1part,/*required_interval*/3,
+      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
+					 required_basesize,required_index1part,required_index1interval,
 					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
@@ -1928,8 +1944,9 @@ main (int argc, char *argv[]) {
 
     } else {
       /* Standard behavior */
-      if ((indexdb = Indexdb_new_genome(&index1part,genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-					required_index1part,/*required_interval*/0,
+      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
+					required_basesize,required_index1part,required_index1interval,
 					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find offsets file %s.%s*offsets, needed for GSNAP\n",fileroot,IDX_FILESUFFIX);
 	exit(9);
@@ -1962,14 +1979,16 @@ main (int argc, char *argv[]) {
 	modedir = user_cmetdir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"metct",snps_root,
-					required_index1part,/*required_interval*/3,
+      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"metct",snps_root,
+					required_basesize,required_index1part,required_index1interval,
 					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
 	exit(9);
       }
-      if ((indexdb2 = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"metga",snps_root,
-					 required_index1part,/*required_interval*/3,
+      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"metga",snps_root,
+					 required_basesize,required_index1part,required_index1interval,
 					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
 	exit(9);
@@ -1982,22 +2001,25 @@ main (int argc, char *argv[]) {
 	modedir = user_atoidir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
-					required_index1part,/*required_interval*/3,
+      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
+					required_basesize,required_index1part,required_index1interval,
 					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
-      if ((indexdb2 = Indexdb_new_genome(&index1part,modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
-					 required_index1part,/*required_interval*/3,
+      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
+					 required_basesize,required_index1part,required_index1interval,
 					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
     } else {
-      indexdb = Indexdb_new_genome(&index1part,snpsdir,fileroot,/*idx_filesuffix*/"ref",snps_root,
-				   required_index1part,/*required_interval*/3,
+      indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+				   snpsdir,fileroot,/*idx_filesuffix*/"ref",snps_root,
+				   required_basesize,required_index1part,required_index1interval,
 				   expand_offsets_p,offsetscomp_access,positions_access);
       if (indexdb == NULL) {
 	fprintf(stderr,"Cannot find snps index file for %s in directory %s\n",snps_root,snpsdir);
@@ -2300,7 +2322,8 @@ main (int argc, char *argv[]) {
   Splicetrie_setup(splicecomp,splicesites,splicefrags_ref,splicefrags_alt,
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,amb_clip_p,min_shortend);
-  Stage1hr_setup(index1part,chromosome_iit,nchromosomes,
+  spansize = Spanningelt_setup(index1part,index1interval);
+  Stage1hr_setup(index1part,index1interval,spansize,chromosome_iit,nchromosomes,
 		 genomealt,mode,terminal_threshold,
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,shortsplicedist_known,
@@ -2349,6 +2372,17 @@ main (int argc, char *argv[]) {
       Goby_writer_add_chromosomes(gobywriter,chromosome_iit);
     }
   }
+
+#ifdef HAVE_GOBY
+  if (gobywriter && fails_as_input_p) {
+      fprintf(stderr,"Goby output doesn't support the --fails-as-input option.  Turning it off.\n");
+      fails_as_input_p = false;
+  }
+  if (gobywriter && sevenway_root != NULL) {
+      fprintf(stderr,"Goby output doesn't support the --split-output option.  Turning it off.\n");
+      sevenway_root = NULL;
+  }
+#endif
 
   outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,
 #ifdef USE_OLD_MAXENT
@@ -2533,9 +2567,15 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
   fprintf(stdout,"\
   -D, --dir=directory            Genome directory\n\
   -d, --db=STRING                Genome database\n\
-  -k, --kmer=INT                 kmer size to use in genome database\n\
-                                   (allowed values: 12-15).  If not specified, the program will\n\
-                                   find the highest available kmer size in the genome database\n\
+  -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less)\n\
+                                   If not specified, the program will find the highest available\n\
+                                   kmer size in the genome database\n\
+  --basesize=INT                 Base size to use in genome database.  If not specified, the program\n\
+                                   will find the highest available base size in the genome database\n\
+                                   within selected k-mer size\n\
+  --sampling=INT                 Sampling to use in genome database.  If not specified, the program\n\
+                                   will find the smallest available sampling value in the genome database\n\
+                                   within selected basesize and k-mer size\n\
   -q, --part=INT/INT             Process only the i-th out of every n sequences\n\
                                    e.g., 0/100 or 99/100 (useful for distributing jobs\n\
                                    to a computer farm).\n\
@@ -2709,16 +2749,17 @@ is still designed to be fast.\n\
   fprintf(stdout,"Options for GMAP alignment within GSNAP\n");
   fprintf(stdout,"\
   --gmap-mode=STRING             Cases to use GMAP for complex alignments containing multiple splices or indels\n\
-                                 Allowed values: none, pairsearch, terminal, improve (or multiple,\n\
-                                    separated by commas).  Default: pairsearch,terminal,improve\n\
+                                 Allowed values: none, pairsearch, indel_knownsplice, terminal, improve\n\
+                                   (or multiple values, separated by commas).\n\
+                                   Default: all on, i.e., pairsearch,indel_knownsplice,terminal,improve\n\
   --trigger-score-for-gmap=INT   Try GMAP pairsearch on nearby genomic regions if best score (the total\n\
                                    of both ends if paired-end) exceeds this value (default 5)\n \
   --max-gmap-pairsearch=INT      Perform GMAP pairsearch on nearby genomic regions up to this many\n\
-                                   many candidate ends (default 3).  Requires pairsearch in --gmap-mode\n\
+                                   many candidate ends (default 10).  Requires pairsearch in --gmap-mode\n\
   --max-gmap-terminal=INT        Perform GMAP terminal on nearby genomic regions up to this many\n\
-                                   candidate ends (default 3).  Requires terminal in --gmap-mode\n\
+                                   candidate ends (default 5).  Requires terminal in --gmap-mode\n\
   --max-gmap-improvement=INT     Perform GMAP improvement on nearby genomic regions up to this many\n\
-                                   candidate ends (default 3).  Requires improve in --gmap-mode\n\
+                                   candidate ends (default 5).  Requires improve in --gmap-mode\n\
   --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
                                    greater than this value (default 0.90)\n\
 ");
@@ -2757,7 +2798,7 @@ is still designed to be fast.\n\
                                          to eliminate all soft clipping with --trim-mismatch-score=0\n\
   -w, --localsplicedist=INT            Definition of local novel splicing event (default 200000)\n\
   -e, --local-splice-penalty=INT       Penalty for a local splice (default 0).  Counts against mismatches allowed\n\
-  -E, --distant-splice-penalty=INT     Penalty for a distant splice (default 3).  A distant splice is one where\n\
+  -E, --distant-splice-penalty=INT     Penalty for a distant splice (default 1).  A distant splice is one where\n\
                                          the intron length exceeds the value of -w, or --localsplicedist, or is an\n\
                                          inversion, scramble, or translocation between two different chromosomes\n\
                                          Counts against mismatches allowed\n\
@@ -2767,7 +2808,8 @@ is still designed to be fast.\n\
                                          but unless known splice sites are provided with the -s flag, GSNAP may still\n\
                                          need the end length to be the value of -k, or kmer size to find a given splice\n\
   --distant-splice-identity=FLOAT      Minimum identity at end required for distant spliced alignments (default 0.95)\n\
-  --antistranded-penalty=INT           Penalty for antistranded splicing when using stranded RNA-Seq protocols.\n\
+  --antistranded-penalty=INT           (Not currently implemented)\n\
+                                         Penalty for antistranded splicing when using stranded RNA-Seq protocols.\n\
                                          A positive value, such as 1, expects antisense on the first read\n\
                                          and sense on the second read.  Default is 0, which treats sense and antisense\n\
                                          equally well\n\

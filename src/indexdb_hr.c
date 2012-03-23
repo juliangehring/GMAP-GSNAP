@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 45940 2011-08-29 21:09:29Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 56964 2012-02-02 17:57:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -104,7 +104,7 @@ static unsigned int top_subst;  /* Was TOP_SUBST    0x00400000 */
 void
 Indexdb_hr_setup (int index1part_in) {
   index1part = index1part_in;
-  kmer_mask = ~(~0U << 2*index1part);
+  kmer_mask = ~(~0UL << 2*index1part);
 
   top_subst = (1 << 2*(index1part-1));
   left_subst = (1 << 2*(index1part-2));
@@ -615,31 +615,15 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   int i;
 #endif
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[subst];
-      end0 = this->offsets[subst+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[subst]);
-      end0 = Bigendian_convert_uint(this->offsets[subst+1]);
-    }
-#else
-    ptr0 = this->offsets[subst];
-    end0 = this->offsets[subst+1];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+#endif
 
   debug(printf("point_one_shift: %08X %u %u\n",subst,ptr0,end0));
 
@@ -723,38 +707,23 @@ shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
 }
 #endif
 
+
 static int
 count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
   Positionsptr_T ptr0, end0;
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[subst];
-      end0 = this->offsets[subst+nadjacent];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[subst]);
-      end0 = Bigendian_convert_uint(this->offsets[subst+nadjacent]);
-    }
-#else
-    ptr0 = this->offsets[subst];
-    end0 = this->offsets[subst+nadjacent];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-      end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-    } else {
-      ptr0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-      end0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
     end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    end0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
   }
+#else
+  ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+  end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
+#endif
 
   debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
 	       subst,shortoligo_nt(subst,index1part),end0,ptr0,end0-ptr0));
@@ -788,7 +757,11 @@ Indexdb_count_left_subst_2 (T this, Storedoligomer_T oligo) {
   base = (oligo >> 4);
   debug(printf("shift right => %06X (%s)\n",base,shortoligo_nt(base,index1part)));
   for (i = 0; i < 16; i++, base += left_subst) {
+#if 0
     nentries += count_one_shift(this,base,/*nadjacent*/1);
+#else
+    nentries += Indexdb_count_no_subst(this,base);
+#endif
   }
 #endif
       
@@ -815,7 +788,11 @@ Indexdb_count_left_subst_1 (T this, Storedoligomer_T oligo) {
   /* Zero shift. */
   base = (oligo >> 2);
   for (i = 0; i < 4; i++, base += top_subst) {
+#if 0
     nentries += count_one_shift(this,base,/*nadjacent*/1);
+#else
+    nentries += Indexdb_count_no_subst(this,base);
+#endif
   }
 #endif
       
@@ -1532,20 +1509,26 @@ Indexdb_merge_compoundpos (int *nmerged, Compoundpos_T compoundpos, int diagterm
 
 
 
+/* Should be the same as count_one_shift(this,oligo,1) */
 int
 Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
-  if (this->index1interval == 1) {
-    abort();
-  } else if (this->index1interval == 3) {
-#ifdef ALLOW_DUPLICATES
-    return count_one_shift(this,oligo);
-#else
-    return count_one_shift(this,oligo,/*nadjacent*/1);
-#endif
+  Positionsptr_T ptr0, end0;
+
+#ifdef WORDS_BIGENDIAN
+  if (this->offsetscomp_access == ALLOCATED) {
+    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
   } else {
-    abort();
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+#endif
+
+  debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
+	       subst,shortoligo_nt(subst,index1part),end0,ptr0,end0-ptr0));
+  return (end0 - ptr0);
 }
+
 
 #if 0
 int

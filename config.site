@@ -59,10 +59,12 @@
 
 ## Debugging and optimization options for the C compiler.  Use this to
 ## specify CFLAGS for the version of the C compiler specified above.
-## If unspecified, defaults to '-g -O2' for gcc, and '-g' in all other
-## cases.  For fastest speed, should select -O3.  The configure script
-## will also test whether -mpopcnt works and apply it if possible.
-CFLAGS='-O3'
+## If unspecified, defaults to '-O3' for fastest speed.  The configure
+## script will also test whether -mpopcnt works and apply it if
+## possible.  For Macintosh machines, you may need to add -m64 for
+## the programs to work.
+## CFLAGS='-O3'
+## CFLAGS='-O3 -m64'   (for Macintosh machines)
 
 
 ## Search directory for header files ('-IDIR') and any other
@@ -101,9 +103,9 @@ CFLAGS='-O3'
 
 
 ## Maximum read length for GSNAP, defined at compile-time.  If this is
-## not set here, then a default value of 200 will be used
+## not set here, then a default value of 250 will be used
 ##
-## MAX_READLENGTH=200
+## MAX_READLENGTH=250
 
 
 ## Header and library files for support of the external Goby library

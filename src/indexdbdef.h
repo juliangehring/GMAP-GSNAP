@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h 44878 2011-08-13 23:18:46Z twu $ */
+/* $Id: indexdbdef.h 56653 2012-01-27 21:20:20Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 
@@ -6,14 +6,20 @@
 #include "access.h"
 #include "types.h"
 
+#ifdef PMAP
+#include "alphabet.h"
+#endif
 
-/* Typically 12 nt or 24 bits, requiring 3 bytes */
-typedef UINT4 Storedoligomer_T;
 
 #define BADVAL (Genomicpos_T) -1
 
 #define T Indexdb_T
 struct T {
+#ifdef PMAP
+  Alphabet_T alphabet;
+  int alphabet_size;
+#endif
+
   int index1part;
   int index1interval;
   int offsetscomp_basesize;		/* e.g., 12 */
@@ -28,19 +34,6 @@ struct T {
   int offsetscomp_fd;
   size_t offsetscomp_len;
   Positionsptr_T *offsetscomp;
-
-
-  /* With gamma encoding, we can expand into offsets */
-  Access_T offsets_access;
-  int offsets_fd;
-  size_t offsets_len;
-  Positionsptr_T *offsets;
-#ifdef HAVE_PTHREAD
-#ifdef PMAP
-  pthread_mutex_t offsets_read_mutex;
-#endif
-#endif
-
 
   Access_T positions_access;
   int positions_fd;

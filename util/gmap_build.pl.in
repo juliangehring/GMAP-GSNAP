@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 55632 2012-01-10 20:00:04Z twu $
+# $Id: gmap_build.pl.in 58449 2012-02-24 19:53:40Z twu $
 
 use warnings;	
 
@@ -9,29 +9,39 @@ $package_version = "@PACKAGE_VERSION@";
 use Getopt::Std;
 use File::Copy;	
 
-undef($opt_B);	     # binary directory
-undef($opt_D);			# destination directory
-undef($opt_b);			# offsetscomp basesize
-undef($opt_d);			# genome name
-undef($opt_k);			# k-mer size for genomic index (allowed: 12-15)
-undef($opt_S);			# Old flag for turning off sorting
-undef($opt_s);			# Sorting
-undef($opt_g);			# gunzip files
+undef($opt_B);	  # binary directory
+undef($opt_T);	  # temporary build directory
+undef($opt_D);	  # destination directory
+undef($opt_b);	  # offsetscomp basesize
+undef($opt_d);	  # genome name
+undef($opt_k);	  # k-mer size for genomic index (allowed: 16 or less)
+undef($opt_q);	  # sampling interval for genome (default: 3)
+undef($opt_S);	  # Old flag for turning off sorting
+undef($opt_s);	  # Sorting
+undef($opt_g);	  # gunzip files
 $opt_w = 2; # waits (sleeps) this many seconds between steps.  Useful if there is a delay in the filesystem.
-getopts("B:D:b:d:k:s:gw:");
+getopts("B:T:D:b:d:k:q:s:gw:");
 
 if (!defined($bindir = $opt_B)) {
     $bindir = "@BINDIR@";
 }
 
-
-if (!defined($basesize = $opt_b)) {
-    $basesize = 12;
+if (!defined($builddir = $opt_T)) {
+    $builddir = ".";
 }
 
+
 if (!defined($kmersize = $opt_k)) {
-    print STDERR "-k flag not specified, so building with default 15-mers\n";
+    print STDERR "-k flag not specified, so building with default 15-mers and base size 12-mers\n";
     $kmersize = 15;
+    $basesize = 12;
+} elsif (!defined($basesize = $opt_b)) {
+    print STDERR "-k flag specified, but not -b, so building with basesize == kmer size\n";
+    $basesize = $kmersize;
+}
+
+if (!defined($sampling = $opt_q)) {
+    $sampling = 3;
 }
 
 if (!defined($dbname = $opt_d)) {
@@ -48,8 +58,8 @@ if (!defined($dbname = $opt_d)) {
 
 $dbname =~ s/\/$//;	# In case user gives -d argument with trailing slash
 
-if (!defined($dblocation = $opt_D)) {
-    $dblocation = $gmapdb;
+if (!defined($destdir = $opt_D)) {
+    $destdir = $gmapdb;
 }
 
 if (defined($opt_S)) {
@@ -91,7 +101,7 @@ exit;
 
 
 sub create_coords {
-    $cmd = "$bindir/fa_coords $gunzip_flag -o $dbname.coords $genome_fasta";
+    $cmd = "$bindir/fa_coords $gunzip_flag -o $builddir/$dbname.coords $genome_fasta";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -102,14 +112,14 @@ sub create_coords {
 
 sub check_coords_exists {
 # file exists, and is not empty
-    unless (-s "$dbname.coords") {
-	die "ERROR: $dbname.coords not found.\n";
+    unless (-s "$builddir/$dbname.coords") {
+	die "ERROR: $builddir/$dbname.coords not found.\n";
     }
     return;
 }
 
 sub create_genome_version {
-    open GENOMEVERSIONFILE, ">$dbname.version" or die $!;
+    open GENOMEVERSIONFILE, ">$builddir/$dbname.version" or die $!;
     print GENOMEVERSIONFILE "$dbname\n";
     close GENOMEVERSIONFILE or die $!;
     sleep($opt_w);
@@ -118,7 +128,7 @@ sub create_genome_version {
 
 sub make_contig {
     check_coords_exists();
-    $cmd = "$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -A $chr_order_flag";
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -D $builddir -A $chr_order_flag";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -128,7 +138,7 @@ sub make_contig {
 }
 
 sub compress_genome {
-    $cmd = "$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -G";
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -F $builddir -D $builddir -G";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -141,7 +151,7 @@ sub full_ASCII_genome {
     check_coords_exists();
     make_contig();
 	
-    $cmd = "$bindir/gmap_process $gunzip_flag -c $dbname.coords $genome_fasta | $bindir/gmapindex -k $kmersize -d $dbname -l -G";
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -F $builddir -D $builddir -l -G";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -151,7 +161,7 @@ sub full_ASCII_genome {
 }
 
 sub create_index_offsets {
-    $cmd = "cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -O";
+    $cmd = "cat $builddir/$dbname.genomecomp | $bindir/gmapindex -b $basesize -k $kmersize -q $sampling -d $dbname -F $builddir -D $builddir -O";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -161,7 +171,7 @@ sub create_index_offsets {
 }
 
 sub create_index_positions {
-    $cmd = "cat $dbname.genomecomp | $bindir/gmapindex -k $kmersize -d $dbname -q 3 -P";
+    $cmd = "cat $builddir/$dbname.genomecomp | $bindir/gmapindex -b $basesize -k $kmersize -q $sampling -d $dbname -F $builddir -D $builddir -P";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -181,21 +191,21 @@ sub install_db {
 	"version");
 	
     if ($kmersize > $basesize) {
-	push @suffixes,sprintf "ref%d%d3gammaptrs",$basesize,$kmersize;
+	push @suffixes,sprintf "ref%02d%02d%dgammaptrs",$basesize,$kmersize,$sampling;
     }
-    push @suffixes,sprintf "ref%d%d3offsetscomp",$basesize,$kmersize;
-    push @suffixes,sprintf "ref%d%d3positions",$basesize,$kmersize;
+    push @suffixes,sprintf "ref%02d%02d%doffsetscomp",$basesize,$kmersize,$sampling;
+    push @suffixes,sprintf "ref%02d%dpositions",$kmersize,$sampling;
 
-    $dblocation = "$dblocation/$dbname";
-	
-    print STDERR "Copying files to directory $dblocation\n";
-    system("mkdir -p $dblocation");
-    system("mkdir -p $dblocation/$dbname.maps");
-    system("chmod 755 $dblocation/$dbname.maps");
+    print STDERR "Copying files to directory $destdir/$dbname\n";
+    system("mkdir -p $destdir/$dbname");
+    system("mkdir -p $destdir/$dbname/$dbname.maps");
+    system("chmod 755 $destdir/$dbname/$dbname.maps");
     foreach $suffix (@suffixes) {
-	system("mv $dbname.$suffix $dblocation/$dbname.$suffix");
-	system("chmod 644 $dblocation/$dbname.$suffix");
+	system("mv $builddir/$dbname.$suffix $destdir/$dbname/$dbname.$suffix");
+	system("chmod 644 $destdir/$dbname/$dbname.$suffix");
     }
+
+    system("rm -f $builddir/$dbname.coords");
     return;
 }
 
@@ -213,9 +223,11 @@ Usage: gmap_build [options...] -d <genomename> <fasta_files>
 
 Options:
     -d STRING   genome name
+    -T STRING   temporary build directory
     -D STRING   destination directory for installation (defaults to gmapdb directory specified at configure time)
     -b INT      basesize for offsetscomp (default 12)
-    -k INT      k-mer value for genomic index (allowed: 12..15, default 15)
+    -k INT      k-mer value for genomic index (allowed: 16 or less, default 15)
+    -q INT      sampling interval for genomoe (allowed: 1-3, default 3)
     -s STRING   Sort chromosomes using given method:
                   none - use chromosomes as found in FASTA file(s)
                   alpha - sort chromosomes alphabetically (chr10 before chr 1)

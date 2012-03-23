@@ -20,6 +20,36 @@ AC_INIT([gmap],PKG_VERSION,[Thomas Wu <twu@gene.com>])
 AC_MSG_CHECKING(package version)
 AC_MSG_RESULT(PKG_VERSION)
 
+
+### Read defaults
+AC_MSG_CHECKING(CONFIG_SITE)
+if test -z "$CONFIG_SITE"; then
+  CONFIG_SITE="./config.site"
+else
+  CONFIG_SITE="$CONFIG_SITE"
+fi
+AC_MSG_RESULT($CONFIG_SITE)
+
+for ac_site_file in $CONFIG_SITE; do
+  if test -r "$ac_site_file"; then
+    echo "loading script $ac_site_file"
+    . "$ac_site_file"
+  fi
+done
+
+
+# Set default CFLAGS if not already set by user
+AC_MSG_CHECKING(CFLAGS)
+AC_ARG_VAR([CFLAGS], [Compiler flags (default: -O3)])
+if test x"$CFLAGS" = x; then
+        AC_MSG_RESULT(not set by user so using default -O3)
+        ACX_EXPAND(CFLAGS,'-O3')
+else
+	AC_MSG_RESULT($CFLAGS)
+fi
+
+
+
 AC_CONFIG_SRCDIR([src/gmap.c])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_AUX_DIR([config])
@@ -47,18 +77,6 @@ AC_ARG_ENABLE([maintainer],
                               [For use by program maintainer]),
 	      [enable_maintainer="yes"],
               [enable_maintainer="no"])
-
-### Read defaults
-if test -z "$CONFIG_SITE"; then
-  CONFIG_SITE=""
-fi
-CONFIG_SITE="./config.site $CONFIG_SITE"
-for ac_site_file in $CONFIG_SITE; do
-  if test -r "$ac_site_file"; then
-    echo "loading script $ac_site_file"
-    . "$ac_site_file"
-  fi
-done
 
 # For Perl scripts, because otherwise configure inserts 
 # @bindir@ => "${exec_prefix}/bin";
@@ -224,9 +242,9 @@ AC_MSG_RESULT($GMAPDB)
 
 # MAX_READLENGTH
 AC_MSG_CHECKING(MAX_READLENGTH)
-AC_ARG_VAR([MAX_READLENGTH], [Maximum read length for GSNAP (default 200)])
+AC_ARG_VAR([MAX_READLENGTH], [Maximum read length for GSNAP (default 250)])
 if test x"$MAX_READLENGTH" = x; then
-        ACX_EXPAND(MAX_READLENGTH,'200')
+        ACX_EXPAND(MAX_READLENGTH,'250')
 fi
 AC_MSG_RESULT($MAX_READLENGTH)
 

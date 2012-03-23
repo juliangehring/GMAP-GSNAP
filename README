@@ -3,7 +3,7 @@
 ============
 
 The source code for this package is available from
-http://share.gene.com/gmap.  License terms are provided in the
+http://research-pub.gene.com/gmap.  License terms are provided in the
 COPYING file.
 
 
@@ -16,6 +16,13 @@ compiler, and Perl
 Step 1: Set your site-specific variables by editing the file
 config.site.  In particular, you should set appropriate values for
 "prefix" and probably for "with_gmapdb", as explained in that file.
+If you are compiling this package on a Macintosh, you may need to edit
+CFLAGS to be
+
+CFLAGS = '-O3 -m64'
+
+since Macintosh machines will make only 32-bit executables by default.
+
 
 Step 2: Build, test, and install the programs, by running the
 following GNU commands
@@ -46,7 +53,7 @@ then refer to it like this
 
 Note 3: GSNAP is designed for short reads of a limited length, and
 relies upon a maximum read length variable MAX_READLENGTH defined at
-compile time (default 200).  You may set this variable by providing it
+compile time (default 250).  You may set this variable by providing it
 to configure like this
 
     ./configure MAX_READLENGTH=<length>
@@ -108,9 +115,19 @@ databases.
 The old databases have the index files <genome>.ref3offsets and
 <genome>.ref3positions.  The new databases have the index files
 <genome>.ref12153gammaptrs, <genome>.ref12153offsetscomp, and
-<genome>.ref12153positions, if built using a base size of 12, a k-mer
+<genome>.ref153positions, if built using a base size of 12, a k-mer
 size of 15, and skipping every 3 bp in the genome.  If the k-mer size
 is equal to the base size, then the gammaptrs file will be absent.
+
+Also, the name of the positions file has changed starting with
+2012-02-14 version.  Previously, the file was named
+<genome>.ref12153positions, but it is now named
+<genome>.ref153positions, since the contents are independent of the
+base size.  If you create a database with a newer version of the
+package, and want older versions of the GMAP or GSNAP to work with
+these newer versions, you will need to make a symbolic link like this:
+
+    ln -s <genome>.ref153positions <genome>.ref12153.positions
 
 
 

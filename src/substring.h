@@ -1,4 +1,4 @@
-/* $Id: substring.h 52221 2011-11-11 00:46:16Z twu $ */
+/* $Id: substring.h 59177 2012-03-07 19:41:14Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -68,6 +68,8 @@ Substring_splicesites_i_D (T this);
 
 extern bool
 Substring_plusp (T this);
+extern int
+Substring_genestrand (T this);
 extern char *
 Substring_genomic_bothdiff (T this);
 extern char *
@@ -242,6 +244,11 @@ Substring_assign_acceptor_prob (T acceptor);
 extern void
 Substring_assign_shortexon_prob (T shortexon);
 #endif
+
+extern int
+Substring_count_mismatches_region (T this, int trim_left, int trim_right,
+				   Compress_T query_compress_fwd, Compress_T query_compress_rev);
+
 
 #undef T
 #endif

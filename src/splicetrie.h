@@ -29,7 +29,7 @@ Splicetrie_splicesite_p (Genomicpos_T left, int pos5, int pos3);
 #endif
 
 extern List_T
-Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triestart,
+Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned int *trieoffsets, int j,
 		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 
 		       int *finalscore, int *nmatches, int *nmismatches,
@@ -49,7 +49,7 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triestart,
 		       int extraband_end, double defect_rate);
 
 extern List_T
-Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triestart,
+Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned int *trieoffsets, int j,
 		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 
 		       int *finalscore, int *nmatches, int *nmismatches,

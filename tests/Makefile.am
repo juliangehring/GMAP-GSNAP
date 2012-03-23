@@ -2,7 +2,7 @@
 
 EXTRA_DIST = defs ss.chr17test ss.her2 \
              align.test.ok coords1.test.ok \
-             setup.genomecomp.ok setup.ref12123positions.ok \
+             setup.genomecomp.ok setup.ref123positions.ok \
              map.test.ok \
              fa.iittest iittest.iit.ok iit_get.out.ok
 
@@ -33,7 +33,7 @@ okay:
 	../src/gmap -D . -d chr17test ss.her2 > map.test.ok
 	mv -f coords.chr17test coords1.test.ok
 	mv -f chr17test.genomecomp setup.genomecomp.ok
-	mv -f chr17test.ref12123positions setup.ref12123positions.ok
+	mv -f chr17test.ref123positions setup.ref123positions.ok
 	../src/iit_store -o iittest fa.iittest
 	../src/iit_get iittest 20000 > iit_get.out.ok
 	mv iittest.iit iittest.iit.ok

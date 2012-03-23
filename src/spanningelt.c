@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c 54069 2011-12-09 22:44:05Z twu $";
+static char rcsid[] = "$Id: spanningelt.c 57025 2012-02-03 01:59:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,6 +21,13 @@ static char rcsid[] = "$Id: spanningelt.c 54069 2011-12-09 22:44:05Z twu $";
 #define debug(x)
 #endif
 
+/* List all positions */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
+#endif
+
 #ifdef CHECK
 #define check(x) x
 #else
@@ -35,6 +42,32 @@ static char rcsid[] = "$Id: spanningelt.c 54069 2011-12-09 22:44:05Z twu $";
 #endif
 
 static bool free_positions_p;	/* Needs to be true if Indexdb positions are FILEIO */
+
+static int index1part;
+static int index1interval;
+static int spansize;
+
+/* spansize is the interval at which spanningelts must be spaced, due
+   to sampling (i.e., largest multiple of index1interval >=
+   index1part.  We want spansize to exceed index1part, because we want
+   a lower bound on the number of mismatches (to be checked by actual
+   alignment against the genome).  If spansize is smaller than
+   index1part, this lower bound won't hold. */
+
+int
+Spanningelt_setup (int index1part_in, int index1interval_in) {
+  index1part = index1part_in;
+  index1interval = index1interval_in;
+
+  spansize = 0;			/* Refer to global spansize */
+  while (spansize + index1interval_in < index1part) {
+    spansize += index1interval_in;
+  }
+  spansize += index1interval_in;
+
+  return spansize;
+}
+  
 
 void
 Spanningelt_init_positions_free (bool positions_fileio_p) {
@@ -84,13 +117,29 @@ Spanningelt_reset (T this) {
 
 void
 Spanningelt_print (T this) {
+#ifdef DEBUG1
+  int i;
+#endif
+
   if (this->intersection_diagonals != NULL) {
     printf("Intersection (%d diagonals), ",this->intersection_ndiagonals);
+#ifdef DEBUG1
+    for (i = 0; i < this->intersection_ndiagonals; i++) {
+      printf("%u ",this->intersection_diagonals[i]);
+    }
+#endif
   }
+
   if (this->partnerp == true) {
     printf("Partner @ %d (%d positions, diagterm %d), ",
 	   this->partner_querypos,this->partner_npositions,this->partner_diagterm);
+#ifdef DEBUG1
+    for (i = 0; i < this->partner_npositions; i++) {
+      printf("%u ",this->partner_positions[i]);
+    }
+#endif
   }
+
   if (this->compoundpos != NULL) {
     printf("Compound @ %d (diagterm %d): ",this->querypos,this->compoundpos_diagterm);
     Compoundpos_print_sizes(this->compoundpos);
@@ -98,7 +147,13 @@ Spanningelt_print (T this) {
   } else {
     printf("Ordinary @ %d (%d positions, diagterm %d)",
 	   this->querypos,this->npositions,this->diagterm);
+#ifdef DEBUG1
+    for (i = 0; i < this->npositions; i++) {
+      printf(" %u",this->positions[i]);
+    }
+#endif
   }
+
   printf("\n");
   return;
 }
@@ -124,7 +179,6 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 		 int query_lastpos, int querylength, bool plusp) {
   T new = (T) MALLOC(sizeof(*new));
   int partnerpos, querypos;
-  int index1part = indexdb->index1part;
 
   debug(printf("Entered Spanningelt_new with querypos1 %d, querypos2 %d, query_lastpos %d, querylength %d\n",
 	       querypos1,querypos2,query_lastpos,querylength));
@@ -279,6 +333,7 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 }
 
 
+
 static List_T
 make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 		      Genomicpos_T ***stage1_positions, int **stage1_npositions,
@@ -289,17 +344,17 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   int worstpos, partnerpos, leftpos, rightpos, querypos, diff;
   int maxpositions = 0;
   bool first_anchored_p = true;
-  int index1part = indexdb->index1part;
+
 
   worstpos = first;
-  for (querypos = first; querypos < last; querypos += index1part) {
+  for (querypos = first; querypos < last; querypos += spansize) {
     if ((*stage1_npositions)[querypos] > maxpositions) {
       maxpositions = (*stage1_npositions)[querypos];
       worstpos = querypos;
     }
   }
 
-  for (querypos = last; querypos > first; querypos -= index1part) {
+  for (querypos = last; querypos > first; querypos -= spansize) {
     if ((*stage1_npositions)[querypos] > maxpositions) {
       maxpositions = (*stage1_npositions)[querypos];
       worstpos = querypos;
@@ -308,7 +363,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   }
 
   /* Handle middle position first */
-  diff = (last - first) % index1part; /* was 12 */
+  diff = (last - first) % spansize;
   if (diff == 0) {
     elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),&(*stage1_positions),
 			  &(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/worstpos,
@@ -332,7 +387,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   *minscore = elt->candidates_score;
 
   /* Add left positions */
-  for (querypos = first; querypos < leftpos; querypos += index1part) {
+  for (querypos = first; querypos < leftpos; querypos += spansize) {
     elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),&(*stage1_positions),
 			  &(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/querypos,
 			  /*querypos2*/0,query_lastpos,querylength,plusp);
@@ -343,7 +398,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   }
 
   /* Add right positions */
-  for (querypos = last; querypos > rightpos; querypos -= index1part) {
+  for (querypos = last; querypos > rightpos; querypos -= spansize) {
     elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),&(*stage1_positions),
 			  &(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/querypos,
 			  /*querypos2*/0,query_lastpos,querylength,plusp);
@@ -364,15 +419,15 @@ Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_r
 		 int mod, bool plusp) {
   int first, last;
 
-  switch (mod) {
-  case 0: first = 0; break;
-  case 1: first = -2; break;
-  case 2: first = -1; break;
+  if (mod == 0) {
+    first = 0;
+  } else {
+    first = mod - index1interval;
   }
 
-  if (query_lastpos % 3 == mod) {
+  if (query_lastpos % index1interval == mod) {
     last = query_lastpos;
-  } else if ((query_lastpos + 1) % 3 == mod) {
+  } else if ((query_lastpos + 1) % index1interval == mod) {
     last = query_lastpos + 1;
   } else {
     last = query_lastpos + 2;

@@ -1,4 +1,4 @@
-/* $Id: reader.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: reader.h 57095 2012-02-03 19:43:00Z twu $ */
 #ifndef READER_INCLUDED
 #define READER_INCLUDED
 #include <stdio.h>
@@ -25,7 +25,7 @@ extern void
 Reader_reset_ends (T this);
 
 extern T
-Reader_new (char *sequence, int querystart, int queryend, int blocksize);
+Reader_new (char *sequence, int querystart, int queryend);
 extern void
 Reader_free (T *old);
 extern char

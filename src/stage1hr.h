@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 52862 2011-11-20 23:53:04Z twu $ */
+/* $Id: stage1hr.h 57639 2012-02-14 16:34:16Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -26,7 +26,8 @@ typedef enum {MASK_NONE, MASK_FREQUENT, MASK_REPETITIVE, MASK_GREEDY_FREQUENT, M
 
 #define GMAP_IMPROVEMENT 1
 #define GMAP_TERMINAL 2
-#define GMAP_PAIRSEARCH 4
+#define GMAP_INDEL_KNOWNSPLICE 4
+#define GMAP_PAIRSEARCH 8
 
 
 typedef struct Floors_T *Floors_T;
@@ -81,7 +82,8 @@ Stage1_paired_read (int *npaths, int *second_mapq, Pairtype_T *final_pairtype,
 		    Genomicpos_T pairmax, bool keep_floors_p);
 
 extern void
-Stage1hr_setup (int index1part_in, IIT_T chromosome_iit_in, int nchromosomes_in,
+Stage1hr_setup (int index1part_in, int index1interval_in, int spansize_in,
+		IIT_T chromosome_iit_in, int nchromosomes_in,
 		Genome_T genomealt, Mode_T mode_in,
 		int terminal_threshold_in,
 

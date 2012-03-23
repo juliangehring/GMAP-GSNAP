@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 49487 2011-10-10 20:58:00Z twu $";
+static char rcsid[] = "$Id: indexdb.c 58562 2012-02-27 21:43:47Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -132,7 +132,7 @@ Indexdb_setup (int index1part_in) {
   index1part = index1part_in;
 #endif
 
-  poly_T = ~(~0U << 2*index1part_in);
+  poly_T = ~(~0UL << 2*index1part_in);
   return;
 }
 #endif
@@ -158,30 +158,16 @@ Indexdb_free (T *old) {
       close((*old)->positions_fd);
     }
 
-    if ((*old)->offsets != NULL) {
-      if ((*old)->offsets_access == ALLOCATED) {
-	/* Could be expansion or backward compatibility with pregamma indices */
-	FREE((*old)->offsets);
+    if ((*old)->offsetscomp_access == ALLOCATED) {
+      FREE((*old)->offsetscomp);
 #ifdef HAVE_MMAP
-      } else if ((*old)->offsets_access == MMAPPED) {
-	/* Backward compatibility with pregamma indices */
-	munmap((void *) (*old)->offsets,(*old)->offsets_len);
-	close((*old)->offsets_fd);
+    } else if ((*old)->offsetscomp_access == MMAPPED) {
+      munmap((void *) (*old)->offsetscomp,(*old)->offsetscomp_len);
+      close((*old)->offsetscomp_fd);
 #endif
-      }
-
-    } else {
-      if ((*old)->offsetscomp_access == ALLOCATED) {
-	FREE((*old)->offsetscomp);
-#ifdef HAVE_MMAP
-      } else if ((*old)->offsetscomp_access == MMAPPED) {
-	munmap((void *) (*old)->offsetscomp,(*old)->offsetscomp_len);
-	close((*old)->offsetscomp_fd);
-#endif
-      }
-      
-      FREE((*old)->gammaptrs);	/* Always ALLOCATED */
     }
+      
+    FREE((*old)->gammaptrs);	/* Always ALLOCATED */
 
     FREE(*old);
   }
@@ -204,9 +190,10 @@ Indexdb_positions_fileio_p (T this) {
   }
 }
 
-static int
+static Oligospace_T
 power (int base, int exponent) {
-  int result = 1, i;
+  Oligospace_T result = 1UL;
+  int i;
 
   for (i = 0; i < exponent; i++) {
     result *= base;
@@ -216,11 +203,11 @@ power (int base, int exponent) {
 
 double
 Indexdb_mean_size (T this, Mode_T mode, int index1part) {
-  int oligospace, n;
+  Oligospace_T oligospace, n;
 
 #ifdef PMAP
   /* index1part should be in aa */
-  n = oligospace = power(NAMINOACIDS,index1part);
+  n = oligospace = power(this->alphabet_size,index1part);
 #else
   n = oligospace = power(4,index1part);
   if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED || mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
@@ -228,27 +215,15 @@ Indexdb_mean_size (T this, Mode_T mode, int index1part) {
   }
 #endif
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      return (double) this->offsets[oligospace]/(double) n;
-    } else {
-      return (double) Bigendian_convert_uint(this->offsets[oligospace])/(double) n;
-    }
-#else
-    return (double) this->offsets[oligospace]/(double) n;
-#endif
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      return (double) this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]]/(double) n;
-    } else {
-      return (double) Bigendian_convert_uint(this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]])/(double) n;
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     return (double) this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]]/(double) n;
-#endif
+  } else {
+    return (double) Bigendian_convert_uint(this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]])/(double) n;
   }
+#else
+  return (double) this->offsetscomp[this->gammaptrs[oligospace/this->offsetscomp_blocksize]]/(double) n;
+#endif
 }
 
 
@@ -300,7 +275,7 @@ Indexdb_get_filenames_pregamma (char **offsets_filename, char **positions_filena
     filename = entry->d_name;
     if (!strncmp(filename,pattern,patternlength)) {
       p = &(filename[strlen(pattern)]); /* Points after idx_filesuffix, e.g., "ref" */
-      if ((q = strstr(p,offsets_suffix)) != NULL) {
+      if ((q = strstr(p,offsets_suffix)) != NULL && !strcmp(q,offsets_suffix)) {
 	if (q - p == 1) {
 	  /* Old style, e.g, idx or ref3 */
 	  if (sscanf(p,"%c",&interval_char) == 1) {
@@ -417,20 +392,39 @@ Indexdb_get_filenames_pregamma (char **offsets_filename, char **positions_filena
 
 
 
+#ifdef PMAP
+#define BASE_KMER_SAMPLING 3   /* e.g., 677 */
+#define KMER_SAMPLING 2   /* e.g., 77 */
+#else
+#define BASE_KMER_SAMPLING 5   /* e.g., 12153 */
+#define KMER_SAMPLING 3   /* e.g., 153 */
+#endif
+
 
 bool
 Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, char **positions_filename,
 		       char **gammaptrs_basename_ptr, char **offsetscomp_basename_ptr, char **positions_basename_ptr,
 		       char **gammaptrs_index1info_ptr, char **offsetscomp_index1info_ptr, char **positions_index1info_ptr,
+#ifdef PMAP
+		       Alphabet_T *alphabet, Alphabet_T required_alphabet,
+#endif
 		       int *basesize, int *index1part, int *index1interval, char *genomesubdir,
 		       char *fileroot, char *idx_filesuffix, char *snps_root,
-		       int required_index1part, int required_interval) {
+		       int required_basesize, int required_index1part, int required_interval) {
   char *base_filename, *filename;
-  char *pattern, interval_char, digit_string[2], *p, *q;
+#ifdef PMAP
+  char *pattern1, *pattern2, *a;
+  int patternlength1, patternlength2, alphabet_strlen;
+  Alphabet_T found_alphabet;
+#else
+  char *pattern;
+  char tens0, tens;
+#endif
+  char interval_char, digit_string[2], *p, *q;
   int found_basesize, found_index1part, found_interval;
   int rootlength, patternlength;
 
-  char tens0, ones0, tens, ones;
+  char ones0, ones;
   char *gammaptrs_suffix, *offsetscomp_suffix, *positions_suffix;
   struct dirent *entry;
   DIR *dp;
@@ -449,6 +443,10 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
     sprintf(positions_suffix,"%s.%s",POSITIONS_FILESUFFIX,snps_root);
   }
 
+#ifdef PMAP
+  *alphabet = NALPHABETS + 1;
+#endif
+  *basesize = 0;
   *index1part = 0;
   *index1interval = 1000;
   base_filename = (char *) NULL;
@@ -457,6 +455,75 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
     fprintf(stderr,"Unable to open directory %s\n",genomesubdir);
     exit(9);
   }
+
+#ifdef PMAP
+  pattern1 = (char *) CALLOC(strlen(fileroot)+strlen(".")+1,sizeof(char)); /* e.g., "hg19." */
+  sprintf(pattern1,"%s.",fileroot);
+  patternlength1 = strlen(pattern1);
+
+  pattern2 = (char *) CALLOC(strlen(".")+strlen(idx_filesuffix)+1,sizeof(char)); /* e.g., ".pr" */
+  sprintf(pattern2,".%s",idx_filesuffix);
+  patternlength2 = strlen(pattern2);
+
+  digit_string[1] = '\0';	/* Needed for atoi */
+  while ((entry = readdir(dp)) != NULL) {
+    filename = entry->d_name;
+    if (!strncmp(filename,pattern1,patternlength1)) {
+      a = &(filename[strlen(pattern1)]); /* Points after fileroot, e.g., "hg19." */
+      if ((p = strstr(a,pattern2)) != NULL && (q = strstr(p,offsetscomp_suffix)) != NULL && !strcmp(q,offsetscomp_suffix)) {
+	if ((found_alphabet = Alphabet_find(a)) != AA0) {
+	  alphabet_strlen = p - a;
+	  p += patternlength2;
+
+	  if (q - p == BASE_KMER_SAMPLING) {
+	    /* New style, e.g., pf677 */
+	    if (sscanf(p,"%c%c%c",&ones0,&ones,&interval_char) == 3) {
+	      digit_string[0] = ones0;
+	      found_basesize = atoi(digit_string);
+
+	      digit_string[0] = ones;
+	      found_index1part = atoi(digit_string);
+
+	      digit_string[0] = interval_char;
+	      found_interval = atoi(digit_string);
+	    }
+	  } else {
+	    /* fprintf(stderr,"Cannot parse part between %s and offsets in filename %s\n",idx_filesuffix,filename); */
+	    return false;
+	  }
+
+	  if ((required_alphabet == AA0 || found_alphabet == required_alphabet) &&
+	      (required_index1part == 0 || found_index1part == required_index1part) &&
+	      (required_basesize == 0 || found_basesize == required_basesize) &&
+	      (required_interval == 0 || found_interval == required_interval)) {
+	    if (required_alphabet == AA0 && found_alphabet > *alphabet) {
+	      /* Skip, since we have already found an earlier alphabet */
+	    } else if (required_index1part == 0 && found_index1part < *index1part) {
+	      /* Skip, since we have already found a larger index1part */
+	    } else if (required_basesize == 0 && found_basesize < *basesize) {
+	      /* Skip, since we have already found a larger basesize */
+	    } else if (required_interval == 0 && found_interval > *index1interval) {
+	      /* Skip, since we have already found a smaller interval */
+	    } else {
+	      patternlength = patternlength1 + alphabet_strlen + patternlength2;
+	      *basesize = found_basesize;
+	      *index1part = found_index1part;
+	      *index1interval = found_interval;
+	      *alphabet = found_alphabet;
+	      FREE(base_filename);
+	      base_filename = (char *) CALLOC(strlen(filename)+1,sizeof(char));
+	      strcpy(base_filename,filename);
+	    }
+	  }
+	}
+      }
+    }
+  }
+
+  FREE(pattern2);
+  FREE(pattern1);
+
+#else
 
   pattern = (char *) CALLOC(strlen(fileroot)+strlen(".")+strlen(idx_filesuffix)+1,sizeof(char));
   sprintf(pattern,"%s.%s",fileroot,idx_filesuffix);
@@ -467,9 +534,9 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
     filename = entry->d_name;
     if (!strncmp(filename,pattern,patternlength)) {
       p = &(filename[strlen(pattern)]); /* Points after idx_filesuffix, e.g., "ref" */
-      if ((q = strstr(p,offsetscomp_suffix)) != NULL) {
+      if ((q = strstr(p,offsetscomp_suffix)) != NULL && !strcmp(q,offsetscomp_suffix)) {
 
-	if (q - p == 5) {
+	if (q - p == BASE_KMER_SAMPLING) {
 	  /* New style, e.g., ref12153 */
 	  if (sscanf(p,"%c%c%c%c%c",&tens0,&ones0,&tens,&ones,&interval_char) == 5) {
 	    digit_string[0] = tens0;
@@ -481,51 +548,26 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
 	    found_index1part = 10*atoi(digit_string);
 	    digit_string[0] = ones;
 	    found_index1part += atoi(digit_string);
-	    digit_string[0] = interval_char;
 
+	    digit_string[0] = interval_char;
 	    found_interval = atoi(digit_string);
 	  }
 	} else {
-	  fprintf(stderr,"Cannot parse part between %s and offsets in filename %s\n",idx_filesuffix,filename);
+	  fprintf(stderr,"Cannot parse part between %s and offsets in filename %s: found %ld characters, expecting %d\n",
+		  idx_filesuffix,filename,q-p,BASE_KMER_SAMPLING);
 	  return false;
 	}
 
-	if (required_index1part != 0 && required_interval != 0) {
-	  if (found_index1part == required_index1part && found_interval == required_interval) {
-	    *basesize = found_basesize;
-	    *index1part = found_index1part;
-	    *index1interval = found_interval;
-	    FREE(base_filename);
-	    base_filename = (char *) CALLOC(strlen(filename)+1,sizeof(char));
-	    strcpy(base_filename,filename);
-	  }
-	} else if (required_index1part != 0 && required_interval == 0) {
-	  if (found_index1part == required_index1part && found_interval < *index1interval) {
-	    *basesize = found_basesize;
-	    *index1part = found_index1part;
-	    *index1interval = found_interval;
-	    FREE(base_filename);
-	    base_filename = (char *) CALLOC(strlen(filename)+1,sizeof(char));
-	    strcpy(base_filename,filename);
-	  }
-	} else if (required_index1part == 0 && required_interval != 0) {
-	  if (found_index1part > *index1part && found_interval == required_interval) {
-	    *basesize = found_basesize;
-	    *index1part = found_index1part;
-	    *index1interval = found_interval;
-	    FREE(base_filename);
-	    base_filename = (char *) CALLOC(strlen(filename)+1,sizeof(char));
-	    strcpy(base_filename,filename);
-	  }
-	} else {
-	  if (found_index1part > *index1part) {
-	    *basesize = found_basesize;
-	    *index1part = found_index1part;
-	    *index1interval = found_interval;
-	    FREE(base_filename);
-	    base_filename = (char *) CALLOC(strlen(filename)+1,sizeof(char));
-	    strcpy(base_filename,filename);
-	  } else if (found_index1part == *index1part && found_interval < *index1interval) {
+	if ((required_index1part == 0 || found_index1part == required_index1part) &&
+	    (required_basesize == 0 || found_basesize == required_basesize) &&
+	    (required_interval == 0 || found_interval == required_interval)) {
+	  if (required_index1part == 0 && found_index1part < *index1part) {
+	    /* Skip, since we have already found a larger index1part */
+	  } else if (required_basesize == 0 && found_basesize < *basesize) {
+	    /* Skip, since we have already found a larger basesize */
+	  } else if (required_interval == 0 && found_interval > *index1interval) {
+	    /* Skip, since we have already found a smaller interval */
+	  } else {
 	    *basesize = found_basesize;
 	    *index1part = found_index1part;
 	    *index1interval = found_interval;
@@ -539,6 +581,8 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
   }
 
   FREE(pattern);
+#endif
+
 
   if (closedir(dp) < 0) {
     fprintf(stderr,"Unable to close directory %s\n",genomesubdir);
@@ -548,6 +592,11 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
   if (base_filename == NULL) {
     fprintf(stderr,"Cannot find offsetscomp file containing %s and %s",
 	    idx_filesuffix,offsetscomp_suffix);
+#ifdef PMAP
+    if (required_alphabet > AA0) {
+      fprintf(stderr," and having alphabet %s",Alphabet_string(required_alphabet));
+    }
+#endif
     if (required_index1part > 0) {
       fprintf(stderr," and having k-mer of %d",required_index1part);
     }
@@ -615,15 +664,23 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
     strcpy(&((*positions_basename_ptr)[rootlength]),positions_suffix);
 
     if (Access_file_exists_p(*positions_filename) == false) {
-      fprintf(stderr,"Positions filename %s does not exist\n",*positions_filename);
-      FREE(*gammaptrs_filename);
-      FREE(*offsetscomp_filename);
-      FREE(*positions_filename);
-      *gammaptrs_filename = (char *) NULL;
-      *offsetscomp_filename = (char *) NULL;
-      *positions_filename = (char *) NULL;
-      FREE(base_filename);
-      return false;
+      /* Try newer naming scheme: ref153positions instead of ref12153positions */
+      sprintf(*positions_filename,"%s/",genomesubdir);
+      strncpy(*positions_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
+      strncpy(&((*positions_basename_ptr)[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
+      strcpy(&((*positions_basename_ptr)[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_suffix);
+
+      if (Access_file_exists_p(*positions_filename) == false) {
+	fprintf(stderr,"Positions filename %s does not exist\n",*positions_filename);
+	FREE(*gammaptrs_filename);
+	FREE(*offsetscomp_filename);
+	FREE(*positions_filename);
+	*gammaptrs_filename = (char *) NULL;
+	*offsetscomp_filename = (char *) NULL;
+	*positions_filename = (char *) NULL;
+	FREE(base_filename);
+	return false;
+      }
     }
 
     if (snps_root != NULL) {
@@ -650,8 +707,12 @@ Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, c
 
 
 T
-Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
-		    int required_index1part, int required_interval, bool expand_offsets_p,
+Indexdb_new_genome (int *basesize, int *index1part, int *index1interval,
+		    char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+#ifdef PMAP
+		    Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
+#endif
+		    int required_basesize, int required_index1part, int required_interval, bool expand_offsets_p,
 		    Access_mode_T offsetscomp_access, Access_mode_T positions_access) {
   T new = (T) MALLOC(sizeof(*new));
   char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
@@ -659,6 +720,7 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
     *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
   char *offsets_filename, *offsets_basename_ptr, *offsets_index1info_ptr;
   Access_mode_T offsets_access;
+  Oligospace_T basespace, base;
 
   char *comma;
   double seconds;
@@ -670,37 +732,74 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
   if (Indexdb_get_filenames(&gammaptrs_filename,&offsetscomp_filename,&positions_filename,
 			    &gammaptrs_basename_ptr,&offsetscomp_basename_ptr,&positions_basename_ptr,
 			    &gammaptrs_index1info_ptr,&offsetscomp_index1info_ptr,&positions_index1info_ptr,
+#ifdef PMAP
+			    &(*alphabet),required_alphabet,
+#endif
 			    &new->offsetscomp_basesize,&new->index1part,&new->index1interval,
 			    genomesubdir,fileroot,idx_filesuffix,snps_root,
-			    required_index1part,required_interval) == true) {
+			    required_basesize,required_index1part,required_interval) == true) {
     *index1part = new->index1part;
-    new->offsetscomp_blocksize = power(4,(*index1part) - new->offsetscomp_basesize);
+    *index1interval = new->index1interval;
 
-    if (new->index1part == new->offsetscomp_basesize || expand_offsets_p == true) {
-      new->offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,
-						 new->offsetscomp_basesize,new->index1part);
-      new->offsets_access = ALLOCATED;
+    if (expand_offsets_p == true) {
+      *basesize = *index1part;
+#ifdef PMAP
+      *alphabet_size = Alphabet_get_size(*alphabet);
+      new->offsetscomp_blocksize = 1;
+      basespace = power(*alphabet_size,new->index1part);
+#else
+      new->offsetscomp_blocksize = 1;
+      basespace = power(4,new->index1part);
+#endif
+      new->gammaptrs = (UINT4 *) CALLOC(basespace+1,sizeof(UINT4));
+      for (base = 0; base <= basespace; base++) {
+	new->gammaptrs[base] = base;
+      }
 
-      new->gammaptrs = (UINT4 *) NULL;
-      new->offsetscomp = (UINT4 *) NULL;
+#ifdef PMAP
+      new->offsetscomp = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,
+						     new->offsetscomp_basesize,*alphabet_size,new->index1part);
+#else
+      new->offsetscomp = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,
+						     new->offsetscomp_basesize,new->index1part);
+#endif
+      new->offsetscomp_access = ALLOCATED;
 
     } else {
-      new->offsets = (Positionsptr_T *) NULL;
+      *basesize = new->offsetscomp_basesize;
+#ifdef PMAP
+      *alphabet_size = Alphabet_get_size(*alphabet);
+      new->offsetscomp_blocksize = power(*alphabet_size,(*index1part) - new->offsetscomp_basesize);
+#else
+      new->offsetscomp_blocksize = power(4,(*index1part) - new->offsetscomp_basesize);
+#endif
 
-      /* gammaptrs always ALLOCATED */
-      if (snps_root) {
-	fprintf(stderr,"Allocating memory for %s (%s) gammaptrs, kmer %d, interval %d...",
-		idx_filesuffix,snps_root,new->index1part,new->index1interval);
+      if (new->index1part == new->offsetscomp_basesize) {
+#ifdef PMAP
+	basespace = power(*alphabet_size,new->offsetscomp_basesize);
+#else
+	basespace = power(4,new->offsetscomp_basesize);
+#endif
+	new->gammaptrs = (UINT4 *) CALLOC(basespace+1,sizeof(UINT4));
+	for (base = 0; base <= basespace; base++) {
+	  new->gammaptrs[base] = base;
+	}
+
       } else {
-	fprintf(stderr,"Allocating memory for %s gammaptrs, kmer %d, interval %d...",
-		idx_filesuffix,new->index1part,new->index1interval);
+	/* gammaptrs always ALLOCATED */
+	if (snps_root) {
+	  fprintf(stderr,"Allocating memory for %s (%s) gammaptrs, kmer %d, interval %d...",
+		  idx_filesuffix,snps_root,new->index1part,new->index1interval);
+	} else {
+	  fprintf(stderr,"Allocating memory for %s gammaptrs, kmer %d, interval %d...",
+		  idx_filesuffix,new->index1part,new->index1interval);
+	}
+	new->gammaptrs = (UINT4 *) Access_allocated(&new->gammaptrs_len,&seconds,
+						    gammaptrs_filename,sizeof(UINT4));
+	comma = Genomicpos_commafmt(new->gammaptrs_len);
+	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
+	FREE(comma);
       }
-      new->gammaptrs = (UINT4 *) Access_allocated(&new->gammaptrs_len,&seconds,
-						  gammaptrs_filename,sizeof(UINT4));
-      comma = Genomicpos_commafmt(new->gammaptrs_len);
-      fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
-      FREE(comma);
-
 
       /* offsetscomp could be ALLOCATED or MMAPPED +/- PRELOAD */
       if (offsetscomp_access == USE_ALLOCATE) {
@@ -774,6 +873,7 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
       }
     }
 
+
     FREE(offsetscomp_filename);
     FREE(gammaptrs_filename);
 
@@ -784,15 +884,23 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
 					    &new->index1part,&new->index1interval,
 					    genomesubdir,fileroot,idx_filesuffix,snps_root,
 					    required_interval) == true) {
+
+    *basesize = new->index1part;
     *index1part = new->index1part;
+    *index1interval = new->index1interval;
 
-    new->gammaptrs = (UINT4 *) NULL;
-    new->offsetscomp = (UINT4 *) NULL;
+#ifdef PMAP
+    basespace = power(*alphabet_size,new->index1part);
+#else
+    basespace = power(4,new->index1part);
+#endif
+    new->gammaptrs = (UINT4 *) CALLOC(basespace+1,sizeof(UINT4));
+    for (base = 0; base <= basespace; base++) {
+      new->gammaptrs[base] = base;
+    }
 
-    /* Interpret offsetscomp_access to be offsets_access */
-    offsets_access = offsetscomp_access;
 
-    if (offsets_access == USE_ALLOCATE) {
+    if (offsetscomp_access == USE_ALLOCATE) {
       if (snps_root) {
 	fprintf(stderr,"Allocating memory for %s (%s) offsets, kmer %d, interval %d...",
 		idx_filesuffix,snps_root,new->index1part,new->index1interval);
@@ -800,20 +908,20 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
 	fprintf(stderr,"Allocating memory for %s offsets, kmer %d, interval %d...",
 		idx_filesuffix,new->index1part,new->index1interval);
       }
-      new->offsets = (UINT4 *) Access_allocated(&new->offsets_len,&seconds,
-						offsets_filename,sizeof(Positionsptr_T));
-      if (new->offsets == NULL) {
+      new->offsetscomp = (UINT4 *) Access_allocated(&new->offsetscomp_len,&seconds,
+						    offsets_filename,sizeof(Positionsptr_T));
+      if (new->offsetscomp == NULL) {
 	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
 	exit(9);
       } else {
-	comma = Genomicpos_commafmt(new->offsets_len);
+	comma = Genomicpos_commafmt(new->offsetscomp_len);
 	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
 	FREE(comma);
-	new->offsets_access = ALLOCATED;
+	new->offsetscomp_access = ALLOCATED;
       }
 
 #ifdef HAVE_MMAP
-    } else if (offsets_access == USE_MMAP_PRELOAD) {
+    } else if (offsetscomp_access == USE_MMAP_PRELOAD) {
       if (snps_root) {
 	fprintf(stderr,"Pre-loading %s (%s) offsets, kmer %d, interval %d...",
 		idx_filesuffix,snps_root,new->index1part,new->index1interval);
@@ -821,39 +929,39 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
 	fprintf(stderr,"Pre-loading %s offsets, kmer %d, interval %d...",
 		idx_filesuffix,new->index1part,new->index1interval);
       }
-      new->offsets = (UINT4 *) Access_mmap_and_preload(&new->offsets_fd,&new->offsets_len,&npages,&seconds,
-						       offsets_filename,sizeof(Positionsptr_T));
-      if (new->offsets == NULL) {
+      new->offsetscomp = (UINT4 *) Access_mmap_and_preload(&new->offsetscomp_fd,&new->offsetscomp_len,&npages,&seconds,
+							   offsets_filename,sizeof(Positionsptr_T));
+      if (new->offsetscomp == NULL) {
 	fprintf(stderr,"insufficient memory (will use disk file instead, but program may not run)\n");
 #ifdef PMAP
-	new->offsets_access = FILEIO;
+	new->offsetscomp_access = FILEIO;
 #else
 	exit(9);
 #endif
       } else {
-	comma = Genomicpos_commafmt(new->offsets_len);
+	comma = Genomicpos_commafmt(new->offsetscomp_len);
 	fprintf(stderr,"done (%s bytes, %d pages, %.2f sec)\n",comma,npages,seconds);
 	FREE(comma);
-	new->offsets_access = MMAPPED;
+	new->offsetscomp_access = MMAPPED;
       }
 
-    } else if (offsets_access == USE_MMAP_ONLY) {
-      new->offsets = (UINT4 *) Access_mmap(&new->offsets_fd,&new->offsets_len,
-					   offsets_filename,sizeof(Positionsptr_T),/*randomp*/false);
-      if (new->offsets == NULL) {
+    } else if (offsetscomp_access == USE_MMAP_ONLY) {
+      new->offsetscomp = (UINT4 *) Access_mmap(&new->offsetscomp_fd,&new->offsetscomp_len,
+					       offsets_filename,sizeof(Positionsptr_T),/*randomp*/false);
+      if (new->offsetscomp == NULL) {
 	fprintf(stderr,"Insufficient memory for mmap of %s (will use disk file instead, but program may not run)\n",
 		offsets_filename);
 #ifdef PMAP
-	new->offsets_access = FILEIO;
+	new->offsetscomp_access = FILEIO;
 #else
 	exit(9);
 #endif
       } else {
-	new->offsets_access = MMAPPED;
+	new->offsetscomp_access = MMAPPED;
       }
 #endif
 
-    } else if (offsets_access == USE_FILEIO) {
+    } else if (offsetscomp_access == USE_FILEIO) {
       fprintf(stderr,"Offsets file I/O access of %s not allowed\n",offsets_filename);
       exit(9);
 
@@ -948,6 +1056,8 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
  *   Debugging procedures
  ************************************************************************/
 
+#ifndef PMAP
+
 /*                87654321 */
 #define RIGHT_A 0x00000000
 #define RIGHT_C 0x00000001
@@ -956,81 +1066,6 @@ Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *i
 
 /*                      87654321 */
 #define LOW_TWO_BITS  0x00000003
-
-#ifdef PMAP
-
-#if NAMINOACIDS == 20
-static char aa_table[NAMINOACIDS] = "ACDEFGHIKLMNPQRSTVWY";
-#elif NAMINOACIDS == 15
-static char aa_table[NAMINOACIDS] = "ACDFGHIKMNPRSWY";
-#elif NAMINOACIDS == 12
-static char aa_table[NAMINOACIDS] = "ACDEFGHIKPSW";
-#endif
-
-#if (defined(DEBUG) || defined(DEBUG0) || defined(DEBUG1))
-static char *
-aaindex_aa (unsigned int aaindex) {
-  char *aa;
-  int i, j;
-  int aasize = index1part_aa;
-
-  aa = (char *) CALLOC(aasize+1,sizeof(char));
-  j = aasize-1;
-  for (i = 0; i < aasize; i++) {
-    aa[j] = aa_table[aaindex % NAMINOACIDS];
-    aaindex /= NAMINOACIDS;
-    j--;
-  }
-
-  return aa;
-}
-#endif
-
-/*               87654321 */
-#define LEFT_A 0x00000000
-#define LEFT_C 0x40000000
-#define LEFT_G 0x80000000
-#define LEFT_T 0xC0000000
-
-#ifdef DEBUG
-static char *
-highlow_nt (Storedoligomer_T high, Storedoligomer_T low) {
-  char *nt;
-  int i, j;
-  Storedoligomer_T lowbits;
-  int oligosize = index1part_aa*3;
-
-  nt = (char *) CALLOC(oligosize+1,sizeof(char));
-  j = oligosize-1;
-  for (i = 0; i < 16; i++) {
-    lowbits = low & LOW_TWO_BITS;
-    switch (lowbits) {
-    case RIGHT_A: nt[j] = 'A'; break;
-    case RIGHT_C: nt[j] = 'C'; break;
-    case RIGHT_G: nt[j] = 'G'; break;
-    case RIGHT_T: nt[j] = 'T'; break;
-    }
-    low >>= 2;
-    j--;
-  }
-  for ( ; i < oligosize; i++) {
-    lowbits = high & LOW_TWO_BITS;
-    switch (lowbits) {
-    case RIGHT_A: nt[j] = 'A'; break;
-    case RIGHT_C: nt[j] = 'C'; break;
-    case RIGHT_G: nt[j] = 'G'; break;
-    case RIGHT_T: nt[j] = 'T'; break;
-    }
-    high >>= 2;
-    j--;
-  }
-
-  return nt;
-}
-#endif
-
-
-#else
 
 #if (defined(DEBUG0) || defined(DEBUG1) || defined(DEBUG2))
 static char *
@@ -1218,21 +1253,22 @@ write_gamma (int fd, unsigned int *nwritten, unsigned int *buffer, int ctr, unsi
 void
 Indexdb_convert_gammas (char *gammaptrsfile, char *offsetscompfile, FILE *offsets_fp,
 #ifdef PMAP
-			int index1part_aa,
+			int alphabet_size, int index1part_aa,
 #else
 			int index1part,
 #endif
 			int blocksize) {
   int gammaptrs_fd, offsetscomp_fd;
   Positionsptr_T *offsets = NULL, totalcounts;
-  int oligospace, i, j;
+  int j;
+  Oligospace_T oligospace, oligoi;
 
   UINT4 buffer;
   int ctr;
   UINT4 nwritten;
 
 #ifdef PMAP
-  oligospace = power(NAMINOACIDS,index1part_aa);
+  oligospace = power(alphabet_size,index1part_aa);
 #else
   oligospace = power(4,index1part);
 #endif
@@ -1249,19 +1285,19 @@ Indexdb_convert_gammas (char *gammaptrsfile, char *offsetscompfile, FILE *offset
   offsetscomp_fd = Access_fileio_rw(offsetscompfile);
 
   nwritten = 0U;
-  for (i = 0; i < oligospace; i += blocksize) {
+  for (oligoi = 0; oligoi < oligospace; oligoi += blocksize) {
     WRITE_UINT(nwritten,gammaptrs_fd);
 
-    WRITE_UINT(offsets[i],offsetscomp_fd);
+    WRITE_UINT(offsets[oligoi],offsetscomp_fd);
     nwritten += 1;
 
     buffer = 0U;
     ctr = 32;
     for (j = 1; j < blocksize; j++) {
 #ifdef ABSOLUTE_GAMMAS
-      ctr = write_gamma(offsetscomp_fd,&nwritten,&buffer,ctr,offsets[i+j]-offsets[i]);
+      ctr = write_gamma(offsetscomp_fd,&nwritten,&buffer,ctr,offsets[oligoi+j]-offsets[oligoi]);
 #else
-      ctr = write_gamma(offsetscomp_fd,&nwritten,&buffer,ctr,offsets[i+j]-offsets[i+j-1]);
+      ctr = write_gamma(offsetscomp_fd,&nwritten,&buffer,ctr,offsets[oligoi+j]-offsets[oligoi+j-1]);
 #endif
     }
     debug3(printf("writing gamma %08X\n",buffer));
@@ -1269,7 +1305,7 @@ Indexdb_convert_gammas (char *gammaptrsfile, char *offsetscompfile, FILE *offset
     nwritten += 1;
   }
 
-  WRITE_UINT(offsets[i],offsetscomp_fd);
+  WRITE_UINT(offsets[oligoi],offsetscomp_fd);
   nwritten += 1;
   WRITE_UINT(nwritten,gammaptrs_fd);
 
@@ -1287,7 +1323,7 @@ Indexdb_convert_gammas (char *gammaptrsfile, char *offsetscompfile, FILE *offset
 Positionsptr_T *
 Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int offsetscomp_basesize
 #ifdef PMAP
-			     , int index1part_aa
+			     , int alphabet_size, int index1part_aa
 #else
 			     , int index1part
 #endif
@@ -1296,7 +1332,8 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
   int gammaptrs_fd, offsetscomp_fd;
   size_t gammaptrs_len, offsetscomp_len;
   Positionsptr_T *offsets = NULL;
-  int oligospace, i, j, k;
+  int j;
+  Oligospace_T oligospace, oligoi, oligok;
   int blocksize;
   double seconds;
 
@@ -1308,11 +1345,11 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
 
 
 #ifdef PMAP
-  oligospace = power(NAMINOACIDS,index1part_aa);
-  blocksize = power(4,index1part_aa - offsetscomp_basesize);
+  oligospace = power(alphabet_size,index1part_aa);
+  blocksize = (int) power(alphabet_size,index1part_aa - offsetscomp_basesize);
 #else
   oligospace = power(4,index1part);
-  blocksize = power(4,index1part - offsetscomp_basesize);
+  blocksize = (int) power(4,index1part - offsetscomp_basesize);
 #endif
 
   if (blocksize == 1) {
@@ -1329,9 +1366,9 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
 #endif
 
 #ifdef PMAP
-    fprintf(stderr,"Allocating memory (%u words) for offsets, kmer %d...",oligospace+1,index1part_aa);
+    fprintf(stderr,"Allocating memory (%lu words) for offsets, kmer %d...",oligospace+1,index1part_aa);
 #else
-    fprintf(stderr,"Allocating memory (%u words) for offsets, kmer %d...",oligospace+1,index1part);
+    fprintf(stderr,"Allocating memory (%lu words) for offsets, kmer %d...",oligospace+1,index1part);
 #endif
     offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
     if (offsets == NULL) {
@@ -1345,18 +1382,18 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
     fprintf(stderr,"Expanding offsetscomp into offsets...");
 
     ptr = offsetscomp;
-    k = 0;
+    oligok = 0UL;
 
 
-    for (i = 0; i < oligospace; i += blocksize) {
+    for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
 #ifdef HAVE_MMAP
 #ifdef WORDS_BIGENDIAN
-      cum = offsets[k++] = Bigendian_convert_uint(*ptr++);
+      cum = offsets[oligok++] = Bigendian_convert_uint(*ptr++);
 #else
-      cum = offsets[k++] = *ptr++;
+      cum = offsets[oligok++] = *ptr++;
 #endif
 #else
-      cum = offsets[k++] = *ptr++;
+      cum = offsets[oligok++] = *ptr++;
 #endif
 
       ctr = 0;
@@ -1370,7 +1407,7 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
 #else
 	ctr = Genome_read_gamma(&ptr,ctr,&cum);
 #endif
-	offsets[k++] = cum;
+	offsets[oligok++] = cum;
       }
       if (ctr > 0) {
 	ptr++;			/* Done with last gamma byte */
@@ -1379,12 +1416,12 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
 
 #ifdef HAVE_MMAP
 #ifdef WORDS_BIGENDIAN
-    offsets[k++] = Bigendian_convert_uint(*ptr++);
+    offsets[oligok++] = Bigendian_convert_uint(*ptr++);
 #else
-    offsets[k++] = *ptr++;
+    offsets[oligok++] = *ptr++;
 #endif
 #else
-    offsets[k++] = *ptr++;
+    offsets[oligok++] = *ptr++;
 #endif
 
     fprintf(stderr,"done\n");
@@ -1405,11 +1442,12 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
 
 static void
 check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positionsptr_T *offsets,
-			   int oligospace, int blocksize) {
+			   Oligospace_T oligospace, int blocksize) {
   UINT4 *gammaptrs, *offsetscomp;
   int gammaptrs_fd, offsetscomp_fd;
   size_t gammaptrs_len, offsetscomp_len;
-  int i, j, k, p;
+  Oligospace_T oligoi, oligok;
+  int j, p;
 #ifndef HAVE_MMAP
   double seconds;
 #endif
@@ -1430,10 +1468,10 @@ check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positions
 #endif
 
   ptr = offsetscomp;
-  k = 0;
+  oligok = 0UL;
   p = 0;
 
-  for (i = 0; i < oligospace; i += blocksize) {
+  for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
 #ifdef HAVE_MMAP
 #ifdef WORDS_BIGENDIAN
     cum = Bigendian_convert_uint(*ptr++);
@@ -1445,13 +1483,14 @@ check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positions
 #endif
 
     if (offsetscomp[gammaptrs[p++]] != cum) {
-      fprintf(stderr,"Problem with gammaptrs at oligo %d: %u != %u.  Please inform twu@gene.com\n",
-	      k,offsetscomp[gammaptrs[p-1]],cum);
+      fprintf(stderr,"Problem with gammaptrs at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
+	      oligok,offsetscomp[gammaptrs[p-1]],cum);
       exit(9);
     }
 
-    if (offsets[k++] != cum) {
-      fprintf(stderr,"Problem with offsetscomp at oligo %d: %u != %u.  Please inform twu@gene.com\n",k-1,offsets[k-1],cum);
+    if (offsets[oligok++] != cum) {
+      fprintf(stderr,"Problem with offsetscomp at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
+	      oligok-1,offsets[oligok-1],cum);
       exit(9);
     }
 
@@ -1467,8 +1506,9 @@ check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positions
       ctr = Genome_read_gamma(&ptr,ctr,&cum);
 #endif
 
-      if (offsets[k++] != cum) {
-	fprintf(stderr,"Problem with offsetscomp at oligo %d: %u != %u.  Please inform twu@gene.com\n",k-1,offsets[k-1],cum);
+      if (offsets[oligok++] != cum) {
+	fprintf(stderr,"Problem with offsetscomp at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
+		oligok-1,offsets[oligok-1],cum);
 	exit(9);
       }
     }
@@ -1489,13 +1529,14 @@ check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positions
 #endif
 
   if (offsetscomp[gammaptrs[p]] != cum) {
-    fprintf(stderr,"Problem with gammaptrs at oligo %d: %u != %u.  Please inform twu@gene.com\n",
-	    k,offsetscomp[gammaptrs[p-1]],cum);
+    fprintf(stderr,"Problem with gammaptrs at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
+	    oligok,offsetscomp[gammaptrs[p-1]],cum);
     exit(9);
   }
     
-  if (offsets[k] != cum) {
-    fprintf(stderr,"Problem with offsetscomp at oligo %d: %u != %u.  Please inform twu@gene.com\n",k,offsets[k],*ptr);
+  if (offsets[oligok] != cum) {
+    fprintf(stderr,"Problem with offsetscomp at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
+	    oligok,offsets[oligok],*ptr);
     exit(9);
   }
 
@@ -1523,33 +1564,17 @@ Indexdb_read (int *nentries, T this, unsigned int aaindex) {
   char byte1, byte2, byte3;
   int bigendian, littleendian;
 
-  debug0(printf("%u (%s)\n",aaindex,aaindex_aa(aaindex)));
+  debug0(printf("%u (%s)\n",aaindex,Alphabet_aaindex_aa(aaindex,this->alphabet)));
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[aaindex];
-      end0 = this->offsets[aaindex+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[aaindex]);
-      end0 = Bigendian_convert_uint(this->offsets[aaindex+1]);
-    }
-#else
-    ptr0 = this->offsets[aaindex];
-    end0 = this->offsets[aaindex+1];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,aaindex);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,aaindex);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,aaindex);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,aaindex);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,aaindex);
+#endif
 
   debug0(printf("offset pointers are %u and %u\n",ptr0,end0));
 
@@ -1655,31 +1680,15 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
     return NULL;
   }
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[part0];
-      end0 = this->offsets[part0+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[part0]);
-      end0 = Bigendian_convert_uint(this->offsets[part0+1]);
-    }
-#else
-    ptr0 = this->offsets[part0];
-    end0 = this->offsets[part0+1];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,part0);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,part0);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,part0);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,part0);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,part0);
+#endif
 
 #ifdef ALLOW_DUPLICATES
   /* Skip backward over bad values, due to duplicates */
@@ -1765,7 +1774,7 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
   Positionsptr_T ptr;
 #endif
 
-  debug0(printf("%06X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
+  debug0(printf("%08X (%s)\n",oligo,shortoligo_nt(oligo,index1part)));
   part0 = oligo & poly_T;
 
   /* Needed to avoid overflow on 15-mers */
@@ -1774,31 +1783,15 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
     return NULL;
   }
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[oligo];
-      end0 = this->offsets[oligo+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[oligo]);
-      end0 = Bigendian_convert_uint(this->offsets[oligo+1]);
-    }
-#else
-    ptr0 = this->offsets[oligo];
-    end0 = this->offsets[oligo+1];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+#endif
 
   debug0(printf("Indexdb_read_inplace: offset pointers are %u and %u\n",ptr0,end0));
 
@@ -1840,31 +1833,15 @@ Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int d
   Positionsptr_T ptr0, end0, ptr;
   int i;
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[oligo];
-      end0 = this->offsets[oligo+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[oligo]);
-      end0 = Bigendian_convert_uint(this->offsets[oligo+1]);
-    }
-#else
-    ptr0 = this->offsets[oligo];
-    end0 = this->offsets[oligo+1];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+#endif
 
   debug0(printf("read_zero_shift: oligo = %06X, offset pointers are %u and %u\n",oligo,ptr0,end0));
 
@@ -1922,31 +1899,15 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
   Positionsptr_T ptr0, end0, ptr;
   int i;
 
-  if (this->offsets) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsets_access == ALLOCATED) {
-      ptr0 = this->offsets[oligo];
-      end0 = this->offsets[oligo+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsets[oligo]);
-      end0 = Bigendian_convert_uint(this->offsets[oligo+1]);
-    }
-#else
-    ptr0 = this->offsets[oligo];
-    end0 = this->offsets[oligo+1];
-#endif
-
-  } else {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    }
-#else
+  if (this->offsetscomp_access == ALLOCATED) {
     ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-#endif
+  } else {
+    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
   }
+#else
+  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+#endif
 
   debug0(printf("read_zero_shift: oligo = %06X, offset pointers are %u and %u\n",oligo,ptr0,end0));
 
@@ -2005,446 +1966,6 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
  *   Write procedures -- called by gmapindex/pmapindex
  ************************************************************************/
 
-#ifdef PMAP
-/*              87654321 */
-#define CHAR1 0x00000030
-#define CHAR2 0x0000000C
-#define CHAR3 0x00000003
-
-#define A1    0x00000000
-#define C1    0x00000010
-#define G1    0x00000020
-#define T1    0x00000030
-
-#define A2    0x00000000
-#define C2    0x00000004
-#define G2    0x00000008
-#define T2    0x0000000C
-
-#define A3    0x00000000
-#define C3    0x00000001
-#define G3    0x00000002
-#define T3    0x00000003
-
-
-#if NAMINOACIDS == 20
-typedef enum {AA_A, AA_C, AA_D, AA_E, AA_F, 
-	      AA_G, AA_H, AA_I, AA_K, AA_L,
-	      AA_M, AA_N, AA_P, AA_Q, AA_R,
-	      AA_S, AA_T, AA_V, AA_W, AA_Y,
-	      AA_STOP} Aminoacid_T;
-#elif NAMINOACIDS == 15
-/* Amino acids are collapsed from 20 to 15, because 20^7*4 is greater
-   than 2 GB, and 15^7*4 is less than 2 GB.  Now have DE, NQ, ST, and
-   ILV. */
-typedef enum {AA_A, AA_C, AA_DE, AA_F, 
-	      AA_G, AA_H, AA_ILV, AA_K,
-	      AA_M, AA_NQ, AA_P, AA_R,
-	      AA_ST, AA_W, AA_Y, AA_STOP} Aminoacid_T;
-#elif NAMINOACIDS == 12
-/* 12-letter alphabet taken from Murphy, Wallqvist, and Levy.  Protein
-   Engineering 13, 149-152, 2000. */
-typedef enum {AA_A, AA_C, AA_DN, AA_EQ, AA_FY,
-	      AA_G, AA_H, AA_ILMV, AA_KR, AA_P,
-	      AA_ST, AA_W, AA_STOP} Aminoacid_T;
-#else
-#error The given value of NAMINOACIDS is not supported by indexdb.c
-#endif
-
-static int
-get_codon_fwd (Storedoligomer_T codon) {
-  switch (codon & CHAR2) {
-  case T2:
-    switch (codon & CHAR1) {
-    case T1:
-      switch (codon & CHAR3) {
-      case T3: case C3:
-#if NAMINOACIDS == 20
-	return AA_F;
-#elif NAMINOACIDS == 15
-	return AA_F;
-#elif NAMINOACIDS == 12
-	return AA_FY;
-#endif
-      default: /* case A3: case G3: */
-#if NAMINOACIDS == 20
-	return AA_L;
-#elif NAMINOACIDS == 15
-	return AA_ILV;
-#elif NAMINOACIDS == 12
-	return AA_ILMV;
-#endif
-      } /* CHAR3 */
-
-#if NAMINOACIDS == 20
-    case A1:
-      switch (codon & CHAR3) {
-      case G3: return AA_M;
-      default: /* case T3: case A3: case C3: */ return AA_I;
-      }
-    case C1: return AA_L;
-    default: /* case G1: */ return AA_V;
-#elif NAMINOACIDS == 15
-    case A1:
-      switch (codon & CHAR3) {
-      case G3: return AA_M;
-      default: /* case T3: case A3: case C3: */ return AA_ILV;
-      }
-    default: /* case C1: case G1: */ return AA_ILV;
-#elif NAMINOACIDS == 12
-    default: /* case A1: case C1: case G1: */ return AA_ILMV;
-#endif
-    } /* CHAR1 */
-
-  case C2:
-    switch (codon & CHAR1) {
-    case C1: return AA_P;
-#if NAMINOACIDS == 20
-    case T1: return AA_S;
-    case A1: return AA_T;
-#elif NAMINOACIDS == 15
-    case T1: case A1: return AA_ST;
-#elif NAMINOACIDS == 12
-    case T1: case A1: return AA_ST;
-#endif
-    default: /* case G1: */ return AA_A;
-    } /* CHAR1 */
-  case A2:
-    switch (codon & CHAR1) {
-    case T1:
-      switch (codon & CHAR3) {
-      case T3: case C3:
-#if NAMINOACIDS == 20
-	return AA_Y;
-#elif NAMINOACIDS == 15
-	return AA_Y;
-#elif NAMINOACIDS == 12
-	return AA_FY;
-#endif
-      default: /* case A3: case G3: */ return AA_STOP;
-      }	/* CHAR3 */
-    case C1:
-      switch (codon & CHAR3) {
-      case T3: case C3: return AA_H;
-      default: /* case A3: case G3: */
-#if NAMINOACIDS == 20
-	return AA_Q;
-#elif NAMINOACIDS == 15
-	return AA_NQ;
-#elif NAMINOACIDS == 12
-	return AA_EQ;
-#endif
-      }	/* CHAR3 */
-    case A1:
-      switch (codon & CHAR3) {
-      case T3: case C3: 
-#if NAMINOACIDS == 20
-	return AA_N;
-#elif NAMINOACIDS == 15
-	return AA_NQ;
-#elif NAMINOACIDS == 12
-	return AA_DN;
-#endif
-      default: /* case A3: case G3: */
-#if NAMINOACIDS == 20
-	return AA_K;
-#elif NAMINOACIDS == 15
-	return AA_K;
-#elif NAMINOACIDS == 12
-	return AA_KR;
-#endif      
-      }	/* CHAR3 */
-
-    default: /* case G1: */
-#if NAMINOACIDS == 20
-      switch (codon & CHAR3) {
-      case T3: case C3: return AA_D;
-      default: /* case A3: case G3: */ return AA_E;
-      }
-#elif NAMINOACIDS == 15
-      return AA_DE;
-#elif NAMINOACIDS == 12
-      switch (codon & CHAR3) {
-      case T3: case C3: return AA_DN;
-      default: /* case A3: case G3: */ return AA_EQ;
-      }
-#endif
-    } /* CHAR1 */
-
-  default: /* case G2: */
-    switch (codon & CHAR1) {
-    case T1:
-      switch (codon & CHAR3) {
-      case T3: case C3: return AA_C;
-      case A3: return AA_STOP;
-      default: /* case G3: */ return AA_W;
-      }
-    case C1:
-#if NAMINOACIDS == 20
-      return AA_R;
-#elif NAMINOACIDS == 15
-      return AA_R;
-#elif NAMINOACIDS == 12
-      return AA_KR;
-#endif
-    case A1:
-      switch (codon & CHAR3) {
-      case T3: case C3:
-#if NAMINOACIDS == 20
-	return AA_S;
-#elif NAMINOACIDS == 15
-	return AA_ST;
-#elif NAMINOACIDS == 12
-	return AA_ST;
-#endif
-      default: /* case A3: case G3: */
-#if NAMINOACIDS == 20
-	return AA_R;
-#elif NAMINOACIDS == 15
-	return AA_R;
-#elif NAMINOACIDS == 12
-	return AA_KR;
-#endif
-      }	/* CHAR3 */
-    default: /* case G1: */ return AA_G;
-    } /* CHAR1 */
-  } /* CHAR2 */
-
-  abort();
-  return -1;
-}
-
-
-static int
-get_codon_rev (Storedoligomer_T codon) {
-  switch (codon & CHAR2) {
-  case A2:
-    switch (codon & CHAR3) {
-    case A3:
-      switch (codon & CHAR1) {
-      case A1: case G1: 
-#if NAMINOACIDS == 20
-	return AA_F;
-#elif NAMINOACIDS == 15
-	return AA_F;
-#elif NAMINOACIDS == 12
-	return AA_FY;
-#endif
-      default: /* case T1: case C1: */
-#if NAMINOACIDS == 20
-	return AA_L;
-#elif NAMINOACIDS == 15
-	return AA_ILV;
-#elif NAMINOACIDS == 12
-	return AA_ILMV;
-#endif
-      } /* CHAR1 */
-
-#if NAMINOACIDS == 20
-    case T3: 
-      switch (codon & CHAR1) {
-      case C1: return AA_M;
-      default: /* case A1: case T1: case G1: */ return AA_I;
-      }
-    case G3: return AA_L;
-    default: /* case C3: */ return AA_V;
-#elif NAMINOACIDS == 15
-    case T3: 
-      switch (codon & CHAR1) {
-      case C1: return AA_M;
-      default: /* case A1: case T1: case G1: */ return AA_ILV;
-      }
-    default: /* case G3: case C3: */ return AA_ILV;
-#elif NAMINOACIDS == 12
-    default: /* case G3: case T3: case C3: */ return AA_ILMV;
-#endif
-    }
-  case G2:
-    switch (codon & CHAR3) {
-    case G3: return AA_P;
-#if NAMINOACIDS == 20
-    case A3: return AA_S;
-    case T3: return AA_T;
-#elif NAMINOACIDS == 15
-    case A3: case T3: return AA_ST;
-#else
-    case A3: case T3: return AA_ST;
-#endif
-    default: /* case C3: */ return AA_A;
-    }
-  case T2:
-    switch (codon & CHAR3) {
-    case A3:
-      switch (codon & CHAR1) {
-      case A1: case G1: 
-#if NAMINOACIDS == 20
-	return AA_Y;
-#elif NAMINOACIDS == 15
-	return AA_Y;
-#elif NAMINOACIDS == 12
-	return AA_FY;
-#endif
-      default: /* case T1: case C1: */ return AA_STOP;
-      }
-    case G3:
-      switch (codon & CHAR1) {
-      case A1: case G1: return AA_H;
-      default: /* case T1: case C1: */
-#if NAMINOACIDS == 20
-	return AA_Q;
-#elif NAMINOACIDS == 15
-	return AA_NQ;
-#elif NAMINOACIDS == 12
-	return AA_EQ;
-#endif
-      }	/* CHAR1 */
-    case T3:
-      switch (codon & CHAR1) {
-      case A1: case G1: 
-#if NAMINOACIDS == 20
-	return AA_N;
-#elif NAMINOACIDS == 15
-	return AA_NQ;
-#elif NAMINOACIDS == 12
-	return AA_DN;
-#endif
-      default: /* case T1: case C1: */ 
-#if NAMINOACIDS == 20
-	return AA_K;
-#elif NAMINOACIDS == 15
-	return AA_K;
-#elif NAMINOACIDS == 12
-	return AA_KR;
-#endif      
-      }	/* CHAR1 */
-    default: /* case C3: */
-#if NAMINOACIDS == 20
-      switch (codon & CHAR1) {
-      case A1: case G1: return AA_D;
-      default: /* case T1: case C1: */ return AA_E;
-      }
-#elif NAMINOACIDS == 15
-      return AA_DE;
-#elif NAMINOACIDS == 12
-      switch (codon & CHAR1) {
-      case A1: case G1: return AA_DN;
-      default: /* case T1: case C1: */ return AA_EQ;
-      }
-#endif
-    } /* CHAR3 */
-
-  default: /* case C2: */
-    switch (codon & CHAR3) {
-    case A3:
-      switch (codon & CHAR1) {
-      case A1: case G1: return AA_C;
-      case T1: return AA_STOP;
-      default: /* case C1: */ return AA_W;
-      }
-    case G3: 
-#if NAMINOACIDS == 20
-      return AA_R;
-#elif NAMINOACIDS == 15
-      return AA_R;
-#elif NAMINOACIDS == 12
-      return AA_KR;
-#endif
-    case T3:
-      switch (codon & CHAR1) {
-      case A1: case G1:
-#if NAMINOACIDS == 20
-	return AA_S;
-#elif NAMINOACIDS == 15
-	return AA_ST;
-#elif NAMINOACIDS == 12
-	return AA_ST;
-#endif
-      default: /* case T1: case C1: */ 
-#if NAMINOACIDS == 20
-	return AA_R;
-#elif NAMINOACIDS == 15
-	return AA_R;
-#elif NAMINOACIDS == 12
-	return AA_KR;
-#endif
-      }
-    default: /* case C3: */ return AA_G;
-    }
-  }
-
-  abort();
-  return -1;
-}
-
-
-
-static Storedoligomer_T
-offset_codon (Storedoligomer_T high, Storedoligomer_T low, int offset) {
-  Storedoligomer_T shifted;
-  char *nt;
-
-  if (offset < 14) {
-    shifted = (low >> (offset + offset));
-  } else if (offset == 14) {
-    shifted = (high << 4) | (low >> 28);
-  } else if (offset == 15) {
-    shifted = (high << 2) | (low >> 30);
-  } else {
-    shifted = (high >> (offset + offset - 32));
-  }
-
-  debug2(
-	nt = shortoligo_nt(shifted,3);
-	printf("Offset = %d.  Shifted = %s.  %2X %2X %2X\n",
-	       offset,nt,shifted & CHAR1,shifted & CHAR2,shifted & CHAR3);
-	FREE(nt);
-	);
-
-  return shifted;
-}
-
-
-static unsigned int
-get_aa_index (Storedoligomer_T high, Storedoligomer_T low, bool watsonp, int index1part_nt) {
-  unsigned int aaindex = 0U;
-  Storedoligomer_T shifted;
-  int i, codonindex;
-  char *nt, *aa;
-
-  if (watsonp == true) {
-    for (i = index1part_nt-3; i >= 0; i -= 3) {
-      shifted = offset_codon(high,low,i);
-      if ((codonindex = get_codon_fwd(shifted)) == AA_STOP) {
-	fprintf(stderr,"Unexpected stop codon in get_aa_index\n");
-	abort();
-      } else {
-	aaindex = aaindex * NAMINOACIDS + codonindex;
-      }
-    }
-  } else {
-    for (i = 0; i < index1part_nt; i += 3) {
-      shifted = offset_codon(high,low,i);
-      if ((codonindex = get_codon_rev(shifted)) == AA_STOP) {
-	fprintf(stderr,"Unexpected stop codon in get_aa_index\n");
-	abort();
-      } else {
-	aaindex = aaindex * NAMINOACIDS + codonindex;
-      }
-    }
-  }
-
-  debug(
-	nt = highlow_nt(high,low);
-	aa = aaindex_aa(aaindex);
-	printf("For oligo %s, aa is %s\n",nt,aa);
-	FREE(aa);
-	FREE(nt);
-	);
-
-  return aaindex;
-}
-#endif
-
 
 /* Another MONITOR_INTERVAL is in compress.c */
 #define MONITOR_INTERVAL 10000000 /* 10 million nt */
@@ -2452,9 +1973,10 @@ get_aa_index (Storedoligomer_T high, Storedoligomer_T low, bool watsonp, int ind
 
 void
 Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T *offsets,
-			 int oligospace, int blocksize) {
+			 Oligospace_T oligospace, int blocksize) {
   int gammaptrs_fd, offsets_fd;
-  int i, j;
+  int j;
+  Oligospace_T oligoi;
 
   UINT4 buffer;
   int ctr;
@@ -2464,8 +1986,8 @@ Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T 
   if (blocksize == 1) {
     /* Don't write gammaptrs */
     offsets_fd = Access_fileio_rw(offsetsfile);
-    for (i = 0; i <= oligospace; i++) {
-      WRITE_UINT(offsets[i],offsets_fd);
+    for (oligoi = 0; oligoi <= oligospace; oligoi++) {
+      WRITE_UINT(offsets[oligoi],offsets_fd);
     }
     close(offsets_fd);
 
@@ -2474,10 +1996,10 @@ Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T 
     offsets_fd = Access_fileio_rw(offsetsfile);
 
     nwritten = 0U;
-    for (i = 0; i < oligospace; i += blocksize) {
+    for (oligoi = 0; oligoi < oligospace; oligoi += blocksize) {
       WRITE_UINT(nwritten,gammaptrs_fd);
 
-      WRITE_UINT(offsets[i],offsets_fd);
+      WRITE_UINT(offsets[oligoi],offsets_fd);
       nwritten += 1;
 
       if (blocksize > 1) {
@@ -2485,9 +2007,9 @@ Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T 
 	ctr = 32;
 	for (j = 1; j < blocksize; j++) {
 #ifdef ABSOLUTE_GAMMAS
-	  ctr = write_gamma(offsets_fd,&nwritten,&buffer,ctr,offsets[i+j]-offsets[i]);
+	  ctr = write_gamma(offsets_fd,&nwritten,&buffer,ctr,offsets[oligoi+j]-offsets[oligoi]);
 #else
-	  ctr = write_gamma(offsets_fd,&nwritten,&buffer,ctr,offsets[i+j]-offsets[i+j-1]);
+	  ctr = write_gamma(offsets_fd,&nwritten,&buffer,ctr,offsets[oligoi+j]-offsets[oligoi+j-1]);
 #endif
 	}
 	debug3(printf("writing gamma %08X\n",buffer));
@@ -2499,7 +2021,7 @@ Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T 
 
     /* Final entries for i == oligospace */
     WRITE_UINT(nwritten,gammaptrs_fd);
-    WRITE_UINT(offsets[i],offsets_fd);
+    WRITE_UINT(offsets[oligoi],offsets_fd);
     nwritten += 1;
 
     close(offsets_fd);
@@ -2514,7 +2036,7 @@ void
 Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequence_fp, IIT_T chromosome_iit,
 		       int offsetscomp_basesize,
 #ifdef PMAP
-		       int index1part_aa, bool watsonp,
+		       int alphabet_size, int index1part_aa, bool watsonp,
 #else
 		       int index1part,
 #endif
@@ -2522,21 +2044,23 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
   char *uppercaseCode;
   Positionsptr_T *offsets;
   char *comma;
-  int c, nchrs, chrnum, oligospace, i;
+  int c, nchrs, chrnum;
+  Oligospace_T oligospace, oligoi;
   Genomicpos_T position = 0U, chrpos = 0U, next_chrbound;
 #ifdef PMAP
   int frame = -1, between_counter[3], in_counter[3];
   Storedoligomer_T high = 0U, low = 0U, carry;
   unsigned int aaindex;
-  char *aa;
   int index1part_nt = 3*index1part_aa;
 #else
   int between_counter = 0, in_counter = 0;
   Storedoligomer_T oligo = 0U, masked, mask;
 #endif
+#ifdef DEBUG1
+  char *aa;
+#endif
 
   int offsetscomp_blocksize;
-
 
   if (mask_lowercase_p == false) {
     uppercaseCode = UPPERCASE_U2T; /* We are reading DNA sequence */
@@ -2545,22 +2069,24 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
   }
 
 #ifdef PMAP
-  oligospace = power(NAMINOACIDS,index1part_aa);
+  oligospace = power(alphabet_size,index1part_aa);
   between_counter[0] = between_counter[1] = between_counter[2] = 0;
   in_counter[0] = in_counter[1] = in_counter[2] = 0;
+  fprintf(stderr,"Allocating %lu*%lu bytes for offsets\n",oligospace+1,sizeof(Positionsptr_T));
   offsets = (Positionsptr_T *) CALLOC_NO_EXCEPTION(oligospace+1,sizeof(Positionsptr_T));
   if (offsets == NULL) {
-    fprintf(stderr,"Unable to allocate %d bytes of memory, needed to build offsets with %d-mers\n",oligospace+1,index1part_aa);
+    fprintf(stderr,"Unable to allocate %lu bytes of memory, needed to build offsets with %d-mers\n",oligospace+1,index1part_aa);
     fprintf(stderr,"Either find a computer with more RAM, or lower your value for the k-mer size\n");
     exit(9);
   }
-  offsetscomp_blocksize = power(4,index1part_aa - offsetscomp_basesize);
+  offsetscomp_blocksize = power(alphabet_size,index1part_aa - offsetscomp_basesize);
 #else
   mask = ~(~0UL << 2*index1part);
   oligospace = power(4,index1part);
+  fprintf(stderr,"Allocating %lu*%lu bytes for offsets\n",oligospace+1,sizeof(Positionsptr_T));
   offsets = (Positionsptr_T *) CALLOC_NO_EXCEPTION(oligospace+1,sizeof(Positionsptr_T));
   if (offsets == NULL) {
-    fprintf(stderr,"Unable to allocate %d bytes of memory, needed to build offsets with %d-mers\n",oligospace+1,index1part);
+    fprintf(stderr,"Unable to allocate %lu bytes of memory, needed to build offsets with %d-mers\n",oligospace+1,index1part);
     fprintf(stderr,"Either find a computer with more RAM, or lower your value for the k-mer size\n");
     exit(9);
   }
@@ -2648,12 +2174,12 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
 
     if (in_counter[frame] > 0) {
       if (watsonp == true) {
-	if (get_codon_fwd(low) == AA_STOP) {
+	if (Alphabet_get_codon_fwd(low) == AA_STOP) {
 	  debug(printf("Resetting in_counter for frame %d to 0\n",frame));
 	  in_counter[frame] = 0; 
 	}
       } else {
-	if (get_codon_rev(low) == AA_STOP) {
+	if (Alphabet_get_codon_rev(low) == AA_STOP) {
 	  debug(printf("Resetting in_counter for frame %d to 0\n",frame));
 	  in_counter[frame] = 0; 
 	}
@@ -2661,8 +2187,9 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
     }
     if (in_counter[frame] == index1part_aa + 1) {
       if (between_counter[frame] >= index1interval) {
-	aaindex = get_aa_index(high,low,watsonp,index1part_nt);
-	offsets[aaindex + 1U] += 1;
+	aaindex = Alphabet_get_aa_index(high,low,watsonp,index1part_nt);
+	oligoi = (Oligospace_T) aaindex + 1UL;
+	offsets[oligoi] += 1;
 	debug1(
 	       aa = aaindex_aa(aaindex);
 	       if (watsonp == true) {
@@ -2686,9 +2213,10 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
 #endif
 	  ) {
 	masked = oligo & mask;
-	offsets[masked + 1U] += 1;
-	debug(printf("Found oligo %06X.  Incremented offsets for %d to be %d\n",
-		     masked,masked+1U,offsets[masked+1U]));
+	oligoi = (Oligospace_T) masked + 1UL;
+	offsets[oligoi] += 1;
+	debug(printf("Found oligo %06X.  Incremented offsets for %lu to be %u\n",
+		     masked,oligoi,offsets[oligoi]));
 	between_counter = 0;
       }
       in_counter--;
@@ -2714,17 +2242,17 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
 
 
 #ifdef ADDSENTINEL
-  for (i = 1; i <= oligospace; i++) {
-    offsets[i] = offsets[i] + offsets[i-1] + 1U;
-    debug(if (offsets[i] != offsets[i-1]) {
-	    printf("Offset for %06X: %u\n",i,offsets[i]);
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
+    offsets[oligoi] = offsets[oligoi] + offsets[oligoi-1] + 1U;
+    debug(if (offsets[oligoi] != offsets[oligoi-1]) {
+	    printf("Offset for %06X: %u\n",oligoi,offsets[oligoi]);
 	  });
   }
 #else
-  for (i = 1; i <= oligospace; i++) {
-    offsets[i] = offsets[i] + offsets[i-1];
-    debug(if (offsets[i] != offsets[i-1]) {
-	    printf("Offset for %06X: %u\n",i,offsets[i]);
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
+    offsets[oligoi] = offsets[oligoi] + offsets[oligoi-1];
+    debug(if (offsets[oligoi] != offsets[oligoi-1]) {
+	    printf("Offset for %06X: %u\n",oligoi,offsets[oligoi]);
 	  });
   }
 #endif
@@ -2734,10 +2262,11 @@ Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequenc
   fprintf(stderr,"Offset for T...T is %u to %u\n",offsets[oligospace-1],offsets[oligospace]);
   */
 
-  fprintf(stderr,"Writing %d offsets to file with total of %u positions...",oligospace+1,offsets[oligospace]);
 #ifdef PRE_GAMMAS
+  fprintf(stderr,"Writing %lu offsets to file with total of %u positions...",oligospace+1,offsets[oligospace]);
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
 #else
+  fprintf(stderr,"Writing %lu offsets compressed to file with total of %u positions...",oligospace+1,offsets[oligospace]);
   Indexdb_write_gammaptrs(gammaptrsfile,offsetscompfile,offsets,oligospace,offsetscomp_blocksize);
 #endif
   fprintf(stderr,"done\n");
@@ -2809,7 +2338,7 @@ compute_positions_in_file (int positions_fd, Positionsptr_T *offsets,
 #ifdef PMAP
   int frame = -1, between_counter[3], in_counter[3];
   Storedoligomer_T high = 0U, low = 0U, carry;
-  unsigned int aaindex;
+  Oligospace_T aaindex;
   Genomicpos_T adjposition;
   int index1part_nt = 3*index1part_aa;
 #else
@@ -2818,7 +2347,7 @@ compute_positions_in_file (int positions_fd, Positionsptr_T *offsets,
 #endif
 
 #ifdef ADDSENTINEL
-  int oligospace;
+  Oligospace_T oligospace, oligoi;
   oligospace = power(4,index1part);
 #endif
 
@@ -2829,7 +2358,7 @@ compute_positions_in_file (int positions_fd, Positionsptr_T *offsets,
   }
 
 #ifdef PMAP
-  /* oligospace = power(NAMINOACIDS,index1part_aa); */
+  /* oligospace = power(alphabet_size,index1part_aa); */
 #else
   mask = ~(~0UL << 2*index1part);
   /* oligospace = power(4,index1part); */
@@ -2918,18 +2447,18 @@ compute_positions_in_file (int positions_fd, Positionsptr_T *offsets,
 #ifdef PMAP
     if (in_counter[frame] > 0) {
       if (watsonp == true) {
-	if (get_codon_fwd(low) == AA_STOP) {
+	if (Alphabet_get_codon_fwd(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       } else {
-	if (get_codon_rev(low) == AA_STOP) {
+	if (Alphabet_get_codon_rev(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       }
     }
     if (in_counter[frame] == index1part_aa + 1) {
       if (between_counter[frame] >= index1interval) {
-	aaindex = get_aa_index(high,low,watsonp,index1part_nt);
+	aaindex = Alphabet_get_aa_index(high,low,watsonp,index1part_nt);
 	positions_move_absolute(positions_fd,offsets[aaindex]);
 	offsets[aaindex] += 1;
 	if (watsonp == true) {
@@ -2979,8 +2508,8 @@ compute_positions_in_file (int positions_fd, Positionsptr_T *offsets,
   }
 
 #ifdef ADDSENTINEL
-  for (i = 0; i < oligospace; i++) {
-    positions_move_absolute(positions_fd,offsets[i]);
+  for (oligoi = 0; oligoi < oligospace; oligoi++) {
+    positions_move_absolute(positions_fd,offsets[oligoi]);
     WRITE_UINT(-1U,positions_fd);
   }
 #endif
@@ -3015,7 +2544,7 @@ compute_positions_in_memory (Genomicpos_T *positions, Positionsptr_T *offsets,
 #endif
 
 #ifdef ADDSENTINEL
-  int oligospace;
+  Oligospace_T oligospace, oligoi;
   oligospace = power(4,index1part);
 #endif
 
@@ -3117,18 +2646,18 @@ compute_positions_in_memory (Genomicpos_T *positions, Positionsptr_T *offsets,
 #ifdef PMAP
     if (in_counter[frame] > 0) {
       if (watsonp == true) {
-	if (get_codon_fwd(low) == AA_STOP) {
+	if (Alphabet_get_codon_fwd(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       } else {
-	if (get_codon_rev(low) == AA_STOP) {
+	if (Alphabet_get_codon_rev(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       }
     }
     if (in_counter[frame] == index1part_aa + 1) {
       if (between_counter[frame] >= index1interval) {
-	aaindex = get_aa_index(high,low,watsonp,index1part_nt);
+	aaindex = Alphabet_get_aa_index(high,low,watsonp,index1part_nt);
 	if (watsonp == true) {
 	  positions[offsets[aaindex]++] = position-index1part_nt+1U;
 	  debug1(adjposition = position-index1part_nt+1U);
@@ -3155,6 +2684,13 @@ compute_positions_in_memory (Genomicpos_T *positions, Positionsptr_T *offsets,
 #endif
 	  ) {
 	masked = oligo & mask;
+#if 0
+	if (offsets[masked] >= totalcounts) {
+	  fprintf(stderr,"masked = %u, offsets[masked] = %u >= totalcounts %u\n",
+		  masked,offsets[masked],totalcounts);
+	  exit(9);
+	}
+#endif
 	positions[offsets[masked]++] = position-index1part+1U;
 	debug1(nt = shortoligo_nt(masked,index1part);
 	       printf("Storing %s at %u, chrpos %u\n",nt,position-index1part+1U,chrpos-index1part+1U);
@@ -3184,8 +2720,8 @@ compute_positions_in_memory (Genomicpos_T *positions, Positionsptr_T *offsets,
   }
 
 #ifdef ADDSENTINEL
-  for (i = 0; i < oligospace; i++) {
-    positions[offsets[i]] = -1U;
+  for (oligoi = 0; oligoi < oligospace; oligoi++) {
+    positions[offsets[oligoi]] = -1U;
   }
   /*
   fprintf(stderr,"Put a sentinel at %u\n",offsets[0]);
@@ -3202,7 +2738,7 @@ void
 Indexdb_write_positions (char *positionsfile, char *gammaptrsfile, char *offsetscompfile,
 			 FILE *sequence_fp, IIT_T chromosome_iit, int offsetscomp_basesize,
 #ifdef PMAP
-			 int index1part_aa, bool watsonp,
+			 int alphabet_size, int index1part_aa, bool watsonp,
 #else
 			 int index1part,
 #endif
@@ -3212,12 +2748,13 @@ Indexdb_write_positions (char *positionsfile, char *gammaptrsfile, char *offsets
   int positions_fd;		/* For building positions in file */
   Positionsptr_T *offsets = NULL, totalcounts;
   Genomicpos_T *positions;
-  int oligospace;
+  Oligospace_T oligospace;
 
 
 #ifdef PMAP
-  offsets = Indexdb_offsets_from_gammas(gammaptrsfile,offsetscompfile,offsetscomp_basesize,index1part_aa);
-  oligospace = power(NAMINOACIDS,index1part_aa);
+  offsets = Indexdb_offsets_from_gammas(gammaptrsfile,offsetscompfile,offsetscomp_basesize,
+					alphabet_size,index1part_aa);
+  oligospace = power(alphabet_size,index1part_aa);
 #else
   offsets = Indexdb_offsets_from_gammas(gammaptrsfile,offsetscompfile,offsetscomp_basesize,index1part);
   oligospace = power(4,index1part);
@@ -3292,7 +2829,7 @@ Indexdb_write_positions (char *positionsfile, char *gammaptrsfile, char *offsets
 T
 Indexdb_new_segment (char *genomicseg,
 #ifdef PMAP
-		     int index1part_aa, bool watsonp,
+		     int alphabet_size, int index1part_aa, bool watsonp,
 #else
 		     int index1part,
 #endif
@@ -3301,7 +2838,8 @@ Indexdb_new_segment (char *genomicseg,
   char *uppercaseCode;
   Positionsptr_T *work_offsets;	/* Working set for use in calculating positions */
   int totalcounts = 0;
-  int c, oligospace, i;
+  int c;
+  Oligospace_T oligospace, oligoi;
   char *p;
   Genomicpos_T position = 0U;
 #ifdef PMAP
@@ -3317,7 +2855,7 @@ Indexdb_new_segment (char *genomicseg,
   uppercaseCode = UPPERCASE_U2T;
 
 #ifdef PMAP
-  oligospace = power(NAMINOACIDS,index1part_aa);
+  oligospace = power(alphabet_size,index1part_aa);
 #else
   mask = ~(~0UL << 2*index1part);
   oligospace = power(4,index1part);
@@ -3325,8 +2863,12 @@ Indexdb_new_segment (char *genomicseg,
 #endif
 
 
-  new->offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
+  new->gammaptrs = (UINT4 *) CALLOC(oligospace+1,sizeof(UINT4));
+  for (oligoi = 0; oligoi <= oligospace; oligoi++) {
+    new->gammaptrs[oligoi] = oligoi;
+  }
 
+  new->offsetscomp = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
 
   p = genomicseg;
   while ((c = *(p++)) != '\0') {
@@ -3372,19 +2914,20 @@ Indexdb_new_segment (char *genomicseg,
 #ifdef PMAP
     if (in_counter[frame] > 0) {
       if (watsonp == true) {
-	if (get_codon_fwd(low) == AA_STOP) {
+	if (Alphabet_get_codon_fwd(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       } else {
-	if (get_codon_rev(low) == AA_STOP) {
+	if (Alphabet_get_codon_rev(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       }
     }
     if (in_counter[frame] == index1part_aa + 1) {
       if (between_counter[frame] >= index1interval) {
-	aaindex = get_aa_index(high,low,watsonp,index1part_nt);
-	new->offsets[aaindex + 1U] += 1;
+	aaindex = Alphabet_get_aa_index(high,low,watsonp,index1part_nt);
+	oligoi = (Oligospace_T) aaindex + 1UL;
+	new->offsetscomp[oligoi] += 1;
 	between_counter[frame] = 0;
       }
       in_counter[frame] -= 1;
@@ -3400,9 +2943,10 @@ Indexdb_new_segment (char *genomicseg,
 #endif
 	  ) {
 	masked = oligo & mask;
-	new->offsets[masked + 1U] += 1;
-	debug(printf("Found oligo %06X.  Incremented offsets for %d to be %d\n",
-		     masked,masked+1U,new->offsets[masked+1U]));
+	oligoi = (Oligospace_T) masked + 1UL;
+	new->offsetscomp[oligoi] += 1;
+	debug(printf("Found oligo %06X.  Incremented offsets for %lu to be %u\n",
+		     masked,oligoi,new->offsetscomp[oligoi]));
 	between_counter = 0;
       }
       in_counter--;
@@ -3413,14 +2957,14 @@ Indexdb_new_segment (char *genomicseg,
   }
 
 #ifdef ADDSENTINEL
-  for (i = 1; i <= oligospace; i++) {
-    new->offsets[i] = new->offsets[i] + new->offsets[i-1] + 1U;
-    debug(printf("Offset for %06X: %u\n",i,new->offsets[i]));
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
+    new->offsetscomp[oligoi] = new->offsetscomp[oligoi] + new->offsetscomp[oligoi-1] + 1U;
+    debug(printf("Offset for %06X: %u\n",oligoi,new->offsetscomp[oligoi]));
   }
 #else
-  for (i = 1; i <= oligospace; i++) {
-    new->offsets[i] = new->offsets[i] + new->offsets[i-1];
-    debug(printf("Offset for %06X: %u\n",i,new->offsets[i]));
+  for (oligoi = 1; oligoi <= oligospace; oligoi++) {
+    new->offsetscomp[oligoi] = new->offsetscomp[oligoi] + new->offsetscomp[oligoi-1];
+    debug(printf("Offset for %06X: %u\n",oligoi,new->offsetscomp[oligoi]));
   }
 #endif
 
@@ -3438,11 +2982,11 @@ Indexdb_new_segment (char *genomicseg,
 #endif
 
   work_offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
-  for (i = 0; i <= oligospace; i++) {
-    work_offsets[i] = new->offsets[i];
+  for (oligoi = 0; oligoi <= oligospace; oligoi++) {
+    work_offsets[oligoi] = new->offsetscomp[oligoi];
   }
 
-  totalcounts = new->offsets[oligospace];
+  totalcounts = new->offsetscomp[oligospace];
   if (totalcounts == 0) {
 #ifdef PMAP
     fprintf(stderr,"Error: user-provided genomic segment has no valid oligomers of size %d\n",index1part_nt);
@@ -3498,11 +3042,11 @@ Indexdb_new_segment (char *genomicseg,
 #ifdef PMAP
     if (in_counter[frame] > 0) {
       if (watsonp == true) {
-	if (get_codon_fwd(low) == AA_STOP) {
+	if (Alphabet_get_codon_fwd(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       } else {
-	if (get_codon_rev(low) == AA_STOP) {
+	if (Alphabet_get_codon_rev(low) == AA_STOP) {
 	  in_counter[frame] = 0; 
 	}
       }
@@ -3510,7 +3054,7 @@ Indexdb_new_segment (char *genomicseg,
 
     if (in_counter[frame] == index1part_aa + 1) {
       if (between_counter[frame] >= index1interval) {
-	aaindex = get_aa_index(high,low,watsonp,index1part_nt);
+	aaindex = Alphabet_get_aa_index(high,low,watsonp,index1part_nt);
 	if (watsonp == true) {
 	  new->positions[work_offsets[aaindex]++] = position-index1part_nt+1U;
 	} else {
@@ -3542,8 +3086,8 @@ Indexdb_new_segment (char *genomicseg,
   }
 
 #ifdef ADDSENTINEL
-  for (i = 0; i < oligospace; i++) {
-    new->positions[work_offsets[i]] = -1U;
+  for (oligoi = 0; oligoi < oligospace; oligoi++) {
+    new->positions[work_offsets[oligoi]] = -1U;
   }
 #endif
 

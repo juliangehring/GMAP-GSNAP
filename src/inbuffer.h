@@ -1,4 +1,4 @@
-/* $Id: inbuffer.h 49442 2011-10-08 01:32:38Z twu $ */
+/* $Id: inbuffer.h 59606 2012-03-13 17:00:32Z twu $ */
 #ifndef INBUFFER_INCLUDED
 #define INBUFFER_INCLUDED
 #include <stdio.h>
@@ -53,6 +53,9 @@ Inbuffer_fill_init (T this);
 
 extern Request_T
 Inbuffer_get_request (T this);
+
+extern Request_T
+Inbuffer_first_request (T this);
 
 #undef T
 #endif

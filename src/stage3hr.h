@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 55728 2012-01-11 22:05:46Z twu $ */
+/* $Id: stage3hr.h 59898 2012-03-19 17:28:55Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -44,6 +44,10 @@ extern Hittype_T
 Stage3end_hittype (T this);
 extern char *
 Stage3end_hittype_string (T this);
+extern int
+Stage3end_genestrand (T this);
+extern bool
+Stage3end_anomalous_splice_p (T this);
 extern Chrnum_T
 Stage3end_chrnum (T this);
 extern Chrnum_T
@@ -146,6 +150,8 @@ Stage3end_terminal_trim (T this);
 extern bool
 Stage3end_contains_known_splicesite (T this);
 extern bool
+Stage3end_indel_contains_known_splicesite (bool *leftp, bool *rightp, T this);
+extern bool
 Stage3end_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query_compress_rev);
 
 extern bool
@@ -157,6 +163,8 @@ extern void
 Stage3end_free (T *old);
 
 
+extern bool
+Stage3pair_anomalous_splice_p (Stage3pair_T this);
 extern int
 Stage3pair_genestrand (Stage3pair_T this);
 extern Stage3end_T
@@ -248,7 +256,9 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
 extern List_T
 Stage3pair_remove_excess_terminals (List_T hitpairlist);
 extern List_T
-Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches, bool keep_gmap_p);
+Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches,
+			 Compress_T query_compress_fwd, Compress_T query_compress_rev,
+			 bool keep_gmap_p);
 extern int
 Stage3end_noptimal (List_T hitlist);
 extern List_T

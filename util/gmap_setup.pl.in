@@ -16,8 +16,7 @@ use Getopt::Std;
 undef($opt_d);			# genome name
 undef($opt_D);			# destination directory
 $opt_b = 12;			# offsetscomp basesize
-$opt_k = 15;			# k-mer size for GMAP genomic index (currently allowed: 12-15)
-$opt_K = 6;			# k-mer size for PMAP genomic index (currently allowed: 5-8)
+$opt_k = 15;			# k-mer size for GMAP genomic index (currently allowed: 16 or less)
 undef($opt_o);			# name of output file (default is "Makefile.<genome>")
 
 undef($opt_M);			# use seq_contig.md file (provide as argument)
@@ -30,7 +29,6 @@ undef($opt_E);			# interpret argument as a command
 undef($opt_B);			# bindir (needed for "make check")
 
 $opt_q = 3;			# GMAP interval
-#$opt_Q = 6;			# PMAP interval (not used.  interval determined by $opt_K)
 
 #undef($opt_9);			# debug
 
@@ -66,9 +64,7 @@ if (!defined($outputfile = $opt_o)) {
 $gmap_basesize = $opt_b;
 
 $gmap_kmersize = $opt_k;
-$pmap_kmersize = $opt_K;
 $gmap_interval = $opt_q;
-#$pmap_interval = $opt_Q;
 
 
 $MAKEFILE = new IO::File(">$outputfile") or die "Cannot write to file $outputfile";
@@ -113,13 +109,11 @@ if (defined($opt_B)) {
   print $MAKEFILE "MD_COORDS = $opt_B/md_coords\n";
   print $MAKEFILE "GMAP_PROCESS = $opt_B/gmap_process\n";
   print $MAKEFILE "GMAPINDEX = $opt_B/gmapindex\n";
-  print $MAKEFILE "PMAPINDEX = $opt_B/pmapindex\n";
 } else {
   print $MAKEFILE "FA_COORDS = $bindir/fa_coords\n";
   print $MAKEFILE "MD_COORDS = $bindir/md_coords\n";
   print $MAKEFILE "GMAP_PROCESS = $bindir/gmap_process\n";
   print $MAKEFILE "GMAPINDEX = $bindir/gmapindex\n";
-  print $MAKEFILE "PMAPINDEX = $bindir/pmapindex\n";
 }
 print $MAKEFILE "\n";
 
@@ -135,10 +129,6 @@ print $MAKEFILE "\n";
 #print $MAKEFILE "GMAPINDEX_INTERVAL = $opt_q # Change this only for special situations.  Intervals < 3\n";
 #print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
 #print $MAKEFILE "                       # If you set interval to be 3 (default) or 1, the file can also be used for GSNAP\n";
-
-#print $MAKEFILE "PMAPINDEX_INTERVAL = $opt_Q # Change this only for special situations.  Intervals < 6\n";
-#print $MAKEFILE "                       # may result in large index files that cannot be read on some machines\n";
-#print $MAKEFILE "\n";
 
 # Used only for deleting
 print $MAKEFILE "FILE_ENDINGS = chromosome chromosome.iit chrsubset contig contig.iit \\\n";
@@ -176,9 +166,6 @@ printf $MAKEFILE "gmapdb_lc: checkcoords \$(GENOME).version \$(GENOME).genome \$
 printf $MAKEFILE "gmapdb_lc_masked: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp.masked \$(GENOME).ref%d%d%dpositions.masked gmapmsg\n",
     $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
 
-print $MAKEFILE "pmapdb: pmapindices \$(GENOME).version pmapmsg\n";
-print $MAKEFILE "\n";
-
 print $MAKEFILE "coords: \$(COORDS)\n";
 print $MAKEFILE "\n";
 
@@ -193,13 +180,7 @@ print $MAKEFILE "\n";
 
 print $MAKEFILE "gmapmsg:\n";
 print $MAKEFILE "\techo gmapdb for $genome_name complete.\n";
-#print $MAKEFILE "\techo To make pmapdb, do: make -f Makefile.$genome_name pmapdb\n";
 print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
-
-print $MAKEFILE "pmapmsg:\n";
-#print $MAKEFILE "\techo pmapdb for $genome_name complete.\n";
-print $MAKEFILE "\techo To install, do: make -f Makefile.$genome_name install\n";
-
 
 print $MAKEFILE "cleanall: clean\n";
 print $MAKEFILE "\trm -f \$(GENOME).version\n";
@@ -331,18 +312,6 @@ print $MAKEFILE "\n";
 
 
 ########################################################################
-#   PMAP index files, unmasked: pmapindex can do all four steps
-########################################################################
-
-# Don't concatenate
-$k_flag = "-k $pmap_kmersize";
-#$q_flag = "-q $pmap_interval";
-
-print $MAKEFILE "pmapindices:\n";
-print $MAKEFILE "\t\$(PMAPINDEX) -d \$(GENOME) $k_flag\n";
-print $MAKEFILE "\n";
-
-########################################################################
 #   Version file
 ########################################################################
 
@@ -411,8 +380,10 @@ sub print_usage {
 gmap_setup: Sets up a Makefile for creating a genome by use by GMAP or GSNAP.
 Part of GMAP package, version $package_version.
 
+Note: It is easier to run the newer program gmap_build instead.
+
 Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-C] [-M <.md file>]
-       [-E] [-s sorttype] [-k kmersize] [-b basesize] [-q interval] [-Q interval] [-W] <fasta_files or command>
+       [-E] [-s sorttype] [-k kmersize] [-b basesize] [-q interval] [-W] <fasta_files or command>
 
     -d    genome name
     -D    destination directory for installation (defaults to gmapdb directory specified at configure time)
@@ -426,7 +397,6 @@ Usage: gmap_setup -d <genomename> [-D <destdir>] [-o <Makefile>] [-C] [-M <.md f
   Advanced flags, not typically used:
     -b    offsetscomp basesize
     -q    GMAP indexing interval (default: 3 nt)
-    -Q    PMAP indexing interval (default: 6 aa)
     -W    write some output directly to file, instead of using RAM (use only if RAM is limited)
 
 These flags are explained below:
@@ -475,13 +445,12 @@ against a FASTA file.
   flag to write the files directly, but this can be very slow.
 
 
-* The -q and -Q flags: If you specify a smaller interval (for example,
-  3 for the GMAP interval), you can create a higher-resolution
-  database, which can be useful for mapping small oligomers (smaller
-  than 18 nt).  However, the corresponding genome index files will be
-  larger (twice as big if you specify -q 3).  These index files may
-  exceed the 2 gigabyte file offset limit on some computers, and will
-  therefore fail to work on those computers.
+* The -q flag: If you specify a smaller interval (for example,
+  1 for the GMAP sampling interval), you can create a higher-resolution
+  database, which can improve speed somewhat.  However, the corresponding
+  genome index files will be larger (three times as big if you specify -q 1).
+  These index files may exceed the 4-gigabyte filesize limit on some computers,
+  and will therefore fail to work on those computers.
 
 
 TEXT1

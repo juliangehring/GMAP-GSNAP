@@ -1,4 +1,4 @@
-/* $Id: indexdb.h 44878 2011-08-13 23:18:46Z twu $ */
+/* $Id: indexdb.h 56758 2012-01-31 03:54:16Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -9,6 +9,11 @@
 #include "bool.h"
 #include "iit-read.h"
 #include "indexdbdef.h"
+
+#ifdef PMAP
+#include "alphabet.h"
+#endif
+
 
 
 #ifdef PMAP
@@ -21,8 +26,6 @@
 
 #define FWD_FILESUFFIX "pf"
 #define REV_FILESUFFIX "pr"
-
-#define NAMINOACIDS 20		/* Could also specify 15 or 12 */
 
 #else
 #define IDX_FILESUFFIX "ref"
@@ -58,9 +61,12 @@ extern bool
 Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, char **positions_filename,
 		       char **gammaptrs_basename_ptr, char **offsetscomp_basename_ptr, char **positions_basename_ptr,
 		       char **gammaptrs_index1info_ptr, char **offsetscomp_index1info_ptr, char **positions_index1info_ptr,
+#ifdef PMAP
+		       Alphabet_T *alphabet, Alphabet_T required_alphabet,
+#endif
 		       int *basesize, int *index1part, int *index1interval, char *genomesubdir,
 		       char *fileroot, char *idx_filesuffix, char *snps_root,
-		       int required_index1part, int required_interval);
+		       int required_basesize, int required_index1part, int required_interval);
 
 extern Genomicpos_T *
 Indexdb_point_one_shift (int *nentries, T this, Storedoligomer_T subst);
@@ -71,20 +77,24 @@ Indexdb_count_one_shift (T this, Storedoligomer_T subst, int nadjacent);
 extern Positionsptr_T *
 Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int offsetscomp_basesize
 #ifdef PMAP
-			     , int index1part_aa
+			     , int alphabet_size, int index1part_aa
 #else
 			     , int index1part
 #endif
 			     );
 
 extern T
-Indexdb_new_genome (int *index1part, char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
-		    int required_index1part, int required_interval, bool expand_offsets_p,
+Indexdb_new_genome (int *basesize, int *index1part, int *index1interval,
+		    char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+#ifdef PMAP
+		    Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
+#endif
+		    int required_basesize, int required_index1part, int required_interval, bool expand_offsets_p,
 		    Access_mode_T offsetscomp_access, Access_mode_T positions_access);
 extern T
 Indexdb_new_segment (char *genomicseg,
 #ifdef PMAP
-		     int index1part_aa, bool watsonp,
+		     int alphabet_size, int index1part_aa, bool watsonp,
 #else
 		     int index1part,
 #endif
@@ -108,13 +118,13 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
 
 extern void
 Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetscompfile, Positionsptr_T *offsets,
-			 int oligospace, int blocksize);
+			 unsigned long oligospace, int blocksize);
 
 extern void
 Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequence_fp, IIT_T chromosome_iit,
 		       int offsetscomp_basesize,
 #ifdef PMAP
-		       int index1part_aa, bool watsonp,
+		       int alphabet_size, int index1part_aa, bool watsonp,
 #else
 		       int index1part,
 #endif
@@ -124,7 +134,7 @@ extern void
 Indexdb_write_positions (char *positionsfile, char *gammaptrsfile, char *offsetscompfile,
 			 FILE *sequence_fp, IIT_T chromosome_iit, int offsetscomp_basesize,
 #ifdef PMAP
-			 int index1part_aa, bool watsonp,
+			 int alphabet_size, int index1part_aa, bool watsonp,
 #else
 			 int index1part,
 #endif

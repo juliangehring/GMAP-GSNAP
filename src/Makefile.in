@@ -36,7 +36,7 @@ target_triplet = @target@
 bin_PROGRAMS = gmap$(EXEEXT) get-genome$(EXEEXT) gmapindex$(EXEEXT) \
 	iit_store$(EXEEXT) iit_get$(EXEEXT) iit_dump$(EXEEXT) \
 	gsnap$(EXEEXT) snpindex$(EXEEXT) cmetindex$(EXEEXT) \
-	atoiindex$(EXEEXT) gsnap_tally$(EXEEXT)
+	atoiindex$(EXEEXT)
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
 	$(srcdir)/config.h.in
@@ -208,26 +208,7 @@ gsnap_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
 gsnap_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(gsnap_CFLAGS) $(CFLAGS) $(gsnap_LDFLAGS) \
 	$(LDFLAGS) -o $@
-am__objects_7 = gsnap_tally-except.$(OBJEXT) \
-	gsnap_tally-assert.$(OBJEXT) gsnap_tally-mem.$(OBJEXT) \
-	gsnap_tally-intlist.$(OBJEXT) gsnap_tally-list.$(OBJEXT) \
-	gsnap_tally-littleendian.$(OBJEXT) \
-	gsnap_tally-bigendian.$(OBJEXT) gsnap_tally-interval.$(OBJEXT) \
-	gsnap_tally-uintlist.$(OBJEXT) gsnap_tally-stopwatch.$(OBJEXT) \
-	gsnap_tally-access.$(OBJEXT) gsnap_tally-iit-read.$(OBJEXT) \
-	gsnap_tally-chrom.$(OBJEXT) gsnap_tally-genomicpos.$(OBJEXT) \
-	gsnap_tally-md5.$(OBJEXT) gsnap_tally-sequence.$(OBJEXT) \
-	gsnap_tally-genome.$(OBJEXT) gsnap_tally-gsnapread.$(OBJEXT) \
-	gsnap_tally-datadir.$(OBJEXT) gsnap_tally-getopt.$(OBJEXT) \
-	gsnap_tally-getopt1.$(OBJEXT) \
-	gsnap_tally-gsnap_tally.$(OBJEXT)
-dist_gsnap_tally_OBJECTS = $(am__objects_7)
-gsnap_tally_OBJECTS = $(dist_gsnap_tally_OBJECTS)
-gsnap_tally_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
-gsnap_tally_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
-	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(gsnap_tally_CFLAGS) \
-	$(CFLAGS) $(gsnap_tally_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_8 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
+am__objects_7 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-mem.$(OBJEXT) iit_dump-littleendian.$(OBJEXT) \
 	iit_dump-bigendian.$(OBJEXT) iit_dump-intlist.$(OBJEXT) \
 	iit_dump-list.$(OBJEXT) iit_dump-interval.$(OBJEXT) \
@@ -235,13 +216,13 @@ am__objects_8 = iit_dump-except.$(OBJEXT) iit_dump-assert.$(OBJEXT) \
 	iit_dump-access.$(OBJEXT) iit_dump-iit-read.$(OBJEXT) \
 	iit_dump-getopt.$(OBJEXT) iit_dump-getopt1.$(OBJEXT) \
 	iit_dump-iit_dump.$(OBJEXT)
-dist_iit_dump_OBJECTS = $(am__objects_8)
+dist_iit_dump_OBJECTS = $(am__objects_7)
 iit_dump_OBJECTS = $(dist_iit_dump_OBJECTS)
 iit_dump_DEPENDENCIES = $(am__DEPENDENCIES_1)
 iit_dump_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(iit_dump_CFLAGS) $(CFLAGS) \
 	$(iit_dump_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_9 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
+am__objects_8 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-mem.$(OBJEXT) iit_get-intlist.$(OBJEXT) \
 	iit_get-list.$(OBJEXT) iit_get-littleendian.$(OBJEXT) \
 	iit_get-bigendian.$(OBJEXT) iit_get-interval.$(OBJEXT) \
@@ -249,13 +230,13 @@ am__objects_9 = iit_get-except.$(OBJEXT) iit_get-assert.$(OBJEXT) \
 	iit_get-access.$(OBJEXT) iit_get-iit-read.$(OBJEXT) \
 	iit_get-parserange.$(OBJEXT) iit_get-getopt.$(OBJEXT) \
 	iit_get-getopt1.$(OBJEXT) iit_get-iit_get.$(OBJEXT)
-dist_iit_get_OBJECTS = $(am__objects_9)
+dist_iit_get_OBJECTS = $(am__objects_8)
 iit_get_OBJECTS = $(dist_iit_get_OBJECTS)
 iit_get_DEPENDENCIES = $(am__DEPENDENCIES_1)
 iit_get_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(iit_get_CFLAGS) $(CFLAGS) \
 	$(iit_get_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_10 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
+am__objects_9 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-mem.$(OBJEXT) iit_store-intlist.$(OBJEXT) \
 	iit_store-list.$(OBJEXT) iit_store-littleendian.$(OBJEXT) \
 	iit_store-bigendian.$(OBJEXT) iit_store-interval.$(OBJEXT) \
@@ -264,13 +245,13 @@ am__objects_10 = iit_store-except.$(OBJEXT) iit_store-assert.$(OBJEXT) \
 	iit_store-tableint.$(OBJEXT) iit_store-table.$(OBJEXT) \
 	iit_store-chrom.$(OBJEXT) iit_store-getopt.$(OBJEXT) \
 	iit_store-getopt1.$(OBJEXT) iit_store-iit_store.$(OBJEXT)
-dist_iit_store_OBJECTS = $(am__objects_10)
+dist_iit_store_OBJECTS = $(am__objects_9)
 iit_store_OBJECTS = $(dist_iit_store_OBJECTS)
 iit_store_DEPENDENCIES = $(am__DEPENDENCIES_1)
 iit_store_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(iit_store_CFLAGS) \
 	$(CFLAGS) $(iit_store_LDFLAGS) $(LDFLAGS) -o $@
-am__objects_11 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
+am__objects_10 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
 	snpindex-mem.$(OBJEXT) snpindex-intlist.$(OBJEXT) \
 	snpindex-list.$(OBJEXT) snpindex-littleendian.$(OBJEXT) \
 	snpindex-bigendian.$(OBJEXT) snpindex-interval.$(OBJEXT) \
@@ -282,7 +263,7 @@ am__objects_11 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
 	snpindex-sequence.$(OBJEXT) snpindex-genome.$(OBJEXT) \
 	snpindex-datadir.$(OBJEXT) snpindex-getopt.$(OBJEXT) \
 	snpindex-getopt1.$(OBJEXT) snpindex-snpindex.$(OBJEXT)
-dist_snpindex_OBJECTS = $(am__objects_11)
+dist_snpindex_OBJECTS = $(am__objects_10)
 snpindex_OBJECTS = $(dist_snpindex_OBJECTS)
 snpindex_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 snpindex_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
@@ -303,15 +284,13 @@ LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 SOURCES = $(dist_atoiindex_SOURCES) $(dist_cmetindex_SOURCES) \
 	$(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) \
 	$(dist_gmapindex_SOURCES) $(dist_gsnap_SOURCES) \
-	$(dist_gsnap_tally_SOURCES) $(dist_iit_dump_SOURCES) \
-	$(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) \
-	$(dist_snpindex_SOURCES)
+	$(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) \
+	$(dist_iit_store_SOURCES) $(dist_snpindex_SOURCES)
 DIST_SOURCES = $(dist_atoiindex_SOURCES) $(dist_cmetindex_SOURCES) \
 	$(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) \
 	$(dist_gmapindex_SOURCES) $(dist_gsnap_SOURCES) \
-	$(dist_gsnap_tally_SOURCES) $(dist_iit_dump_SOURCES) \
-	$(dist_iit_get_SOURCES) $(dist_iit_store_SOURCES) \
-	$(dist_snpindex_SOURCES)
+	$(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) \
+	$(dist_iit_store_SOURCES) $(dist_snpindex_SOURCES)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -643,22 +622,6 @@ iit_dump_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS)
 iit_dump_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
 iit_dump_LDADD = $(PTHREAD_LIBS)
 dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
-GSNAP_TALLY_FILES = fopen.h bool.h types.h \
- except.c except.h assert.c assert.h mem.c mem.h \
- intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
- littleendian.c littleendian.h bigendian.c bigendian.h \
- interval.c interval.h uintlist.c uintlist.h \
- stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
- complement.h chrom.c chrom.h genomicpos.c genomicpos.h \
- md5.c md5.h complement.h sequence.c sequence.h genome.c genome.h \
- gsnapread.c gsnapread.h \
- datadir.h datadir.c \
- getopt.c getopt1.c getopt.h gsnap_tally.c
-
-gsnap_tally_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
-gsnap_tally_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
-gsnap_tally_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
-dist_gsnap_tally_SOURCES = $(GSNAP_TALLY_FILES)
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -756,9 +719,6 @@ gmapindex$(EXEEXT): $(gmapindex_OBJECTS) $(gmapindex_DEPENDENCIES)
 gsnap$(EXEEXT): $(gsnap_OBJECTS) $(gsnap_DEPENDENCIES) 
 	@rm -f gsnap$(EXEEXT)
 	$(gsnap_LINK) $(gsnap_OBJECTS) $(gsnap_LDADD) $(LIBS)
-gsnap_tally$(EXEEXT): $(gsnap_tally_OBJECTS) $(gsnap_tally_DEPENDENCIES) 
-	@rm -f gsnap_tally$(EXEEXT)
-	$(gsnap_tally_LINK) $(gsnap_tally_OBJECTS) $(gsnap_tally_LDADD) $(LIBS)
 iit_dump$(EXEEXT): $(iit_dump_OBJECTS) $(iit_dump_DEPENDENCIES) 
 	@rm -f iit_dump$(EXEEXT)
 	$(iit_dump_LINK) $(iit_dump_OBJECTS) $(iit_dump_LDADD) $(LIBS)
@@ -991,28 +951,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-substring.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-translation.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-uintlist.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-access.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-assert.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-bigendian.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-chrom.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-datadir.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-except.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-genome.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-genomicpos.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-getopt.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-getopt1.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-gsnap_tally.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-gsnapread.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-iit-read.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-interval.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-intlist.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-list.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-littleendian.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-md5.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-mem.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-sequence.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-stopwatch.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap_tally-uintlist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iit_dump-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iit_dump-assert.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iit_dump-bigendian.Po@am__quote@
@@ -4089,314 +4027,6 @@ gsnap-gsnap.obj: gsnap.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnap.c' object='gsnap-gsnap.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-gsnap.obj `if test -f 'gsnap.c'; then $(CYGPATH_W) 'gsnap.c'; else $(CYGPATH_W) '$(srcdir)/gsnap.c'; fi`
-
-gsnap_tally-except.o: except.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-except.o -MD -MP -MF $(DEPDIR)/gsnap_tally-except.Tpo -c -o gsnap_tally-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-except.Tpo $(DEPDIR)/gsnap_tally-except.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='gsnap_tally-except.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
-
-gsnap_tally-except.obj: except.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-except.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-except.Tpo -c -o gsnap_tally-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-except.Tpo $(DEPDIR)/gsnap_tally-except.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='gsnap_tally-except.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`
-
-gsnap_tally-assert.o: assert.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-assert.o -MD -MP -MF $(DEPDIR)/gsnap_tally-assert.Tpo -c -o gsnap_tally-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-assert.Tpo $(DEPDIR)/gsnap_tally-assert.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='gsnap_tally-assert.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
-
-gsnap_tally-assert.obj: assert.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-assert.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-assert.Tpo -c -o gsnap_tally-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-assert.Tpo $(DEPDIR)/gsnap_tally-assert.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='gsnap_tally-assert.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`
-
-gsnap_tally-mem.o: mem.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-mem.o -MD -MP -MF $(DEPDIR)/gsnap_tally-mem.Tpo -c -o gsnap_tally-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-mem.Tpo $(DEPDIR)/gsnap_tally-mem.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='gsnap_tally-mem.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
-
-gsnap_tally-mem.obj: mem.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-mem.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-mem.Tpo -c -o gsnap_tally-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-mem.Tpo $(DEPDIR)/gsnap_tally-mem.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='gsnap_tally-mem.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`
-
-gsnap_tally-intlist.o: intlist.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-intlist.o -MD -MP -MF $(DEPDIR)/gsnap_tally-intlist.Tpo -c -o gsnap_tally-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-intlist.Tpo $(DEPDIR)/gsnap_tally-intlist.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='gsnap_tally-intlist.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
-
-gsnap_tally-intlist.obj: intlist.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-intlist.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-intlist.Tpo -c -o gsnap_tally-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-intlist.Tpo $(DEPDIR)/gsnap_tally-intlist.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='gsnap_tally-intlist.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
-
-gsnap_tally-list.o: list.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-list.o -MD -MP -MF $(DEPDIR)/gsnap_tally-list.Tpo -c -o gsnap_tally-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-list.Tpo $(DEPDIR)/gsnap_tally-list.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='gsnap_tally-list.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
-
-gsnap_tally-list.obj: list.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-list.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-list.Tpo -c -o gsnap_tally-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-list.Tpo $(DEPDIR)/gsnap_tally-list.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='gsnap_tally-list.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
-
-gsnap_tally-littleendian.o: littleendian.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-littleendian.o -MD -MP -MF $(DEPDIR)/gsnap_tally-littleendian.Tpo -c -o gsnap_tally-littleendian.o `test -f 'littleendian.c' || echo '$(srcdir)/'`littleendian.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-littleendian.Tpo $(DEPDIR)/gsnap_tally-littleendian.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='littleendian.c' object='gsnap_tally-littleendian.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-littleendian.o `test -f 'littleendian.c' || echo '$(srcdir)/'`littleendian.c
-
-gsnap_tally-littleendian.obj: littleendian.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-littleendian.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-littleendian.Tpo -c -o gsnap_tally-littleendian.obj `if test -f 'littleendian.c'; then $(CYGPATH_W) 'littleendian.c'; else $(CYGPATH_W) '$(srcdir)/littleendian.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-littleendian.Tpo $(DEPDIR)/gsnap_tally-littleendian.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='littleendian.c' object='gsnap_tally-littleendian.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-littleendian.obj `if test -f 'littleendian.c'; then $(CYGPATH_W) 'littleendian.c'; else $(CYGPATH_W) '$(srcdir)/littleendian.c'; fi`
-
-gsnap_tally-bigendian.o: bigendian.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-bigendian.o -MD -MP -MF $(DEPDIR)/gsnap_tally-bigendian.Tpo -c -o gsnap_tally-bigendian.o `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-bigendian.Tpo $(DEPDIR)/gsnap_tally-bigendian.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='gsnap_tally-bigendian.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-bigendian.o `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c
-
-gsnap_tally-bigendian.obj: bigendian.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-bigendian.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-bigendian.Tpo -c -o gsnap_tally-bigendian.obj `if test -f 'bigendian.c'; then $(CYGPATH_W) 'bigendian.c'; else $(CYGPATH_W) '$(srcdir)/bigendian.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-bigendian.Tpo $(DEPDIR)/gsnap_tally-bigendian.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='gsnap_tally-bigendian.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-bigendian.obj `if test -f 'bigendian.c'; then $(CYGPATH_W) 'bigendian.c'; else $(CYGPATH_W) '$(srcdir)/bigendian.c'; fi`
-
-gsnap_tally-interval.o: interval.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-interval.o -MD -MP -MF $(DEPDIR)/gsnap_tally-interval.Tpo -c -o gsnap_tally-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-interval.Tpo $(DEPDIR)/gsnap_tally-interval.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='gsnap_tally-interval.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
-
-gsnap_tally-interval.obj: interval.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-interval.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-interval.Tpo -c -o gsnap_tally-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-interval.Tpo $(DEPDIR)/gsnap_tally-interval.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='gsnap_tally-interval.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`
-
-gsnap_tally-uintlist.o: uintlist.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-uintlist.o -MD -MP -MF $(DEPDIR)/gsnap_tally-uintlist.Tpo -c -o gsnap_tally-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-uintlist.Tpo $(DEPDIR)/gsnap_tally-uintlist.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='gsnap_tally-uintlist.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
-
-gsnap_tally-uintlist.obj: uintlist.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-uintlist.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-uintlist.Tpo -c -o gsnap_tally-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-uintlist.Tpo $(DEPDIR)/gsnap_tally-uintlist.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='gsnap_tally-uintlist.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`
-
-gsnap_tally-stopwatch.o: stopwatch.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-stopwatch.o -MD -MP -MF $(DEPDIR)/gsnap_tally-stopwatch.Tpo -c -o gsnap_tally-stopwatch.o `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-stopwatch.Tpo $(DEPDIR)/gsnap_tally-stopwatch.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='gsnap_tally-stopwatch.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-stopwatch.o `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c
-
-gsnap_tally-stopwatch.obj: stopwatch.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-stopwatch.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-stopwatch.Tpo -c -o gsnap_tally-stopwatch.obj `if test -f 'stopwatch.c'; then $(CYGPATH_W) 'stopwatch.c'; else $(CYGPATH_W) '$(srcdir)/stopwatch.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-stopwatch.Tpo $(DEPDIR)/gsnap_tally-stopwatch.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='gsnap_tally-stopwatch.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-stopwatch.obj `if test -f 'stopwatch.c'; then $(CYGPATH_W) 'stopwatch.c'; else $(CYGPATH_W) '$(srcdir)/stopwatch.c'; fi`
-
-gsnap_tally-access.o: access.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-access.o -MD -MP -MF $(DEPDIR)/gsnap_tally-access.Tpo -c -o gsnap_tally-access.o `test -f 'access.c' || echo '$(srcdir)/'`access.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-access.Tpo $(DEPDIR)/gsnap_tally-access.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='gsnap_tally-access.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-access.o `test -f 'access.c' || echo '$(srcdir)/'`access.c
-
-gsnap_tally-access.obj: access.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-access.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-access.Tpo -c -o gsnap_tally-access.obj `if test -f 'access.c'; then $(CYGPATH_W) 'access.c'; else $(CYGPATH_W) '$(srcdir)/access.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-access.Tpo $(DEPDIR)/gsnap_tally-access.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='gsnap_tally-access.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-access.obj `if test -f 'access.c'; then $(CYGPATH_W) 'access.c'; else $(CYGPATH_W) '$(srcdir)/access.c'; fi`
-
-gsnap_tally-iit-read.o: iit-read.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-iit-read.o -MD -MP -MF $(DEPDIR)/gsnap_tally-iit-read.Tpo -c -o gsnap_tally-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-iit-read.Tpo $(DEPDIR)/gsnap_tally-iit-read.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='gsnap_tally-iit-read.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
-
-gsnap_tally-iit-read.obj: iit-read.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-iit-read.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-iit-read.Tpo -c -o gsnap_tally-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-iit-read.Tpo $(DEPDIR)/gsnap_tally-iit-read.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='gsnap_tally-iit-read.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`
-
-gsnap_tally-chrom.o: chrom.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-chrom.o -MD -MP -MF $(DEPDIR)/gsnap_tally-chrom.Tpo -c -o gsnap_tally-chrom.o `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-chrom.Tpo $(DEPDIR)/gsnap_tally-chrom.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='gsnap_tally-chrom.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-chrom.o `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
-
-gsnap_tally-chrom.obj: chrom.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-chrom.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-chrom.Tpo -c -o gsnap_tally-chrom.obj `if test -f 'chrom.c'; then $(CYGPATH_W) 'chrom.c'; else $(CYGPATH_W) '$(srcdir)/chrom.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-chrom.Tpo $(DEPDIR)/gsnap_tally-chrom.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='gsnap_tally-chrom.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-chrom.obj `if test -f 'chrom.c'; then $(CYGPATH_W) 'chrom.c'; else $(CYGPATH_W) '$(srcdir)/chrom.c'; fi`
-
-gsnap_tally-genomicpos.o: genomicpos.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-genomicpos.o -MD -MP -MF $(DEPDIR)/gsnap_tally-genomicpos.Tpo -c -o gsnap_tally-genomicpos.o `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-genomicpos.Tpo $(DEPDIR)/gsnap_tally-genomicpos.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='gsnap_tally-genomicpos.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-genomicpos.o `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c
-
-gsnap_tally-genomicpos.obj: genomicpos.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-genomicpos.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-genomicpos.Tpo -c -o gsnap_tally-genomicpos.obj `if test -f 'genomicpos.c'; then $(CYGPATH_W) 'genomicpos.c'; else $(CYGPATH_W) '$(srcdir)/genomicpos.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-genomicpos.Tpo $(DEPDIR)/gsnap_tally-genomicpos.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='gsnap_tally-genomicpos.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-genomicpos.obj `if test -f 'genomicpos.c'; then $(CYGPATH_W) 'genomicpos.c'; else $(CYGPATH_W) '$(srcdir)/genomicpos.c'; fi`
-
-gsnap_tally-md5.o: md5.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-md5.o -MD -MP -MF $(DEPDIR)/gsnap_tally-md5.Tpo -c -o gsnap_tally-md5.o `test -f 'md5.c' || echo '$(srcdir)/'`md5.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-md5.Tpo $(DEPDIR)/gsnap_tally-md5.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='gsnap_tally-md5.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-md5.o `test -f 'md5.c' || echo '$(srcdir)/'`md5.c
-
-gsnap_tally-md5.obj: md5.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-md5.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-md5.Tpo -c -o gsnap_tally-md5.obj `if test -f 'md5.c'; then $(CYGPATH_W) 'md5.c'; else $(CYGPATH_W) '$(srcdir)/md5.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-md5.Tpo $(DEPDIR)/gsnap_tally-md5.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='gsnap_tally-md5.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-md5.obj `if test -f 'md5.c'; then $(CYGPATH_W) 'md5.c'; else $(CYGPATH_W) '$(srcdir)/md5.c'; fi`
-
-gsnap_tally-sequence.o: sequence.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-sequence.o -MD -MP -MF $(DEPDIR)/gsnap_tally-sequence.Tpo -c -o gsnap_tally-sequence.o `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-sequence.Tpo $(DEPDIR)/gsnap_tally-sequence.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='gsnap_tally-sequence.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-sequence.o `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c
-
-gsnap_tally-sequence.obj: sequence.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-sequence.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-sequence.Tpo -c -o gsnap_tally-sequence.obj `if test -f 'sequence.c'; then $(CYGPATH_W) 'sequence.c'; else $(CYGPATH_W) '$(srcdir)/sequence.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-sequence.Tpo $(DEPDIR)/gsnap_tally-sequence.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='gsnap_tally-sequence.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-sequence.obj `if test -f 'sequence.c'; then $(CYGPATH_W) 'sequence.c'; else $(CYGPATH_W) '$(srcdir)/sequence.c'; fi`
-
-gsnap_tally-genome.o: genome.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-genome.o -MD -MP -MF $(DEPDIR)/gsnap_tally-genome.Tpo -c -o gsnap_tally-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-genome.Tpo $(DEPDIR)/gsnap_tally-genome.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='gsnap_tally-genome.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
-
-gsnap_tally-genome.obj: genome.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-genome.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-genome.Tpo -c -o gsnap_tally-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-genome.Tpo $(DEPDIR)/gsnap_tally-genome.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='gsnap_tally-genome.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
-
-gsnap_tally-gsnapread.o: gsnapread.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-gsnapread.o -MD -MP -MF $(DEPDIR)/gsnap_tally-gsnapread.Tpo -c -o gsnap_tally-gsnapread.o `test -f 'gsnapread.c' || echo '$(srcdir)/'`gsnapread.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-gsnapread.Tpo $(DEPDIR)/gsnap_tally-gsnapread.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnapread.c' object='gsnap_tally-gsnapread.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-gsnapread.o `test -f 'gsnapread.c' || echo '$(srcdir)/'`gsnapread.c
-
-gsnap_tally-gsnapread.obj: gsnapread.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-gsnapread.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-gsnapread.Tpo -c -o gsnap_tally-gsnapread.obj `if test -f 'gsnapread.c'; then $(CYGPATH_W) 'gsnapread.c'; else $(CYGPATH_W) '$(srcdir)/gsnapread.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-gsnapread.Tpo $(DEPDIR)/gsnap_tally-gsnapread.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnapread.c' object='gsnap_tally-gsnapread.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-gsnapread.obj `if test -f 'gsnapread.c'; then $(CYGPATH_W) 'gsnapread.c'; else $(CYGPATH_W) '$(srcdir)/gsnapread.c'; fi`
-
-gsnap_tally-datadir.o: datadir.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-datadir.o -MD -MP -MF $(DEPDIR)/gsnap_tally-datadir.Tpo -c -o gsnap_tally-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-datadir.Tpo $(DEPDIR)/gsnap_tally-datadir.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='gsnap_tally-datadir.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
-
-gsnap_tally-datadir.obj: datadir.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-datadir.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-datadir.Tpo -c -o gsnap_tally-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-datadir.Tpo $(DEPDIR)/gsnap_tally-datadir.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='gsnap_tally-datadir.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
-
-gsnap_tally-getopt.o: getopt.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-getopt.o -MD -MP -MF $(DEPDIR)/gsnap_tally-getopt.Tpo -c -o gsnap_tally-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-getopt.Tpo $(DEPDIR)/gsnap_tally-getopt.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='gsnap_tally-getopt.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
-
-gsnap_tally-getopt.obj: getopt.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-getopt.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-getopt.Tpo -c -o gsnap_tally-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-getopt.Tpo $(DEPDIR)/gsnap_tally-getopt.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='gsnap_tally-getopt.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`
-
-gsnap_tally-getopt1.o: getopt1.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-getopt1.o -MD -MP -MF $(DEPDIR)/gsnap_tally-getopt1.Tpo -c -o gsnap_tally-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-getopt1.Tpo $(DEPDIR)/gsnap_tally-getopt1.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='gsnap_tally-getopt1.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
-
-gsnap_tally-getopt1.obj: getopt1.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-getopt1.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-getopt1.Tpo -c -o gsnap_tally-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-getopt1.Tpo $(DEPDIR)/gsnap_tally-getopt1.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='gsnap_tally-getopt1.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`
-
-gsnap_tally-gsnap_tally.o: gsnap_tally.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-gsnap_tally.o -MD -MP -MF $(DEPDIR)/gsnap_tally-gsnap_tally.Tpo -c -o gsnap_tally-gsnap_tally.o `test -f 'gsnap_tally.c' || echo '$(srcdir)/'`gsnap_tally.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-gsnap_tally.Tpo $(DEPDIR)/gsnap_tally-gsnap_tally.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnap_tally.c' object='gsnap_tally-gsnap_tally.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-gsnap_tally.o `test -f 'gsnap_tally.c' || echo '$(srcdir)/'`gsnap_tally.c
-
-gsnap_tally-gsnap_tally.obj: gsnap_tally.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -MT gsnap_tally-gsnap_tally.obj -MD -MP -MF $(DEPDIR)/gsnap_tally-gsnap_tally.Tpo -c -o gsnap_tally-gsnap_tally.obj `if test -f 'gsnap_tally.c'; then $(CYGPATH_W) 'gsnap_tally.c'; else $(CYGPATH_W) '$(srcdir)/gsnap_tally.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap_tally-gsnap_tally.Tpo $(DEPDIR)/gsnap_tally-gsnap_tally.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='gsnap_tally.c' object='gsnap_tally-gsnap_tally.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_tally_CFLAGS) $(CFLAGS) -c -o gsnap_tally-gsnap_tally.obj `if test -f 'gsnap_tally.c'; then $(CYGPATH_W) 'gsnap_tally.c'; else $(CYGPATH_W) '$(srcdir)/gsnap_tally.c'; fi`
 
 iit_dump-except.o: except.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(iit_dump_CFLAGS) $(CFLAGS) -MT iit_dump-except.o -MD -MP -MF $(DEPDIR)/iit_dump-except.Tpo -c -o iit_dump-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c

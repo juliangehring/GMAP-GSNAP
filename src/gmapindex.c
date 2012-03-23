@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 55351 2012-01-05 20:38:41Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 56964 2012-02-02 17:57:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -804,20 +804,21 @@ main (int argc, char *argv[]) {
   extern int optind;
   extern char *optarg;
 
-  while ((c = getopt(argc,argv,"F:D:d:b:k:ArlGCUOPWw:Ss:q:m")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:b:k:q:ArlGCUOPWw:Ss:m")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
     case 'd': fileroot = optarg; break;
-    case 'b': offsetscomp_basesize = atoi(optarg);
+
+    case 'b': offsetscomp_basesize = atoi(optarg); break;
     case 'k': index1part = atoi(optarg);
-      if (index1part >= 12 && index1part <= 15) {
-	/* Okay */
-      } else {
-	fprintf(stderr,"The only values allowed for -k are 12, 13, 14, or 15\n");
+      if (index1part > MAXIMUM_KMER) {
+	fprintf(stderr,"The choice of k-mer size must be %d or less\n",MAXIMUM_KMER);
 	exit(9);
       }
       break;
+    case 'q': index1interval = atoi(optarg); break;
+
     case 'A': action = AUXFILES; break;
     case 'r': rawp = true; break;
     case 'l': genome_lc_p = true; break;
@@ -850,21 +851,26 @@ main (int argc, char *argv[]) {
       }
       break;
 
-    case 'q': index1interval = atoi(optarg); break;
     case 'm': mask_lowercase_p = true; break;
     }
   }
   argc -= (optind - 1);
   argv += (optind - 1);
 
-  if (index1interval == 6) {
-    interval_char = '6';
-  } else if (index1interval == 3) {
+  if (index1interval == 3) {
     interval_char = '3';
+  } else if (index1interval == 2) {
+    interval_char = '2';
   } else if (index1interval == 1) {
     interval_char = '1';
   } else {
-    fprintf(stderr,"Selected indexing interval %d is not allowed.  Only values allowed are 6, 3, or 1\n",index1interval);
+    fprintf(stderr,"Selected indexing interval %d is not allowed.  Only values allowed are 3, 2, or 1\n",index1interval);
+    exit(9);
+  }
+
+  if (index1part < offsetscomp_basesize) {
+    fprintf(stderr,"k-mer size %d must be equal to or greater than base size %d\n",
+	    index1part,offsetscomp_basesize);
     exit(9);
   }
 
@@ -1029,9 +1035,9 @@ main (int argc, char *argv[]) {
       offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				   strlen(".")+strlen(IDX_FILESUFFIX)+
 				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				   strlen("offsets.masked")+1,sizeof(char));
+				   strlen("offsetscomp.masked")+1,sizeof(char));
       sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsets.masked");
+	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp.masked");
 
     } else {
       gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
@@ -1085,9 +1091,9 @@ main (int argc, char *argv[]) {
       offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				   strlen(".")+strlen(IDX_FILESUFFIX)+
 				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				   strlen("offsets.masked")+1,sizeof(char));
+				   strlen("offsetscomp.masked")+1,sizeof(char));
       sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsets.masked");
+	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp.masked");
 
     } else {
       gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
@@ -1108,17 +1114,17 @@ main (int argc, char *argv[]) {
     if (mask_lowercase_p == true) {
       positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
+				      /*for kmer*/2+/*for interval char*/1+
 				      strlen(POSITIONS_FILESUFFIX)+strlen(".masked")+1,sizeof(char));
-      sprintf(positionsfile,"%s/%s.%s%02d%02d%c%s.masked",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,POSITIONS_FILESUFFIX);
+      sprintf(positionsfile,"%s/%s.%s%02d%c%s.masked",
+	      destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
     } else {
       positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
+				      /*for kmer*/2+/*for interval char*/1+
 				      strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
-      sprintf(positionsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,POSITIONS_FILESUFFIX);
+      sprintf(positionsfile,"%s/%s.%s%02d%c%s",
+	      destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
     }
     
     Indexdb_write_positions(positionsfile,gammaptrsfile,offsetsfile,stdin,chromosome_iit,

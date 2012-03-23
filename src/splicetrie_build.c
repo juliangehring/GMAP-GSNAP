@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 50982 2011-10-28 16:39:13Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 58793 2012-03-01 17:15:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -356,6 +356,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
   char gbuffer_ref[17], gbuffer_alt[17], *chr;
   char *restofheader, *annot;
   bool firstp = true, saw_n_p, allocp, alloc_header_p;
+  int ntoolong = 0;
 
 #ifdef DEBUG2
   List_T p;
@@ -502,6 +503,9 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	      fprintf(stderr,"splicesites file has a negative distance %d in entry %s...exiting\n",
 		      distance,IIT_label(splicing_iit,splicesites1[i],&allocp));
 	      exit(9);
+	    } else if (distance > (int) shortsplicedist) {
+	      ntoolong++;
+	      Interval_store_length(intervals[i],shortsplicedist);
 	    } else {
 	      Interval_store_length(intervals[i],distance + SPLICEDIST_EXTRA);
 	    }
@@ -714,6 +718,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
     }
   }
 #endif
+
+  if (ntoolong > 0) {
+    fprintf(stderr,"%d entries with distance > %d allowed for prefix tries...",ntoolong,shortsplicedist);
+  }
 
   return splicesites;
 }

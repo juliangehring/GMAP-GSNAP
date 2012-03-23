@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 55442 2012-01-06 22:16:29Z twu $";
+static char rcsid[] = "$Id: dynprog.c 59558 2012-03-12 23:11:37Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -3649,9 +3649,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
   */
 
   *nmatches = *nmismatches = *nopens = *nindels = 0;
+  *left_prob = *right_prob = 0.0;
   if (length1 <= 1) {
-    *finalscore = -100000;
-    return NULL;
+    *finalscore = NEG_INFINITY;
+    return (List_T) NULL;
   }
 
   if (defect_rate < DEFECT_HIGHQ) {
@@ -3723,7 +3724,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
     */
 #endif
     *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
-    *finalscore = -100000;
+    *finalscore = NEG_INFINITY;
     return (List_T) NULL;
   }
 
@@ -4621,7 +4622,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
   *knownsplicep = false;
 
 
-  if (threshold_miss_score > 0) {
+  if (threshold_miss_score > 0 && length2 > 0) {
     /* Try known splicing */
     splicejunction = (char *) CALLOC(length2+1,sizeof(char));
 
@@ -4666,7 +4667,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 	obsmax_penalty = 0;
 	if (trieoffsets_obs != NULL) {
 	  debug7(printf("  Running Splicetrie_solve_end5 on observed splice sites\n"));
-	  best_pairs = Splicetrie_solve_end5(best_pairs,/*triestart*/&(triecontents_obs[trieoffsets_obs[j]]),
+	  best_pairs = Splicetrie_solve_end5(best_pairs,triecontents_obs,trieoffsets_obs,j,
 					     knownsplice_limit_low,knownsplice_limit_high,
 					     &(*finalscore),&(*nmatches),&(*nmismatches),
 					     &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
@@ -4686,7 +4687,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 
 	if (threshold_miss_score - obsmax_penalty > 0 && trieoffsets_max != NULL) {
 	  debug7(printf("  Running Splicetrie_solve_end5 on maxdistance splice sites\n"));
-	  best_pairs = Splicetrie_solve_end5(best_pairs,/*triestart*/&(triecontents_max[trieoffsets_max[j]]),
+	  best_pairs = Splicetrie_solve_end5(best_pairs,triecontents_max,trieoffsets_max,j,
 					     knownsplice_limit_low,knownsplice_limit_high,
 					     &(*finalscore),&(*nmatches),&(*nmismatches),
 					     &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
@@ -4831,7 +4832,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
   *knownsplicep = false;
 
 
-  if (threshold_miss_score > 0) {
+  if (threshold_miss_score > 0 && length2 > 0) {
     /* Try known splicing */
     splicejunction = (char *) CALLOC(length2+1,sizeof(char));
 
@@ -4876,7 +4877,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 	obsmax_penalty = 0;
 	if (trieoffsets_obs != NULL) {
 	  debug7(printf("  Running Splicetrie_solve_end3 on observed splice sites\n"));
-	  best_pairs = Splicetrie_solve_end3(best_pairs,/*triestart*/&(triecontents_obs[trieoffsets_obs[j]]),
+	  best_pairs = Splicetrie_solve_end3(best_pairs,triecontents_obs,trieoffsets_obs,j,
 					     knownsplice_limit_low,knownsplice_limit_high,
 					     &(*finalscore),&(*nmatches),&(*nmismatches),
 					     &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
@@ -4896,7 +4897,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 
 	if (threshold_miss_score - obsmax_penalty > 0 && trieoffsets_max != NULL) {
 	  debug7(printf("  Running Splicetrie_solve_end3 on maxdistance splice sites\n"));
-	  best_pairs = Splicetrie_solve_end3(best_pairs,/*triestart*/&(triecontents_max[trieoffsets_max[j]]),
+	  best_pairs = Splicetrie_solve_end3(best_pairs,triecontents_max,trieoffsets_max,j,
 					     knownsplice_limit_low,knownsplice_limit_high,
 					     &(*finalscore),&(*nmatches),&(*nmismatches),
 					     &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 43665 2011-07-26 20:48:15Z twu $";
+static char rcsid[] = "$Id: get-genome.c 59397 2012-03-09 19:16:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -52,7 +52,6 @@ static bool coordp = false;
 static char *genomesubdir = NULL;
 static char *dbroot = NULL;
 static char *dbversion = NULL;
-static char altstrainp = false;
 static char *user_typestring = NULL;
 static int wraplength = 60;
 static char *header = NULL;
@@ -61,9 +60,9 @@ static bool rawp = false;
 
 static char *user_mapdir = NULL;
 static char *map_iitfile = NULL;
-static bool map_relativep = false;
 static int nflanking = 0;
 static bool exonsp = false;
+static bool sequencep = false;
 
 static bool sortp = false;
 
@@ -80,8 +79,6 @@ static struct option long_options[] = {
   {"db", required_argument, 0, 'd'}, /* dbroot */
 
   /* Output options */
-  {"altstrain", no_argument, 0, 'S'}, /* altstrainp */
-  {"strain", required_argument, 0, 's'}, /* user_typestring */
   {"coords", no_argument, 0, 'C'}, /* coordp */
   {"uppercase", no_argument, 0, 'U'}, /* uppercasep */
   {"wraplength", required_argument, 0, 'l'}, /* wraplength */
@@ -94,11 +91,11 @@ static struct option long_options[] = {
   /* External map options */
   {"mapdir", required_argument, 0, 'M'}, /* user_mapdir */
   {"map", required_argument, 0, 'm'},	/* map_iitfile */
-  {"relative", no_argument, 0, 'R'}, /* map_relativep */
   {"ranks", no_argument, 0, 'k'}, /* levelsp */
   {"raw", no_argument, 0, 'r'}, /* rawp */
   {"flanking", required_argument, 0, 'u'}, /* nflanking */
   {"exons", no_argument, 0, 'E'},	   /* exonsp */
+  {"sequence", no_argument, 0, 'S'},	   /* sequencep */
 
   /* Dump options */
   {"dump", no_argument, 0, 'A'},	/* dumpallp */
@@ -142,8 +139,6 @@ Input options\n\
 \n\
 Output options\n\
   -2, --dibase            Use dibase version of genome\n\
-  -S, --altstrain         Show sequence for all strains (in addition to reference)\n\
-  -s, --strain=STRING     Show sequence for a particular strain\n\
   -C, --coords            Show coordinates only\n\
   -U, --uppercase         Convert sequence to uppercase\n\
   -l, --wraplength=INT    Wrap length for sequence (default=60)\n\
@@ -159,7 +154,8 @@ External map file options\n\
   -M, --mapdir=directory  Map directory\n\
   -m, --map=iitfile       Map file.  If argument is '?' (with the quotes),\n\
                             this lists available map files.\n\
-  -R, --relative          Provide coordinates relative to query\n\
+  -S, --sequence          For a gene map file, prints the sequence\n\
+  -E, --exons             For a gene map file, prints the sequence, one exon per line\n\
   -k, --ranks             Prints levels for non-overlapping printing of map hits\n\
   -r, --raw               Prints sequence as ASCII numeric codes\n\
   -u, --flanking=INT      Show flanking hits (default 0)\n\
@@ -962,7 +958,7 @@ make_complement_buffered (char *complement, char *sequence, Genomicpos_T length)
 static void
 make_complement_inplace (char *sequence, Genomicpos_T length) {
   char temp;
-  int i, j;
+  Genomicpos_T i, j;
 
   for (i = 0, j = length-1; i < length/2; i++, j--) {
     temp = complCode[(int) sequence[i]];
@@ -979,9 +975,9 @@ make_complement_inplace (char *sequence, Genomicpos_T length) {
 
 
 static void
-print_exons (char *annot, Genomicpos_T chroffset, Genome_T genome) {
+genemap_print_exons (char *annot, Genomicpos_T chroffset, Genome_T genome) {
   char *p;
-  char *gbuffer, *gbuffer_fwd;
+  char *gbuffer;
   Genomicpos_T exonstart, exonend, exonlow, exonhigh, exonlength;
 
   /* Skip header */
@@ -998,25 +994,85 @@ print_exons (char *annot, Genomicpos_T chroffset, Genome_T genome) {
       fprintf(stderr,"Can't parse exon coordinates in %s\n",p);
       abort();
     } else {
-      gbuffer = (char *) CALLOC(exonlength+1,sizeof(char));
       if (exonstart <= exonend) {
 	exonlow = exonstart;
 	exonhigh = exonend;
 	exonlength = exonhigh - exonlow + 1;
+	gbuffer = (char *) CALLOC(exonlength+1,sizeof(char));
 	Genome_fill_buffer_simple(genome,/*left*/chroffset-1U+exonlow,exonlength,gbuffer);
       } else {
 	exonlow = exonend;
 	exonhigh = exonstart;
 	exonlength = exonhigh - exonlow + 1;
+	gbuffer = (char *) CALLOC(exonlength+1,sizeof(char));
 	Genome_fill_buffer_simple(genome,/*left*/chroffset-1U+exonlow,exonlength,gbuffer);
 	make_complement_inplace(gbuffer,exonlength);
       }
-      printf("%u %u %s\n",exonstart,exonend,gbuffer);
+      printf("%s\n",gbuffer);
       FREE(gbuffer);
     }
 
     while (*p != '\0' && *p != '\n') p++;
     if (*p == '\n') p++;
+  }
+
+  return;
+}
+
+
+static void
+genemap_print_sequence (char *annot, Genomicpos_T chroffset, Genome_T genome) {
+  char *p;
+  char *gbuffer;
+  Genomicpos_T exonstart, exonend, exonlow, exonhigh, exonlength;
+  int col, i;
+
+  /* Skip header */
+  p = annot;
+  while (*p != '\0' && *p != '\n') {
+    putchar(*p);
+    p++;
+  }
+  if (*p == '\n') p++;
+  printf("\n");
+
+  col = 0;
+  while (*p != '\0') {
+    if (sscanf(p,"%u %u",&exonstart,&exonend) != 2) {
+      fprintf(stderr,"Can't parse exon coordinates in %s\n",p);
+      abort();
+    } else {
+      if (exonstart <= exonend) {
+	exonlow = exonstart;
+	exonhigh = exonend;
+	exonlength = exonhigh - exonlow + 1;
+	gbuffer = (char *) CALLOC(exonlength+1,sizeof(char));
+	Genome_fill_buffer_simple(genome,/*left*/chroffset-1U+exonlow,exonlength,gbuffer);
+      } else {
+	exonlow = exonend;
+	exonhigh = exonstart;
+	exonlength = exonhigh - exonlow + 1;
+	gbuffer = (char *) CALLOC(exonlength+1,sizeof(char));
+	Genome_fill_buffer_simple(genome,/*left*/chroffset-1U+exonlow,exonlength,gbuffer);
+	make_complement_inplace(gbuffer,exonlength);
+      }
+      
+      for (i = 0; i < (int) exonlength; i++) {
+	putchar(gbuffer[i]);
+	if (++col >= wraplength) {
+	  printf("\n");
+	  col = 0;
+	}
+      }
+      FREE(gbuffer);
+    }
+
+    while (*p != '\0' && *p != '\n') p++;
+    if (*p == '\n') p++;
+  }
+
+  if (col > 0) {
+    printf("\n");
   }
 
   return;
@@ -1033,64 +1089,93 @@ print_interval (char *divstring, int index, IIT_T iit, int ndivs, IIT_T chromoso
   int divno;
   Genomicpos_T chroffset;
 
-  if (annotationonlyp == false) {
+  if (exonsp == true || sequencep == true) {
     label = IIT_label(iit,index,&allocp);
     printf(">%s ",label);
     if (allocp == true) {
       FREE(label);
     }
-      
+
+    annotation = IIT_annotation(&restofheader,iit,index,&allocp);
+    printf("%s",restofheader);
+    if (IIT_version(iit) < 5) {
+      printf("\n");
+    }
+
     if (ndivs > 1) {
       if (divstring == NULL) {
 	/* For example, if interval was retrieved by label */
 	divstring = IIT_divstring_from_index(iit,index);
       }
-      printf("%s:",divstring);
     }
 
-    interval = IIT_interval(iit,index);
-    if (signedp == false) {
-      printf("%u..%u",Interval_low(interval),Interval_high(interval));
-    } else if (Interval_sign(interval) < 0) {
-      printf("%u..%u",Interval_high(interval),Interval_low(interval));
+    if ((divno = IIT_find_one(chromosome_iit,divstring)) < 0) {
+      fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",divstring);
+      /* exit(9); */
     } else {
-      printf("%u..%u",Interval_low(interval),Interval_high(interval));
-    }
-    if (Interval_type(interval) > 0) {
-      printf(" %s",IIT_typestring(iit,Interval_type(interval)));
-    }
-#if 0
-    /* Unnecessary because of "\n" after restofheader below */
-    if (IIT_version(iit) < 5) {
-      printf("\n");
-    }
-#endif
-
-  }
-
-  if (fieldint < 0) {
-    annotation = IIT_annotation(&restofheader,iit,index,&allocp);
-    printf("%s\n",restofheader);
-    if (exonsp == false) {
-      printf("%s",annotation);
-    } else {
-      if ((divno = IIT_find_one(chromosome_iit,divstring)) < 0) {
-	fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",divstring);
-	/* exit(9); */
-      } else {
-	interval = IIT_interval(chromosome_iit,divno);
-	chroffset = Interval_low(interval);
-	print_exons(annotation,chroffset,genome);
+      interval = IIT_interval(chromosome_iit,divno);
+      chroffset = Interval_low(interval);
+      if (exonsp == true) {
+	genemap_print_exons(annotation,chroffset,genome);
+      } else if (sequencep == true) {
+	genemap_print_sequence(annotation,chroffset,genome);
       }
     }
     if (allocp == true) {
       FREE(restofheader);
     }
+
   } else {
-    annotation = IIT_fieldvalue(iit,index,fieldint);
-    printf("%s",annotation);
-    FREE(annotation);
+    if (annotationonlyp == false) {
+      label = IIT_label(iit,index,&allocp);
+      printf(">%s ",label);
+      if (allocp == true) {
+	FREE(label);
+      }
+      
+      if (ndivs > 1) {
+	if (divstring == NULL) {
+	  /* For example, if interval was retrieved by label */
+	  divstring = IIT_divstring_from_index(iit,index);
+	}
+	printf("%s:",divstring);
+      }
+
+      interval = IIT_interval(iit,index);
+      if (signedp == false) {
+	printf("%u..%u",Interval_low(interval),Interval_high(interval));
+      } else if (Interval_sign(interval) < 0) {
+	printf("%u..%u",Interval_high(interval),Interval_low(interval));
+      } else {
+	printf("%u..%u",Interval_low(interval),Interval_high(interval));
+      }
+      if (Interval_type(interval) > 0) {
+	printf(" %s",IIT_typestring(iit,Interval_type(interval)));
+      }
+#if 0
+      /* Unnecessary because of "\n" after restofheader below */
+      if (IIT_version(iit) < 5) {
+	printf("\n");
+      }
+#endif
+
+    }
+
+    if (fieldint < 0) {
+      annotation = IIT_annotation(&restofheader,iit,index,&allocp);
+      printf("%s\n",restofheader);
+      printf("%s",annotation);
+      if (allocp == true) {
+	FREE(restofheader);
+      }
+
+    } else {
+      annotation = IIT_fieldvalue(iit,index,fieldint);
+      printf("%s",annotation);
+      FREE(annotation);
+    }
   }
+
   return;
 }
 
@@ -1125,7 +1210,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"D:d:Ss:CUl:Gh:V:v:f:M:m:kru:ERALIc^?",
+  while ((opt = getopt_long(argc,argv,"D:d:CUl:Gh:V:v:f:M:m:kru:ESALIc^?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'D': user_genomedir = optarg; break;
@@ -1134,8 +1219,6 @@ main (int argc, char *argv[]) {
       strcpy(dbroot,optarg);
       break;
 
-    case 'S': altstrainp = true; break;
-    case 's': user_typestring = optarg; break;
     case 'C': coordp = true; break;
     case 'U': uppercasep = true; break;
     case 'l': wraplength = atoi(optarg); break;
@@ -1147,11 +1230,11 @@ main (int argc, char *argv[]) {
 
     case 'M': user_mapdir = optarg; break;
     case 'm': map_iitfile = optarg; break;
-    case 'R': map_relativep = true; break;
     case 'k': levelsp = true; break;
     case 'r': uncompressedp = true; rawp = true; break;
     case 'u': nflanking = atoi(optarg); break;
     case 'E': exonsp = true; break;
+    case 'S': sequencep = true; break;
 
     case 'A': dumpallp = true; break;
     case 'L': dumpchrp = true; break;
@@ -1367,7 +1450,7 @@ main (int argc, char *argv[]) {
 	exit(9);
       }
 
-      if (exonsp == true) {
+      if (exonsp == true || sequencep == true) {
 	if (snps_root == NULL || print_snps_mode == 0) {
 	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
 			      /*access*/USE_MMAP_ONLY);
@@ -1449,6 +1532,7 @@ main (int argc, char *argv[]) {
 	for (i = 0; i < nmatches; i++) {
 	  print_interval(/*divstring*/NULL,matches[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	}
+	FREE(matches);
 
 	if (nflanking > 0) {
 	  printf("====================\n");
@@ -1457,6 +1541,7 @@ main (int argc, char *argv[]) {
 	  }
 	  FREE(rightflanks);
 	}
+
 
       }
       FREE(iitfile);

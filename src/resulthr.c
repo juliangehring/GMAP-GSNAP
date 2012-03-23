@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c 51812 2011-11-06 18:17:08Z twu $";
+static char rcsid[] = "$Id: resulthr.c 56887 2012-02-01 21:28:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -95,6 +95,7 @@ Result_worker_runtime (T this) {
 T
 Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
+  Stage3end_T stage3end;
 
   if (npaths == 0) {
     new->resulttype = SINGLEEND_NOMAPPING;
@@ -106,10 +107,15 @@ Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq
       abort();
     }
   } else {
-    if (npaths == 1) {
-      new->resulttype = SINGLEEND_UNIQ;
-    } else {
+    if (npaths > 1) {
       new->resulttype = SINGLEEND_MULT;
+    } else {
+      stage3end = ((Stage3end_T *) resultarray)[0];
+      if (Stage3end_anomalous_splice_p(stage3end) == true) {
+	new->resulttype = SINGLEEND_TRANSLOC;
+      } else {
+	new->resulttype = SINGLEEND_UNIQ;
+      }
     }
   }
 
@@ -125,6 +131,7 @@ Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq
 T
 Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq, Pairtype_T final_pairtype, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
+  Stage3pair_T stage3pair;
 
   if (npaths == 0) {
     abort();
@@ -145,10 +152,15 @@ Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq
     }
 
   } else if (final_pairtype == CONCORDANT) {
-    if (npaths == 1) {
-      new->resulttype = CONCORDANT_UNIQ;
-    } else {
+    if (npaths > 1) {
       new->resulttype = CONCORDANT_MULT;
+    } else {
+      stage3pair = ((Stage3pair_T *) resultarray)[0];
+      if (Stage3pair_anomalous_splice_p(stage3pair) == true) {
+	new->resulttype = CONCORDANT_TRANSLOC;
+      } else {
+	new->resulttype = CONCORDANT_UNIQ;
+      }
     }
   }
 
@@ -165,18 +177,25 @@ T
 Result_paired_as_singles_new (int id, void **hits5, int npaths5, int second_absmq5,
 			      void **hits3, int npaths3, int second_absmq3, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
+  Stage3end_T stage3end_5, stage3end_3;
 
   debug(printf("npaths5 = %d, npaths3 = %d\n",npaths5,npaths3));
   if (npaths5 == 0 && npaths3 == 0) {
     new->resulttype = PAIREDEND_NOMAPPING;
   } else if (npaths5 == 0 && npaths3 == 1) {
-    if (Stage3end_chrnum((Stage3end_T) hits3[0]) == 0) {
+    stage3end_3 = (Stage3end_T) hits3[0];
+    if (Stage3end_chrnum(stage3end_3) == 0) {
+      new->resulttype = HALFMAPPING_TRANSLOC;
+    } else if (Stage3end_anomalous_splice_p(stage3end_3) == true) {
       new->resulttype = HALFMAPPING_TRANSLOC;
     } else {
       new->resulttype = HALFMAPPING_UNIQ;
     }
   } else if (npaths5 == 1 && npaths3 == 0) {
-    if (Stage3end_chrnum((Stage3end_T) hits5[0]) == 0) {
+    stage3end_5 = (Stage3end_T) hits5[0];
+    if (Stage3end_chrnum(stage3end_5) == 0) {
+      new->resulttype = HALFMAPPING_TRANSLOC;
+    } else if (Stage3end_anomalous_splice_p(stage3end_5) == true) {
       new->resulttype = HALFMAPPING_TRANSLOC;
     } else {
       new->resulttype = HALFMAPPING_UNIQ;
@@ -184,8 +203,13 @@ Result_paired_as_singles_new (int id, void **hits5, int npaths5, int second_absm
   } else if (npaths5 == 0 || npaths3 == 0) {
     new->resulttype = HALFMAPPING_MULT;
   } else if (npaths5 == 1 && npaths3 == 1) {
-    if (Stage3end_chrnum((Stage3end_T) hits5[0]) == 0 ||
-	Stage3end_chrnum((Stage3end_T) hits3[0]) == 0) {
+    stage3end_5 = (Stage3end_T) hits5[0];
+    stage3end_3 = (Stage3end_T) hits3[0];
+    if (Stage3end_chrnum(stage3end_5) == 0 ||
+	Stage3end_chrnum(stage3end_3) == 0) {
+      new->resulttype = UNPAIRED_TRANSLOC;
+    } else if (Stage3end_anomalous_splice_p(stage3end_5) == true ||
+	       Stage3end_anomalous_splice_p(stage3end_3) == true) {
       new->resulttype = UNPAIRED_TRANSLOC;
     } else {
       new->resulttype = UNPAIRED_UNIQ;

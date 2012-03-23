@@ -1,4 +1,4 @@
-/* $Id: pair.h 55706 2012-01-11 19:31:49Z twu $ */
+/* $Id: pair.h 59932 2012-03-19 22:17:46Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -42,6 +42,9 @@ Pair_set_shortexonp (T this);
 extern void
 Pair_set_genomepos (struct Pair_T *pairarray, int npairs, Genomicpos_T chrpos,
 		    Genomicpos_T genomiclength, bool watsonp);
+extern void
+Pair_set_genomepos_list (List_T pairs, Genomicpos_T chrpos,
+			 Genomicpos_T genomiclength, bool watsonp);
 extern List_T
 Pair_protect (List_T pairs);
 
@@ -251,7 +254,7 @@ extern Genomicpos_T
 Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap);
 
 extern List_T
-Pair_trim_ends (List_T pairs);
+Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs);
 
 #ifdef GSNAP
 extern double

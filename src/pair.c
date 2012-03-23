@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 55706 2012-01-11 19:31:49Z twu $";
+static char rcsid[] = "$Id: pair.c 59932 2012-03-19 22:17:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -183,6 +183,28 @@ Pair_set_genomepos (struct Pair_T *pairarray, int npairs, Genomicpos_T chrpos,
       pairarray[i].genomepos = chrpos + (genomiclength - 1) - pairarray[i].genomepos;
     }
   }
+  return;
+}
+
+
+void
+Pair_set_genomepos_list (List_T pairs, Genomicpos_T chrpos,
+			 Genomicpos_T genomiclength, bool watsonp) {
+  List_T p;
+  T pair;
+
+  if (watsonp == true) {
+    for (p = pairs; p != NULL; p = p->rest) {
+      pair = (T) p->first;
+      pair->genomepos = chrpos + pair->genomepos;
+    }
+  } else {
+    for (p = pairs; p != NULL; p = p->rest) {
+      pair = (T) p->first;
+      pair->genomepos = chrpos + (genomiclength - 1) - pair->genomepos;
+    }
+  }
+
   return;
 }
 
@@ -5188,9 +5210,11 @@ Pair_nmatches (List_T pairs) {
   for (p = pairs; p != NULL; p = p->rest) {
     this = p->first;
     if (this->gapp) {
+#if 0
       if (this->donor_prob < 0.90 && this->acceptor_prob < 0.90) {
 	nmatches -= 2;
       }
+#endif
       if (!in_intron) {
 	in_intron = true;
       }
@@ -5215,9 +5239,11 @@ Pair_nmatches (List_T pairs) {
     }
   }
 
+#if 0
   if (indelp == true) {
     nmatches -= 2;
   }
+#endif
 
   return nmatches;
 }
@@ -6707,7 +6733,7 @@ Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap) {
 
 
 List_T
-Pair_trim_ends (List_T pairs) {
+Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
   List_T trimmed = NULL;
   int trim_right = 0, trim_left = -1; /* Needs to be -1 to avoid trimming when pairs is NULL */
   int bestscore, score;
@@ -6841,6 +6867,12 @@ Pair_trim_ends (List_T pairs) {
 
 
   /* trim */
+  if (trim_right == 0) {
+    *trim3p = false;
+  } else {
+    *trim3p = true;
+  }
+
   i = 0;
   while (i < trim_right) {
     pairs = Pairpool_pop(pairs,&this);
@@ -6856,6 +6888,12 @@ Pair_trim_ends (List_T pairs) {
     trimmed = List_push_existing(trimmed,pairptr);
 #endif
     i++;
+  }
+
+  if (pairs == NULL) {
+    *trim5p = false;
+  } else {
+    *trim5p = true;
   }
 
   debug8(Pair_dump_list(trimmed,/*zerobasedp*/true));

@@ -1,4 +1,4 @@
-/* $Id: genome_hr.h 49447 2011-10-09 17:38:10Z twu $ */
+/* $Id: genome_hr.h 55893 2012-01-13 23:06:50Z twu $ */
 #ifndef GENOME_HR_INCLUDED
 #define GENOME_HR_INCLUDED
 #include "types.h"
@@ -7,7 +7,6 @@
 #include "chrnum.h"
 #include "compress.h"
 #include "chrnum.h"
-#include "indexdbdef.h"		/* For Storedoligomer_T */
 
 extern void
 Genome_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in,

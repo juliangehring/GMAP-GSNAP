@@ -1,3 +1,9 @@
+2012-03-23  twu
+
+    * VERSION, index.html: Updated version
+
+    * stage1hr.c: Added multiple checks for GMAP bad stretch
+
 2012-03-22  twu
 
     * index.html: Updated for latest version

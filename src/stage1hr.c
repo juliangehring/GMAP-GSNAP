@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 60284 2012-03-22 21:59:27Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 60385 2012-03-23 20:18:16Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11581,6 +11581,10 @@ align_singleend_with_gmap (List_T result, T this, Compress_T query_compress_fwd,
 			 Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
 	  Stage3end_free(&gmap);
 
+	} else if (Stage3end_bad_stretch_p(gmap,query_compress_fwd,query_compress_rev) == true) {
+	  debug13(printf("GMAP has a bad stretch\n"));
+	  Stage3end_free(&gmap);
+
 	} else {
 	  debug13(printf("GMAP with %d matches is better than hit with %d matches\n",
 			 Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
@@ -12098,6 +12102,10 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
 			   Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
 	    Stage3end_free(&gmap);
 
+	  } else if (Stage3end_bad_stretch_p(gmap,query_compress_fwd,query_compress_rev) == true) {
+	    debug13(printf("GMAP has a bad stretch\n"));
+	    Stage3end_free(&gmap);
+
 	  } else {
 	    debug13(printf("GMAP with %d matches is better than indel with %d matches\n",
 			   Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
@@ -12196,6 +12204,10 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
 	  if (Stage3end_nmatches(gmap) <= Stage3end_nmatches(hit)) {
 	    debug13(printf("GMAP with %d matches is worse than terminal with %d matches\n",
 			   Stage3end_nmatches(gmap),Stage3end_nmatches(hit)));
+	    Stage3end_free(&gmap);
+
+	  } else if (Stage3end_bad_stretch_p(gmap,query_compress_fwd,query_compress_rev) == true) {
+	    debug13(printf("GMAP has a bad stretch\n"));
 	    Stage3end_free(&gmap);
 
 	  } else {
@@ -13213,6 +13225,10 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
 			 Stage3end_nmatches(gmap5),Stage3end_nmatches(hit5)));
 	  Stage3end_free(&gmap5);
 
+	} else if (Stage3end_bad_stretch_p(gmap5,query5_compress_fwd,query5_compress_rev) == true) {
+	  debug13(printf("GMAP has a bad stretch\n"));
+	  Stage3end_free(&gmap5);
+
 	} else {
 	  debug13(printf("GMAP with %d matches is better than 5' hit with %d matches\n",
 			 Stage3end_nmatches(gmap5),Stage3end_nmatches(hit5)));
@@ -13257,6 +13273,10 @@ align_concordant_with_gmap (List_T result, Compress_T query5_compress_fwd, Compr
 	if (Stage3end_nmatches(gmap3) <= Stage3end_nmatches(hit3)) {
 	  debug13(printf("GMAP with %d matches is worse than 3' hit with %d matches\n",
 			 Stage3end_nmatches(gmap3),Stage3end_nmatches(hit3)));
+	  Stage3end_free(&gmap3);
+
+	} else if (Stage3end_bad_stretch_p(gmap3,query3_compress_fwd,query3_compress_rev) == true) {
+	  debug13(printf("GMAP has a bad stretch\n"));
 	  Stage3end_free(&gmap3);
 
 	} else {
@@ -14232,16 +14252,22 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 					  query3_compress_fwd,query3_compress_rev,genestrand,
 					  /*pairtype*/CONCORDANT,localsplicing_penalty,
 					  /*private5p*/true,/*private3p*/true,/*expect_concordant_p*/true)) == NULL) {
+	      debug13(printf(  "newpair is NULL\n"));
 	      /* Stage3end_free(&gmap3); -- done by Stage3pair_new */
-	    } else if (Stage3end_score(gmap3) > *cutoff_level_3) {
+	    } else if (Stage3end_score(gmap3) <= *cutoff_level_3) {
+	      /* Save hit5-gmap3 */
+	      nconcordant += 1;
+	      debug13(printf("High quality (score %d <= cutoff level %d) => nconcordant %d, nsalvage %d\n",
+			     Stage3end_score(gmap3),*cutoff_level_3,nconcordant,nsalvage));
+	      hitpairs = List_push(hitpairs,(void *) newpair);
+	    } else if (Stage3end_bad_stretch_p(gmap3,query3_compress_fwd,query3_compress_rev) == true) {
+	      debug13(printf("bad stretch (score %d, cutoff level %d)\n",
+			     Stage3end_score(gmap3),*cutoff_level_3));
+	      Stage3end_free(&gmap3);
+	    } else {
 	      nsalvage += 1;
 	      debug13(printf("Not high quality (score %d) => nconcordant %d, nsalvage %d\n",
 			     Stage3end_score(gmap3),nconcordant,nsalvage));
-	      hitpairs = List_push(hitpairs,(void *) newpair);
-	    } else {
-	      /* Save hit5-gmap3 */
-	      nconcordant += 1;
-	      debug13(printf("High quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
 	      hitpairs = List_push(hitpairs,(void *) newpair);
 	    }
 	  }
@@ -14279,16 +14305,22 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 					  query3_compress_fwd,query3_compress_rev,genestrand,
 					  /*pairtype*/CONCORDANT,localsplicing_penalty,
 					  /*private5p*/true,/*private3p*/true,/*expect_concordant_p*/true)) == NULL) {
+	      debug13(printf(  "newpair is NULL\n"));
 	      /* Stage3end_free(&gmap5); -- done by Stage3pair_new */
-	    } else if (Stage3end_score(gmap5) > *cutoff_level_5) {
+	    } else if (Stage3end_score(gmap5) <= *cutoff_level_5) {
+	      /* Save gmap5-hit3 */
+	      nconcordant += 1;
+	      debug13(printf("High quality (score %d <= cutoff level %d) => nconcordant %d, nsalvage %d\n",
+			     Stage3end_score(gmap5),*cutoff_level_5,nconcordant,nsalvage));
+	      hitpairs = List_push(hitpairs,(void *) newpair);
+	    } else if (Stage3end_bad_stretch_p(gmap5,query5_compress_fwd,query5_compress_rev) == true) {
+	      debug13(printf("bad stretch (score %d, cutoff level %d)\n",
+			     Stage3end_score(gmap5),*cutoff_level_5));
+	      Stage3end_free(&gmap5);
+	    } else {
 	      nsalvage += 1;
 	      debug13(printf("Not high quality (score %d) => nconcordant %d, nsalvage %d\n",
 			     Stage3end_score(gmap5),nconcordant,nsalvage));
-	      hitpairs = List_push(hitpairs,(void *) newpair);
-	    } else {
-	      /* Save gmap5-hit3 */
-	      nconcordant += 1;
-	      debug13(printf("High quality => nconcordant %d, nsalvage %d\n",nconcordant,nsalvage));
 	      hitpairs = List_push(hitpairs,(void *) newpair);
 	    }
 	  }

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 59558 2012-03-12 23:11:37Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 62364 2012-04-23 22:13:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -345,7 +345,7 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 			       queryaaseq,
 #endif
 			       cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-			       /*to_queryend_p*/true);
+			       /*endalign*/QUERYEND_NOGAPS);
       miss_score = perfect_score - score;
       debug7(printf("perfect score %d - score %d = miss %d.  ",perfect_score,score,miss_score));
       if (miss_score < *threshold_miss_score - obsmax_penalty) {
@@ -419,7 +419,7 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				 queryaaseq,
 #endif
 				 cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-				 /*to_queryend_p*/true);
+				 /*endalign*/QUERYEND_NOGAPS);
 	miss_score = perfect_score - score;
 	debug7(printf("perfect score %d - score %d = miss %d.  ",perfect_score,score,miss_score));
 	if (miss_score < *threshold_miss_score - obsmax_penalty) {
@@ -589,7 +589,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 			       queryaaseq,
 #endif
 			       cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-			       /*to_queryend_p*/true);
+			       /*endalign*/QUERYEND_NOGAPS);
       miss_score = perfect_score - score;
       debug7(printf("perfect score %d - score %d = miss %d.  ",perfect_score,score,miss_score));
       if (miss_score < *threshold_miss_score - obsmax_penalty) {
@@ -663,7 +663,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				 queryaaseq,
 #endif
 				 cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-				 /*to_queryend_p*/true);
+				 /*endalign*/QUERYEND_NOGAPS);
 	miss_score = perfect_score - score;
 	debug7(printf("perfect score %d - score %d = miss %d.  ",perfect_score,score,miss_score));
 	if (miss_score < *threshold_miss_score - obsmax_penalty) {
@@ -1816,9 +1816,9 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
 
 #define OBSMAX_PENALTY 1
 
-/* Allowing 2 mismatches in the internal (exon) region of 6 */
+/* Allowing 1 mismatches in the internal (exon) region of 6 */
 #define SPLICE_REGION 6
-#define SPLICE_REGION_MISMATCHES 2
+#define SPLICE_REGION_MISMATCHES 1 /* was 2 */
 
 Intlist_T
 Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
@@ -1833,8 +1833,11 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
   unsigned int *triebranch_obs = NULL, *triebranch_max = NULL;
 #endif
   unsigned int *triestart_obs, *triestart_max;
-  int best_nmismatches_obs, best_nmismatches_max, nmismatches_int, nmismatches_ext, nmismatches;
+  int best_nmismatches_obs, best_nmismatches_max, nmismatches_int, nmismatches;
   int obsmax_penalty;
+#ifdef LOOSE_ALLOWANCE
+  int nmismatches_ext;
+#endif
 
   int *array_i, *array_mm, lastvalue;
   int n, k;
@@ -1875,6 +1878,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
   }
 
 
+#ifdef LOOSE_ALLOWANCE
   nmismatches_ext = 
     Genome_count_mismatches_substring(query_compress,origleft,pos5,pos3,plusp,genestrand);
   debug2(printf("  extension at %u => %d nmismatches\n",origleft,nmismatches_ext));
@@ -1882,6 +1886,11 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
   if (max_mismatches_allowed > nmismatches_ext) {
     max_mismatches_allowed = nmismatches_ext;
   }
+#else
+  /* Want strict allowance to avoid reliance on bad gene models */
+  max_mismatches_allowed = 1;
+#endif
+
 
 #if 0
   if (triecontents_max == NULL) {
@@ -2020,8 +2029,11 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
   unsigned int *triebranch_obs = NULL, *triebranch_max = NULL;
 #endif
   unsigned int *triestart_obs, *triestart_max;
-  int best_nmismatches_obs, best_nmismatches_max, nmismatches_int, nmismatches_ext, nmismatches;
+  int best_nmismatches_obs, best_nmismatches_max, nmismatches_int, nmismatches;
   int obsmax_penalty;
+#ifdef LOOSE_ALLOWANCE
+  int nmismatches_ext;
+#endif
 
   int *array_i, *array_mm, lastvalue;
   int n, k;
@@ -2063,6 +2075,7 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
   }
 
 
+#ifdef LOOSE_ALLOWANCE
   nmismatches_ext = 
     Genome_count_mismatches_substring(query_compress,origleft,pos5,pos3,plusp,genestrand);
   debug2(printf("  extension at %u => %d nmismatches\n",origleft,nmismatches_ext));
@@ -2070,6 +2083,10 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
   if (max_mismatches_allowed > nmismatches_ext) {
     max_mismatches_allowed = nmismatches_ext;
   }
+#else
+  /* Want strict allowance to avoid reliance on bad gene models */
+  max_mismatches_allowed = 1;
+#endif
 
 
 #if 0

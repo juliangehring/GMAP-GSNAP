@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 59397 2012-03-09 19:16:57Z twu $";
+static char rcsid[] = "$Id: get-genome.c 61876 2012-04-16 20:33:43Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -70,6 +70,7 @@ static bool sortp = false;
 /* Dump options */
 static bool dumpallp = false;
 static bool dumpchrp = false;
+static bool dumpchr_forsam_p = false;
 static bool dumpsegsp = false;
 static bool dumpchrsubsetsp = false;
 
@@ -100,6 +101,7 @@ static struct option long_options[] = {
   /* Dump options */
   {"dump", no_argument, 0, 'A'},	/* dumpallp */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
+  {"forsam", no_argument, 0, 0},	/* dumpchr_forsam_p */
   {"contigs", no_argument, 0, 'I'}, /* dumpsegsp */
   {"chrsubsets", no_argument, 0, 'c'}, /* dumpchrsubsetsp */
   
@@ -164,6 +166,7 @@ External map file options\n\
 Dump options\n\
   -A, --dump              Dump entire genome in FASTA format\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
+  --forsam                List all chromosomes for use in a SAM file\n\
   -I, --contigs           List all contigs with universal coordinates\n\
 \n\
 Help options\n\
@@ -1209,10 +1212,31 @@ main (int argc, char *argv[]) {
   extern int optind;
   extern char *optarg;
   int long_option_index = 0;
+  const char *long_name;
 
   while ((opt = getopt_long(argc,argv,"D:d:CUl:Gh:V:v:f:M:m:kru:ESALIc^?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
+    case 0:
+      long_name = long_options[long_option_index].name;
+      if (!strcmp(long_name,"version")) {
+	print_program_version();
+	exit(0);
+      } else if (!strcmp(long_name,"help")) {
+	print_program_usage();
+	exit(0);
+
+      } else if (!strcmp(long_name,"forsam")) {
+	dumpchrp = true;
+	dumpchr_forsam_p = true;
+
+      } else {
+	/* Shouldn't reach here */
+	fprintf(stderr,"Don't recognize option %s.  For usage, run 'get-genome --help'",long_name);
+	exit(9);
+      }
+      break;
+
     case 'D': user_genomedir = optarg; break;
     case 'd': 
       dbroot = (char *) CALLOC(strlen(optarg)+1,sizeof(char));
@@ -1237,7 +1261,7 @@ main (int argc, char *argv[]) {
     case 'S': sequencep = true; break;
 
     case 'A': dumpallp = true; break;
-    case 'L': dumpchrp = true; break;
+    case 'L': dumpchrp = true; dumpchr_forsam_p = false; break;
     case 'I': dumpsegsp = true; break;
     case 'c': dumpchrsubsetsp = true; break;
 
@@ -1318,7 +1342,12 @@ main (int argc, char *argv[]) {
 			      /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
     FREE(iitfile);
 
-    IIT_dump_simple(chromosome_iit);
+    if (dumpchr_forsam_p == true) {
+      IIT_dump_sam(/*fp*/stdout,chromosome_iit,/*sam_read_group_id*/NULL,/*sam_read_group_name*/NULL,
+		   /*sam_read_group_library*/NULL,/*sam_read_group_platform*/NULL);
+    } else {
+      IIT_dump_simple(chromosome_iit);
+    }
     IIT_free(&chromosome_iit);
     return 0;
 

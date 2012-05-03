@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 60021 2012-03-20 22:07:00Z twu $";
+static char rcsid[] = "$Id: stage3.c 62920 2012-04-28 02:03:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -90,6 +90,10 @@ static char rcsid[] = "$Id: stage3.c 60021 2012-03-20 22:07:00Z twu $";
 #define SCORE_SIGDIFF 20
 #endif
 
+#define END_SPLICESITE_SEARCH 4
+#define END_SPLICESITE_PROB 0.95
+#define END_SPLICESITE_EXON_LENGTH 100  /* If shorter than this, then don't look for end splice site */
+
 
 /* For Stage3_bad_stretch_p */
 #define LOG_99 -0.01005033585
@@ -178,13 +182,6 @@ static const Except_T coordinate_error = {"Coordinate error"};
 #define debug5(x)
 #endif
 
-/* Show result of alignment before trimming of bad exons. */
-#ifdef DEBUG6
-#define debug6(x) x
-#else 
-#define debug6(x)
-#endif
-
 /* assign_gap_types and fill_in_gaps */
 #ifdef DEBUG7
 #define debug7(x) x
@@ -199,7 +196,7 @@ static const Except_T coordinate_error = {"Coordinate error"};
 #define debug8(x)
 #endif
 
-/* cdna_direction */
+/* bad_stretch_p */
 #ifdef DEBUG9
 #define debug9(x) x
 #else 
@@ -225,6 +222,13 @@ static const Except_T coordinate_error = {"Coordinate error"};
 #define debug12(x) x
 #else 
 #define debug12(x)
+#endif
+
+/* trimming at novel splice sites at ends */
+#ifdef DEBUG13
+#define debug13(x) x
+#else 
+#define debug13(x)
 #endif
 
 
@@ -320,6 +324,7 @@ struct T {
   Genomicpos_T genomicstart;	/* Start of alignment */
   Genomicpos_T genomicend;	/* End of alignment */
   int cdna_direction;
+  int sensedir;
   bool watsonp;
   double defect_rate;
   double trimmed_coverage;
@@ -1337,34 +1342,36 @@ add_dualbreak (List_T pairs, char *queryseq_ptr,
   rightquerypos = rightpair->querypos;
   rightgenomepos = rightpair->genomepos;
 
-  if (genomicuc_ptr != NULL) {
-    left1 = get_genomic_nt(leftgenomepos+1,genomiclength,chroffset,chrpos,watsonp,
-			   genomicseg_ptr,genome,use_genomicseg_p);
-    left2 = get_genomic_nt(leftgenomepos+2,genomiclength,chroffset,chrpos,watsonp,
-			   genomicseg_ptr,genome,use_genomicseg_p);
-    right2 = get_genomic_nt(rightgenomepos-2,genomiclength,chroffset,chrpos,watsonp,
-			    genomicseg_ptr,genome,use_genomicseg_p);
-    right1 = get_genomic_nt(rightgenomepos-1,genomiclength,chroffset,chrpos,watsonp,
-			    genomicseg_ptr,genome,use_genomicseg_p);
-
-    debug7(printf("  Dinucleotides are %c%c..%c%c\n",left1,left2,right2,right1));
-    introntype = Intron_type(left1,left2,right2,right1,cdna_direction);
-    debug7(printf("  Introntype at %u..%u is %s (cdna_direction %d)\n",
-		  leftgenomepos,rightgenomepos,Intron_type_string(introntype),cdna_direction));
-    switch (introntype) {
-    case GTAG_FWD: comp = FWD_CANONICAL_INTRON_COMP; break;
-    case GCAG_FWD: comp = FWD_GCAG_INTRON_COMP; break;
-    case ATAC_FWD: comp = FWD_ATAC_INTRON_COMP; break;
-    case ATAC_REV: comp = REV_ATAC_INTRON_COMP; break;
-    case GCAG_REV: comp = REV_GCAG_INTRON_COMP; break;
-    case GTAG_REV: comp = REV_CANONICAL_INTRON_COMP; break;
-    case NONINTRON: comp = NONINTRON_COMP; break;
-    default: 
-      printf("Unexpected intron type %d\n",introntype);
-      fprintf(stderr,"Unexpected intron type %d\n",introntype);
-      exit(9);
-    }
+  /* Previously checked for genomicuc_ptr != NULL, but this does not
+     work with second round of prepare_for_printing */
+  left1 = get_genomic_nt(leftgenomepos+1,genomiclength,chroffset,chrpos,watsonp,
+			 genomicseg_ptr,genome,use_genomicseg_p);
+  left2 = get_genomic_nt(leftgenomepos+2,genomiclength,chroffset,chrpos,watsonp,
+			 genomicseg_ptr,genome,use_genomicseg_p);
+  right2 = get_genomic_nt(rightgenomepos-2,genomiclength,chroffset,chrpos,watsonp,
+			  genomicseg_ptr,genome,use_genomicseg_p);
+  right1 = get_genomic_nt(rightgenomepos-1,genomiclength,chroffset,chrpos,watsonp,
+			  genomicseg_ptr,genome,use_genomicseg_p);
+  
+  debug7(printf("  Dinucleotides are %c%c..%c%c\n",left1,left2,right2,right1));
+  introntype = Intron_type(left1,left2,right2,right1,cdna_direction);
+  debug7(printf("  Introntype at %u..%u is %s (cdna_direction %d)\n",
+		leftgenomepos,rightgenomepos,Intron_type_string(introntype),cdna_direction));
+  switch (introntype) {
+  case GTAG_FWD: comp = FWD_CANONICAL_INTRON_COMP; break;
+  case GCAG_FWD: comp = FWD_GCAG_INTRON_COMP; break;
+  case ATAC_FWD: comp = FWD_ATAC_INTRON_COMP; break;
+  case ATAC_REV: comp = REV_ATAC_INTRON_COMP; break;
+  case GCAG_REV: comp = REV_GCAG_INTRON_COMP; break;
+  case GTAG_REV: comp = REV_CANONICAL_INTRON_COMP; break;
+  case NONINTRON: comp = NONINTRON_COMP; break;
+  default: 
+    printf("Unexpected intron type %d\n",introntype);
+    fprintf(stderr,"Unexpected intron type %d\n",introntype);
+    exit(9);
   }
+  /* End of check */
+
 
   /* queryjump = rightquerypos - leftquerypos - 1; */
   /* genomejump = rightgenomepos - leftgenomepos - 1; */
@@ -2652,6 +2659,48 @@ sufficient_splice_prob_local (int support, int nmismatches, double distal_splice
 
 
 
+static int
+exon_length_5 (List_T pairs) {
+  int exon_length = 0;
+  List_T p;
+
+  p = pairs;
+  while (p != NULL && ((Pair_T) p->first)->gapp == false) {
+    exon_length++;
+    p = p->rest;
+  }
+
+  if (p == NULL) {
+    debug13(printf("no intron found, so exon_length_5 = %d\n",END_SPLICESITE_EXON_LENGTH));
+    return END_SPLICESITE_EXON_LENGTH;
+  } else {
+    debug13(printf("intron found, with exon_length_5 = %d\n",exon_length));
+    return exon_length;
+  }
+}
+
+
+static int
+exon_length_3 (List_T path) {
+  int exon_length = 0;
+  List_T p;
+
+  p = path;
+  while (p != NULL && ((Pair_T) p->first)->gapp == false) {
+    exon_length++;
+    p = p->rest;
+  }
+
+  if (p == NULL) {
+    debug13(printf("no intron found, so exon_length_3 = %d\n",END_SPLICESITE_EXON_LENGTH));
+    return END_SPLICESITE_EXON_LENGTH;
+  } else {
+    debug13(printf("intron found, with exon_length_3 = %d\n",exon_length));
+    return exon_length;
+  }
+}
+
+
 /* Also handles case where novelsplicingp == false */
 /* pairs -> path */
 static List_T
@@ -3262,7 +3311,10 @@ add_queryseq_offset (List_T path, int queryseq_offset
     pairptr = path;
     path = Pairpool_pop(path,&pair);
     /* Previously excluded cases where pair->gapp was true, but this failed on chimeric paths */
-    pair->querypos += queryseq_offset;
+    /* Now excluding again, because we are running this before chimera detection and merging */
+    if (pair->gapp == false) {
+      pair->querypos += queryseq_offset;
+    }
 #ifdef WASTE
     pairs = Pairpool_push_existing(pairs,pairpool,pair);
 #else
@@ -3281,7 +3333,9 @@ add_skiplength (List_T pairs, int skiplength) {
 
   for (p = pairs; p != NULL; p = p->rest) {
     pair = (Pair_T) p->first;
-    if (pair->querypos >= HALFLEN) {
+    if (pair->gapp == true) {
+      /* Skip */
+    } else if (pair->querypos >= HALFLEN) {
       pair->querypos += skiplength;
     }
   }
@@ -3289,29 +3343,34 @@ add_skiplength (List_T pairs, int skiplength) {
 }
 
 
+/* Does not alter pairs, except for adding subseq_offset to querypos,
+   in case we need to re-compute alignment for chimera */
 static struct Pair_T *
-prepare_for_printing (int *npairs, List_T *pairs, int cdna_direction, int sensedir, bool watsonp,
-		      Pairpool_T pairpool, char *queryseq_ptr,
+make_pairarray (int *npairs, List_T *pairs, int cdna_direction, int sensedir, bool watsonp,
+		Pairpool_T pairpool, char *queryseq_ptr,
 #ifdef PMAP
-		      char *queryaaseq_ptr,
+		char *queryaaseq_ptr,
 #endif
-		      char *genomicseg_ptr, char *genomicuc_ptr, int genomiclength,
-		      Genomicpos_T chroffset, Genomicpos_T chrpos, Genome_T genome,
-		      int ngap, int subseq_offset, int skiplength, bool diagnosticp,
-		      bool use_genomicseg_p) {
+		char *genomicseg_ptr, char *genomicuc_ptr, int genomiclength,
+		Genomicpos_T chroffset, Genomicpos_T chrpos, Genome_T genome,
+		int ngap, int subseq_offset, int skiplength, bool diagnosticp,
+		bool use_genomicseg_p) {
   struct Pair_T *pairarray;
-  List_T path, p;
+  List_T printpairs, printpath, path, p;
   Pair_T oldpair, newpair;
 
-  path = List_reverse(*pairs);
+  
+  printpairs = Pairpool_copy(*pairs,pairpool);
+
+  printpath = List_reverse(printpairs);
 #ifdef PMAP
-  *pairs = fill_in_gaps(path,pairpool,queryseq_ptr,queryaaseq_ptr,genomicseg_ptr,genomicuc_ptr,
-			genomiclength,chroffset,chrpos,genome,
-			cdna_direction,sensedir,watsonp,ngap,diagnosticp,use_genomicseg_p);
+  printpairs = fill_in_gaps(printpath,pairpool,queryseq_ptr,queryaaseq_ptr,genomicseg_ptr,genomicuc_ptr,
+			    genomiclength,chroffset,chrpos,genome,
+			    cdna_direction,sensedir,watsonp,ngap,diagnosticp,use_genomicseg_p);
 #else
-  *pairs = fill_in_gaps(path,pairpool,queryseq_ptr,genomicseg_ptr,genomicuc_ptr,
-			genomiclength,chroffset,chrpos,genome,
-			cdna_direction,sensedir,watsonp,ngap,diagnosticp,use_genomicseg_p);
+  printpairs = fill_in_gaps(printpath,pairpool,queryseq_ptr,genomicseg_ptr,genomicuc_ptr,
+			    genomiclength,chroffset,chrpos,genome,
+			    cdna_direction,sensedir,watsonp,ngap,diagnosticp,use_genomicseg_p);
 #endif
 
   if (subseq_offset != 0) {
@@ -3321,24 +3380,137 @@ prepare_for_printing (int *npairs, List_T *pairs, int cdna_direction, int sensed
 #else
     *pairs = add_queryseq_offset(path,subseq_offset);
 #endif
+    
+    printpath = List_reverse(printpairs);
+#ifdef WASTE
+    printpairs = add_queryseq_offset(printpath,subseq_offset,pairpool);
+#else
+    printpairs = add_queryseq_offset(printpath,subseq_offset);
+#endif
   }
+
   if (skiplength != 0) {
     add_skiplength(*pairs,skiplength);
+    add_skiplength(printpairs,skiplength);
   }
-  if ((*npairs = List_length(*pairs)) == 0) {
+
+
+  if ((*npairs = List_length(printpairs)) == 0) {
     return (struct Pair_T *) NULL;
   } else {
     /* Used to be Pair_block_copy */
     newpair = pairarray = (struct Pair_T *) MALLOC_OUT(*npairs*sizeof(struct Pair_T));
-    for (p = *pairs; p != NULL; p = p->rest) {
+    for (p = printpairs; p != NULL; p = p->rest) {
       oldpair = (Pair_T) p->first;
       memcpy(newpair++,oldpair,sizeof(struct Pair_T));
     }
 
     /* No need to free newpairs, since they belong to pairpool */
+    Pair_set_genomepos(pairarray,*npairs,chrpos,genomiclength,watsonp);
     return pairarray;
   }
 }
+
+
+static void
+make_pairarrays_chimera (T this_left, Genomicpos_T chrpos_left, Genomicpos_T genomiclength_left,
+			 T this_right, Genomicpos_T chrpos_right, Genomicpos_T genomiclength_right,
+#ifdef PMAP
+			 char *queryaaseq_ptr,
+#endif
+			 Sequence_T queryseq, char *genomicseg_ptr, Genome_T genome, Pairpool_T pairpool,
+			 int gaplength, int ngap) {
+  List_T printpairs_left, printpath_left, printpairs_right, printpath_right, p;
+  Pair_T oldpair, newpair;
+  char *queryseq_ptr;
+  int newnpairs;
+  int ncanonical, nsemicanonical, nnoncanonical;
+  bool use_genomicseg_p;
+
+  queryseq_ptr = Sequence_fullpointer(queryseq);
+  if (genomicseg_ptr == NULL) {
+    use_genomicseg_p = false;
+  } else {
+    use_genomicseg_p = true;
+  }
+
+  
+  /* Revise statistics */
+  Pair_fracidentity(&this_left->matches,&this_left->unknowns,&this_left->mismatches,
+		    &this_left->qopens,&this_left->qindels,&this_left->topens,&this_left->tindels,
+		    &ncanonical,&nsemicanonical,&nnoncanonical,
+		    this_left->pairs,this_left->cdna_direction);
+
+  Pair_fracidentity(&this_right->matches,&this_right->unknowns,&this_right->mismatches,
+		    &this_right->qopens,&this_right->qindels,&this_right->topens,&this_right->tindels,
+		    &ncanonical,&nsemicanonical,&nnoncanonical,
+		    this_right->pairs,this_right->cdna_direction);
+
+
+  printpairs_left = Pairpool_copy(this_left->pairs,pairpool);
+  printpath_left = List_reverse(printpairs_left);
+#ifdef PMAP
+  printpairs_left = fill_in_gaps(printpath_left,pairpool,queryseq_ptr,queryaaseq_ptr,
+				 genomicseg_ptr,/*genomicuc_ptr*/genomicseg_ptr,
+				 this_left->stage1_genomiclength,this_left->chroffset,this_left->chrpos,
+				 genome,this_left->cdna_direction,this_left->sensedir,this_left->watsonp,
+				 ngap,/*diagnosticp*/false,use_genomicseg_p);
+#else
+  printpairs_left = fill_in_gaps(printpath_left,pairpool,queryseq_ptr,
+				 genomicseg_ptr,/*genomicuc_ptr*/genomicseg_ptr,
+				 this_left->stage1_genomiclength,this_left->chroffset,this_left->chrpos,
+				 genome,this_left->cdna_direction,this_left->sensedir,this_left->watsonp,
+				 ngap,/*diagnosticp*/false,use_genomicseg_p);
+#endif
+
+  printpairs_right = Pairpool_copy(this_right->pairs,pairpool);
+  printpath_right = List_reverse(printpairs_right);
+#ifdef PMAP
+  printpairs_right = fill_in_gaps(printpath_right,pairpool,queryseq_ptr,queryaaseq_ptr,
+				 genomicseg_ptr,/*genomicuc_ptr*/genomicseg_ptr,
+				 this_right->stage1_genomiclength,this_right->chroffset,this_right->chrpos,
+				 genome,this_right->cdna_direction,this_right->sensedir,this_right->watsonp,
+				 ngap,/*diagnosticp*/false,use_genomicseg_p);
+#else
+  printpairs_right = fill_in_gaps(printpath_right,pairpool,queryseq_ptr,
+				 genomicseg_ptr,/*genomicuc_ptr*/genomicseg_ptr,
+				 this_right->stage1_genomiclength,this_right->chroffset,this_right->chrpos,
+				 genome,this_right->cdna_direction,this_right->sensedir,this_right->watsonp,
+				 ngap,/*diagnosticp*/false,use_genomicseg_p);
+#endif
+
+
+  /* Do not use subseq_offset or skiplength for chimeras, since we are
+     working on the original queryseq, not querysubseq */
+
+  this_left->npairs = List_length(printpairs_left);
+  this_right->npairs = List_length(printpairs_right);
+
+  if ((newnpairs = this_left->npairs + this_right->npairs) == 0) {
+    this_left->pairarray = (struct Pair_T *) NULL;
+    this_right->pairarray = (struct Pair_T *) NULL;
+
+  } else {
+    newpair = this_left->pairarray = (struct Pair_T *) MALLOC_OUT((newnpairs + gaplength)*sizeof(struct Pair_T));
+    for (p = printpairs_left; p != NULL; p = p->rest) {
+      oldpair = (Pair_T) p->first;
+      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
+    }
+    Pair_set_genomepos(this_left->pairarray,this_left->npairs,chrpos_left,genomiclength_left,
+		       this_left->watsonp);
+
+    newpair = this_right->pairarray = &(this_left->pairarray[this_left->npairs + gaplength]);
+    for (p = printpairs_right; p != NULL; p = p->rest) {
+      oldpair = (Pair_T) p->first;
+      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
+    }
+    Pair_set_genomepos(this_right->pairarray,this_right->npairs,chrpos_right,genomiclength_right,
+		       this_right->watsonp);
+  }
+
+  return;
+}
+
 
 	    
 #define MAPQ_MAXIMUM_SCORE 40
@@ -3412,13 +3584,16 @@ pick_cdna_direction (int *winning_cdna_direction, int *sensedir,
 		     int alignment_score_fwd, int alignment_score_rev, int sense_filter) {
   int canonical_score_fwd, canonical_score_rev;
 
-  canonical_score_fwd = ncanonical_fwd - nbadintrons_fwd + nsemicanonical_fwd - nnoncanonical_fwd;
-  canonical_score_rev = ncanonical_rev - nbadintrons_rev + nsemicanonical_rev - nnoncanonical_rev;
-
-  debug11(printf("ncanonical_fwd %d, nbadintrons_fwd %d, nsemicanonical_fwd %d, nnoncanonical_fwd %d\n",
-		 ncanonical_fwd,nbadintrons_fwd,nsemicanonical_fwd,nnoncanonical_fwd));
-  debug11(printf("ncanonical_rev %d, nbadintrons_rev %d, nsemicanonical_rev %d, nnoncanonical_rev %d\n",
-		 ncanonical_rev,nbadintrons_rev,nsemicanonical_rev,nnoncanonical_rev));
+  if (pairs_fwd) {
+    canonical_score_fwd = ncanonical_fwd - nbadintrons_fwd + nsemicanonical_fwd - nnoncanonical_fwd;
+    debug11(printf("ncanonical_fwd %d, nbadintrons_fwd %d, nsemicanonical_fwd %d, nnoncanonical_fwd %d\n",
+		   ncanonical_fwd,nbadintrons_fwd,nsemicanonical_fwd,nnoncanonical_fwd));
+  }
+  if (pairs_rev) {
+    canonical_score_rev = ncanonical_rev - nbadintrons_rev + nsemicanonical_rev - nnoncanonical_rev;
+    debug11(printf("ncanonical_rev %d, nbadintrons_rev %d, nsemicanonical_rev %d, nnoncanonical_rev %d\n",
+		   ncanonical_rev,nbadintrons_rev,nsemicanonical_rev,nnoncanonical_rev));
+  }
 
   if (pairs_fwd == NULL && pairs_rev == NULL) {
     debug11(printf("pairs_fwd is NULL and pairs_rev is NULL\n"));
@@ -3429,10 +3604,14 @@ pick_cdna_direction (int *winning_cdna_direction, int *sensedir,
   } else if (pairs_rev == NULL) {
     debug11(printf("pairs_rev is NULL, so fwd wins\n"));
     *winning_cdna_direction = +1;
+    *sensedir = SENSE_FORWARD;
+    return pairs_fwd;
 
   } else if (pairs_fwd == NULL) {
     debug11(printf("pairs_fwd is NULL, so rev wins\n"));
     *winning_cdna_direction = -1;
+    *sensedir = SENSE_ANTI;
+    return pairs_rev;
 
 #if 0
   } else if (nnoncanonical_fwd == 0 && nnoncanonical_rev > 0) {
@@ -3539,7 +3718,11 @@ pick_cdna_direction (int *winning_cdna_direction, int *sensedir,
 
   debug11(printf("winning_cdna_direction = %d\n",*winning_cdna_direction));
   if (*winning_cdna_direction == +1) {
-    *sensedir = SENSE_FORWARD;
+    if (ncanonical_fwd == 0 && nsemicanonical_fwd == 0 && nnoncanonical_fwd == 0) {
+      *sensedir = SENSE_NULL;
+    } else {
+      *sensedir = SENSE_FORWARD;
+    }
 #ifndef PMAP
     if (sense_filter < 0) {
       return (List_T) NULL;
@@ -3548,7 +3731,11 @@ pick_cdna_direction (int *winning_cdna_direction, int *sensedir,
     return pairs_fwd;
 
   } else if (*winning_cdna_direction == -1) {
-    *sensedir = SENSE_ANTI;
+    if (ncanonical_rev == 0 && nsemicanonical_rev == 0 && nnoncanonical_rev == 0) {
+      *sensedir = SENSE_NULL;
+    } else {
+      *sensedir = SENSE_ANTI;
+    }
 #ifndef PMAP
     if (sense_filter > 0) {
       return (List_T) NULL;
@@ -3564,7 +3751,7 @@ pick_cdna_direction (int *winning_cdna_direction, int *sensedir,
 
 
 T
-Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_direction,
+Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_direction, int sensedir,
 	    Genomicpos_T stage1_genomicstart, Genomicpos_T stage1_genomiclength, 
 	    int stage2_source, int stage2_indexsize,
 	    int matches, int unknowns, int mismatches, int qopens, int qindels,
@@ -3595,6 +3782,8 @@ Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_directi
   } else {
     new->cdna_direction = cdna_direction;
   }
+  new->sensedir = sensedir;
+
 
 #if 0
   nexons = Pair_nexons_approx(pairs);
@@ -3698,17 +3887,22 @@ Stage3_apply_bounds (T this, int minpos, int maxpos, bool revertp) {
   List_T p;
   Pair_T newpair, oldpair;
 
+#if 0
   this->pairs = Pairpool_transfer_bounded(NULL,this->pairs,minpos,maxpos);
   this->pairs = List_reverse(this->pairs);
+#else
+  this->pairs = Pairpool_clip_bounded(this->pairs,minpos,maxpos);
+#endif
+
   if ((newnpairs = List_length(this->pairs)) == 0) {
     if (revertp == false) {
       return NULL;
     }
   } else {
-    FREE(this->pairarray);
+    FREE_OUT(this->pairarray);
     this->npairs = newnpairs;
       
-    newpair = this->pairarray = (struct Pair_T *) MALLOC(newnpairs*sizeof(struct Pair_T));
+    newpair = this->pairarray = (struct Pair_T *) MALLOC_OUT(newnpairs*sizeof(struct Pair_T));
     for (p = this->pairs; p != NULL; p = p->rest) {
       oldpair = (Pair_T) p->first;
       memcpy(newpair++,oldpair,sizeof(struct Pair_T));
@@ -3719,41 +3913,42 @@ Stage3_apply_bounds (T this, int minpos, int maxpos, bool revertp) {
 }
 
 
+
 void
-Stage3_merge_chimera (T this_left, T this_right, int minpos1, int maxpos1, int minpos2, int maxpos2) {
-  int newnpairs;
-  List_T p;
-  Pair_T newpair, oldpair;
+Stage3_merge_chimera (T this_left, T this_right,
+		      int minpos1, int maxpos1, int minpos2, int maxpos2,
+#ifdef PMAP
+		      char *queryaaseq_ptr,
+#endif
+		      Sequence_T queryseq, Genome_T genome, Pairpool_T pairpool,
+		      int ngap) {
+  List_T path;
 
-  this_left->pairs = List_reverse(Pairpool_transfer_bounded(NULL,this_left->pairs,minpos1,maxpos1));
-  this_right->pairs = List_reverse(Pairpool_transfer_bounded(NULL,this_right->pairs,minpos2,maxpos2));
+  this_left->pairs = Pairpool_clip_bounded(this_left->pairs,minpos1,maxpos1);
+  this_right->pairs = Pairpool_clip_bounded(this_right->pairs,minpos2,maxpos2);
 
-  this_left->npairs = List_length(this_left->pairs);
-  this_right->npairs = List_length(this_right->pairs);
+  FREE_OUT(this_left->pairarray);
+  FREE_OUT(this_right->pairarray);
 
-  FREE(this_left->pairarray);
-  FREE(this_right->pairarray);
-
-  if ((newnpairs = this_left->npairs + this_right->npairs) == 0) {
+  if (this_left->pairs == NULL && this_right->pairs == NULL) {
     this_left->pairarray = (struct Pair_T *) NULL;
     this_right->pairarray = (struct Pair_T *) NULL;
+    return;
 
   } else {
-    newpair = this_left->pairarray = (struct Pair_T *) MALLOC(newnpairs*sizeof(struct Pair_T));
-    this_right->pairarray = &(this_left->pairarray[this_left->npairs]);
-    for (p = this_left->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    for (p = this_right->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(this_left->pairarray,this_left->npairs,this_left->chrpos,this_left->stage1_genomiclength,
-		       this_left->watsonp);
-    Pair_set_genomepos(this_right->pairarray,this_right->npairs,this_right->chrpos,this_right->stage1_genomiclength,
-		       this_right->watsonp);
+    path = List_reverse(this_left->pairs);
+    path = clean_path_end3_gap_indels(path);
+    this_left->pairs = List_reverse(path);
 
+    this_right->pairs = clean_pairs_end5_gap_indels(this_right->pairs);
+
+    make_pairarrays_chimera(this_left,this_left->chrpos,this_left->stage1_genomiclength,
+			    this_right,this_right->chrpos,this_right->stage1_genomiclength,
+#ifdef PMAP
+			    queryaaseq_ptr,
+#endif
+			    queryseq,/*genomicseg_ptr*/NULL,genome,pairpool,/*gaplength*/0,
+			    ngap);
   }
 
   return;
@@ -6042,6 +6237,10 @@ good_end_intron_p (Pair_T gappair, int cdna_direction) {
 }
 
 
+/* Note on QUERYEND_INDELS.  Profiling shows that using
+   QUERYEND_INDELS caused compute_scores_lookup to be called too
+   often, slowing program down. */
+
 
 /* to_queryend_p must be true for distalmedial_ending, since we are
    comparing alternatives.  But it can be false for extend_ending,
@@ -6149,7 +6348,7 @@ distalmedial_ending5 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 						       &(genomicseg_ptr[genomedp3_medialgap]),&(genomicuc_ptr[genomedp3_medialgap]),
 						       queryjump,genomejump,querydp3_medialgap,genomedp3_medialgap,
 						       queryaaseq_ptr,cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-						       /*endalign*/QUERYEND_INDELS);
+						       /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
       *ambig_end_length = 0;
 #else
       if (splicesites != NULL) {
@@ -6167,7 +6366,9 @@ distalmedial_ending5 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 							   cutoff_level,queryptr,querylength,query_compress,
 #endif
 #endif
-							   cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
+							   cdna_direction,watsonp,jump_late_p,pairpool,
+							   extraband_end,defect_rate,
+							   /*endalign -- not used -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
       } else {
 	continuous_gappairs_medialgap = Dynprog_end5_gap(&(*dynprogindex_minor),&(*finalscore),
 							 &nmatches,&nmismatches,&nopens,&nindels,dynprog,
@@ -6175,7 +6376,7 @@ distalmedial_ending5 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 							 &(genomicseg_ptr[genomedp3_medialgap]),&(genomicuc_ptr[genomedp3_medialgap]),
 							 queryjump,genomejump,querydp3_medialgap,genomedp3_medialgap,
 							 cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-							 /*endalign*/QUERYEND_INDELS);
+							 /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
 	*ambig_end_length = 0;
       }
 #endif
@@ -6244,7 +6445,7 @@ extend_ending5 (bool *knownsplicep, int *dynprogindex_minor,
   Pair_T gappair;
 
 
-  debug(printf("\nEXTEND_ENDING5\n"));
+  debug(printf("\nEXTEND_ENDING5 with endalign %s\n",Dynprog_endalign_string(endalign)));
 
   querydp5 = leftquerypos + 1;
   genomedp5 = leftgenomepos + 1; /* 0 */
@@ -6305,7 +6506,8 @@ extend_ending5 (bool *knownsplicep, int *dynprogindex_minor,
 						       cutoff_level,queryptr,querylength,query_compress,
 #endif
 #endif
-						       cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
+						       cdna_direction,watsonp,jump_late_p,pairpool,
+						       extraband_end,defect_rate,endalign);
   } else {
     continuous_gappairs_distalgap = Dynprog_end5_gap(&(*dynprogindex_minor),&(*finalscore),
 						     &nmatches,&nmismatches,&nopens,&nindels,dynprog,
@@ -6440,7 +6642,7 @@ distalmedial_ending3 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 						       &(genomicseg_ptr[genomedp5_medialgap]),&(genomicuc_ptr[genomedp5_medialgap]),
 						       queryjump,genomejump,querydp5_medialgap,genomedp5_medialgap,
 						       queryaaseq_ptr,cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-						       /*endalign*/QUERYEND_INDELS);
+						       /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
       *ambig_end_length = 0;
 #else
       if (splicesites != NULL) {
@@ -6458,7 +6660,8 @@ distalmedial_ending3 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 #endif
 #endif							   
 							   cdna_direction,watsonp,jump_late_p,pairpool,
-							   extraband_end,defect_rate);
+							   extraband_end,defect_rate,
+							   /*endalign -- not used -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
       } else {
 	continuous_gappairs_medialgap = Dynprog_end3_gap(&(*dynprogindex_minor),&(*finalscore),
 							 &nmatches,&nmismatches,&nopens,&nindels,dynprog,
@@ -6466,7 +6669,7 @@ distalmedial_ending3 (bool *knownsplicep, bool *chop_exon_p, int *dynprogindex_m
 							 &(genomicseg_ptr[genomedp5_medialgap]),&(genomicuc_ptr[genomedp5_medialgap]),
 							 queryjump,genomejump,querydp5_medialgap,genomedp5_medialgap,
 							 cdna_direction,jump_late_p,pairpool,extraband_end,defect_rate,
-							 /*endalign*/QUERYEND_INDELS);
+							 /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
 	*ambig_end_length = 0;
       }
 #endif
@@ -6534,7 +6737,7 @@ extend_ending3 (bool *knownsplicep, int *dynprogindex_minor, int *finalscore,
   bool mismatchp = false;
   Pair_T gappair;
 
-  debug(printf("\nEXTEND_ENDING3\n"));
+  debug(printf("\nEXTEND_ENDING3 with endalign %s\n",Dynprog_endalign_string(endalign)));
   
   querydp5_distalgap = leftpair->querypos + 1;
   genomedp5_distalgap = leftpair->genomepos + 1;
@@ -6597,7 +6800,7 @@ extend_ending3 (bool *knownsplicep, int *dynprogindex_minor, int *finalscore,
 #endif
 #endif
 						       cdna_direction,watsonp,jump_late_p,pairpool,
-						       extraband_end,defect_rate);
+						       extraband_end,defect_rate,endalign);
   } else {
     continuous_gappairs_distalgap = Dynprog_end3_gap(&(*dynprogindex_minor),&(*finalscore),
 						     &nmatches,&nmismatches,&nopens,&nindels,dynprog,
@@ -7950,9 +8153,7 @@ Stage3_bad_stretch_p (struct Pair_T *pairarray, int npairs) {
       /* Skip */
     } else if (pair->comp != MISMATCH_COMP) {
       /* match */
-#ifdef DEBUG9
-      printf("querypos %d (match): ",pair->querypos);
-#endif
+      debug9(printf("querypos %d (match): ",pair->querypos));
 
       /* state: GOOD */
 #ifdef COMPUTE_LOG
@@ -8132,7 +8333,7 @@ score_nconsecutive (List_T pairs) {
 
 
 static List_T
-path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *nonintronlen,
+path_compute (double *defect_rate, int *intronlen, int *nonintronlen,
 	      List_T path, int cdna_direction, bool watsonp, bool jump_late_p,
 	      int querylength, int genomiclength,
 #ifdef GSNAP
@@ -8330,6 +8531,14 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
       return path;
     }
 
+    /* Pass 3b: trim end exons: pairs -> pairs */
+    debug(printf("\n*** Pass 3b: Trim end exons\n"));
+#ifdef WASTE
+    pairs = chop_ends_by_changepoint(pairs,pairpool);
+#else
+    pairs = chop_ends_by_changepoint(pairs);
+#endif
+
     /* Pass 4: Remove bad sections */
     debug(printf("\n*** Pass 4: Remove bad sections.  Iteration0 %d\n",iter0));
     Pair_fracidentity(&matches,&unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
@@ -8479,8 +8688,10 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
   pairs = remove_indel_gaps(path);
 #endif
     
+
   /* Testing for GSNAP shows that we want pass 8 with QUERYEND_NOGAPS
-     and pass 9 with QUERYEND_INDELS */
+     and pass 9 with QUERYEND_INDELS.  Do not want to extend to ends
+     for GMAP. */
 
   /* Extend to ends: pairs --> pairs */
   debug(printf("\n*** Pass 8: Extend to ends and determine distalmedial\n"));
@@ -8508,7 +8719,7 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 #ifdef GSNAP
 			   /*endalign*/QUERYEND_NOGAPS
 #else
-			   /*endalign*/QUERYEND_INDELS
+			   /*endalign*/BEST_LOCAL
 #endif
 			   );
 
@@ -8536,7 +8747,7 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 #ifdef GSNAP
 			 /*endalign*/QUERYEND_NOGAPS
 #else
-			 /*endalign*/QUERYEND_INDELS
+			 /*endalign*/BEST_LOCAL
 #endif
 			 );
 
@@ -8573,7 +8784,13 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 			   maxpeelback,maxpeelback_distalmedial,
 			   nullgap,extramaterial_end,extraband_end,
 			   *defect_rate,pairpool,dynprogR,
-			   /*extendp*/true,/*endalign*/QUERYEND_INDELS);
+			   /*extendp*/true,
+#ifdef GSNAP
+			   /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS
+#else
+			   /*endalign*/BEST_LOCAL
+#endif
+			   );
   /* Previously extendp was false */
 
   debug(
@@ -8611,7 +8828,13 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 			 maxpeelback,maxpeelback_distalmedial,
 			 nullgap,extramaterial_end,extraband_end,
 			 *defect_rate,pairpool,dynprogL,
-			 /*extendp*/true,/*endalign*/QUERYEND_INDELS);
+			 /*extendp*/true,
+#ifdef GSNAP
+			 /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS
+#else
+			 /*endalign*/BEST_LOCAL
+#endif
+			 );
   /* Previously extendp was false */
 
   debug(
@@ -8683,7 +8906,7 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 #ifdef GSNAP
 			       /*endalign*/QUERYEND_NOGAPS
 #else
-			       /*endalign*/QUERYEND_INDELS
+			       /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS
 #endif
 			       );
     }
@@ -8711,7 +8934,7 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 #ifdef GSNAP
 			     /*endalign*/QUERYEND_NOGAPS
 #else
-			     /*endalign*/QUERYEND_INDELS
+			     /*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS
 #endif
 			     );
 
@@ -8722,7 +8945,7 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
   }
 
 
-  *nmatches_pretrim = Pair_nmatches(pairs);
+  /* *nmatches_pretrim = Pair_nmatches(pairs); */
 
   debug(Pair_dump_list(pairs,true));
   debug(printf("End of path_compute (nmatches_pretrim: %d)\n",*nmatches_pretrim));
@@ -8731,9 +8954,384 @@ path_compute (int *nmatches_pretrim, double *defect_rate, int *intronlen, int *n
 
 
 static List_T
-path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
+trim_novel_spliceends (List_T pairs, 
+		       int *ambig_end_length_5, int *ambig_end_length_3,
+		       Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
+		       int *cdna_direction, int *sensedir, bool watsonp, int querylength,
+		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		       bool knownsplice5p, bool knownsplice3p) {
+  List_T path, p;
+  int i;
+
+  Pair_T pair;
+  Genomicpos_T genomicpos, start_genomicpos, end_genomicpos, splice_genomepos_5, splice_genomepos_3;
+  Genomicpos_T start, end;
+  double donor_prob, acceptor_prob, max_prob_5 = 0.0, max_prob_3 = 0.0;
+  Splicetype_T splicetype5, splicetype3;
+  int splice_cdna_direction_5, splice_sensedir_5, splice_cdna_direction_3, splice_sensedir_3;
+
+
+  debug13(printf("\nEntered trim_novel_spliceends with cdna_direction %d and sensedir %d\n",
+		 *cdna_direction,*sensedir));
+
+  path = List_reverse(pairs);
+  if (path != NULL && knownsplice3p == false && exon_length_3(path) >= END_SPLICESITE_EXON_LENGTH) {
+    /* See if there is a good splice site at the 3' end */
+    debug13(Pair_dump_list(path,true));
+
+    pair = (Pair_T) List_head(p = path);
+    start = end = pair->genomepos;
+
+    i = 0;
+    while (i <= END_SPLICESITE_SEARCH) {
+      if ((p = List_next(p)) == NULL) {
+	break;
+      } else {
+	pair = (Pair_T) List_head(p);
+	if (pair->gapp == true) {
+	  break;
+	} else if (pair->comp == MATCH_COMP || pair->comp == DYNPROG_MATCH_COMP) {
+	  end = pair->genomepos;
+	  i++;
+	} else {
+	  i = 0;
+	}
+      }
+    }
+
+
+    if (*sensedir == SENSE_FORWARD) {
+      if (watsonp) {
+	splicetype3 = DONOR;
+
+	start_genomicpos = chroffset + chrpos + start + 1;
+	end_genomicpos = chroffset + chrpos + end + 1;
+
+	for (genomicpos = start_genomicpos; genomicpos >= end_genomicpos; genomicpos--) {
+	  donor_prob = Maxent_hr_donor_prob(genomicpos,chroffset); /* Case 1 */
+	  debug13(printf("3', watson, sense anti %u %f\n",genomicpos,donor_prob));
+	  if (donor_prob > max_prob_3) {
+	    max_prob_3 = donor_prob;
+	    splice_genomepos_3 = genomicpos - chroffset - chrpos - 1;
+	  }
+	}
+
+      } else {
+	splicetype3 = ANTIDONOR;
+
+	start_genomicpos = chroffset + chrpos + (genomiclength - 1) - start;
+	end_genomicpos = chroffset + chrpos + (genomiclength - 1) - end;
+
+	for (genomicpos = start_genomicpos; genomicpos <= end_genomicpos; genomicpos++) {
+	  donor_prob = Maxent_hr_antidonor_prob(genomicpos,chroffset); /* Case 3 */
+	  debug13(printf("3', crick, sense forward %u %f\n",genomicpos,donor_prob));
+	  if (donor_prob > max_prob_3) {
+	    max_prob_3 = donor_prob;
+	    splice_genomepos_3 = chroffset + chrpos + (genomiclength - 1) - genomicpos;
+	  }
+	}
+      }
+
+    } else if (*sensedir == SENSE_ANTI) {
+      if (watsonp) {
+	splicetype3 = ANTIACCEPTOR;
+
+	start_genomicpos = chroffset + chrpos + start + 1;
+	end_genomicpos = chroffset + chrpos + end + 1;
+
+	for (genomicpos = start_genomicpos; genomicpos >= end_genomicpos; genomicpos--) {
+	  acceptor_prob = Maxent_hr_antiacceptor_prob(genomicpos,chroffset); /* Case 5 */
+	  debug13(printf("3', watson, sense forward %u %f\n",genomicpos,acceptor_prob));
+	  if (acceptor_prob > max_prob_3) {
+	    max_prob_3 = acceptor_prob;
+	    splice_genomepos_3 = genomicpos - chroffset - chrpos - 1;
+	  }
+	}
+
+      } else {
+	splicetype3 = ACCEPTOR;
+
+	start_genomicpos = chroffset + chrpos + (genomiclength - 1) - start;
+	end_genomicpos = chroffset + chrpos + (genomiclength - 1) - end;
+
+	for (genomicpos = start_genomicpos; genomicpos <= end_genomicpos; genomicpos++) {
+	  acceptor_prob = Maxent_hr_acceptor_prob(genomicpos,chroffset); /* Case 7 */
+	  debug13(printf("3', crick, sense anti %u %f\n",genomicpos,acceptor_prob));
+	  if (acceptor_prob > max_prob_3) {
+	    max_prob_3 = acceptor_prob;
+	    splice_genomepos_3 = chroffset + chrpos + (genomiclength - 1) - genomicpos;
+	  }
+	}
+      }
+      
+    } else {
+      if (watsonp) {
+	start_genomicpos = chroffset + chrpos + start + 1;
+	end_genomicpos = chroffset + chrpos + end + 1;
+
+	for (genomicpos = start_genomicpos; genomicpos >= end_genomicpos; genomicpos--) {
+	  donor_prob = Maxent_hr_donor_prob(genomicpos,chroffset); /* Case 1 */
+	  acceptor_prob = Maxent_hr_antiacceptor_prob(genomicpos,chroffset); /* Case 5 */
+	  debug13(printf("3', watson, sense null %u %f %f\n",genomicpos,donor_prob,acceptor_prob));
+	  if (donor_prob > max_prob_3) {
+	    max_prob_3 = donor_prob;
+	    splice_genomepos_3 = genomicpos - chroffset - chrpos - 1;
+	    splice_cdna_direction_3 = +1;
+	    splice_sensedir_3 = SENSE_FORWARD;
+	    splicetype3 = DONOR;
+	  }
+	  if (acceptor_prob > max_prob_3) {
+	    max_prob_3 = acceptor_prob;
+	    splice_genomepos_3 = genomicpos - chroffset - chrpos - 1;
+	    splice_cdna_direction_3 = -1;
+	    splice_sensedir_3 = SENSE_ANTI;
+	    splicetype3 = ANTIACCEPTOR;
+	  }
+	}
+
+      } else {
+	start_genomicpos = chroffset + chrpos + (genomiclength - 1) - start;
+	end_genomicpos = chroffset + chrpos + (genomiclength - 1) - end;
+
+	for (genomicpos = start_genomicpos; genomicpos <= end_genomicpos; genomicpos++) {
+	  donor_prob = Maxent_hr_antidonor_prob(genomicpos,chroffset); /* Case 3 */
+	  acceptor_prob = Maxent_hr_acceptor_prob(genomicpos,chroffset); /* Case 7 */
+	  debug13(printf("3', crick, sense null %u %f %f\n",genomicpos,donor_prob,acceptor_prob));
+	  if (donor_prob > max_prob_3) {
+	    max_prob_3 = donor_prob;
+	    splice_genomepos_3 = chroffset + chrpos + (genomiclength - 1) - genomicpos;
+	    splice_cdna_direction_3 = +1;
+	    splice_sensedir_3 = SENSE_FORWARD;
+	    splicetype3 = ANTIDONOR;
+	  }
+	  if (acceptor_prob > max_prob_3) {
+	    max_prob_3 = acceptor_prob;
+	    splice_genomepos_3 = chroffset + chrpos + (genomiclength - 1) - genomicpos;
+	    splice_cdna_direction_3 = -1;
+	    splice_sensedir_3 = SENSE_ANTI;
+	    splicetype3 = ACCEPTOR;
+	  }
+	}
+      }
+    }
+
+    if (*sensedir != SENSE_NULL) {
+      if (max_prob_3 > END_SPLICESITE_PROB) {
+	debug13(printf("Found good splice %s on 3' end at %u with probability %f\n",
+		       Splicetype_string(splicetype3),splice_genomepos_3,max_prob_3));
+	while (path != NULL && ((Pair_T) path->first)->genomepos > splice_genomepos_3) {
+	  path = Pairpool_pop(path,&pair);
+	}
+	path = clean_path_end3(path);
+	if (path != NULL) {
+	  *ambig_end_length_3 = (querylength - 1) - ((Pair_T) path->first)->querypos;
+	  *ambig_splicetype_3 = splicetype3;
+	}
+      }
+    }
+  }
+
+  pairs = List_reverse(path);
+  if (pairs != NULL && knownsplice5p == false && exon_length_5(pairs) >= END_SPLICESITE_EXON_LENGTH) {
+    /* See if there is a good splice site at the 5' end */
+    debug13(Pair_dump_list(pairs,true));
+
+    pair = (Pair_T) List_head(p = pairs);
+    start = end = pair->genomepos;
+
+    i = 0;
+    while (i <= END_SPLICESITE_SEARCH) {
+      if ((p = List_next(p)) == NULL) {
+	break;
+      } else {
+	pair = (Pair_T) List_head(p);
+	if (pair->gapp == true) {
+	  break;
+	} else if (pair->comp == MATCH_COMP || pair->comp == DYNPROG_MATCH_COMP) {
+	  end = pair->genomepos;
+	  i++;
+	} else {
+	  i = 0;
+	}
+      }
+    }
+
+    if (*sensedir == SENSE_FORWARD) {
+      if (watsonp) {
+	splicetype5 = ACCEPTOR;
+
+	start_genomicpos = chroffset + chrpos + start;
+	end_genomicpos = chroffset + chrpos + end;
+
+	for (genomicpos = start_genomicpos; genomicpos <= end_genomicpos; genomicpos++) {
+	  acceptor_prob = Maxent_hr_acceptor_prob(genomicpos,chroffset); /* Case 2 */
+	  debug13(printf("5', watson, sense forward %u %f\n",genomicpos,acceptor_prob));
+	  if (acceptor_prob > max_prob_5) {
+	    max_prob_5 = acceptor_prob;
+	    splice_genomepos_5 = genomicpos - chroffset - chrpos;
+	  }
+	}
+
+      } else {
+	splicetype5 = ANTIACCEPTOR;
+
+	start_genomicpos = chroffset + chrpos + (genomiclength - 1) - start + 1;
+	end_genomicpos = chroffset + chrpos + (genomiclength - 1) - end + 1;
+
+	for (genomicpos = start_genomicpos; genomicpos >= end_genomicpos; genomicpos--) {
+	  acceptor_prob = Maxent_hr_antiacceptor_prob(genomicpos,chroffset); /* Case 4 */
+	  debug13(printf("5', crick, sense anti %u %f\n",genomicpos,acceptor_prob));
+	  if (acceptor_prob > max_prob_5) {
+	    max_prob_5 = acceptor_prob;
+	    splice_genomepos_5 = chroffset + chrpos + (genomiclength - 1) - genomicpos + 1;
+	  }
+	}
+      }
+
+    } else if (*sensedir == SENSE_ANTI) {
+      if (watsonp) {
+	splicetype5 = ANTIDONOR;
+
+	start_genomicpos = chroffset + chrpos + start;
+	end_genomicpos = chroffset + chrpos + end;
+	
+	for (genomicpos = start_genomicpos; genomicpos <= end_genomicpos; genomicpos++) {
+	  donor_prob = Maxent_hr_antidonor_prob(genomicpos,chroffset); /* Case 6 */
+	  debug13(printf("5', watson, sense anti %u %f\n",genomicpos,donor_prob));
+	  if (donor_prob > max_prob_5) {
+	    max_prob_5 = donor_prob;
+	    splice_genomepos_5 = genomicpos - chroffset - chrpos;
+	  }
+	}
+
+      } else {
+	splicetype5 = DONOR;
+
+	start_genomicpos = chroffset + chrpos + (genomiclength - 1) - start + 1;
+	end_genomicpos = chroffset + chrpos + (genomiclength - 1) - end + 1;
+
+	for (genomicpos = start_genomicpos; genomicpos >= end_genomicpos; genomicpos--) {
+	  donor_prob = Maxent_hr_donor_prob(genomicpos,chroffset); /* Case 8 */
+	  debug13(printf("5', crick, sense forward %u %f\n",genomicpos,donor_prob));
+	  if (donor_prob > max_prob_5) {
+	    max_prob_5 = donor_prob;
+	    splice_genomepos_5 = chroffset + chrpos + (genomiclength - 1) - genomicpos + 1;
+	  }
+	}
+      }
+      
+    } else {
+      if (watsonp) {
+	start_genomicpos = chroffset + chrpos + start;
+	end_genomicpos = chroffset + chrpos + end;
+
+	for (genomicpos = start_genomicpos; genomicpos <= end_genomicpos; genomicpos++) {
+	  acceptor_prob = Maxent_hr_acceptor_prob(genomicpos,chroffset); /* Case 2 */
+	  donor_prob = Maxent_hr_antidonor_prob(genomicpos,chroffset); /* Case 6 */
+	  debug13(printf("5', watson, sense null %u %f %f\n",genomicpos,donor_prob,acceptor_prob));
+	  if (acceptor_prob > max_prob_5) {
+	    max_prob_5 = acceptor_prob;
+	    splice_genomepos_5 = genomicpos - chroffset - chrpos;
+	    splice_cdna_direction_5 = +1;
+	    splice_sensedir_5 = SENSE_FORWARD;
+	    splicetype5 = ACCEPTOR;
+	  }
+	  if (donor_prob > max_prob_5) {
+	    max_prob_5 = donor_prob;
+	    splice_genomepos_5 = genomicpos - chroffset - chrpos;
+	    splice_cdna_direction_5 = -1;
+	    splice_sensedir_5 = SENSE_ANTI;
+	    splicetype5 = ANTIDONOR;
+	  }
+	}
+
+      } else {
+	start_genomicpos = chroffset + chrpos + (genomiclength - 1) - start + 1;
+	end_genomicpos = chroffset + chrpos + (genomiclength - 1) - end + 1;
+
+	for (genomicpos = start_genomicpos; genomicpos >= end_genomicpos; genomicpos--) {
+	  acceptor_prob = Maxent_hr_antiacceptor_prob(genomicpos,chroffset); /* Case 4 */
+	  donor_prob = Maxent_hr_donor_prob(genomicpos,chroffset); /* Case 8 */
+	  debug13(printf("5', crick, sense null %u %f %f\n",genomicpos,donor_prob,acceptor_prob));
+	  if (acceptor_prob > max_prob_5) {
+	    max_prob_5 = acceptor_prob;
+	    splice_genomepos_5 = chroffset + chrpos + (genomiclength - 1) - genomicpos + 1;
+	    splice_cdna_direction_5 = +1;
+	    splice_sensedir_5 = SENSE_FORWARD;
+	    splicetype5 = ANTIACCEPTOR;
+	  }
+	  if (donor_prob > max_prob_5) {
+	    max_prob_5 = donor_prob;
+	    splice_genomepos_5 = chroffset + chrpos + (genomiclength - 1) - genomicpos + 1;
+	    splice_cdna_direction_5 = -1;
+	    splice_sensedir_5 = SENSE_ANTI;
+	    splicetype5 = DONOR;
+	  }
+	}
+      }
+    }
+
+    if (*sensedir != SENSE_NULL) {
+      if (max_prob_5 > END_SPLICESITE_PROB) {
+	debug13(printf("Found good splice %s on 5' end at %u with probability %f\n",
+		       Splicetype_string(splicetype5),splice_genomepos_5,max_prob_5));
+	while (pairs != NULL && ((Pair_T) pairs->first)->genomepos < splice_genomepos_5) {
+	  pairs = Pairpool_pop(pairs,&pair);
+	}
+	pairs = clean_pairs_end5(pairs);
+	if (pairs != NULL) {
+	  *ambig_end_length_5 = ((Pair_T) pairs->first)->querypos;
+	  *ambig_splicetype_5 = splicetype5;
+	}
+      }
+    }
+  }
+
+  if (*sensedir == SENSE_NULL) {
+    if (max_prob_3 > max_prob_5) {
+      if (max_prob_3 > END_SPLICESITE_PROB) {
+	debug13(printf("Found good splice %s on 3' end at %u with probability %f\n",
+		       Splicetype_string(splicetype3),splice_genomepos_3,max_prob_3));
+	path = List_reverse(pairs);
+	while (path != NULL && ((Pair_T) path->first)->genomepos > splice_genomepos_3) {
+	  path = Pairpool_pop(path,&pair);
+	}
+	path = clean_path_end3(path);
+	if (path != NULL) {
+	  *ambig_end_length_3 = (querylength - 1) - ((Pair_T) path->first)->querypos;
+	  *ambig_splicetype_3 = splicetype3;
+	  *cdna_direction = splice_cdna_direction_3;
+	  *sensedir = splice_sensedir_3;
+	}
+	pairs = List_reverse(path);
+      }
+    } else {
+      if (max_prob_5 > END_SPLICESITE_PROB) {
+	debug13(printf("Found good splice %s on 5' end at %u with probability %f\n",
+		       Splicetype_string(splicetype5),splice_genomepos_5,max_prob_5));
+	while (pairs != NULL && ((Pair_T) pairs->first)->genomepos < splice_genomepos_5) {
+	  pairs = Pairpool_pop(pairs,&pair);
+	}
+	pairs = clean_pairs_end5(pairs);
+	if (pairs != NULL) {
+	  *ambig_end_length_5 = ((Pair_T) pairs->first)->querypos;
+	  *ambig_splicetype_5 = splicetype5;
+	  *cdna_direction = splice_cdna_direction_5;
+	  *sensedir = splice_sensedir_5;
+	}
+      }
+    }
+  }
+
+  return pairs;
+}
+
+
+
+static List_T
+path_trim (double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
 	   Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
-	   List_T pairs, int cdna_direction, bool watsonp, bool jump_late_p,
+	   List_T pairs, int *cdna_direction, int *sensedir, bool watsonp, bool jump_late_p,
 	   int querylength, int genomiclength,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -8755,19 +9353,21 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
   bool chop_exon_p;
   bool knownsplice5p = false, knownsplice3p = false;
   bool trim5p, trim3p;
+
 #ifdef DEBUG3
   Pair_T firstpair, lastpair;
 #endif
 
+
   maxpeelback5 = maxpeelback3 = maxpeelback;
 
 
-  debug3(printf("Entering path_trim with cdna_direction %d\n",cdna_direction));
+  debug3(printf("Entering path_trim with cdna_direction %d and sensedir %d\n",*cdna_direction,*sensedir));
 
 #if 0
   /* Performed at end of path_compute */
   path = insert_gapholders(pairs,pairpool);
-  pairs = assign_gap_types(path,cdna_direction,watsonp,queryseq_ptr,genomicuc_ptr,
+  pairs = assign_gap_types(path,*cdna_direction,watsonp,queryseq_ptr,genomicuc_ptr,
 			   genomiclength,chrnum,chroffset,chrpos,
 			   genome,pairpool,use_genomicseg_p);
 #endif
@@ -8781,7 +9381,7 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 
 #if 0
   /* Can no longer assign gap types here; just remove indel gaps */
-  pairs = assign_gap_types(&npairs,&ngaps,&ncanonical,path,pairpool,queryseq_ptr,genomicuc_ptr,cdna_direction);
+  pairs = assign_gap_types(&npairs,&ngaps,&ncanonical,path,pairpool,queryseq_ptr,genomicuc_ptr,*cdna_direction);
 #elif defined(WASTE)
   pairs = remove_indel_gaps(path,pairpool);
 #else
@@ -8824,7 +9424,7 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 			     queryaaseq_ptr,
 #endif
 			     queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-			     cdna_direction,watsonp,jump_late_p,
+			     *cdna_direction,watsonp,jump_late_p,
 			     maxpeelback,maxpeelback_distalmedial,
 			     nullgap,extramaterial_end,extraband_end,
 			     defect_rate,pairpool,dynprogR,
@@ -8864,7 +9464,7 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 			   queryaaseq_ptr,
 #endif
 			   queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-			   cdna_direction,watsonp,jump_late_p,
+			   *cdna_direction,watsonp,jump_late_p,
 			   maxpeelback,maxpeelback_distalmedial,
 			   nullgap,extramaterial_end,extraband_end,
 			   defect_rate,pairpool,dynprogL,
@@ -8905,11 +9505,11 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 			   queryaaseq_ptr,
 #endif
 			   queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-			   cdna_direction,watsonp,jump_late_p,
+			   *cdna_direction,watsonp,jump_late_p,
 			   maxpeelback5,maxpeelback_distalmedial,
 			   nullgap,extramaterial_end,extraband_end,
 			   defect_rate,pairpool,dynprogR,
-			   /*extendp*/true,/*endalign*/QUERYEND_INDELS);
+			   /*extendp*/true,/*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
 
   path = List_reverse(pairs);
   path = clean_path_end3_gap_indels(path);
@@ -8926,11 +9526,11 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 			 queryaaseq_ptr,
 #endif
 			 queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-			 cdna_direction,watsonp,jump_late_p,
+			 *cdna_direction,watsonp,jump_late_p,
 			 maxpeelback3,maxpeelback_distalmedial,
 			 nullgap,extramaterial_end,extraband_end,
 			 defect_rate,pairpool,dynprogL,
-			 /*extendp*/true,/*endalign*/QUERYEND_INDELS);
+			 /*extendp*/true,/*endalign -- was QUERYEND_INDELS*/QUERYEND_NOGAPS);
 
   pairs = List_reverse(path);
 
@@ -8939,10 +9539,9 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 
 
   if (pairs == NULL) {
-    *nmatches_posttrim = 0;
     return (List_T) NULL;
-
   } else {
+    knownsplice5p = knownsplice3p = false;
     pairs = Pair_trim_ends(&trim5p,&trim3p,pairs);
     
     /* Extend with BEST_LOCAL to get right local (not global) answer,
@@ -8962,7 +9561,7 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 			       queryaaseq_ptr,
 #endif
 			       queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-			       cdna_direction,watsonp,jump_late_p,
+			       *cdna_direction,watsonp,jump_late_p,
 			       /*maxpeelback*/0,/*maxpeelback_distalmedial*/0,
 			       nullgap,extramaterial_end,extraband_end,
 			       defect_rate,pairpool,dynprogR,
@@ -8984,7 +9583,7 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
 			     queryaaseq_ptr,
 #endif
 			     queryseq_ptr,queryuc_ptr,genomicseg_ptr,genomicuc_ptr,
-			     cdna_direction,watsonp,jump_late_p,
+			     *cdna_direction,watsonp,jump_late_p,
 			     /*maxpeelback*/0,/*maxpeelback_distalmedial*/0,
 			     nullgap,extramaterial_end,extraband_end,
 			     defect_rate,pairpool,dynprogL,
@@ -8992,18 +9591,32 @@ path_trim (int *nmatches_posttrim, double defect_rate, int *ambig_end_length_5, 
       pairs = List_reverse(path);
     }
 
-    *nmatches_posttrim = Pair_nmatches(pairs);
     debug3(printf("After trim ends (nmatches_posttrim %d):\n",*nmatches_posttrim));
     debug3(Pair_dump_list(pairs,true));
-    return pairs;
   }
+
+
+#ifdef GSNAP
+  if (novelsplicingp == true) {
+    pairs = trim_novel_spliceends(pairs,&(*ambig_end_length_5),&(*ambig_end_length_3),
+				  &(*ambig_splicetype_5),&(*ambig_splicetype_3),
+				  &(*cdna_direction),&(*sensedir),watsonp,querylength,
+				  chroffset,chrpos,genomiclength,knownsplice5p,knownsplice3p);
+  }
+#endif
+
+  debug13(printf("Final result of path_trim: chroffset = %u, chrpos = %u, cdna_direction %d, sensedir %d\n",
+		 chroffset,chrpos,*cdna_direction,*sensedir));
+  debug13(Pair_dump_list(pairs,true));
+  debug13(printf("\n"));
+
+  return pairs;
 }
 
 
 struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
-		int *nmatches_pretrim, int *nmatches_posttrim,
-		int *ambig_end_length_5, int *ambig_end_length_3,
+		int *nmatches_posttrim, int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, 
@@ -9042,7 +9655,6 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
     avg_donor_score_rev = 0.0, avg_acceptor_score_rev = 0.0;
   int alignment_score_fwd, alignment_score_rev;
   int nmatches_fwd, nmismatches_fwd, nmatches_rev, nmismatches_rev, nindels_fwd, nindels_rev;
-  int fwd_nmatches_pretrim, rev_nmatches_pretrim;
 #ifdef COMPLEX_DIRECTION
   int indel_alignment_score_fwd, indel_alignment_score_rev;
 #endif
@@ -9102,7 +9714,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 
 
   if (path_fwd != NULL) {
-    pairs_fwd = path_compute(&fwd_nmatches_pretrim,&fwd_defect_rate,&fwd_intronlen,&fwd_nonintronlen,
+    pairs_fwd = path_compute(&fwd_defect_rate,&fwd_intronlen,&fwd_nonintronlen,
 			     path_fwd,/*cdna_direction*/+1,watsonp,jump_late_p,querylength,
 			     genomiclength,
 #ifdef GSNAP
@@ -9147,7 +9759,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 
 #ifndef PMAP
   if (path_rev != NULL) {
-    pairs_rev = path_compute(&rev_nmatches_pretrim,&rev_defect_rate,&rev_intronlen,&rev_nonintronlen,
+    pairs_rev = path_compute(&rev_defect_rate,&rev_intronlen,&rev_nonintronlen,
 			     path_rev,/*cdna_direction*/-1,watsonp,jump_late_p,querylength,
 			     genomiclength,
 #ifdef GSNAP
@@ -9231,22 +9843,18 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
   if (pairs_pretrim == NULL) {
     *npairs = 0;
     *defect_rate = 0.0;
-    *nmatches_pretrim = 0;
-    *ambig_end_length_5 = *ambig_end_length_3 = 0;
+    *nmatches_posttrim = *ambig_end_length_5 = *ambig_end_length_3 = 0;
     return (struct Pair_T *) NULL;
   } else {
     if (*cdna_direction >= 0) {
-      *nmatches_pretrim = fwd_nmatches_pretrim;
       *defect_rate = fwd_defect_rate;
     } else {
-      *nmatches_pretrim = rev_nmatches_pretrim;
       *defect_rate = rev_defect_rate;
     }
-    *pairs = path_trim(&(*nmatches_posttrim),*defect_rate,
-		       &(*ambig_end_length_5),&(*ambig_end_length_3),
+    *pairs = path_trim(*defect_rate,&(*ambig_end_length_5),&(*ambig_end_length_3),
 		       &(*ambig_splicetype_5),&(*ambig_splicetype_3),
-		       pairs_pretrim,*cdna_direction,watsonp,jump_late_p,querylength,
-		       genomiclength,
+		       pairs_pretrim,&(*cdna_direction),&(*sensedir),watsonp,
+		       jump_late_p,querylength,genomiclength,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
 		       cutoff_level,queryptr,query_compress,
@@ -9260,23 +9868,26 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		       maxpeelback,maxpeelback_distalmedial,nullgap,
 		       extramaterial_end,extraband_end,
 		       pairpool,dynprogL,dynprogR,stage3debug);
+
+    *nmatches_posttrim = Pair_nmatches_posttrim(*pairs,/*pos5*/*ambig_end_length_5,
+						/*pos3*/querylength - (*ambig_end_length_3));
+
     /* printf("ambig_end_length = %d, %d\n",*ambig_end_length_5,*ambig_end_length_3); */
 
     Pair_fracidentity(&(*matches),&(*unknowns),&(*mismatches),
 		      &(*qopens),&(*qindels),&(*topens),&(*tindels),
 		      &(*ncanonical),&(*nsemicanonical),&(*nnoncanonical),
 		      *pairs,*cdna_direction);
-    pairarray = prepare_for_printing(&(*npairs),&(*pairs),*cdna_direction,*sensedir,watsonp,
-				     pairpool,queryseq_ptr,
-#ifdef PMAP
-				     queryaaseq_ptr,
-#endif
-				     genomicseg_ptr,genomicuc_ptr,genomiclength,
-				     chroffset,chrpos,genome,
-				     ngap,query_subseq_offset,skiplength,diagnosticp,
-				     use_genomicseg_p);
 
-    Pair_set_genomepos(pairarray,*npairs,chrpos,genomiclength,watsonp);
+    pairarray = make_pairarray(&(*npairs),&(*pairs),*cdna_direction,*sensedir,watsonp,
+			       pairpool,queryseq_ptr,
+#ifdef PMAP
+			       queryaaseq_ptr,
+#endif
+			       genomicseg_ptr,genomicuc_ptr,genomiclength,
+			       chroffset,chrpos,genome,
+			       ngap,query_subseq_offset,skiplength,diagnosticp,
+			       use_genomicseg_p);
 
     if (checkp == true && stage3debug == NO_STAGE3DEBUG && 
 	Pair_check_array(pairarray,*npairs) == true) {
@@ -9543,14 +10154,17 @@ Stage3_direct (Gregion_T gregion,
  ************************************************************************/
 
 bool
-Stage3_mergeable (char *comp, Genomicpos_T *genomegap, Stage3_T firstpart, Stage3_T secondpart,
-		  int exonexonpos, int queryntlength, int chimera_direction,
+Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
+		  Stage3_T firstpart, Stage3_T secondpart,
+		  int breakpoint, int queryntlength, int chimera_direction,
 		  double donor_prob, double acceptor_prob) {
   Pair_T end1, start2;
   bool watsonp, connectablep = false;
   Genomicpos_T endchrpos1, startchrpos2;
   int queryjump, genomejump, jumpdiff;
-  int firstpart_npairs, secondpart_npairs, nstart_first, nstart_second;
+
+  assert(firstpart->pairs != NULL);
+  assert(secondpart->pairs != NULL);
 
   if (firstpart->chrnum != secondpart->chrnum) {
     debug10(printf("not mergeable: chrnum %d != chrnum %d\n",firstpart->chrnum,secondpart->chrnum));
@@ -9559,28 +10173,16 @@ Stage3_mergeable (char *comp, Genomicpos_T *genomegap, Stage3_T firstpart, Stage
     debug10(printf("not mergeable: watsonp %d != watsonp %d\n",firstpart->watsonp,secondpart->watsonp));
     return false;
   } else {
-    firstpart_npairs = Pairpool_count_bounded(&nstart_first,firstpart->pairs,0,exonexonpos);
-    secondpart_npairs = Pairpool_count_bounded(&nstart_second,secondpart->pairs,exonexonpos,queryntlength);
+    end1 = Pair_end_bound(firstpart->pairs,breakpoint);
+    start2 = Pair_start_bound(secondpart->pairs,breakpoint+1);
+    assert(end1 != NULL);
+    assert(start2 != NULL);
 
-    if (firstpart_npairs == 0 || secondpart_npairs == 0) {
-      return false;
-    }
+    if ((watsonp = firstpart->watsonp) == true) {
+      endchrpos1 = firstpart->chroffset + firstpart->chrpos + end1->genomepos;
+      startchrpos2 = secondpart->chroffset + secondpart->chrpos + start2->genomepos;
 
-    watsonp = firstpart->watsonp;
-    end1 = &(firstpart->pairarray[nstart_first + firstpart_npairs-1]);
-    start2 = &(secondpart->pairarray[nstart_second]);
-    endchrpos1 = end1->genomepos;
-    startchrpos2 = start2->genomepos;
-
-#ifdef DEBUG10
-    printf("first\n");
-    Pair_dump_array(&(firstpart->pairarray[nstart_first]),firstpart_npairs,/*zerobasedp*/true);
-    printf("second\n");
-    Pair_dump_array(&(secondpart->pairarray[nstart_second]),secondpart_npairs,/*zerobasedp*/true);
-#endif
-
-    if (watsonp == true) {
-      debug10(printf("? connectable: %u versus %u\n",endchrpos1,startchrpos2));
+      debug10(printf("? connectable, watson: endchrpos1 %u versus startchrpos2 %u\n",endchrpos1,startchrpos2));
       if (endchrpos1 < startchrpos2) {
 	*genomegap = startchrpos2 - endchrpos1 - 1;
 	if (startchrpos2 < endchrpos1 + MERGELENGTH) {
@@ -9590,8 +10192,14 @@ Stage3_mergeable (char *comp, Genomicpos_T *genomegap, Stage3_T firstpart, Stage
 	  connectablep = true;
 	}
       }
+
     } else {
-      debug10(printf("? connectable: startchrpos2 %u versus endchrpos1 %u\n",startchrpos2,endchrpos1));
+      endchrpos1 = firstpart->chroffset + firstpart->chrpos + (firstpart->stage1_genomiclength - 1) - 
+	end1->genomepos;
+      startchrpos2 = secondpart->chroffset + secondpart->chrpos + (secondpart->stage1_genomiclength - 1) -
+	start2->genomepos;
+
+      debug10(printf("? connectable, crick: startchrpos2 %u versus endchrpos1 %u\n",startchrpos2,endchrpos1));
       if (startchrpos2 < endchrpos1) {
 	*genomegap = endchrpos1 - startchrpos2 - 1;
 	if (endchrpos1 < startchrpos2 + MERGELENGTH) {
@@ -9618,22 +10226,331 @@ Stage3_mergeable (char *comp, Genomicpos_T *genomegap, Stage3_T firstpart, Stage
       }
 
       /* Follows logic of assign_gap_types somewhat */
+      *singlep = *dualbreakp = false;
       if (jumpdiff < MININTRONLEN) {
 	debug10(printf("  Gap is a single gap\n"));
-	*comp = MATCH_COMP;	/* Indicates single gap */
+	*singlep = true;
       } else if (queryjump > 9) {
-	*comp = DUALBREAK_COMP;
-      } else if (chimera_direction > 0) {
-	*comp = FWD_CANONICAL_INTRON_COMP;
-      } else if (chimera_direction < 0) {
-	*comp = REV_CANONICAL_INTRON_COMP;
-      } else {
-	*comp = NONINTRON_COMP;
+	*dualbreakp = true;
       }
 
       return true;
     }
   }
+}
+
+
+void
+Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
+#ifdef PMAP
+		     char *queryaaseq_ptr,
+#endif
+		     char *queryseq_ptr, char *queryuc_ptr,
+		     bool max_extend_p, Genome_T genome, Pairpool_T pairpool,
+		     int ngap, int maxpeelback) {
+  List_T path, peeled_path;
+  Pair_T leftpair, gappair;
+
+  int nconsecutive_mismatches;
+  int querypos, querydp5, genomedp5;
+  Genomicpos_T pos, genomepos;
+  char c, c_upper, g, comp;
+  bool mismatchp;
+
+  debug10(printf("LEFT BEFORE FILL\n"));
+  debug10(Pair_dump_list(this->pairs,true));
+  debug10(printf("END_LEFT BEFORE FILL\n"));
+
+
+  path = List_reverse(this->pairs);
+  leftpair = (Pair_T) path->first;
+
+  debug(printf("\nTRAVERSE_SINGLE_GAP\n"));
+  querydp5 = leftpair->querypos + 1;
+  genomedp5 = leftpair->genomepos + 1;
+  if (leftpair->cdna == ' ') querydp5--;
+  if (leftpair->genome == ' ') genomedp5--;
+
+  path = peel_leftward(&mismatchp,&peeled_path,path,&querydp5,&genomedp5,
+#ifdef WASTE
+		       pairpool,
+#endif
+		       maxpeelback,/*throughmismatchp*/true,/*endgappairs*/NULL,&gappair,
+		       /*querydp_medialgap*/NULL,/*genomedp_medialgap*/NULL);
+
+  path = clean_path_end3_gap_indels(path);
+  leftpair = (Pair_T) path->first;
+  querypos = leftpair->querypos;
+  genomepos = leftpair->genomepos;
+  if (this->watsonp == true) {
+    pos = this->chroffset + this->chrpos + genomepos;
+    debug10(printf("watsonp on left is true.  pos is %u\n",pos));
+
+    querypos++;
+    genomepos++;
+    pos++;
+    while (querypos < goal) {
+      c = queryseq_ptr[querypos];
+      c_upper = queryuc_ptr[querypos];
+      g = Genome_get_char(genome,pos);
+      if (c_upper == g) {
+	comp = MATCH_COMP;
+      } else {
+	comp = MISMATCH_COMP;
+      }
+      debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
+		     querypos,pos,c,g));
+      path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+      querypos++;
+      genomepos++;
+      pos++;
+    }
+
+    if (max_extend_p == true) {
+      debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
+      nconsecutive_mismatches = 0;
+      while (querypos < querylength && nconsecutive_mismatches < 3) {
+	c = queryseq_ptr[querypos];
+	c_upper = queryuc_ptr[querypos];
+	g = Genome_get_char(genome,pos);
+	if (c_upper == g) {
+	  comp = MATCH_COMP;
+	  nconsecutive_mismatches = 0;
+	} else {
+	  comp = MISMATCH_COMP;
+	  nconsecutive_mismatches += 1;
+	}
+	debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
+		       querypos,pos,c,g));
+	path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+	querypos++;
+	genomepos++;
+	pos++;
+      }
+    }
+
+  } else {
+    pos = this->chroffset + this->chrpos + (this->stage1_genomiclength - 1) - genomepos;
+    debug10(printf("watsonp on left is false.  pos is %u\n",pos));
+
+    querypos++;
+    genomepos++;
+    pos--;
+    while (querypos < goal) {
+      c = queryseq_ptr[querypos];
+      c_upper = queryuc_ptr[querypos];
+      g = complCode[(int) Genome_get_char(genome,pos)];
+      if (c_upper == g) {
+	comp = MATCH_COMP;
+      } else {
+	comp = MISMATCH_COMP;
+      }
+      debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
+		     querypos,pos,c,g));
+      path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+      querypos++;
+      genomepos++;
+      pos--;
+    }
+
+    if (max_extend_p == true) {
+      debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
+      nconsecutive_mismatches = 0;
+      while (querypos < querylength && nconsecutive_mismatches < 3) {
+	c = queryseq_ptr[querypos];
+	c_upper = queryuc_ptr[querypos];
+	g = complCode[(int) Genome_get_char(genome,pos)];
+	if (c_upper == g) {
+	  comp = MATCH_COMP;
+	  nconsecutive_mismatches = 0;
+	} else {
+	  comp = MISMATCH_COMP;
+	  nconsecutive_mismatches += 1;
+	}
+	debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
+		       querypos,pos,c,g));
+	path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+	querypos++;
+	genomepos++;
+	pos--;
+      }
+    }
+  }
+
+  this->pairs = List_reverse(path);
+
+  debug10(printf("LEFT AFTER FILL\n"));
+  debug10(Pair_dump_list(this->pairs,true));
+  debug10(printf("END_LEFT AFTER FILL\n"));
+
+  FREE_OUT(this->pairarray);
+  this->pairarray = make_pairarray(&this->npairs,&this->pairs,this->cdna_direction,this->sensedir,
+				   this->watsonp,pairpool,queryseq_ptr,
+#ifdef PMAP
+				   queryaaseq_ptr,
+#endif
+				   /*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+				   this->stage1_genomiclength,this->chroffset,this->chrpos,
+				   genome,ngap,/*subseq_offset*/0,/*skiplength*/0,
+				   /*diagnosticp*/false,/*use_genomicseg_p*/false);
+
+  return;
+}
+
+
+void
+Stage3_extend_left (T this, int goal, Sequence_T queryseq,
+#ifdef PMAP
+		    char *queryaaseq_ptr,
+#endif
+		    char *queryseq_ptr, char *queryuc_ptr,
+		    bool max_extend_p, Genome_T genome, Pairpool_T pairpool,
+		    int ngap, int maxpeelback) {
+  List_T pairs, peeled_pairs;
+  Pair_T rightpair, gappair;
+
+  int nconsecutive_mismatches;
+  int querypos, querydp3, genomedp3;
+  Genomicpos_T pos, genomepos;
+  char c, c_upper, g, comp;
+  bool mismatchp;
+
+  debug10(printf("RIGHT BEFORE FILL\n"));
+  debug10(Pair_dump_list(this->pairs,true));
+  debug10(printf("END_RIGHT BEFORE FILL\n"));
+
+
+  /* Do not call insert_gapholders */
+  pairs = this->pairs;
+  rightpair = (Pair_T) pairs->first;
+
+  querydp3 = rightpair->querypos - 1;
+  genomedp3 = rightpair->genomepos - 1;
+
+  pairs = peel_rightward(&mismatchp,&peeled_pairs,pairs,&querydp3,&genomedp3,
+#ifdef WASTE
+			 pairpool,
+#endif
+			 maxpeelback,/*throughmismatchp*/true,/*endgappairs*/NULL,&gappair,
+			 /*querydp_medialgap*/NULL,/*genomedp_medialgap*/NULL);
+
+  pairs = clean_pairs_end5_gap_indels(pairs);
+  rightpair = (Pair_T) pairs->first;
+  querypos = rightpair->querypos;
+  genomepos = rightpair->genomepos;
+  if (this->watsonp == true) {
+    pos = this->chroffset + this->chrpos + genomepos;
+    debug10(printf("watsonp on right is true.  pos is %u\n",pos));
+
+    querypos--;
+    genomepos--;
+    pos--;
+    while (querypos >= goal) {
+      c = queryseq_ptr[querypos];
+      c_upper = queryuc_ptr[querypos];
+      g = Genome_get_char(genome,pos);
+      if (c_upper == g) {
+	comp = MATCH_COMP;
+      } else {
+	comp = MISMATCH_COMP;
+      }
+      debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
+		     querypos,pos,c,g));
+      pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+      querypos--;
+      genomepos--;
+      pos--;
+    }
+
+    if (max_extend_p == true) {
+      debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
+      nconsecutive_mismatches = 0;
+      while (querypos >= 0 && nconsecutive_mismatches < 3) {
+	c = queryseq_ptr[querypos];
+	c_upper = queryuc_ptr[querypos];
+	g = Genome_get_char(genome,pos);
+	if (c_upper == g) {
+	  comp = MATCH_COMP;
+	  nconsecutive_mismatches = 0;
+	} else {
+	  comp = MISMATCH_COMP;
+	  nconsecutive_mismatches += 1;
+	}
+	debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
+		       querypos,pos,c,g));
+	pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+	querypos--;
+	genomepos--;
+	pos--;
+      }
+    }
+
+  } else {
+    pos = this->chroffset + this->chrpos + (this->stage1_genomiclength - 1) - genomepos;
+    debug10(printf("watsonp on right is false.  pos is %u\n",pos));
+
+    querypos--;
+    genomepos--;
+    pos++;
+    while (querypos >= goal) {
+      c = queryseq_ptr[querypos];
+      c_upper = queryuc_ptr[querypos];
+      g = complCode[(int) Genome_get_char(genome,pos)];
+      if (c_upper == g) {
+	comp = MATCH_COMP;
+      } else {
+	comp = MISMATCH_COMP;
+      }
+      debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
+		     querypos,pos,c,g));
+      pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+      querypos--;
+      genomepos--;
+      pos++;
+    }
+
+    if (max_extend_p == true) {
+      debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
+      nconsecutive_mismatches = 0;
+      while (querypos >= 0 && nconsecutive_mismatches > 3) {
+	c = queryseq_ptr[querypos];
+	c_upper = queryuc_ptr[querypos];
+	g = complCode[(int) Genome_get_char(genome,pos)];
+	if (c_upper == g) {
+	  comp = MATCH_COMP;
+	  nconsecutive_mismatches = 0;
+	} else {
+	  comp = MISMATCH_COMP;
+	  nconsecutive_mismatches += 1;
+	}
+	debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
+		       querypos,pos,c,g));
+	pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
+	querypos--;
+	genomepos--;
+	pos++;
+      }
+    }
+  }
+
+  this->pairs = pairs;
+
+  debug10(printf("RIGHT AFTER FILL\n"));
+  debug10(Pair_dump_list(this->pairs,true));
+  debug10(printf("END_RIGHT AFTER FILL\n"));
+
+  FREE_OUT(this->pairarray);
+  this->pairarray = make_pairarray(&this->npairs,&this->pairs,this->cdna_direction,this->sensedir,
+				   this->watsonp,pairpool,queryseq_ptr,
+#ifdef PMAP
+				   queryaaseq_ptr,
+#endif
+				   /*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+				   this->stage1_genomiclength,this->chroffset,this->chrpos,
+				   genome,ngap,/*subseq_offset*/0,/*skiplength*/0,
+				   /*diagnosticp*/false,/*use_genomicseg_p*/false);
+
+  return;
 }
 
 
@@ -9654,39 +10571,37 @@ adjust_genomepos (T this, int delta) {
 
 
 void
-Stage3_merge_single (T this_left, T this_right,
-		     int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+Stage3_merge_local_single (T this_left, T this_right,
+			   int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
 #ifdef PMAP
-		     char *queryaaseq_ptr,
+			   char *queryaaseq_ptr,
 #endif
-		     char *queryseq_ptr, char *queryuc_ptr,
-		     Pairpool_T pairpool, Dynprog_T dynprogM, Genome_T genome,
-		     int maxpeelback, int extraband_single) {
-  Pair_T newpair, oldpair, firstpair, lastpair, leftpair, rightpair;
-  List_T path, p;
+			   Sequence_T queryseq, char *queryseq_ptr, char *queryuc_ptr,
+			   Pairpool_T pairpool, Dynprog_T dynprogM, Genome_T genome,
+			   int maxpeelback, int extraband_single, int ngap) {
+  Pair_T firstpair, lastpair, leftpair, rightpair;
+  List_T path;
   bool watsonp, filledp;
 
   char *genomicseg_ptr, *genomicuc_ptr;
   Genomicpos_T chrpos, left, firstpos, lastpos, genomiclength;
   Sequence_T genomicseg;
-  struct Pair_T *right_pairarray;
 
   int dynprogindex_minor = 0;
 
 
-  this_left->pairs = List_reverse(Pairpool_transfer_bounded(NULL,this_left->pairs,minpos1,maxpos1));
-  this_right->pairs = List_reverse(Pairpool_transfer_bounded(NULL,this_right->pairs,minpos2,maxpos2));
+  this_left->pairs = Pairpool_clip_bounded(this_left->pairs,minpos1,maxpos1);
+  this_right->pairs = Pairpool_clip_bounded(this_right->pairs,minpos2,maxpos2);
 
-  FREE(this_left->pairarray);
-  FREE(this_right->pairarray);
+  FREE_OUT(this_left->pairarray);
+  FREE_OUT(this_right->pairarray);
 
   if (this_left->pairs == NULL && this_right->pairs == NULL) {
     this_left->pairarray = (struct Pair_T *) NULL;
     this_right->pairarray = (struct Pair_T *) NULL;
     return;
-  }
 
-  if ((watsonp = this_left->watsonp) == true) {
+  } else if ((watsonp = this_left->watsonp) == true) {
     debug10(printf("watsonp %d\n",watsonp));
 
     chrpos = this_left->chrpos;
@@ -9739,37 +10654,22 @@ Stage3_merge_single (T this_left, T this_right,
 					    /*jump_late_p*/watsonp ? false : true,pairpool,dynprogM,
 					    maxpeelback,extraband_single,/*defect_rate*/0,
 					    /*close_indels_mode*/+1,/*forcep*/true);
-
-    Sequence_free(&genomicseg);
-
     this_left->pairs = List_reverse(path);
-    this_left->npairs = List_length(this_left->pairs);
-    this_right->npairs = List_length(this_right->pairs);
-    
-    /* Before gap */
-    newpair = this_left->pairarray = (struct Pair_T *) CALLOC(this_left->npairs+this_right->npairs,sizeof(struct Pair_T));
-    for (p = this_left->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(this_left->pairarray,this_left->npairs,chrpos + firstpos,genomiclength,
-		       /*watsonp*/true);
 
-    /* After gap */
-    newpair = right_pairarray = &(this_left->pairarray[this_left->npairs]);
-    for (p = this_right->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(right_pairarray,this_right->npairs,chrpos + firstpos,genomiclength,
-		       /*watsonp*/true);
+    make_pairarrays_chimera(this_left,/*chrpos_left*/chrpos + firstpos,/*genomiclength_left*/genomiclength,
+			    this_right,/*chrpos_right*/chrpos + firstpos,/*genomiclength_right*/genomiclength,
+#ifdef PMAP
+			    queryaaseq_ptr,
+#endif
+			    queryseq,genomicseg_ptr,genome,pairpool,/*gaplength*/0,ngap);
+    Sequence_free(&genomicseg);
 
     debug10(printf("LEFT\n"));
     debug10(Pair_dump_array(this_left->pairarray,this_left->npairs,true));
     debug10(printf("END LEFT\n"));
 
     debug10(printf("RIGHT\n"));
-    debug10(Pair_dump_array(right_pairarray,this_right->npairs,true));
+    debug10(Pair_dump_array(this_right->pairarray,this_right->npairs,true));
     debug10(printf("END RIGHT\n"));
 
   } else {
@@ -9825,41 +10725,26 @@ Stage3_merge_single (T this_left, T this_right,
 					    /*jump_late_p*/watsonp ? false : true,pairpool,dynprogM,
 					    maxpeelback,extraband_single,/*defect_rate*/0,
 					    /*close_indels_mode*/+1,/*forcep*/true);
-
-    Sequence_free(&genomicseg);
-
     this_left->pairs = List_reverse(path);
-    this_left->npairs = List_length(this_left->pairs);
-    this_right->npairs = List_length(this_right->pairs);
-    
-    /* Before gap */
-    newpair = this_left->pairarray = (struct Pair_T *) CALLOC(this_left->npairs+this_right->npairs,sizeof(struct Pair_T));
-    for (p = this_left->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(this_left->pairarray,this_left->npairs,chrpos + lastpos,genomiclength,
-		       /*watsonp*/false);
 
-    /* After gap */
-    newpair = right_pairarray = &(this_left->pairarray[this_left->npairs]);
-    for (p = this_right->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(right_pairarray,this_right->npairs,chrpos + lastpos,genomiclength,
-		       /*watsonp*/false);
+    make_pairarrays_chimera(this_left,/*chrpos_left*/chrpos + lastpos,/*genomiclength_left*/genomiclength,
+			    this_right,/*chrpos_right*/chrpos + lastpos,/*genomiclength_right*/genomiclength,
+#ifdef PMAP
+			    queryaaseq_ptr,
+#endif
+			    queryseq,genomicseg_ptr,genome,pairpool,/*gaplength*/0,ngap);
+    Sequence_free(&genomicseg);
 
     debug10(printf("LEFT\n"));
     debug10(Pair_dump_array(this_left->pairarray,this_left->npairs,true));
     debug10(printf("END LEFT\n"));
 
     debug10(printf("RIGHT\n"));
-    debug10(Pair_dump_array(right_pairarray,this_right->npairs,true));
+    debug10(Pair_dump_array(this_right->pairarray,this_right->npairs,true));
     debug10(printf("END RIGHT\n"));
   }
 
-  /* Revise statistics */
+  /* Merge statistics */
   this_left->npairs = this_left->npairs+this_right->npairs;
   this_right->npairs = 0;
 
@@ -9878,31 +10763,32 @@ Stage3_merge_single (T this_left, T this_right,
 
 
 void
-Stage3_merge_splice (T this_left, T this_right, char comp,
-		     int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
-		     Pairpool_T pairpool, Genome_T genome, int ngap) {
+Stage3_merge_local_splice (T this_left, T this_right, char comp,
+			   int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+#ifdef PMAP
+			   char *queryaaseq_ptr,
+#endif
+			   Sequence_T queryseq, Pairpool_T pairpool, Genome_T genome, int ngap) {
   Pair_T end1, start2, newpair, oldpair;
-  List_T pairs = NULL, p;
+  List_T pairs = NULL;
   bool watsonp;
   int genomicpos, querypos, i;
   int gaplength;
   char *genomicseg_ptr;
   Genomicpos_T left;
   Sequence_T genomicseg;
-  struct Pair_T *right_pairarray;
 
-  this_left->pairs = List_reverse(Pairpool_transfer_bounded(NULL,this_left->pairs,minpos1,maxpos1));
-  this_right->pairs = List_reverse(Pairpool_transfer_bounded(NULL,this_right->pairs,minpos2,maxpos2));
 
-  this_left->npairs = List_length(this_left->pairs);
-  this_right->npairs = List_length(this_right->pairs);
+  this_left->pairs = Pairpool_clip_bounded(this_left->pairs,minpos1,maxpos1);
+  this_right->pairs = Pairpool_clip_bounded(this_right->pairs,minpos2,maxpos2);
 
-  FREE(this_left->pairarray);
-  FREE(this_right->pairarray);
+  FREE_OUT(this_left->pairarray);
+  FREE_OUT(this_right->pairarray);
 
-  if (this_left->npairs + this_right->npairs == 0) {
+  if (this_left->pairs == NULL && this_right->pairs == NULL) {
     this_left->pairarray = (struct Pair_T *) NULL;
     this_right->pairarray = (struct Pair_T *) NULL;
+    return;
 
   } else {
     watsonp = this_left->watsonp;
@@ -9917,29 +10803,18 @@ Stage3_merge_splice (T this_left, T this_right, char comp,
 #endif
 
     gaplength = ngap + 3 + ngap;
+    make_pairarrays_chimera(this_left,this_left->chrpos,this_left->stage1_genomiclength,
+			    this_right,this_right->chrpos,this_right->stage1_genomiclength,
+#ifdef PMAP
+			    queryaaseq_ptr,
+#endif
+			    queryseq,/*genomicseg_ptr*/NULL,genome,pairpool,gaplength,
+			    ngap);
 
-    /* Before gap */
-    newpair = this_left->pairarray = (struct Pair_T *) CALLOC(this_left->npairs+gaplength+this_right->npairs,sizeof(struct Pair_T));
-    for (p = this_left->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(this_left->pairarray,this_left->npairs,this_left->chrpos,this_left->stage1_genomiclength,
-		       this_left->watsonp);
-
-    /* After gap */
-    newpair = right_pairarray = &(this_left->pairarray[this_left->npairs+gaplength]);
-    for (p = this_right->pairs; p != NULL; p = p->rest) {
-      oldpair = (Pair_T) p->first;
-      memcpy(newpair++,oldpair,sizeof(struct Pair_T));
-    }
-    Pair_set_genomepos(right_pairarray,this_right->npairs,this_right->chrpos,this_right->stage1_genomiclength,
-		       this_right->watsonp);
-
-    /* Gap */
+    /* Fill in gap */
     newpair = &(this_left->pairarray[this_left->npairs]);
     end1 = &(this_left->pairarray[this_left->npairs-1]);
-    start2 = &(right_pairarray[0]);
+    start2 = &(this_right->pairarray[0]);
 
     genomicpos = start2->genomepos;
     querypos = start2->querypos;
@@ -9967,7 +10842,7 @@ Stage3_merge_splice (T this_left, T this_right, char comp,
       } else {
 	left = this_left->chroffset + end1->genomepos - ngap;
       }
-    
+
       genomicseg = Genome_get_segment(genome,left,ngap,/*chromosome_iit*/NULL,!watsonp);
       genomicseg_ptr = Sequence_fullpointer(genomicseg);
 
@@ -9983,6 +10858,7 @@ Stage3_merge_splice (T this_left, T this_right, char comp,
       memcpy(newpair++,oldpair,sizeof(struct Pair_T));
       memcpy(newpair++,oldpair,sizeof(struct Pair_T));
       memcpy(newpair++,oldpair,sizeof(struct Pair_T));
+
 
       if (watsonp == true) {
 	left = this_right->chroffset + start2->genomepos - ngap;
@@ -10003,7 +10879,7 @@ Stage3_merge_splice (T this_left, T this_right, char comp,
     }
 
 
-    /* Revise statistics */
+    /* Merge statistics */
     this_left->npairs = this_left->npairs+gaplength+this_right->npairs;
     this_right->npairs = 0;
 

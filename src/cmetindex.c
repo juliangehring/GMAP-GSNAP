@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: cmetindex.c 56964 2012-02-02 17:57:52Z twu $";
+static char rcsid[] = "$Id: cmetindex.c 60849 2012-03-30 19:25:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -547,6 +547,9 @@ main (int argc, char *argv[]) {
   FILE *positions_fp, *ref_positions_fp;
   int ref_positions_fd;
   size_t ref_positions_len;
+#ifndef HAVE_MMAP
+  double seconds;
+#endif
 
   int opt;
   extern int optind;
@@ -613,8 +616,14 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"Can't open file %s\n",positions_filename);
     exit(9);
   }
+
+#ifdef HAVE_MMAP
   ref_positions = (Genomicpos_T *) Access_mmap(&ref_positions_fd,&ref_positions_len,
 					       positions_filename,sizeof(Genomicpos_T),/*randomp*/false);
+#else
+  ref_positions = (Genomicpos_T *) Access_allocated(&ref_positions_len,&seconds,
+						    positions_filename,sizeof(Genomicpos_T));
+#endif
 
 
   /* Open CT output files */
@@ -696,8 +705,12 @@ main (int argc, char *argv[]) {
   /* Clean up */
   FREE(ref_offsets);
 
+#ifdef HAVE_MMAP
   munmap((void *) ref_positions,ref_positions_len);
   close(ref_positions_fd);
+#else
+  FREE(ref_positions);
+#endif
 
   FREE(positions_filename);
   FREE(offsetscomp_filename);

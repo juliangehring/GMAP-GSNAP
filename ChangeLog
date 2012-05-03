@@ -1,3 +1,218 @@
+2012-04-28  twu
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst, index.html:
+      Updated version
+
+    * gmap.c: Using new interface to Stage3_compute
+
+    * stage3hr.c, stage3hr.h: Using nmatches_posttrim (adjusted by scores for
+      indels) to compare alignments, except for pre-final terminals.  Performing
+      iteration in optimal_score procedures to use updated trim boundaries as
+      poor alignments are removed.
+
+    * stage3.h: No longer use nmatches_pretrim in Stage3_compute
+
+    * stage3.c: Removed use of QUERYEND_INDELS at ends of reads, and using
+      QUERYEND_NOGAPS instead, to reduce time spent in dynamic programming
+
+    * stage1hr.c: Added usedp field to Segment_T object, and marking it true if
+      the segment is used in making a Stage3end_T object.  Skipping these
+      segments in finding terminals.
+
+    * pair.c, pair.h: Added pos5 and pos3 arguments to Pair_nmatches
+
+    * genome.c: Made uncompress_mmap faster by translating high and low words 16
+      bits at a time.  Adding N's only if flags is not zero.
+
+    * dynprog.c: Modified bridge_intron_gap so it searches for indels on left or
+      right of splice, but not both.  Changes algorithm from quadratic to linear
+      time.
+
+2012-04-25  twu
+
+    * stage1hr.c, stage3hr.c, stage3hr.h: Revisions made to hit_goodness_cmp and
+      hitpair_goodness_cmp.  Using genomiclength in hit_goodness_cmp, final
+      round.  For terminals, returning 0 in preliminary rounds.  Not using
+      scores for terminals, and using scores only if GMAP or indels are
+      involved.  In pair_up procedure, not using terminal scores to update
+      found_score.
+
+    * indexdb.c: Fixed uninitialized variables that caused problems with older
+      GMAP indices
+
+2012-04-23  twu
+
+    * dynprog.c: Created separate functions, compute_scores_lookup_fwd and
+      compute_scores_lookup_rev
+
+    * splicetrie.c: Fixed calls to Dynprog_end5_gap and Dynprog_end3_gap to use
+      endalign instead of to_queryend_p.
+
+2012-04-20  twu
+
+    * VERSION: Updated version
+
+    * stage3hr.c: Added check for too many indel breaks in GMAP
+
+    * stage1hr.c, stage3hr.c, stage3hr.h: Storing cdna_direction in hit of type
+      GMAP and using it instead of sensedir when printing
+
+2012-04-19  twu
+
+    * VERSION, index.html: Updated version number
+
+    * stage3.c: Turned off debugging
+
+    * stage3.c: Fixed uninitialized variable in trim_novel_spliceends
+
+    * dynprog.c, dynprog.h, stage3.c: Using correct endalign types in
+      Dynprog_end5_known and Dynprog_end3_known
+
+    * pair.c: Fixed issue with uninitialized variable in printing splicesite
+      labels
+
+2012-04-18  twu
+
+    * result.c, result.h: Added mergedp variable
+
+    * outbuffer.c, outbuffer.h: Handling results where mergedp is true
+
+    * gmap.c: Allowing chimera finding to be turned off by setting -x to be 0.
+      Added mergedp variable so merged alignments generate only a single result.
+
+2012-04-16  twu
+
+    * VERSION, config.site.rescomp.tst, index.html: Updated version
+
+    * samprint.c: Handling case where clip-overlap results in a NULL substring
+
+    * gmap.c: In call to Stage3_merge_local_single, clipping parts around
+      breakpoint instead of chimerapos and chimeraequivpos, to avoid issues
+      where maxpeelback is insufficient
+
+    * stage3.c, stage3.h: Renamed variable from extendp to max_extend_p
+
+    * get-genome.c: Added --forsam flag to generate header for SAM files
+
+2012-04-11  twu
+
+    * VERSION: Updated version
+
+    * stage1hr.c: Fixed bug from uninitialized variable
+
+    * gmap.c, stage3.c, stage3.h: Added a criterion for extending left and right
+      chimera ends to consecutive mismatches, based on queryjump and genomejump
+      being unequal.
+
+2012-04-09  twu
+
+    * gsnap.c, uniqscan.c: Using new interface to Stage3hr_setup
+
+    * stage1hr.c: Finding terminals by a new method.  Instead of counting
+      mismatches from end, requiring only that querypos3 - querypos5 is greater
+      than index1part.  Now searching terminals on single-end reads even if a
+      GSNAP alignment has been found.  Removed nsalvage == 0 requirement for
+      searching terminals and paired-end reads.
+
+    * substring.c, substring.h: Added procedure Substring_set_endtypes
+
+    * stage3hr.c, stage3hr.h: Changed optimal score procedures to use max of
+      max-terminal and min-other for prefinal rounds, and max of max-GMAP and
+      min-other for final rounds.  For GMAP eventrim scores, not counting
+      indels, and adding a penalty for long ambiguous ends, by dividing by
+      index1part + (index1interval - 1).  Terminal alignments now compute their
+      own endtypes.
+
+2012-04-06  twu
+
+    * stage2.c: Fixed fatal bug when looking for shifted canonical splice site
+      by checking that rightpos is less than genomicend.
+
+    * gmap.c, stage3.c, stage3.h: For chimeras, extending ends until three
+      consecutive mismatches are found.  At final breakpoint, cleaning indels
+      from ends.
+
+2012-04-05  twu
+
+    * stage1hr.c: For single-end reads, finding distant splicing only when no
+      other hits have been found
+
+    * VERSION, index.html: Updated version
+
+    * pair.c, pair.h, stage3.c: Fixed bug in Stage3_mergeable where we require
+      end1 and start2 pairs to be computed
+
+2012-04-04  twu
+
+    * index.html: Updated version
+
+    * VERSION: Updated version
+
+    * splicetrie.c: Allowing 1 mismatch in distal exon
+
+    * stage3hr.c: Changed debugging statement to report score_eventrim
+
+    * stage3.c: Rewrite trim_novel_spliceends to scan pairs first to find
+      genomicpos bounds and then iterate through genomicpos.  Allowing
+      pick_cdna_direction to return SENSE_NULL if no introns exist.
+
+    * stage1hr.c: For GMAP terminals, also checking for a bad stretch in GMAP
+      result after the call to align_halfmapping_with_gmap
+
+    * stage3.c: Fixed bug in trim_novel_spliceends when pairs is NULL
+
+    * stage3.c: Turned off trimming of novel splice ends for GMAP
+
+    * index.html: Made changes to reflect new version
+
+2012-04-03  twu
+
+    * VERSION: Updated version
+
+    * stage3hr.c: Fixed issue where no non-terminal alignment existed, resulting
+      in using min trim length of MAX_READLENGTH
+
+    * splicetrie.c: Allowing only 1 mismatch (previously 2) in internal splice
+      region of 6 bp, and no mismatches in external splice region (previously
+      depended on extension).  This avoids bad splicing due to poor gene models.
+
+    * pair.c, pair.h, stage3.c: Using pairs instead of pairarray in determining
+      whether chimera ends are connectable
+
+    * pair.c, pair.h, stage3hr.c: Counting indels in GMAP alignments only within
+      eventrim region
+
+    * stage3.c: Added function trim_novel_spliceends
+
+    * pair.c: Requiring that cdna_direction not be zero when printing splice
+      site probabilities at the ends
+
+2012-04-02  twu
+
+    * VERSION, chimera.c, chimera.h, gmap.c, outbuffer.c, pair.c, pair.h,
+      pairpool.c, pairpool.h, src, stage1hr.c, stage3.c, stage3.h, stage3hr.c,
+      stage3hr.h, trunk, util: Merged revisions 60621 to 60936 from
+      branches/2012-03-27-gmap-chimeras to improve GMAP chimeras and to apply a
+      uniform eventrim procedure in stage 3 optimal score procedures
+
+2012-03-30  twu
+
+    * gamma-speed-test.c: Added to SVN repository
+
+    * atoiindex.c, cmetindex.c, config.site.rescomp.tst, configure.ac, gmap.c,
+      gsnap.c, indexdb.c, memory-check.pl, pdldata.c, snpindex.c: Added
+      --enable-mmap flag to configure.  Added small fixes to allow programs to
+      work without mmap.
+
+    * stage3hr.c: Allowing trimming on both ends of a terminal alignment
+
+    * pair.c: Handling case where hard clipping is not possible
+
+2012-03-27  twu
+
+    * stage1hr.c: Handling the case where GMAP alignment is attempted on a
+      translocation
+
 2012-03-23  twu
 
     * VERSION, index.html: Updated version

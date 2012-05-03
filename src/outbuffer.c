@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 60021 2012-03-20 22:07:00Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 62058 2012-04-18 21:20:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -204,7 +204,7 @@ struct T {
   FILE *fp_transloc;
   FILE *fp_mult;
 
-  bool chimerap;
+  bool chimeras_allowed_p;
 
   char *user_genomicseg;
   Sequence_T usersegment;
@@ -605,7 +605,7 @@ sevenway_open (T this, int argc, char **argv, int optind) {
   }
   FREE(filename);
 
-  if (this->chimerap == true) {
+  if (this->chimeras_allowed_p == true) {
     filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".transloc")+1,sizeof(char));
     sprintf(filename,"%s.transloc",this->sevenway_root);
     if ((this->fp_transloc = fopen(filename,"w")) == NULL) {
@@ -652,7 +652,7 @@ static void
 sevenway_close (T this) {
   fclose(this->fp_mult);
   fclose(this->fp_uniq);
-  if (this->chimerap == true) {
+  if (this->chimeras_allowed_p == true) {
     fclose(this->fp_transloc);
   }
   fclose(this->fp_nomapping);
@@ -793,7 +793,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 
 T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root,
-	       bool chimerap, char *user_genomicseg, Sequence_T usersegment,
+	       bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
 	       char *dbversion, Genome_T genome, IIT_T chromosome_iit,
 	       Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
@@ -811,7 +811,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 
   T new = (T) MALLOC(sizeof(*new));
 
-  new->chimerap = chimerap;
+  new->chimeras_allowed_p = chimeras_allowed_p;
 
   new->user_genomicseg = user_genomicseg;
   new->usersegment = usersegment;
@@ -1288,6 +1288,8 @@ print_result_goby (T this, Result_T result, Request_T request) {
         output_alignment = false;
       }
       break;
+    case SINGLEEND_UNIQ:
+    case SINGLEEND_TRANSLOC:
     case CONCORDANT_UNIQ:
     case CONCORDANT_TRANSLOC:
     case UNPAIRED_UNIQ:
@@ -1365,7 +1367,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 
 static void
 print_npaths (T this, FILE *fp, int npaths, Diagnostic_T diagnostic,
-	      Chrsubset_T chrsubset, Chimera_T chimera, Failure_T failuretype) {
+	      Chrsubset_T chrsubset, bool mergedp, Chimera_T chimera, Failure_T failuretype) {
 
   if (this->diagnosticp == true) {
     Diagnostic_print(diagnostic);
@@ -1373,6 +1375,8 @@ print_npaths (T this, FILE *fp, int npaths, Diagnostic_T diagnostic,
 
   if (npaths == 0) {
     fprintf(fp,"Paths (0):");
+  } else if (mergedp == true) {
+    fprintf(fp,"Paths (1):");
   } else {
     fprintf(fp,"Paths (%d):",npaths);
   }
@@ -1415,7 +1419,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
   double donor_prob, acceptor_prob;
   List_T p;
   Gregion_T gregion;
-  bool printp;
+  bool printp, mergedp = false;
 
   queryseq = Request_queryseq(request);
 
@@ -1466,6 +1470,26 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
       fprintf(stderr,"Accession %s skipped (repetitive sequence).  Use -p flag to change pruning behavior\n",Sequence_accession(queryseq));
     } else {
       fprintf(stderr,"No paths found for %s\n",Sequence_accession(queryseq));
+    }
+
+  } else if ((mergedp = Result_mergedp(result)) == true) {
+    fp = this->fp_uniq;
+    effective_maxpaths = 1;
+
+    if (this->failsonlyp == true) {
+      printp = false;
+    } else {
+      printp = true;
+
+      for (pathnum = 1; pathnum <= /*effective_maxpaths*/1; pathnum++) {
+	Stage3_translate(stage3array[pathnum-1],
+#ifdef PMAP
+			 queryseq,this->diagnosticp,
+#endif
+			 querylength,this->fulllengthp,
+			 this->cds_startpos,this->truncatep,this->strictp,
+			 this->maponlyp);
+      }
     }
 
   } else if ((chimera = Result_chimera(result)) != NULL) {
@@ -1569,9 +1593,9 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 
     diagnostic = Result_diagnostic(result);
     if (npaths == 0) {
-      print_npaths(this,fp,0,diagnostic,this->chrsubset,/*chimera*/NULL,Result_failuretype(result));
+      print_npaths(this,fp,0,diagnostic,this->chrsubset,/*mergedp*/false,/*chimera*/NULL,Result_failuretype(result));
     } else {
-      print_npaths(this,fp,npaths,diagnostic,this->chrsubset,chimera,NO_FAILURE);
+      print_npaths(this,fp,npaths,diagnostic,this->chrsubset,mergedp,chimera,NO_FAILURE);
       for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
 	Stage3_print_pathsummary(fp,stage3array[pathnum-1],pathnum,
 				 this->chromosome_iit,this->contig_iit,
@@ -1627,7 +1651,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
   } else if (this->printtype == CONTINUOUS_BY_EXON) {
     putc('>',fp);
     Sequence_print_header(fp,queryseq,this->checksump);
-    print_npaths(this,fp,npaths,diagnostic,this->chrsubset,chimera,NO_FAILURE);
+    print_npaths(this,fp,npaths,diagnostic,this->chrsubset,mergedp,chimera,NO_FAILURE);
     if (npaths == 0) {
       fprintf(fp,"\n\n\n");
     } else {
@@ -1714,6 +1738,14 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 			       Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
 			       Sequence_fulllength(queryseq),this->quality_shift,
 			       Sequence_firstp(queryseq),this->sam_paired_p,this->sam_read_group_id);
+
+    } else if (mergedp == true) {
+      Stage3_print_sam(fp,stage3array[0],/*pathnum*/1,/*npaths*/1,
+		       Stage3_absmq_score(stage3array[0]),second_absmq,
+		       Stage3_mapq_score(stage3array[0]),
+		       this->chromosome_iit,this->usersegment,queryseq,
+		       /*chimera_part*/0,/*chimera*/NULL,this->quality_shift,this->sam_paired_p,
+		       this->sam_read_group_id);
 
     } else if (chimera != NULL) {
       Stage3_print_sam(fp,stage3array[0],/*pathnum*/1,npaths,

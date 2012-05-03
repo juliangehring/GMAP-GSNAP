@@ -1,4 +1,4 @@
-/* $Id: chimera.h 46206 2011-08-31 22:13:13Z twu $ */
+/* $Id: chimera.h 60937 2012-04-02 20:57:03Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -39,16 +39,20 @@ extern void
 Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chimeraequivpos, int *bestfrom, int *bestto, 
 		  Stage3_T *stage3array_sub1, int npaths_sub1, Stage3_T *stage3array_sub2, int npaths_sub2, 
 		  int queryntlength);
+extern int
+Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T right_part,
+			 int queryntlength);
+
 #if 0
 extern void
 Chimera_find_exonexon_old (T this, Stage3_T left_part, Stage3_T right_part,
 			   Genome_T genome, IIT_T chromosome_iit);
 #endif
 
-extern void
-Chimera_find_exonexon (int *exonexonpos, int *cdna_direction,
+extern int
+Chimera_find_exonexon (int *found_cdna_direction, int *try_cdna_direction,
 		       char *donor1, char *donor2, char *acceptor2, char *acceptor1,
-		       double *donor_prob, double *acceptor_prob,
+		       char *comp, double *donor_prob, double *acceptor_prob,
 		       Stage3_T left_part, Stage3_T right_part, Genome_T genome, IIT_T chromosome_iit,
 		       int breakpoint_start, int breakpoint_end);
 #undef T

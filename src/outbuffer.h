@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 52247 2011-11-11 16:53:27Z twu $ */
+/* $Id: outbuffer.h 62058 2012-04-18 21:20:56Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -41,7 +41,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 
 extern T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root,
-	       bool chimerap, char *user_genomicseg, Sequence_T usersegment,
+	       bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
 	       char *dbversion, Genome_T genome, IIT_T chromosome_iit,
 	       Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,

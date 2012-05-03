@@ -1,4 +1,4 @@
-/* $Id: result.h 51812 2011-11-06 18:17:08Z twu $ */
+/* $Id: result.h 62059 2012-04-18 21:21:23Z twu $ */
 #ifndef RESULT_INCLUDED
 #define RESULT_INCLUDED
 
@@ -13,6 +13,8 @@ typedef struct T *T;
 
 extern int
 Result_id (T this);
+extern bool
+Result_mergedp (T this);
 extern Chimera_T
 Result_chimera (T this);
 extern Stage3_T *
@@ -27,7 +29,7 @@ extern Failure_T
 Result_failuretype (T this);
 
 extern T
-Result_new (int id, Chimera_T chimera, Stage3_T *array,
+Result_new (int id, bool mergedp, Chimera_T chimera, Stage3_T *array,
 	    int npaths, int second_absmq, Diagnostic_T diagnostic, Failure_T failuretype);
 extern T
 Result_new_stage1debug (int id, List_T gregionlist,

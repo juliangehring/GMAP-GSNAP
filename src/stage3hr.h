@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 59898 2012-03-19 17:28:55Z twu $ */
+/* $Id: stage3hr.h 62923 2012-04-28 02:06:27Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -38,7 +38,8 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		bool distances_observed_p,
 		int pairmax_in, int expected_pairlength_in, int pairlength_deviation_in,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
-		int antistranded_penalty_in, bool favor_multiexon_p_in);
+		int antistranded_penalty_in, bool favor_multiexon_p_in,
+		int index1part, int index1interval);
 
 extern Hittype_T
 Stage3end_hittype (T this);
@@ -215,9 +216,8 @@ Stage3end_new_deletion (int *found_score, int nindels, int indel_pos, int nmisma
 			Genomicpos_T chrhigh, int indel_penalty);
 
 extern T
-Stage3end_new_terminal (int querystart, int queryend, int nmismatches,
-			Genomicpos_T left, Compress_T query_compress,
-			int querylength, bool plusp, int genestrand, Endtype_T left_endtype, Endtype_T right_endtype,
+Stage3end_new_terminal (int querystart, int queryend, Genomicpos_T left, Compress_T query_compress,
+			int querylength, bool plusp, int genestrand,
 			Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
 			int max_mismatches_allowed);
 extern T
@@ -238,12 +238,14 @@ Stage3end_new_shortexon (int *found_score, Substring_T donor, Substring_T accept
 			 int splicing_penalty, int querylength, int sensedir);
 
 extern T
-Stage3end_new_gmap (int nmismatches_whole, int nmatches_pretrim, int nmatches_posttrim,
+Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
-		    struct Pair_T *pairarray, int npairs, int nsegments, int nintrons, int nindelbreaks,
+		    struct Pair_T *pairarray, int npairs,
+		    int nsegments, int nintrons, int nindelbreaks,
 		    Genomicpos_T left, int genomiclength, bool plusp, int genestrand, int querylength,
-		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, int sensedir);
+		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    int cdna_direction, int sensedir);
 
 extern List_T
 Stage3end_sort_bymatches (List_T hits);
@@ -258,13 +260,13 @@ Stage3pair_remove_excess_terminals (List_T hitpairlist);
 extern List_T
 Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches,
 			 Compress_T query_compress_fwd, Compress_T query_compress_rev,
-			 bool keep_gmap_p);
+			 bool keep_gmap_p, bool finalp);
 extern int
 Stage3end_noptimal (List_T hitlist);
 extern List_T
 Stage3end_remove_duplicates (List_T hitlist, Shortread_T queryseq1, Shortread_T queryseq2);
 extern List_T
-Stage3end_remove_overlaps (List_T hitlist);
+Stage3end_remove_overlaps (List_T hitlist, bool finalp);
 extern List_T
 Stage3end_resolve_multimapping (List_T hitlist);
 extern Pairtype_T
@@ -306,7 +308,7 @@ extern List_T
 Stage3pair_sort_bymatches (List_T hits);
 
 extern List_T
-Stage3pair_remove_overlaps (List_T hitpairlist);
+Stage3pair_remove_overlaps (List_T hitpairlist, bool finalp);
 
 extern List_T
 Stage3pair_resolve_multimapping (List_T hitpairs);
@@ -320,7 +322,10 @@ Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
 			  Genome_T genome, char *quality_string_5, char *quality_string_3);
 
 extern List_T
-Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches, bool keep_gmap_p);
+Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches,
+			  Compress_T query5_compress_fwd, Compress_T query5_compress_rev,
+			  Compress_T query3_compress_fwd, Compress_T query3_compress_rev,
+			  bool keep_gmap_p, bool finalp);
 
 extern List_T
 Stage3_pair_up_concordant (bool *abort_pairing_p, int *found_score, int *nconcordant,

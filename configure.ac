@@ -176,8 +176,30 @@ AC_FUNC_FSEEKO
 
 #AC_FUNC_MMAP        # Checks only private fixed mapping of already-mapped memory
 
-ACX_MMAP_FIXED   # Checks fixed mapping
-ACX_MMAP_VARIABLE   # Checks variable mapping
+AC_MSG_CHECKING(whether mmap is enabled)
+AC_ARG_ENABLE([mmap],
+	      AC_HELP_STRING([--enable-mmap],
+                             [Enable mmap (default=yes).  Recommend that you do not disable this unless absolutely necessary.]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+     xyes)
+     AC_MSG_RESULT(enabled)
+     ACX_MMAP_FIXED   # Checks fixed mapping
+     ACX_MMAP_VARIABLE   # Checks variable mapping
+     ;;
+
+     xno)
+     AC_MSG_RESULT(disabled)
+     ;;
+
+     x)
+     AC_MSG_RESULT([not specified so enabled by default])
+     ACX_MMAP_FIXED   # Checks fixed mapping
+     ACX_MMAP_VARIABLE   # Checks variable mapping
+     ;;
+esac	
+
 
 if test x"$acx_mmap_fixed_ok" = xyes; then
   AC_DEFINE(HAVE_MMAP,1,[Define to 1 if you have a working 'mmap' system call.])

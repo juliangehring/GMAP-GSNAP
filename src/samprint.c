@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 53332 2011-11-29 22:20:52Z twu $";
+static char rcsid[] = "$Id: samprint.c 61889 2012-04-16 21:32:50Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -186,6 +186,10 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 	}
 	(*hardclip_low)--;
 
+	if (substring == NULL) {
+	  return 0U;
+	}
+
 	chrpos = Substring_alignstart_trim(substring) - Substring_chroffset(substring) + 1U;
 	querystart = Substring_querystart(substring);
 	queryend = Substring_queryend(Stage3end_substring_high(this));
@@ -232,6 +236,10 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 	  (*hardclip_high)++;
 	}
 	(*hardclip_high)--;
+
+	if (substring == NULL) {
+	  return 0U;
+	}
 
 	chrpos = Substring_alignend_trim(substring) - Substring_chroffset(substring) + 1U;
 	queryend = Substring_queryend(substring);

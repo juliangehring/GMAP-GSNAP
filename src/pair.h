@@ -1,4 +1,4 @@
-/* $Id: pair.h 59932 2012-03-19 22:17:46Z twu $ */
+/* $Id: pair.h 62918 2012-04-28 01:57:21Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -200,7 +200,13 @@ Pair_print_introns (FILE *fp, struct T *pairs, int npairs, char *accession,
 		    int nexons, Chrnum_T chrnum, IIT_T chromosome_iit);
 
 extern int
-Pair_nmatches (List_T pairs);
+Pair_nmatches_posttrim (List_T pairs, int pos5, int pos3);
+extern int
+Pair_array_nmatches_posttrim (struct T *pairs, int npairs, int pos5, int pos3);
+extern int
+Pair_nmismatches_region (int *nindelbreaks, struct T *pairs, int npairs,
+			 int trim_left, int trim_right, int querylength);
+
 extern void
 Pair_fracidentity_simple (int *matches, int *unknowns, int *mismatches, List_T pairs);
 extern void
@@ -252,6 +258,12 @@ extern Genomicpos_T
 Pairarray_genomicbound_from_start (struct T *pairarray, int npairs, int overlap);
 extern Genomicpos_T
 Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap);
+
+extern T
+Pair_start_bound (List_T pairs, int breakpoint);
+extern T
+Pair_end_bound (List_T pairs, int breakpoint);
+
 
 extern List_T
 Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs);

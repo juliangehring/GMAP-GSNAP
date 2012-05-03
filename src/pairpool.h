@@ -1,4 +1,4 @@
-/* $Id: pairpool.h 52068 2011-11-09 19:32:06Z twu $ */
+/* $Id: pairpool.h 60937 2012-04-02 20:57:03Z twu $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 
@@ -37,7 +37,7 @@ Pairpool_transfer_n (List_T dest, List_T source, int n);
 extern int
 Pairpool_count_bounded (int *nstart, List_T source, int minpos, int maxpos);
 extern List_T
-Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos);
+Pairpool_clip_bounded (List_T source, int minpos, int maxpos);
 extern List_T
 Pairpool_copy (List_T source, T this);
 extern struct Pair_T *

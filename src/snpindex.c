@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 56964 2012-02-02 17:57:52Z twu $";
+static char rcsid[] = "$Id: snpindex.c 60849 2012-03-30 19:25:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -786,6 +786,9 @@ main (int argc, char *argv[]) {
   Genomicpos_T *snp_positions, *ref_positions, nblocks;
   UINT4 *snp_blocks;
   Oligospace_T oligospace, oligoi;
+#ifndef HAVE_MMAP
+  double seconds;
+#endif
 
   char *filename, *filename1, *filename2;
   char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
@@ -1018,8 +1021,15 @@ main (int argc, char *argv[]) {
   } else {
     fclose(ref_positions_fp);
   }
+
+#ifdef HAVE_MMAP
   ref_positions = (Genomicpos_T *) Access_mmap(&ref_positions_fd,&ref_positions_len,
 					       positions_filename,sizeof(Genomicpos_T),/*randomp*/false);
+#else
+  ref_positions = (Genomicpos_T *) Access_allocated(&ref_positions_len,&seconds,
+						    positions_filename,sizeof(Genomicpos_T));
+#endif
+
 
   filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(positions_basename_ptr)+
 			     strlen(".")+strlen(snps_root)+1,sizeof(char));
@@ -1052,8 +1062,13 @@ main (int argc, char *argv[]) {
 
 
   /* Clean up */
+#ifdef HAVE_MMAP
   munmap((void *) ref_positions,ref_positions_len);
   close(ref_positions_fd);
+#else
+  FREE(ref_positions);
+#endif
+
 
   FREE(snp_positions);
   FREE(snp_offsets);

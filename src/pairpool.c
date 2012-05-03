@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 56992 2012-02-02 22:23:45Z twu $";
+static char rcsid[] = "$Id: pairpool.c 60937 2012-04-02 20:57:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -215,6 +215,49 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
 
   debug(
 	printf("Creating %p: %d %d %c %c %c\n",
+	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	);
+
+	if (this->listcellctr >= this->nlistcells) {
+    this->listcellptr = add_new_listcellchunk(this);
+  } else if ((this->listcellctr % CHUNKSIZE) == 0) {
+    for (n = this->nlistcells - CHUNKSIZE, p = this->listcellchunks;
+	 n > this->listcellctr; p = p->rest, n -= CHUNKSIZE) ;
+    this->listcellptr = (struct List_T *) p->first;
+    debug1(printf("Located listcell %d at %p\n",this->listcellctr,this->listcellptr));
+  }
+  listcell = this->listcellptr++;
+  this->listcellctr++;
+
+  listcell->first = (void *) pair;
+  listcell->rest = list;
+
+  return listcell;
+}
+
+
+List_T
+Pairpool_push_copy (List_T list, T this, Pair_T orig) {
+  List_T listcell;
+  Pair_T pair;
+  List_T p;
+  int n;
+
+  if (this->pairctr >= this->npairs) {
+    this->pairptr = add_new_pairchunk(this);
+  } else if ((this->pairctr % CHUNKSIZE) == 0) {
+    for (n = this->npairs - CHUNKSIZE, p = this->pairchunks;
+	 n > this->pairctr; p = p->rest, n -= CHUNKSIZE) ;
+    this->pairptr = (struct Pair_T *) p->first;
+    debug1(printf("Located pair %d at %p\n",this->pairctr,this->pairptr));
+  }    
+  pair = this->pairptr++;
+  this->pairctr++;
+
+  memcpy(pair,orig,sizeof(struct Pair_T));
+
+  debug(
+	printf("Copying %p: %d %d %c %c %c\n",
 	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	);
 
@@ -516,6 +559,57 @@ Pairpool_count_bounded (int *nstart, List_T source, int minpos, int maxpos) {
 }
 
 
+/* Note: This code is designed to handle source, which may still have
+   gaps with querypos undefined */
+List_T
+Pairpool_clip_bounded (List_T source, int minpos, int maxpos) {
+  List_T dest, *prev, p;
+  Pair_T pair;
+  int starti = -1, endi = -1, i;
+
+  for (p = source, i = 0; p != NULL; p = p->rest, i++) {
+    pair = (Pair_T) List_head(p);
+    if (pair->querypos == minpos) {
+      starti = i;		/* Advances in case of ties */
+    } else if (pair->querypos > minpos && starti < 0) {
+      starti = i;		/* Handles case where minpos was skipped */
+    }
+
+    if (pair->querypos == maxpos && endi < 0) {
+      endi = i + 1;		/* Does not advance in case of tie */
+    } else if (pair->querypos > maxpos && endi < 0) {
+      endi = i;	   /* Handles case where maxpos was skipped */
+    }
+  }
+
+  if (starti < 0) {
+    starti = 0;
+  }
+  if (endi < 0) {
+    endi = i;
+  }
+
+  p = source;
+  i = 0;
+  while (i < starti) {
+    p = p->rest;
+    i++;
+  }
+
+  dest = p;
+  prev = &p->rest;
+  while (i < endi) {
+    prev = &p->rest;
+    p = p->rest;
+    i++;
+  }
+
+  *prev = NULL;		/* Clip rest of list */
+  return dest;
+}
+
+
+#if 0
 List_T
 Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
   List_T p, next;
@@ -523,14 +617,14 @@ Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
 
   for (p = source; p != NULL; p = next) {
     debug(
-	  pair = List_head(p);
+	  pair = (Pair_T) List_head(p);
 	  if (pair->cdna == '\0' || pair->genome == '\0') {
 	    abort();
 	  }
 	  printf("Transferring %p: %d %d %c %c %c\n",
 		 pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	  );
-    pair = List_head(p);
+    pair = (Pair_T) List_head(p);
     next = p->rest;
     if (pair->querypos == minpos) {
       if (dest != NULL) {
@@ -551,28 +645,16 @@ Pairpool_transfer_bounded (List_T dest, List_T source, int minpos, int maxpos) {
 
   return dest;
 }
+#endif
 
+
+/* Originally prohibited copying of gaps */
 List_T
 Pairpool_copy (List_T source, T this) {
   List_T dest = NULL;
-  Pair_T pair;
 
   while (source != NULL) {
-    pair = source->first;
-    if (pair->gapp == true) {
-      fprintf(stderr,"Pairpool_copy is not intended to copy gaps\n");
-      abort();
-    } else {
-      dest = Pairpool_push(dest,this,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome,/*gapp*/false);
-#if 0
-      /* Not sure if this is necessary */
-      if (pair->shortexonp == true) {
-	((Pair_T) (dest->first))->shortexonp = true;
-      }
-#endif
-      debug(printf("Copying %p: %d %d %c %c %c\n",
-		   pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome));
-    }
+    dest = Pairpool_push_copy(dest,this,/*orig*/source->first);
     source = source->rest;
   }
   return List_reverse(dest);

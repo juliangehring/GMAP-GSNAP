@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 60140 2012-03-21 21:41:32Z twu $";
+static char rcsid[] = "$Id: gsnap.c 61384 2012-04-09 22:53:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1546,33 +1546,39 @@ main (int argc, char *argv[]) {
     case 'v': snps_root = optarg; break;
 
     case 'B':
-      if (!strcmp(optarg,"0")) {
-	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
-	positions_access = USE_MMAP_ONLY; /* was batch_positions_p = false */
-	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
-      } else if (!strcmp(optarg,"1")) {
-	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
-	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
-	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
-      } else if (!strcmp(optarg,"2")) {
-	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
-	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
-	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
-      } else if (!strcmp(optarg,"3")) {
-	offsetscomp_access = USE_ALLOCATE;
-	positions_access = USE_ALLOCATE;
-	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
-      } else if (!strcmp(optarg,"4")) {
-	offsetscomp_access = USE_ALLOCATE;
-	positions_access = USE_ALLOCATE;
-	genome_access = USE_ALLOCATE;
-      } else if (!strcmp(optarg,"5")) {
+      if (!strcmp(optarg,"5")) {
 	expand_offsets_p = true;
 	offsetscomp_access = USE_ALLOCATE; /* Doesn't matter */
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_ALLOCATE;
+      } else if (!strcmp(optarg,"4")) {
+	offsetscomp_access = USE_ALLOCATE;
+	positions_access = USE_ALLOCATE;
+	genome_access = USE_ALLOCATE;
+#ifdef HAVE_MMAP
+      } else if (!strcmp(optarg,"3")) {
+	offsetscomp_access = USE_ALLOCATE;
+	positions_access = USE_ALLOCATE;
+	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
+      } else if (!strcmp(optarg,"2")) {
+	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
+	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
+      } else if (!strcmp(optarg,"1")) {
+	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
+	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
+      } else if (!strcmp(optarg,"0")) {
+	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	positions_access = USE_MMAP_ONLY; /* was batch_positions_p = false */
+	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
+#endif
       } else {
+#ifdef HAVE_MMAP
 	fprintf(stderr,"Batch mode %s not recognized.  Only allow 0-5.  Run 'gsnap --help' for more information.\n",optarg);
+#else
+	fprintf(stderr,"Batch mode %s not recognized.  Only allow 4-5, since mmap is disabled.  Run 'gsnap --help' for more information.\n",optarg);
+#endif
 	exit(9);
       }
       break;
@@ -1857,9 +1863,15 @@ main (int argc, char *argv[]) {
     /* multiple_sequences_p = false; */
     /* fprintf(stderr,"Note: only 1 sequence detected.  Ignoring batch (-B) command\n"); */
     expand_offsets_p = false;
+#ifdef HAVE_MMAP
     offsetscomp_access = USE_MMAP_ONLY;
     positions_access = USE_MMAP_ONLY;
     genome_access = USE_MMAP_ONLY;
+#else
+    offsetscomp_access = USE_ALLOCATE;
+    positions_access = USE_ALLOCATE;
+    genome_access = USE_ALLOCATE;
+#endif
   }
 
 
@@ -2353,7 +2365,7 @@ main (int argc, char *argv[]) {
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
-		 favor_multiexon_p);
+		 favor_multiexon_p,index1part,index1interval);
   SAM_setup(quiet_if_excessive_p,maxpaths);
   Goby_setup(show_refdiff_p);
 
@@ -2634,8 +2646,15 @@ is still designed to be fast.\n\
                            Note: For a single sequence, all data structures use mmap\n\
                            If mmap not available and allocate not chosen, then will use fileio (very slow)\n\
 ");
-
+#else
+  fprintf(stdout,"\
+  -B, --batch=INT                Batch mode (default = 4, modes 0-3 disallowed because program configured without mmap)\n\
+                                 Mode     Offsets       Positions       Genome\n\
+                      (default)    4      allocate      allocate        allocate\n\
+                                   5      expand        allocate        allocate\n\
+");
 #endif
+
   fprintf(stdout,"\
   -m, --max-mismatches=FLOAT     Maximum number of mismatches allowed (if not specified, then\n\
                                    defaults to the ultrafast level of ((readlength+2)/12 - 2))\n\

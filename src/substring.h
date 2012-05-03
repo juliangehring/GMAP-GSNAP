@@ -1,4 +1,4 @@
-/* $Id: substring.h 59177 2012-03-07 19:41:14Z twu $ */
+/* $Id: substring.h 61380 2012-04-09 22:48:58Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -92,6 +92,8 @@ extern Endtype_T
 Substring_start_endtype (T this);
 extern Endtype_T
 Substring_end_endtype (T this);
+extern void
+Substring_set_endtypes (T this, Endtype_T start_endtype, Endtype_T end_endtype);
 extern double
 Substring_mapq_loglik (T this);
 extern int

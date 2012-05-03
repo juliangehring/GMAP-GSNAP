@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 59932 2012-03-19 22:17:46Z twu $";
+static char rcsid[] = "$Id: pair.c 62918 2012-04-28 01:57:21Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2681,7 +2681,8 @@ print_splicesite_labels (FILE *fp, Chrnum_T chrnum, Genomicpos_T splicesitepos,
   char *label;
   bool allocp;
 
-  if (splicesites_iit != NULL) {
+  /* splicesitepos of 0U indicates it was not set */
+  if (splicesites_iit != NULL && splicesitepos > 0U) {
     /* Note: IIT_get_typed_signed_with_divno does not work here */
     splicesites = IIT_get_exact_multiple_with_divno(&nsplicesites,splicesites_iit,
 						    splicesites_divint_crosstable[chrnum],
@@ -2720,7 +2721,7 @@ print_endtypes (FILE *fp,
 		IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 		int donor_typeint, int acceptor_typeint) {
   double prob;
-  Genomicpos_T prev_splicesitepos, splicesitepos;
+  Genomicpos_T prev_splicesitepos = 0, splicesitepos = 0;
   int typeint1, typeint2;
 
   if (endtype1 == END) {
@@ -2735,15 +2736,19 @@ print_endtypes (FILE *fp,
       prev_splicesitepos = exon_genomestart-1U;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_donor_prob(chroffset+exon_genomestart,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomestart-1U,chroffset);
+      } else {
+	abort();
       }
     } else {
       prev_splicesitepos = exon_genomestart;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomestart-1U,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_donor_prob(chroffset+exon_genomestart,chroffset);
+      } else {
+	abort();
       }
     }
     fprintf(fp,"donor:%.2f",prob);
@@ -2753,15 +2758,19 @@ print_endtypes (FILE *fp,
       prev_splicesitepos = exon_genomestart-1U;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomestart-1U,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomestart,chroffset);
+      } else {
+	abort();
       }
     } else {
       prev_splicesitepos = exon_genomestart;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomestart,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomestart-1U,chroffset);
+      } else {
+	abort();
       }
     }
     fprintf(fp,"acceptor:%.2f",prob);
@@ -2783,15 +2792,19 @@ print_endtypes (FILE *fp,
       splicesitepos = exon_genomeend;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_donor_prob(chroffset+exon_genomeend,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomeend-1U,chroffset);
+      } else {
+	abort();
       }
     } else {
       splicesitepos = exon_genomeend-1U;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_antidonor_prob(chroffset+exon_genomeend-1U,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_donor_prob(chroffset+exon_genomeend,chroffset);
+      } else {
+	abort();
       }
     }
     fprintf(fp,"donor:%.2f",prob);
@@ -2801,15 +2814,19 @@ print_endtypes (FILE *fp,
       splicesitepos = exon_genomeend;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomeend-1U,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomeend,chroffset);
+      } else {
+	abort();
       }
     } else {
       splicesitepos = exon_genomeend-1U;
       if (cdna_direction > 0) {
 	prob = Maxent_hr_antiacceptor_prob(chroffset+exon_genomeend,chroffset);
-      } else {
+      } else if (cdna_direction < 0) {
 	prob = Maxent_hr_acceptor_prob(chroffset+exon_genomeend-1U,chroffset);
+      } else {
+	abort();
       }
     }
     fprintf(fp,"acceptor:%.2f",prob);
@@ -3721,6 +3738,9 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
   struct T *clipped_pairs, *ptr;
   int i, starti;
 
+  debug10(printf("Entered hardclip_pairs with hardclip_low %d, hardclip_high %d, querylength %d\n",
+		 *hardclip_low,*hardclip_high,querylength));
+  debug10(Pair_dump_array(pairs,npairs,true));
   debug10(printf("Starting with %d pairs\n",npairs));
 
   i = 0;
@@ -3734,7 +3754,10 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
     ptr++;
   }
 
-  if (*hardclip_low > 0) {
+  if (i >= npairs) {
+    /* hardclip_low passes right end of read, so invalid */
+    *hardclip_low = 0;
+  } else if (*hardclip_low > 0) {
     *hardclip_low = ptr->querypos;
   }
 
@@ -3755,12 +3778,24 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
     ptr--;
   }
   
-  if (*hardclip_high > 0) {
+  if (i < 0) {
+    /* hardclip_high passes left end of read, so invalid */
+    *hardclip_high = 0;
+  } else if (*hardclip_high > 0) {
     *hardclip_high = querylength - 1 - ptr->querypos;
   }
-  *clipped_npairs = i - starti + 1;
+
+  if (*hardclip_low == 0 && *hardclip_high == 0) {
+    debug10(printf("Unable to hard clip\n"));
+    *clipped_npairs = npairs;
+    clipped_pairs = pairs;
+  } else {
+    *clipped_npairs = i - starti + 1;
+  }
 
   debug10(printf("Ending with %d pairs\n",*clipped_npairs));
+  debug10(printf("Exiting hardclip_pairs with hardclip_low %d, hardclip_high %d\n",
+		 *hardclip_low,*hardclip_high));
 
   return clipped_pairs;
 }
@@ -5201,7 +5236,7 @@ Pair_print_exons (FILE *fp, struct T *pairs, int npairs, int wraplength, int nga
 
 
 int
-Pair_nmatches (List_T pairs) {
+Pair_nmatches_posttrim (List_T pairs, int pos5, int pos3) {
   int nmatches = 0;
   bool in_intron = false, indelp = false;
   List_T p;
@@ -5228,6 +5263,10 @@ Pair_nmatches (List_T pairs) {
       } else if (unknown_base(this->cdna) || unknown_base(this->genome) || this->comp == AMBIGUOUS_COMP) {
 	/* (*unknowns)++; */
 #endif
+      } else if (this->querypos < pos5) {
+	/* Don't count match or mismatch */
+      } else if (this->querypos >= pos3) {
+	/* Don't count match or mismatch */
       } else if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
 	nmatches++;
       } else if (this->comp == MISMATCH_COMP) {
@@ -5247,6 +5286,93 @@ Pair_nmatches (List_T pairs) {
 
   return nmatches;
 }
+
+
+int
+Pair_array_nmatches_posttrim (struct T *pairarray, int npairs, int pos5, int pos3) {
+  int nmatches = 0;
+  bool in_intron = false, indelp = false;
+  int i;
+  T this;
+
+  for (i = 0; i < npairs; i++) {
+    this = &(pairarray[i]);
+    if (this->gapp) {
+      if (!in_intron) {
+	in_intron = true;
+      }
+    } else {
+      if (in_intron) {
+	in_intron = false;
+      }
+      if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
+	indelp = true;
+#ifndef PMAP
+      } else if (unknown_base(this->cdna) || unknown_base(this->genome) || this->comp == AMBIGUOUS_COMP) {
+	/* (*unknowns)++; */
+#endif
+      } else if (this->querypos < pos5) {
+	/* Don't count match or mismatch */
+      } else if (this->querypos >= pos3) {
+	/* Don't count match or mismatch */
+      } else if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
+	nmatches++;
+      } else if (this->comp == MISMATCH_COMP) {
+	/* (*mismatches)++; */
+      } else {
+	fprintf(stderr,"Can't parse comp %c, gapp %d\n",this->comp,this->gapp);
+	abort();
+      }
+    }
+  }
+
+  return nmatches;
+}
+
+
+int
+Pair_nmismatches_region (int *nindelbreaks, struct T *pairs, int npairs,
+			 int trim_left, int trim_right, int querylength) {
+  int nmismatches = 0;
+  bool in_intron = false, indelp = false;
+  int i = 0;
+  T this;
+
+  *nindelbreaks = 0;
+  while (i < npairs) {
+    this = &(pairs[i]);
+    if (this->querypos < trim_left) {
+      /* Skip */
+    } else if (this->querypos >= querylength - trim_right) {
+      /* Skip */
+    } else if (this->comp == MISMATCH_COMP) {
+      nmismatches++;
+    } else if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
+      if (this->genome == ' ') {
+	/* INSERTION */
+	while (i < npairs && this->genome == ' ') {
+	  /* (*total_nindels) += 1; */
+	  this = &(pairs[i++]);
+	}
+	i--;
+	(*nindelbreaks) += 1;
+	
+      } else if (this->cdna == ' ') {
+	/* DELETION */
+	while (i < npairs && this->cdna == ' ') {
+	  /* (*total_nindels) -= 1; */
+	  this = &(pairs[i++]);
+	}
+	i--;
+	(*nindelbreaks) += 1;
+      }
+    }
+    i++;
+  }
+
+  return nmismatches;
+}
+	
 
 
 void
@@ -6591,7 +6717,7 @@ Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pair
 	middlei--;
       }
       if (middlei < lowi) {
-	debug10(printf("all intermediate pairs are gaps\n",lowi));
+	debug10(printf("all intermediate pairs are gaps\n"));
 #if 0
 	*querypos = pairarray[lowi].querypos;
 	return pairarray[lowi].genomepos;
@@ -6641,7 +6767,7 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 	middlei--;
       }
       if (middlei < lowi) {
-	debug10(printf("all intermediate pairs are gaps\n",lowi));
+	debug10(printf("all intermediate pairs are gaps\n"));
 #if 0
 	*querypos = pairarray[lowi].querypos;
 	return pairarray[lowi].genomepos;
@@ -6729,6 +6855,51 @@ Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap) {
   return pair.genomepos;
 }
 
+
+T
+Pair_start_bound (List_T pairs, int breakpoint) {
+  T start = NULL, this;
+  List_T p;
+
+  if ((p = pairs) != NULL) {
+    start = this = (T) p->first;
+  }
+
+  while (p != NULL) {
+    this = (T) p->first;
+    if (this->querypos > breakpoint) {
+      return start;
+    } else {
+      start = this;
+    }
+    p = p->rest;
+  }
+
+  return start;
+}
+
+
+T
+Pair_end_bound (List_T pairs, int breakpoint) {
+  T end = NULL, this;
+  List_T p;
+
+  if ((p = pairs) != NULL) {
+    end = this = (T) p->first;
+  }
+
+  while (p != NULL) {
+    this = (T) p->first;
+    if (this->querypos > breakpoint) {
+      return end;
+    } else {
+      end = this;
+    }
+    p = p->rest;
+  }
+
+  return end;
+}
 
 
 

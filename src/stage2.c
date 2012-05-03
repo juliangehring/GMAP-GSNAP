@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 51925 2011-11-08 00:37:46Z twu $";
+static char rcsid[] = "$Id: stage2.c 61293 2012-04-06 22:36:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1004,7 +1004,7 @@ get_last (int *last_dinucl, int pos) {
 /* Need this procedure because we are skipping some oligomers */
 static bool
 find_shifted_canonical (int leftpos, int rightpos,
-			int querydistance, int genomiclength, int *last_leftdi, int *last_rightdi,
+			int querydistance, int *last_leftdi, int *last_rightdi,
 			int (*genome_left_position)(int, Genomicpos_T, Genomicpos_T, int, bool),
 			int (*genome_right_position)(int, Genomicpos_T, Genomicpos_T, int, bool),
 			Genomicpos_T genomicstart, Genomicpos_T genomicend, bool plusp,
@@ -1017,11 +1017,20 @@ find_shifted_canonical (int leftpos, int rightpos,
 
   debug7(printf("Looking for shifted canonical at leftpos %d to rightpos %d\n",leftpos,rightpos));
 
+#if 0
+  /* previously checked against genomiclength */
   if (leftpos > genomiclength || rightpos > genomiclength) {
     return false;
   }
+#else
+  /* Checking just before call to genome_right_position */
+#endif
 
   if (skip_repetitive_p == false) {
+    if ((Genomicpos_T) rightpos >= genomicend) {
+      return false;
+    }
+
     if (last_leftdi[leftpos] == 0) {
       last_leftdi[leftpos] = (*genome_left_position)(leftpos,genomicstart,genomicend,/*pos5*/3,plusp);
     }
@@ -1044,11 +1053,18 @@ find_shifted_canonical (int leftpos, int rightpos,
 
     if (leftpos < 0) {
       return false;
+#if 0
     } else if (rightpos < 0) {
+      /* Shouldn't need to check if leftpos >= 0 and rightpos >= leftpos, in the other two conditions) */
+      return false;
+#endif
+    } else if ((Genomicpos_T) rightpos >= genomicend) {
       return false;
     } else if (leftpos > rightpos) {
       return false;
     }
+    assert(rightpos >= 0);
+
     
     if (last_leftdi[leftpos] == 0) {
       last_leftdi[leftpos] = (*genome_left_position)(leftpos,genomicstart,genomicend,/*pos5*/3,plusp);
@@ -1116,7 +1132,7 @@ score_querypos_general (Link_T currlink, int querypos,
 #endif
 			Genomicpos_T genomicstart, Genomicpos_T genomicend, bool plusp,
 			int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
-			int genomiclength, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p) {
+			bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p) {
   Link_T prevlink;
 #ifdef USE_SUBOPTIMAL_STARTS
   Intlist_T fwd_prevposes = NULL, fwd_prevhits = NULL, fwd_scores = NULL,
@@ -1354,13 +1370,13 @@ score_querypos_general (Link_T currlink, int querypos,
 	  } else if (diffdistance > maxintronlen) {
 	    canonicalsgn = 0;
 	  } else if (find_shifted_canonical(/*leftpos*/prevposition + querydistance + indexsize_nt - 1,
-					    /*rightpos*/position,querydistance,genomiclength,
+					    /*rightpos*/position,querydistance,
 					    lastGT,lastAG,Genome_prev_donor_position,Genome_prev_acceptor_position,
 					    genomicstart,genomicend,plusp,skip_repetitive_p) == true) {
 	    canonicalsgn = +1;
 #ifndef PMAP
 	  } else if (find_shifted_canonical(/*leftpos*/prevposition + querydistance + indexsize_nt - 1,
-					    /*rightpos*/position,querydistance,genomiclength,
+					    /*rightpos*/position,querydistance,
 					    lastCT,lastAC,Genome_prev_antiacceptor_position,Genome_prev_antidonor_position,
 					    genomicstart,genomicend,plusp,skip_repetitive_p) == true) {
 	    canonicalsgn = -1;
@@ -1525,7 +1541,7 @@ score_querypos_general (Link_T currlink, int querypos,
 	  } else if (diffdistance > maxintronlen) {
 	    canonicalsgn = 0;
 	  } else if (find_shifted_canonical(/*leftpos*/prevposition + querydistance + indexsize_nt - 1,
-					    /*rightpos*/position,querydistance,genomiclength,
+					    /*rightpos*/position,querydistance,
 					    lastGT,lastAG,Genome_prev_donor_position,Genome_prev_acceptor_position,
 					    genomicstart,genomicend,plusp,skip_repetitive_p) == true) {
 	    canonicalsgn = +1;
@@ -1627,7 +1643,7 @@ score_querypos_general (Link_T currlink, int querypos,
 	  } else if (diffdistance > maxintronlen) {
 	    canonicalsgn = 0;
 	  } else if (find_shifted_canonical(/*leftpos*/prevposition + querydistance + indexsize_nt - 1,
-					    /*rightpos*/position,querydistance,genomiclength,
+					    /*rightpos*/position,querydistance,
 					    lastCT,lastAC,Genome_prev_antiacceptor_position,Genome_prev_antidonor_position,
 					    genomicstart,genomicend,plusp,skip_repetitive_p) == true) {
 	    canonicalsgn = -1;
@@ -1769,7 +1785,7 @@ score_querypos_general (Link_T currlink, int querypos,
 	      if (leftpos == last_leftpos) {
 		canonicalp = last_canonicalp;
 	      } else {
-		canonicalp = find_shifted_canonical(leftpos,rightpos,querydistance,genomiclength,
+		canonicalp = find_shifted_canonical(leftpos,rightpos,querydistance,
 						    lastGT,lastAG,Genome_prev_donor_position,Genome_prev_acceptor_position,
 						    genomicstart,genomicend,plusp,skip_repetitive_p);
 		last_leftpos = leftpos;
@@ -1899,7 +1915,7 @@ score_querypos_general (Link_T currlink, int querypos,
 		if (leftpos == last_leftpos) {
 		  canonicalp = last_canonicalp;
 		} else {
-		  canonicalp = find_shifted_canonical(leftpos,rightpos,querydistance,genomiclength,
+		  canonicalp = find_shifted_canonical(leftpos,rightpos,querydistance,
 						      lastCT,lastAC,Genome_prev_antiacceptor_position,Genome_prev_antidonor_position,
 						      genomicstart,genomicend,plusp,skip_repetitive_p);
 		  last_leftpos = leftpos;
@@ -2951,7 +2967,7 @@ align_compute_scores (struct Link_T **links, unsigned int **mappings, int *nposi
 				 lastCT,lastAC,
 #endif
 				 genomicstart,genomicend,plusp,
-				 indexsize,processed,sufflookback,nsufflookback,maxintronlen,genomiclength,
+				 indexsize,processed,sufflookback,nsufflookback,maxintronlen,
 				 localp,skip_repetitive_p,use_shifted_canonical_p);
 
 	  if (currlink->fwd_score > best_fwd_score) {

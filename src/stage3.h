@@ -1,4 +1,4 @@
-/* $Id: stage3.h 60021 2012-03-20 22:07:00Z twu $ */
+/* $Id: stage3.h 62922 2012-04-28 02:03:50Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -122,8 +122,15 @@ extern bool
 Stage3_test_bounds (T this, int minpos, int maxpos);
 extern T
 Stage3_apply_bounds (T this, int minpos, int maxpos, bool revertp);
+
 extern void
-Stage3_merge_chimera (T this_left, T this_right, int minpos1, int maxpos1, int minpos2, int maxpos2);
+Stage3_merge_chimera (T this_left, T this_right,
+		      int minpos1, int maxpos1, int minpos2, int maxpos2,
+#ifdef PMAP
+		      char *queryaaseq_ptr,
+#endif
+		      Sequence_T queryseq, Genome_T genome, Pairpool_T pairpool,
+		      int ngap);
 
 #ifdef PMAP
 extern void
@@ -213,7 +220,7 @@ Stage3_print_compressed (FILE *fp, T this, Sequence_T queryseq, IIT_T chromosome
 			 bool checksump, int chimerapos, int chimeraequivpos,
 			 double donor_prob, double acceptor_prob, int chimera_cdna_direction);
 extern T
-Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_direction,
+Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_direction, int sensedir,
 	    Genomicpos_T stage1_genomicstart, Genomicpos_T stage1_genomiclength, 
 	    int stage2_source, int stage2_indexsize,
 	    int matches, int unknowns, int mismatches, int qopens, int qindels,
@@ -231,8 +238,7 @@ Stage3_bad_stretch_p (struct Pair_T *pairarray, int npairs);
 
 extern struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
-		int *nmatches_pretrim, int *nmatches_posttrim,
-		int *ambig_end_length_5, int *ambig_end_length_3,
+		int *nmatches_posttrim, int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, 
@@ -275,24 +281,45 @@ Stage3_direct (Gregion_T gregion,
 #endif
 
 extern bool
-Stage3_mergeable (char *comp, Genomicpos_T *genomegap, Stage3_T firstpart, Stage3_T secondpart,
+Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
+		  Stage3_T firstpart, Stage3_T secondpart,
 		  int exonexonpos, int queryntlength, int chimera_direction,
 		  double donor_prob, double acceptor_prob);
 
 extern void
-Stage3_merge_single (T this_left, T this_right,
-		     int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
 #ifdef PMAP
 		     char *queryaaseq_ptr,
 #endif
 		     char *queryseq_ptr, char *queryuc_ptr,
-		     Pairpool_T pairpool, Dynprog_T dynprogM, Genome_T genome,
-		     int maxpeelback, int extraband_single);
+		     bool max_extend_p, Genome_T genome, Pairpool_T pairpool,
+		     int ngap, int maxpeelback);
+extern void
+Stage3_extend_left (T this, int goal, Sequence_T queryseq,
+#ifdef PMAP
+		    char *queryaaseq_ptr,
+#endif
+		    char *queryseq_ptr, char *queryuc_ptr,
+		    bool max_extend_p, Genome_T genome, Pairpool_T pairpool,
+		    int ngap, int maxpeelback);
 
 extern void
-Stage3_merge_splice (T this_left, T this_right, char comp,
-		     int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
-		     Pairpool_T pairpool, Genome_T genome, int ngap);
+Stage3_merge_local_single (T this_left, T this_right,
+			   int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+#ifdef PMAP
+			   char *queryaaseq_ptr,
+#endif
+			   Sequence_T queryseeq, char *queryseq_ptr, char *queryuc_ptr,
+			   Pairpool_T pairpool, Dynprog_T dynprogM, Genome_T genome,
+			   int maxpeelback, int extraband_single, int ngap);
+
+extern void
+Stage3_merge_local_splice (T this_left, T this_right, char comp,
+			   int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+#ifdef PMAP
+			   char *queryaaseq_ptr,
+#endif
+			   Sequence_T queryseq, Pairpool_T pairpool, Genome_T genome, int ngap);
 
 
 #undef T

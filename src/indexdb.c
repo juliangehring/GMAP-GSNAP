@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 58562 2012-02-27 21:43:47Z twu $";
+static char rcsid[] = "$Id: indexdb.c 62603 2012-04-25 16:42:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -885,6 +885,9 @@ Indexdb_new_genome (int *basesize, int *index1part, int *index1interval,
 					    genomesubdir,fileroot,idx_filesuffix,snps_root,
 					    required_interval) == true) {
 
+    new->offsetscomp_basesize = new->index1part;
+    new->offsetscomp_blocksize = 1;
+
     *basesize = new->index1part;
     *index1part = new->index1part;
     *index1interval = new->index1interval;
@@ -1362,7 +1365,7 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, int off
     offsetscomp = (UINT4 *) Access_mmap(&offsetscomp_fd,&offsetscomp_len,offsetscompfile,sizeof(UINT4),/*randomp*/false);
 #else
     gammaptrs = (UINT4 *) Access_allocated(&gammaptrs_len,&seconds,gammaptrsfile,sizeof(UINT4));
-    offsetscomp = (UINT4 *) Access_allocated(&offsetscomp_len,&second,offsetscompfile,sizeof(UINT4));
+    offsetscomp = (UINT4 *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(UINT4));
 #endif
 
 #ifdef PMAP
@@ -1464,7 +1467,7 @@ check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positions
   offsetscomp = (UINT4 *) Access_mmap(&offsetscomp_fd,&offsetscomp_len,offsetscompfile,sizeof(UINT4),/*randomp*/false);
 #else
   gammaptrs = (UINT4 *) Access_allocated(&gammaptrs_len,&seconds,gammaptrsfile,sizeof(UINT4));
-  offsetscomp = (UINT4 *) Access_allocated(&offsetscomp_len,&second,offsetscompfile,sizeof(UINT4));
+  offsetscomp = (UINT4 *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(UINT4));
 #endif
 
   ptr = offsetscomp;

@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 59997 2012-03-20 19:43:38Z twu $ */
+/* $Id: dynprog.h 62120 2012-04-19 19:25:48Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -27,6 +27,9 @@ typedef struct Dynprog_T *Dynprog_T;
 #define UNKNOWNJUMP -1000000
 
 #define T Dynprog_T
+
+extern char *
+Dynprog_endalign_string (Endalign_T endalign);
 
 extern void
 Dynprog_setup (bool novelsplicingp_in,
@@ -167,7 +170,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 #endif
 #endif
 		    int cdna_direction, bool watsonp, bool jump_late_p,
-		    Pairpool_T pairpool, int extraband_end, double defect_rate);
+		    Pairpool_T pairpool, int extraband_end, double defect_rate, Endalign_T endalign);
 
 extern List_T
 Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
@@ -187,7 +190,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 #endif
 #endif
 		    int cdna_direction, bool watsonp, bool jump_late_p,
-		    Pairpool_T pairpool, int extraband_end, double defect_rate);
+		    Pairpool_T pairpool, int extraband_end, double defect_rate, Endalign_T endalign);
 
 
 #if 0

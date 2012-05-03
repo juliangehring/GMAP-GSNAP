@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 59899 2012-03-19 17:29:04Z twu $";
+static char rcsid[] = "$Id: substring.c 61380 2012-04-09 22:48:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2052,6 +2052,15 @@ Endtype_T
 Substring_end_endtype (T this) {
   return this->end_endtype;
 }
+
+void
+Substring_set_endtypes (T this, Endtype_T start_endtype, Endtype_T end_endtype) {
+  this->start_endtype = start_endtype;
+  this->end_endtype = end_endtype;
+  return;
+}
+
+
 
 double
 Substring_mapq_loglik (T this) {

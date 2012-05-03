@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c 51812 2011-11-06 18:17:08Z twu $";
+static char rcsid[] = "$Id: result.c 62059 2012-04-18 21:21:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,6 +20,7 @@ static char rcsid[] = "$Id: result.c 51812 2011-11-06 18:17:08Z twu $";
 struct T {
   int id;
 
+  bool mergedp;			/* true if two parts were merged */
   Chimera_T chimera;		/* NULL indicates not a chimera */
   List_T gregionlist;		/* For debugging of stage 1 */
   List_T diagonals;		/* For debugging of diag */
@@ -36,6 +37,10 @@ Result_id (T this) {
   return this->id;
 }
 
+bool
+Result_mergedp (T this) {
+  return this->mergedp;
+}
 
 Chimera_T
 Result_chimera (T this) {
@@ -75,11 +80,12 @@ Result_failuretype (T this) {
 
 
 T
-Result_new (int id, Chimera_T chimera, Stage3_T *array,
+Result_new (int id, bool mergedp, Chimera_T chimera, Stage3_T *array,
 	    int npaths, int second_absmq, Diagnostic_T diagnostic, Failure_T failuretype) {
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
+  new->mergedp = mergedp;
   new->chimera = chimera;
   new->gregionlist = (List_T) NULL;
   new->diagonals = (List_T) NULL;
@@ -98,6 +104,7 @@ Result_new_stage1debug (int id, List_T gregionlist,
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
+  new->mergedp = false;
   new->chimera = (Chimera_T) NULL;
   new->gregionlist = gregionlist;
   new->diagonals = (List_T) NULL;
@@ -115,6 +122,7 @@ Result_new_diag_debug (int id, List_T diagonals,
   T new = (T) MALLOC_OUT(sizeof(*new));
 
   new->id = id;
+  new->mergedp = false;
   new->chimera = (Chimera_T) NULL;
   new->gregionlist = (List_T) NULL;
   new->diagonals = diagonals;

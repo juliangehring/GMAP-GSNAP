@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 62918 2012-04-28 01:57:21Z twu $";
+static char rcsid[] = "$Id: pair.c 63242 2012-05-03 22:45:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3566,7 +3566,7 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
 		bool watsonp, int cdna_direction, List_T cigar_tokens, List_T md_tokens,
 		int nmismatches, int nindels, bool intronp, char *queryseq_ptr, char *quality_string,
 		int hardclip_low, int hardclip_high, int querylength, Chimera_T chimera, int quality_shift,
-		int pathnum, int npaths, int absmq_score, int second_absmq, unsigned int flag,
+		int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, unsigned int flag,
 #ifdef GSNAP
 		int pair_mapq_score, int end_mapq_score,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
@@ -4541,7 +4541,8 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *queryseq_ptr, char *quality_string,
 		int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
-		int quality_shift, bool firstp, int pathnum, int npaths, int absmq_score, int second_absmq,
+		int quality_shift, bool firstp, int pathnum, int npaths,
+		int absmq_score, int first_absmq, int second_absmq,
 #ifdef GSNAP
 		unsigned int flag, int pair_mapq_score, int end_mapq_score,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
@@ -4597,7 +4598,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		 watsonp,cdna_direction,cigar_tokens,md_tokens,nmismatches,nindels,
 		 intronp,queryseq_ptr,quality_string,hardclip_low,hardclip_high,
 		 querylength_given,chimera,quality_shift,pathnum,npaths,
-		 absmq_score,second_absmq,flag,
+		 absmq_score,first_absmq,second_absmq,flag,
 #ifdef GSNAP
 		 pair_mapq_score,end_mapq_score,chrpos,mate_chrpos,pairedlength,
 #else
@@ -5236,20 +5237,16 @@ Pair_print_exons (FILE *fp, struct T *pairs, int npairs, int wraplength, int nga
 
 
 int
-Pair_nmatches_posttrim (List_T pairs, int pos5, int pos3) {
-  int nmatches = 0;
+Pair_nmatches_posttrim (int *max_match_length, List_T pairs, int pos5, int pos3) {
+  int nmatches = 0, match_length;
   bool in_intron = false, indelp = false;
   List_T p;
   T this;
 
+  *max_match_length = match_length = 0;
   for (p = pairs; p != NULL; p = p->rest) {
     this = p->first;
     if (this->gapp) {
-#if 0
-      if (this->donor_prob < 0.90 && this->acceptor_prob < 0.90) {
-	nmatches -= 2;
-      }
-#endif
       if (!in_intron) {
 	in_intron = true;
       }
@@ -5269,8 +5266,13 @@ Pair_nmatches_posttrim (List_T pairs, int pos5, int pos3) {
 	/* Don't count match or mismatch */
       } else if (this->comp == MATCH_COMP || this->comp == DYNPROG_MATCH_COMP || this->comp == AMBIGUOUS_COMP) {
 	nmatches++;
+	match_length++;
       } else if (this->comp == MISMATCH_COMP) {
 	/* (*mismatches)++; */
+	if (match_length > *max_match_length) {
+	  *max_match_length = match_length;
+	}
+	match_length = 0;
       } else {
 	fprintf(stderr,"Can't parse comp %c, gapp %d\n",this->comp,this->gapp);
 	abort();
@@ -5278,11 +5280,9 @@ Pair_nmatches_posttrim (List_T pairs, int pos5, int pos3) {
     }
   }
 
-#if 0
-  if (indelp == true) {
-    nmatches -= 2;
+  if (match_length > *max_match_length) {
+    *max_match_length = match_length;
   }
-#endif
 
   return nmatches;
 }

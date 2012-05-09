@@ -2,6 +2,10 @@
 
 use warnings;
 
+use Getopt::Std;
+undef $opt_E;			# Use exon_number field to determine own exon ordering
+getopts("E");
+
 
 @exons = ();
 $sortp = 0;
@@ -40,7 +44,7 @@ while (defined($line = <>)) {
 		$strand = $fields[6];
 	    }
 
-	    if (defined($exon_number = get_info_optional(\@info,"exon_number"))) {
+	    if (defined($opt_E) && defined($exon_number = get_info_optional(\@info,"exon_number"))) {
 		$exons[$exon_number-1] = "$fields[3] $fields[4]";
 	    } else {
 		$sortp = 1;

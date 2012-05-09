@@ -1,4 +1,4 @@
-/* $Id: stage3.h 62922 2012-04-28 02:03:50Z twu $ */
+/* $Id: stage3.h 63242 2012-05-03 22:45:27Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -178,7 +178,7 @@ Stage3_print_gff3 (FILE *fp, T this, int pathnum, IIT_T chromosome_iit, Sequence
 #ifndef PMAP
 extern void
 Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
-		  int absmq_score, int second_mapq, int mapq_score,
+		  int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		  IIT_T chromosome_iit, Sequence_T usersegment,
 		  Sequence_T queryseq, int chimera_part, Chimera_T chimera,
 		  int quality_shift, bool sam_paired_p, char *sam_read_group_id);
@@ -238,7 +238,8 @@ Stage3_bad_stretch_p (struct Pair_T *pairarray, int npairs);
 
 extern struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
-		int *nmatches_posttrim, int *ambig_end_length_5, int *ambig_end_length_3,
+		int *nmatches_posttrim, int *max_match_length,
+		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, 

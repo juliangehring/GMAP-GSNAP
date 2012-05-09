@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 61889 2012-04-16 21:32:50Z twu $";
+static char rcsid[] = "$Id: samprint.c 63195 2012-05-03 17:39:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -53,11 +53,13 @@ static char rcsid[] = "$Id: samprint.c 61889 2012-04-16 21:32:50Z twu $";
 
 static bool quiet_if_excessive_p;
 static int maxpaths;
+static bool sam_multiple_primaries_p;
 
 void
-SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_in) {
+SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_in, bool sam_multiple_primaries_p_in) {
   quiet_if_excessive_p = quiet_if_excessive_p_in;
   maxpaths = maxpaths_in;
+  sam_multiple_primaries_p = sam_multiple_primaries_p_in;
   return;
 }
 
@@ -65,7 +67,7 @@ SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_in) {
 unsigned int
 SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,
 		  bool first_read_p, int pathnum, int npaths, int npaths_mate,
-		  bool invertp, bool invert_mate_p) {
+		  int absmq_score, int first_absmq, bool invertp, bool invert_mate_p) {
   unsigned int flag = 0U;
 
   debug(printf("Resulttype: %s\n",Resulttype_string(resulttype)));
@@ -145,8 +147,15 @@ SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,
   }
 
   if (pathnum > 1) {
-    debug(printf("NOT_PRIMARY %d\n",NOT_PRIMARY));
-    flag |= NOT_PRIMARY;
+    if (sam_multiple_primaries_p == false) {
+      debug(printf("NOT_PRIMARY %d\n",NOT_PRIMARY));
+      flag |= NOT_PRIMARY;
+    } else if (absmq_score != first_absmq) {
+      debug(printf("NOT_PRIMARY %d\n",NOT_PRIMARY));
+      flag |= NOT_PRIMARY;
+    } else {
+      /* Just as good as first alignment, so don't mark as secondary */
+    }
   }
 
   return flag;
@@ -381,8 +390,8 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 void
 SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc,
 		     IIT_T chromosome_iit, Resulttype_T resulttype, bool first_read_p,
-		     int npaths_mate, Genomicpos_T mate_chrpos,
-		     int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
+		     int npaths_mate, Genomicpos_T mate_chrpos, int quality_shift,
+		     char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag;
 
 
@@ -391,7 +400,8 @@ SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc
   
   /* 2. FLAG */
   flag = SAM_compute_flag(/*plusp (NA)*/true,mate,resulttype,first_read_p,
-			  /*pathnum*/0,/*npaths*/0,npaths_mate,invertp,invert_mate_p);
+			  /*pathnum*/0,/*npaths*/0,npaths_mate,
+			  /*absmq_score*/0,/*first_absmq*/0,invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -640,7 +650,8 @@ print_md_string (int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, 
 
 static void
 print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-	      int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+	      int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+	      IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 	      Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
 	      Resulttype_T resulttype, bool first_read_p,
 	      int npaths_mate, int quality_shift,
@@ -677,7 +688,8 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
 
   /* 2. FLAG */
   flag = SAM_compute_flag(Stage3end_plusp(this),mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -837,7 +849,8 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
 
 static void
 print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-		 int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		 Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
 		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
@@ -875,7 +888,8 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -1063,7 +1077,8 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
 static void
 print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-		int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
 		Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
@@ -1101,7 +1116,8 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -1342,7 +1358,7 @@ halfacceptor_dinucleotide (char *acceptor2, char *acceptor1, Substring_T accepto
 
 static void
 print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate,
-		 char *acc, int pathnum, int npaths, int absmq_score, int second_absmq, int mapq_score,
+		 char *acc, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		 Genomicpos_T concordant_chrpos, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
 		 int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
@@ -1381,7 +1397,8 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -1645,7 +1662,7 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
 
 static void
 print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_T mate,
-		    char *acc, int pathnum, int npaths, int absmq_score, int second_absmq, int mapq_score,
+		    char *acc, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		    IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		    Genomicpos_T concordant_chrpos, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
 		    int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
@@ -1684,7 +1701,8 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -1949,7 +1967,8 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
 
 static void
 print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-		   int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		   int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		   IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		   Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
 		   Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		   int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
@@ -1987,7 +2006,8 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -2194,7 +2214,8 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
 
 static void
 print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, int pathnum, int npaths,
-		 int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		 Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
 		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
@@ -2235,7 +2256,8 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
-			  pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			  pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			  invertp,invert_mate_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -2552,7 +2574,8 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 /* Distant splicing, including scramble, inversion, translocation */
 static void
 print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-		 int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
 		 Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
 		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
@@ -2598,7 +2621,8 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
   if (Stage3end_sensedir(this) == SENSE_FORWARD) {
     print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
-		    absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		    absmq_score,first_absmq,second_absmq,mapq_score,
+		    chromosome_iit,queryseq,pairedlength,
 		    concordant_chrpos,donor_chrpos,mate_chrpos,
 		    hardclip5,hardclip3,resulttype,first_read_p,
 		    npaths_mate,quality_shift,sam_read_group_id,
@@ -2606,7 +2630,8 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 		    donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
 
     print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
-		       absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		       absmq_score,first_absmq,second_absmq,mapq_score,
+		       chromosome_iit,queryseq,pairedlength,
 		       concordant_chrpos,acceptor_chrpos,mate_chrpos,
 		       hardclip5,hardclip3,resulttype,first_read_p,
 		       npaths_mate,quality_shift,sam_read_group_id,
@@ -2615,7 +2640,8 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
   } else if (Stage3end_sensedir(this) == SENSE_ANTI) {
     print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
-		       absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		       absmq_score,first_absmq,second_absmq,mapq_score,
+		       chromosome_iit,queryseq,pairedlength,
 		       concordant_chrpos,acceptor_chrpos,mate_chrpos,
 		       hardclip5,hardclip3,resulttype,first_read_p,
 		       npaths_mate,quality_shift,sam_read_group_id,
@@ -2623,7 +2649,8 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 		       donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
 
     print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
-		    absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		    absmq_score,first_absmq,second_absmq,mapq_score,
+		    chromosome_iit,queryseq,pairedlength,
 		    concordant_chrpos,donor_chrpos,mate_chrpos,
 		    hardclip5,hardclip3,resulttype,first_read_p,
 		    npaths_mate,quality_shift,sam_read_group_id,
@@ -2641,7 +2668,7 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
 void
 SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-	   int absmq_score, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq,
+	   int absmq_score, int first_absmq, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq,
 	   Shortread_T queryseq_mate, int pairedlength, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
 	   int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p,
 	   int npaths_mate, int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
@@ -2661,28 +2688,28 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 
   } else if (hittype == EXACT || hittype == SUB || hittype == TERMINAL) {
     print_single(fp,this,mate,acc,pathnum,npaths,
-		 absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		 chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 		 npaths_mate,quality_shift,sam_read_group_id,
 		 invertp,invert_mate_p);
 
   } else if (hittype == INSERTION) {
     print_insertion(fp,this,mate,acc,pathnum,npaths,
-		    absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		    absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		    chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 		    npaths_mate,quality_shift,sam_read_group_id,
 		    invertp,invert_mate_p);
 
   } else if (hittype == DELETION) {
     print_deletion(fp,this,mate,acc,pathnum,npaths,
-		   absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		   chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p);
 
   } else if (hittype == HALFSPLICE_DONOR) {
     print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc,pathnum,npaths,
-		    absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		    absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		    /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
 		    hardclip5,hardclip3,resulttype,first_read_p,
 		    npaths_mate,quality_shift,sam_read_group_id,
@@ -2692,7 +2719,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 
   } else if (hittype == HALFSPLICE_ACCEPTOR) {
     print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc,pathnum,npaths,
-		       absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		       absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		       /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
 		       hardclip5,hardclip3,resulttype,first_read_p,
 		       npaths_mate,quality_shift,sam_read_group_id,
@@ -2711,7 +2738,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
       /* Stage3end_chrnum(this) == 0 || Stage3end_distance(this) == 0U */
       /* distant splice */
       print_exon_exon(fp,this,mate,acc,pathnum,npaths,
-		      absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p);
@@ -2749,13 +2776,13 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
       }
       if (normalp == true) {
 	print_localsplice(fp,this,mate,acc,pathnum,npaths,
-			  absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+			  absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			  chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 			  npaths_mate,quality_shift,sam_read_group_id,
 			  invertp,invert_mate_p);
       } else {
 	print_exon_exon(fp,this,mate,acc,pathnum,npaths,
-			absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+			absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 			npaths_mate,quality_shift,sam_read_group_id,
 			invertp,invert_mate_p);
@@ -2764,7 +2791,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
       
   } else if (hittype == ONE_THIRD_SHORTEXON || hittype == TWO_THIRDS_SHORTEXON || hittype == SHORTEXON) {
     print_shortexon(fp,this,mate,acc,pathnum,npaths,
-		    absmq_score,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
+		    absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		    chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
 		    npaths_mate,quality_shift,sam_read_group_id,
 		    invertp,invert_mate_p);
@@ -2794,7 +2821,8 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
     assert(ignore == 0);
 
     flag = SAM_compute_flag(Stage3end_plusp(this),mate,resulttype,first_read_p,
-			    pathnum,npaths,npaths_mate,invertp,invert_mate_p);
+			    pathnum,npaths,npaths_mate,absmq_score,first_absmq,
+			    invertp,invert_mate_p);
 
     Pair_print_sam(fp,Stage3end_pairarray(this),Stage3end_npairs(this),
 		   acc,Stage3end_chrnum(this),chromosome_iit,
@@ -2803,7 +2831,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 		   hardclip5,hardclip3,Shortread_fulllength(queryseq),
 		   Stage3end_plusp(this),Stage3end_cdna_direction(this),
 		   /*chimera_part*/0,/*chimera*/NULL,quality_shift,first_read_p,
-		   pathnum,npaths,absmq_score,second_absmq,flag,
+		   pathnum,npaths,absmq_score,first_absmq,second_absmq,flag,
 		   /*pair_mapq_score*/mapq_score,/*end_mapq_score*/mapq_score,
 		   chrpos,mate_chrpos,pairedlength,sam_read_group_id);
   } else {
@@ -2833,7 +2861,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
   Genomicpos_T chrpos5, chrpos3;
   int overlap;
   int npaths, npaths1, npaths2, pathnum;
-  int second_absmq, second_absmq1, second_absmq2;
+  int first_absmq, second_absmq, first_absmq1, second_absmq1, first_absmq2, second_absmq2;
   int hardclip5 = 0, hardclip3 = 0, ignore = 0;
   char *acc;
   Pairtype_T pairtype;
@@ -2879,7 +2907,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	fp = fp_concordant_transloc;
       }
 
-      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
       /* Stage3pair_eval(stage3pairarray,npaths,maxpaths,queryseq1,queryseq2); */
 
       stage3pair = stage3pairarray[0];
@@ -2902,7 +2930,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       /* print first end */
       SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
-		Stage3pair_absmq_score(stage3pair),/*second_absmq*/0,
+		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -2912,7 +2940,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       /* print second end */
       SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
-		Stage3pair_absmq_score(stage3pair),/*second_absmq*/0,
+		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -2921,7 +2949,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		merge_samechr_p);
     
     } else if (resulttype == CONCORDANT_MULT) {
-      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths) {
 	/* Print as nomapping, but send to fp_concordant_mult */
@@ -2957,7 +2985,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 	  /* print first end */
 	  SAM_print(fp_concordant_mult,hit5,/*mate*/hit3,acc,pathnum,npaths,
-		    Stage3pair_absmq_score(stage3pair),second_absmq,
+		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -2967,7 +2995,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 	  /* print second end */
 	  SAM_print(fp_concordant_mult,hit3,/*mate*/hit5,acc,pathnum,npaths,
-		    Stage3pair_absmq_score(stage3pair),second_absmq,
+		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -2978,7 +3006,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
     } else if (resulttype == PAIRED_UNIQ) {
-      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
       /* Stage3pair_eval(stage3pairarray,npaths,maxpaths,queryseq1,queryseq2); */
 
       stage3pair = stage3pairarray[0];
@@ -3007,7 +3035,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       /* print first end */
       SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
-		Stage3pair_absmq_score(stage3pair),/*second_absmq*/0,
+		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3017,7 +3045,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       /* print second end */
       SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
-		Stage3pair_absmq_score(stage3pair),/*second_absmq*/0,
+		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -3026,7 +3054,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		merge_samechr_p);
 
     } else if (resulttype == PAIRED_MULT) {
-      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+      stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths) {
 	/* Print as nomapping, but send to fp_concordant_mult */
@@ -3060,7 +3088,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 	  /* print first end */
 	  SAM_print(fp_paired_mult,hit5,/*mate*/hit3,acc,pathnum,npaths,
-		    Stage3pair_absmq_score(stage3pair),second_absmq,
+		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3070,7 +3098,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 	  /* print second end */
 	  SAM_print(fp_paired_mult,hit3,/*mate*/hit5,acc,pathnum,npaths,
-		    Stage3pair_absmq_score(stage3pair),second_absmq,
+		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -3088,8 +3116,8 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
       /* Even though they are not related, we should print mate information in this situation */
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq1,result);
-      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq2,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq1,&second_absmq1,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&first_absmq2,&second_absmq2,result);
 
       hardclip5 = hardclip3 = 0;
 
@@ -3103,7 +3131,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       /* print first end */
       /* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths,queryseq1); */
       SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
-		Stage3end_absmq_score(stage3array1[0]),/*second_absmq*/0,
+		Stage3end_absmq_score(stage3array1[0]),first_absmq1,/*second_absmq*/0,
 		Stage3end_mapq_score(stage3array1[0]),chromosome_iit,
 		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		/*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3114,7 +3142,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       /* print second end */
       /* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths,queryseq2); */
       SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
-		Stage3end_absmq_score(stage3array2[0]),/*second_absmq*/0,
+		Stage3end_absmq_score(stage3array2[0]),first_absmq2,/*second_absmq*/0,
 		Stage3end_mapq_score(stage3array2[0]),chromosome_iit,
 		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		/*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -3123,8 +3151,8 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		merge_samechr_p);
 
     } else if (resulttype == UNPAIRED_MULT) {
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq1,result);
-      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq2,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq1,&second_absmq1,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&first_absmq2,&second_absmq2,result);
 
 #if 0
       /* Do eval and sorting first */
@@ -3168,7 +3196,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
 	SAM_print(fp_unpaired_mult,stage3,mate,acc,/*pathnum*/1,npaths1,
-		  Stage3end_absmq_score(stage3),second_absmq1,
+		  Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3190,7 +3218,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
 	  SAM_print(fp_unpaired_mult,stage3,mate,acc,pathnum,npaths1,
-		    Stage3end_absmq_score(stage3),second_absmq1,
+		    Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3221,7 +3249,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
 	SAM_print(fp_unpaired_mult,stage3,mate,acc,/*pathnum*/1,npaths2,
-		  Stage3end_absmq_score(stage3),second_absmq2,
+		  Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -3243,7 +3271,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
 	  SAM_print(fp_unpaired_mult,stage3,mate,acc,pathnum,npaths2,
-		    Stage3end_absmq_score(stage3),second_absmq2,
+		    Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -3264,8 +3292,8 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	abort();
       }
 
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq1,result);
-      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq2,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq1,&second_absmq1,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&first_absmq2,&second_absmq2,result);
 
 #if 0
       /* Do eval and sorting first */
@@ -3323,7 +3351,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
 	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths1,
-		  Stage3end_absmq_score(stage3),second_absmq1,
+		  Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3347,7 +3375,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
 	  SAM_print(fp,stage3,mate,acc,pathnum,npaths1,
-		    Stage3end_absmq_score(stage3),second_absmq1,
+		    Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3387,7 +3415,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
 	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths2,
-		  Stage3end_absmq_score(stage3),second_absmq2,
+		  Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
@@ -3411,7 +3439,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
 	  SAM_print(fp,stage3,mate,acc,pathnum,npaths2,
-		    Stage3end_absmq_score(stage3),second_absmq2,
+		    Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,

@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 62923 2012-04-28 02:06:27Z twu $ */
+/* $Id: stage3hr.h 63242 2012-05-03 22:45:27Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -73,6 +73,8 @@ extern int
 Stage3end_absmq_score (T this);
 extern int
 Stage3end_score (T this);
+extern int
+Stage3end_gmap_max_match_length (T this);
 extern int
 Stage3end_best_score (List_T hits);
 extern int
@@ -238,7 +240,7 @@ Stage3end_new_shortexon (int *found_score, Substring_T donor, Substring_T accept
 			 int splicing_penalty, int querylength, int sensedir);
 
 extern T
-Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim,
+Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_length,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
 		    struct Pair_T *pairarray, int npairs,
@@ -251,7 +253,7 @@ extern List_T
 Stage3end_sort_bymatches (List_T hits);
 
 extern Stage3end_T *
-Stage3end_eval_and_sort (int *npaths, int *second_absmq,
+Stage3end_eval_and_sort (int *npaths, int *first_absmq, int *second_absmq,
 			 Stage3end_T *stage3array, int maxpaths, Shortread_T queryseq,
 			 Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			 Genome_T genome, char *quality_string, bool displayp);
@@ -314,7 +316,7 @@ extern List_T
 Stage3pair_resolve_multimapping (List_T hitpairs);
 
 extern Stage3pair_T *
-Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
+Stage3pair_eval_and_sort (int *npaths, int *first_absmq, int *second_absmq,
 			  Stage3pair_T *stage3pairarray, int maxpaths,
 			  Shortread_T queryseq1, Shortread_T queryseq2,
 			  Compress_T query5_compress_fwd, Compress_T query5_compress_rev, 

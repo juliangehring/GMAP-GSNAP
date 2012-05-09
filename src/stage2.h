@@ -1,4 +1,4 @@
-/* $Id: stage2.h 51826 2011-11-07 17:39:39Z twu $ */
+/* $Id: stage2.h 63447 2012-05-07 18:46:55Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "bool.h"
@@ -51,7 +51,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
 		int maxintronlen, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
-		bool favor_right_p, bool just_one_p, bool debug_graphic_p, bool diagnosticp,
+		bool favor_right_p, int max_nalignments, bool debug_graphic_p, bool diagnosticp,
 		Stopwatch_T stopwatch, bool diag_debug);
 
 extern List_T

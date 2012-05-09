@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 62920 2012-04-28 02:03:28Z twu $";
+static char rcsid[] = "$Id: stage3.c 63242 2012-05-03 22:45:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -4351,7 +4351,7 @@ Stage3_print_gff3 (FILE *fp, T this, int pathnum, IIT_T chromosome_iit, Sequence
 /* Only for GMAP program */
 void
 Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
-		  int absmq_score, int second_absmq, int mapq_score,
+		  int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		  IIT_T chromosome_iit, Sequence_T usersegment,
 		  Sequence_T queryseq, int chimera_part, Chimera_T chimera,
 		  int quality_shift, bool sam_paired_p, char *sam_read_group_id) {
@@ -4361,7 +4361,7 @@ Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
 		 /*hardclip5*/0,/*hardclip3*/0,Sequence_fulllength_given(queryseq),
 		 this->watsonp,this->cdna_direction,chimera_part,chimera,
 		 quality_shift,Sequence_firstp(queryseq),pathnum,npaths,
-		 absmq_score,second_absmq,mapq_score,sam_paired_p,
+		 absmq_score,first_absmq,second_absmq,mapq_score,sam_paired_p,
 		 sam_read_group_id);
   return;
 }
@@ -5788,9 +5788,10 @@ traverse_genome_gap (bool *filledp, bool *shiftp, int *dynprogindex_minor, int *
 	debug(Pair_dump_list(micropairs,/*zerobasedp*/true));
 	debug(printf("\n"));
 
-	if (nindels == 0) {
+	if (nindels == 0 && nmismatches < 4) {
 	  /* Have a higher standard */
 	  if (prob2 >= 0.95 && prob3 >= 0.95) {
+	    debug(printf("Transferring microexon pairs\n"));
 	    pairs = Pairpool_transfer(pairs,micropairs);
 	    introntype = microintrontype;
 	    *shiftp = true;
@@ -5800,6 +5801,7 @@ traverse_genome_gap (bool *filledp, bool *shiftp, int *dynprogindex_minor, int *
 	} else {
 	  /* Have a lower standard */
 	  if (prob2 >= 0.90 || prob3 >= 0.90) {
+	    debug(printf("Transferring microexon pairs\n"));
 	    pairs = Pairpool_transfer(pairs,micropairs);
 	    introntype = microintrontype;
 	    *shiftp = true;
@@ -8948,7 +8950,7 @@ path_compute (double *defect_rate, int *intronlen, int *nonintronlen,
   /* *nmatches_pretrim = Pair_nmatches(pairs); */
 
   debug(Pair_dump_list(pairs,true));
-  debug(printf("End of path_compute (nmatches_pretrim: %d)\n",*nmatches_pretrim));
+  debug(printf("End of path_compute\n"));
   return pairs;
 }
 
@@ -9616,7 +9618,8 @@ path_trim (double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
 
 struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
-		int *nmatches_posttrim, int *ambig_end_length_5, int *ambig_end_length_3,
+		int *nmatches_posttrim, int *max_match_length,
+		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, 
@@ -9869,7 +9872,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		       extramaterial_end,extraband_end,
 		       pairpool,dynprogL,dynprogR,stage3debug);
 
-    *nmatches_posttrim = Pair_nmatches_posttrim(*pairs,/*pos5*/*ambig_end_length_5,
+    *nmatches_posttrim = Pair_nmatches_posttrim(&(*max_match_length),*pairs,/*pos5*/*ambig_end_length_5,
 						/*pos3*/querylength - (*ambig_end_length_3));
 
     /* printf("ambig_end_length = %d, %d\n",*ambig_end_length_5,*ambig_end_length_3); */

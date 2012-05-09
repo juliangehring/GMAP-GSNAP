@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 62603 2012-04-25 16:42:57Z twu $";
+static char rcsid[] = "$Id: indexdb.c 63200 2012-05-03 18:05:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1977,6 +1977,7 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
 void
 Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T *offsets,
 			 Oligospace_T oligospace, int blocksize) {
+  FILE *offsets_fp;
   int gammaptrs_fd, offsets_fd;
   int j;
   Oligospace_T oligoi;
@@ -1987,12 +1988,13 @@ Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T 
 
 
   if (blocksize == 1) {
-    /* Don't write gammaptrs */
-    offsets_fd = Access_fileio_rw(offsetsfile);
-    for (oligoi = 0; oligoi <= oligospace; oligoi++) {
-      WRITE_UINT(offsets[oligoi],offsets_fd);
+    /* Don't write gammaptrs.  Write offsetscomp in a single command. */
+    if ((offsets_fp = FOPEN_WRITE_BINARY(offsetsfile)) == NULL) {
+      fprintf(stderr,"Can't write to file %s\n",offsetsfile);
+      exit(9);
+    } else {
+      FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
     }
-    close(offsets_fd);
 
   } else {
     gammaptrs_fd = Access_fileio_rw(gammaptrsfile);

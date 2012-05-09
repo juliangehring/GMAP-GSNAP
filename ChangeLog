@@ -1,3 +1,52 @@
+2012-05-07  twu
+
+    * VERSION: Updated version
+
+    * oligoindex_hr.c: Reverting to version that zeroes out counts for oligomers
+      that are overabundant or not in query
+
+    * gmap.c, stage1hr.c, stage2.c, stage2.h: Providing a limit on the number of
+      suboptimal alignments returned from stage 2.  Limit set to 2 for GMAP and
+      1 for GSNAP.
+
+    * gsnap.c: Added getopt handler for --sam-multiple-primaries
+
+2012-05-03  twu
+
+    * VERSION, config.site.rescomp.tst, dynprog.c, gmap.c, pair.c, pair.h, src,
+      stage1hr.c, stage3.c, stage3.h, stage3hr.c, stage3hr.h, trunk, util:
+      Merged revisions 63036 to 63240 from branchese/2012-05-01-affine-gap to
+      implement an affine gap algorithm for dynamic programming
+
+    * uniqscan.c: Using new interface to Stage1hr procedure that contains
+      first_absmq as an argument
+
+    * shortread.c: Generalized handling of old Illumina paired-end format ending
+      in :0 or :<digit>.
+
+    * genome.c: Fixed function Genome_fill_buffer_simple_alt so it returns
+      ref+alt, instead of empty+alt.
+
+    * indexdb.c: Made writing of offsetscomp file faster when blocksize == 1 (or
+      k == b), by using a single write command instead of looping.
+
+    * goby.c, outbuffer.c: Implemented patches for Goby 2.0
+
+    * gmap.c, gsnap.c, outbuffer.c, pair.c, pair.h, result.c, result.h,
+      resulthr.c, resulthr.h, samprint.c, samprint.h, stage1hr.c, stage1hr.h,
+      stage3.c, stage3.h, stage3hr.c, stage3hr.h: Added flag
+      --sam-multiple-primaries to allow multiple alignments to be marked as
+      primary, if their mapping scores are equally good
+
+    * shortread.c: Handling older style Illumina paired-end reads that end in
+      ":0"
+
+    * stage3.c: Fixed debugging statements
+
+    * oligoindex_hr.c: Not zeroing out counts[i] for oligomers that are either
+      overabundant or not in query.  Saves time in allocate_positions function
+      and in store functions.
+
 2012-04-28  twu
 
     * VERSION, config.site.rescomp.prd, config.site.rescomp.tst, index.html:

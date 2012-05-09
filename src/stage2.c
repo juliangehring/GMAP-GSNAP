@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 61293 2012-04-06 22:36:57Z twu $";
+static char rcsid[] = "$Id: stage2.c 63447 2012-05-07 18:46:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -165,6 +165,13 @@ Stage2_setup (bool splicingp_in, int suboptimal_score_start_in, int suboptimal_s
 #define debug10(x) x
 #else 
 #define debug10(x)
+#endif
+
+/* Multiple alignments */
+#ifdef DEBUG11
+#define debug11(x) x
+#else 
+#define debug11(x)
 #endif
 
 
@@ -2592,16 +2599,31 @@ Cell_rootposition_right_cmp (const void *a, const void *b) {
 }
 
 
+static int
+Cell_score_cmp (const void *a, const void *b) {
+  Cell_T x = * (Cell_T *) a;
+  Cell_T y = * (Cell_T *) b;
 
-static List_T
-Linkmatrix_get_cells_fwd (struct Link_T **links, int length1, int *npositions,
+  if (x->score > y->score) {
+    return -1;
+  } else if (y->score > x->score) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+
+static Cell_T *
+Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int length1, int *npositions,
 			  int indexsize, int bestscore, bool favor_right_p) {
+  Cell_T *sorted, *cells;
   List_T celllist = NULL;
-  Cell_T *cells;
   int querypos, hit, lastpos;
   int rootposition, last_rootposition;
   int threshold_score;
-  int ngood, ncells, i;
+  int ngood, ncells, i, k;
 
   lastpos = length1 - indexsize;
 
@@ -2634,43 +2656,55 @@ Linkmatrix_get_cells_fwd (struct Link_T **links, int length1, int *npositions,
     }
   }
 
-  cells = (Cell_T *) List_to_array(celllist,NULL);
-  List_free(&celllist);
-  celllist = (List_T) NULL;
+  if (ncells == 0) {
+    *nunique = 0;
+    return (Cell_T *) NULL;
 
-  /* Take best result for each rootposition */
-  if (favor_right_p == true) {
-    qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_right_cmp);
   } else {
-    qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
-  }
+    /* Take best result for each rootposition */
+    cells = (Cell_T *) List_to_array(celllist,NULL);
+    List_free(&celllist);
 
-  last_rootposition = -1;
-  for (i = 0; i < ncells; i++) {
-    if (cells[i]->rootposition == last_rootposition) {
-      Cell_free(&(cells[i]));
+    if (favor_right_p == true) {
+      qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_right_cmp);
     } else {
-      debug0(printf("position %d, score %d, pos %d, hit %d\n",
-		    cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
-      celllist = List_push(celllist,(void *) cells[i]);
-      last_rootposition = cells[i]->rootposition;
+      qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
     }
-  }
-  FREE(cells);
 
-  return celllist;
+    sorted = (Cell_T *) CALLOC(ncells,sizeof(Cell_T));
+    k = 0;
+
+    last_rootposition = -1;
+    for (i = 0; i < ncells; i++) {
+      if (cells[i]->rootposition == last_rootposition) {
+	Cell_free(&(cells[i]));
+      } else {
+	debug11(printf("Pushing position %d, score %d, pos %d, hit %d\n",
+		       cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
+	sorted[k++] = cells[i];
+	last_rootposition = cells[i]->rootposition;
+      }
+    }
+    debug11(printf("\n"));
+    FREE(cells);
+  
+    *nunique = k;
+    qsort(sorted,*nunique,sizeof(Cell_T),Cell_score_cmp);
+
+    return sorted;
+  }
 }
 
 
-static List_T
-Linkmatrix_get_cells_both (struct Link_T **links, int length1, int *npositions,
+static Cell_T *
+Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int length1, int *npositions,
 			   int indexsize, int bestscore, bool favor_right_p) {
+  Cell_T *sorted, *cells;
   List_T celllist = NULL;
-  Cell_T *cells;
   int querypos, hit, lastpos;
   int rootposition, last_rootposition;
   int threshold_score;
-  int ngood, ncells, i;
+  int ngood, ncells, i, k;
 
   lastpos = length1 - indexsize;
 
@@ -2716,31 +2750,43 @@ Linkmatrix_get_cells_both (struct Link_T **links, int length1, int *npositions,
     }
   }
 
-  cells = (Cell_T *) List_to_array(celllist,NULL);
-  List_free(&celllist);
-  celllist = (List_T) NULL;
+  if (ncells == 0) {
+    *nunique = 0;
+    return (Cell_T *) NULL;
 
-  /* Take best result for each rootposition */
-  if (favor_right_p == true) {
-    qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_right_cmp);
   } else {
-    qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
-  }
+    /* Take best result for each rootposition */
+    cells = (Cell_T *) List_to_array(celllist,NULL);
+    List_free(&celllist);
 
-  last_rootposition = -1;
-  for (i = 0; i < ncells; i++) {
-    if (cells[i]->rootposition == last_rootposition) {
-      Cell_free(&(cells[i]));
+    if (favor_right_p == true) {
+      qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_right_cmp);
     } else {
-      debug0(printf("position %d, score %d, pos %d, hit %d\n",
-		    cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
-      celllist = List_push(celllist,(void *) cells[i]);
-      last_rootposition = cells[i]->rootposition;
+      qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
     }
-  }
-  FREE(cells);
 
-  return celllist;
+    sorted = (Cell_T *) CALLOC(ncells,sizeof(Cell_T));
+    k = 0;
+
+    last_rootposition = -1;
+    for (i = 0; i < ncells; i++) {
+      if (cells[i]->rootposition == last_rootposition) {
+	Cell_free(&(cells[i]));
+      } else {
+	debug11(printf("position %d, score %d, pos %d, hit %d\n",
+		       cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
+	sorted[k++] = cells[i];
+	last_rootposition = cells[i]->rootposition;
+      }
+    }
+    debug11(printf("\n"));
+    FREE(cells);
+
+    *nunique = k;
+    qsort(sorted,*nunique,sizeof(Cell_T),Cell_score_cmp);
+
+    return sorted;
+  }
 }
 
 
@@ -2748,8 +2794,8 @@ Linkmatrix_get_cells_both (struct Link_T **links, int length1, int *npositions,
 
 /* Returns celllist */
 /* For PMAP, indexsize is in aa. */
-static List_T
-align_compute_scores (struct Link_T **links, unsigned int **mappings, int *npositions, int totalpositions,
+static Cell_T *
+align_compute_scores (int *ncells, struct Link_T **links, unsigned int **mappings, int *npositions, int totalpositions,
 		      bool oned_matrix_p, unsigned int *minactive, unsigned int *maxactive,
 #ifdef USE_SUBOPTIMAL_STARTS
 		      int *fwd_initposition_bestpos, int *fwd_initposition_besthit,
@@ -2766,7 +2812,7 @@ align_compute_scores (struct Link_T **links, unsigned int **mappings, int *nposi
 #endif
 		      bool localp, bool skip_repetitive_p, 
 		      bool use_shifted_canonical_p, bool debug_graphic_p, bool favor_right_p) {
-  List_T celllist;
+  Cell_T *cells;
   Link_T currlink, prevlink;
   int querypos, indexsize_nt, hit, low_hit, high_hit;
   int nskipped, min_hits, specific_querypos, specific_low_hit, specific_high_hit, next_querypos;
@@ -3145,14 +3191,14 @@ align_compute_scores (struct Link_T **links, unsigned int **mappings, int *nposi
   /* Grand winners */
   debug10(printf("Finding grand winners, using root position method\n"));
   if (splicingp == false || use_shifted_canonical_p == false) {
-    celllist = Linkmatrix_get_cells_fwd(links,querylength,npositions,indexsize,best_overall_score,favor_right_p);
+    cells = Linkmatrix_get_cells_fwd(&(*ncells),links,querylength,npositions,indexsize,best_overall_score,favor_right_p);
   } else {
-    celllist = Linkmatrix_get_cells_both(links,querylength,npositions,indexsize,best_overall_score,favor_right_p);
+    cells = Linkmatrix_get_cells_both(&(*ncells),links,querylength,npositions,indexsize,best_overall_score,favor_right_p);
   }
 
   debug9(FREE(oligo));
 
-  return celllist;
+  return cells;
 }
 
 
@@ -3352,7 +3398,7 @@ align_compute (unsigned int **mappings, int *npositions, int totalpositions,
 
 	       int indexsize, int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool,
 	       bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
-	       bool favor_right_p, bool just_one_p, bool debug_graphic_p) {
+	       bool favor_right_p, int max_nalignments, bool debug_graphic_p) {
   List_T all_paths = NULL;
   struct Link_T **links;
 #ifdef USE_SUBOPTIMAL_STARTS
@@ -3361,13 +3407,13 @@ align_compute (unsigned int **mappings, int *npositions, int totalpositions,
   int prev_querypos, prevhit;
 #endif
 
-  List_T celllist, p;
-  Cell_T cell;
-  int i;
+  Cell_T *cells, cell;
+  int ncells, i;
 
   bool fwdp;
   int querypos, hit;
   int querystart, queryend;
+  int bestscore;
 
 
   querystart = queryseq_trim_start;
@@ -3391,19 +3437,19 @@ align_compute (unsigned int **mappings, int *npositions, int totalpositions,
     mappings_dump_R(mappings,npositions,querylength,/*active*/NULL,/*firstactive*/NULL,indexsize,"all.mers");
   }
   
-  celllist = align_compute_scores(links,mappings,npositions,totalpositions,
-				  oned_matrix_p,minactive,maxactive,
+  cells = align_compute_scores(&ncells,links,mappings,npositions,totalpositions,
+			       oned_matrix_p,minactive,maxactive,
 #ifdef USE_SUBOPTIMAL_STARTS
-				  fwd_initposition_bestpos,fwd_initposition_besthit,
-				  rev_initposition_bestpos,rev_initposition_besthit,
+			       fwd_initposition_bestpos,fwd_initposition_besthit,
+			       rev_initposition_bestpos,rev_initposition_besthit,
 #endif
-				  querystart,queryend,querylength,
+			       querystart,queryend,querylength,
+			       
+			       genomicuc_ptr,genomicstart,genomicend,plusp,genomiclength,
 
-				  genomicuc_ptr,genomicstart,genomicend,plusp,genomiclength,
-
-				  indexsize,sufflookback,nsufflookback,maxintronlen,
+			       indexsize,sufflookback,nsufflookback,maxintronlen,
 #ifdef DEBUG9
-				  queryseq_ptr,
+			       queryseq_ptr,
 #endif
 				  localp,skip_repetitive_p,use_shifted_canonical_p,debug_graphic_p,
 				  favor_right_p);
@@ -3414,52 +3460,51 @@ align_compute (unsigned int **mappings, int *npositions, int totalpositions,
   debug1(Linkmatrix_print_both(links,mappings,querylength,npositions,queryseq_ptr,indexsize));
 #endif
 
-  i = 0;
-  p = celllist;
-  while (p != NULL) {
-    cell = (Cell_T) List_head(p);
-    querypos = cell->querypos;
-    hit = cell->hit;
-    fwdp = cell->fwdp;
-    debug0(printf("Starting subpath %d at %d with score %d, querypos %d, hit %d\n",
-		  i,mappings[querypos][hit],cell->score,querypos,hit));
+  if (ncells == 0) {
+    all_paths = (List_T) NULL;
+
+  } else {
+    bestscore = cells[0]->score;
+
+    for (i = 0; i < ncells && (i < max_nalignments && cells[i]->score == bestscore); i++) {
+      cell = cells[i];
+      querypos = cell->querypos;
+      hit = cell->hit;
+      fwdp = cell->fwdp;
+      debug11(printf("Starting subpath %d at %d with score %d, querypos %d, hit %d\n",
+		     i,mappings[querypos][hit],cell->score,querypos,hit));
 
 
-    if (debug_graphic_p == true) {
-      best_path_dump_R(links,mappings,querypos,hit,fwdp,"best.path");
-      printf("plot(all.mers,col=\"black\",pch=\".\",xlab=\"Query\",ylab=\"Genomic\")\n");
-      printf("points(active.mers,col=\"red\",pch=\".\")\n");
-      printf("points(best.path,col=\"green\",pch=\".\")\n");
-      printf("lines(querypos,minactive,col=\"blue\")\n");
-      printf("lines(querypos,maxactive,col=\"blue\")\n");
-    }
+      if (debug_graphic_p == true) {
+	best_path_dump_R(links,mappings,querypos,hit,fwdp,"best.path");
+	printf("plot(all.mers,col=\"black\",pch=\".\",xlab=\"Query\",ylab=\"Genomic\")\n");
+	printf("points(active.mers,col=\"red\",pch=\".\")\n");
+	printf("points(best.path,col=\"green\",pch=\".\")\n");
+	printf("lines(querypos,minactive,col=\"blue\")\n");
+	printf("lines(querypos,maxactive,col=\"blue\")\n");
+      }
 
 
 #ifdef USE_SUBOPTIMAL_STARTS
-    all_paths = List_append(all_paths,traceback_ties(/*path*/(List_T) NULL,querypos,hit,links,mappings,
-						     fwd_initposition_bestpos,fwd_initposition_besthit,
-						     rev_initposition_bestpos,rev_initposition_besthit,
-						     queryseq_ptr,genomicseg_ptr,genomicuc_ptr,
-						     pairpool,indexsize,fwdp));
+      all_paths = List_append(all_paths,traceback_ties(/*path*/(List_T) NULL,querypos,hit,links,mappings,
+						       fwd_initposition_bestpos,fwd_initposition_besthit,
+						       rev_initposition_bestpos,rev_initposition_besthit,
+						       queryseq_ptr,genomicseg_ptr,genomicuc_ptr,
+						       pairpool,indexsize,fwdp));
 #else
-    all_paths = List_push(all_paths,(void *) traceback_one(querypos,hit,links,mappings,queryseq_ptr,genomicseg_ptr,genomicuc_ptr,
-							   pairpool,indexsize,fwdp));
+      all_paths = List_push(all_paths,(void *) traceback_one(querypos,hit,links,mappings,queryseq_ptr,genomicseg_ptr,genomicuc_ptr,
+							     pairpool,indexsize,fwdp));
 #endif
 
-    debug0(printf("\n"));
-    if (just_one_p == true) {
-      p = NULL;
-    } else {
-      p = List_next(p);
-      i++;
     }
-  }
+    debug11(printf("\n"));
 
-  for (p = celllist; p != NULL; p = List_next(p)) {
-    cell = (Cell_T) List_head(p);
-    Cell_free(&cell);
+    for (i = 0; i < ncells; i++) {
+      cell = cells[i];
+      Cell_free(&cell);
+    }
+    FREE(cells);
   }
-  List_free(&celllist);
 
 
 #ifdef USE_SUBOPTIMAL_STARTS
@@ -3727,7 +3772,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
 		int maxintronlen, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
-		bool favor_right_p, bool just_one_p, bool debug_graphic_p, bool diagnosticp,
+		bool favor_right_p, int max_nalignments, bool debug_graphic_p, bool diagnosticp,
 		Stopwatch_T stopwatch, bool diag_debug) {
   List_T all_pairs = NULL, all_paths, path, pairs, p;
   int indexsize, indexsize_nt;
@@ -3848,7 +3893,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 
 			      indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
 			      localp,skip_repetitive_p,use_shifted_canonical_p,
-			      favor_right_p,just_one_p,debug_graphic_p);
+			      favor_right_p,max_nalignments,debug_graphic_p);
 
 #ifdef PMAP
     indexsize_nt = 3*indexsize;
@@ -3932,7 +3977,7 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 			     oligoindices,noligoindices,proceed_pctcoverage,
 			     pairpool,diagpool,sufflookback,nsufflookback,
 			     maxintronlen,localp,skip_repetitive_p,use_shifted_canonical_p,
-			     favor_right_p,/*just_one_p*/true,debug_graphic_p,
+			     favor_right_p,/*max_nalignments*/1,debug_graphic_p,
 			     diagnosticp,stopwatch,diag_debug);
   if (all_pairs == NULL) {
     return (List_T) NULL;

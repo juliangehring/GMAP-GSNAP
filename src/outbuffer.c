@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 62058 2012-04-18 21:20:56Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 63197 2012-05-03 17:41:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -738,10 +738,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 #endif
 
   /* Initialize output streams */
-  if (sevenway_root != NULL) {
-    sevenway_open_single(new);
-
-  } else if (new->gobywriter != NULL) {
+  if (new->gobywriter != NULL) {
     Goby_file_handles(&fp_capture,&fp_ignore,new->gobywriter);
     new->fp_nomapping_1 = fp_ignore;
     new->fp_nomapping_2 = fp_ignore;
@@ -758,6 +755,9 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
     new->fp_concordant_uniq = fp_capture;
     new->fp_concordant_transloc = fp_capture;
     new->fp_concordant_mult = fp_capture;
+
+  } else if (sevenway_root != NULL) {
+    sevenway_open_single(new);
 
   } else {
     new->fp_nomapping_1 = stdout;
@@ -1053,7 +1053,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
   Stage3end_T *stage3array, stage3;
   Genomicpos_T chrpos;
   int ignore = 0;
-  int npaths, pathnum, second_absmq;
+  int npaths, pathnum, first_absmq, second_absmq;
   FILE *fp;
 
   resulttype = Result_resulttype(result);
@@ -1079,7 +1079,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
     } else {
       fp = this->fp_unpaired_transloc;
     }
-    stage3array = (Stage3end_T *) Result_array(&npaths,&second_absmq,result);
+    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     if (this->failsonlyp == true) {
       /* Skip */
@@ -1091,7 +1091,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
       chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,stage3,
 				  Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
       SAM_print(fp,stage3,/*mate*/NULL,/*acc*/Shortread_accession(queryseq1),/*pathnum*/1,npaths,
-		Stage3end_absmq_score(stage3array[0]),second_absmq,
+		Stage3end_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		Stage3end_mapq_score(stage3array[0]),
 		this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
 		/*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
@@ -1102,7 +1102,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
     }
 
   } else if (resulttype == SINGLEEND_MULT) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&second_absmq,result);
+    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     if (this->failsonlyp == true) {
       /* Skip */
@@ -1125,7 +1125,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
 				    Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 	SAM_print(this->fp_unpaired_mult,stage3,/*mate*/NULL,/*acc*/Shortread_accession(queryseq1),
 		  pathnum,npaths,
-		  Stage3end_absmq_score(stage3array[pathnum-1]),second_absmq,
+		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
 		  Stage3end_mapq_score(stage3array[pathnum-1]),
 		  this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
 		  /*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
@@ -1163,7 +1163,7 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
   bool translocationp;
   Shortread_T queryseq1;
   Stage3end_T *stage3array, stage3;
-  int npaths, pathnum, second_absmq;
+  int npaths, pathnum, first_absmq, second_absmq;
   FILE *fp;
 
   resulttype = Result_resulttype(result);
@@ -1189,7 +1189,7 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
       fp = this->fp_unpaired_transloc;
     }
 
-    stage3array = (Stage3end_T *) Result_array(&npaths,&second_absmq,result);
+    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     if (this->failsonlyp == true) {
       /* Skip */
@@ -1210,7 +1210,7 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
     }
 
   } else if (resulttype == SINGLEEND_MULT) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&second_absmq,result);
+    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     if (this->failsonlyp == true) {
       /* Skip */
@@ -1267,7 +1267,7 @@ print_result_goby (T this, Result_T result, Request_T request) {
   Shortread_T queryseq1;
   Stage3end_T *stage3array1, *stage3array2;
   Stage3pair_T *stage3pairarray;
-  int npaths1 = 0, npaths2 = 0, second_absmq;
+  int npaths1 = 0, npaths2 = 0, first_absmq, second_absmq;
   bool output_alignment = true;
 
   resulttype = Result_resulttype(result);
@@ -1282,7 +1282,7 @@ print_result_goby (T this, Result_T result, Request_T request) {
       break;
     case SINGLEEND_MULT:
       /* Check single end Too Many Hits (TMH) */
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq,&second_absmq,result);
       if (npaths1 > this->maxpaths) {
         Goby_print_tmh(this->gobywriter,stage3array1[0],queryseq1,npaths1);
         output_alignment = false;
@@ -1300,7 +1300,7 @@ print_result_goby (T this, Result_T result, Request_T request) {
       break;
     case CONCORDANT_MULT:
     case PAIRED_MULT:
-      stage3pairarray = (Stage3pair_T *) Result_array(&npaths1,&second_absmq,result);
+      stage3pairarray = (Stage3pair_T *) Result_array(&npaths1,&first_absmq,&second_absmq,result);
       if (npaths1 > this->maxpaths) {
         Goby_print_pair_tmh(this->gobywriter,resulttype,stage3pairarray[0],queryseq1,npaths1);
         output_alignment = false;
@@ -1309,8 +1309,8 @@ print_result_goby (T this, Result_T result, Request_T request) {
     case UNPAIRED_MULT:
     case HALFMAPPING_TRANSLOC:
     case HALFMAPPING_MULT:
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&second_absmq,result);
-      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&second_absmq,result);
+      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq,&second_absmq,result);
+      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&first_absmq,&second_absmq,result);
       if (npaths1 >= this->maxpaths) {
         Goby_print_tmh(this->gobywriter,stage3array1[0],queryseq1,npaths1);
       }
@@ -1412,7 +1412,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
   Sequence_T queryseq;
   Diagnostic_T diagnostic;
   Stage3_T *stage3array;
-  int npaths, pathnum, effective_maxpaths, second_absmq;
+  int npaths, pathnum, effective_maxpaths, first_absmq, second_absmq;
   Chimera_T chimera = NULL;
   int chimerapos, chimeraequivpos, chimera_cdna_direction;
   int querylength;
@@ -1441,7 +1441,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
     return;
   }
 
-  stage3array = Result_array(&npaths,&second_absmq,result);
+  stage3array = Result_array(&npaths,&first_absmq,&second_absmq,result);
   querylength = Sequence_fulllength_given(queryseq);
 
   chimerapos = chimeraequivpos = -1;
@@ -1741,7 +1741,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 
     } else if (mergedp == true) {
       Stage3_print_sam(fp,stage3array[0],/*pathnum*/1,/*npaths*/1,
-		       Stage3_absmq_score(stage3array[0]),second_absmq,
+		       Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		       Stage3_mapq_score(stage3array[0]),
 		       this->chromosome_iit,this->usersegment,queryseq,
 		       /*chimera_part*/0,/*chimera*/NULL,this->quality_shift,this->sam_paired_p,
@@ -1749,13 +1749,13 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 
     } else if (chimera != NULL) {
       Stage3_print_sam(fp,stage3array[0],/*pathnum*/1,npaths,
-		       Stage3_absmq_score(stage3array[0]),second_absmq,
+		       Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		       Stage3_mapq_score(stage3array[0]),
 		       this->chromosome_iit,this->usersegment,queryseq,
 		       /*chimera_part*/-1,chimera,this->quality_shift,this->sam_paired_p,
 		       this->sam_read_group_id);
       Stage3_print_sam(fp,stage3array[1],/*pathnum*/1,npaths,
-		       Stage3_absmq_score(stage3array[0]),second_absmq,
+		       Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		       Stage3_mapq_score(stage3array[0]),
 		       this->chromosome_iit,this->usersegment,queryseq,
 		       /*chimera_part*/+1,chimera,this->quality_shift,this->sam_paired_p,
@@ -1764,7 +1764,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
     } else {
       for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
 	Stage3_print_sam(fp,stage3array[pathnum-1],pathnum,npaths,
-			 Stage3_absmq_score(stage3array[pathnum-1]),second_absmq,
+			 Stage3_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
 			 Stage3_mapq_score(stage3array[pathnum-1]),
 			 this->chromosome_iit,this->usersegment,queryseq,
 			 /*chimera_part*/0,/*chimera*/NULL,this->quality_shift,this->sam_paired_p,

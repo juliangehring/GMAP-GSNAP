@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: goby.c 58459 2012-02-24 21:02:35Z twu $";
+static char rcsid[] = "$Id: goby.c 63197 2012-05-03 17:41:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -208,6 +208,7 @@ Goby_writer_new (char *output_root, char *aligner_name, char *aligner_version) {
   gobyAlignments_openAlignmentsWriterDefaultEntriesPerChunk(output_root,&new->helper);
   gobyAlignments_setAlignerName(new->helper,aligner_name);
   gobyAlignments_setAlignerVersion(new->helper,aligner_version);
+  gobyGsnap_startAlignment(new->helper);
   gobyCapture_open(new->helper, 1);
   return new;
 #else
@@ -301,7 +302,6 @@ Goby_finish_capture (Gobywriter_T writer) {
   if (strlen(capturedData) > 0) {
       Goby_observe_aligned(writer);
       gobyGsnap_parse(writer->helper, capturedData);
-      // printf("%s", capturedData);
   }
 #endif
   return;

@@ -1,4 +1,4 @@
-/* $Id: pair.h 62918 2012-04-28 01:57:21Z twu $ */
+/* $Id: pair.h 63242 2012-05-03 22:45:27Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -134,7 +134,8 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *queryseq_ptr, char *quality_string,
 		int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
-		int quality_shift, bool firstp, int pathnum, int npaths, int absmq_score, int second_absmq,
+		int quality_shift, bool firstp, int pathnum, int npaths,
+		int absmq_score, int first_absmq, int second_absmq,
 #ifdef GSNAP
 		unsigned int flag, int pair_mapq_score, int end_mapq_score,
 		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
@@ -200,7 +201,7 @@ Pair_print_introns (FILE *fp, struct T *pairs, int npairs, char *accession,
 		    int nexons, Chrnum_T chrnum, IIT_T chromosome_iit);
 
 extern int
-Pair_nmatches_posttrim (List_T pairs, int pos5, int pos3);
+Pair_nmatches_posttrim (int *max_match_length, List_T pairs, int pos5, int pos3);
 extern int
 Pair_array_nmatches_posttrim (struct T *pairs, int npairs, int pos5, int pos3);
 extern int

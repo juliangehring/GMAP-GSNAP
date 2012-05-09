@@ -9,7 +9,8 @@ undef $opt_R;			# If provided, will report only non-canonical splice sites to st
 undef $opt_2;			# If provided, will print dinucleotides at splice sites.  Requires -d flag.
 undef $opt_D;			# Genome directory
 undef $opt_d;			# Genome index
-getopts("D:d:CR2");
+undef $opt_E;			# Use exon_number field to determine exon ordering
+getopts("D:d:CR2E");
 
 
 if (defined($opt_d)) {
@@ -51,7 +52,7 @@ if (defined($opt_d)) {
 			$chr = $fields[0];
 			$strand = $fields[6];
 		    }
-		    if (defined($exon_number = get_info_optional(\@info,"exon_number"))) {
+		    if (defined($opt_E) && defined($exon_number = get_info_optional(\@info,"exon_number"))) {
 			$exons[$exon_number-1] = "$fields[3] $fields[4]";
 		    } else {
 			$sortp = 1;
@@ -113,7 +114,7 @@ while (defined($line = get_line())) {
 		$strand = $fields[6];
 	    }
 
-	    if (defined($exon_number = get_info_optional(\@info,"exon_number"))) {
+	    if (defined($opt_E) && defined($exon_number = get_info_optional(\@info,"exon_number"))) {
 		$exons[$exon_number-1] = "$fields[3] $fields[4]";
 	    } else {
 		$sortp = 1;

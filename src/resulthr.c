@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c 56887 2012-02-01 21:28:23Z twu $";
+static char rcsid[] = "$Id: resulthr.c 63195 2012-05-03 17:39:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,9 +24,11 @@ struct T {
   int id;
   void **array;
   int npaths;
+  int first_absmq;
   int second_absmq;
   void **array2;
   int npaths2;
+  int first_absmq2;
   int second_absmq2;
   double worker_runtime;
 };
@@ -72,17 +74,19 @@ Result_id (T this) {
 
 
 void **
-Result_array (int *npaths, int *second_absmq, T this) {
+Result_array (int *npaths, int *first_absmq, int *second_absmq, T this) {
   *npaths = this->npaths;
+  *first_absmq = this->first_absmq;
   *second_absmq = this->second_absmq;
   return this->array;
 }
 
 
+/* For second end, when not paired with first end */
 void **
-Result_array2 (int *npaths, int *second_absmq, T this) {
+Result_array2 (int *npaths, int *first_absmq, int *second_absmq, T this) {
   *npaths = this->npaths2;
-  *second_absmq = this->second_absmq2;
+  *first_absmq = this->first_absmq2;
   return this->array2;
 }
 
@@ -93,7 +97,8 @@ Result_worker_runtime (T this) {
 
 
 T
-Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq, double worker_runtime) {
+Result_single_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq,
+			double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
   Stage3end_T stage3end;
 
@@ -122,6 +127,7 @@ Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq
   new->id = id;
   new->array = resultarray;
   new->npaths = npaths;
+  new->first_absmq = first_absmq;
   new->second_absmq = second_absmq;
   new->worker_runtime = worker_runtime;
 
@@ -129,7 +135,8 @@ Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq
 }
 
 T
-Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq, Pairtype_T final_pairtype, double worker_runtime) {
+Result_paired_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq,
+			Pairtype_T final_pairtype, double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
   Stage3pair_T stage3pair;
 
@@ -167,6 +174,7 @@ Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq
   new->id = id;
   new->array = resultarray;
   new->npaths = npaths;
+  new->first_absmq = first_absmq;
   new->second_absmq = second_absmq;
   new->worker_runtime = worker_runtime;
 
@@ -174,8 +182,9 @@ Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq
 }
 
 T
-Result_paired_as_singles_new (int id, void **hits5, int npaths5, int second_absmq5,
-			      void **hits3, int npaths3, int second_absmq3, double worker_runtime) {
+Result_paired_as_singles_new (int id, void **hits5, int npaths5, int first_absmq5, int second_absmq5,
+			      void **hits3, int npaths3, int first_absmq3, int second_absmq3,
+			      double worker_runtime) {
   T new = (T) MALLOC_OUT(sizeof(*new));
   Stage3end_T stage3end_5, stage3end_3;
 
@@ -221,9 +230,11 @@ Result_paired_as_singles_new (int id, void **hits5, int npaths5, int second_absm
   new->id = id;
   new->array = hits5;
   new->npaths = npaths5;
+  new->first_absmq = first_absmq5;
   new->second_absmq = second_absmq5;
   new->array2 = hits3;
   new->npaths2 = npaths3;
+  new->first_absmq2 = first_absmq3;
   new->second_absmq2 = second_absmq3;
   new->worker_runtime = worker_runtime;
 

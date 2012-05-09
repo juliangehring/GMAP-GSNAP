@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 54791 2011-12-21 17:02:14Z twu $";
+static char rcsid[] = "$Id: shortread.c 63233 2012-05-03 22:17:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -425,6 +425,12 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
     q = acc2;
     while (*q != '\0') {
       q++;
+    }
+
+    /* Handle old style Illumina data that ends in ":0" or ":1" */
+    if (p[-2] == ':' &&	q[-2] == ':' && p[-1] == q[-1]) {
+      p -= 2;
+      q -= 2;
     }
 
     /* Delete "/1" or "/2 or /3" endings */

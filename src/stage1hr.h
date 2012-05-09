@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 57639 2012-02-14 16:34:16Z twu $ */
+/* $Id: stage1hr.h 63195 2012-05-03 17:39:12Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -48,7 +48,7 @@ Stage1_free (T *old, int querylength);
 
 
 extern Stage3end_T *
-Stage1_single_read (int *npaths, int *second_mapq,
+Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
 		    Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
 		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
 		    int maxpaths, double usermax_level_float, int subopt_levels,
@@ -64,9 +64,9 @@ Stage1_single_read (int *npaths, int *second_mapq,
 		    bool keep_floors_p);
 
 extern Stage3pair_T *
-Stage1_paired_read (int *npaths, int *second_mapq, Pairtype_T *final_pairtype,
-		    Stage3end_T **stage3array5, int *nhits5, int *second_mapq5,
-		    Stage3end_T **stage3array3, int *nhits3, int *second_mapq3,
+Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final_pairtype,
+		    Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, int *second_absmq5,
+		    Stage3end_T **stage3array3, int *nhits3, int *first_absmq3, int *second_absmq3,
 		    Shortread_T queryseq5, Shortread_T queryseq3,
 		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
 		    Genome_T genome, Floors_T *floors_array,

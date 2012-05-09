@@ -1,4 +1,4 @@
-/* $Id: resulthr.h 51812 2011-11-06 18:17:08Z twu $ */
+/* $Id: resulthr.h 63195 2012-05-03 17:39:12Z twu $ */
 #ifndef RESULTHR_INCLUDED
 #define RESULTHR_INCLUDED
 #include "bool.h"
@@ -25,18 +25,21 @@ Result_id (T this);
 extern int
 Result_worker_id (T this);
 extern void **
-Result_array (int *npaths, int *second_absmq, T this);
+Result_array (int *npaths, int *first_absmq, int *second_absmq, T this);
 extern void **
-Result_array2 (int *npaths, int *second_absmq, T this);
+Result_array2 (int *npaths, int *first_absmq, int *second_absmq, T this);
 extern double
 Result_worker_runtime (T this);
 extern T
-Result_single_read_new (int id, void **resultarray, int npaths, int second_absmq, double worker_runtime);
+Result_single_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq,
+			double worker_runtime);
 extern T
-Result_paired_read_new (int id, void **resultarray, int npaths, int second_absmq, Pairtype_T final_pairtype, double worker_runbtime);
+Result_paired_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq,
+			Pairtype_T final_pairtype, double worker_runbtime);
 extern T
-Result_paired_as_singles_new (int id, void **hits5, int npaths5, int second_absmq5,
-			      void **hits3, int npaths3, int second_absmq3, double worker_runtime);
+Result_paired_as_singles_new (int id, void **hits5, int npaths5, int first_absmq5, int second_absmq5,
+			      void **hits3, int npaths3, int first_absmq3, int second_absmq3,
+			      double worker_runtime);
 extern void
 Result_free (T *old);
 

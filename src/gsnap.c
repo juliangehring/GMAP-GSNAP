@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 61384 2012-04-09 22:53:13Z twu $";
+static char rcsid[] = "$Id: gsnap.c 63437 2012-05-07 18:02:11Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -309,6 +309,7 @@ static bool merge_samechr_p = false;
 static int sam_headers_batch = -1;
 static bool sam_headers_p = true;
 static bool sam_insert_0M_p = false;
+static bool sam_multiple_primaries_p = false;
 static char *sam_read_group_id = NULL;
 static char *sam_read_group_name = NULL;
 static char *sam_read_group_library = NULL;
@@ -442,6 +443,7 @@ static struct option long_options[] = {
   {"sam-headers-batch", required_argument, 0, 0},	/* sam_headers_batch */
   {"no-sam-headers", no_argument, 0, 0},	/* sam_headers_p */
   {"sam-use-0M", no_argument, 0, 0},		/* sam_insert_0M_p */
+  {"sam-multiple-primaries", no_argument, 0, 0}, /* sam_multiple_primaries_p */
   {"read-group-id", required_argument, 0, 0},	/* sam_read_group_id */
   {"read-group-name", required_argument, 0, 0},	/* sam_read_group_name */
   {"read-group-library", required_argument, 0, 0},	/* sam_read_group_library */
@@ -564,7 +566,7 @@ process_request (Request_T request, Floors_T *floors_array,
   Stage3pair_T *stage3pairarray;
 
   int npaths, npaths5, npaths3, i;
-  int second_absmq, second_absmq5, second_absmq3;
+  int first_absmq, second_absmq, first_absmq5, second_absmq5, first_absmq3, second_absmq3;
   Pairtype_T final_pairtype;
   double worker_runtime;
 
@@ -579,7 +581,8 @@ process_request (Request_T request, Floors_T *floors_array,
   }
 
   if (queryseq2 == NULL) {
-    stage3array = Stage1_single_read(&npaths,&second_absmq,queryseq1,indexdb,indexdb2,indexdb_size_threshold,
+    stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
+				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
 				     genome,floors_array,maxpaths,user_maxlevel_float,subopt_levels,
 				     indel_penalty_middle,indel_penalty_end,
 				     max_middle_insertions,max_middle_deletions,
@@ -592,11 +595,11 @@ process_request (Request_T request, Floors_T *floors_array,
 				     /*keep_floors_p*/true);
 
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-    return Result_single_read_new(jobid,(void **) stage3array,npaths,second_absmq,worker_runtime);
+    return Result_single_read_new(jobid,(void **) stage3array,npaths,first_absmq,second_absmq,worker_runtime);
 
-  } else if ((stage3pairarray = Stage1_paired_read(&npaths,&second_absmq,&final_pairtype,
-						   &stage3array5,&npaths5,&second_absmq5,
-						   &stage3array3,&npaths3,&second_absmq3,
+  } else if ((stage3pairarray = Stage1_paired_read(&npaths,&first_absmq,&second_absmq,&final_pairtype,
+						   &stage3array5,&npaths5,&first_absmq5,&second_absmq5,
+						   &stage3array3,&npaths3,&first_absmq3,&second_absmq3,
 						   queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
 						   genome,floors_array,/*maxpaths*/maxpaths,user_maxlevel_float,subopt_levels,
 						   indel_penalty_middle,indel_penalty_end,
@@ -610,14 +613,15 @@ process_request (Request_T request, Floors_T *floors_array,
 						   pairmax,/*keep_floors_p*/true)) != NULL) {
     /* Paired or concordant hits found */
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-    return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,second_absmq,final_pairtype,worker_runtime);
+    return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,first_absmq,second_absmq,
+				  final_pairtype,worker_runtime);
 
   } else if (chop_primers_p == false || Shortread_chop_primers(queryseq1,queryseq2) == false) {
     /* No paired or concordant hits found, and no adapters found */
     /* Report ends as unpaired */
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-    return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,second_absmq5,
-					(void **) stage3array3,npaths3,second_absmq3,worker_runtime);
+    return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,first_absmq5,second_absmq5,
+					(void **) stage3array3,npaths3,first_absmq3,second_absmq3,worker_runtime);
 
   } else {
     /* Try with potential primers chopped.  queryseq1 and queryseq2 altered by Shortread_chop_primers. */
@@ -631,9 +635,9 @@ process_request (Request_T request, Floors_T *floors_array,
     }
     FREE_OUT(stage3array3);
 
-    if ((stage3pairarray = Stage1_paired_read(&npaths,&second_absmq,&final_pairtype,
-					      &stage3array5,&npaths5,&second_absmq5,
-					      &stage3array3,&npaths3,&second_absmq3,
+    if ((stage3pairarray = Stage1_paired_read(&npaths,&first_absmq,&second_absmq,&final_pairtype,
+					      &stage3array5,&npaths5,&first_absmq5,&second_absmq5,
+					      &stage3array3,&npaths3,&first_absmq3,&second_absmq3,
 					      queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
 					      genome,floors_array,/*maxpaths*/maxpaths,user_maxlevel_float,subopt_levels,
 					      indel_penalty_middle,indel_penalty_end,
@@ -647,13 +651,14 @@ process_request (Request_T request, Floors_T *floors_array,
 					      pairmax,/*keep_floors_p*/false)) != NULL) {
       /* Paired or concordant hits found, after chopping adapters */
       worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-      return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,second_absmq,final_pairtype,worker_runtime);
+      return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,first_absmq,second_absmq,
+				    final_pairtype,worker_runtime);
 
     } else {
       /* No paired or concordant hits found, after chopping adapters */
       worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
-      return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,second_absmq5,
-					  (void **) stage3array3,npaths3,second_absmq3,worker_runtime);
+      return Result_paired_as_singles_new(jobid,(void **) stage3array5,npaths5,first_absmq5,second_absmq5,
+					  (void **) stage3array3,npaths3,first_absmq3,second_absmq3,worker_runtime);
     }
   }
 }
@@ -1373,6 +1378,8 @@ main (int argc, char *argv[]) {
 	sam_headers_batch = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"sam-use-0M")) {
 	sam_insert_0M_p = true;
+      } else if (!strcmp(long_name,"sam-multiple-primaries")) {
+	sam_multiple_primaries_p = true;
       } else if (!strcmp(long_name,"quality-protocol")) {
 	if (user_quality_score_adj == true) {
 	  fprintf(stderr,"Cannot specify both -J (--quality-zero-score) and --quality-protocol\n");
@@ -2366,7 +2373,7 @@ main (int argc, char *argv[]) {
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,index1part,index1interval);
-  SAM_setup(quiet_if_excessive_p,maxpaths);
+  SAM_setup(quiet_if_excessive_p,maxpaths,sam_multiple_primaries_p);
   Goby_setup(show_refdiff_p);
 
 
@@ -2924,6 +2931,8 @@ is still designed to be fast.\n\
   --sam-headers-batch=INT        Print headers only for this batch, as specified by -q\n\
   --sam-use-0M                   Insert 0M in CIGAR between adjacent insertions and deletions\n\
                                    Required by Picard, but can cause errors in other tools\n\
+  --sam-multiple-primaries       Allows multiple alignments to be marked as primary if they\n\
+                                   have equally good mapping scores\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
   --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\

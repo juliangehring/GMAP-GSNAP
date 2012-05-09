@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 62923 2012-04-28 02:06:27Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 63242 2012-05-03 22:45:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -258,6 +258,7 @@ struct T {
   int ntscore;			/* Includes penalties */
   int nmatches;
   int nmatches_posttrim;
+  int gmap_max_match_length;		/* Used only by GMAP */
 
   int trim_left; /* Used by Stage3end_optimal_score for comparing terminals and non-terminals */
   int trim_right;
@@ -528,6 +529,12 @@ int
 Stage3end_score (T this) {
   return this->score;
 }
+
+int
+Stage3end_gmap_max_match_length (T this) {
+  return this->gmap_max_match_length;
+}
+
 
 int
 Stage3end_best_score (List_T hits) {
@@ -1315,6 +1322,7 @@ Stage3end_copy (T old) {
   new->ntscore = old->ntscore;
   new->nmatches = old->nmatches;
   new->nmatches_posttrim = old->nmatches_posttrim;
+  new->gmap_max_match_length = old->gmap_max_match_length;
 
   new->trim_left = old->trim_left;
   new->trim_right = old->trim_right;
@@ -2960,7 +2968,7 @@ Stage3end_new_terminal (int querystart, int queryend, Genomicpos_T left, Compres
 
 
 T
-Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim,
+Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_length,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
 		    struct Pair_T *pairarray, int npairs,
@@ -3091,6 +3099,8 @@ ATAGCCCACACGTTCCCCTTAAATAAGACATCACGATGGATCACAGGTCTATCACCCTATTAACCACTCACGGGAG
 		new->nmatches,nmatches_posttrim,ambig_end_length_5,ambig_end_length_3));
   new->nmatches_posttrim -= localsplicing_penalty * nintrons; /* for use in goodness_cmp procedures */
   new->nmatches_posttrim -= indel_penalty_middle * nindelbreaks; /* for use in goodness_cmp procedures */
+
+  new->gmap_max_match_length = max_match_length;
 
 
   new->trim_left = Pair_querypos(&(pairarray[0])) - ambig_end_length_5;
@@ -3355,7 +3365,7 @@ Stage3end_sort_bymatches (List_T hits) {
 
 
 Stage3end_T *
-Stage3end_eval_and_sort (int *npaths, int *second_absmq,
+Stage3end_eval_and_sort (int *npaths, int *first_absmq, int *second_absmq,
 			 Stage3end_T *stage3array, int maxpaths, Shortread_T queryseq,
 			 Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			 Genome_T genome, char *quality_string, bool displayp) {
@@ -3367,6 +3377,8 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
 
   if (*npaths == 0) {
     /* Skip */
+    *first_absmq = 0;
+    *second_absmq = 0;
 
   } else if (*npaths == 1) {
     stage3array[0]->mapq_loglik = MAPQ_MAXIMUM_SCORE;
@@ -3379,6 +3391,7 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
       Stage3end_display_prep(stage3array[0],query,query_compress_fwd,query_compress_rev,
 			     genome);
     }
+    *first_absmq = stage3array[0]->absmq_score;
     *second_absmq = 0;
 
   } else {
@@ -3420,6 +3433,7 @@ Stage3end_eval_and_sort (int *npaths, int *second_absmq,
       }
       stage3array[i]->absmq_score = rint(loglik);
     }
+    *first_absmq = stage3array[0]->absmq_score;
     *second_absmq = stage3array[1]->absmq_score;
 
 
@@ -5583,7 +5597,7 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
 		      FILE *fp_paired_mult, FILE *fp_concordant_uniq, FILE *fp_concordant_transloc, FILE *fp_concordant_mult) {
   Stage3pair_T *stage3pairarray, stage3pair;
   T *stage3array, this, hit5, hit3;
-  int npaths, pathnum, second_absmq;
+  int npaths, pathnum, first_absmq, second_absmq;
   bool outputp, translocationp;
   FILE *fp;
 
@@ -5605,7 +5619,7 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
       fp = fp_concordant_uniq;
     }
 
-    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     print_query_header(fp,initchar,queryseq,invertp);
     fprintf(fp,"\t1 %s",CONCORDANT_TEXT);
@@ -5638,7 +5652,7 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
     fprintf(fp,"\n");
 
   } else if (resulttype == CONCORDANT_MULT) {
-    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     print_query_header(fp_concordant_mult,initchar,queryseq,invertp);
     fprintf(fp_concordant_mult,"\t%d %s",npaths,CONCORDANT_TEXT);
@@ -5677,7 +5691,7 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
     fprintf(fp_concordant_mult,"\n");
 
   } else if (resulttype == PAIRED_UNIQ) {
-    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
     stage3pair = stage3pairarray[0];
 
     if (stage3pair->pairtype == PAIRED_INVERSION) {
@@ -5718,7 +5732,7 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
     fprintf(fp,"\n");
 
   } else if (resulttype == PAIRED_MULT) {
-    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&second_absmq,result);
+    stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     print_query_header(fp_paired_mult,initchar,queryseq,invertp);
     fprintf(fp_paired_mult,"\t%d %s",npaths,PAIRED_TEXT);
@@ -5759,9 +5773,9 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
   } else {
     /* Print as singles */
     if (firstp == true) {
-      stage3array = (T *) Result_array(&npaths,&second_absmq,result);
+      stage3array = (T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
     } else {
-      stage3array = (T *) Result_array2(&npaths,&second_absmq,result);
+      stage3array = (T *) Result_array2(&npaths,&first_absmq,&second_absmq,result);
     }
 
     outputp = true;
@@ -5806,9 +5820,9 @@ print_one_paired_end (Result_T result, Resulttype_T resulttype,
 #if 0
     /* Print unpaired type for unpaired_uniq results */
     if (resulttype == UNPAIRED_UNIQ) {
-      stage3array = (T *) Result_array(&npaths,&second_absmq,result);
+      stage3array = (T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
       hit5 = stage3array[0];
-      stage3array = (T *) Result_array2(&npaths,&second_absmq,result);
+      stage3array = (T *) Result_array2(&npaths,&first_absmq,&second_absmq,result);
       hit3 = stage3array[0];
       fprintf(fp," (%s)",unpaired_type_text(hit5,hit3));
     }
@@ -8918,7 +8932,7 @@ Stage3pair_resolve_multimapping (List_T hitpairs) {
 
 
 Stage3pair_T *
-Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
+Stage3pair_eval_and_sort (int *npaths, int *first_absmq, int *second_absmq,
 			  Stage3pair_T *stage3pairarray, int maxpaths,
 			  Shortread_T queryseq5, Shortread_T queryseq3,
 			  Compress_T query5_compress_fwd, Compress_T query5_compress_rev, 
@@ -8935,6 +8949,8 @@ Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
 
   if (*npaths == 0) {
     /* Skip */
+    *first_absmq = 0;
+    *second_absmq = 0;
 
   } else if (*npaths == 1) {
     stage3pairarray[0]->mapq_loglik = MAPQ_MAXIMUM_SCORE;
@@ -8954,6 +8970,7 @@ Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
     Stage3end_display_prep(stage3pairarray[0]->hit3,query3,query3_compress_fwd,query3_compress_rev,
 			   genome);
 
+    *first_absmq = stage3pairarray[0]->absmq_score;
     *second_absmq = 0;
 
   } else {
@@ -8999,6 +9016,7 @@ Stage3pair_eval_and_sort (int *npaths, int *second_absmq,
       }
       stage3pairarray[i]->absmq_score = rint(loglik);
     }
+    *first_absmq = stage3pairarray[0]->absmq_score;
     *second_absmq = stage3pairarray[1]->absmq_score;
 
 

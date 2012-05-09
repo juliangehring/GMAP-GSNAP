@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 62917 2012-04-28 01:56:34Z twu $";
+static char rcsid[] = "$Id: genome.c 63232 2012-05-03 22:16:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9020,12 +9020,164 @@ uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 }
 
 
+static void
+uncompress_mmap_snps_subst (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
+			    Genomicpos_T endpos, const char flagchars[]) {
+  /* Genomicpos_T length = endpos - startpos; */
+  Genomicpos_T startblock, endblock, ptr;
+  UINT4 high, low, flags;
+  char Buffer[32];
+  int startdiscard, enddiscard, i, k;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+    if (flags) {
+      for (i = 0; i < 16; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[low & 3U];
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[high & 3U];
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),(enddiscard - startdiscard));
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+    if (flags) {
+      for (i = 0; i < 16; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[low & 3U];
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[high & 3U];
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),k = 32 - startdiscard);
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(&(gbuffer1[k]),nucleotides[low & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[low >> 16],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[high & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[high >> 16],8); k += 8;
+      if (flags) {
+	for (i = 0; i < 16; i++, k++) {
+	  if (flags & 1U) {
+	    gbuffer1[k] = flagchars[low & 3U];
+	  }
+	  low >>= 2;
+	  flags >>= 1;
+	}
+	for ( ; i < 32; i++, k++) {
+	  if (flags & 1U) {
+	    gbuffer1[k] = flagchars[high & 3U];
+	  }
+	  high >>= 2;
+	  flags >>= 1;
+	}
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+      memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+      memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+      memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+      if (flags) {
+	for (i = 0; i < 16; i++) {
+	  if (flags & 1U) {
+	    Buffer[i] = flagchars[low & 3U];
+	  }
+	  low >>= 2;
+	  flags >>= 1;
+	}
+	for ( ; i < 32; i++) {
+	  if (flags & 1U) {
+	    Buffer[i] = flagchars[high & 3U];
+	  }
+	  high >>= 2;
+	  flags >>= 1;
+	}
+      }
+      memcpy(&(gbuffer1[k]),Buffer,enddiscard);
+    }
+  }
+
+  return;
+}
+
+
+
+#if 0
+
                           /*01234567890123456789012345678901*/
 static char EMPTY_32[32] = "                                ";
 
 static void
-uncompress_mmap_snps (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
-		      Genomicpos_T endpos, const char flagchars[]) {
+uncompress_mmap_snps_only (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
+			   Genomicpos_T endpos, const char flagchars[]) {
   /* Genomicpos_T length = endpos - startpos; */
   Genomicpos_T startblock, endblock, ptr;
   UINT4 high, low, flags;
@@ -9158,6 +9310,8 @@ uncompress_mmap_snps (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 
   return;
 }
+
+#endif
 
 
 static void
@@ -9931,7 +10085,7 @@ Genome_fill_buffer_simple_alt (T this, Genomicpos_T left, Genomicpos_T length, c
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
-      uncompress_mmap_snps(gbuffer1,this->blocks,left,left+length,SNP_FLAGS);
+      uncompress_mmap_snps_subst(gbuffer1,this->blocks,left,left+length,SNP_FLAGS);
     }
   }
   gbuffer1[length] = '\0';

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 62924 2012-04-28 02:06:45Z twu $";
+static char rcsid[] = "$Id: gmap.c 63447 2012-05-07 18:46:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -540,7 +540,7 @@ print_program_usage ();
 
 
 static Stage3_T *
-stage3array_from_list (int *npaths, int *second_absmq, List_T stage3list,
+stage3array_from_list (int *npaths, int *first_absmq, int *second_absmq, List_T stage3list,
 		       bool mergedp, bool chimerap, bool remove_overlaps_p) {
   Stage3_T *array1, *array0, x, y;
   bool *eliminate;
@@ -551,12 +551,14 @@ stage3array_from_list (int *npaths, int *second_absmq, List_T stage3list,
   Stage3_recompute_goodness(stage3list);
 
   if ((norig = List_length(stage3list)) == 0) {
+    *first_absmq = 0;
     *second_absmq = 0;
     return (Stage3_T *) NULL;
 
   } else if (mergedp == true) {
     array0 = (Stage3_T *) List_to_array(stage3list,NULL);
     List_free(&stage3list);
+    *first_absmq = 0;
     *second_absmq = 0;
     *npaths = norig;
     return array0;
@@ -564,6 +566,7 @@ stage3array_from_list (int *npaths, int *second_absmq, List_T stage3list,
   } else if (chimerap == true) {
     array0 = (Stage3_T *) List_to_array(stage3list,NULL);
     List_free(&stage3list);
+    *first_absmq = Stage3_absmq_score(array0[0]);
     if (norig <= 2) {
       *second_absmq = 0;
     } else {
@@ -585,6 +588,7 @@ stage3array_from_list (int *npaths, int *second_absmq, List_T stage3list,
     }
     *npaths = i;
 
+    *first_absmq = Stage3_absmq_score(array0[0]);
     if (*npaths < 2) {
       *second_absmq = 0;
     } else {
@@ -637,6 +641,7 @@ stage3array_from_list (int *npaths, int *second_absmq, List_T stage3list,
     }
     *npaths = i;
 
+    *first_absmq = Stage3_absmq_score(array1[0]);
     if (*npaths < 2) {
       *second_absmq = 0;
     } else {
@@ -673,7 +678,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
   int npairs, cdna_direction, matches, unknowns, mismatches, qopens, qindels, topens, tindels,
     ncanonical, nsemicanonical, nnoncanonical;
   int sensedir;
-  int nmatches_posttrim, ambig_end_length_5, ambig_end_length_3;
+  int nmatches_posttrim, max_match_length, ambig_end_length_5, ambig_end_length_3;
   Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
   double defect_rate;
   double stage3_runtime;
@@ -703,7 +708,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			     pairpool,diagpool,sufflookback,nsufflookback,maxintronlen_bound,
 			     /*localp*/true,/*skip_repetitive_p*/true,use_shifted_canonical_p,
-			     /*favor_right_p*/false,/*just_one_p*/false,debug_graphic_p,
+			     /*favor_right_p*/false,/*max_nalignments*/2,debug_graphic_p,
 			     diagnosticp,worker_stopwatch,diag_debug);
 
   for (p = all_paths; p != NULL; p = List_next(p)) {
@@ -726,7 +731,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 
       Stopwatch_start(worker_stopwatch);
       pairarray = Stage3_compute(&pairs,&npairs,&cdna_direction,&sensedir,&matches,
-				 &nmatches_posttrim,&ambig_end_length_5,&ambig_end_length_3,
+				 &nmatches_posttrim,&max_match_length,&ambig_end_length_5,&ambig_end_length_3,
 				 &ambig_splicetype_5,&ambig_splicetype_3,
 				 &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
 				 &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
@@ -845,7 +850,8 @@ index_compare (const void *a, const void *b) {
 
 
 static Stage3_T *
-stage3_from_usersegment (int *npaths, int *second_absmq, bool lowidentityp, Sequence_T queryseq,
+stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
+			 bool lowidentityp, Sequence_T queryseq,
 			 Sequence_T queryuc, Sequence_T usersegment,
 			 Oligoindex_T *oligoindices_major, int noligoindices_major,
 			 Oligoindex_T *oligoindices_minor, int noligoindices_minor,
@@ -897,7 +903,7 @@ stage3_from_usersegment (int *npaths, int *second_absmq, bool lowidentityp, Sequ
     *npaths = 0;
     return NULL;
   } else {
-    return stage3array_from_list(&(*npaths),&(*second_absmq),stage3list,
+    return stage3array_from_list(&(*npaths),&(*first_absmq),&(*second_absmq),stage3list,
 				 /*mergedp*/false,/*chimerap*/false,/*remove_overlaps_p*/true);
   }
 }
@@ -1934,7 +1940,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 
   List_T gregions, stage3list;
   Stage3_T *stage3array;
-  int npaths, second_absmq;
+  int npaths, first_absmq, second_absmq;
 
   jobid = Request_id(request);
   queryseq = Request_queryseq(request);
@@ -1945,7 +1951,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 
   if (Sequence_fulllength_given(queryseq) <= 0) {
     result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,(Stage3_T *) NULL,
-			/*npaths*/0,/*second_absmq*/0,/*diagnostic*/NULL,EMPTY_SEQUENCE);
+			/*npaths*/0,/*first_absmq*/0,/*second_absmq*/0,/*diagnostic*/NULL,EMPTY_SEQUENCE);
       
   } else if (Sequence_fulllength_given(queryseq) < 
 #ifdef PMAP
@@ -1955,7 +1961,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #endif
 	     ) {
     result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,(Stage3_T *) NULL,
-			/*npaths*/0,/*second_absmq*/0,/*diagnostic*/NULL,SHORT_SEQUENCE);
+			/*npaths*/0,/*first_absmq*/0,/*second_absmq*/0,/*diagnostic*/NULL,SHORT_SEQUENCE);
 
   } else {			/* Sequence_fulllength_given(queryseq) > 0 */
     queryuc = Sequence_uppercase(queryseq);
@@ -1997,11 +2003,11 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #ifndef PMAP
     if (poorp == true && prune_poor_p == true) {
       result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,(Stage3_T *) NULL,
-			  /*npaths*/0,/*second_absmq*/0,diagnostic,POOR_SEQUENCE);
+			  /*npaths*/0,/*first_absmq*/0,/*second_absmq*/0,diagnostic,POOR_SEQUENCE);
 
     } else if (repetitivep == true && prune_repetitive_p == true) {
       result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,(Stage3_T *) NULL,
-			  /*npaths*/0,/*second_absmq*/0,diagnostic,REPETITIVE);
+			  /*npaths*/0,/*first_absmq*/0,/*second_absmq*/0,diagnostic,REPETITIVE);
 
     }
 #endif
@@ -2014,10 +2020,10 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
       Sequence_trim(queryuc,diagnostic->query_trim_start,diagnostic->query_trim_end);
 #endif
 #endif
-      stage3array = stage3_from_usersegment(&npaths,&second_absmq,/*lowidentityp*/false,queryseq,queryuc,usersegment,
+      stage3array = stage3_from_usersegment(&npaths,&first_absmq,&second_absmq,/*lowidentityp*/false,queryseq,queryuc,usersegment,
 					    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 					    pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
-      result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,stage3array,npaths,second_absmq,diagnostic,NO_FAILURE);
+      result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,stage3array,npaths,first_absmq,second_absmq,diagnostic,NO_FAILURE);
 
     } else {		/* Not user segment and not maponly */
 #ifndef PMAP
@@ -2046,13 +2052,18 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 	if (diag_debug == true) {
 	  result = Result_new_diag_debug(jobid,/*diagonals*/stage3list,diagnostic,NO_FAILURE);
 	} else if (stage3list == NULL) {
-	  result = Result_new(jobid,mergedp,chimera,/*stage3array*/NULL,/*npaths*/0,/*second_absmq*/0,diagnostic,NO_FAILURE);
+	  result = Result_new(jobid,mergedp,chimera,/*stage3array*/NULL,/*npaths*/0,/*first_absmq*/0,/*second_absmq*/0,
+			      diagnostic,NO_FAILURE);
 	} else if (chimera == NULL) {
-	  stage3array = stage3array_from_list(&npaths,&second_absmq,stage3list,mergedp,/*chimerap*/false,/*remove_overlaps_p*/true);
-	  result = Result_new(jobid,mergedp,/*chimera*/NULL,stage3array,npaths,second_absmq,diagnostic,NO_FAILURE);
+	  stage3array = stage3array_from_list(&npaths,&first_absmq,&second_absmq,stage3list,mergedp,
+					      /*chimerap*/false,/*remove_overlaps_p*/true);
+	  result = Result_new(jobid,mergedp,/*chimera*/NULL,stage3array,npaths,first_absmq,second_absmq,
+			      diagnostic,NO_FAILURE);
 	} else {
-	  stage3array = stage3array_from_list(&npaths,&second_absmq,stage3list,mergedp,/*chimerap*/true,/*remove_overlaps_p*/false);
-	  result = Result_new(jobid,mergedp,chimera,stage3array,npaths,second_absmq,diagnostic,NO_FAILURE);
+	  stage3array = stage3array_from_list(&npaths,&first_absmq,&second_absmq,stage3list,mergedp,
+					      /*chimerap*/true,/*remove_overlaps_p*/false);
+	  result = Result_new(jobid,mergedp,chimera,stage3array,npaths,first_absmq,second_absmq,
+			      diagnostic,NO_FAILURE);
 	}
       }
 

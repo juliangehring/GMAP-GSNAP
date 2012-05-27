@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c 57093 2012-02-03 19:41:49Z twu $";
+static char rcsid[] = "$Id: block.c 64017 2012-05-14 22:35:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -336,26 +336,27 @@ Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits,
 
 #else
 
+/* In standard mode, indexdb_rev is indexdb_fwd.  They differ for cmet and atoi modes. */
 int
 Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits,
 		     Genomicpos_T **revpositions, int *nrevhits,
-		     T this, Indexdb_T indexdb) {
+		     T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
 
   if (this->cdnaend == FIVE) {
 #if 0
     printf("block_process: Querypos %d, oligos are %06X and %06X\n",this->last_querypos,this->forward,this->revcomp >> this->leftreadshift);
 #endif
-    *fwdpositions = Indexdb_read_with_diagterm(&(*nfwdhits),indexdb,this->forward & this->oligomask,
+    *fwdpositions = Indexdb_read_with_diagterm(&(*nfwdhits),indexdb_fwd,this->forward & this->oligomask,
 					       /*diagterm*/this->querylength-this->last_querypos);
-    *revpositions = Indexdb_read_with_diagterm(&(*nrevhits),indexdb,(this->revcomp >> this->leftreadshift) & this->oligomask,
+    *revpositions = Indexdb_read_with_diagterm(&(*nrevhits),indexdb_rev,(this->revcomp >> this->leftreadshift) & this->oligomask,
 					       /*diagterm*/this->last_querypos);
   } else {
 #if 0
     printf("block_process Querypos %d, oligos are %06X and %06X\n",this->last_querypos,this->forward >> this->leftreadshift,this->revcomp);
 #endif
-    *fwdpositions = Indexdb_read_with_diagterm(&(*nfwdhits),indexdb,(this->forward >> this->leftreadshift) & this->oligomask,
+    *fwdpositions = Indexdb_read_with_diagterm(&(*nfwdhits),indexdb_fwd,(this->forward >> this->leftreadshift) & this->oligomask,
 					       /*diagterm*/this->querylength-this->last_querypos);
-    *revpositions = Indexdb_read_with_diagterm(&(*nrevhits),indexdb,this->revcomp & this->oligomask,
+    *revpositions = Indexdb_read_with_diagterm(&(*nrevhits),indexdb_rev,this->revcomp & this->oligomask,
 					       /*diagterm*/this->last_querypos);
   }
   

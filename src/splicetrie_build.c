@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 58793 2012-03-01 17:15:17Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 64506 2012-05-18 23:48:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -727,6 +727,26 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 }
 
 
+struct Cell_T {
+  int k;			/* original k */
+  Genomicpos_T pos;		/* splicesite pos */
+};
+
+static int
+Cell_position_cmp (const void *a, const void *b) {
+  struct Cell_T x = * (struct Cell_T *) a;
+  struct Cell_T y = * (struct Cell_T *) b;
+
+  if (x.pos < y.pos) {
+    return -1;
+  } else if (y.pos < x.pos) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
 Genomicpos_T *
 Splicetrie_retrieve_via_introns (
 #ifdef GSNAP
@@ -741,11 +761,19 @@ Splicetrie_retrieve_via_introns (
   int last_donor_k, last_antidonor_k, last_acceptor_k, last_antiacceptor_k;
   UINT4 refstring, altstring;
   int *introns1;
-  int divno, nintrons1, i, k;
+  int divno, nintrons1, i, k, j;
   Chrnum_T chrnum;
   Interval_T *intervals, interval;
   char gbuffer_ref[17], gbuffer_alt[17], *chr;
   bool saw_n_p, allocp;
+
+  struct Cell_T *cells;
+  Genomicpos_T *temp_splicesites;
+  Splicetype_T *temp_splicetypes;
+  Genomicpos_T *temp_splicedists;
+  List_T *temp_splicestrings;
+  UINT4 *temp_splicefrags_ref, *temp_splicefrags_alt;
+
 
 #ifdef DEBUG2
   List_T p;
@@ -1073,8 +1101,66 @@ Splicetrie_retrieve_via_introns (
   }
 
   *nsplicesites = k;
-  splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
   fprintf(stderr,"%d valid splicesites...",*nsplicesites);
+
+
+  /* Need to sort by individual splicesites */
+  cells = (struct Cell_T *) CALLOC(*nsplicesites,sizeof(struct Cell_T));
+  for (k = 0; k < *nsplicesites; k++) {
+    cells[k].k = k;
+    cells[k].pos = splicesites[k];
+  }
+  qsort(cells,*nsplicesites,sizeof(struct Cell_T),Cell_position_cmp);
+
+
+  /* Save unordered information */
+  temp_splicesites = splicesites;
+  temp_splicetypes = *splicetypes;
+  temp_splicedists = *splicedists;
+  temp_splicestrings = *splicestrings;
+  temp_splicefrags_ref = *splicefrags_ref;
+  if (genomealt == NULL) {
+    temp_splicefrags_alt = temp_splicefrags_ref;
+  } else {
+    temp_splicefrags_alt = *splicefrags_alt;
+  }
+
+  /* Allocate ordered information */
+  splicesites = (Genomicpos_T *) CALLOC((*nsplicesites) + 1,sizeof(Genomicpos_T));
+  *splicetypes = (Splicetype_T *) CALLOC(*nsplicesites,sizeof(Splicetype_T));
+  *splicedists = (Genomicpos_T *) CALLOC(*nsplicesites,sizeof(Genomicpos_T));
+  *splicestrings = (List_T *) CALLOC(*nsplicesites,sizeof(List_T));
+  *splicefrags_ref = (UINT4 *) CALLOC(*nsplicesites,sizeof(UINT4));
+  if (genomealt == NULL) {
+    *splicefrags_alt = *splicefrags_ref;
+  } else {
+    *splicefrags_alt = (UINT4 *) CALLOC(*nsplicesites,sizeof(UINT4));
+  }
+
+
+  /* Order all information */
+  for (j = 0; j < *nsplicesites; j++) {
+    k = cells[j].k;
+    splicesites[j] = temp_splicesites[k];
+    (*splicetypes)[j] = temp_splicetypes[k];
+    (*splicedists)[j] = temp_splicedists[k];
+    (*splicestrings)[j] = temp_splicestrings[k];
+    (*splicefrags_ref)[j] = temp_splicefrags_ref[k];
+    (*splicefrags_alt)[j] = temp_splicefrags_alt[k];
+  }
+
+  splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
+
+  FREE(cells);
+  FREE(temp_splicesites);
+  FREE(temp_splicetypes);
+  FREE(temp_splicedists);
+  FREE(temp_splicestrings);
+  FREE(temp_splicefrags_ref);
+  if (genomealt != NULL) {
+    FREE(temp_splicefrags_alt);
+  }
+
 
 #ifdef DEBUG2
   for (k = 0; k < *nsplicesites; k++) {

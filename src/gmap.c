@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 63447 2012-05-07 18:46:55Z twu $";
+static char rcsid[] = "$Id: gmap.c 64836 2012-05-23 21:04:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,6 +32,7 @@ static char rcsid[] = "$Id: gmap.c 63447 2012-05-07 18:46:55Z twu $";
 #include "diagpool.h"
 #include "stopwatch.h"
 #include "genome.h"
+#include "genome-write.h"
 #include "genome_hr.h"		/* For Genome_hr_setup */
 #include "maxent_hr.h"		/* For Maxent_hr_setup */
 #include "stage1.h"
@@ -81,6 +82,12 @@ static char rcsid[] = "$Id: gmap.c 63447 2012-05-07 18:46:55Z twu $";
 #define MIN_MATCHES 20
 
 
+#define MAX_NALIGNMENTS 3
+
+
+/* #define EXTRACT_GENOMICSEG 1 */
+
+
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -113,22 +120,29 @@ static UINT4 *snp_blocks = NULL;
 static Alphabet_T required_alphabet = AA0;
 static Alphabet_T alphabet = AA20; /* Initialize in case we have a usersegment */
 static int alphabet_size = 20;	   /* Initialize in case we have a usersegment */
-static Indexdb_T indexdb_fwd = NULL;
-static Indexdb_T indexdb_rev = NULL;
 static int index1part_aa = 7;
 #else
-static Indexdb_T indexdb = NULL;
 static int index1part;
 #endif
+
+static Indexdb_T indexdb_fwd = NULL;
+static Indexdb_T indexdb_rev = NULL;
+
 static int basesize;
 static int required_basesize = 0;
 static int required_index1part = 0;
 static int index1interval;
-static int required_interval = 0;
-static int indexdb_size_threshold = 0;
+static int required_index1interval = 0;
 
 static IIT_T altstrain_iit = NULL;
 
+/* Cmet and AtoI */
+static char *user_cmetdir = NULL;
+static char *user_atoidir = NULL;
+static Mode_T mode = STANDARD;
+
+
+static char *user_snpsdir = NULL;
 static char *snps_root = (char *) NULL;
 static IIT_T map_iit = NULL;
 static int *map_divint_crosstable = NULL;
@@ -411,6 +425,10 @@ static struct option long_options[] = {
   {"stage2-start", required_argument, 0, 0},	     /* suboptimal_score_start */
   {"stage2-end", required_argument, 0, 0},	     /* suboptimal_score_end */
 
+  {"cmetdir", required_argument, 0, 0}, /* user_cmetdir */
+  {"atoidir", required_argument, 0, 0}, /* user_atoidir */
+  {"mode", required_argument, 0, 0}, /* mode */
+
   /* Output options */
   {"output-buffer-size", required_argument, 0, 0}, /* output_buffer_size */
   {"summary", no_argument, 0, 'S'}, /* printtype */
@@ -663,12 +681,18 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 		   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		   Pairpool_T pairpool, Diagpool_T diagpool, int straintype, char *strain,
 		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		   bool watsonp, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
+		   bool watsonp, int genestrand,
+		   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		   Stopwatch_T worker_stopwatch) {
   bool do_final_p;
   int stage2_source, stage2_indexsize;
 
-  Sequence_T genomicuc;
+  char *genomicseg_ptr = NULL, *genomicuc_ptr = NULL;
+#ifdef PMAP
+  Sequence_T genomicuc = NULL;
+#elif defined(EXTRACT_GENOMICSEG)
+  Sequence_T genomicuc = NULL;
+#endif
   Genomicpos_T genomicend;
   List_T all_paths, path, p;
   Stage3_T stage3;
@@ -680,35 +704,44 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
   int sensedir;
   int nmatches_posttrim, max_match_length, ambig_end_length_5, ambig_end_length_3;
   Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
-  double defect_rate;
+  double defect_rate, min_splice_prob;
   double stage3_runtime;
 
+
+#ifdef PMAP
   if (user_genomicseg == NULL && uncompressedp == false && straintype == 0) {
     genomicuc = Sequence_alias(genomicseg);
   } else {
     genomicuc = Sequence_uppercase(genomicseg);
   }
-
-  debug(printf("Beginning Stage2_compute with genomiclength %d\n",Sequence_fulllength(genomicseg)));
-  if (genome == NULL) {
-    genomicend = 0U;
+  genomicseg_ptr = Sequence_fullpointer(genomicseg);
+  genomicuc_ptr = Sequence_fullpointer(genomicuc);
+#elif defined(EXTRACT_GENOMICSEG)
+  if (user_genomicseg == NULL && uncompressedp == false && straintype == 0) {
+    genomicuc = Sequence_alias(genomicseg);
   } else {
-    genomicend = genomicstart + Sequence_fulllength(genomicseg);
+    genomicuc = Sequence_uppercase(genomicseg);
   }
+  genomicseg_ptr = Sequence_fullpointer(genomicseg);
+  genomicuc_ptr = Sequence_fullpointer(genomicuc);
+#endif
+
+  debug(printf("Beginning Stage2_compute with genomiclength %d\n",genomiclength));
+
+  genomicend = genomicstart + genomiclength; /* was + Sequence_fulllength(genomicseg) */;
 
   all_paths = Stage2_compute(&stage2_source,&stage2_indexsize,
 			     Sequence_trimpointer(queryseq),Sequence_trimpointer(queryuc),
 			     Sequence_trimlength(queryseq),/*query_offset*/0,
 
-			     Sequence_fullpointer(genomicseg),Sequence_fullpointer(genomicuc),
+			     genomicseg_ptr,genomicuc_ptr,
 			     genomicstart,genomicend,/*mappingstart*/genomicstart,/*mappingend*/genomicend,
-			     /*plusp*/watsonp,/*genomiclength*/Sequence_fulllength(genomicseg),
-			     /*genomic_offset*/0,
+			     /*plusp*/watsonp,genestrand,genomiclength,
 
 			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			     pairpool,diagpool,sufflookback,nsufflookback,maxintronlen_bound,
 			     /*localp*/true,/*skip_repetitive_p*/true,use_shifted_canonical_p,
-			     /*favor_right_p*/false,/*max_nalignments*/2,debug_graphic_p,
+			     /*favor_right_p*/false,/*max_nalignments*/MAX_NALIGNMENTS,debug_graphic_p,
 			     diagnosticp,worker_stopwatch,diag_debug);
 
   for (p = all_paths; p != NULL; p = List_next(p)) {
@@ -717,8 +750,6 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
       stage3list = path;		/* really diagonals */
 
     } else if (path != NULL) {
-      debug(printf("Beginning Stage3_compute\n"));
-
       if (canonical_mode == 0) {
 	do_final_p = false;
       } else if (canonical_mode == 1) {
@@ -734,8 +765,8 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 				 &nmatches_posttrim,&max_match_length,&ambig_end_length_5,&ambig_end_length_3,
 				 &ambig_splicetype_5,&ambig_splicetype_3,
 				 &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
-				 &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
-				 path,genomiclength,
+				 &ncanonical,&nsemicanonical,&nnoncanonical,&min_splice_prob,
+				 &defect_rate,path,genomiclength,
 #ifdef PMAP
 				 /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
 				 /*queryseq_ptr*/Sequence_fullpointer(queryntseq),
@@ -750,12 +781,10 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 				 /*skiplength*/Sequence_skiplength(queryseq),
 				 /*query_subseq_offset*/Sequence_subseq_offset(queryseq),
 #endif
-				 /*genomicseg_ptr*/Sequence_fullpointer(genomicseg),
-				 /*genomicuc_ptr*/Sequence_fullpointer(genomicuc),
-				 chrnum,chroffset,chrpos,
+				 genomicseg_ptr,genomicuc_ptr,chrnum,chroffset,chrpos,
 				 /*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
 				 genome,/*usersegment_p*/usersegment ? true : false,
-				 watsonp,/*jump_late_p*/watsonp ? false : true,
+				 watsonp,genestrand,/*jump_late_p*/watsonp ? false : true,
 				 maxpeelback,maxpeelback_distalmedial,nullgap,
 				 extramaterial_end,extramaterial_paired,
 				 extraband_single,extraband_end,extraband_paired,
@@ -783,7 +812,11 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 
   List_free(&all_paths);
 
+#ifdef PMAP
   Sequence_free(&genomicuc);
+#elif defined(EXTRACT_GENOMICSEG)
+  Sequence_free(&genomicuc);
+#endif
 
   return stage3list;
 }
@@ -879,7 +912,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 				 /*genomiclength*/Sequence_fulllength(usersegment),
 				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
-				 /*watsonp*/true,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				 /*watsonp*/true,/*genestrand*/0,dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   revcomp = Sequence_revcomp(usersegment);
 
@@ -891,7 +924,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 				 /*genomiclength*/Sequence_fulllength(usersegment),
 				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
-				 /*watsonp*/false,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				 /*watsonp*/false,/*genestrand*/0,dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   Sequence_free(&revcomp);
 
@@ -977,8 +1010,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 		      Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		      Stopwatch_T worker_stopwatch) {
   Gregion_T gregion, *array;
-  char *strain;
-  Sequence_T genomicseg, genomicuc;
+  char *genomicuc_ptr = NULL, *strain;
+  Sequence_T genomicseg = NULL, genomicuc = NULL;
   int ngregions, ncovered, max_ncovered, stage2_source;
   int i;
 #if 0
@@ -997,19 +1030,35 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 
     for (i = 0; i < ngregions; i++) {
       gregion = array[i];
+
+#ifdef PMAP
       genomicseg = Genome_get_segment(genome,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
 				      /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
       genomicuc = Sequence_uppercase(genomicseg);
+      genomicuc_ptr = Sequence_fullpointer(genomicuc);
+#elif defined(EXTRACT_GENOMICSEG)
+      genomicseg = Genome_get_segment(genome,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
+				      /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
+      genomicuc = Sequence_uppercase(genomicseg);
+      genomicuc_ptr = Sequence_fullpointer(genomicuc);
+#endif
       ncovered = Stage2_scan(&stage2_source,Sequence_trimpointer(queryuc),Sequence_trimlength(queryseq),
-			     Sequence_fullpointer(genomicuc),Sequence_fulllength(genomicseg),
+			     genomicuc_ptr,/*genomicstart*/Gregion_genomicstart(gregion),
+			     /*genomiclength*/Gregion_genomiclength(gregion),
+			     /*plusp*/Gregion_revcompp(gregion) ? false : true,Gregion_genestrand(gregion),
 			     oligoindices_major,noligoindices_major,diagpool,
 			     debug_graphic_p,diagnosticp);
       Gregion_set_ncovered(gregion,ncovered,stage2_source);
       if (diagnosticp == true) {
 	fprintf(stderr,"Scanned %d ncovered\n",ncovered);
       }
+#ifdef PMAP
       Sequence_free(&genomicuc);
       Sequence_free(&genomicseg);
+#elif defined(EXTRACT_GENOMICSEG)
+      Sequence_free(&genomicuc);
+      Sequence_free(&genomicseg);
+#endif
     }
     qsort(array,ngregions,sizeof(Gregion_T),Gregion_cmp);
     max_ncovered = Gregion_ncovered(array[0]);
@@ -1050,7 +1099,7 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 				       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				       /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
 				       Gregion_chroffset(gregion),Gregion_chrpos(gregion),Gregion_plusp(gregion),
-				       dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				       Gregion_genestrand(gregion),dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	Sequence_free(&genomicseg);
 
       } else if (maponlyp == true) {
@@ -1074,6 +1123,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 		 Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),Gregion_revcompp(gregion));
 	}
 #endif
+
+#ifdef PMAP
 	if (genomealt != NULL) {
 	  genomicseg = Genome_get_segment_alt(genomealt,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
 					      /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
@@ -1081,6 +1132,16 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 	  genomicseg = Genome_get_segment(genome,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
 					  /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
 	}
+#elif defined(EXTRACT_GENOMICSEG)
+	if (genomealt != NULL) {
+	  genomicseg = Genome_get_segment_alt(genomealt,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
+					      /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
+	} else {
+	  genomicseg = Genome_get_segment(genome,Gregion_genomicstart(gregion),Gregion_genomiclength(gregion),
+					  /*chromosome_iit*/NULL,Gregion_revcompp(gregion));
+	}
+#endif
+
 	stage3list = update_stage3list(stage3list,lowidentityp,queryseq,
 #ifdef PMAP
 				       queryntseq,
@@ -1090,8 +1151,12 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 				       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				       /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
 				       Gregion_chroffset(gregion),Gregion_chrpos(gregion),Gregion_plusp(gregion),
-				       dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				       Gregion_genestrand(gregion),dynprogL,dynprogM,dynprogR,worker_stopwatch);
+#ifdef PMAP
 	Sequence_free(&genomicseg);
+#elif defined(EXTRACT_GENOMICSEG)
+	Sequence_free(&genomicseg);
+#endif
 
 #if 0
 	/* We rely upon the fact that gbuffer1 still holds the genomic segment.  This code is duplicated in get-genome.c */
@@ -1123,7 +1188,7 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 					     Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
 					     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 					     straintype,strain,Gregion_chrnum(gregion),Gregion_chroffset(gregion),
-					     Gregion_chrpos(gregion),Gregion_plusp(gregion),
+					     Gregion_chrpos(gregion),Gregion_plusp(gregion),Gregion_genestrand(gregion),
 					     dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	      Sequence_free(&genomicseg);
 	    }
@@ -1609,15 +1674,10 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 	  debug2(Sequence_print(stdout,querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
 
 	  diagnostic = Diagnostic_new();
-	  gregions = Stage1_compute(&lowidentityp,querysubuc,
-#ifdef PMAP
-				    indexdb_fwd,indexdb_rev,
-#else
-				    indexdb,
-#endif
-				    indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+	  gregions = Stage1_compute(&lowidentityp,querysubuc,indexdb_fwd,indexdb_rev,
+				    /*indexdb_size_threshold*/100,chromosome_iit,chrsubset,matchpool,
 				    maxintronlen_bound,maxtotallen_bound,min_extra_end,
-				    stutterhits,diagnostic,/*worker_stopwatch*/NULL);
+				    stutterhits,diagnostic,/*worker_stopwatch*/NULL,/*nbest*/10);
 	  Diagnostic_free(&diagnostic);
 	  debug2(printf("Performing Stage 3 starting with list length %d\n",List_length(stage3list)));
 	  stage3list = stage3_from_gregions(stage3list,gregions,lowidentityp,querysubseq,
@@ -1644,15 +1704,10 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 	  debug2(Sequence_print(stdout,querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
 
 	  diagnostic = Diagnostic_new();
-	  gregions = Stage1_compute(&lowidentityp,querysubuc,
-#ifdef PMAP
-				    indexdb_fwd,indexdb_rev,
-#else
-				    indexdb,
-#endif
-				    indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+	  gregions = Stage1_compute(&lowidentityp,querysubuc,indexdb_fwd,indexdb_rev,
+				    /*indexdb_size_threshold*/100,chromosome_iit,chrsubset,matchpool,
 				    maxintronlen_bound,maxtotallen_bound,min_extra_end,
-				    stutterhits,diagnostic,/*worker_stopwatch*/NULL);
+				    stutterhits,diagnostic,/*worker_stopwatch*/NULL,/*nbest*/10);
 	  Diagnostic_free(&diagnostic);
 	  debug2(printf("Performing Stage 3 with list length %d\n",List_length(stage3list)));
 	  stage3list = stage3_from_gregions(stage3list,gregions,lowidentityp,querysubseq,
@@ -1863,6 +1918,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
   *mergedp = false;
   *chimera = NULL;
 
+  debug(printf("Calling stage3_from_gregions\n"));
   stage3list = stage3_from_gregions(/*stage3list*/(List_T) NULL,gregions,lowidentityp,queryseq,queryuc,
 				    usersegment,oligoindices_major,noligoindices_major,
 				    oligoindices_minor,noligoindices_minor,pairpool,diagpool,
@@ -1938,7 +1994,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
   bool repetitivep = false, poorp = false;
 #endif
 
-  List_T gregions, stage3list;
+  List_T gregions = NULL, stage3list;
   Stage3_T *stage3array;
   int npaths, first_absmq, second_absmq;
 
@@ -2034,18 +2090,23 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #endif
 #endif
 
-      gregions = Stage1_compute(&lowidentityp,queryuc,
-#ifdef PMAP
-				indexdb_fwd,indexdb_rev,
-#else
-				indexdb,
-#endif
-				indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
-				maxintronlen_bound,maxtotallen_bound,min_extra_end,
-				stutterhits,diagnostic,worker_stopwatch);
+      debug(printf("Calling stage 1\n"));
+      if (mode == CMET_NONSTRANDED) {
+	gregions = Stage1_compute_nonstranded(&lowidentityp,queryuc,indexdb_fwd,indexdb_fwd,
+					      /*indexdb_size_threshold*/400,chromosome_iit,chrsubset,matchpool,
+					      maxintronlen_bound,maxtotallen_bound,min_extra_end,
+					      stutterhits,diagnostic,worker_stopwatch,/*nbest*/10);
+      } else {
+	gregions = Stage1_compute(&lowidentityp,queryuc,indexdb_fwd,indexdb_rev,
+				  /*indexdb_size_threshold*/100,chromosome_iit,chrsubset,matchpool,
+				  maxintronlen_bound,maxtotallen_bound,min_extra_end,
+				  stutterhits,diagnostic,worker_stopwatch,/*nbest*/10);
+      }
+
       if (stage1debug == true) {
 	result = Result_new_stage1debug(jobid,gregions,diagnostic,NO_FAILURE);
       } else {
+	debug(printf("Applying stage 3\n"));
 	stage3list = apply_stage3(&mergedp,&chimera,gregions,lowidentityp,queryseq,queryuc,usersegment,
 				  oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
 				  matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
@@ -2314,13 +2375,8 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
   Sequence_trim(referenceseq,diagnostic->query_trim_start,diagnostic->query_trim_end);
 #endif
 #endif
-  gregions = Stage1_compute(&lowidentityp,referenceuc,
-#ifdef PMAP
-			    indexdb_fwd,indexdb_rev,
-#else
-			    indexdb,
-#endif
-			    indexdb_size_threshold,chromosome_iit,chrsubset,matchpool,
+  gregions = Stage1_compute(&lowidentityp,referenceuc,indexdb_fwd,indexdb_rev,
+			    /*indexdb_size_threshold*/100,chromosome_iit,chrsubset,matchpool,
 			    maxintronlen_bound,maxtotallen_bound,min_extra_end,
 			    stutterhits,diagnostic,/*stopwatch*/NULL);
   stage3list = apply_stage3(&chimera,gregions,lowidentityp,referenceseq,referenceuc,/*usersegment*/NULL,
@@ -2645,7 +2701,7 @@ check_valid_float (char *string) {
 int
 main (int argc, char *argv[]) {
   Sequence_T referenceseq = NULL;
-  char *genomesubdir = NULL, *mapdir = NULL, *iitfile = NULL, *fileroot = NULL, *p = NULL;
+  char *genomesubdir = NULL, *snpsdir = NULL, *modedir = NULL, *mapdir = NULL, *iitfile = NULL, *fileroot = NULL, *p = NULL;
   FILE *input = NULL;
   Request_T request;
 
@@ -2705,7 +2761,7 @@ main (int argc, char *argv[]) {
 	required_basesize = atoi(check_valid_int(optarg));
 
       } else if (!strcmp(long_name,"sampling")) {
-	required_interval = atoi(check_valid_int(optarg));
+	required_index1interval = atoi(check_valid_int(optarg));
 
       } else if (!strcmp(long_name,"cmdline")) {
 	user_cmdline = optarg; break;
@@ -2762,6 +2818,28 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"cross-species")) {
 	use_shifted_canonical_p = true;
+
+      } else if (!strcmp(long_name,"cmetdir")) {
+	user_cmetdir = optarg;
+
+      } else if (!strcmp(long_name,"atoidir")) {
+	user_atoidir = optarg;
+
+      } else if (!strcmp(long_name,"mode")) {
+	if (!strcmp(optarg,"standard")) {
+	  mode = STANDARD;
+	} else if (!strcmp(optarg,"cmet-stranded")) {
+	  mode = CMET_STRANDED;
+	} else if (!strcmp(optarg,"cmet-nonstranded")) {
+	  mode = CMET_NONSTRANDED;
+	} else if (!strcmp(optarg,"atoi-stranded")) {
+	  mode = ATOI_STRANDED;
+	} else if (!strcmp(optarg,"atoi-nonstranded")) {
+	  mode = ATOI_NONSTRANDED;
+	} else {
+	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi\n");
+	  exit(9);
+	}
 
       } else if (!strcmp(long_name,"input-buffer-size")) {
 	inbuffer_nspaces = atoi(check_valid_int(optarg));
@@ -3367,7 +3445,7 @@ main (int argc, char *argv[]) {
   /* Prepare genomic data */
 
   /* Complement_init(); */
-  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,mode);
 #ifdef PMAP
   Backtranslation_init();
 #endif
@@ -3380,6 +3458,8 @@ main (int argc, char *argv[]) {
     genome = (Genome_T) NULL;
     genomealt = (Genome_T) NULL;
     dbversion = (char *) NULL;
+    genome_blocks = Genome_create_blocks(Sequence_fullpointer(usersegment),Sequence_fulllength(usersegment));
+
     if (userstage1p == true) {
 #ifdef PMAP
       indexdb_fwd = Indexdb_new_segment(Sequence_fullpointer(usersegment),
@@ -3387,7 +3467,8 @@ main (int argc, char *argv[]) {
       indexdb_rev = Indexdb_new_segment(Sequence_fullpointer(usersegment),
 					alphabet_size,index1part_aa,/*watsonp*/false,index1interval);
 #else
-      indexdb = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1part,index1interval);
+      indexdb_fwd = Indexdb_new_segment(Sequence_fullpointer(usersegment),index1part,index1interval);
+      indexdb_rev = indexdb_fwd;
 #endif
     }
     genome_totallength = Sequence_fulllength(usersegment);
@@ -3398,6 +3479,7 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"  with the -d flag.\n");
     }
 
+#ifdef PMAP
   } else {
     /* Map against genome */
     genome_totallength = IIT_totallength(chromosome_iit);
@@ -3417,45 +3499,6 @@ main (int argc, char *argv[]) {
       FREE(iitfile);
     }
   
-#ifdef PMAP
-    indexdb_fwd = Indexdb_new_genome(&basesize,&index1part_aa,&index1interval,
-				     genomesubdir,fileroot,FWD_FILESUFFIX,/*snps_root*/NULL,
-				     &alphabet,&alphabet_size,required_alphabet,
-				     required_basesize,required_index1part,required_interval,
-				     expand_offsets_p,offsetscomp_access,positions_access);
-    indexdb_rev = Indexdb_new_genome(&basesize,&index1part_aa,&index1interval,
-				     genomesubdir,fileroot,REV_FILESUFFIX,/*snps_root*/NULL,
-				     &alphabet,&alphabet_size,required_alphabet,
-				     required_basesize,required_index1part,required_interval,
-				     expand_offsets_p,offsetscomp_access,positions_access);
-
-#if 0
-    indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,/*cmetp*/false,index1part_aa));
-#endif
-    if (indexdb_fwd == NULL || indexdb_rev == NULL) {
-      fprintf(stderr,"Cannot find offsets file %s.%s*offsets or %s.%s*offsets.\n",
-	      fileroot,FWD_FILESUFFIX,fileroot,REV_FILESUFFIX);
-      fprintf(stderr,"You may need to run 'pmapindex -d %s' to build the indices needed for PMAP.\n",
-	      fileroot);
-      exit(9);
-    }      
-#else
-    if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
-				      genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-				      required_basesize,required_index1part,required_interval,
-				      expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
-      /* Try older version */
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
-					genomesubdir,fileroot,"id",/*snps_root*/NULL,
-					/*required_basesize*/12,/*required_index1part*/12,/*required_interval*/0,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
-	fprintf(stderr,"Cannot find offsets file %s.%s*offsets or %s.%s*offsets\n",fileroot,IDX_FILESUFFIX,fileroot,"id");
-	exit(9);
-      }
-    }
-    indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,/*cmetp*/false,index1part));
-    debug(printf("Size threshold is %d\n",indexdb_size_threshold));
-#endif
     genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
     genome_blocks = Genome_blocks(genome);
     if (snps_root == NULL) {
@@ -3465,26 +3508,208 @@ main (int argc, char *argv[]) {
       snp_blocks = Genome_blocks(genomealt);
     }
 
-    if (altstrainp == true) {
-      if (usersegment != NULL) {
-	fprintf(stderr,"Ignoring -s flag when user segment (-g flag) is provided\n");
-      } else {
-	iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
-				  strlen(fileroot)+strlen(".altstrain.iit")+1,sizeof(char));
-	sprintf(iitfile,"%s/%s.altstrain.iit",genomesubdir,fileroot);
-	if ((altstrain_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				      /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/false)) == NULL) {
-	  fprintf(stderr,"IIT file %s is not valid\n",iitfile);
-	  exit(9);
-	}
-	FREE(iitfile);
+    indexdb_fwd = Indexdb_new_genome(&basesize,&index1part_aa,&index1interval,
+				     genomesubdir,fileroot,FWD_FILESUFFIX,/*snps_root*/NULL,
+				     &alphabet,&alphabet_size,required_alphabet,
+				     required_basesize,required_index1part,required_index1interval,
+				     expand_offsets_p,offsetscomp_access,positions_access);
+    indexdb_rev = Indexdb_new_genome(&basesize,&index1part_aa,&index1interval,
+				     genomesubdir,fileroot,REV_FILESUFFIX,/*snps_root*/NULL,
+				     &alphabet,&alphabet_size,required_alphabet,
+				     required_basesize,required_index1part,required_index1interval,
+				     expand_offsets_p,offsetscomp_access,positions_access);
+
+    if (indexdb_fwd == NULL || indexdb_rev == NULL) {
+      fprintf(stderr,"Cannot find offsets file %s.%s*offsets or %s.%s*offsets.\n",
+	      fileroot,FWD_FILESUFFIX,fileroot,REV_FILESUFFIX);
+      fprintf(stderr,"You may need to run 'pmapindex -d %s' to build the indices needed for PMAP.\n",
+	      fileroot);
+      exit(9);
+    }      
+
+    FREE(genomesubdir);
+    FREE(fileroot);
+    FREE(dbroot);
+
+#else
+  } else if (snps_root == NULL) {
+    /* Map against genome without SNPs */
+    genome_totallength = IIT_totallength(chromosome_iit);
+
+    chrsubset = Chrsubset_read(user_chrsubsetfile,genomesubdir,fileroot,user_chrsubsetname,
+			       chromosome_iit);
+
+    if (showcontigp == true) {
+      iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+				strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
+      sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
+      if ((contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+	fprintf(stderr,"IIT file %s is not valid\n",iitfile);
+	exit(9);
       }
+      FREE(iitfile);
+    }
+  
+    genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
+    genomealt = (Genome_T) NULL;
+    genome_blocks = Genome_blocks(genome);
+    snp_blocks = (UINT4 *) NULL;
+
+    if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
+      if (user_cmetdir == NULL) {
+	modedir = genomesubdir;
+      } else {
+	modedir = user_cmetdir;
+      }
+
+      if ((indexdb_fwd = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"metct",/*snps_root*/NULL,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
+	exit(9);
+      }
+
+      if ((indexdb_rev = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"metga",/*snps_root*/NULL,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
+	exit(9);
+      }
+
+    } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = genomesubdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb_fwd = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+      if ((indexdb_rev = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+    } else {
+      /* Standard behavior */
+      if ((indexdb_fwd = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find offsets file %s.%s*offsets, needed for GSNAP\n",fileroot,IDX_FILESUFFIX);
+	exit(9);
+      }
+      indexdb_rev = indexdb_fwd;
     }
 
     FREE(genomesubdir);
     FREE(fileroot);
     FREE(dbroot);
+
+  } else {
+    /* Map against genome with SNPs */
+    if (user_snpsdir == NULL) {
+      snpsdir = genomesubdir;
+    } else {
+      snpsdir = user_snpsdir;
+    }
+
+    genome_totallength = IIT_totallength(chromosome_iit);
+
+    chrsubset = Chrsubset_read(user_chrsubsetfile,genomesubdir,fileroot,user_chrsubsetname,
+			       chromosome_iit);
+
+    if (showcontigp == true) {
+      iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+				strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
+      sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
+      if ((contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+	fprintf(stderr,"IIT file %s is not valid\n",iitfile);
+	exit(9);
+      }
+      FREE(iitfile);
+    }
+
+    genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
+    genomealt = Genome_new(genomesubdir,fileroot,snps_root,uncompressedp,genome_access);
+    genome_blocks = Genome_blocks(genome);
+    snp_blocks = Genome_blocks(genomealt);
+
+    if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
+      if (user_cmetdir == NULL) {
+	modedir = snpsdir;
+      } else {
+	modedir = user_cmetdir;
+      }
+
+      if ((indexdb_fwd = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"metct",snps_root,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
+	exit(9);
+      }
+      if ((indexdb_rev = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"metga",snps_root,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
+	exit(9);
+      }
+
+    } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = snpsdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb_fwd = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+      if ((indexdb_rev = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
+					    required_basesize,required_index1part,required_index1interval,
+					    expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+    } else {
+      indexdb_fwd = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+				       snpsdir,fileroot,/*idx_filesuffix*/"ref",snps_root,
+				       required_basesize,required_index1part,required_index1interval,
+				       expand_offsets_p,offsetscomp_access,positions_access);
+      if (indexdb_fwd == NULL) {
+	fprintf(stderr,"Cannot find snps index file for %s in directory %s\n",snps_root,snpsdir);
+	exit(9);
+      }
+      indexdb_rev = indexdb_fwd;
+    }
+
+    FREE(genomesubdir);
+    FREE(fileroot);
+    FREE(dbroot);
+#endif
   }
+
 
   if (splicing_file != NULL && genome != NULL) {
     if (Genome_blocks(genome) == NULL) {
@@ -3564,8 +3789,17 @@ main (int argc, char *argv[]) {
   }
 
 
-  if (genome != NULL) {
-    Genome_setup(genome);
+  if (user_genomicseg != NULL) {
+    Genome_user_setup(genome_blocks);
+    Genome_hr_user_setup(genome_blocks,/*query_unk_mismatch_p*/false,
+			 /*genome_unk_mismatch_p*/true,/*mode*/STANDARD);
+    Maxent_hr_setup(genome_blocks);
+#ifndef PMAP
+    Oligoindex_hr_setup(genome_blocks,mode);
+#endif
+
+  } else if (genome != NULL) {
+    Genome_setup(genome,mode);
     Genome_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL,
 		    /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/true,/*mode*/STANDARD);
     Maxent_hr_setup(Genome_blocks(genome));
@@ -3575,7 +3809,7 @@ main (int argc, char *argv[]) {
     Indexdb_setup(index1part_aa);
     Stage1_setup(index1part_aa);
 #else
-    Oligoindex_hr_setup(Genome_blocks(genome));
+    Oligoindex_hr_setup(Genome_blocks(genome),mode);
     Oligo_setup(index1part);
     Indexdb_setup(index1part);
     Stage1_setup(index1part);
@@ -3583,11 +3817,12 @@ main (int argc, char *argv[]) {
   }
 
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
-	       suboptimal_score_start,suboptimal_score_end);
+	       suboptimal_score_start,suboptimal_score_end,mode);
   Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+		genome);
   Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
@@ -3751,8 +3986,11 @@ main (int argc, char *argv[]) {
     Indexdb_free(&indexdb_fwd);
   }
 #else
-  if (indexdb != NULL) {
-    Indexdb_free(&indexdb);
+  if (indexdb_rev != indexdb_fwd) {
+    Indexdb_free(&indexdb_rev);
+  }
+  if (indexdb_fwd != NULL) {
+    Indexdb_free(&indexdb_fwd);
   }
 #endif
   if (dbversion != NULL) {
@@ -3764,7 +4002,9 @@ main (int argc, char *argv[]) {
   if (genomealt != NULL) {
     Genome_free(&genomealt);
   }
-  if (genome != NULL) {
+  if (user_genomicseg != NULL) {
+    FREE(genome_blocks);
+  } else if (genome != NULL) {
     Genome_free(&genome);
   }
   if (map_iit != NULL) {
@@ -3909,6 +4149,18 @@ Input options (must include -d or -g)\n\
   --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
                                    greater than this value (default 0.90)\n\
 ");
+
+#ifndef PMAP
+    fprintf(stdout,"\
+  --cmetdir=STRING               Directory for methylcytosine index files (created using cmetindex)\n\
+                                   (default is location of genome index files specified using -D, -V, and -d)\n\
+  --atoidir=STRING               Directory for A-to-I RNA editing index files (created using atoiindex)\n\
+                                   (default is location of genome index files specified using -D, -V, and -d)\n\
+  --mode=STRING                  Alignment mode: standard (default), cmet-stranded, cmet-nonstranded,\n\
+                                    atoi-stranded, or atoi-nonstranded.  Non-standard modes requires you\n\
+                                    to have previously run the cmetindex or atoiindex programs on the genome\n\
+");
+#endif
 
 #if 0
     /* Causes seg faults, so do not advertise */

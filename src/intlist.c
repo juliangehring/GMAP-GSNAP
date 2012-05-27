@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: intlist.c 64017 2012-05-14 22:35:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -451,6 +451,20 @@ Intlist_sort_ascending (T this) {
   FREE(cells);
 
   return sorted;
+}
+
+bool
+Intlist_equal (T x, T y) {
+
+  while (x && y && x->first == y->first) {
+    x = x->rest;
+    y = y->rest;
+  }
+  if (x || y) {
+    return false;
+  } else {
+    return true;
+  }
 }
 
 

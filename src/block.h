@@ -1,4 +1,4 @@
-/* $Id: block.h 55892 2012-01-13 23:05:01Z twu $ */
+/* $Id: block.h 64017 2012-05-14 22:35:15Z twu $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"
@@ -50,17 +50,10 @@ Block_skip (T this, int nskip);
 extern bool
 Block_skipto (T this, int querypos);
 
-#ifdef PMAP
 extern int
 Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits, 
 		     Genomicpos_T **revpositions, int *nrevhits,
 		     T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev);
-#else
-extern int
-Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits,
-		     Genomicpos_T **revpositions, int *nrevhits,
-		     T this, Indexdb_T indexdb);
-#endif
 
 #undef T
 #endif

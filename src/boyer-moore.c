@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: boyer-moore.c 64017 2012-05-14 22:35:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,6 +17,7 @@ static char rcsid[] = "$Id: boyer-moore.c 40271 2011-05-28 02:29:18Z twu $";
 #include "mem.h"
 #endif
 #include "bool.h"
+#include "complement.h"
 
 
 #define ASIZE 5			/* In genomic sequence: A, C, G, T, other */
@@ -342,6 +343,102 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 	      );
 	j += MAX(good_suffix_shift[i],
 		 bad_char_shift[na_index(text[i+j])] - querylen + 1 + i);
+      }
+    }
+    FREE(bad_char_shift);
+    FREE(good_suffix_shift);
+  }
+
+#ifndef STANDALONE
+  return hits;
+#endif
+}
+
+
+static char complCode[128] = COMPLEMENT_LC;
+
+static char
+get_genomic_nt (Genome_T genome, Genomicpos_T genomicpos, Genomicpos_T chroffset, Genomicpos_T chrpos,
+		int genomiclength, bool watsonp) {
+  char c2;
+
+  if (watsonp) {
+    if (genome) {
+      return Genome_get_char(genome,chroffset + chrpos + genomicpos);
+    } else {
+      return Genome_get_char_blocks(chroffset + chrpos + genomicpos);
+    }
+
+  } else {
+    if (genome) {
+      c2 = Genome_get_char(genome,chroffset + chrpos + (genomiclength - 1) - genomicpos);
+    } else {
+      c2 = Genome_get_char_blocks(chroffset + chrpos + (genomiclength - 1) - genomicpos);
+    }
+    return complCode[(int) c2];
+  }
+}
+
+
+Intlist_T
+BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen, Genome_T genome,
+	       Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+	       bool watsonp) {
+#ifndef STANDALONE
+  Intlist_T hits = NULL;
+#endif
+  int i, j, *good_suffix_shift, *bad_char_shift;
+
+
+  if (query_okay(query,querylen)) {
+    good_suffix_shift = precompute_good_suffix_shift(query,querylen);
+    bad_char_shift = precompute_bad_char_shift(query,querylen);
+
+    debug(
+	  printf("bad_char_shift:\n");
+	  for (i = 0; i < ASIZE; i++) {
+	    printf("%d %d\n",i,bad_char_shift[i]);
+	  }
+	  printf("\n");
+	  printf("good_suffix_shift:\n");
+	  for (i = 0; i < querylen; i++) {
+	    printf("%d %d\n",i,good_suffix_shift[i]);
+	  }
+	  );
+
+    j = 0;
+    while (j <= textlen - querylen) {
+#ifdef PMAP
+      for (i = querylen - 1;
+	   i >= 0 && matchtable[query[i]-'A'][/*text[i+j]*/get_genomic_nt(genome,textoffset+i+j,chroffset,chrpos,genomiclength,watsonp)-'A'] == true;
+	   i--) ;
+#else
+      for (i = querylen - 1;
+	   i >= 0 && query[i] == /*text[i+j]*/get_genomic_nt(genome,textoffset+i+j,chroffset,chrpos,genomiclength,watsonp);
+	   i--) ;
+#endif
+      if (i < 0) {
+#ifndef STANDALONE
+	hits = Intlist_push(hits,j);
+#endif
+	
+	debug1(printf("Success at %d\n",j));
+	debug(printf("Shift by %d (Gs[0])\n",good_suffix_shift[0]));
+	j += good_suffix_shift[0];
+      } else {
+	debug(
+	      if (good_suffix_shift[i] > 
+		  bad_char_shift[na_index(/*text[i+j]*/get_genomic_nt(genome,textoffset+i+j,chroffset,chrpos,genomiclength,watsonp))] - querylen + 1 + i) {
+		printf("Shift by %d (Gs[%d])\n",
+		       good_suffix_shift[i],i);
+	      } else {
+		printf("Shift by %d (Gs[%d] == Bc[%c] - %d + %d)\n",
+		       bad_char_shift[na_index(/*text[i+j]*/get_genomic_nt(genome,textoffset+i+j,chroffset,chrpos,genomiclength,watsonp))] - querylen + 1 + i,
+		       i,/*text[i+j]*/get_genomic_nt(genome,textoffset+i+j,chroffset,chrpos,genomiclength,watsonp),querylen,i+1);
+	      }
+	      );
+	j += MAX(good_suffix_shift[i],
+		 bad_char_shift[na_index(/*text[i+j]*/get_genomic_nt(genome,textoffset+i+j,chroffset,chrpos,genomiclength,watsonp))] - querylen + 1 + i);
       }
     }
     FREE(bad_char_shift);

@@ -1,4 +1,4 @@
-/* $Id: oligoindex.h 42512 2011-07-08 20:21:47Z twu $ */
+/* $Id: oligoindex.h 64017 2012-05-14 22:35:15Z twu $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"
@@ -42,6 +42,15 @@ struct T {
 extern int
 Oligoindex_indexsize (T this);
 
+extern int *
+Oligoindex_counts_copy (T this);
+
+extern void
+Oligoindex_counts_dump (T this, int *counts);
+
+extern bool
+Oligoindex_counts_equal (T this, int *counts);
+
 extern T *
 Oligoindex_new_major (int *noligoindices);
 
@@ -56,7 +65,7 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
 			T this, char *queryuc_ptr, int querylength, bool trimp);
 extern void
 Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
-		  char *queryuc_ptr, int querylength);
+		  char *queryuc_ptr, int querylength, int sequencepos);
 extern void
 Oligoindex_untally (T this);
 extern void

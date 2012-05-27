@@ -1,4 +1,4 @@
-/* $Id: stage1.h 44376 2011-08-05 04:17:20Z twu $ */
+/* $Id: stage1.h 64294 2012-05-16 23:15:49Z twu $ */
 #ifndef STAGE1_INCLUDED
 #define STAGE1_INCLUDED
 #include "bool.h"
@@ -13,6 +13,7 @@
 #include "genome.h"
 #include "stopwatch.h"
 #include "diagnostic.h"
+
 
 #define T Stage1_T
 typedef struct T *T;
@@ -32,15 +33,17 @@ Stage1_find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T th
 
 extern List_T
 Stage1_compute (bool *samplingp, Sequence_T queryuc,
-#ifdef PMAP
 		Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
-#else
-		Indexdb_T indexdb,
-#endif
 		int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
 		Matchpool_T matchpool, int maxintronlen_bound, int maxtotallen_bound, int min_extra_end,
-		int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch);
+		int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch, int nbest);
 
+extern List_T
+Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
+			    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
+			    int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
+			    Matchpool_T matchpool, int maxintronlen_bound, int maxtotallen_bound, int min_extra_end,
+			    int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch, int nbest);
 #undef T
 #endif
 

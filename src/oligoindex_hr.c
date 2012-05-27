@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 63450 2012-05-07 20:43:17Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 64183 2012-05-16 00:19:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,7 @@ static char rcsid[] = "$Id: oligoindex_hr.c 63450 2012-05-07 20:43:17Z twu $";
 #include <string.h>		/* For memcpy and memset */
 #include "mem.h"
 #include "orderstat.h"
+#include "cmet.h"
 
 
 #define T Oligoindex_T
@@ -8248,10 +8249,12 @@ static const UINT4 reverse_nt[] =
 #define MASK5 0x000003FF
 
 static UINT4 *ref_blocks;
+static Mode_T mode;
 
 void
-Oligoindex_hr_setup (UINT4 *ref_blocks_in) {
+Oligoindex_hr_setup (UINT4 *ref_blocks_in, Mode_T mode_in) {
   ref_blocks = ref_blocks_in;
+  mode = mode_in;
   return;
 }
 
@@ -8381,7 +8384,7 @@ dump_positions (Genomicpos_T **positions, int *counts, int oligospace, int index
   for (i = 0; i < oligospace; i++) {
     nt = shortoligo_nt(i,indexsize);
     if (counts[i] >= 1) {
-      printf("Oligo %s => %d entries: %u...%u\n",
+      printf("Oligo_hr %s => %d entries: %u...%u\n",
 	     nt,counts[i],positions[i][0],positions[i][counts[i]-1]);
     }
     FREE(nt);
@@ -8451,6 +8454,7 @@ store_8mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
   while (pos <= enddiscard && pos <= 8) {
     masked = high_rev >> (16 - 2*pos);
     masked &= MASK8;
+    debug(printf("%d %04X\n",pos,masked));
     if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
     sequencepos++;
     pos++;
@@ -9798,10 +9802,12 @@ store_5mers_fwd (int sequencepos, Genomicpos_T **pointers, int *counts,
 
 
 static void
-count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T left_plus_length) {
+count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T left_plus_length,
+		     int genestrand) {
   Genomicpos_T startdiscard, enddiscard;
   UINT4 ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
     low, high, nextlow;
+
 
   left_plus_length -= indexsize;
 
@@ -9823,6 +9829,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     high_rev = reverse_nt[low >> 16];
     high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
     low_rev = reverse_nt[high >> 16];
@@ -9855,6 +9871,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     high_rev = reverse_nt[low >> 16];
     high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
     low_rev = reverse_nt[high >> 16];
@@ -9888,6 +9914,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -9909,6 +9945,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -9930,6 +9976,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -9951,6 +10007,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -9975,6 +10041,16 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     high_rev = reverse_nt[low >> 16];
     high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
     low_rev = reverse_nt[high >> 16];
@@ -10002,7 +10078,8 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 
 static void
 store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
-		     Genomicpos_T left, Genomicpos_T left_plus_length, int sequencepos) {
+		     Genomicpos_T left, Genomicpos_T left_plus_length, int sequencepos,
+		     int genestrand) {
   Genomicpos_T startdiscard, enddiscard;
   UINT4 ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
     low, high, nextlow;
@@ -10028,6 +10105,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     high_rev = reverse_nt[low >> 16];
     high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
     low_rev = reverse_nt[high >> 16];
@@ -10060,6 +10147,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     high_rev = reverse_nt[low >> 16];
     high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
     low_rev = reverse_nt[high >> 16];
@@ -10093,6 +10190,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -10114,6 +10221,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -10135,6 +10252,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -10156,6 +10283,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	high_rev = reverse_nt[low >> 16];
 	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
 	low_rev = reverse_nt[high >> 16];
@@ -10180,6 +10317,16 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     high_rev = reverse_nt[low >> 16];
     high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
     low_rev = reverse_nt[high >> 16];
@@ -11623,10 +11770,12 @@ store_5mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
 
 
 static void
-count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T left_plus_length) {
+count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T left_plus_length,
+		     int genestrand) {
   Genomicpos_T startdiscard, enddiscard;
   UINT4 ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
+
 
   left_plus_length -= indexsize;
 
@@ -11648,6 +11797,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     low_rc = ~low;
     high_rc = ~high;
     nextlow_rc = ~nextlow;
@@ -11677,6 +11836,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     low_rc = ~low;
     high_rc = ~high;
     nextlow_rc = ~nextlow;
@@ -11706,6 +11875,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11724,6 +11903,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11742,6 +11931,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11760,6 +11959,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11781,6 +11990,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     low_rc = ~low;
     high_rc = ~high;
     nextlow_rc = ~nextlow;
@@ -11805,7 +12024,8 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 
 static void
 store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
-		     Genomicpos_T left, Genomicpos_T left_plus_length, int sequencepos) {
+		     Genomicpos_T left, Genomicpos_T left_plus_length, int sequencepos,
+		     int genestrand) {
   Genomicpos_T startdiscard, enddiscard;
   UINT4 ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
@@ -11831,6 +12051,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     low_rc = ~low;
     high_rc = ~high;
     nextlow_rc = ~nextlow;
@@ -11860,6 +12090,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     low_rc = ~low;
     high_rc = ~high;
     nextlow_rc = ~nextlow;
@@ -11889,6 +12129,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11907,6 +12157,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11925,6 +12185,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11943,6 +12213,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	low = ref_blocks[ptr+1];
 	nextlow = ref_blocks[ptr+4];
 #endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
 	low_rc = ~low;
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
@@ -11964,6 +12244,16 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
     low_rc = ~low;
     high_rc = ~high;
     nextlow_rc = ~nextlow;
@@ -12063,7 +12353,7 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions,
 void
 Oligoindex_hr_tally (T this, Genomicpos_T genomicstart, Genomicpos_T genomicend,
 		     Genomicpos_T mappingstart, Genomicpos_T mappingend, bool plusp,
-		     char *queryuc_ptr, int querylength) {
+		     char *queryuc_ptr, int querylength, int sequencepos, int genestrand) {
   int badoligos, repoligos, trimoligos, trim_start, trim_end;
 
   Oligoindex_set_inquery(&badoligos,&repoligos,&trimoligos,&trim_start,&trim_end,this,
@@ -12094,21 +12384,23 @@ Oligoindex_hr_tally (T this, Genomicpos_T genomicstart, Genomicpos_T genomicend,
 #endif
 
   if (plusp == true) {
-    count_positions_fwd(this->counts,this->indexsize,mappingstart,mappingend);
+    debug(printf("plus, first sequencepos is %u = %u - %u\n",mappingstart-genomicstart,mappingstart,genomicstart));
+    count_positions_fwd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
     if (allocate_positions(this->pointers,this->positions,this->overabundant,
 			   this->inquery,this->counts,this->relevant_counts,
 			   this->oligospace) > 0) {
       store_positions_fwd(this->pointers,this->counts,this->indexsize,mappingstart,mappingend,
-			  /*sequencepos*/mappingstart - genomicstart);
+			  sequencepos,genestrand);
     }
 
   } else {
-    count_positions_rev(this->counts,this->indexsize,mappingstart,mappingend);
+    debug(printf("minus, first sequencepos is %u = %u - %u\n",genomicend-mappingend,genomicend,mappingend));
+    count_positions_rev(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
     if (allocate_positions(this->pointers,this->positions,this->overabundant,
 			   this->inquery,this->counts,this->relevant_counts,
 			   this->oligospace) > 0) {
       store_positions_rev(this->pointers,this->counts,this->indexsize,mappingstart,mappingend,
-			  /*sequencepos*/genomicend - mappingend);
+			  sequencepos,genestrand);
     }
   }
 

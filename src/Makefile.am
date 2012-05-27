@@ -3,7 +3,7 @@ CLEANFILES = fa_coords gmap_process
 
 
 bin_PROGRAMS = gmap get-genome gmapindex iit_store iit_get iit_dump \
-               gsnap snpindex cmetindex atoiindex
+               gsnap uniqscan snpindex cmetindex atoiindex
 
 GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  except.c except.h assert.c assert.h mem.c mem.h \
@@ -14,6 +14,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
  gbuffer.c gbuffer.h genome.c genome.h genome_hr.c genome_hr.h \
+ genome-write.c genome-write.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
@@ -21,6 +22,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
  diagdef.h diag.c diag.h diagpool.c diagpool.h \
+ cmet.c cmet.h atoi.c atoi.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h \
  scores.h intron.c intron.h maxent.c maxent.h maxent_hr.c maxent_hr.h samflags.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
@@ -83,6 +85,40 @@ gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS) $(GOBY_LDFLAGS)
 gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(GOBY_LIBS)
 
 dist_gsnap_SOURCES = $(GSNAP_FILES)
+
+
+UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.c littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
+ genomicpos.c genomicpos.h compress.c compress.h \
+ genome.c genome.h genome_hr.c genome_hr.h \
+ indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
+ oligo.c oligo.h \
+ chrom.c chrom.h segmentpos.c segmentpos.h \
+ chrnum.c chrnum.h \
+ maxent_hr.c maxent_hr.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
+ spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
+ comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
+ orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
+ intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
+ dynprog.c dynprog.h translation.c translation.h smooth.c smooth.h \
+ chimera.c chimera.h sense.h stage3.c stage3.h \
+ splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
+ stage1hr.c stage1hr.h resulthr.c resulthr.h \
+ datadir.c datadir.h mode.h \
+ getopt.c getopt1.c getopt.h uniqscan.c
+
+uniqscan_CC = $(PTHREAD_CC)
+uniqscan_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
+uniqscan_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+uniqscan_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
+
+dist_uniqscan_SOURCES = $(UNIQSCAN_FILES)
 
 
 GMAPINDEX_FILES = fopen.h bool.h types.h \

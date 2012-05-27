@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c 44373 2011-08-05 03:55:58Z twu $";
+static char rcsid[] = "$Id: gregion.c 64181 2012-05-16 00:18:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -48,6 +48,7 @@ struct T {
   Genomicpos_T genomicend;
   Genomicpos_T genomiclength;
   bool plusp;
+  int genestrand;
 
   Genomicpos_T extension5;
   Genomicpos_T extension3;
@@ -147,6 +148,11 @@ Gregion_revcompp (T this) {
   return !(this->plusp);
 }
 
+int
+Gregion_genestrand (T this) {
+  return this->genestrand;
+}
+
 Chrnum_T
 Gregion_chrnum (T this) {
   return this->chrnum;
@@ -219,7 +225,7 @@ Gregion_ncovered (T this) {
 
 T
 Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
-	     bool plusp, IIT_T chromosome_iit, int querystart, int queryend, int querylength,
+	     bool plusp, int genestrand, IIT_T chromosome_iit, int querystart, int queryend, int querylength,
 	     int matchsize, int trimstart, int trimend) {
   T new = (T) MALLOC(sizeof(*new));
 
@@ -246,6 +252,7 @@ Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
   new->chrend = new->chrstart + new->genomiclength;
 
   new->plusp = plusp;
+  new->genestrand = genestrand;
 
   if (plusp == true) {
     new->extentstart = new->chrstart - querystart;
@@ -308,7 +315,7 @@ Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
 
 
 T
-Gregion_new_from_matches (Match_T match5, Match_T match3, IIT_T chromosome_iit, 
+Gregion_new_from_matches (Match_T match5, Match_T match3, int genestrand, IIT_T chromosome_iit, 
 			  int querylength, int matchsize, int trimstart, int trimend) {
   T gregion;
   Genomicpos_T genomicstart, genomicend;
@@ -340,8 +347,8 @@ Gregion_new_from_matches (Match_T match5, Match_T match3, IIT_T chromosome_iit,
 
   debug(printf("Coordinates are %u .. %u\n",genomicstart,genomicend));
 
-  gregion = Gregion_new(/*nexons*/0,genomicstart,genomicend,Match_forwardp(match5),chromosome_iit,
-			querystart,queryend,querylength,matchsize,trimstart,trimend);
+  gregion = Gregion_new(/*nexons*/0,genomicstart,genomicend,Match_forwardp(match5),genestrand,
+			chromosome_iit,querystart,queryend,querylength,matchsize,trimstart,trimend);
 
   gregion->weight = Match_weight(match5) * Match_weight(match3);
   Match_incr_npairings(match5);
@@ -471,8 +478,6 @@ Gregion_filter_unique (List_T gregionlist) {
 }
 
 
-#if 0
-/* Not used anymore */
 List_T
 Gregion_filter_support (List_T gregionlist, int boundary, double pct_max, int diff_max) {
   List_T good = NULL, p;
@@ -516,7 +521,6 @@ Gregion_filter_support (List_T gregionlist, int boundary, double pct_max, int di
   List_free(&gregionlist);
   return List_reverse(good);
 }
-#endif
 
 
 double

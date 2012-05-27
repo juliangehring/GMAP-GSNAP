@@ -1,4 +1,4 @@
-/* $Id: genome.h 46617 2011-09-06 20:45:28Z twu $ */
+/* $Id: genome.h 64180 2012-05-16 00:17:32Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 
@@ -9,6 +9,8 @@
 #include "sequence.h"
 #include "iit-read.h"
 #include "chrnum.h"
+#include "mode.h"
+
 
 #define OUTOFBOUNDS '*'
 
@@ -25,7 +27,9 @@ extern T
 Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_p, Access_mode_T access);
 
 extern void
-Genome_setup (T genome_in);
+Genome_setup (T genome_in, Mode_T mode_in);
+extern void
+Genome_user_setup (UINT4 *genome_blocks_in);
 
 extern bool
 Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,

@@ -35,11 +35,11 @@ host_triplet = @host@
 target_triplet = @target@
 bin_PROGRAMS = gmap$(EXEEXT) get-genome$(EXEEXT) gmapindex$(EXEEXT) \
 	iit_store$(EXEEXT) iit_get$(EXEEXT) iit_dump$(EXEEXT) \
-	gsnap$(EXEEXT) snpindex$(EXEEXT) cmetindex$(EXEEXT) \
-	atoiindex$(EXEEXT)
+	gsnap$(EXEEXT) uniqscan$(EXEEXT) snpindex$(EXEEXT) \
+	cmetindex$(EXEEXT) atoiindex$(EXEEXT)
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(srcdir)/config.h.in
+	$(srcdir)/config.h.in compile
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/pagesize.m4 \
@@ -122,15 +122,16 @@ am__objects_4 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-sequence.$(OBJEXT) gmap-reader.$(OBJEXT) \
 	gmap-genomicpos.$(OBJEXT) gmap-compress.$(OBJEXT) \
 	gmap-gbuffer.$(OBJEXT) gmap-genome.$(OBJEXT) \
-	gmap-genome_hr.$(OBJEXT) gmap-indexdb.$(OBJEXT) \
-	gmap-indexdb_hr.$(OBJEXT) gmap-oligo.$(OBJEXT) \
-	gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
+	gmap-genome_hr.$(OBJEXT) gmap-genome-write.$(OBJEXT) \
+	gmap-indexdb.$(OBJEXT) gmap-indexdb_hr.$(OBJEXT) \
+	gmap-oligo.$(OBJEXT) gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
 	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
 	gmap-chrsubset.$(OBJEXT) gmap-uinttable.$(OBJEXT) \
 	gmap-gregion.$(OBJEXT) gmap-match.$(OBJEXT) \
 	gmap-matchpool.$(OBJEXT) gmap-diagnostic.$(OBJEXT) \
 	gmap-stage1.$(OBJEXT) gmap-diag.$(OBJEXT) \
-	gmap-diagpool.$(OBJEXT) gmap-orderstat.$(OBJEXT) \
+	gmap-diagpool.$(OBJEXT) gmap-cmet.$(OBJEXT) \
+	gmap-atoi.$(OBJEXT) gmap-orderstat.$(OBJEXT) \
 	gmap-oligoindex.$(OBJEXT) gmap-oligoindex_hr.$(OBJEXT) \
 	gmap-intron.$(OBJEXT) gmap-maxent.$(OBJEXT) \
 	gmap-maxent_hr.$(OBJEXT) gmap-pair.$(OBJEXT) \
@@ -269,6 +270,42 @@ snpindex_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 snpindex_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(snpindex_CFLAGS) $(CFLAGS) \
 	$(snpindex_LDFLAGS) $(LDFLAGS) -o $@
+am__objects_11 = uniqscan-except.$(OBJEXT) uniqscan-assert.$(OBJEXT) \
+	uniqscan-mem.$(OBJEXT) uniqscan-intlist.$(OBJEXT) \
+	uniqscan-list.$(OBJEXT) uniqscan-littleendian.$(OBJEXT) \
+	uniqscan-bigendian.$(OBJEXT) uniqscan-interval.$(OBJEXT) \
+	uniqscan-uintlist.$(OBJEXT) uniqscan-stopwatch.$(OBJEXT) \
+	uniqscan-access.$(OBJEXT) uniqscan-iit-read.$(OBJEXT) \
+	uniqscan-md5.$(OBJEXT) uniqscan-sequence.$(OBJEXT) \
+	uniqscan-reader.$(OBJEXT) uniqscan-genomicpos.$(OBJEXT) \
+	uniqscan-compress.$(OBJEXT) uniqscan-genome.$(OBJEXT) \
+	uniqscan-genome_hr.$(OBJEXT) uniqscan-indexdb.$(OBJEXT) \
+	uniqscan-indexdb_hr.$(OBJEXT) uniqscan-oligo.$(OBJEXT) \
+	uniqscan-chrom.$(OBJEXT) uniqscan-segmentpos.$(OBJEXT) \
+	uniqscan-chrnum.$(OBJEXT) uniqscan-maxent_hr.$(OBJEXT) \
+	uniqscan-mapq.$(OBJEXT) uniqscan-shortread.$(OBJEXT) \
+	uniqscan-substring.$(OBJEXT) uniqscan-stage3hr.$(OBJEXT) \
+	uniqscan-spanningelt.$(OBJEXT) uniqscan-cmet.$(OBJEXT) \
+	uniqscan-atoi.$(OBJEXT) uniqscan-maxent.$(OBJEXT) \
+	uniqscan-pair.$(OBJEXT) uniqscan-pairpool.$(OBJEXT) \
+	uniqscan-diag.$(OBJEXT) uniqscan-diagpool.$(OBJEXT) \
+	uniqscan-orderstat.$(OBJEXT) uniqscan-oligoindex.$(OBJEXT) \
+	uniqscan-oligoindex_hr.$(OBJEXT) uniqscan-stage2.$(OBJEXT) \
+	uniqscan-intron.$(OBJEXT) uniqscan-boyer-moore.$(OBJEXT) \
+	uniqscan-changepoint.$(OBJEXT) uniqscan-pbinom.$(OBJEXT) \
+	uniqscan-dynprog.$(OBJEXT) uniqscan-translation.$(OBJEXT) \
+	uniqscan-smooth.$(OBJEXT) uniqscan-chimera.$(OBJEXT) \
+	uniqscan-stage3.$(OBJEXT) uniqscan-splicetrie_build.$(OBJEXT) \
+	uniqscan-splicetrie.$(OBJEXT) uniqscan-stage1hr.$(OBJEXT) \
+	uniqscan-resulthr.$(OBJEXT) uniqscan-datadir.$(OBJEXT) \
+	uniqscan-getopt.$(OBJEXT) uniqscan-getopt1.$(OBJEXT) \
+	uniqscan-uniqscan.$(OBJEXT)
+dist_uniqscan_OBJECTS = $(am__objects_11)
+uniqscan_OBJECTS = $(dist_uniqscan_OBJECTS)
+uniqscan_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+uniqscan_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
+	--mode=link $(CCLD) $(uniqscan_CFLAGS) $(CFLAGS) \
+	$(uniqscan_LDFLAGS) $(LDFLAGS) -o $@
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/config/depcomp
 am__depfiles_maybe = depfiles
@@ -285,12 +322,14 @@ SOURCES = $(dist_atoiindex_SOURCES) $(dist_cmetindex_SOURCES) \
 	$(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) \
 	$(dist_gmapindex_SOURCES) $(dist_gsnap_SOURCES) \
 	$(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) \
-	$(dist_iit_store_SOURCES) $(dist_snpindex_SOURCES)
+	$(dist_iit_store_SOURCES) $(dist_snpindex_SOURCES) \
+	$(dist_uniqscan_SOURCES)
 DIST_SOURCES = $(dist_atoiindex_SOURCES) $(dist_cmetindex_SOURCES) \
 	$(dist_get_genome_SOURCES) $(dist_gmap_SOURCES) \
 	$(dist_gmapindex_SOURCES) $(dist_gsnap_SOURCES) \
 	$(dist_iit_dump_SOURCES) $(dist_iit_get_SOURCES) \
-	$(dist_iit_store_SOURCES) $(dist_snpindex_SOURCES)
+	$(dist_iit_store_SOURCES) $(dist_snpindex_SOURCES) \
+	$(dist_uniqscan_SOURCES)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -436,6 +475,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
  gbuffer.c gbuffer.h genome.c genome.h genome_hr.c genome_hr.h \
+ genome-write.c genome-write.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
@@ -443,6 +483,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
  diagdef.h diag.c diag.h diagpool.c diagpool.h \
+ cmet.c cmet.h atoi.c atoi.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h \
  scores.h intron.c intron.h maxent.c maxent.h maxent_hr.c maxent_hr.h samflags.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
@@ -499,6 +540,37 @@ gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(GOBY_CFLAGS) -D
 gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS) $(GOBY_LDFLAGS)
 gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(GOBY_LIBS)
 dist_gsnap_SOURCES = $(GSNAP_FILES)
+UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ littleendian.c littleendian.h bigendian.c bigendian.h \
+ interval.c interval.h uintlist.c uintlist.h \
+ stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
+ md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
+ genomicpos.c genomicpos.h compress.c compress.h \
+ genome.c genome.h genome_hr.c genome_hr.h \
+ indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
+ oligo.c oligo.h \
+ chrom.c chrom.h segmentpos.c segmentpos.h \
+ chrnum.c chrnum.h \
+ maxent_hr.c maxent_hr.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
+ spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
+ comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
+ orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
+ intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
+ dynprog.c dynprog.h translation.c translation.h smooth.c smooth.h \
+ chimera.c chimera.h sense.h stage3.c stage3.h \
+ splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
+ stage1hr.c stage1hr.h resulthr.c resulthr.h \
+ datadir.c datadir.h mode.h \
+ getopt.c getopt1.c getopt.h uniqscan.c
+
+uniqscan_CC = $(PTHREAD_CC)
+uniqscan_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
+uniqscan_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(PTHREAD_CFLAGS)
+uniqscan_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS)
+dist_uniqscan_SOURCES = $(UNIQSCAN_FILES)
 GMAPINDEX_FILES = fopen.h bool.h types.h \
  except.c except.h assert.c assert.h mem.c mem.h \
  intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
@@ -731,6 +803,9 @@ iit_store$(EXEEXT): $(iit_store_OBJECTS) $(iit_store_DEPENDENCIES)
 snpindex$(EXEEXT): $(snpindex_OBJECTS) $(snpindex_DEPENDENCIES) 
 	@rm -f snpindex$(EXEEXT)
 	$(snpindex_LINK) $(snpindex_OBJECTS) $(snpindex_LDADD) $(LIBS)
+uniqscan$(EXEEXT): $(uniqscan_OBJECTS) $(uniqscan_DEPENDENCIES) 
+	@rm -f uniqscan$(EXEEXT)
+	$(uniqscan_LINK) $(uniqscan_OBJECTS) $(uniqscan_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -802,6 +877,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_genome-uintlist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-atoi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-block.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-boyer-moore.Po@am__quote@
@@ -810,6 +886,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrnum.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-chrsubset.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-cmet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-compress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-datadir.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-diag.Po@am__quote@
@@ -818,6 +895,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-dynprog.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-gbuffer.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-genome-write.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-genome.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-genome_hr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-genomicpos.Po@am__quote@
@@ -1024,6 +1102,65 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-snpindex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-stopwatch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-uintlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-access.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-atoi.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-bigendian.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-boyer-moore.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-changepoint.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-chimera.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-chrnum.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-chrom.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-cmet.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-compress.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-datadir.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-diag.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-diagpool.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-dynprog.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-except.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-genome.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-genome_hr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-genomicpos.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-getopt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-getopt1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-iit-read.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-indexdb.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-indexdb_hr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-interval.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-intlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-intron.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-list.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-littleendian.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-mapq.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-maxent.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-maxent_hr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-md5.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-mem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-oligo.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-oligoindex.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-oligoindex_hr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-orderstat.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-pair.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-pairpool.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-pbinom.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-reader.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-resulthr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-segmentpos.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-sequence.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-shortread.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-smooth.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-spanningelt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-splicetrie.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-splicetrie_build.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-stage1hr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-stage2.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-stage3.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-stage3hr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-stopwatch.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-substring.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-translation.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-uintlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/uniqscan-uniqscan.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -2194,6 +2331,20 @@ gmap-genome_hr.obj: genome_hr.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-genome_hr.obj `if test -f 'genome_hr.c'; then $(CYGPATH_W) 'genome_hr.c'; else $(CYGPATH_W) '$(srcdir)/genome_hr.c'; fi`
 
+gmap-genome-write.o: genome-write.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-genome-write.o -MD -MP -MF $(DEPDIR)/gmap-genome-write.Tpo -c -o gmap-genome-write.o `test -f 'genome-write.c' || echo '$(srcdir)/'`genome-write.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-genome-write.Tpo $(DEPDIR)/gmap-genome-write.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome-write.c' object='gmap-genome-write.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-genome-write.o `test -f 'genome-write.c' || echo '$(srcdir)/'`genome-write.c
+
+gmap-genome-write.obj: genome-write.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-genome-write.obj -MD -MP -MF $(DEPDIR)/gmap-genome-write.Tpo -c -o gmap-genome-write.obj `if test -f 'genome-write.c'; then $(CYGPATH_W) 'genome-write.c'; else $(CYGPATH_W) '$(srcdir)/genome-write.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-genome-write.Tpo $(DEPDIR)/gmap-genome-write.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome-write.c' object='gmap-genome-write.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-genome-write.obj `if test -f 'genome-write.c'; then $(CYGPATH_W) 'genome-write.c'; else $(CYGPATH_W) '$(srcdir)/genome-write.c'; fi`
+
 gmap-indexdb.o: indexdb.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-indexdb.o -MD -MP -MF $(DEPDIR)/gmap-indexdb.Tpo -c -o gmap-indexdb.o `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-indexdb.Tpo $(DEPDIR)/gmap-indexdb.Po
@@ -2417,6 +2568,34 @@ gmap-diagpool.obj: diagpool.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='gmap-diagpool.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`
+
+gmap-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-cmet.o -MD -MP -MF $(DEPDIR)/gmap-cmet.Tpo -c -o gmap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-cmet.Tpo $(DEPDIR)/gmap-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmap-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+gmap-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-cmet.obj -MD -MP -MF $(DEPDIR)/gmap-cmet.Tpo -c -o gmap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-cmet.Tpo $(DEPDIR)/gmap-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmap-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+gmap-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-atoi.o -MD -MP -MF $(DEPDIR)/gmap-atoi.Tpo -c -o gmap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-atoi.Tpo $(DEPDIR)/gmap-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmap-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+gmap-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-atoi.obj -MD -MP -MF $(DEPDIR)/gmap-atoi.Tpo -c -o gmap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-atoi.Tpo $(DEPDIR)/gmap-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmap-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
 
 gmap-orderstat.o: orderstat.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-orderstat.o -MD -MP -MF $(DEPDIR)/gmap-orderstat.Tpo -c -o gmap-orderstat.o `test -f 'orderstat.c' || echo '$(srcdir)/'`orderstat.c
@@ -5049,6 +5228,832 @@ snpindex-snpindex.obj: snpindex.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='snpindex.c' object='snpindex-snpindex.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-snpindex.obj `if test -f 'snpindex.c'; then $(CYGPATH_W) 'snpindex.c'; else $(CYGPATH_W) '$(srcdir)/snpindex.c'; fi`
+
+uniqscan-except.o: except.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-except.o -MD -MP -MF $(DEPDIR)/uniqscan-except.Tpo -c -o uniqscan-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-except.Tpo $(DEPDIR)/uniqscan-except.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='uniqscan-except.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-except.o `test -f 'except.c' || echo '$(srcdir)/'`except.c
+
+uniqscan-except.obj: except.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-except.obj -MD -MP -MF $(DEPDIR)/uniqscan-except.Tpo -c -o uniqscan-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-except.Tpo $(DEPDIR)/uniqscan-except.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='except.c' object='uniqscan-except.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-except.obj `if test -f 'except.c'; then $(CYGPATH_W) 'except.c'; else $(CYGPATH_W) '$(srcdir)/except.c'; fi`
+
+uniqscan-assert.o: assert.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-assert.o -MD -MP -MF $(DEPDIR)/uniqscan-assert.Tpo -c -o uniqscan-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-assert.Tpo $(DEPDIR)/uniqscan-assert.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='uniqscan-assert.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-assert.o `test -f 'assert.c' || echo '$(srcdir)/'`assert.c
+
+uniqscan-assert.obj: assert.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-assert.obj -MD -MP -MF $(DEPDIR)/uniqscan-assert.Tpo -c -o uniqscan-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-assert.Tpo $(DEPDIR)/uniqscan-assert.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='assert.c' object='uniqscan-assert.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-assert.obj `if test -f 'assert.c'; then $(CYGPATH_W) 'assert.c'; else $(CYGPATH_W) '$(srcdir)/assert.c'; fi`
+
+uniqscan-mem.o: mem.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-mem.o -MD -MP -MF $(DEPDIR)/uniqscan-mem.Tpo -c -o uniqscan-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-mem.Tpo $(DEPDIR)/uniqscan-mem.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='uniqscan-mem.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-mem.o `test -f 'mem.c' || echo '$(srcdir)/'`mem.c
+
+uniqscan-mem.obj: mem.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-mem.obj -MD -MP -MF $(DEPDIR)/uniqscan-mem.Tpo -c -o uniqscan-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-mem.Tpo $(DEPDIR)/uniqscan-mem.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mem.c' object='uniqscan-mem.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-mem.obj `if test -f 'mem.c'; then $(CYGPATH_W) 'mem.c'; else $(CYGPATH_W) '$(srcdir)/mem.c'; fi`
+
+uniqscan-intlist.o: intlist.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-intlist.o -MD -MP -MF $(DEPDIR)/uniqscan-intlist.Tpo -c -o uniqscan-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-intlist.Tpo $(DEPDIR)/uniqscan-intlist.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='uniqscan-intlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-intlist.o `test -f 'intlist.c' || echo '$(srcdir)/'`intlist.c
+
+uniqscan-intlist.obj: intlist.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-intlist.obj -MD -MP -MF $(DEPDIR)/uniqscan-intlist.Tpo -c -o uniqscan-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-intlist.Tpo $(DEPDIR)/uniqscan-intlist.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intlist.c' object='uniqscan-intlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-intlist.obj `if test -f 'intlist.c'; then $(CYGPATH_W) 'intlist.c'; else $(CYGPATH_W) '$(srcdir)/intlist.c'; fi`
+
+uniqscan-list.o: list.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-list.o -MD -MP -MF $(DEPDIR)/uniqscan-list.Tpo -c -o uniqscan-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-list.Tpo $(DEPDIR)/uniqscan-list.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='uniqscan-list.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
+
+uniqscan-list.obj: list.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-list.obj -MD -MP -MF $(DEPDIR)/uniqscan-list.Tpo -c -o uniqscan-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-list.Tpo $(DEPDIR)/uniqscan-list.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='list.c' object='uniqscan-list.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-list.obj `if test -f 'list.c'; then $(CYGPATH_W) 'list.c'; else $(CYGPATH_W) '$(srcdir)/list.c'; fi`
+
+uniqscan-littleendian.o: littleendian.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-littleendian.o -MD -MP -MF $(DEPDIR)/uniqscan-littleendian.Tpo -c -o uniqscan-littleendian.o `test -f 'littleendian.c' || echo '$(srcdir)/'`littleendian.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-littleendian.Tpo $(DEPDIR)/uniqscan-littleendian.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='littleendian.c' object='uniqscan-littleendian.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-littleendian.o `test -f 'littleendian.c' || echo '$(srcdir)/'`littleendian.c
+
+uniqscan-littleendian.obj: littleendian.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-littleendian.obj -MD -MP -MF $(DEPDIR)/uniqscan-littleendian.Tpo -c -o uniqscan-littleendian.obj `if test -f 'littleendian.c'; then $(CYGPATH_W) 'littleendian.c'; else $(CYGPATH_W) '$(srcdir)/littleendian.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-littleendian.Tpo $(DEPDIR)/uniqscan-littleendian.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='littleendian.c' object='uniqscan-littleendian.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-littleendian.obj `if test -f 'littleendian.c'; then $(CYGPATH_W) 'littleendian.c'; else $(CYGPATH_W) '$(srcdir)/littleendian.c'; fi`
+
+uniqscan-bigendian.o: bigendian.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-bigendian.o -MD -MP -MF $(DEPDIR)/uniqscan-bigendian.Tpo -c -o uniqscan-bigendian.o `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-bigendian.Tpo $(DEPDIR)/uniqscan-bigendian.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='uniqscan-bigendian.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-bigendian.o `test -f 'bigendian.c' || echo '$(srcdir)/'`bigendian.c
+
+uniqscan-bigendian.obj: bigendian.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-bigendian.obj -MD -MP -MF $(DEPDIR)/uniqscan-bigendian.Tpo -c -o uniqscan-bigendian.obj `if test -f 'bigendian.c'; then $(CYGPATH_W) 'bigendian.c'; else $(CYGPATH_W) '$(srcdir)/bigendian.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-bigendian.Tpo $(DEPDIR)/uniqscan-bigendian.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='bigendian.c' object='uniqscan-bigendian.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-bigendian.obj `if test -f 'bigendian.c'; then $(CYGPATH_W) 'bigendian.c'; else $(CYGPATH_W) '$(srcdir)/bigendian.c'; fi`
+
+uniqscan-interval.o: interval.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-interval.o -MD -MP -MF $(DEPDIR)/uniqscan-interval.Tpo -c -o uniqscan-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-interval.Tpo $(DEPDIR)/uniqscan-interval.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='uniqscan-interval.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-interval.o `test -f 'interval.c' || echo '$(srcdir)/'`interval.c
+
+uniqscan-interval.obj: interval.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-interval.obj -MD -MP -MF $(DEPDIR)/uniqscan-interval.Tpo -c -o uniqscan-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-interval.Tpo $(DEPDIR)/uniqscan-interval.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='interval.c' object='uniqscan-interval.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-interval.obj `if test -f 'interval.c'; then $(CYGPATH_W) 'interval.c'; else $(CYGPATH_W) '$(srcdir)/interval.c'; fi`
+
+uniqscan-uintlist.o: uintlist.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-uintlist.o -MD -MP -MF $(DEPDIR)/uniqscan-uintlist.Tpo -c -o uniqscan-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-uintlist.Tpo $(DEPDIR)/uniqscan-uintlist.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='uniqscan-uintlist.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-uintlist.o `test -f 'uintlist.c' || echo '$(srcdir)/'`uintlist.c
+
+uniqscan-uintlist.obj: uintlist.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-uintlist.obj -MD -MP -MF $(DEPDIR)/uniqscan-uintlist.Tpo -c -o uniqscan-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-uintlist.Tpo $(DEPDIR)/uniqscan-uintlist.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uintlist.c' object='uniqscan-uintlist.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-uintlist.obj `if test -f 'uintlist.c'; then $(CYGPATH_W) 'uintlist.c'; else $(CYGPATH_W) '$(srcdir)/uintlist.c'; fi`
+
+uniqscan-stopwatch.o: stopwatch.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stopwatch.o -MD -MP -MF $(DEPDIR)/uniqscan-stopwatch.Tpo -c -o uniqscan-stopwatch.o `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stopwatch.Tpo $(DEPDIR)/uniqscan-stopwatch.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='uniqscan-stopwatch.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stopwatch.o `test -f 'stopwatch.c' || echo '$(srcdir)/'`stopwatch.c
+
+uniqscan-stopwatch.obj: stopwatch.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stopwatch.obj -MD -MP -MF $(DEPDIR)/uniqscan-stopwatch.Tpo -c -o uniqscan-stopwatch.obj `if test -f 'stopwatch.c'; then $(CYGPATH_W) 'stopwatch.c'; else $(CYGPATH_W) '$(srcdir)/stopwatch.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stopwatch.Tpo $(DEPDIR)/uniqscan-stopwatch.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stopwatch.c' object='uniqscan-stopwatch.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stopwatch.obj `if test -f 'stopwatch.c'; then $(CYGPATH_W) 'stopwatch.c'; else $(CYGPATH_W) '$(srcdir)/stopwatch.c'; fi`
+
+uniqscan-access.o: access.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-access.o -MD -MP -MF $(DEPDIR)/uniqscan-access.Tpo -c -o uniqscan-access.o `test -f 'access.c' || echo '$(srcdir)/'`access.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-access.Tpo $(DEPDIR)/uniqscan-access.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='uniqscan-access.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-access.o `test -f 'access.c' || echo '$(srcdir)/'`access.c
+
+uniqscan-access.obj: access.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-access.obj -MD -MP -MF $(DEPDIR)/uniqscan-access.Tpo -c -o uniqscan-access.obj `if test -f 'access.c'; then $(CYGPATH_W) 'access.c'; else $(CYGPATH_W) '$(srcdir)/access.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-access.Tpo $(DEPDIR)/uniqscan-access.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='access.c' object='uniqscan-access.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-access.obj `if test -f 'access.c'; then $(CYGPATH_W) 'access.c'; else $(CYGPATH_W) '$(srcdir)/access.c'; fi`
+
+uniqscan-iit-read.o: iit-read.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-iit-read.o -MD -MP -MF $(DEPDIR)/uniqscan-iit-read.Tpo -c -o uniqscan-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-iit-read.Tpo $(DEPDIR)/uniqscan-iit-read.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='uniqscan-iit-read.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-iit-read.o `test -f 'iit-read.c' || echo '$(srcdir)/'`iit-read.c
+
+uniqscan-iit-read.obj: iit-read.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-iit-read.obj -MD -MP -MF $(DEPDIR)/uniqscan-iit-read.Tpo -c -o uniqscan-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-iit-read.Tpo $(DEPDIR)/uniqscan-iit-read.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='iit-read.c' object='uniqscan-iit-read.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-iit-read.obj `if test -f 'iit-read.c'; then $(CYGPATH_W) 'iit-read.c'; else $(CYGPATH_W) '$(srcdir)/iit-read.c'; fi`
+
+uniqscan-md5.o: md5.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-md5.o -MD -MP -MF $(DEPDIR)/uniqscan-md5.Tpo -c -o uniqscan-md5.o `test -f 'md5.c' || echo '$(srcdir)/'`md5.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-md5.Tpo $(DEPDIR)/uniqscan-md5.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='uniqscan-md5.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-md5.o `test -f 'md5.c' || echo '$(srcdir)/'`md5.c
+
+uniqscan-md5.obj: md5.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-md5.obj -MD -MP -MF $(DEPDIR)/uniqscan-md5.Tpo -c -o uniqscan-md5.obj `if test -f 'md5.c'; then $(CYGPATH_W) 'md5.c'; else $(CYGPATH_W) '$(srcdir)/md5.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-md5.Tpo $(DEPDIR)/uniqscan-md5.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='md5.c' object='uniqscan-md5.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-md5.obj `if test -f 'md5.c'; then $(CYGPATH_W) 'md5.c'; else $(CYGPATH_W) '$(srcdir)/md5.c'; fi`
+
+uniqscan-sequence.o: sequence.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-sequence.o -MD -MP -MF $(DEPDIR)/uniqscan-sequence.Tpo -c -o uniqscan-sequence.o `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-sequence.Tpo $(DEPDIR)/uniqscan-sequence.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='uniqscan-sequence.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-sequence.o `test -f 'sequence.c' || echo '$(srcdir)/'`sequence.c
+
+uniqscan-sequence.obj: sequence.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-sequence.obj -MD -MP -MF $(DEPDIR)/uniqscan-sequence.Tpo -c -o uniqscan-sequence.obj `if test -f 'sequence.c'; then $(CYGPATH_W) 'sequence.c'; else $(CYGPATH_W) '$(srcdir)/sequence.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-sequence.Tpo $(DEPDIR)/uniqscan-sequence.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='sequence.c' object='uniqscan-sequence.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-sequence.obj `if test -f 'sequence.c'; then $(CYGPATH_W) 'sequence.c'; else $(CYGPATH_W) '$(srcdir)/sequence.c'; fi`
+
+uniqscan-reader.o: reader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-reader.o -MD -MP -MF $(DEPDIR)/uniqscan-reader.Tpo -c -o uniqscan-reader.o `test -f 'reader.c' || echo '$(srcdir)/'`reader.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-reader.Tpo $(DEPDIR)/uniqscan-reader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='reader.c' object='uniqscan-reader.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-reader.o `test -f 'reader.c' || echo '$(srcdir)/'`reader.c
+
+uniqscan-reader.obj: reader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-reader.obj -MD -MP -MF $(DEPDIR)/uniqscan-reader.Tpo -c -o uniqscan-reader.obj `if test -f 'reader.c'; then $(CYGPATH_W) 'reader.c'; else $(CYGPATH_W) '$(srcdir)/reader.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-reader.Tpo $(DEPDIR)/uniqscan-reader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='reader.c' object='uniqscan-reader.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-reader.obj `if test -f 'reader.c'; then $(CYGPATH_W) 'reader.c'; else $(CYGPATH_W) '$(srcdir)/reader.c'; fi`
+
+uniqscan-genomicpos.o: genomicpos.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genomicpos.o -MD -MP -MF $(DEPDIR)/uniqscan-genomicpos.Tpo -c -o uniqscan-genomicpos.o `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genomicpos.Tpo $(DEPDIR)/uniqscan-genomicpos.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='uniqscan-genomicpos.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-genomicpos.o `test -f 'genomicpos.c' || echo '$(srcdir)/'`genomicpos.c
+
+uniqscan-genomicpos.obj: genomicpos.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genomicpos.obj -MD -MP -MF $(DEPDIR)/uniqscan-genomicpos.Tpo -c -o uniqscan-genomicpos.obj `if test -f 'genomicpos.c'; then $(CYGPATH_W) 'genomicpos.c'; else $(CYGPATH_W) '$(srcdir)/genomicpos.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genomicpos.Tpo $(DEPDIR)/uniqscan-genomicpos.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genomicpos.c' object='uniqscan-genomicpos.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-genomicpos.obj `if test -f 'genomicpos.c'; then $(CYGPATH_W) 'genomicpos.c'; else $(CYGPATH_W) '$(srcdir)/genomicpos.c'; fi`
+
+uniqscan-compress.o: compress.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-compress.o -MD -MP -MF $(DEPDIR)/uniqscan-compress.Tpo -c -o uniqscan-compress.o `test -f 'compress.c' || echo '$(srcdir)/'`compress.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-compress.Tpo $(DEPDIR)/uniqscan-compress.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compress.c' object='uniqscan-compress.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-compress.o `test -f 'compress.c' || echo '$(srcdir)/'`compress.c
+
+uniqscan-compress.obj: compress.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-compress.obj -MD -MP -MF $(DEPDIR)/uniqscan-compress.Tpo -c -o uniqscan-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-compress.Tpo $(DEPDIR)/uniqscan-compress.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compress.c' object='uniqscan-compress.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
+
+uniqscan-genome.o: genome.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genome.o -MD -MP -MF $(DEPDIR)/uniqscan-genome.Tpo -c -o uniqscan-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genome.Tpo $(DEPDIR)/uniqscan-genome.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='uniqscan-genome.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
+
+uniqscan-genome.obj: genome.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genome.obj -MD -MP -MF $(DEPDIR)/uniqscan-genome.Tpo -c -o uniqscan-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genome.Tpo $(DEPDIR)/uniqscan-genome.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome.c' object='uniqscan-genome.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-genome.obj `if test -f 'genome.c'; then $(CYGPATH_W) 'genome.c'; else $(CYGPATH_W) '$(srcdir)/genome.c'; fi`
+
+uniqscan-genome_hr.o: genome_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genome_hr.o -MD -MP -MF $(DEPDIR)/uniqscan-genome_hr.Tpo -c -o uniqscan-genome_hr.o `test -f 'genome_hr.c' || echo '$(srcdir)/'`genome_hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genome_hr.Tpo $(DEPDIR)/uniqscan-genome_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome_hr.c' object='uniqscan-genome_hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-genome_hr.o `test -f 'genome_hr.c' || echo '$(srcdir)/'`genome_hr.c
+
+uniqscan-genome_hr.obj: genome_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genome_hr.obj -MD -MP -MF $(DEPDIR)/uniqscan-genome_hr.Tpo -c -o uniqscan-genome_hr.obj `if test -f 'genome_hr.c'; then $(CYGPATH_W) 'genome_hr.c'; else $(CYGPATH_W) '$(srcdir)/genome_hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genome_hr.Tpo $(DEPDIR)/uniqscan-genome_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='genome_hr.c' object='uniqscan-genome_hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-genome_hr.obj `if test -f 'genome_hr.c'; then $(CYGPATH_W) 'genome_hr.c'; else $(CYGPATH_W) '$(srcdir)/genome_hr.c'; fi`
+
+uniqscan-indexdb.o: indexdb.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-indexdb.o -MD -MP -MF $(DEPDIR)/uniqscan-indexdb.Tpo -c -o uniqscan-indexdb.o `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-indexdb.Tpo $(DEPDIR)/uniqscan-indexdb.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='uniqscan-indexdb.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-indexdb.o `test -f 'indexdb.c' || echo '$(srcdir)/'`indexdb.c
+
+uniqscan-indexdb.obj: indexdb.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-indexdb.obj -MD -MP -MF $(DEPDIR)/uniqscan-indexdb.Tpo -c -o uniqscan-indexdb.obj `if test -f 'indexdb.c'; then $(CYGPATH_W) 'indexdb.c'; else $(CYGPATH_W) '$(srcdir)/indexdb.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-indexdb.Tpo $(DEPDIR)/uniqscan-indexdb.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='uniqscan-indexdb.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-indexdb.obj `if test -f 'indexdb.c'; then $(CYGPATH_W) 'indexdb.c'; else $(CYGPATH_W) '$(srcdir)/indexdb.c'; fi`
+
+uniqscan-indexdb_hr.o: indexdb_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-indexdb_hr.o -MD -MP -MF $(DEPDIR)/uniqscan-indexdb_hr.Tpo -c -o uniqscan-indexdb_hr.o `test -f 'indexdb_hr.c' || echo '$(srcdir)/'`indexdb_hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-indexdb_hr.Tpo $(DEPDIR)/uniqscan-indexdb_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb_hr.c' object='uniqscan-indexdb_hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-indexdb_hr.o `test -f 'indexdb_hr.c' || echo '$(srcdir)/'`indexdb_hr.c
+
+uniqscan-indexdb_hr.obj: indexdb_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-indexdb_hr.obj -MD -MP -MF $(DEPDIR)/uniqscan-indexdb_hr.Tpo -c -o uniqscan-indexdb_hr.obj `if test -f 'indexdb_hr.c'; then $(CYGPATH_W) 'indexdb_hr.c'; else $(CYGPATH_W) '$(srcdir)/indexdb_hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-indexdb_hr.Tpo $(DEPDIR)/uniqscan-indexdb_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb_hr.c' object='uniqscan-indexdb_hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-indexdb_hr.obj `if test -f 'indexdb_hr.c'; then $(CYGPATH_W) 'indexdb_hr.c'; else $(CYGPATH_W) '$(srcdir)/indexdb_hr.c'; fi`
+
+uniqscan-oligo.o: oligo.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-oligo.o -MD -MP -MF $(DEPDIR)/uniqscan-oligo.Tpo -c -o uniqscan-oligo.o `test -f 'oligo.c' || echo '$(srcdir)/'`oligo.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-oligo.Tpo $(DEPDIR)/uniqscan-oligo.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='oligo.c' object='uniqscan-oligo.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-oligo.o `test -f 'oligo.c' || echo '$(srcdir)/'`oligo.c
+
+uniqscan-oligo.obj: oligo.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-oligo.obj -MD -MP -MF $(DEPDIR)/uniqscan-oligo.Tpo -c -o uniqscan-oligo.obj `if test -f 'oligo.c'; then $(CYGPATH_W) 'oligo.c'; else $(CYGPATH_W) '$(srcdir)/oligo.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-oligo.Tpo $(DEPDIR)/uniqscan-oligo.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='oligo.c' object='uniqscan-oligo.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-oligo.obj `if test -f 'oligo.c'; then $(CYGPATH_W) 'oligo.c'; else $(CYGPATH_W) '$(srcdir)/oligo.c'; fi`
+
+uniqscan-chrom.o: chrom.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-chrom.o -MD -MP -MF $(DEPDIR)/uniqscan-chrom.Tpo -c -o uniqscan-chrom.o `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-chrom.Tpo $(DEPDIR)/uniqscan-chrom.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='uniqscan-chrom.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-chrom.o `test -f 'chrom.c' || echo '$(srcdir)/'`chrom.c
+
+uniqscan-chrom.obj: chrom.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-chrom.obj -MD -MP -MF $(DEPDIR)/uniqscan-chrom.Tpo -c -o uniqscan-chrom.obj `if test -f 'chrom.c'; then $(CYGPATH_W) 'chrom.c'; else $(CYGPATH_W) '$(srcdir)/chrom.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-chrom.Tpo $(DEPDIR)/uniqscan-chrom.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrom.c' object='uniqscan-chrom.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-chrom.obj `if test -f 'chrom.c'; then $(CYGPATH_W) 'chrom.c'; else $(CYGPATH_W) '$(srcdir)/chrom.c'; fi`
+
+uniqscan-segmentpos.o: segmentpos.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-segmentpos.o -MD -MP -MF $(DEPDIR)/uniqscan-segmentpos.Tpo -c -o uniqscan-segmentpos.o `test -f 'segmentpos.c' || echo '$(srcdir)/'`segmentpos.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-segmentpos.Tpo $(DEPDIR)/uniqscan-segmentpos.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='segmentpos.c' object='uniqscan-segmentpos.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-segmentpos.o `test -f 'segmentpos.c' || echo '$(srcdir)/'`segmentpos.c
+
+uniqscan-segmentpos.obj: segmentpos.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-segmentpos.obj -MD -MP -MF $(DEPDIR)/uniqscan-segmentpos.Tpo -c -o uniqscan-segmentpos.obj `if test -f 'segmentpos.c'; then $(CYGPATH_W) 'segmentpos.c'; else $(CYGPATH_W) '$(srcdir)/segmentpos.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-segmentpos.Tpo $(DEPDIR)/uniqscan-segmentpos.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='segmentpos.c' object='uniqscan-segmentpos.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-segmentpos.obj `if test -f 'segmentpos.c'; then $(CYGPATH_W) 'segmentpos.c'; else $(CYGPATH_W) '$(srcdir)/segmentpos.c'; fi`
+
+uniqscan-chrnum.o: chrnum.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-chrnum.o -MD -MP -MF $(DEPDIR)/uniqscan-chrnum.Tpo -c -o uniqscan-chrnum.o `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-chrnum.Tpo $(DEPDIR)/uniqscan-chrnum.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='uniqscan-chrnum.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-chrnum.o `test -f 'chrnum.c' || echo '$(srcdir)/'`chrnum.c
+
+uniqscan-chrnum.obj: chrnum.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-chrnum.obj -MD -MP -MF $(DEPDIR)/uniqscan-chrnum.Tpo -c -o uniqscan-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-chrnum.Tpo $(DEPDIR)/uniqscan-chrnum.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chrnum.c' object='uniqscan-chrnum.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-chrnum.obj `if test -f 'chrnum.c'; then $(CYGPATH_W) 'chrnum.c'; else $(CYGPATH_W) '$(srcdir)/chrnum.c'; fi`
+
+uniqscan-maxent_hr.o: maxent_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-maxent_hr.o -MD -MP -MF $(DEPDIR)/uniqscan-maxent_hr.Tpo -c -o uniqscan-maxent_hr.o `test -f 'maxent_hr.c' || echo '$(srcdir)/'`maxent_hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-maxent_hr.Tpo $(DEPDIR)/uniqscan-maxent_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent_hr.c' object='uniqscan-maxent_hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-maxent_hr.o `test -f 'maxent_hr.c' || echo '$(srcdir)/'`maxent_hr.c
+
+uniqscan-maxent_hr.obj: maxent_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-maxent_hr.obj -MD -MP -MF $(DEPDIR)/uniqscan-maxent_hr.Tpo -c -o uniqscan-maxent_hr.obj `if test -f 'maxent_hr.c'; then $(CYGPATH_W) 'maxent_hr.c'; else $(CYGPATH_W) '$(srcdir)/maxent_hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-maxent_hr.Tpo $(DEPDIR)/uniqscan-maxent_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent_hr.c' object='uniqscan-maxent_hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-maxent_hr.obj `if test -f 'maxent_hr.c'; then $(CYGPATH_W) 'maxent_hr.c'; else $(CYGPATH_W) '$(srcdir)/maxent_hr.c'; fi`
+
+uniqscan-mapq.o: mapq.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-mapq.o -MD -MP -MF $(DEPDIR)/uniqscan-mapq.Tpo -c -o uniqscan-mapq.o `test -f 'mapq.c' || echo '$(srcdir)/'`mapq.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-mapq.Tpo $(DEPDIR)/uniqscan-mapq.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mapq.c' object='uniqscan-mapq.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-mapq.o `test -f 'mapq.c' || echo '$(srcdir)/'`mapq.c
+
+uniqscan-mapq.obj: mapq.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-mapq.obj -MD -MP -MF $(DEPDIR)/uniqscan-mapq.Tpo -c -o uniqscan-mapq.obj `if test -f 'mapq.c'; then $(CYGPATH_W) 'mapq.c'; else $(CYGPATH_W) '$(srcdir)/mapq.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-mapq.Tpo $(DEPDIR)/uniqscan-mapq.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mapq.c' object='uniqscan-mapq.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-mapq.obj `if test -f 'mapq.c'; then $(CYGPATH_W) 'mapq.c'; else $(CYGPATH_W) '$(srcdir)/mapq.c'; fi`
+
+uniqscan-shortread.o: shortread.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-shortread.o -MD -MP -MF $(DEPDIR)/uniqscan-shortread.Tpo -c -o uniqscan-shortread.o `test -f 'shortread.c' || echo '$(srcdir)/'`shortread.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-shortread.Tpo $(DEPDIR)/uniqscan-shortread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='shortread.c' object='uniqscan-shortread.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-shortread.o `test -f 'shortread.c' || echo '$(srcdir)/'`shortread.c
+
+uniqscan-shortread.obj: shortread.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-shortread.obj -MD -MP -MF $(DEPDIR)/uniqscan-shortread.Tpo -c -o uniqscan-shortread.obj `if test -f 'shortread.c'; then $(CYGPATH_W) 'shortread.c'; else $(CYGPATH_W) '$(srcdir)/shortread.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-shortread.Tpo $(DEPDIR)/uniqscan-shortread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='shortread.c' object='uniqscan-shortread.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-shortread.obj `if test -f 'shortread.c'; then $(CYGPATH_W) 'shortread.c'; else $(CYGPATH_W) '$(srcdir)/shortread.c'; fi`
+
+uniqscan-substring.o: substring.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-substring.o -MD -MP -MF $(DEPDIR)/uniqscan-substring.Tpo -c -o uniqscan-substring.o `test -f 'substring.c' || echo '$(srcdir)/'`substring.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-substring.Tpo $(DEPDIR)/uniqscan-substring.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='substring.c' object='uniqscan-substring.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-substring.o `test -f 'substring.c' || echo '$(srcdir)/'`substring.c
+
+uniqscan-substring.obj: substring.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-substring.obj -MD -MP -MF $(DEPDIR)/uniqscan-substring.Tpo -c -o uniqscan-substring.obj `if test -f 'substring.c'; then $(CYGPATH_W) 'substring.c'; else $(CYGPATH_W) '$(srcdir)/substring.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-substring.Tpo $(DEPDIR)/uniqscan-substring.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='substring.c' object='uniqscan-substring.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-substring.obj `if test -f 'substring.c'; then $(CYGPATH_W) 'substring.c'; else $(CYGPATH_W) '$(srcdir)/substring.c'; fi`
+
+uniqscan-stage3hr.o: stage3hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage3hr.o -MD -MP -MF $(DEPDIR)/uniqscan-stage3hr.Tpo -c -o uniqscan-stage3hr.o `test -f 'stage3hr.c' || echo '$(srcdir)/'`stage3hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage3hr.Tpo $(DEPDIR)/uniqscan-stage3hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage3hr.c' object='uniqscan-stage3hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage3hr.o `test -f 'stage3hr.c' || echo '$(srcdir)/'`stage3hr.c
+
+uniqscan-stage3hr.obj: stage3hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage3hr.obj -MD -MP -MF $(DEPDIR)/uniqscan-stage3hr.Tpo -c -o uniqscan-stage3hr.obj `if test -f 'stage3hr.c'; then $(CYGPATH_W) 'stage3hr.c'; else $(CYGPATH_W) '$(srcdir)/stage3hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage3hr.Tpo $(DEPDIR)/uniqscan-stage3hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage3hr.c' object='uniqscan-stage3hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage3hr.obj `if test -f 'stage3hr.c'; then $(CYGPATH_W) 'stage3hr.c'; else $(CYGPATH_W) '$(srcdir)/stage3hr.c'; fi`
+
+uniqscan-spanningelt.o: spanningelt.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-spanningelt.o -MD -MP -MF $(DEPDIR)/uniqscan-spanningelt.Tpo -c -o uniqscan-spanningelt.o `test -f 'spanningelt.c' || echo '$(srcdir)/'`spanningelt.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-spanningelt.Tpo $(DEPDIR)/uniqscan-spanningelt.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='spanningelt.c' object='uniqscan-spanningelt.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-spanningelt.o `test -f 'spanningelt.c' || echo '$(srcdir)/'`spanningelt.c
+
+uniqscan-spanningelt.obj: spanningelt.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-spanningelt.obj -MD -MP -MF $(DEPDIR)/uniqscan-spanningelt.Tpo -c -o uniqscan-spanningelt.obj `if test -f 'spanningelt.c'; then $(CYGPATH_W) 'spanningelt.c'; else $(CYGPATH_W) '$(srcdir)/spanningelt.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-spanningelt.Tpo $(DEPDIR)/uniqscan-spanningelt.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='spanningelt.c' object='uniqscan-spanningelt.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-spanningelt.obj `if test -f 'spanningelt.c'; then $(CYGPATH_W) 'spanningelt.c'; else $(CYGPATH_W) '$(srcdir)/spanningelt.c'; fi`
+
+uniqscan-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-cmet.o -MD -MP -MF $(DEPDIR)/uniqscan-cmet.Tpo -c -o uniqscan-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-cmet.Tpo $(DEPDIR)/uniqscan-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='uniqscan-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+uniqscan-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-cmet.obj -MD -MP -MF $(DEPDIR)/uniqscan-cmet.Tpo -c -o uniqscan-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-cmet.Tpo $(DEPDIR)/uniqscan-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='uniqscan-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+uniqscan-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-atoi.o -MD -MP -MF $(DEPDIR)/uniqscan-atoi.Tpo -c -o uniqscan-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-atoi.Tpo $(DEPDIR)/uniqscan-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='uniqscan-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+uniqscan-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-atoi.obj -MD -MP -MF $(DEPDIR)/uniqscan-atoi.Tpo -c -o uniqscan-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-atoi.Tpo $(DEPDIR)/uniqscan-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='uniqscan-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
+uniqscan-maxent.o: maxent.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-maxent.o -MD -MP -MF $(DEPDIR)/uniqscan-maxent.Tpo -c -o uniqscan-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-maxent.Tpo $(DEPDIR)/uniqscan-maxent.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='uniqscan-maxent.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
+
+uniqscan-maxent.obj: maxent.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-maxent.obj -MD -MP -MF $(DEPDIR)/uniqscan-maxent.Tpo -c -o uniqscan-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-maxent.Tpo $(DEPDIR)/uniqscan-maxent.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='maxent.c' object='uniqscan-maxent.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-maxent.obj `if test -f 'maxent.c'; then $(CYGPATH_W) 'maxent.c'; else $(CYGPATH_W) '$(srcdir)/maxent.c'; fi`
+
+uniqscan-pair.o: pair.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-pair.o -MD -MP -MF $(DEPDIR)/uniqscan-pair.Tpo -c -o uniqscan-pair.o `test -f 'pair.c' || echo '$(srcdir)/'`pair.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-pair.Tpo $(DEPDIR)/uniqscan-pair.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='pair.c' object='uniqscan-pair.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-pair.o `test -f 'pair.c' || echo '$(srcdir)/'`pair.c
+
+uniqscan-pair.obj: pair.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-pair.obj -MD -MP -MF $(DEPDIR)/uniqscan-pair.Tpo -c -o uniqscan-pair.obj `if test -f 'pair.c'; then $(CYGPATH_W) 'pair.c'; else $(CYGPATH_W) '$(srcdir)/pair.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-pair.Tpo $(DEPDIR)/uniqscan-pair.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='pair.c' object='uniqscan-pair.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-pair.obj `if test -f 'pair.c'; then $(CYGPATH_W) 'pair.c'; else $(CYGPATH_W) '$(srcdir)/pair.c'; fi`
+
+uniqscan-pairpool.o: pairpool.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-pairpool.o -MD -MP -MF $(DEPDIR)/uniqscan-pairpool.Tpo -c -o uniqscan-pairpool.o `test -f 'pairpool.c' || echo '$(srcdir)/'`pairpool.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-pairpool.Tpo $(DEPDIR)/uniqscan-pairpool.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='pairpool.c' object='uniqscan-pairpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-pairpool.o `test -f 'pairpool.c' || echo '$(srcdir)/'`pairpool.c
+
+uniqscan-pairpool.obj: pairpool.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-pairpool.obj -MD -MP -MF $(DEPDIR)/uniqscan-pairpool.Tpo -c -o uniqscan-pairpool.obj `if test -f 'pairpool.c'; then $(CYGPATH_W) 'pairpool.c'; else $(CYGPATH_W) '$(srcdir)/pairpool.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-pairpool.Tpo $(DEPDIR)/uniqscan-pairpool.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='pairpool.c' object='uniqscan-pairpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-pairpool.obj `if test -f 'pairpool.c'; then $(CYGPATH_W) 'pairpool.c'; else $(CYGPATH_W) '$(srcdir)/pairpool.c'; fi`
+
+uniqscan-diag.o: diag.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-diag.o -MD -MP -MF $(DEPDIR)/uniqscan-diag.Tpo -c -o uniqscan-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-diag.Tpo $(DEPDIR)/uniqscan-diag.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='uniqscan-diag.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-diag.o `test -f 'diag.c' || echo '$(srcdir)/'`diag.c
+
+uniqscan-diag.obj: diag.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-diag.obj -MD -MP -MF $(DEPDIR)/uniqscan-diag.Tpo -c -o uniqscan-diag.obj `if test -f 'diag.c'; then $(CYGPATH_W) 'diag.c'; else $(CYGPATH_W) '$(srcdir)/diag.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-diag.Tpo $(DEPDIR)/uniqscan-diag.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diag.c' object='uniqscan-diag.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-diag.obj `if test -f 'diag.c'; then $(CYGPATH_W) 'diag.c'; else $(CYGPATH_W) '$(srcdir)/diag.c'; fi`
+
+uniqscan-diagpool.o: diagpool.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-diagpool.o -MD -MP -MF $(DEPDIR)/uniqscan-diagpool.Tpo -c -o uniqscan-diagpool.o `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-diagpool.Tpo $(DEPDIR)/uniqscan-diagpool.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='uniqscan-diagpool.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-diagpool.o `test -f 'diagpool.c' || echo '$(srcdir)/'`diagpool.c
+
+uniqscan-diagpool.obj: diagpool.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-diagpool.obj -MD -MP -MF $(DEPDIR)/uniqscan-diagpool.Tpo -c -o uniqscan-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-diagpool.Tpo $(DEPDIR)/uniqscan-diagpool.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='uniqscan-diagpool.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`
+
+uniqscan-orderstat.o: orderstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-orderstat.o -MD -MP -MF $(DEPDIR)/uniqscan-orderstat.Tpo -c -o uniqscan-orderstat.o `test -f 'orderstat.c' || echo '$(srcdir)/'`orderstat.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-orderstat.Tpo $(DEPDIR)/uniqscan-orderstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='orderstat.c' object='uniqscan-orderstat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-orderstat.o `test -f 'orderstat.c' || echo '$(srcdir)/'`orderstat.c
+
+uniqscan-orderstat.obj: orderstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-orderstat.obj -MD -MP -MF $(DEPDIR)/uniqscan-orderstat.Tpo -c -o uniqscan-orderstat.obj `if test -f 'orderstat.c'; then $(CYGPATH_W) 'orderstat.c'; else $(CYGPATH_W) '$(srcdir)/orderstat.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-orderstat.Tpo $(DEPDIR)/uniqscan-orderstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='orderstat.c' object='uniqscan-orderstat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-orderstat.obj `if test -f 'orderstat.c'; then $(CYGPATH_W) 'orderstat.c'; else $(CYGPATH_W) '$(srcdir)/orderstat.c'; fi`
+
+uniqscan-oligoindex.o: oligoindex.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-oligoindex.o -MD -MP -MF $(DEPDIR)/uniqscan-oligoindex.Tpo -c -o uniqscan-oligoindex.o `test -f 'oligoindex.c' || echo '$(srcdir)/'`oligoindex.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-oligoindex.Tpo $(DEPDIR)/uniqscan-oligoindex.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='oligoindex.c' object='uniqscan-oligoindex.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-oligoindex.o `test -f 'oligoindex.c' || echo '$(srcdir)/'`oligoindex.c
+
+uniqscan-oligoindex.obj: oligoindex.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-oligoindex.obj -MD -MP -MF $(DEPDIR)/uniqscan-oligoindex.Tpo -c -o uniqscan-oligoindex.obj `if test -f 'oligoindex.c'; then $(CYGPATH_W) 'oligoindex.c'; else $(CYGPATH_W) '$(srcdir)/oligoindex.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-oligoindex.Tpo $(DEPDIR)/uniqscan-oligoindex.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='oligoindex.c' object='uniqscan-oligoindex.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-oligoindex.obj `if test -f 'oligoindex.c'; then $(CYGPATH_W) 'oligoindex.c'; else $(CYGPATH_W) '$(srcdir)/oligoindex.c'; fi`
+
+uniqscan-oligoindex_hr.o: oligoindex_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-oligoindex_hr.o -MD -MP -MF $(DEPDIR)/uniqscan-oligoindex_hr.Tpo -c -o uniqscan-oligoindex_hr.o `test -f 'oligoindex_hr.c' || echo '$(srcdir)/'`oligoindex_hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-oligoindex_hr.Tpo $(DEPDIR)/uniqscan-oligoindex_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='oligoindex_hr.c' object='uniqscan-oligoindex_hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-oligoindex_hr.o `test -f 'oligoindex_hr.c' || echo '$(srcdir)/'`oligoindex_hr.c
+
+uniqscan-oligoindex_hr.obj: oligoindex_hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-oligoindex_hr.obj -MD -MP -MF $(DEPDIR)/uniqscan-oligoindex_hr.Tpo -c -o uniqscan-oligoindex_hr.obj `if test -f 'oligoindex_hr.c'; then $(CYGPATH_W) 'oligoindex_hr.c'; else $(CYGPATH_W) '$(srcdir)/oligoindex_hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-oligoindex_hr.Tpo $(DEPDIR)/uniqscan-oligoindex_hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='oligoindex_hr.c' object='uniqscan-oligoindex_hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-oligoindex_hr.obj `if test -f 'oligoindex_hr.c'; then $(CYGPATH_W) 'oligoindex_hr.c'; else $(CYGPATH_W) '$(srcdir)/oligoindex_hr.c'; fi`
+
+uniqscan-stage2.o: stage2.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage2.o -MD -MP -MF $(DEPDIR)/uniqscan-stage2.Tpo -c -o uniqscan-stage2.o `test -f 'stage2.c' || echo '$(srcdir)/'`stage2.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage2.Tpo $(DEPDIR)/uniqscan-stage2.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage2.c' object='uniqscan-stage2.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage2.o `test -f 'stage2.c' || echo '$(srcdir)/'`stage2.c
+
+uniqscan-stage2.obj: stage2.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage2.obj -MD -MP -MF $(DEPDIR)/uniqscan-stage2.Tpo -c -o uniqscan-stage2.obj `if test -f 'stage2.c'; then $(CYGPATH_W) 'stage2.c'; else $(CYGPATH_W) '$(srcdir)/stage2.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage2.Tpo $(DEPDIR)/uniqscan-stage2.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage2.c' object='uniqscan-stage2.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage2.obj `if test -f 'stage2.c'; then $(CYGPATH_W) 'stage2.c'; else $(CYGPATH_W) '$(srcdir)/stage2.c'; fi`
+
+uniqscan-intron.o: intron.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-intron.o -MD -MP -MF $(DEPDIR)/uniqscan-intron.Tpo -c -o uniqscan-intron.o `test -f 'intron.c' || echo '$(srcdir)/'`intron.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-intron.Tpo $(DEPDIR)/uniqscan-intron.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intron.c' object='uniqscan-intron.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-intron.o `test -f 'intron.c' || echo '$(srcdir)/'`intron.c
+
+uniqscan-intron.obj: intron.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-intron.obj -MD -MP -MF $(DEPDIR)/uniqscan-intron.Tpo -c -o uniqscan-intron.obj `if test -f 'intron.c'; then $(CYGPATH_W) 'intron.c'; else $(CYGPATH_W) '$(srcdir)/intron.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-intron.Tpo $(DEPDIR)/uniqscan-intron.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='intron.c' object='uniqscan-intron.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-intron.obj `if test -f 'intron.c'; then $(CYGPATH_W) 'intron.c'; else $(CYGPATH_W) '$(srcdir)/intron.c'; fi`
+
+uniqscan-boyer-moore.o: boyer-moore.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-boyer-moore.o -MD -MP -MF $(DEPDIR)/uniqscan-boyer-moore.Tpo -c -o uniqscan-boyer-moore.o `test -f 'boyer-moore.c' || echo '$(srcdir)/'`boyer-moore.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-boyer-moore.Tpo $(DEPDIR)/uniqscan-boyer-moore.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='boyer-moore.c' object='uniqscan-boyer-moore.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-boyer-moore.o `test -f 'boyer-moore.c' || echo '$(srcdir)/'`boyer-moore.c
+
+uniqscan-boyer-moore.obj: boyer-moore.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-boyer-moore.obj -MD -MP -MF $(DEPDIR)/uniqscan-boyer-moore.Tpo -c -o uniqscan-boyer-moore.obj `if test -f 'boyer-moore.c'; then $(CYGPATH_W) 'boyer-moore.c'; else $(CYGPATH_W) '$(srcdir)/boyer-moore.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-boyer-moore.Tpo $(DEPDIR)/uniqscan-boyer-moore.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='boyer-moore.c' object='uniqscan-boyer-moore.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-boyer-moore.obj `if test -f 'boyer-moore.c'; then $(CYGPATH_W) 'boyer-moore.c'; else $(CYGPATH_W) '$(srcdir)/boyer-moore.c'; fi`
+
+uniqscan-changepoint.o: changepoint.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-changepoint.o -MD -MP -MF $(DEPDIR)/uniqscan-changepoint.Tpo -c -o uniqscan-changepoint.o `test -f 'changepoint.c' || echo '$(srcdir)/'`changepoint.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-changepoint.Tpo $(DEPDIR)/uniqscan-changepoint.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='changepoint.c' object='uniqscan-changepoint.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-changepoint.o `test -f 'changepoint.c' || echo '$(srcdir)/'`changepoint.c
+
+uniqscan-changepoint.obj: changepoint.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-changepoint.obj -MD -MP -MF $(DEPDIR)/uniqscan-changepoint.Tpo -c -o uniqscan-changepoint.obj `if test -f 'changepoint.c'; then $(CYGPATH_W) 'changepoint.c'; else $(CYGPATH_W) '$(srcdir)/changepoint.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-changepoint.Tpo $(DEPDIR)/uniqscan-changepoint.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='changepoint.c' object='uniqscan-changepoint.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-changepoint.obj `if test -f 'changepoint.c'; then $(CYGPATH_W) 'changepoint.c'; else $(CYGPATH_W) '$(srcdir)/changepoint.c'; fi`
+
+uniqscan-pbinom.o: pbinom.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-pbinom.o -MD -MP -MF $(DEPDIR)/uniqscan-pbinom.Tpo -c -o uniqscan-pbinom.o `test -f 'pbinom.c' || echo '$(srcdir)/'`pbinom.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-pbinom.Tpo $(DEPDIR)/uniqscan-pbinom.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='pbinom.c' object='uniqscan-pbinom.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-pbinom.o `test -f 'pbinom.c' || echo '$(srcdir)/'`pbinom.c
+
+uniqscan-pbinom.obj: pbinom.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-pbinom.obj -MD -MP -MF $(DEPDIR)/uniqscan-pbinom.Tpo -c -o uniqscan-pbinom.obj `if test -f 'pbinom.c'; then $(CYGPATH_W) 'pbinom.c'; else $(CYGPATH_W) '$(srcdir)/pbinom.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-pbinom.Tpo $(DEPDIR)/uniqscan-pbinom.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='pbinom.c' object='uniqscan-pbinom.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-pbinom.obj `if test -f 'pbinom.c'; then $(CYGPATH_W) 'pbinom.c'; else $(CYGPATH_W) '$(srcdir)/pbinom.c'; fi`
+
+uniqscan-dynprog.o: dynprog.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-dynprog.o -MD -MP -MF $(DEPDIR)/uniqscan-dynprog.Tpo -c -o uniqscan-dynprog.o `test -f 'dynprog.c' || echo '$(srcdir)/'`dynprog.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-dynprog.Tpo $(DEPDIR)/uniqscan-dynprog.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='dynprog.c' object='uniqscan-dynprog.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-dynprog.o `test -f 'dynprog.c' || echo '$(srcdir)/'`dynprog.c
+
+uniqscan-dynprog.obj: dynprog.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-dynprog.obj -MD -MP -MF $(DEPDIR)/uniqscan-dynprog.Tpo -c -o uniqscan-dynprog.obj `if test -f 'dynprog.c'; then $(CYGPATH_W) 'dynprog.c'; else $(CYGPATH_W) '$(srcdir)/dynprog.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-dynprog.Tpo $(DEPDIR)/uniqscan-dynprog.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='dynprog.c' object='uniqscan-dynprog.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-dynprog.obj `if test -f 'dynprog.c'; then $(CYGPATH_W) 'dynprog.c'; else $(CYGPATH_W) '$(srcdir)/dynprog.c'; fi`
+
+uniqscan-translation.o: translation.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-translation.o -MD -MP -MF $(DEPDIR)/uniqscan-translation.Tpo -c -o uniqscan-translation.o `test -f 'translation.c' || echo '$(srcdir)/'`translation.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-translation.Tpo $(DEPDIR)/uniqscan-translation.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='translation.c' object='uniqscan-translation.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-translation.o `test -f 'translation.c' || echo '$(srcdir)/'`translation.c
+
+uniqscan-translation.obj: translation.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-translation.obj -MD -MP -MF $(DEPDIR)/uniqscan-translation.Tpo -c -o uniqscan-translation.obj `if test -f 'translation.c'; then $(CYGPATH_W) 'translation.c'; else $(CYGPATH_W) '$(srcdir)/translation.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-translation.Tpo $(DEPDIR)/uniqscan-translation.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='translation.c' object='uniqscan-translation.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-translation.obj `if test -f 'translation.c'; then $(CYGPATH_W) 'translation.c'; else $(CYGPATH_W) '$(srcdir)/translation.c'; fi`
+
+uniqscan-smooth.o: smooth.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-smooth.o -MD -MP -MF $(DEPDIR)/uniqscan-smooth.Tpo -c -o uniqscan-smooth.o `test -f 'smooth.c' || echo '$(srcdir)/'`smooth.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-smooth.Tpo $(DEPDIR)/uniqscan-smooth.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='smooth.c' object='uniqscan-smooth.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-smooth.o `test -f 'smooth.c' || echo '$(srcdir)/'`smooth.c
+
+uniqscan-smooth.obj: smooth.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-smooth.obj -MD -MP -MF $(DEPDIR)/uniqscan-smooth.Tpo -c -o uniqscan-smooth.obj `if test -f 'smooth.c'; then $(CYGPATH_W) 'smooth.c'; else $(CYGPATH_W) '$(srcdir)/smooth.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-smooth.Tpo $(DEPDIR)/uniqscan-smooth.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='smooth.c' object='uniqscan-smooth.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-smooth.obj `if test -f 'smooth.c'; then $(CYGPATH_W) 'smooth.c'; else $(CYGPATH_W) '$(srcdir)/smooth.c'; fi`
+
+uniqscan-chimera.o: chimera.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-chimera.o -MD -MP -MF $(DEPDIR)/uniqscan-chimera.Tpo -c -o uniqscan-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-chimera.Tpo $(DEPDIR)/uniqscan-chimera.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='uniqscan-chimera.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-chimera.o `test -f 'chimera.c' || echo '$(srcdir)/'`chimera.c
+
+uniqscan-chimera.obj: chimera.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-chimera.obj -MD -MP -MF $(DEPDIR)/uniqscan-chimera.Tpo -c -o uniqscan-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-chimera.Tpo $(DEPDIR)/uniqscan-chimera.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='chimera.c' object='uniqscan-chimera.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-chimera.obj `if test -f 'chimera.c'; then $(CYGPATH_W) 'chimera.c'; else $(CYGPATH_W) '$(srcdir)/chimera.c'; fi`
+
+uniqscan-stage3.o: stage3.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage3.o -MD -MP -MF $(DEPDIR)/uniqscan-stage3.Tpo -c -o uniqscan-stage3.o `test -f 'stage3.c' || echo '$(srcdir)/'`stage3.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage3.Tpo $(DEPDIR)/uniqscan-stage3.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage3.c' object='uniqscan-stage3.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage3.o `test -f 'stage3.c' || echo '$(srcdir)/'`stage3.c
+
+uniqscan-stage3.obj: stage3.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage3.obj -MD -MP -MF $(DEPDIR)/uniqscan-stage3.Tpo -c -o uniqscan-stage3.obj `if test -f 'stage3.c'; then $(CYGPATH_W) 'stage3.c'; else $(CYGPATH_W) '$(srcdir)/stage3.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage3.Tpo $(DEPDIR)/uniqscan-stage3.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage3.c' object='uniqscan-stage3.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage3.obj `if test -f 'stage3.c'; then $(CYGPATH_W) 'stage3.c'; else $(CYGPATH_W) '$(srcdir)/stage3.c'; fi`
+
+uniqscan-splicetrie_build.o: splicetrie_build.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-splicetrie_build.o -MD -MP -MF $(DEPDIR)/uniqscan-splicetrie_build.Tpo -c -o uniqscan-splicetrie_build.o `test -f 'splicetrie_build.c' || echo '$(srcdir)/'`splicetrie_build.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-splicetrie_build.Tpo $(DEPDIR)/uniqscan-splicetrie_build.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='splicetrie_build.c' object='uniqscan-splicetrie_build.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-splicetrie_build.o `test -f 'splicetrie_build.c' || echo '$(srcdir)/'`splicetrie_build.c
+
+uniqscan-splicetrie_build.obj: splicetrie_build.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-splicetrie_build.obj -MD -MP -MF $(DEPDIR)/uniqscan-splicetrie_build.Tpo -c -o uniqscan-splicetrie_build.obj `if test -f 'splicetrie_build.c'; then $(CYGPATH_W) 'splicetrie_build.c'; else $(CYGPATH_W) '$(srcdir)/splicetrie_build.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-splicetrie_build.Tpo $(DEPDIR)/uniqscan-splicetrie_build.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='splicetrie_build.c' object='uniqscan-splicetrie_build.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-splicetrie_build.obj `if test -f 'splicetrie_build.c'; then $(CYGPATH_W) 'splicetrie_build.c'; else $(CYGPATH_W) '$(srcdir)/splicetrie_build.c'; fi`
+
+uniqscan-splicetrie.o: splicetrie.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-splicetrie.o -MD -MP -MF $(DEPDIR)/uniqscan-splicetrie.Tpo -c -o uniqscan-splicetrie.o `test -f 'splicetrie.c' || echo '$(srcdir)/'`splicetrie.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-splicetrie.Tpo $(DEPDIR)/uniqscan-splicetrie.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='splicetrie.c' object='uniqscan-splicetrie.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-splicetrie.o `test -f 'splicetrie.c' || echo '$(srcdir)/'`splicetrie.c
+
+uniqscan-splicetrie.obj: splicetrie.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-splicetrie.obj -MD -MP -MF $(DEPDIR)/uniqscan-splicetrie.Tpo -c -o uniqscan-splicetrie.obj `if test -f 'splicetrie.c'; then $(CYGPATH_W) 'splicetrie.c'; else $(CYGPATH_W) '$(srcdir)/splicetrie.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-splicetrie.Tpo $(DEPDIR)/uniqscan-splicetrie.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='splicetrie.c' object='uniqscan-splicetrie.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-splicetrie.obj `if test -f 'splicetrie.c'; then $(CYGPATH_W) 'splicetrie.c'; else $(CYGPATH_W) '$(srcdir)/splicetrie.c'; fi`
+
+uniqscan-stage1hr.o: stage1hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage1hr.o -MD -MP -MF $(DEPDIR)/uniqscan-stage1hr.Tpo -c -o uniqscan-stage1hr.o `test -f 'stage1hr.c' || echo '$(srcdir)/'`stage1hr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage1hr.Tpo $(DEPDIR)/uniqscan-stage1hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage1hr.c' object='uniqscan-stage1hr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage1hr.o `test -f 'stage1hr.c' || echo '$(srcdir)/'`stage1hr.c
+
+uniqscan-stage1hr.obj: stage1hr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-stage1hr.obj -MD -MP -MF $(DEPDIR)/uniqscan-stage1hr.Tpo -c -o uniqscan-stage1hr.obj `if test -f 'stage1hr.c'; then $(CYGPATH_W) 'stage1hr.c'; else $(CYGPATH_W) '$(srcdir)/stage1hr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-stage1hr.Tpo $(DEPDIR)/uniqscan-stage1hr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='stage1hr.c' object='uniqscan-stage1hr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-stage1hr.obj `if test -f 'stage1hr.c'; then $(CYGPATH_W) 'stage1hr.c'; else $(CYGPATH_W) '$(srcdir)/stage1hr.c'; fi`
+
+uniqscan-resulthr.o: resulthr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-resulthr.o -MD -MP -MF $(DEPDIR)/uniqscan-resulthr.Tpo -c -o uniqscan-resulthr.o `test -f 'resulthr.c' || echo '$(srcdir)/'`resulthr.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-resulthr.Tpo $(DEPDIR)/uniqscan-resulthr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='resulthr.c' object='uniqscan-resulthr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-resulthr.o `test -f 'resulthr.c' || echo '$(srcdir)/'`resulthr.c
+
+uniqscan-resulthr.obj: resulthr.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-resulthr.obj -MD -MP -MF $(DEPDIR)/uniqscan-resulthr.Tpo -c -o uniqscan-resulthr.obj `if test -f 'resulthr.c'; then $(CYGPATH_W) 'resulthr.c'; else $(CYGPATH_W) '$(srcdir)/resulthr.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-resulthr.Tpo $(DEPDIR)/uniqscan-resulthr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='resulthr.c' object='uniqscan-resulthr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-resulthr.obj `if test -f 'resulthr.c'; then $(CYGPATH_W) 'resulthr.c'; else $(CYGPATH_W) '$(srcdir)/resulthr.c'; fi`
+
+uniqscan-datadir.o: datadir.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-datadir.o -MD -MP -MF $(DEPDIR)/uniqscan-datadir.Tpo -c -o uniqscan-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-datadir.Tpo $(DEPDIR)/uniqscan-datadir.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='uniqscan-datadir.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-datadir.o `test -f 'datadir.c' || echo '$(srcdir)/'`datadir.c
+
+uniqscan-datadir.obj: datadir.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-datadir.obj -MD -MP -MF $(DEPDIR)/uniqscan-datadir.Tpo -c -o uniqscan-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-datadir.Tpo $(DEPDIR)/uniqscan-datadir.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='datadir.c' object='uniqscan-datadir.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-datadir.obj `if test -f 'datadir.c'; then $(CYGPATH_W) 'datadir.c'; else $(CYGPATH_W) '$(srcdir)/datadir.c'; fi`
+
+uniqscan-getopt.o: getopt.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-getopt.o -MD -MP -MF $(DEPDIR)/uniqscan-getopt.Tpo -c -o uniqscan-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-getopt.Tpo $(DEPDIR)/uniqscan-getopt.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='uniqscan-getopt.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-getopt.o `test -f 'getopt.c' || echo '$(srcdir)/'`getopt.c
+
+uniqscan-getopt.obj: getopt.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-getopt.obj -MD -MP -MF $(DEPDIR)/uniqscan-getopt.Tpo -c -o uniqscan-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-getopt.Tpo $(DEPDIR)/uniqscan-getopt.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt.c' object='uniqscan-getopt.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-getopt.obj `if test -f 'getopt.c'; then $(CYGPATH_W) 'getopt.c'; else $(CYGPATH_W) '$(srcdir)/getopt.c'; fi`
+
+uniqscan-getopt1.o: getopt1.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-getopt1.o -MD -MP -MF $(DEPDIR)/uniqscan-getopt1.Tpo -c -o uniqscan-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-getopt1.Tpo $(DEPDIR)/uniqscan-getopt1.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='uniqscan-getopt1.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-getopt1.o `test -f 'getopt1.c' || echo '$(srcdir)/'`getopt1.c
+
+uniqscan-getopt1.obj: getopt1.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-getopt1.obj -MD -MP -MF $(DEPDIR)/uniqscan-getopt1.Tpo -c -o uniqscan-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-getopt1.Tpo $(DEPDIR)/uniqscan-getopt1.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='getopt1.c' object='uniqscan-getopt1.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-getopt1.obj `if test -f 'getopt1.c'; then $(CYGPATH_W) 'getopt1.c'; else $(CYGPATH_W) '$(srcdir)/getopt1.c'; fi`
+
+uniqscan-uniqscan.o: uniqscan.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-uniqscan.o -MD -MP -MF $(DEPDIR)/uniqscan-uniqscan.Tpo -c -o uniqscan-uniqscan.o `test -f 'uniqscan.c' || echo '$(srcdir)/'`uniqscan.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-uniqscan.Tpo $(DEPDIR)/uniqscan-uniqscan.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uniqscan.c' object='uniqscan-uniqscan.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-uniqscan.o `test -f 'uniqscan.c' || echo '$(srcdir)/'`uniqscan.c
+
+uniqscan-uniqscan.obj: uniqscan.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-uniqscan.obj -MD -MP -MF $(DEPDIR)/uniqscan-uniqscan.Tpo -c -o uniqscan-uniqscan.obj `if test -f 'uniqscan.c'; then $(CYGPATH_W) 'uniqscan.c'; else $(CYGPATH_W) '$(srcdir)/uniqscan.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-uniqscan.Tpo $(DEPDIR)/uniqscan-uniqscan.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='uniqscan.c' object='uniqscan-uniqscan.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-uniqscan.obj `if test -f 'uniqscan.c'; then $(CYGPATH_W) 'uniqscan.c'; else $(CYGPATH_W) '$(srcdir)/uniqscan.c'; fi`
 
 mostlyclean-libtool:
 	-rm -f *.lo

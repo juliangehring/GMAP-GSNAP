@@ -1,3 +1,193 @@
+2012-05-25  twu
+
+    * Makefile.gsnaptoo.am: Added uniqscan program
+
+    * stage1hr.c: Decreased max_nalignments from 3 to 2
+
+    * dynprog.c: For known splicesites, adjusted low and high boundaries so
+      contlength is always between 0 and endlength-1, inclusive.
+
+    * stage3.c: Not reducing genomejump at ends anymore
+
+2012-05-23  twu
+
+    * VERSION, index.html: Updated version number
+
+    * gmap.c, stage1hr.c: Increased max_nalignments for stage 2 to 3
+
+    * stage3hr.c: Turned off check for cdna_direction != 0 and SENSE_NULL in
+      declaring a GMAP alignment as bad
+
+    * stage3.c: Changed pass 9 from queryend_indels to queryend_nogaps, to avoid
+      false positive indels at ends and to prepare for noncanonical end trimming
+
+    * splicetrie.c: Improved debugging statements
+
+    * pair.c: Added information about knowngapp and protectedp in printing pair
+      information for debugging purposes
+
+    * stage3.c: In trimming of noncanonical introns near end, making an
+      exception for known introns
+
+    * dynprog.c: Replaced noindel version of Dynprog_end_splicejunction
+      functions with version allowing indels
+
+    * stage3.c, stage3.h, stage3hr.c: In Stage3_bad_stretch_p, excluding trimmed
+      regions on ends
+
+    * uniqscan.c: Using new interfaces to setup procedures
+
+    * stage1hr.c: Added debugging statements
+
+    * genome_hr.c: Removed debugging statements
+
+    * gamma-speed-test.c: Using new interface to setup procedures
+
+    * dynprog.c, dynprog.h, stage3.c: Introduced new endalign type,
+      QUERYEND_GAP, and using it in pass 8. Restored call of Dynprog_end
+      procedures in trim ends using BEST_LOCAL, which does not try to find an
+      intron.
+
+    * stage3.c: Better handling of ends: pass 8, best_local plus known splicing;
+      pass 9, queryend_indels; pass 10, queryend_nogaps.  Medial gap not using
+      known splicing.  Simplified trim_ends procedure.  Not removing or
+      re-inserting known intron gaps.  Bayesian computation of mapping scores
+      for GMAP alignments.
+
+    * splicetrie.c: Computing separate offsets for anchor and far splicesites
+      for use in Dynprog_end_splicejunction procedures.  Not calling
+      Dynprog_add_known_splice procedures.
+
+    * pairdef.h, pairpool.c, pairpool.h: Added knowngapp field to Pair_T object
+
+    * dynprog.c, dynprog.h: Allowing compute_scores procedures to work on
+      genomicseg (for splicejunctions).  Added functions
+      Dynprog_end5_splicejunction and Dynprog_end3_splicejunction to replace
+      add_known_splice procedures. Calling traceback_local_nogaps in two parts. 
+      Dynprog_end_gap procedures returning final score even for QUERYEND_INDELS.
+       Made debugging statements work without genomicseg.
+
+2012-05-21  twu
+
+    * samprint.c: Checking if MD string output is empty and if so printing "0"
+
+2012-05-19  twu
+
+    * stage3hr.c: For paired-end reads, in cases of tie score, sorting results
+      by genomic position
+
+2012-05-18  twu
+
+    * splicetrie_build.c: For intron-level splicing information, sorting
+      individual splicesites by ascending genomic position
+
+    * splicetrie.c, splicetrie.h: Computing spliceoffset needed to construct
+      splicejunctions.  Calling Dynprog_local_nogaps procedures.  Requiring
+      dynprog score > 0 on known splicejunctions.
+
+    * dynprog.c, dynprog.h: Fixed bug in making A-G and C-T ambiguous scores for
+      all modes. Implemented traceback procedure using given sequence and no
+      gaps for handling known splicejunctions.  End dynamic programming
+      procedure now returns a final score for queryend_nogaps endalign. 
+      Implemented make_contjunction procedures to retrieve the continuous part
+      of splicejunctions.  Made make_splicejunction_3 consistent with
+      make_contjunction_3.
+
+    * stage3hr.c: Turned off check for min_splice_prob on GMAP alignments, since
+      it appears not to work for known splicesites
+
+    * pair.c: Pair_dump_list now prints line to indicate start of list
+
+2012-05-17  twu
+
+    * dynprog.c: Handling cases where length1 == 0 or length2 == 0, which
+      otherwise cause fatal errors
+
+    * stage3.c: Setting use_genomicseg_p to false in all cases
+
+    * stage2.c: Using Oligoindex_hr_tally even if user genomic segment provided
+
+    * gmap.c: Computing genomicend even if user genomic segment provided
+
+    * genome-write.c: Added extra 4 words to end of genome blocks to accommodate
+      nextlow in Oligoindex_hr procedures
+
+    * Makefile.gsnaptoo.am: Added source files for GMAP
+
+2012-05-16  twu
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst, index.html:
+      Updated version number
+
+    * stage1.c, stage1.h: Added procedure for nonstranded alignment.  Turning
+      off scan_ends algorithm and using only sampling.  Using indexdb size limit
+      for standard mode, but not for cmet-nonstranded mode.
+
+    * stage2.c: Looking up genomic nt for all alignment pairs in
+      convert_to_nucleotides
+
+    * uniqscan.c: Using new interfaces to setup routines
+
+    * gsnap.c: Using new interfaces to setup routines
+
+    * gmap.c: Using different indexdb size thresholds for standard and
+      cmet-nonstranded modes
+
+    * stage1hr.c: Using new interfaces to stage 2 procedures
+
+    * stage3.c, stage3.h: Handling AMBIGUOUS_COMP the same as MATCH_COMP and
+      DYNPROG_MATCH_COMP. Removed genomic_offset argument from Stage2_compute. 
+      Fixed intermediate alignment results for debugging by returning pairs
+      instead of path from path_compute.
+
+    * oligoindex_hr.c, oligoindex_hr.h: Fixed Cmet_reduce commands for
+      CMET_STRANDED mode
+
+    * match.c: Fixed memory leak in a debugging procedure, Match_print
+
+    * gregion.c, gregion.h: Made Gregion_filter_support function available
+      again.  Added function Gregion_genestrand.
+
+    * Makefile.dna.am, dynprog.c, dynprog.h, genome.c, genome.h, gmap.c,
+      stage2.c, stage2.h: Added code to make GMAP work on cmet-stranded and
+      cmet-nonstranded modes
+
+2012-05-14  twu
+
+    * stage3hr.c: Disallowing new Stage3pair_T object if its insertlength
+      exceeds pairmax and we expect a concordant pair
+
+    * Makefile.dna.am, block.c, block.h, boyer-moore.c, boyer-moore.h,
+      config.site.rescomp.tst, dynprog.c, dynprog.h, genome-write.c,
+      genome-write.h, genome.c, genome.h, genome_hr.c, genome_hr.h, gmap.c,
+      gsnap.c, intlist.c, intlist.h, oligoindex.c, oligoindex.h,
+      oligoindex_hr.c, oligoindex_hr.h, pair.c, pair.h, splicetrie.c, src,
+      stage1.c, stage1.h, stage1hr.c, stage2.c, stage2.h, stage3.c, stage3.h,
+      stage3hr.c, stage3hr.h, trunk, uniqscan.c, util: Merged revisions 63606 to
+      64016 from branches/2012-05-08-genomic-nts to read genomic nt rather than
+      generate genomicseg
+
+2012-05-11  twu
+
+    * archive.html, config.site.rescomp.tst, dynprog.c, index.html, src, trunk,
+      util: Merged revisions 63773 through 63823 from
+      branches/2012-05-10-better-affine-gap to make score matrix symmetric, put
+      sequence2 in outer loop, fix boundary conditions, and improve efficiency
+
+    * resulthr.c: Fixed uninitialized value for X2 on halfmapping_mult
+      alignments
+
+    * samprint.c: Fixed uninitialized value for X2 on halfmapping_uniq
+      alignments
+
+2012-05-08  twu
+
+    * gtf_genes.pl.in, gtf_introns.pl.in, gtf_splicesites.pl.in: Made -E flag
+      use exon_number field
+
+    * gtf_genes.pl.in, gtf_introns.pl.in, gtf_splicesites.pl.in: Added -E flag
+      to ignore exon_number fields in GTF file
+
 2012-05-07  twu
 
     * VERSION: Updated version

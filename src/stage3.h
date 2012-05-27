@@ -1,4 +1,4 @@
-/* $Id: stage3.h 63242 2012-05-03 22:45:27Z twu $ */
+/* $Id: stage3.h 64738 2012-05-23 02:33:01Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -234,7 +234,7 @@ extern bool
 Stage3_short_alignment_p (struct Pair_T *pairarray, int npairs, int querylength);
 
 extern bool
-Stage3_bad_stretch_p (struct Pair_T *pairarray, int npairs);
+Stage3_bad_stretch_p (struct Pair_T *pairarray, int npairs, int pos5, int pos3);
 
 extern struct Pair_T *
 Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
@@ -242,7 +242,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
-		int *ncanonical, int *nsemicanonical, int *nnoncanonical, 
+		int *ncanonical, int *nsemicanonical, int *nnoncanonical, double *min_splice_prob,
 		double *defect_rate, List_T path, int genomiclength,
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
@@ -258,7 +258,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		char *genomicseg_ptr, char *genomicuc_ptr,
 		Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
 		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
-		Genome_T genome, bool usersegment_p, bool watsonp, bool jump_late_p,
+		Genome_T genome, bool usersegment_p, bool watsonp, int genestrand, bool jump_late_p,
 		int maxpeelback, int maxpeelback_distalmedial, int nullgap,
 		int extramaterial_end, int extramaterial_paired,
 		int extraband_single, int extraband_end, int extraband_paired, int minendexon,

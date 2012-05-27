@@ -1,4 +1,4 @@
-/* $Id: genome_hr.h 55893 2012-01-13 23:06:50Z twu $ */
+/* $Id: genome_hr.h 64017 2012-05-14 22:35:15Z twu $ */
 #ifndef GENOME_HR_INCLUDED
 #define GENOME_HR_INCLUDED
 #include "types.h"
@@ -12,6 +12,11 @@ extern void
 Genome_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in,
 		 bool query_unk_mismatch_p_in, bool genome_unk_mismatch_p_in,
 		 Mode_T mode_in);
+
+extern void
+Genome_hr_user_setup (UINT4 *ref_blocks_in,
+		      bool query_unk_mismatch_p_in, bool genome_unk_mismatch_p_in,
+		      Mode_T mode_in);
 
 /* Procedures for indexdb */
 extern int

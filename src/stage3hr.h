@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 63242 2012-05-03 22:45:27Z twu $ */
+/* $Id: stage3hr.h 64017 2012-05-14 22:35:15Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -75,6 +75,8 @@ extern int
 Stage3end_score (T this);
 extern int
 Stage3end_gmap_max_match_length (T this);
+extern double
+Stage3end_gmap_min_splice_prob (T this);
 extern int
 Stage3end_best_score (List_T hits);
 extern int
@@ -243,7 +245,7 @@ extern T
 Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_length,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
-		    struct Pair_T *pairarray, int npairs,
+		    double min_splice_prob, struct Pair_T *pairarray, int npairs,
 		    int nsegments, int nintrons, int nindelbreaks,
 		    Genomicpos_T left, int genomiclength, bool plusp, int genestrand, int querylength,
 		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,

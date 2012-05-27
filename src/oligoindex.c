@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c 45340 2011-08-19 22:01:32Z twu $";
+static char rcsid[] = "$Id: oligoindex.c 64017 2012-05-14 22:35:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -70,8 +70,8 @@ static int diag_lookbacks_major[NOLIGOINDICES_MAJOR] = {120};
 static int suffnconsecutives_major[NOLIGOINDICES_MAJOR] = {20};
 
 #define NOLIGOINDICES_MINOR 3
-static int indexsizes_minor[NOLIGOINDICES_MINOR] = {8, 8, 6};
-static Shortoligomer_T masks_minor[NOLIGOINDICES_MINOR] = {STRAIGHT_MASK_8, WOBBLE_MASK_8, STRAIGHT_MASK_6};
+static int indexsizes_minor[NOLIGOINDICES_MINOR] = {8, 7, 6};
+static Shortoligomer_T masks_minor[NOLIGOINDICES_MINOR] = {STRAIGHT_MASK_8, STRAIGHT_MASK_7, STRAIGHT_MASK_6};
 static int diag_lookbacks_minor[NOLIGOINDICES_MINOR] = {120, 60, 30};
 static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {20, 15, 10};
 
@@ -84,8 +84,8 @@ static int diag_lookbacks_major[NOLIGOINDICES_MAJOR] = {120, 60, 30};
 static int suffnconsecutives_major[NOLIGOINDICES_MAJOR] = {20, 15, 10};
 
 #define NOLIGOINDICES_MINOR 3
-static int indexsizes_minor[NOLIGOINDICES_MINOR] = {8, 8, 6};
-static Shortoligomer_T masks_minor[NOLIGOINDICES_MINOR] = {STRAIGHT_MASK_8, WOBBLE_MASK_8, STRAIGHT_MASK_6};
+static int indexsizes_minor[NOLIGOINDICES_MINOR] = {8, 7, 6};
+static Shortoligomer_T masks_minor[NOLIGOINDICES_MINOR] = {STRAIGHT_MASK_8, STRAIGHT_MASK_7, STRAIGHT_MASK_6};
 static int diag_lookbacks_minor[NOLIGOINDICES_MINOR] = {120, 60, 30};
 static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {20, 15, 10};
 
@@ -122,6 +122,10 @@ static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {5};
 #define ACTIVE_BUFFER 90
 #endif
 #endif
+
+
+/* Treats 'N' as 'A', just as Oligoindex_hr_tally does */
+/* #define EXTRACT_GENOMICSEG 1 */
 
 
 #ifdef DEBUG
@@ -331,6 +335,16 @@ Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive
 }
 
 
+int *
+Oligoindex_counts_copy (T this) {
+  int *counts;
+
+  counts = (int *) CALLOC(this->oligospace,sizeof(int));
+  memcpy(counts,this->counts,this->oligospace*sizeof(int));
+  return counts;
+}
+
+
 T *
 Oligoindex_new_major (int *noligoindices) {
   T *oligoindices;
@@ -378,7 +392,6 @@ Oligoindex_new_minor (int *noligoindices) {
 /*                      87654321 */
 #define LOW_TWO_BITS  0x00000003
 
-#ifdef DEBUG9
 static char *
 shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
   char *nt;
@@ -401,7 +414,45 @@ shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
 
   return nt;
 }
+
+
+#ifndef PMAP
+void
+Oligoindex_counts_dump (T this, int *counts) {
+  int i;
+  char *nt;
+
+  for (i = 0; i < this->oligospace; i++) {
+    if (counts[i] == 0 && this->counts[i] == 0) {
+    } else {
+      nt = shortoligo_nt(i,this->indexsize);
+      printf("%s %d %d\n",nt,counts[i],this->counts[i]);
+      FREE(nt);
+    }
+  }
+  return;
+}
+
+
+bool
+Oligoindex_counts_equal (T this, int *counts) {
+  int i;
+  char *nt;
+
+  for (i = 0; i < this->oligospace; i++) {
+    if (counts[i] != this->counts[i]) {
+      nt = shortoligo_nt(i,this->indexsize);
+      fprintf(stderr,"At %s, counts = %d, this->counts = %d\n",
+	      nt,counts[i],this->counts[i]);
+      FREE(nt);
+      /* Oligoindex_counts_dump(this,counts); */
+      return false;
+    }
+  }
+  return true;
+}
 #endif
+
 
 
 #ifdef PMAP
@@ -1111,14 +1162,14 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
 #else
 		    Shortoligomer_T mask,
 #endif
-		    char *sequence, int seqlength) {
+		    char *sequence, int seqlength, int sequencepos) {
 #ifdef PMAP
   int index;
   int frame = 2;
   unsigned int aaindex0 = 0U, aaindex1 = 0U, aaindex2 = 0U;
   int in_counter_0 = 0, in_counter_1 = 0, in_counter_2 = 0;
 #endif
-  int i = 0, n, sequencepos;
+  int i = 0, n;
   int in_counter = 0;
   Shortoligomer_T oligo = 0U, masked;
   char *p;
@@ -1134,7 +1185,7 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
 #endif
 #endif
 
-  sequencepos = -indexsize;
+  sequencepos -= indexsize;
   for (i = 0, p = sequence; i < seqlength; i++, p++) {
 #ifdef PMAP
     in_counter_0++;
@@ -1145,10 +1196,12 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
 #endif
     sequencepos++;
 
-    debug(printf("At genomicpos %u, char is %c\n",sequencepos,*p));
-
     switch (*p) {
-    case 'A': oligo = (oligo << 2); break;
+    case 'A':
+#ifdef EXTRACT_GENOMICSEG
+    case 'N':
+#endif
+      oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
     case 'T': oligo = (oligo << 2) | 3; break;
@@ -1158,8 +1211,10 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
 #else
       in_counter = 0;
 #endif
-      break;
     }
+
+    debug(printf("At genomicpos %u, char is %c, oligo is %04X\n",
+		 sequencepos,*p,oligo));
 
 #ifdef PMAP
     index = get_last_codon(oligo);
@@ -1201,7 +1256,7 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
     if (in_counter == indexsize) {
 #ifndef PMAP
       masked = oligo & mask;
-      /* printf("%04X\n",masked); */
+      debug(printf("%04X\n",masked));
 #endif
       if (overabundant[masked] == true) {
 	/* Don't bother */
@@ -1318,7 +1373,7 @@ store_positions (Genomicpos_T **pointers, bool *overabundant,
 #else
 		 Shortoligomer_T mask,
 #endif
-		 char *sequence, int seqlength) {
+		 char *sequence, int seqlength, int sequencepos) {
 #ifdef PMAP
   int index;
   int frame = 2;
@@ -1326,7 +1381,7 @@ store_positions (Genomicpos_T **pointers, bool *overabundant,
   int in_counter_0 = 0, in_counter_1 = 0, in_counter_2 = 0;
 #endif
   int nstored = 0;
-  int i = 0, sequencepos;
+  int i = 0;
   int in_counter = 0;
   Shortoligomer_T oligo = 0U, masked;
   char *p;
@@ -1339,7 +1394,7 @@ store_positions (Genomicpos_T **pointers, bool *overabundant,
 #endif
 #endif
 
-  sequencepos = -indexsize;
+  sequencepos -= indexsize;
   for (i = 0, p = sequence; i < seqlength; i++, p++) {
 #ifdef PMAP
     in_counter_0++;
@@ -1353,7 +1408,11 @@ store_positions (Genomicpos_T **pointers, bool *overabundant,
     debug(printf("At genomicpos %u, char is %c\n",sequencepos,*p));
 
     switch (*p) {
-    case 'A': oligo = (oligo << 2); break;
+    case 'A':
+#ifdef EXTRACT_GENOMICSEG
+    case 'N':
+#endif
+      oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
     case 'T': oligo = (oligo << 2) | 3; break;
@@ -1363,7 +1422,6 @@ store_positions (Genomicpos_T **pointers, bool *overabundant,
 #else
       in_counter = 0;
 #endif
-      break;
     }
 
 #ifdef PMAP
@@ -1486,7 +1544,7 @@ dump_positions (Genomicpos_T **positions, int *counts, int oligospace, int index
 
 void
 Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
-		  char *queryuc_ptr, int querylength) {
+		  char *queryuc_ptr, int querylength, int sequencepos) {
   int badoligos, repoligos, trimoligos, trim_start, trim_end;
   int nallocated, nstored;
 
@@ -1517,6 +1575,7 @@ Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
   this->overabundant[POLY_T & this->mask] = true;
 #endif
 
+  debug9(printf("sequencepos is %d\n",sequencepos));
   if ((nallocated = allocate_positions(this->pointers,this->positions,this->overabundant,
 				       this->inquery,this->counts,this->relevant_counts,this->oligospace,
 #ifdef PMAP
@@ -1524,7 +1583,8 @@ Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
 #else
 				       this->indexsize,this->mask,
 #endif
-				       genomicuc_trimptr,genomicuc_trimlength)) > 0) {
+				       &(genomicuc_trimptr[sequencepos]),genomicuc_trimlength,
+				       sequencepos)) > 0) {
 
     nstored = store_positions(this->pointers,this->overabundant,this->inquery,this->oligospace,
 #ifdef PMAP
@@ -1532,7 +1592,8 @@ Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
 #else
 			      this->indexsize,this->mask,
 #endif
-			      genomicuc_trimptr,genomicuc_trimlength);
+			      &(genomicuc_trimptr[sequencepos]),genomicuc_trimlength,
+			      sequencepos);
 
 #ifdef PMAP
     debug9(dump_positions(this->positions,this->counts,this->oligospace,3*this->indexsize_aa));
@@ -1749,7 +1810,11 @@ Oligoindex_get_mappings (List_T diagonals,
     }
 #else
     switch (*p) {
-    case 'A': oligo = (oligo << 2); break;
+    case 'A':
+#ifdef EXTRACT_GENOMICSEG
+    case 'N':
+#endif
+      oligo = (oligo << 2); break;
     case 'C': oligo = (oligo << 2) | 1; break;
     case 'G': oligo = (oligo << 2) | 2; break;
     case 'T': oligo = (oligo << 2) | 3; break;

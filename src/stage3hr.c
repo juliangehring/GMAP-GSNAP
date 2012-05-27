@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 63242 2012-05-03 22:45:27Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 64819 2012-05-23 19:22:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -259,6 +259,7 @@ struct T {
   int nmatches;
   int nmatches_posttrim;
   int gmap_max_match_length;		/* Used only by GMAP */
+  double gmap_min_splice_prob;		/* Used only by GMAP */
 
   int trim_left; /* Used by Stage3end_optimal_score for comparing terminals and non-terminals */
   int trim_right;
@@ -533,6 +534,11 @@ Stage3end_score (T this) {
 int
 Stage3end_gmap_max_match_length (T this) {
   return this->gmap_max_match_length;
+}
+
+double
+Stage3end_gmap_min_splice_prob (T this) {
+  return this->gmap_min_splice_prob;
 }
 
 
@@ -870,12 +876,26 @@ Stage3end_indel_contains_known_splicesite (bool *leftp, bool *rightp, T this) {
 bool
 Stage3end_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query_compress_rev) {
   if (this->hittype == GMAP) {
+#if 0
     if (this->gmap_cdna_direction != 0 && this->sensedir == SENSE_NULL) {
+      /* Doesn't work for alignments without introns */
+      debug0(printf("Bad GMAP: cdna_direction %d and sense null\n",this->gmap_cdna_direction));
       return true;
-    } else if (this->gmap_nindelbreaks > 3) {
+    }
+#endif
+
+    if (this->gmap_nindelbreaks > 3) {
+      debug0(printf("Bad GMAP: nindel breaks %d > 3\n",this->gmap_nindelbreaks));
       return true;
+#if 0
+    } else if (this->gmap_min_splice_prob < 0.5) {
+      /* Calculation is buggy */
+      debug0(printf("Bad GMAP: min splice prob %f < 0.5\n",this->gmap_min_splice_prob));
+      return true;
+#endif
     } else {
-      return Stage3_bad_stretch_p(this->pairarray,this->npairs);
+      return Stage3_bad_stretch_p(this->pairarray,this->npairs,/*pos5*/this->trim_left,
+				  /*pos3*/this->querylength_adj - this->trim_right);
     }
   } else if (Substring_bad_stretch_p(this->substring1,query_compress_fwd,query_compress_rev) == true) {
     return true;
@@ -1323,6 +1343,7 @@ Stage3end_copy (T old) {
   new->nmatches = old->nmatches;
   new->nmatches_posttrim = old->nmatches_posttrim;
   new->gmap_max_match_length = old->gmap_max_match_length;
+  new->gmap_min_splice_prob = old->gmap_min_splice_prob;
 
   new->trim_left = old->trim_left;
   new->trim_right = old->trim_right;
@@ -2971,7 +2992,7 @@ T
 Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_length,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
-		    struct Pair_T *pairarray, int npairs,
+		    double min_splice_prob, struct Pair_T *pairarray, int npairs,
 		    int nsegments, int nintrons, int nindelbreaks,
 		    Genomicpos_T left, int genomiclength, bool plusp, int genestrand, int querylength,
 		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
@@ -3101,6 +3122,7 @@ ATAGCCCACACGTTCCCCTTAAATAAGACATCACGATGGATCACAGGTCTATCACCCTATTAACCACTCACGGGAG
   new->nmatches_posttrim -= indel_penalty_middle * nindelbreaks; /* for use in goodness_cmp procedures */
 
   new->gmap_max_match_length = max_match_length;
+  new->gmap_min_splice_prob = min_splice_prob;
 
 
   new->trim_left = Pair_querypos(&(pairarray[0])) - ambig_end_length_5;
@@ -3233,6 +3255,10 @@ Stage3pair_output_cmp (const void *a, const void *b) {
   } else if (x->score < y->score) {
     return -1;
   } else if (y->score < x->score) {
+    return +1;
+  } else if (x->low < y->low) {
+    return -1;
+  } else if (y->low < x->low) {
     return +1;
   } else {
     return 0;
@@ -7438,6 +7464,17 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
       return (Stage3pair_T) NULL;
     }
 
+  } else if (new->insertlength > pairmax && expect_concordant_p == true) {
+    debug5(printf("  Returning NULL\n"));
+    if (private5p == true) {
+      Stage3end_free(&hit5);
+    }
+    if (private3p == true) {
+      Stage3end_free(&hit3);
+    }
+    FREE_OUT(new);
+    return (Stage3pair_T) NULL;
+
   } else {
     if (new->insertlength < expected_pairlength) {
       new->absdifflength = expected_pairlength - new->insertlength;
@@ -7498,7 +7535,7 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
   new->nchimera_novel = hit5->nchimera_novel + hit3->nchimera_novel;
 
   debug0(printf("Created new pair from %p and %p with private %d, %d\n",hit5,hit3,private5p,private3p));
-  debug0(printf("  hittypes %d and %d\n",hit5->hittype,hit3->hittype));
+  debug0(printf("  hittypes %s and %s\n",hittype_string(hit5->hittype),hittype_string(hit3->hittype)));
   debug0(printf("  sensedirs %d and %d\n",hit5->sensedir,hit3->sensedir));
 
   return new;

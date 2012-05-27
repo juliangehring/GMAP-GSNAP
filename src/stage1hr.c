@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 63447 2012-05-07 18:46:55Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 65027 2012-05-25 02:12:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -47,13 +47,20 @@ static char rcsid[] = "$Id: stage1hr.c 63447 2012-05-07 18:46:55Z twu $";
 #endif
 
 
+/* #define EXTRACT_GENOMICSEG 1 */
+#ifdef EXTRACT_GENOMICSEG
+#define MAX_INDEXSIZE 8
+#endif
+
 /* Note: MAX_READLENGTH is defined externally by configure */
 #ifndef MAX_READLENGTH
 #error A default value for MAX_READLENGTH was not provided to configure
 #endif
 
 
-#define MAX_NALIGNMENTS 1
+/* MAX_NALIGNMENTS of 2 vs 1 gets 1600 improvements in 275,000 reads */
+/* MAX_NALIGNMENTS of 3 vs 2 gets 96 improvements in 275,000 reads */
+#define MAX_NALIGNMENTS 2
 
 /* Mode */
 static Mode_T mode;
@@ -1030,6 +1037,7 @@ omit_oligos (bool *all_omitted_p, bool *any_omitted_p, T this, int query_lastpos
 	     int indexdb_size_threshold, bool frequentp, bool repetitivep) {
   int querypos;
   bool still_repetitive_p;
+  int nconsecutive;
 
   *any_omitted_p = false;
 
@@ -1058,6 +1066,7 @@ omit_oligos (bool *all_omitted_p, bool *any_omitted_p, T this, int query_lastpos
     }
 
 #if 0
+    /* This avoids too many consecutive omitted, but slows down finding double splicing significantly */
     if (*any_omitted_p == true) {
       nconsecutive = 0;
       for (querypos = index1interval; querypos <= query_lastpos-index1interval; querypos += index1interval) {
@@ -10973,12 +10982,15 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
   List_T hits = NULL;
   struct Pair_T *pairarray;
   int npairs, nsegments, nmismatches_whole, nindels, nintrons, nindelbreaks;
+  double min_splice_prob;
   Genomicpos_T start, end;
   int cdna_direction;
   int sensedir;
 
   List_T all_paths, pairs, path, p;
-  char *genomicseg;
+#ifdef EXTRACT_GENOMICSEG
+  char *genomicseg, *genomicseg_alloc;
+#endif
   int genomiclength;
   int stage2_source, stage2_indexsize;
   Genomicpos_T genomicstart, genomicend, mappingstart, mappingend,
@@ -11086,8 +11098,12 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
     genomiclength = genomicend - genomicstart;
     favor_right_p = false;
 
-    genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-    Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+    printf("Allocating %u bytes\n",genomiclength);
+    genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+    genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+    Genome_fill_buffer_blocks(genomicstart-MAX_INDEXSIZE,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+#endif
 
   } else {
     
@@ -11170,9 +11186,13 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
     genomiclength = genomicend - genomicstart;
     favor_right_p = true;
 
-    genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-    Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
-    make_complement_inplace(genomicseg,genomiclength);
+#ifdef EXTRACT_GENOMICSEG
+    printf("Allocating %u bytes\n",genomiclength);
+    genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+    genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+    Genome_fill_buffer_blocks(genomicstart,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+    make_complement_inplace(genomicseg_alloc,genomiclength+MAX_INDEXSIZE);
+#endif
   }
 
   debug13(printf("Running GMAP at %u (%u) + %d, watsonp %d, sense_try 0, querylength %d, limits %u..%u\n",
@@ -11186,10 +11206,14 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
   all_paths = Stage2_compute(&stage2_source,&stage2_indexsize,
 			     /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*query_offset*/0,
 
+#ifdef EXTRACT_GENOMICSEG
 			     /*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+#else
+			     /*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+#endif
 			     genomicstart,genomicend,mappingstart,mappingend,
-			     /*plusp*/watsonp,genomiclength,/*genomic_offset*/0,
-			     
+			     /*plusp*/watsonp,genestrand,genomiclength,
+
 			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			     pairpool,diagpool,sufflookback,nsufflookback,
 			     /*maxintronlen_bound*/shortsplicedist,/*localp*/true,
@@ -11206,17 +11230,21 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
 				    &ambig_end_length_5,&ambig_end_length_3,
 				    &ambig_splicetype_5,&ambig_splicetype_3,
 				    &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
-				    &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
-				    path,genomiclength,
+				    &ncanonical,&nsemicanonical,&nnoncanonical,&min_splice_prob,
+				    &defect_rate,path,genomiclength,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 				    cutoff_level,/*queryptr*/watsonp ? queryuc_ptr : queryrc,
 				    watsonp ? query_compress_fwd : query_compress_rev,
 #endif
 				    /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*skiplength*/0,
+#ifdef EXTRACT_GENOMICSEG
 				    /*query_subseq_offset*/0,/*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+#else
+				    /*query_subseq_offset*/0,/*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+#endif
 				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
 				    knownsplice_limit_low,knownsplice_limit_high,
-				    /*genome*/NULL,/*usersegment_p*/false,watsonp,
+				    /*genome*/NULL,/*usersegment_p*/false,watsonp,genestrand,
 				    /*jump_late_p*/watsonp ? false : true,
 				    maxpeelback,maxpeelback_distalmedial,nullgap,
 				    extramaterial_end,extramaterial_paired,
@@ -11228,6 +11256,8 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
 				    sufflookback,nsufflookback,/*maxintronlen_bound*/shortsplicedist,
 				    /*close_indels_mode*/+1,/*paired_favor_mode*/0,
 				    /*zero_offset*/0)) != NULL) {
+
+      debug13(Pair_dump_array(pairarray,npairs,true));
 
       if (Stage3_short_alignment_p(pairarray,npairs,querylength) == true) {
 	/* Very bad alignment */
@@ -11247,7 +11277,7 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
 	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) + (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
-					ambig_splicetype_5,ambig_splicetype_3,
+					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/start,/*genomiclength*/end - start + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,
@@ -11261,7 +11291,7 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
 	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) - (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
-					ambig_splicetype_5,ambig_splicetype_3,
+					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/end,/*genomiclength*/start - end + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,
@@ -11277,7 +11307,9 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
   }
 
   List_free(&all_paths);
-  FREE(genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+  FREE(genomicseg_alloc);
+#endif
 
   return hits;
 }
@@ -11309,7 +11341,9 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
   int sensedir;
 
   List_T all_paths, pairs, path, p;
-  char *genomicseg;
+#ifdef EXTRACT_GENOMICSEG
+  char *genomicseg, *genomicseg_alloc;
+#endif
   int genomiclength;
   int stage2_source, stage2_indexsize;
   Genomicpos_T genomicstart, genomicend, mappingstart, mappingend,
@@ -11431,8 +11465,12 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
     genomiclength = genomicend - genomicstart;
     favor_right_p = false;
 
-    genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-    Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+    printf("Allocating %u bytes\n",genomiclength);
+    genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+    genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+    Genome_fill_buffer_blocks(genomicstart-MAX_INDEXSIZE,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+#endif
 
   } else {
     
@@ -11532,9 +11570,13 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
     genomiclength = genomicend - genomicstart;
     favor_right_p = true;
 
-    genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-    Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
-    make_complement_inplace(genomicseg,genomiclength);
+#ifdef EXTRACT_GENOMICSEG
+    printf("Allocating %u bytes\n",genomiclength);
+    genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+    genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+    Genome_fill_buffer_blocks(genomicstart,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+    make_complement_inplace(genomicseg_alloc,genomiclength+MAX_INDEXSIZE);
+#endif
   }
 
 
@@ -11549,9 +11591,13 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
   all_paths = Stage2_compute(&stage2_source,&stage2_indexsize,
 			     /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*query_offset*/0,
 
+#ifdef EXTRACT_GENOMICSEG
 			     /*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+#else
+			     /*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+#endif
 			     genomicstart,genomicend,mappingstart,mappingend,
-			     /*plusp*/watsonp,genomiclength,/*genomic_offset*/0,
+			     /*plusp*/watsonp,genestrand,genomiclength,
 			     
 			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			     pairpool,diagpool,sufflookback,nsufflookback,
@@ -11569,17 +11615,21 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
 				    &ambig_end_length_5,&ambig_end_length_3,
 				    &ambig_splicetype_5,&ambig_splicetype_3,
 				    &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
-				    &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
-				    path,genomiclength,
+				    &ncanonical,&nsemicanonical,&nnoncanonical,&min_splice_prob,
+				    &defect_rate,path,genomiclength,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 				    cutoff_level,/*queryptr*/watsonp ? queryuc_ptr : queryrc,
 				    watsonp ? query_compress_fwd : query_compress_rev,
 #endif
 				    /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*skiplength*/0,
+#ifdef EXTRACT_GENOMICSEG
 				    /*query_subseq_offset*/0,/*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+#else
+				    /*query_subseq_offset*/0,/*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+#endif
 				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
 				    knownsplice_limit_low,knownsplice_limit_high,
-				    /*genome*/NULL,/*usersegment_p*/false,watsonp,
+				    /*genome*/NULL,/*usersegment_p*/false,watsonp,genestrand,
 				    /*jump_late_p*/watsonp ? false : true,
 				    maxpeelback,maxpeelback_distalmedial,nullgap,
 				    extramaterial_end,extramaterial_paired,
@@ -11591,6 +11641,8 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
 				    sufflookback,nsufflookback,/*maxintronlen_bound*/shortsplicedist,
 				    /*close_indels_mode*/+1,/*paired_favor_mode*/0,
 				    /*zero_offset*/0)) != NULL) {
+
+      debug13(Pair_dump_array(pairarray,npairs,true));
 
       if (Stage3_short_alignment_p(pairarray,npairs,querylength) == true) {
 	/* Very bad alignment */
@@ -11610,7 +11662,7 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
 	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) + (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
-					ambig_splicetype_5,ambig_splicetype_3,
+					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/start,/*genomiclength*/end - start + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,
@@ -11624,7 +11676,7 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
 	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) - (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
-					ambig_splicetype_5,ambig_splicetype_3,
+					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/end,/*genomiclength*/start - end + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,
@@ -11640,7 +11692,9 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
   }
 
   List_free(&all_paths);
-  FREE(genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+  FREE(genomicseg_alloc);
+#endif
 
   return hits;
 }
@@ -12704,13 +12758,16 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
   Stage3end_T hit;
   struct Pair_T *pairarray;
   int npairs, nsegments, nmismatches_whole, nindels, nintrons, nindelbreaks;
+  double min_splice_prob;
   Genomicpos_T start, end;
   int cdna_direction;
   int sensedir, sense_try;
   int overlap;
 
   List_T all_paths, pairs, path, p;
-  char *genomicseg;
+#ifdef EXTRACT_GENOMICSEG
+  char *genomicseg, *genomicseg_alloc;
+#endif
   int genomiclength;
   int zero_offset = 0;
   int stage2_source, stage2_indexsize;
@@ -12834,8 +12891,12 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
       genomiclength = genomicend - genomicstart;
       favor_right_p = false;
 
-      genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-      Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+      printf("Allocating %u bytes\n",genomiclength);
+      genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+      genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+      Genome_fill_buffer_blocks(genomicstart-MAX_INDEXSIZE,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+#endif
 
     } else {
       chroffset = Stage3end_chroffset(hit5);
@@ -12940,9 +13001,13 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
       genomiclength = genomicend - genomicstart;
       favor_right_p = false;
 
-      genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-      Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
-      make_complement_inplace(genomicseg,genomiclength);
+#ifdef EXTRACT_GENOMICSEG
+      printf("Allocating %u bytes\n",genomiclength);
+      genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+      genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+      Genome_fill_buffer_blocks(genomicstart,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+      make_complement_inplace(genomicseg_alloc,genomiclength+MAX_INDEXSIZE);
+#endif
     }
 
     if ((sensedir = Stage3end_sensedir_nonamb(hit5)) == SENSE_NULL) {
@@ -13062,8 +13127,12 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
       genomiclength = genomicend - genomicstart;
       favor_right_p = true;
 
-      genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-      Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+      printf("Allocating %u bytes\n",genomiclength);
+      genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+      genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+      Genome_fill_buffer_blocks(genomicstart-MAX_INDEXSIZE,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+#endif
 
     } else {
       chroffset = Stage3end_chroffset(hit3);
@@ -13166,9 +13235,13 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
       genomiclength = genomicend - genomicstart;
       favor_right_p = true;
 
-      genomicseg = (char *) CALLOC(genomiclength+1,sizeof(char));
-      Genome_fill_buffer_blocks(genomicstart,genomiclength,genomicseg);
-      make_complement_inplace(genomicseg,genomiclength);
+#ifdef EXTRACT_GENOMICSEG
+      printf("Allocating %u bytes\n",genomiclength);
+      genomicseg_alloc = (char *) CALLOC(genomiclength+MAX_INDEXSIZE+1,sizeof(char));
+      genomicseg = &(genomicseg_alloc[MAX_INDEXSIZE]);
+      Genome_fill_buffer_blocks(genomicstart,genomiclength+MAX_INDEXSIZE,genomicseg_alloc);
+      make_complement_inplace(genomicseg_alloc,genomiclength+MAX_INDEXSIZE);
+#endif
     }
 
     if ((sensedir = Stage3end_sensedir_nonamb(hit3)) == SENSE_NULL) {
@@ -13201,9 +13274,13 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
   all_paths = Stage2_compute(&stage2_source,&stage2_indexsize,
 			     /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*query_offset*/0,
 
+#ifdef EXTRACT_GENOMICSEG
 			     /*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+#else
+			     /*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+#endif
 			     genomicstart,genomicend,mappingstart,mappingend,
-			     /*plusp*/watsonp,genomiclength,/*genomic_offset*/0,
+			     /*plusp*/watsonp,genestrand,genomiclength,
 			     
 			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			     pairpool,diagpool,sufflookback,nsufflookback,
@@ -13222,17 +13299,21 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
 				    &ambig_end_length_5,&ambig_end_length_3,
 				    &ambig_splicetype_5,&ambig_splicetype_3,
 				    &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
-				    &ncanonical,&nsemicanonical,&nnoncanonical,&defect_rate,
-				    path,genomiclength,
+				    &ncanonical,&nsemicanonical,&nnoncanonical,&min_splice_prob,
+				    &defect_rate,path,genomiclength,
 #ifdef END_KNOWNSPLICING_SHORTCUT
 				    cutoff_level,/*queryptr*/watsonp ? queryuc_ptr : queryrc,
 				    watsonp ? query_compress_fwd : query_compress_rev,
 #endif
 				    /*queryseq_ptr*/queryuc_ptr,queryuc_ptr,querylength,/*skiplength*/0,
+#ifdef EXTRACT_GENOMICSEG
 				    /*query_subseq_offset*/0,/*genomicseg_ptr*/genomicseg,/*genomicuc_ptr*/genomicseg,
+#else
+				    /*query_subseq_offset*/0,/*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
+#endif
 				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
 				    knownsplice_limit_low,knownsplice_limit_high,
-				    /*genome*/NULL,/*usersegment_p*/false,watsonp,
+				    /*genome*/NULL,/*usersegment_p*/false,watsonp,genestrand,
 				    /*jump_late_p*/watsonp ? false : true,
 				    maxpeelback,maxpeelback_distalmedial,nullgap,
 				    extramaterial_end,extramaterial_paired,
@@ -13247,6 +13328,8 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
       debug13(printf("stage3 is NULL\n"));
     } else {
       debug13(printf("stage3 is not NULL\n"));
+
+      debug13(Pair_dump_array(pairarray,npairs,true));
 
       if (Stage3_short_alignment_p(pairarray,npairs,querylength) == true) {
 	/* Very bad alignment */
@@ -13266,7 +13349,7 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
 	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) + (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
-					ambig_splicetype_5,ambig_splicetype_3,
+					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/start,/*genomiclength*/end - start + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,
@@ -13281,7 +13364,7 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
 	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) - (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
-					ambig_splicetype_5,ambig_splicetype_3,
+					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/end,/*genomiclength*/start - end + 1,
 					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,
@@ -13298,7 +13381,9 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
   }
 
   List_free(&all_paths);
-  FREE(genomicseg);
+#ifdef EXTRACT_GENOMICSEG
+  FREE(genomicseg_alloc);
+#endif
 
   return hits;
 }

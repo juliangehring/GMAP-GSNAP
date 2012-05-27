@@ -1,10 +1,11 @@
-/* $Id: dynprog.h 62120 2012-04-19 19:25:48Z twu $ */
+/* $Id: dynprog.h 64733 2012-05-23 02:19:21Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
 /* BEST_LOCAL is a local alignment, whereas QUERYEND_INDELS and
-   QUERYEND_NOGAPS are global */
-typedef enum {BEST_LOCAL, QUERYEND_INDELS, QUERYEND_NOGAPS} Endalign_T;
+   QUERYEND_NOGAPS are global.  QUERYEND_GAP allows an intron at the
+   end */
+typedef enum {QUERYEND_GAP, QUERYEND_INDELS, QUERYEND_NOGAPS, BEST_LOCAL} Endalign_T;
 typedef struct Dynprog_T *Dynprog_T;
 
 #include "bool.h"
@@ -13,6 +14,8 @@ typedef struct Dynprog_T *Dynprog_T;
 #include "chrnum.h"
 #include "iit-read.h"
 #include "splicetrie_build.h"	/* For splicetype */
+#include "genome.h"
+#include "mode.h"
 
 #ifdef GSNAP
 #include "compress.h"
@@ -38,7 +41,8 @@ Dynprog_setup (bool novelsplicingp_in,
 	       Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
 	       Genomicpos_T *splicedists_in, int nsplicesites_in,
 	       unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
-	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in);
+	       unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
+	       Genome_T genome_in);
 
 extern int
 Dynprog_score (int matches, int mismatches, int qopens, int qindels, int topens, int tindels,
@@ -62,17 +66,18 @@ extern void
 Dynprog_term (void);
 extern void
 Dynprog_init (int maxlookback, int extraquerygap, int maxpeelback,
-	      int extramaterial_end, int extramaterial_paired);
+	      int extramaterial_end, int extramaterial_paired, Mode_T mode);
 
 extern List_T
 Dynprog_single_gap (int *dynprogindex, int *finalscore,
 		    int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    T dynprog, char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2,
+		    Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
-		    int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
+		    int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		    int extraband_single, double defect_rate, int close_indels_mode, bool widebandp);
 
 extern List_T
@@ -82,10 +87,11 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 		  char *sequence2, char *sequenceuc2,
 		  int length1L, int length1R, int length2,
 		  int offset1L, int revoffset1R, int offset2,
+		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
+		  int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		  int extraband_paired, double defect_rate);
 
 extern List_T
@@ -113,11 +119,26 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *revsequence1, char *revsequenceuc1,
 		  char *revsequence2, char *revsequenceuc2,
 		  int length1, int length2, int revoffset1, int revoffset2, 
+		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
-		  int extraband_end, double defect_rate, Endalign_T endalign);
+		  int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+		  int extraband_end, double defect_rate, Endalign_T endalign,
+		  bool use_genomicseg_p);
+
+extern List_T
+Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches, 
+			     int *nopens, int *nindels, T dynprog, 
+			     char *revsequence1, char *revsequenceuc1,
+			     char *revsequence2, char *revsequenceuc2,
+			     int length1, int length2, int revoffset1, int revoffset2_anchor, int revoffset2_far,
+			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+#ifdef PMAP
+			     char *queryaaseq,
+#endif
+			     int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+			     int extraband_end, double defect_rate, int contlength);
 
 extern List_T
 Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
@@ -125,15 +146,30 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *sequence1, char *sequenceuc1,
 		  char *sequence2, char *sequenceuc2,
 		  int length1, int length2, int offset1, int offset2, 
+		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
-		  int cdna_direction, bool jump_late_p, Pairpool_T pairpool,
-		  int extraband_end, double defect_rate, Endalign_T endalign);
+		  int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+		  int extraband_end, double defect_rate, Endalign_T endalign,
+		  bool use_genomicseg_p);
+
+extern List_T
+Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
+			     int *nopens, int *nindels, T dynprog,
+			     char *sequence1, char *sequenceuc1,
+			     char *sequence2, char *sequenceuc2,
+			     int length1, int length2, int offset1, int offset2_anchor, int offset2_far,
+			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+#ifdef PMAP
+			     char *queryaaseq,
+#endif
+			     int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+			     int extraband_end, double defect_rate, int contlength);
 
 extern void
 Dynprog_make_splicejunction_5 (char *splicejunction, Genomicpos_T splicecoord,
-			       int splicelength, Splicetype_T far_splicetype,
+			       int splicelength, int contlength, Splicetype_T far_splicetype,
 			       bool watsonp);
 
 extern void
@@ -170,7 +206,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 #endif
 #endif
 		    int cdna_direction, bool watsonp, bool jump_late_p,
-		    Pairpool_T pairpool, int extraband_end, double defect_rate, Endalign_T endalign);
+		    Pairpool_T pairpool, int extraband_end, double defect_rate);
 
 extern List_T
 Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
@@ -190,7 +226,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 #endif
 #endif
 		    int cdna_direction, bool watsonp, bool jump_late_p,
-		    Pairpool_T pairpool, int extraband_end, double defect_rate, Endalign_T endalign);
+		    Pairpool_T pairpool, int extraband_end, double defect_rate);
 
 
 #if 0

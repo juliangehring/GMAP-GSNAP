@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 63437 2012-05-07 18:02:11Z twu $";
+static char rcsid[] = "$Id: gsnap.c 64291 2012-05-16 23:10:59Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -252,7 +252,7 @@ static unsigned int *trieoffsets_max = NULL;
 static unsigned int *triecontents_max = NULL;
 
 
-/* Dibase and CMET */
+/* Cmet and AtoI */
 static bool dibasep = false;
 static char *user_cmetdir = NULL;
 static char *user_atoidir = NULL;
@@ -2079,7 +2079,7 @@ main (int argc, char *argv[]) {
     exit(9);
   }
 
-  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,mode);
   Compoundpos_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   Spanningelt_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   Stage1_init_positions_free(Indexdb_positions_fileio_p(indexdb));
@@ -2331,7 +2331,7 @@ main (int argc, char *argv[]) {
   FREE(dbroot);
 
 
-  Genome_setup(genome);
+  Genome_setup(genome,mode);
   Genome_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL,
 		  query_unk_mismatch_p,genome_unk_mismatch_p,mode);
   Maxent_hr_setup(Genome_blocks(genome));
@@ -2359,10 +2359,11 @@ main (int argc, char *argv[]) {
   Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
-  Oligoindex_hr_setup(Genome_blocks(genome));
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+		genome);
+  Oligoindex_hr_setup(Genome_blocks(genome),mode);
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
-	       suboptimal_score_start,suboptimal_score_end);
+	       suboptimal_score_start,suboptimal_score_end,mode);
   Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
@@ -2740,9 +2741,9 @@ is still designed to be fast.\n\
                                    location of genome index files specified using -D and -d)\n \
   -v, --use-snps=STRING          Use database containing known SNPs (in <STRING>.iit, built\n\
                                    previously using snpindex) for tolerance to SNPs\n\
-  -cmetdir=STRING                Directory for methylcytosine index files (created using cmetindex)\n\
+  --cmetdir=STRING               Directory for methylcytosine index files (created using cmetindex)\n\
                                    (default is location of genome index files specified using -D, -V, and -d)\n\
-  -atoidir=STRING                Directory for A-to-I RNA editing index files (created using atoiindex)\n\
+  --atoidir=STRING               Directory for A-to-I RNA editing index files (created using atoiindex)\n\
                                    (default is location of genome index files specified using -D, -V, and -d)\n\
   --mode=STRING                  Alignment mode: standard (default), cmet-stranded, cmet-nonstranded,\n\
                                     atoi-stranded, or atoi-nonstranded.  Non-standard modes requires you\n\

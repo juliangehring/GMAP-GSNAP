@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 63242 2012-05-03 22:45:27Z twu $";
+static char rcsid[] = "$Id: pair.c 64816 2012-05-23 19:18:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1151,6 +1151,10 @@ Pair_dump_one (T this, bool zerobasedp) {
     default: printf("? unknown"); break;
     }
 
+    if (this->knowngapp == true) {
+      printf(" known");
+    }
+
     printf(" donor:%f acceptor:%f",this->donor_prob,this->acceptor_prob);
     printf(" ***");
 
@@ -1167,6 +1171,10 @@ Pair_dump_one (T this, bool zerobasedp) {
       putchar(this->comp);
     }
     printf(" %c",this->genome);
+  }
+
+  if (this->protectedp == true) {
+    printf(" protected");
   }
 
   if (this->disallowedp == true) {
@@ -1191,6 +1199,7 @@ Pair_dump_list (List_T pairs, bool zerobasedp) {
   T this;
   List_T p;
 
+  printf("***Start of list***\n");
   for (p = pairs; p != NULL; p = List_next(p)) {
     this = List_head(p);
     Pair_dump_one(this,zerobasedp);
@@ -5415,17 +5424,24 @@ Pair_fracidentity_simple (int *matches, int *unknowns, int *mismatches, List_T p
 void
 Pair_fracidentity (int *matches, int *unknowns, int *mismatches, int *qopens, int *qindels, 
 		   int *topens, int *tindels, int *ncanonical, int *nsemicanonical, int *nnoncanonical,
-		   List_T pairs, int cdna_direction) {
+		   double *min_splice_prob, List_T pairs, int cdna_direction) {
   bool in_intron = false;
   List_T p;
   T this, prev = NULL;
 
   *matches = *unknowns = *mismatches = *qopens = *qindels = *topens = *tindels = 
     *ncanonical = *nsemicanonical = *nnoncanonical = 0;
+  *min_splice_prob = 1.0;
 
   for (p = pairs; p != NULL; p = p->rest) {
     this = p->first;
     if (this->gapp) {
+      if (this->donor_prob < *min_splice_prob) {
+	*min_splice_prob = this->donor_prob;
+      }
+      if (this->acceptor_prob < *min_splice_prob) {
+	*min_splice_prob = this->acceptor_prob;
+      }
       if (!in_intron) {
 	if (cdna_direction > 0) {
 	  if (this->comp == FWD_CANONICAL_INTRON_COMP) {
@@ -5644,10 +5660,11 @@ Pair_frac_error (List_T pairs, int cdna_direction) {
   int matches, unknowns, mismatches, qopens, qindels,
     topens, tindels, ncanonical, nsemicanonical, nnoncanonical;
   int den;
+  double min_splice_prob;
 
   Pair_fracidentity(&matches,&unknowns,&mismatches,&qopens,&qindels, 
 		    &topens,&tindels,&ncanonical,&nsemicanonical,&nnoncanonical,
-		    pairs,cdna_direction);
+		    &min_splice_prob,pairs,cdna_direction);
 
   if ((den = matches + mismatches + qindels + tindels) == 0) {
     return 1.0;

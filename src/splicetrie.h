@@ -36,7 +36,7 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
 		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength,
+		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
 		       Splicetype_T far_splicetype,
 		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
 		       int *dynprogindex, Dynprog_T dynprog, 

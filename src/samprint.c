@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 63195 2012-05-03 17:39:12Z twu $";
+static char rcsid[] = "$Id: samprint.c 64551 2012-05-21 14:10:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -527,7 +527,7 @@ print_cigar (FILE *fp, char type, int stringlength, int querypos, int querylengt
 
 
 static int
-print_md_string (int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, int stringlength,
+print_md_string (bool *printp, int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, int stringlength,
 		 int querypos, int querylength, int hardclip_low, int hardclip_high,
 		 bool plusp, bool lastp) {
   int starti, endi, i;
@@ -573,9 +573,11 @@ print_md_string (int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, 
 	} else {
 	  if (matchlength > 0 || hardclip_end_p == true) {
 	    fprintf(fp,"%d",matchlength);
+	    *printp = true;
 	    hardclip_end_p = false;
 	  }
 	  fprintf(fp,"%c",toupper(genomicfwd[i]));
+	  *printp = true;
 	  (*nmismatches) += 1;
 	  matchlength = 0;
 	}
@@ -625,9 +627,11 @@ print_md_string (int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, 
 	} else {
 	  if (matchlength > 0 || hardclip_end_p == true) {
 	    fprintf(fp,"%d",matchlength);
+	    *printp = true;
 	    hardclip_end_p = false;
 	  }
 	  fprintf(fp,"%c",toupper(genomicfwd[i]));
+	  *printp = true;
 	  (*nmismatches) += 1;
 	  matchlength = 0;
 	}
@@ -641,6 +645,7 @@ print_md_string (int *nmismatches, FILE *fp, int matchlength, char *genomicfwd, 
     return matchlength;
   } else if (matchlength > 0) {
     fprintf(fp,"%d",matchlength);
+    *printp = true;
     return 0;
   } else {
     return 0;
@@ -661,7 +666,7 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
   int nmismatches = 0, querylength, substring_start, substring_length;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
   char *genomicfwd, *genomicdir;
-  bool plusp;
+  bool plusp, printp;
 
 
   querylength = Shortread_fulllength(queryseq);
@@ -788,35 +793,41 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
 
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
+  fprintf(fp,"MD:Z:");  
+  printp = false;
+
   substring_start = Substring_querystart(substring);
   substring_length = Substring_match_length(substring);
 
-  fprintf(fp,"MD:Z:");  
   if ((genomicdir = Substring_genomic_refdiff(substring)) == NULL) {
     if (plusp == true) {
-      print_md_string(&nmismatches,fp,/*matchlength*/0,/*genomicfwd*/NULL,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,/*genomicfwd*/NULL,substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
-      print_md_string(&nmismatches,fp,/*matchlength*/0,/*genomicfwd*/NULL,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,/*genomicfwd*/NULL,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     }
 
   } else if (plusp == true) {
-    print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
+    print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
 		    /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		    /*plusp*/true,/*lastp*/true);
 
   } else {
     genomicfwd = (char *) CALLOC(querylength+1,sizeof(char));
     make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-    print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+    print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		    /*querypos*/substring_start,querylength,
 		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
   
+
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
   fprintf(fp,"NH:i:%d",npaths);
@@ -860,7 +871,7 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
   char *genomicfwd, *genomicdir;
   int substring1_start, substring2_start, substring1_length, substring2_length, matchlength, nindels;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
-  bool plusp;
+  bool plusp, printp;
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Stage3end_plusp(this);
@@ -1000,6 +1011,7 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
+  printp = false;
 
   substring1_start = Substring_querystart(substring1);
   substring1_length = Substring_match_length(substring1);
@@ -1008,7 +1020,7 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
   if (plusp == true) {
     genomicfwd = Substring_genomic_refdiff(substring1);
-    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+    matchlength = print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
 				  /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
 				  /*plusp*/true,/*lastp*/false);
 
@@ -1018,14 +1030,14 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 #endif
 
     genomicfwd = Substring_genomic_refdiff(substring2);
-    print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
+    print_md_string(&printp,&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
 		    /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
 		    /*plusp*/true,/*lastp*/true);
   } else {
     genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring2);
     make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring2_length,
+    matchlength = print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring2_length,
 				  /*querypos*/substring2_start,querylength,
 				  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     FREE(genomicfwd);
@@ -1038,11 +1050,15 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
     genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring1);
     make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-    print_md_string(&nmismatches,fp,matchlength,genomicfwd,substring1_length,
+    print_md_string(&printp,&nmismatches,fp,matchlength,genomicfwd,substring1_length,
 		    /*querypos*/substring1_start,querylength,
 		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
+
 
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
@@ -1088,7 +1104,7 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
   char *genomicfwd, *genomicdir;
   int substring1_start, substring2_start, substring1_length, substring2_length, nindels;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
-  bool plusp;
+  bool plusp, printp;
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Stage3end_plusp(this);
@@ -1229,6 +1245,7 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
+  printp = false;
 
   substring1_start = Substring_querystart(substring1);
   substring1_length = Substring_match_length(substring1);
@@ -1237,7 +1254,7 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
 
   if (plusp == true) {
     genomicfwd = Substring_genomic_refdiff(substring1);
-    print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+    print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
 		    /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
 		    /*plusp*/true,/*lastp*/true);
 
@@ -1247,14 +1264,14 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
     }
 
     genomicfwd = Substring_genomic_refdiff(substring2);
-    print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring2_start]),substring2_length,
+    print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring2_start]),substring2_length,
 		    /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
 		    /*plusp*/true,/*lastp*/true);
   } else {
     genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring2);
     make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-    print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring2_length,
+    print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring2_length,
 		    /*querypos*/substring2_start,querylength,
 		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
@@ -1270,11 +1287,15 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
     genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring1);
     make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-    print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
+    print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
 		    /*querypos*/substring1_start,querylength,
 		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
+
 
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
@@ -1372,7 +1393,7 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
   int substring_start, substring_length;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
   int transloc_hardclip_low, transloc_hardclip_high;
-  bool plusp;
+  bool plusp, printp;
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Substring_plusp(donor);
@@ -1564,6 +1585,7 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
+  printp = false;
 
   substring_start = Substring_querystart(donor);
   substring_length = Substring_match_length(donor);
@@ -1571,13 +1593,13 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
   if (use_hardclip_p == false) {
     genomicdir = Substring_genomic_refdiff(donor);
     if (plusp == true) {
-      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(querylength+1,sizeof(char));
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
@@ -1586,14 +1608,14 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
   } else if (sensep == true) {
     if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(donor);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(donor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
@@ -1602,19 +1624,23 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
   } else {			/* sensep == false */
     if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(donor);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(donor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
+
 
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
@@ -1676,7 +1702,7 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
   int substring_start, substring_length;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
   int transloc_hardclip_low, transloc_hardclip_high;
-  bool plusp;
+  bool plusp, printp;
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Substring_plusp(acceptor);
@@ -1868,6 +1894,7 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
+  printp = false;
 
   substring_start = Substring_querystart(acceptor);
   substring_length = Substring_match_length(acceptor);
@@ -1875,13 +1902,13 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
   if (use_hardclip_p == false) {
     genomicdir = Substring_genomic_refdiff(acceptor);
     if (plusp == true) {
-      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicdir[substring_start]),substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(querylength+1,sizeof(char));
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
@@ -1890,14 +1917,14 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
   } else if (sensep == false) {
     if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(acceptor);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(acceptor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
@@ -1906,19 +1933,23 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
   } else {			/* sensep true */
     if (plusp == true) {
       genomicfwd = Substring_genomic_refdiff(acceptor);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring_start]),substring_length,
 		      /*querypos*/substring_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(acceptor);
       make_complement_buffered(genomicfwd,&(genomicdir[substring_start]),substring_length);
-      print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
+      print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring_length,
 		      /*querypos*/substring_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
+
 
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
@@ -1979,7 +2010,7 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
   char *genomicfwd, *genomicdir;
   int substring1_start, substring2_start, substring1_length, substring2_length, matchlength;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
-  bool plusp;
+  bool plusp, printp;
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Stage3end_plusp(this);
@@ -2128,7 +2159,7 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
-
+  printp = false;
 
   substring1_start = Substring_querystart(substring1);
   substring1_length = Substring_match_length(substring1);
@@ -2137,7 +2168,7 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
 
   if (plusp == true) {
     genomicfwd = Substring_genomic_refdiff(substring1);
-    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+    matchlength = print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
 				  /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
 				  /*plusp*/true,/*lastp*/false);
     
@@ -2147,7 +2178,7 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
 #endif
 
     genomicfwd = Substring_genomic_refdiff(substring2);
-    print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
+    print_md_string(&printp,&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
 		    /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
 		    /*plusp*/true,/*lastp*/true);
 
@@ -2155,7 +2186,7 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
     genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring1);
     make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-    matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
+    matchlength = print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
 				  /*querypos*/substring1_start,querylength,
 				  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     FREE(genomicfwd);
@@ -2168,11 +2199,15 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
     genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substring2);
     make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-    print_md_string(&nmismatches,fp,matchlength,genomicfwd,substring2_length,
+    print_md_string(&printp,&nmismatches,fp,matchlength,genomicfwd,substring2_length,
 		    /*querypos*/substring2_start,querylength,
 		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     FREE(genomicfwd);
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
+
 
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
@@ -2229,7 +2264,7 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
   int substring1_start, substring2_start, substringM_start,
     substring1_length, substring2_length, substringM_length, matchlength;
   int hardclip_low, hardclip_high, mate_hardclip_low, mate_hardclip_high;
-  bool plusp;
+  bool plusp, printp;
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Stage3end_plusp(shortexon);
@@ -2427,6 +2462,7 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
   /* 12. TAGS: MD */
   fprintf(fp,"\t");
   fprintf(fp,"MD:Z:");
+  printp = false;
 
   substringM_start = Substring_querystart(substringM);
   substringM_length = Substring_match_length(substringM);
@@ -2452,7 +2488,7 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
       matchlength = 0;
     } else {
       genomicfwd = Substring_genomic_refdiff(substring1);
-      matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
+      matchlength = print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,&(genomicfwd[substring1_start]),substring1_length,
 				    /*querypos*/substring1_start,querylength,hardclip_low,hardclip_high,
 				    /*plusp*/true,/*lastp*/false);
     }
@@ -2463,7 +2499,7 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 #endif
 
     genomicfwd = Substring_genomic_refdiff(substringM);
-    matchlength = print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substringM_start]),substringM_length,
+    matchlength = print_md_string(&printp,&nmismatches,fp,matchlength,&(genomicfwd[substringM_start]),substringM_length,
 				  /*querypos*/substringM_start,querylength,hardclip_low,hardclip_high,
 				  /*plusp*/true,/*lastp*/false);
 
@@ -2474,12 +2510,12 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 
     if (substring2 == NULL) {
       /* Equivalent: if (matchlength > 0) fprintf(fp,"%d",matchlength); */
-      print_md_string(&nmismatches,fp,matchlength,/*genomicfwd*/NULL,/*substring2_length*/0,
+      print_md_string(&printp,&nmismatches,fp,matchlength,/*genomicfwd*/NULL,/*substring2_length*/0,
 		      /*querypos*/0,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     } else {
       genomicfwd = Substring_genomic_refdiff(substring2);
-      print_md_string(&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
+      print_md_string(&printp,&nmismatches,fp,matchlength,&(genomicfwd[substring2_start]),substring2_length,
 		      /*querypos*/substring2_start,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/true,/*lastp*/true);
     }
@@ -2492,7 +2528,7 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
       genomicfwd = (char *) CALLOC(substring1_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(substring1);
       make_complement_buffered(genomicfwd,&(genomicdir[substring1_start]),substring1_length);
-      matchlength = print_md_string(&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
+      matchlength = print_md_string(&printp,&nmismatches,fp,/*matchlength*/0,genomicfwd,substring1_length,
 				    /*querypos*/substring1_start,querylength,
 				    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
       FREE(genomicfwd);
@@ -2506,7 +2542,7 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
     genomicfwd = (char *) CALLOC(substringM_length+1,sizeof(char));
     genomicdir = Substring_genomic_refdiff(substringM);
     make_complement_buffered(genomicfwd,&(genomicdir[substringM_start]),substringM_length);
-    matchlength = print_md_string(&nmismatches,fp,matchlength,genomicfwd,substringM_length,
+    matchlength = print_md_string(&printp,&nmismatches,fp,matchlength,genomicfwd,substringM_length,
 				  /*querypos*/substringM_start,querylength,
 				  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
     FREE(genomicfwd);
@@ -2518,19 +2554,23 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 
     if (substring2 == NULL) {
       /* Equivalent: if (matchlength > 0) fprintf(fp,"%d",matchlength); */
-      print_md_string(&nmismatches,fp,matchlength,/*genomicfwd*/0,/*substring2_length*/0,
+      print_md_string(&printp,&nmismatches,fp,matchlength,/*genomicfwd*/0,/*substring2_length*/0,
 		      /*querypos*/0,querylength,hardclip_low,hardclip_high,
 		      /*plusp*/false,/*lastp*/true);
     } else {
       genomicfwd = (char *) CALLOC(substring2_length+1,sizeof(char));
       genomicdir = Substring_genomic_refdiff(substring2);
       make_complement_buffered(genomicfwd,&(genomicdir[substring2_start]),substring2_length);
-      print_md_string(&nmismatches,fp,matchlength,genomicfwd,substring2_length,
+      print_md_string(&printp,&nmismatches,fp,matchlength,genomicfwd,substring2_length,
 		      /*querypos*/substring2_start,querylength,
 		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
       FREE(genomicfwd);
     }
   }
+  if (printp == false) {
+    fprintf(fp,"0");
+  }
+
 
   /* 12. TAGS: NH */
   fprintf(fp,"\t");
@@ -3351,7 +3391,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
 	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths1,
-		  Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
+		  Stage3end_absmq_score(stage3),first_absmq1,/*second_absmq1*/0,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
@@ -3415,7 +3455,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
 	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths2,
-		  Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
+		  Stage3end_absmq_score(stage3),first_absmq2,/*second_absmq2*/0,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c 43665 2011-07-26 20:48:15Z twu $";
+static char rcsid[] = "$Id: match.c 64182 2012-05-16 00:18:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -210,10 +210,14 @@ Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_i
 
 void
 Match_print (T this, IIT_T chromosome_iit) {
+  char *chr;
+
+  chr = Match_chr(this,chromosome_iit);
   printf("  Match at %d: #%d(chr%s):%u (forwardp:%d, npairings:%d), weight %.3f ",
-	 this->querypos,this->chrnum,
-	 Match_chr(this,chromosome_iit),this->chrpos,this->forwardp,
+	 this->querypos,this->chrnum,chr,this->chrpos,this->forwardp,
 	 this->npairings,this->weight);
+  FREE(chr);
+
   return;
 }
 

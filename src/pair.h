@@ -1,4 +1,4 @@
-/* $Id: pair.h 63242 2012-05-03 22:45:27Z twu $ */
+/* $Id: pair.h 64017 2012-05-14 22:35:15Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -214,7 +214,7 @@ extern void
 Pair_fracidentity (int *matches, int *unknowns, int *mismatches, 
 		   int *qopens, int *qindels, int *topens, int *tindels,
 		   int *ncanonical, int *nsemicanonical, int *nnoncanonical,
-		   List_T pairs, int cdna_direction);
+		   double *min_splice_prob, List_T pairs, int cdna_direction);
 extern int
 Pair_fracidentity_score (List_T pairs, int cdna_direction);
 

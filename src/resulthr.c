@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c 63195 2012-05-03 17:39:12Z twu $";
+static char rcsid[] = "$Id: resulthr.c 63820 2012-05-11 03:54:34Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -87,6 +87,7 @@ void **
 Result_array2 (int *npaths, int *first_absmq, int *second_absmq, T this) {
   *npaths = this->npaths2;
   *first_absmq = this->first_absmq2;
+  *second_absmq = this->second_absmq2;
   return this->array2;
 }
 

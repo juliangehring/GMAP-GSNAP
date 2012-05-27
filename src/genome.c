@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 63232 2012-05-03 22:16:13Z twu $";
+static char rcsid[] = "$Id: genome.c 64180 2012-05-16 00:17:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,6 +40,10 @@ static char rcsid[] = "$Id: genome.c 63232 2012-05-03 22:16:13Z twu $";
 #else
 #include "littleendian.h"
 #endif
+
+
+/* Uses 'A' instead of 'N' just as Oligoindex_hr_tally would do */
+/* #define EXTRACT_GENOMICSEG 1 */
 
 
 #ifdef DEBUG
@@ -348,6 +352,7 @@ genomecomp_read_current (T this) {
 
 static char DEFAULT_CHARS[4] = {'A','C','G','T'};
 static char DEFAULT_FLAGS[4] = {'N','N','N','N'};
+static char A_FLAGS[4] =       {'A','A','A','A'};
 
 static char SNP_CHARS[4] = {' ',' ',' ',' '};
 static char SNP_FLAGS[4] = {'A','C','G','T'};
@@ -9313,6 +9318,50 @@ uncompress_mmap_snps_only (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 
 #endif
 
+#define LOW_TWO_BITS 0x3;
+static char CHARTABLE[4] = {'A','C','G','T'};
+
+static char
+uncompress_one_char (UINT4 *blocks, Genomicpos_T pos) {
+  Genomicpos_T ptr;
+  UINT4 high, low, flags;
+  int bit, c;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = pos/32U*3;
+  bit = pos % 32;
+  
+#ifdef WORDS_BIGENDIAN
+  flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+  flags = blocks[ptr+2];
+#endif
+
+  if (flags & (1 << bit)) {
+    return 'N';
+
+  } else if (bit < 16) {
+#ifdef WORDS_BIGENDIAN
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+    low = blocks[ptr+1];
+#endif
+    c = (low >> (bit+bit)) & LOW_TWO_BITS;
+    return CHARTABLE[c];
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+#else
+    high = blocks[ptr];
+#endif
+    c = (high >> (bit+bit-32)) & LOW_TWO_BITS;
+    return CHARTABLE[c];
+  }
+}
+  
+
 
 static void
 Genome_ntcounts_mmap (int *na, int *nc, int *ng, int *nt, UINT4 *blocks,
@@ -9926,11 +9975,21 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomi
 
 static T genome;
 static UINT4 *genome_blocks;
+static Mode_T mode;
 
 void
-Genome_setup (T genome_in) {
+Genome_setup (T genome_in, Mode_T mode_in) {
   genome = genome_in;
   genome_blocks = genome->blocks;
+  mode = mode_in;
+  return;
+}
+
+void
+Genome_user_setup (UINT4 *genome_blocks_in) {
+  genome = (T) NULL;
+  genome_blocks = genome_blocks_in;
+  mode = STANDARD;
   return;
 }
 
@@ -9997,7 +10056,11 @@ Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char 
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
+#ifdef EXTRACT_GENOMICSEG
+      uncompress_mmap_bitbybit(gbuffer1,this->blocks,left,left+length,DEFAULT_FLAGS,A_FLAGS);
+#else
       uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+#endif
     }
   }
   gbuffer1[length] = '\0';
@@ -10013,7 +10076,11 @@ Genome_fill_buffer_blocks (Genomicpos_T left, Genomicpos_T length, char *gbuffer
   
   if (length > 0) {
     assert(left + length >= left);
+#ifdef EXTRACT_GENOMICSEG
+    uncompress_mmap_bitbybit(gbuffer1,genome_blocks,left,left+length,DEFAULT_CHARS,A_FLAGS);
+#else
     uncompress_mmap(gbuffer1,genome_blocks,left,left+length);
+#endif
   }
   gbuffer1[length] = '\0';
   return;
@@ -10158,6 +10225,7 @@ Genome_fill_buffer_nucleotides (T this, Genomicpos_T left, Genomicpos_T length, 
 
 char
 Genome_get_char (T this, Genomicpos_T left) {
+  char c;
   char gbuffer1[1];
   
   if (this->compressedp == false) {
@@ -10188,7 +10256,12 @@ Genome_get_char (T this, Genomicpos_T left) {
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
+      c = uncompress_one_char(this->blocks,left);
+#ifdef EXTRACT_GENOMICSEG
       uncompress_mmap(gbuffer1,this->blocks,left,left+1);
+      assert(c == gbuffer1[0]);
+#endif
+      return c;
     }
   }
 
@@ -10198,10 +10271,16 @@ Genome_get_char (T this, Genomicpos_T left) {
 
 char
 Genome_get_char_blocks (Genomicpos_T left) {
+  char c;
   char gbuffer1[1];
   
+  c = uncompress_one_char(genome_blocks,left);
+#ifdef EXTRACT_GENOMICSEG
   uncompress_mmap(gbuffer1,genome_blocks,left,left+1);
-  return gbuffer1[0];
+  assert(c == gbuffer1[0]);
+#endif
+
+  return c;
 }
 
 

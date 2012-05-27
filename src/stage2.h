@@ -1,4 +1,4 @@
-/* $Id: stage2.h 63447 2012-05-07 18:46:55Z twu $ */
+/* $Id: stage2.h 64180 2012-05-16 00:17:32Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "bool.h"
@@ -7,12 +7,14 @@
 #include "pairpool.h"
 #include "diagpool.h"
 #include "stopwatch.h"
+#include "mode.h"
 
 #define T Stage2_T
 typedef struct T *T;
 
 extern void
-Stage2_setup (bool splicingp_in, int suboptimal_score_start_in, int suboptimal_score_end_in);
+Stage2_setup (bool splicingp_in, int suboptimal_score_start_in, int suboptimal_score_end_in,
+	      Mode_T mode_in);
 extern List_T
 Stage2_path (T this);
 extern int
@@ -35,8 +37,8 @@ Stage2_free (T *old);
 
 extern int
 Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
-	     char *genomicuc_ptr, int genomiclength,
-	     Oligoindex_T *oligoindices, int noligoindices,
+	     char *genomicuc_ptr, Genomicpos_T genomicstart, int genomiclength,
+	     bool plusp, int genestrand, Oligoindex_T *oligoindices, int noligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp);
 
 extern List_T
@@ -46,7 +48,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		char *genomicseg_ptr, char *genomicuc_ptr,
 		Genomicpos_T genomicstart, Genomicpos_T genomicend,
 		Genomicpos_T mappingstart, Genomicpos_T mappingend,
-		bool plusp, int genomiclength, int genomic_offset,
+		bool plusp, int genestrand, Genomicpos_T genomiclength,
 
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
@@ -61,7 +63,7 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 		    char *genomicseg_ptr, char *genomicuc_ptr,
 		    Genomicpos_T genomicstart, Genomicpos_T genomicend,
 		    Genomicpos_T mappingstart, Genomicpos_T mappingend,
-		    bool plusp, int genomiclength, int genomic_offset,
+		    bool plusp, int genestrand, int genomiclength,
 
 		    Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		    Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 64836 2012-05-23 21:04:15Z twu $";
+static char rcsid[] = "$Id: gmap.c 65571 2012-06-01 19:43:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -680,8 +680,8 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 		   Oligoindex_T *oligoindices_major, int noligoindices_major,
 		   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		   Pairpool_T pairpool, Diagpool_T diagpool, int straintype, char *strain,
-		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		   bool watsonp, int genestrand,
+		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		   Genomicpos_T chrpos, bool watsonp, int genestrand,
 		   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		   Stopwatch_T worker_stopwatch) {
   bool do_final_p;
@@ -781,8 +781,8 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 				 /*skiplength*/Sequence_skiplength(queryseq),
 				 /*query_subseq_offset*/Sequence_subseq_offset(queryseq),
 #endif
-				 genomicseg_ptr,genomicuc_ptr,chrnum,chroffset,chrpos,
-				 /*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
+				 genomicseg_ptr,genomicuc_ptr,chrnum,chroffset,chrhigh,
+				 chrpos,/*knownsplice_limit_low*/0U,/*knownsplice_limit_high*/-1U,
 				 genome,/*usersegment_p*/usersegment ? true : false,
 				 watsonp,genestrand,/*jump_late_p*/watsonp ? false : true,
 				 maxpeelback,maxpeelback_distalmedial,nullgap,
@@ -801,7 +801,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
       } else if ((stage3 = Stage3_new(pairarray,pairs,npairs,cdna_direction,sensedir,genomicstart,genomiclength,
 				      stage2_source,stage2_indexsize,matches,unknowns,mismatches,
 				      qopens,qindels,topens,tindels,ncanonical,nsemicanonical,nnoncanonical,
-				      defect_rate,chrnum,chroffset,chrpos,watsonp,
+				      defect_rate,chrnum,chroffset,chrhigh,chrpos,watsonp,
 				      /*skiplength*/Sequence_skiplength(queryseq),
 				      /*trimlength*/Sequence_trimlength(queryseq),
 				      stage3_runtime,straintype,strain,altstrain_iit)) != NULL) {
@@ -892,7 +892,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 			 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 			 Stopwatch_T worker_stopwatch) {
   List_T stage3list;
-  Genomicpos_T chroffset, chrpos, chrlength;
+  Genomicpos_T chroffset, chrhigh, chrpos;
   Sequence_T revcomp;
   Chrnum_T chrnum = 0;
 
@@ -902,7 +902,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 #endif
 		    
   chroffset = chrpos = 0U;
-  chrlength = Sequence_fulllength(usersegment);
+  chrhigh = Sequence_fulllength(usersegment);
 
   stage3list = update_stage3list(/*stage3list*/NULL,lowidentityp,queryseq,
 #ifdef PMAP
@@ -911,8 +911,10 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 				 queryuc,usersegment,/*genomicstart*/0U,
 				 /*genomiclength*/Sequence_fulllength(usersegment),
 				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
-				 /*watsonp*/true,/*genestrand*/0,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,
+				 chrnum,chroffset,chrhigh,
+				 chrpos,/*watsonp*/true,/*genestrand*/0,
+				 dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   revcomp = Sequence_revcomp(usersegment);
 
@@ -923,8 +925,10 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 				 queryuc,revcomp,/*genomicstart*/0U,
 				 /*genomiclength*/Sequence_fulllength(usersegment),
 				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,chrnum,chroffset,chrpos,
-				 /*watsonp*/false,/*genestrand*/0,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				 pairpool,diagpool,/*straintype*/0,/*strain*/NULL,
+				 chrnum,chroffset,chrhigh,
+				 chrpos,/*watsonp*/false,/*genestrand*/0,
+				 dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   Sequence_free(&revcomp);
 
@@ -1098,8 +1102,9 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 				       Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
 				       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				       /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
-				       Gregion_chroffset(gregion),Gregion_chrpos(gregion),Gregion_plusp(gregion),
-				       Gregion_genestrand(gregion),dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				       Gregion_chroffset(gregion),Gregion_chrhigh(gregion),Gregion_chrpos(gregion),
+				       Gregion_plusp(gregion),Gregion_genestrand(gregion),
+				       dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	Sequence_free(&genomicseg);
 
       } else if (maponlyp == true) {
@@ -1150,8 +1155,9 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 				       Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
 				       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				       /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
-				       Gregion_chroffset(gregion),Gregion_chrpos(gregion),Gregion_plusp(gregion),
-				       Gregion_genestrand(gregion),dynprogL,dynprogM,dynprogR,worker_stopwatch);
+				       Gregion_chroffset(gregion),Gregion_chrhigh(gregion),
+				       Gregion_chrpos(gregion),Gregion_plusp(gregion),Gregion_genestrand(gregion),
+				       dynprogL,dynprogM,dynprogR,worker_stopwatch);
 #ifdef PMAP
 	Sequence_free(&genomicseg);
 #elif defined(EXTRACT_GENOMICSEG)
@@ -1186,8 +1192,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 #endif					     
 					     queryuc,genomicseg,Gregion_genomicstart(gregion),
 					     Gregion_genomiclength(gregion),oligoindices_major,noligoindices_major,
-					     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-					     straintype,strain,Gregion_chrnum(gregion),Gregion_chroffset(gregion),
+					     oligoindices_minor,noligoindices_minor,pairpool,diagpool,straintype,strain,
+					     Gregion_chrnum(gregion),Gregion_chroffset(gregion),Gregion_chrhigh(gregion),
 					     Gregion_chrpos(gregion),Gregion_plusp(gregion),Gregion_genestrand(gregion),
 					     dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	      Sequence_free(&genomicseg);
@@ -2854,6 +2860,8 @@ main (int argc, char *argv[]) {
 	} else {
 	  failsonlyp = true;
 	}
+      } else if (!strcmp(long_name,"fails-as-input")) {
+	fails_as_input_p = true;
       } else if (!strcmp(long_name,"quiet-if-excessive")) {
 	quiet_if_excessive_p = true;
       } else if (!strcmp(long_name,"nofails")) {
@@ -3256,8 +3264,8 @@ main (int argc, char *argv[]) {
 			      /*divstring*/NULL,/*add_iit_p*/true,/*labels_read_p*/true)) == NULL) {
 	fprintf(stderr,"Map file %s.iit not found in %s.  Available files:\n",map_iitfile,mapdir);
 	Datadir_list_directory(stderr,mapdir);
-	fprintf(stderr,"Either install file %s or specify a full directory path\n",map_iitfile);
-	fprintf(stderr,"using the -M flag to gmap.\n");
+	fprintf(stderr,"Either install file %s.iit or specify a directory for the IIT file\n",snps_root);
+	fprintf(stderr,"using the -M flag.\n");
 	exit(9);
       } else {
 	map_divint_crosstable = IIT_divint_crosstable(chromosome_iit,map_iit);
@@ -4247,8 +4255,7 @@ Output options\n\
   -o, --chimera-overlap          Overlap to show, if any, at chimera breakpoint\n\
   --failsonly                    Print only failed alignments, those with no results\n\
   --nofails                      Exclude printing of failed alignments\n\
-  --fails-as-input=STRING        Print completely failed alignments as input FASTA or FASTQ format\n\
-                                   Allowed values: yes, no\n\
+  --fails-as-input               Print completely failed alignments as input FASTA or FASTQ format\n\
   -V, --usesnps=STRING           Use database containing known SNPs (in <STRING>.iit, built\n\
                                    previously using snpindex) for reporting output\n\
 ");

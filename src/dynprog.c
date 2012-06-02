@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 65026 2012-05-25 02:12:04Z twu $";
+static char rcsid[] = "$Id: dynprog.c 65623 2012-06-02 03:33:15Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -392,6 +392,53 @@ Dynprog_score (int matches, int mismatches, int qopens, int qindels, int topens,
 
 
 /************************************************************************
+ * get_genomic_nt
+ ************************************************************************/
+
+static char complCode[128] = COMPLEMENT_LC;
+
+static char
+get_genomic_nt (int genomicpos, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		Genomicpos_T chrpos, int genomiclength, bool watsonp) {
+  char c2;
+  Genomicpos_T pos;
+
+  if (genomicpos < 0) {
+    return '*';
+
+  } else if (genomicpos >= genomiclength) {
+    return '*';
+
+  } else if ((pos = chroffset + chrpos) < chroffset) { /* Must be <, and not <=, or dynamic programming will fail */
+    return '*';
+
+  } else if (pos >= chrhigh) {
+    return '*';
+
+  } else if (watsonp) {
+    if (genome) {
+      debug8(printf("At %u, genomicnt is %c\n",
+		    genomicpos,Genome_get_char(genome,chroffset + chrpos + genomicpos)));
+      return Genome_get_char(genome,chroffset + chrpos + genomicpos);
+    } else {
+      debug8(printf("At %u, genomicnt is %c\n",
+		    genomicpos,Genome_get_char_blocks(chroffset + chrpos + genomicpos)));
+      return Genome_get_char_blocks(chroffset + chrpos + genomicpos);
+    }
+
+  } else {
+    if (genome) {
+      c2 = Genome_get_char(genome,chroffset + chrpos + (genomiclength - 1) - genomicpos);
+    } else {
+      c2 = Genome_get_char_blocks(chroffset + chrpos + (genomiclength - 1) - genomicpos);
+    }
+    debug8(printf("At %u, genomicnt is %c\n",genomicpos,complCode[(int) c2]));
+    return complCode[(int) c2];
+  }
+}
+
+
+/************************************************************************
  * Matrix
  ************************************************************************/
 
@@ -426,43 +473,6 @@ Matrix_alloc (int length1, int length2, int **ptrs, int *space) {
   memset((void *) space,0,(length1+1)*(length2+1)*sizeof(int));
 
   return matrix;
-}
-
-static void
-Matrix_print (int **matrix, int length1, int length2, char *sequence1, char *sequence2,
-	      bool revp) {
-  int i, j;
-
-#ifdef EXTRACT_GENOMICSEG
-  printf("  ");
-  for (j = 0; j <= length2; ++j) {
-    if (j == 0) {
-      printf("    ");
-    } else {
-      printf("  %c ",revp ? sequence2[-j+1] : sequence2[j-1]);
-    }
-  }
-  printf("\n");
-#endif
-
-  for (i = 0; i <= length1; ++i) {
-    if (i == 0) {
-      printf("  ");
-    } else {
-      printf("%c ",revp ? sequence1[-i+1] : sequence1[i-1]);
-    }
-    for (j = 0; j <= length2; ++j) {
-      if (matrix[i][j] < NEG_INFINITY) {
-	printf("%3d ",NEG_INFINITY);
-      } else {
-	printf("%3d ",matrix[i][j]);
-      }
-    }
-    printf("\n");
-  }
-  printf("\n");
-
-  return;
 }
 
 
@@ -510,19 +520,26 @@ Matrix3_alloc (int length1, int length2, struct Int3_T **ptrs, struct Int3_T *sp
 
 static void
 Matrix3_print (struct Int3_T **matrix, int length1, int length2, char *sequence1, char *sequence2,
-	       bool revp) {
+	       int offset2, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+	       Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp, bool revp) {
   int i, j;
 
   printf("G1");
-#ifdef EXTRACT_GENOMICSEG
   for (j = 0; j <= length2; ++j) {
     if (j == 0) {
       printf("    ");
     } else {
+#ifdef EXTRACT_GENOMICSEG
       printf("  %c ",revp ? sequence2[-j+1] : sequence2[j-1]);
+#else
+      if (revp == false) {
+	printf("  %c ",get_genomic_nt(offset2+j-1,chroffset,chrhigh,chrpos,genomiclength,watsonp));
+      } else {
+	printf("  %c ",get_genomic_nt(offset2+1-j,chroffset,chrhigh,chrpos,genomiclength,watsonp));
+      }
+#endif
     }
   }
-#endif
   printf("\n");
 
   for (i = 0; i <= length1; ++i) {
@@ -544,15 +561,21 @@ Matrix3_print (struct Int3_T **matrix, int length1, int length2, char *sequence1
 
 
   printf("NG");
-#ifdef EXTRACT_GENOMICSEG
   for (j = 0; j <= length2; ++j) {
     if (j == 0) {
       printf("    ");
     } else {
+#ifdef EXTRACT_GENOMICSEG
       printf("  %c ",revp ? sequence2[-j+1] : sequence2[j-1]);
+#else
+      if (revp == false) {
+	printf("  %c ",get_genomic_nt(offset2+j-1,chroffset,chrhigh,chrpos,genomiclength,watsonp));
+      } else {
+	printf("  %c ",get_genomic_nt(offset2+1-j,chroffset,chrhigh,chrpos,genomiclength,watsonp));
+      }
+#endif
     }
   }
-#endif
   printf("\n");
 
   for (i = 0; i <= length1; ++i) {
@@ -574,15 +597,21 @@ Matrix3_print (struct Int3_T **matrix, int length1, int length2, char *sequence1
 
 
   printf("G2");
-#ifdef EXTRACT_GENOMICSEG
   for (j = 0; j <= length2; ++j) {
     if (j == 0) {
       printf("    ");
     } else {
+#ifdef EXTRACT_GENOMICSEG
       printf("  %c ",revp ? sequence2[-j+1] : sequence2[j-1]);
+#else
+      if (revp == false) {
+	printf("  %c ",get_genomic_nt(offset2+j-1,chroffset,chrhigh,chrpos,genomiclength,watsonp));
+      } else {
+	printf("  %c ",get_genomic_nt(offset2+1-j,chroffset,chrhigh,chrpos,genomiclength,watsonp));
+      }
+#endif
     }
   }
-#endif
   printf("\n");
 
   for (i = 0; i <= length1; ++i) {
@@ -1342,35 +1371,6 @@ Dynprog_term (void) {
 
 /************************************************************************/
 
-static char complCode[128] = COMPLEMENT_LC;
-
-static char
-get_genomic_nt (Genomicpos_T genomicpos, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		int genomiclength, bool watsonp) {
-  char c2;
-
-  if (watsonp) {
-    if (genome) {
-      debug8(printf("At %u, genomicnt is %c\n",
-		    genomicpos,Genome_get_char(genome,chroffset + chrpos + genomicpos)));
-      return Genome_get_char(genome,chroffset + chrpos + genomicpos);
-    } else {
-      debug8(printf("At %u, genomicnt is %c\n",
-		    genomicpos,Genome_get_char_blocks(chroffset + chrpos + genomicpos)));
-      return Genome_get_char_blocks(chroffset + chrpos + genomicpos);
-    }
-
-  } else {
-    if (genome) {
-      c2 = Genome_get_char(genome,chroffset + chrpos + (genomiclength - 1) - genomicpos);
-    } else {
-      c2 = Genome_get_char_blocks(chroffset + chrpos + (genomiclength - 1) - genomicpos);
-    }
-    debug8(printf("At %u, genomicnt is %c\n",genomicpos,complCode[(int) c2]));
-    return complCode[(int) c2];
-  }
-}
-
 #if 0
 static void
 make_complement_buffered (char *complement, char *sequence, unsigned int length) {
@@ -1421,7 +1421,8 @@ get_genomic_seg (Genomicpos_T genomicpos, int length, Genomicpos_T chroffset, Ge
 static struct Int3_T **
 compute_scores_lookup_fwd (struct Direction3_T ***directions, T this, 
 			   char *sequence1, char *sequence2, int offset2, int length1, int length2, 
-			   Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength, bool watsonp,
+			   Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			   Genomicpos_T chrpos, int genomiclength, bool watsonp,
 			   Mismatchtype_T mismatchtype, int open, int extend,
 			   int extraband, bool widebandp, bool onesidegapp, bool jump_late_p,
 			   bool use_genomicseg_p) {
@@ -1488,7 +1489,7 @@ compute_scores_lookup_fwd (struct Direction3_T ***directions, T this,
     if (use_genomicseg_p) {
       na2 = sequence2[c-1];
     } else {
-      na2 = get_genomic_nt(offset2+c-1,chroffset,chrpos,genomiclength,watsonp);
+      na2 = get_genomic_nt(offset2+c-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
     }
 #ifdef EXTRACT_GENOMICSEG
     assert(na2 == sequence2[c-1]); /* na2 = revp ? sequence2[1-c] : sequence2[c-1]; */
@@ -1564,7 +1565,9 @@ compute_scores_lookup_fwd (struct Direction3_T ***directions, T this,
   debug2(Matrix_print(Q0,length1,length2));
   debug2(Matrix_print(Q1,length1,length2));
   */
-  debug2(Matrix3_print(matrix,length1,length2,sequence1,sequence2,/*revp*/false));
+  debug2(Matrix3_print(matrix,length1,length2,sequence1,sequence2,
+		       offset2,chroffset,chrhigh,chrpos,genomiclength,watsonp,
+		       /*revp*/false));
   debug2(Directions3_print(*directions,length1,length2,
 			   sequence1,sequence2,/*revp*/false));
 
@@ -1575,7 +1578,8 @@ compute_scores_lookup_fwd (struct Direction3_T ***directions, T this,
 static struct Int3_T **
 compute_scores_lookup_rev (struct Direction3_T ***directions, T this, 
 			   char *sequence1, char *sequence2, int offset2, int length1, int length2, 
-			   Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength, bool watsonp,
+			   Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			   Genomicpos_T chrpos, int genomiclength, bool watsonp,
 			   Mismatchtype_T mismatchtype, int open, int extend,
 			   int extraband, bool widebandp, bool onesidegapp, bool jump_late_p,
 			   bool use_genomicseg_p) {
@@ -1642,7 +1646,7 @@ compute_scores_lookup_rev (struct Direction3_T ***directions, T this,
     if (use_genomicseg_p) {
       na2 = sequence2[1-c];
     } else {
-      na2 = get_genomic_nt(offset2+1-c,chroffset,chrpos,genomiclength,watsonp);
+      na2 = get_genomic_nt(offset2+1-c,chroffset,chrhigh,chrpos,genomiclength,watsonp);
     }
 #ifdef EXTRACT_GENOMICSEG
     assert(na2 == sequence2[1-c]);  /* na2 = revp ? sequence2[1-c] : sequence2[c-1]; */
@@ -1719,7 +1723,9 @@ compute_scores_lookup_rev (struct Direction3_T ***directions, T this,
   debug2(Matrix_print(Q0,length1,length2));
   debug2(Matrix_print(Q1,length1,length2));
   */
-  debug2(Matrix3_print(matrix,length1,length2,sequence1,sequence2,/*revp*/true));
+  debug2(Matrix3_print(matrix,length1,length2,sequence1,sequence2,
+		       offset2,chroffset,chrhigh,chrpos,genomiclength,watsonp,
+		       /*revp*/true));
   debug2(Directions3_print(*directions,length1,length2,
 			   sequence1,sequence2,/*revp*/true));
 
@@ -1732,7 +1738,8 @@ compute_scores_lookup_rev (struct Direction3_T ***directions, T this,
 static struct Int3_T **
 compute_scores_lookup_fwd_12 (struct Direction3_T ***directions, T this, 
 			      char *sequence1, char *sequence2, int offset1, int length1, int length2, 
-			      Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength, bool watsonp,
+			      Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			      Genomicpos_T chrpos, int genomiclength, bool watsonp,
 			      Mismatchtype_T mismatchtype, int open, int extend,
 			      int extraband, bool widebandp, bool onesidegapp, bool jump_late_p) {
   struct Int3_T **matrix;
@@ -1795,7 +1802,7 @@ compute_scores_lookup_fwd_12 (struct Direction3_T ***directions, T this,
 
 
   for (r = 1; r <= length1; r++) {
-    na1 = get_genomic_nt(offset1+r-1,chroffset,chrpos,genomiclength,watsonp);
+    na1 = get_genomic_nt(offset1+r-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(na1 == sequence1[r-1]);  /* na1 = revp ? sequence1[1-r] : sequence1[r-1]; */
 #endif
@@ -1870,7 +1877,9 @@ compute_scores_lookup_fwd_12 (struct Direction3_T ***directions, T this,
   debug2(Matrix_print(Q0,length1,length2));
   debug2(Matrix_print(Q1,length1,length2));
   */
-  debug2(Matrix3_print(matrix,length1,length2,sequence1,sequence2,/*revp*/false));
+  debug2(Matrix3_print(matrix,length2,length1,sequence2,sequence1,
+		       offset1,chroffset,chrhigh,chrpos,genomiclength,watsonp,
+		       /*revp*/false));
   debug2(Directions3_print(*directions,length1,length2,
 			   sequence1,sequence2,/*revp*/false));
 
@@ -1882,7 +1891,8 @@ compute_scores_lookup_fwd_12 (struct Direction3_T ***directions, T this,
 static struct Int3_T **
 compute_scores_lookup_rev_12 (struct Direction3_T ***directions, T this, 
 			      char *sequence1, char *sequence2, int offset1, int length1, int length2, 
-			      Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength, bool watsonp,
+			      Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			      Genomicpos_T chrpos, int genomiclength, bool watsonp,
 			      Mismatchtype_T mismatchtype, int open, int extend,
 			      int extraband, bool widebandp, bool onesidegapp, bool jump_late_p) {
   struct Int3_T **matrix;
@@ -1945,7 +1955,7 @@ compute_scores_lookup_rev_12 (struct Direction3_T ***directions, T this,
 
 
   for (r = 1; r <= length1; r++) {
-    na1 = get_genomic_nt(offset1+1-r,chroffset,chrpos,genomiclength,watsonp);
+    na1 = get_genomic_nt(offset1+1-r,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(na1 == sequence1[1-r]); /* na1 = revp ? sequence1[1-r] : sequence1[r-1]; */
 #endif
@@ -2021,7 +2031,9 @@ compute_scores_lookup_rev_12 (struct Direction3_T ***directions, T this,
   debug2(Matrix_print(Q0,length1,length2));
   debug2(Matrix_print(Q1,length1,length2));
   */
-  debug2(Matrix3_print(matrix,length1,length2,sequence1,sequence2,/*revp*/true));
+  debug2(Matrix3_print(matrix,length2,length1,sequence2,sequence1,
+		       offset1,chroffset,chrhigh,chrpos,genomiclength,watsonp,
+		       /*revp*/true));
   debug2(Directions3_print(*directions,length1,length2,
 			   sequence1,sequence2,/*revp*/true));
 
@@ -2402,7 +2414,8 @@ static List_T
 add_genomeskip (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
 		char *genomesequence, char *genomesequenceuc,
 		int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
-		Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		Genomicpos_T chrpos, Genomicpos_T genomiclength,
 		int cdna_direction, bool watsonp, int dynprogindex, bool use_genomicseg_p) {
   int j;
   char left1, left2, right2, right1, c2;
@@ -2435,10 +2448,10 @@ add_genomeskip (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
       right2 = genomesequenceuc[rightgenomecoord-1];
       right1 = genomesequenceuc[rightgenomecoord];
     } else {
-      left1 = get_genomic_nt(genomeoffset+leftgenomecoord,chroffset,chrpos,genomiclength,watsonp);
-      left2 = get_genomic_nt(genomeoffset+leftgenomecoord+1,chroffset,chrpos,genomiclength,watsonp);
-      right2 = get_genomic_nt(genomeoffset+rightgenomecoord-1,chroffset,chrpos,genomiclength,watsonp);
-      right1 = get_genomic_nt(genomeoffset+rightgenomecoord,chroffset,chrpos,genomiclength,watsonp);
+      left1 = get_genomic_nt(genomeoffset+leftgenomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+      left2 = get_genomic_nt(genomeoffset+leftgenomecoord+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+      right2 = get_genomic_nt(genomeoffset+rightgenomecoord-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+      right1 = get_genomic_nt(genomeoffset+rightgenomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
     }
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == genomesequenceuc[leftgenomecoord]);
@@ -2469,7 +2482,7 @@ add_genomeskip (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
       if (use_genomicseg_p) {
 	c2 = genomesequence[genomecoord];
       } else {
-	c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrpos,genomiclength,watsonp);
+	c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
       }
 #ifdef EXTRACT_GENOMICSEG
       assert(c2 == genomesequence[genomecoord]);
@@ -2500,7 +2513,8 @@ static List_T
 add_genomeskip_cdna (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
 		     char *genomesequence, char *genomesequenceuc,
 		     int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
-		     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		     Genomicpos_T chrpos, Genomicpos_T genomiclength,
 		     int cdna_direction, bool watsonp, int dynprogindex) {
   int j;
   char left1, left2, right2, right1, c2;
@@ -2527,10 +2541,10 @@ add_genomeskip_cdna (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
     *add_dashes_p = true;
   } else {
     /* Check for intron */
-    left1 = get_genomic_nt(genomeoffset+leftgenomecoord,chroffset,chrpos,genomiclength,watsonp);
-    left2 = get_genomic_nt(genomeoffset+leftgenomecoord+1,chroffset,chrpos,genomiclength,watsonp);
-    right2 = get_genomic_nt(genomeoffset+rightgenomecoord-1,chroffset,chrpos,genomiclength,watsonp);
-    right1 = get_genomic_nt(genomeoffset+rightgenomecoord,chroffset,chrpos,genomiclength,watsonp);
+    left1 = get_genomic_nt(genomeoffset+leftgenomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    left2 = get_genomic_nt(genomeoffset+leftgenomecoord+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    right2 = get_genomic_nt(genomeoffset+rightgenomecoord-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    right1 = get_genomic_nt(genomeoffset+rightgenomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == genomesequenceuc[leftgenomecoord]);
     assert(left2 == genomesequenceuc[leftgenomecoord+1]);
@@ -2558,7 +2572,7 @@ add_genomeskip_cdna (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
       genomecoord = rightgenomecoord;
     }
     for (j = 0; j < dist; j++) {
-      c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrpos,genomiclength,watsonp);
+      c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
       assert(c2 == genomesequence[genomecoord]);
 #endif
@@ -2596,7 +2610,8 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
 	   struct Direction3_T **directions, int r, int c, 
 	   char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
 	   int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
-	   Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+	   Genomicpos_T chroffset, Genomicpos_T chrhigh,
+	   Genomicpos_T chrpos, int genomiclength,
 	   int cdna_direction, bool watsonp, int dynprogindex, bool use_genomicseg_p) {
   char c1, c2;
   int dist;
@@ -2617,13 +2632,16 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
     if (use_genomicseg_p) {
       c2 = genomesequence[genomecoord];
     } else {
-      c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrpos,genomiclength,watsonp);
+      c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
     }
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomesequence[genomecoord]);
 #endif
 
-    if (querysequenceuc[querycoord] == c2) {
+    if (c2 == '*') {
+      /* Don't push pairs past end of chromosome */
+
+    } else if (querysequenceuc[querycoord] == c2) {
       debug(printf("D1: Pushing %d,%d [%d,%d] (%c,%c) - match\n",
 		   r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2));
       *nmatches += 1;
@@ -2660,7 +2678,7 @@ traceback (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nind
       debug(printf("H%d: ",dist));
       pairs = add_genomeskip(&add_dashes_p,pairs,r,c+dist,dist,genomesequence,genomesequenceuc,
 			     queryoffset,genomeoffset,pairpool,revp,
-			     chroffset,chrpos,genomiclength,
+			     chroffset,chrhigh,chrpos,genomiclength,
 			     cdna_direction,watsonp,dynprogindex,use_genomicseg_p);
       if (add_dashes_p == true) {
 	*nopens += 1;
@@ -2696,7 +2714,8 @@ traceback_cdna (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int 
 		struct Direction3_T **directions, int r, int c, 
 		char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
 		int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
-		Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		Genomicpos_T chrpos, int genomiclength,
 		int cdna_direction, bool watsonp, int dynprogindex) {
   char c1, c2;
   int dist;
@@ -2714,7 +2733,7 @@ traceback_cdna (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int 
     }
 
     c1 = querysequence[querycoord];
-    c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomesequence[genomecoord]);
 #endif
@@ -2774,7 +2793,7 @@ traceback_cdna (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int 
       debug(printf("V%d: ",dist));
       pairs = add_genomeskip_cdna(&add_dashes_p,pairs,r+dist,c,dist,genomesequence,genomesequenceuc,
 				  queryoffset,genomeoffset,pairpool,revp,
-				  chroffset,chrpos,genomiclength,
+				  chroffset,chrhigh,chrpos,genomiclength,
 				  cdna_direction,watsonp,dynprogindex);
       if (add_dashes_p == true) {
 	*nopens += 1;
@@ -2794,7 +2813,8 @@ static List_T
 traceback_nogaps (List_T pairs, int *nmatches, int *nmismatches,
 		  int r, int c, char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
 		  int queryoffset, int genomeoffset, Pairpool_T pairpool, 
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 		  bool revp, bool watsonp, int dynprogindex) {
   char c1, c2;
   int querycoord, genomecoord;
@@ -2812,13 +2832,16 @@ traceback_nogaps (List_T pairs, int *nmatches, int *nmismatches,
     }
 
     c1 = querysequence[querycoord];
-    c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(genomeoffset+genomecoord,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     debug8(printf("genome sequence at %d is %c\n",genomecoord,genomesequence[genomecoord]));
     assert(c2 == genomesequence[genomecoord]);
 #endif
 
-    if (querysequenceuc[querycoord] == c2) {
+    if (c2 == '*') {
+      /* Don't push pairs past end of chromosome */
+
+    } else if (querysequenceuc[querycoord] == c2) {
       debug11(printf("D: Pushing %d,%d [%d,%d] (%c,%c) - match\n",
 		   r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1,c2));
       *nmatches += 1;
@@ -2851,7 +2874,8 @@ traceback_local (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int
 		 struct Direction3_T **directions, int *r, int *c, int endc,
 		 char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
 		 int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
-		 Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		 Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		 Genomicpos_T chrpos, int genomiclength,
 		 int cdna_direction, bool watsonp, int dynprogindex) {
   char c1, c2;
   int dist;
@@ -2909,7 +2933,7 @@ traceback_local (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int
       debug(printf("H%d: ",dist));
       pairs = add_genomeskip(&add_dashes_p,pairs,*r,(*c)+dist,dist,genomesequence,genomesequenceuc,
 			     queryoffset,genomeoffset,pairpool,revp,
-			     chroffset,chrpos,genomiclength,
+			     chroffset,chrhigh,chrpos,genomiclength,
 			     cdna_direction,watsonp,dynprogindex,
 			     /*use_genomicseg_p*/true);
       if (add_dashes_p == true) {
@@ -2948,7 +2972,8 @@ static List_T
 traceback_local_nogaps (List_T pairs, int *nmatches, int *nmismatches, int r, int c, int endc,
 			char *querysequence, char *querysequenceuc, char *genomesequence, char *genomesequenceuc,
 			int queryoffset, int genomeoffset, Pairpool_T pairpool, 
-			Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+			Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			Genomicpos_T chrpos, Genomicpos_T genomiclength,
 			bool revp, bool watsonp, int dynprogindex) {
   char c1, c2;
   int querycoord, genomecoord;
@@ -3167,7 +3192,7 @@ intron_score (int *introntype, int leftdi, int rightdi, int cdna_direction, int 
 static void
 get_splicesite_probs (double *left_prob, double *right_prob, int cL, int cR,
 		      int *left_known, int *right_known, Genomicpos_T leftoffset, Genomicpos_T rightoffset,
-		      Genomicpos_T chroffset, Genomicpos_T chrpos,
+		      Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrpos,
 		      int genomiclength, int cdna_direction, bool watsonp,
 		      bool use_genomicseg_p, char *genomicuc_ptr) {
   Genomicpos_T splicesitepos;
@@ -3268,7 +3293,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		   int offset2L, int revoffset2R, int length1, int length2L, int length2R,
 		   int cdna_direction, bool watsonp, int extraband_paired, int canonical_reward,
 		   int maxhorizjump, int maxvertjump, int leftoffset, int rightoffset,
-		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
+		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrpos,
 		   Genomicpos_T genomiclength, char *genomicuc_ptr, bool use_genomicseg_p,
 		   bool halfp, bool finalp, bool use_probabilities_p, int score_threshold) {
   bool result;
@@ -3301,8 +3326,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   rightdi = (int *) CALLOC(length2R+1,sizeof(int));
 
   for (cL = 0; cL < length2L - 1; cL++) {
-    left1 = get_genomic_nt(offset2L+cL,chroffset,chrpos,genomiclength,watsonp);
-    left2 = get_genomic_nt(offset2L+cL+1,chroffset,chrpos,genomiclength,watsonp);
+    left1 = get_genomic_nt(offset2L+cL,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    left2 = get_genomic_nt(offset2L+cL+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == sequenceuc2L[cL]);
     assert(left2 == sequenceuc2L[cL+1]);
@@ -3323,8 +3348,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   leftdi[length2L-1] = leftdi[length2L] = 0x00;
 
   for (cR = 0; cR < length2R - 1; cR++) {
-    right2 = get_genomic_nt(revoffset2R-cR-1,chroffset,chrpos,genomiclength,watsonp);
-    right1 = get_genomic_nt(revoffset2R-cR,chroffset,chrpos,genomiclength,watsonp);
+    right2 = get_genomic_nt(revoffset2R-cR-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    right1 = get_genomic_nt(revoffset2R-cR,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(right2 == revsequenceuc2R[-cR-1]);
     assert(right1 == revsequenceuc2R[-cR]);
@@ -4075,7 +4100,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
   if (finalp == true && result == true) {
     get_splicesite_probs(&(*left_prob),&(*right_prob),*bestcL,*bestcR,
-			 left_known,right_known,leftoffset,rightoffset,chroffset,chrpos,
+			 left_known,right_known,leftoffset,rightoffset,chroffset,chrhigh,chrpos,
 			 genomiclength,cdna_direction,watsonp,use_genomicseg_p,genomicuc_ptr);
   }
 
@@ -4099,7 +4124,8 @@ bridge_dual_break_nogap (int *finalscore, int *bestrcL, int *bestrcR,
 			 struct Int3_T **matrixL, struct Int3_T **matrixR,
 			 int diaglength, char *sequenceuc2L, char *revsequenceuc2R,
 			 int offset2L, int revoffset2R,
-			 Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+			 Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			 Genomicpos_T chrpos, int genomiclength,
 			 int cdna_direction, bool watsonp) {
   int bestscore = NEG_INFINITY, scoreL, scoreR, scoreI;
   int rcL, rcR;
@@ -4110,8 +4136,8 @@ bridge_dual_break_nogap (int *finalscore, int *bestrcL, int *bestrcR,
 
   for (rcL = 1; rcL <= diaglength; rcL++) {
     rcR = diaglength - rcL;
-    left1 = get_genomic_nt(offset2L+rcL,chroffset,chrpos,genomiclength,watsonp);
-    left2 = get_genomic_nt(offset2L+rcL+1,chroffset,chrpos,genomiclength,watsonp);
+    left1 = get_genomic_nt(offset2L+rcL,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    left2 = get_genomic_nt(offset2L+rcL+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == sequenceuc2L[rcL]);
     assert(left2 == sequenceuc2L[rcL+1]);
@@ -4128,8 +4154,8 @@ bridge_dual_break_nogap (int *finalscore, int *bestrcL, int *bestrcR,
       leftdi = 0x00;
     }
 
-    right2 = get_genomic_nt(revoffset2R-rcR-1,chroffset,chrpos,genomiclength,watsonp);
-    right1 = get_genomic_nt(revoffset2R-rcR,chroffset,chrpos,genomiclength,watsonp);
+    right2 = get_genomic_nt(revoffset2R-rcR-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    right1 = get_genomic_nt(revoffset2R-rcR,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(right2 == revsequenceuc2R[-1-rcR]);
     assert(right1 == revsequenceuc2R[-rcR]);
@@ -4169,8 +4195,8 @@ bridge_dual_break_fwd (int *finalscore, int *bestrcL, int *bestrcR,
 		       struct Int3_T **matrixL, struct Int3_T **matrixR,
 		       int diaglength, char *sequenceuc2L, char *revsequenceuc2R,
 		       int offset2L, int revoffset2R,
-		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		       bool watsonp) {
+		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Genomicpos_T chrpos, int genomiclength, bool watsonp) {
   int bestscore, scoreL, scoreR, scoreI;
   int rcL, rcR;
   int bestscoreL_GT, bestscoreL_GC, bestscoreL_AT, bestscoreL_XX;
@@ -4191,8 +4217,8 @@ bridge_dual_break_fwd (int *finalscore, int *bestrcL, int *bestrcR,
       bestrcL_XX = rcL;
     }
 
-    left1 = get_genomic_nt(offset2L+rcL,chroffset,chrpos,genomiclength,watsonp);
-    left2 = get_genomic_nt(offset2L+rcL+1,chroffset,chrpos,genomiclength,watsonp);
+    left1 = get_genomic_nt(offset2L+rcL,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    left2 = get_genomic_nt(offset2L+rcL+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == sequenceuc2L[rcL]);
     assert(left2 == sequenceuc2L[rcL+1]);
@@ -4224,8 +4250,8 @@ bridge_dual_break_fwd (int *finalscore, int *bestrcL, int *bestrcR,
       bestscoreR_XX = scoreR;
       bestrcR_XX = rcR;
     }
-    right2 = get_genomic_nt(revoffset2R-rcR-1,chroffset,chrpos,genomiclength,watsonp);
-    right1 = get_genomic_nt(revoffset2R-rcR,chroffset,chrpos,genomiclength,watsonp);
+    right2 = get_genomic_nt(revoffset2R-rcR-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    right1 = get_genomic_nt(revoffset2R-rcR,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(right2 == revsequenceuc2R[-1-rcR]);
     assert(right1 == revsequenceuc2R[-rcR]);
@@ -4281,7 +4307,7 @@ bridge_dual_break_fwd (int *finalscore, int *bestrcL, int *bestrcR,
   if (*bestrcL + *bestrcR >= diaglength) {
     bridge_dual_break_nogap(&(*finalscore),&(*bestrcL),&(*bestrcR),matrixL,matrixR,
 			    diaglength,sequenceuc2L,revsequenceuc2R,
-			    offset2L,revoffset2R,chroffset,chrpos,genomiclength,
+			    offset2L,revoffset2R,chroffset,chrhigh,chrpos,genomiclength,
 			    /*cdna_direction*/+1,watsonp);
   }
 
@@ -4293,8 +4319,8 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR,
 		       struct Int3_T **matrixL, struct Int3_T **matrixR,
 		       int diaglength, char *sequenceuc2L, char *revsequenceuc2R,
 		       int offset2L, int revoffset2R,
-		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
-		       bool watsonp) {
+		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Genomicpos_T chrpos, int genomiclength, bool watsonp) {
   int bestscore, scoreL, scoreR, scoreI;
   int rcL, rcR;
   int bestscoreL_CT, bestscoreL_GT, bestscoreL_XX;
@@ -4315,8 +4341,8 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR,
       bestrcL_XX = rcL;
     }
 
-    left1 = get_genomic_nt(offset2L+rcL,chroffset,chrpos,genomiclength,watsonp);
-    left2 = get_genomic_nt(offset2L+rcL+1,chroffset,chrpos,genomiclength,watsonp);
+    left1 = get_genomic_nt(offset2L+rcL,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    left2 = get_genomic_nt(offset2L+rcL+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == sequenceuc2L[rcL]);
     assert(left2 == sequenceuc2L[rcL+1]);
@@ -4344,8 +4370,8 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR,
       bestrcR_XX = rcR;
     }
 
-    right2 = get_genomic_nt(revoffset2R-rcR-1,chroffset,chrpos,genomiclength,watsonp);
-    right1 = get_genomic_nt(revoffset2R-rcR,chroffset,chrpos,genomiclength,watsonp);
+    right2 = get_genomic_nt(revoffset2R-rcR-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    right1 = get_genomic_nt(revoffset2R-rcR,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(right2 == revsequenceuc2R[-1-rcR]);
     assert(right1 == revsequenceuc2R[-rcR]);
@@ -4407,7 +4433,7 @@ bridge_dual_break_rev (int *finalscore, int *bestrcL, int *bestrcR,
   if (*bestrcL + *bestrcR >= diaglength) {
     bridge_dual_break_nogap(&(*finalscore),&(*bestrcL),&(*bestrcR),matrixL,matrixR,
 			    diaglength,sequenceuc2L,revsequenceuc2R,
-			    offset2L,revoffset2R,chroffset,chrpos,genomiclength,
+			    offset2L,revoffset2R,chroffset,chrhigh,chrpos,genomiclength,
 			    /*cdna_direction*/-1,watsonp);
   }
 
@@ -4422,7 +4448,8 @@ List_T
 Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    T dynprog, char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2,
-		    Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
@@ -4508,7 +4535,7 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmis
 				     sequence1,sequence2,
 #endif
 				     offset2,length1,length2,
-				     chroffset,chrpos,genomiclength,watsonp,
+				     chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				     mismatchtype,open,extend,
 				     extraband_single,widebandp,onesidegapp,
 				     jump_late_p,/*use_genomicseg_p*/false);
@@ -4523,7 +4550,7 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmis
 		    sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 		    offset1,offset2,pairpool,/*revp*/false,
-		    chroffset,chrpos,genomiclength,
+		    chroffset,chrhigh,chrpos,genomiclength,
 		    cdna_direction,watsonp,*dynprogindex,/*use_genomicseg_p*/false);
 
 #ifdef PMAP
@@ -4552,7 +4579,8 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 		  char *sequence2, char *sequenceuc2,
 		  int length1L, int length1R, int length2,
 		  int offset1L, int revoffset1R, int offset2,
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
@@ -4657,7 +4685,7 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 					 revsequence2,revsequence1R,
 #endif
 					 revoffset2,length2,length1R,
-					 chroffset,chrpos,genomiclength,watsonp,
+					 chroffset,chrhigh,chrpos,genomiclength,watsonp,
 					 mismatchtype,open,extend,
 					 extraband_paired,/*widebandp*/true,/*onesidegapp*/false,
 					 /*for revp true*/!jump_late_p);
@@ -4670,7 +4698,7 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 					 sequence2,sequence1L,
 #endif
 					 offset2,length2,length1L,
-					 chroffset,chrpos,genomiclength,watsonp,
+					 chroffset,chrhigh,chrpos,genomiclength,watsonp,
 					 mismatchtype,open,extend,
 					 extraband_paired,/*widebandp*/true,/*onesidegapp*/false,
 					 jump_late_p);
@@ -4688,7 +4716,7 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 			 revsequence1R,revsequenceuc1R,revsequence2,revsequenceuc2,
 #endif
 			 revoffset1R,revoffset2,pairpool,/*revp*/true,
-			 chroffset,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex);
+			 chroffset,chrhigh,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex);
   pairs = List_reverse(pairs);
 
   queryjump = (revoffset1R-bestcR) - (offset1L+bestcL) + 1;
@@ -4737,7 +4765,7 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 			 sequence1L,sequenceuc1L,sequence2,sequenceuc2,
 #endif
 			 offset1L,offset2,pairpool,/*revp*/false,
-			 chroffset,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex);
+			 chroffset,chrhigh,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex);
 
   /*
   Directions_free(directionsR);
@@ -4774,7 +4802,8 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 		    char *revsequence2R, char *revsequenceuc2R,
 		    int length1, int length2L, int length2R, 
 		    int offset1, int offset2L, int revoffset2R, 
-		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, Genomicpos_T genomiclength,
 		    char *genomicuc_ptr, bool use_genomicseg_p,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -4937,7 +4966,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 				      sequence1,sequence2L,
 #endif
 				      offset2L,length1,length2L,
-				      chroffset,chrpos,genomiclength,watsonp,
+				      chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				      mismatchtype,open,extend,
 				      extraband_paired,/*widebandp*/true,/*onesidegapp*/false,
 				      jump_late_p,/*use_genomicseg_p*/false);
@@ -4949,7 +4978,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 				      revsequence1,revsequence2R,
 #endif
 				      revoffset2R,length1,length2R,
-				      chroffset,chrpos,genomiclength,watsonp,
+				      chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				      mismatchtype,open,extend,
 				      extraband_paired,/*widebandp*/true,/*onesidegapp*/false,
 				      /*for revp true*/!jump_late_p,/*use_genomicseg_p*/false);
@@ -4960,7 +4989,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 			offset2L,revoffset2R,length1,length2L,length2R,
 			cdna_direction,watsonp,extraband_paired,
 			canonical_reward,maxhorizjump,maxvertjump,offset2L,revoffset2R,
-			chrnum,chroffset,chrpos,genomiclength,
+			chrnum,chroffset,chrhigh,chrpos,genomiclength,
 			genomicuc_ptr,use_genomicseg_p,halfp,finalp,use_probabilities_p,
 			score_threshold) == false) {
     return (List_T) NULL;
@@ -4979,7 +5008,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 		      revsequence1,revsequenceuc1,revsequence2R,revsequenceuc2R,
 #endif
 		      revoffset1,revoffset2R,pairpool,/*revp*/true,
-		      chroffset,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
+		      chroffset,chrhigh,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
 		      /*use_genomicseg_p*/false);
     pairs = List_reverse(pairs);
 
@@ -5002,7 +5031,7 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 		      sequence1,sequenceuc1,sequence2L,sequenceuc2L,
 #endif
 		      offset1,offset2L,pairpool,/*revp*/false,
-		      chroffset,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
+		      chroffset,chrhigh,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
 		      /*use_genomicseg_p*/false);
 
     /*
@@ -5065,7 +5094,8 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *revsequence1, char *revsequenceuc1,
 		  char *revsequence2, char *revsequenceuc2,
 		  int length1, int length2, int revoffset1, int revoffset2, 
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
@@ -5151,7 +5181,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 				       revsequence1,revsequence2,
 #endif
 				       revoffset2,length1,length2,
-				       chroffset,chrpos,genomiclength,watsonp,
+				       chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				       mismatchtype,open,extend,
 				       extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				       /*for revp true*/!jump_late_p,use_genomicseg_p);
@@ -5166,7 +5196,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 				       revsequence1,revsequence2,
 #endif
 				       revoffset2,length1,length2,
-				       chroffset,chrpos,genomiclength,watsonp,
+				       chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				       mismatchtype,open,extend,
 				       extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				       /*for revp true*/!jump_late_p,use_genomicseg_p);
@@ -5179,6 +5209,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
     /* *finalscore = 0;	-- Splicetrie procedures need to know finalscore */
 
   } else {
+    fprintf(stderr,"Unexpected endalign value %d\n",endalign);
     abort();
   }
 
@@ -5204,7 +5235,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 			     revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
 			     revoffset1,revoffset2,pairpool,
-			     chroffset,chrpos,genomiclength,
+			     chroffset,chrhigh,chrpos,genomiclength,
 			     /*revp*/true,watsonp,*dynprogindex);
     *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ;
 
@@ -5217,7 +5248,7 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		      revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
 		      revoffset1,revoffset2,pairpool,/*revp*/true,
-		      chroffset,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
+		      chroffset,chrhigh,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
 		      use_genomicseg_p);
   }
 
@@ -5258,7 +5289,8 @@ Dynprog_end5_splicejunction_noindels (int *dynprogindex, int *finalscore, int *n
 				      char *revsequence1, char *revsequenceuc1,
 				      char *revsequence2, char *revsequenceuc2,
 				      int length1, int length2, int revoffset1, int revoffset2_anchor, int revoffset2_far,
-				      Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+				      Genomicpos_T chroffset, Genomicpos_T chrhigh,
+				      Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 				      char *queryaaseq,
 #endif
@@ -5334,7 +5366,7 @@ Dynprog_end5_splicejunction_noindels (int *dynprogindex, int *finalscore, int *n
 				 revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
 				 revoffset1,revoffset2_far,pairpool,
-				 chroffset,chrpos,genomiclength,
+				 chroffset,chrhigh,chrpos,genomiclength,
 				 /*revp*/true,watsonp,*dynprogindex);
 
   pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/revoffset2_anchor - revoffset2_far,
@@ -5348,7 +5380,7 @@ Dynprog_end5_splicejunction_noindels (int *dynprogindex, int *finalscore, int *n
 				 revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
 				 revoffset1,revoffset2_anchor,pairpool,
-				 chroffset,chrpos,genomiclength,
+				 chroffset,chrhigh,chrpos,genomiclength,
 				 /*revp*/true,watsonp,*dynprogindex);
 
   *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ;
@@ -5379,7 +5411,8 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			     char *revsequence1, char *revsequenceuc1,
 			     char *revsequence2, char *revsequenceuc2,
 			     int length1, int length2, int revoffset1, int revoffset2_anchor, int revoffset2_far,
-			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+			     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			     Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 			     char *queryaaseq,
 #endif
@@ -5462,7 +5495,7 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 				     revsequence1,revsequence2,
 #endif
 				     revoffset2_anchor,length1,length2,
-				     chroffset,chrpos,genomiclength,watsonp,
+				     chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				     mismatchtype,open,extend,
 				     extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				     /*for revp true*/!jump_late_p,/*use_genomicseg_p*/true);
@@ -5478,7 +5511,7 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			  revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
 			  revoffset1,revoffset2_far,pairpool,/*revp*/true,
-			  chroffset,chrpos,genomiclength,
+			  chroffset,chrhigh,chrpos,genomiclength,
 			  cdna_direction,watsonp,*dynprogindex);
 
   pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/revoffset2_anchor - revoffset2_far,
@@ -5492,7 +5525,7 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			  revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 #endif
 			  revoffset1,revoffset2_anchor,pairpool,/*revp*/true,
-			  chroffset,chrpos,genomiclength,
+			  chroffset,chrhigh,chrpos,genomiclength,
 			  cdna_direction,watsonp,*dynprogindex);
 
   /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
@@ -5523,7 +5556,8 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *sequence1, char *sequenceuc1,
 		  char *sequence2, char *sequenceuc2,
 		  int length1, int length2, int offset1, int offset2, 
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
@@ -5605,7 +5639,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 				       sequence1,sequence2,
 #endif
 				       offset2,length1,length2,
-				       chroffset,chrpos,genomiclength,watsonp,
+				       chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				       mismatchtype,open,extend,
 				       extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				       jump_late_p,use_genomicseg_p);
@@ -5620,7 +5654,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 				       sequence1,sequence2,
 #endif
 				       offset2,length1,length2,
-				       chroffset,chrpos,genomiclength,watsonp,
+				       chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				       mismatchtype,open,extend,
 				       extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				       jump_late_p,use_genomicseg_p);
@@ -5633,6 +5667,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
     /* *finalscore = 0; -- Splicetrie procedures need to know finalscore */
 
   } else {
+    fprintf(stderr,"Unexpected endalign value %d\n",endalign);
     abort();
   }
 
@@ -5657,7 +5692,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 			     sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 			     offset1,offset2,pairpool,
-			     chroffset,chrpos,genomiclength,
+			     chroffset,chrhigh,chrpos,genomiclength,
 			     /*revp*/false,watsonp,*dynprogindex);
     *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ;
 
@@ -5670,7 +5705,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		      sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 		      offset1,offset2,pairpool,/*revp*/false,
-		      chroffset,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
+		      chroffset,chrhigh,chrpos,genomiclength,cdna_direction,watsonp,*dynprogindex,
 		      use_genomicseg_p);
   }
 
@@ -5711,7 +5746,8 @@ Dynprog_end3_splicejunction_noindels (int *dynprogindex, int *finalscore, int *n
 				      char *sequence1, char *sequenceuc1,
 				      char *sequence2, char *sequenceuc2,
 				      int length1, int length2, int offset1, int offset2_anchor, int offset2_far,
-				      Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+				      Genomicpos_T chroffset, Genomicpos_T chrhigh,
+				      Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 				      char *queryaaseq,
 #endif
@@ -5787,7 +5823,7 @@ Dynprog_end3_splicejunction_noindels (int *dynprogindex, int *finalscore, int *n
 				 sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 				 offset1,offset2_far,pairpool,
-				 chroffset,chrpos,genomiclength,
+				 chroffset,chrhigh,chrpos,genomiclength,
 				 /*revp*/false,watsonp,*dynprogindex);
 
   pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/offset2_far - offset2_anchor,
@@ -5801,7 +5837,7 @@ Dynprog_end3_splicejunction_noindels (int *dynprogindex, int *finalscore, int *n
 				 sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 				 offset1,offset2_anchor,pairpool,
-				 chroffset,chrpos,genomiclength,
+				 chroffset,chrhigh,chrpos,genomiclength,
 				 /*revp*/false,watsonp,*dynprogindex);
 
   *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ;
@@ -5832,7 +5868,8 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			     char *sequence1, char *sequenceuc1,
 			     char *sequence2, char *sequenceuc2,
 			     int length1, int length2, int offset1, int offset2_anchor, int offset2_far,
-			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+			     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			     Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 			     char *queryaaseq,
 #endif
@@ -5918,7 +5955,7 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 				     sequence1,sequence2,
 #endif
 				     offset2_anchor,length1,length2,
-				     chroffset,chrpos,genomiclength,watsonp,
+				     chroffset,chrhigh,chrpos,genomiclength,watsonp,
 				     mismatchtype,open,extend,
 				     extraband_end,/*widebandp*/true,/*onesidegapp*/false,
 				     jump_late_p,/*use_genomicseg_p*/true);
@@ -5934,7 +5971,7 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			  sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 			  offset1,offset2_far,pairpool,/*revp*/false,
-			  chroffset,chrpos,genomiclength,
+			  chroffset,chrhigh,chrpos,genomiclength,
 			  cdna_direction,watsonp,*dynprogindex);
 
   pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/offset2_far - offset2_anchor,
@@ -5948,7 +5985,7 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			  sequence1,sequenceuc1,sequence2,sequenceuc2,
 #endif
 			  offset1,offset2_anchor,pairpool,/*revp*/false,
-			  chroffset,chrpos,genomiclength,
+			  chroffset,chrhigh,chrpos,genomiclength,
 			  cdna_direction,watsonp,*dynprogindex);
 
   /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
@@ -5995,6 +6032,7 @@ make_contjunction_5 (char *splicejunction, Genomicpos_T splicecoord,
     Genome_fill_buffer_blocks_noterm(splicecoord-contlength,contlength,proximal);
     
   } else {
+    fprintf(stderr,"Unexpected anchor_splicetype value %d\n",anchor_splicetype);
     abort();
   }
 
@@ -6039,6 +6077,7 @@ Dynprog_make_splicejunction_5 (char *splicejunction, Genomicpos_T splicecoord,
     Genome_fill_buffer_blocks_noterm(splicecoord-splicelength,splicelength,distal);
     
   } else {
+    fprintf(stderr,"Unexpected far_splicetype value %d\n",far_splicetype);
     abort();
   }
 
@@ -6081,6 +6120,7 @@ make_contjunction_3 (char *splicejunction, Genomicpos_T splicecoord,
     Genome_fill_buffer_blocks_noterm(splicecoord,contlength,proximal);
     
   } else {
+    fprintf(stderr,"Unexpected anchor_splicetype value %d\n",anchor_splicetype);
     abort();
   }
 
@@ -6125,6 +6165,7 @@ Dynprog_make_splicejunction_3 (char *splicejunction, Genomicpos_T splicecoord,
     Genome_fill_buffer_blocks_noterm(splicecoord,splicelength,distal);
     
   } else {
+    fprintf(stderr,"Unexpected far_splicetype value %d\n",far_splicetype);
     abort();
   }
 
@@ -6148,7 +6189,8 @@ Dynprog_make_splicejunction_3 (char *splicejunction, Genomicpos_T splicecoord,
 /* Replaced by Dynprog_end5_splicejunction */
 List_T
 Dynprog_add_known_splice_5 (int *length_distal, List_T pairs, Genomicpos_T anchor_splicesite, Genomicpos_T far_splicesite,
-			    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+			    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			    Genomicpos_T chrpos, int genomiclength,
 			    bool watsonp, Pairpool_T pairpool) {
   List_T path = NULL, pairptr;
   Pair_T pair;
@@ -6257,7 +6299,8 @@ Dynprog_add_known_splice_5 (int *length_distal, List_T pairs, Genomicpos_T ancho
 /* Replaced by Dynprog_end3_splicejunction */
 List_T
 Dynprog_add_known_splice_3 (int *length_distal, List_T pairs, Genomicpos_T anchor_splicesite, Genomicpos_T far_splicesite,
-			    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+			    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			    Genomicpos_T chrpos, int genomiclength,
 			    bool watsonp, Pairpool_T pairpool) {
   List_T path = NULL, pairptr;
   Pair_T pair;
@@ -6371,7 +6414,8 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *revsequence1, char *revsequenceuc1,
 		    char *revsequence2, char *revsequenceuc2,
 		    int length1, int length2, int revoffset1, int revoffset2, 
-		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, int genomiclength,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -6428,7 +6472,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 				&(*nopens),&(*nindels),dynprog, 
 				revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 				length1,length2,revoffset1,revoffset2, 
-				chroffset,chrpos,genomiclength,
+				chroffset,chrhigh,chrpos,genomiclength,
 #ifdef PMAP
 				queryaaseq,
 #endif
@@ -6532,7 +6576,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     &threshold_miss_score,/*obsmax_penalty*/0,perfect_score,
 					     /*anchor_splicesite*/splicesites[j],splicejunction,
 					     splicelength,contlength,far_splicetype,
-					     chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
+					     chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
 					     revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 					     queryaaseq,
@@ -6552,7 +6596,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     &threshold_miss_score,obsmax_penalty,perfect_score,
 					     /*anchor_splicesite*/splicesites[j],splicejunction,
 					     splicelength,contlength,far_splicetype,
-					     chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
+					     chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
 					     revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 					     queryaaseq,
@@ -6587,7 +6631,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 				    &(*nopens),&(*nindels),dynprog, 
 				    revsequence1,revsequenceuc1,revsequence2,revsequenceuc2,
 				    length1,length2,revoffset1,revoffset2, 
-				    chroffset,chrpos,genomiclength,
+				    chroffset,chrhigh,chrpos,genomiclength,
 #ifdef PMAP
 				    queryaaseq,
 #endif
@@ -6636,7 +6680,8 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *sequence1, char *sequenceuc1,
 		    char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2, int querylength,
-		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, int genomiclength,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -6694,7 +6739,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 				&(*nopens),&(*nindels),dynprog,
 				sequence1,sequenceuc1,sequence2,sequenceuc2,
 				length1,length2,offset1,offset2,
-				chroffset,chrpos,genomiclength,
+				chroffset,chrhigh,chrpos,genomiclength,
 #ifdef PMAP
 				queryaaseq,
 #endif
@@ -6798,7 +6843,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     &threshold_miss_score,/*obsmax_penalty*/0,perfect_score,
 					     /*anchor_splicesite*/splicesites[j],splicejunction,
 					     splicelength,contlength,far_splicetype,
-					     chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
+					     chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
 					     sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 					     queryaaseq,
@@ -6818,7 +6863,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     &threshold_miss_score,obsmax_penalty,perfect_score,
 					     /*anchor_splicesite*/splicesites[j],splicejunction,
 					     splicelength,contlength,far_splicetype,
-					     chroffset,chrpos,genomiclength,&(*dynprogindex),dynprog,
+					     chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
 					     sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 					     queryaaseq,
@@ -6853,7 +6898,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 				    &(*nopens),&(*nindels),dynprog,
 				    sequence1,sequenceuc1,sequence2,sequenceuc2,
 				    length1,length2,offset1,offset2,
-				    chroffset,chrpos,genomiclength,
+				    chroffset,chrhigh,chrpos,genomiclength,
 #ifdef PMAP
 				    queryaaseq,
 #endif
@@ -6902,7 +6947,8 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
 			     int offset2L, int offset2M, int offset2R,
 			     int lengthL, int lengthM, int lengthR,
 			     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
+			     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			     Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
 			     Pairpool_T pairpool, char gapchar, int dynprogindex) {
   List_T pairs = NULL;
   Pair_T gappair;
@@ -6913,7 +6959,7 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
   for (i = 0; i < lengthL; i++) {
     c1 = queryseq[offset1L+i];
 
-    c2 = get_genomic_nt(offset2L+i,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(offset2L+i,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomicseg[offset2L+i]);
 #endif
@@ -6946,7 +6992,7 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
   for (i = 0; i < lengthM; i++) {
     c1 = queryseq[offset1M+i];
 
-    c2 = get_genomic_nt(offset2M+i,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(offset2M+i,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomicseg[offset2M+i]);
 #endif
@@ -6984,7 +7030,7 @@ make_microexon_pairs_double (int offset1L, int offset1M, int offset1R,
   for (i = 0; i < lengthR; i++) {
     c1 = queryseq[offset1R+i];
 
-    c2 = get_genomic_nt(offset2R+i,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(offset2R+i,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomicseg[offset2R+i]);
 #endif
@@ -7010,7 +7056,8 @@ make_microexon_pairs_single (int offset1L, int offset1R,
 			     int offset2L, int offset2R,
 			     int lengthL, int lengthR,
 			     char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
+			     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			     Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
 			     Pairpool_T pairpool, char gapchar, int dynprogindex) {
   List_T pairs = NULL;
   Pair_T gappair;
@@ -7021,7 +7068,7 @@ make_microexon_pairs_single (int offset1L, int offset1R,
   for (i = 0; i < lengthL; i++) {
     c1 = queryseq[offset1L+i];
 
-    c2 = get_genomic_nt(offset2L+i,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(offset2L+i,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomicseg[offset2L+i]);
 #endif
@@ -7054,7 +7101,7 @@ make_microexon_pairs_single (int offset1L, int offset1R,
   for (i = 0; i < lengthR; i++) {
     c1 = queryseq[offset1R+i];
 
-    c2 = get_genomic_nt(offset2R+i,chroffset,chrpos,genomiclength,watsonp);
+    c2 = get_genomic_nt(offset2R+i,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c2 == genomicseg[offset2R+i]);
 #endif
@@ -7085,7 +7132,8 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 		       char *queryaaseq,
 #endif
 		       char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-		       Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
+		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
 		       bool use_genomicseg_p, Pairpool_T pairpool, double defect_rate) {
   List_T pairs = NULL;
 #ifdef PMAP
@@ -7137,12 +7185,18 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
     gapchar = REV_CANONICAL_INTRON_COMP;
     *microintrontype = GTAG_REV;
   } else {
+    fprintf(stderr,"cdna_direction is 0 in Dynprog_microexon_int\n");
     abort();
   }
 #endif
 
+#ifdef EXTRACT_GENOMICSEG
   debug(printf("Begin microexon search for %.*s and %.*s\n",
 	       length2L,sequence2L,length2R,&(revsequence2R[-length2R+1])));
+#else
+  debug(printf("Begin microexon search\n"));
+#endif
+
 #ifdef PMAP
   instsequence1 = instantiate_codons(sequence1,queryaaseq,offset1,length1);
   debug(printf("  Query sequence is %.*s\n",length1,instsequence1));
@@ -7153,7 +7207,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
   debug(printf("  Genomic span is of length %d\n",span));
 
   if (span <= 0) {
-    fprintf(stderr,"Bug in Dynprog_microexon_int.  span = %d.  Please report to twu@gene.com\n",span);
+    fprintf(stderr,"Bug in Dynprog_microexon_int.  span %d <= 0.  Please report to twu@gene.com\n",span);
     abort();
   } else {
     min_microexon_length = ceil(-log(1.0-pow(1.0-pvalue,1.0/(double) span))/log(4));
@@ -7181,7 +7235,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
       nmismatches++;
     }
 #else
-    c = get_genomic_nt(offset2L+leftbound,chroffset,chrpos,genomiclength,watsonp);
+    c = get_genomic_nt(offset2L+leftbound,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c == sequenceuc2L[leftbound]);
 #endif
@@ -7206,7 +7260,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
       nmismatches++;
     }
 #else
-    c = get_genomic_nt(revoffset2R-rightbound,chroffset,chrpos,genomiclength,watsonp);
+    c = get_genomic_nt(revoffset2R-rightbound,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c == revsequenceuc2R[-rightbound]);
 #endif
@@ -7225,8 +7279,8 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 
   /* We require that cL >= 1 and cR >= 1 so that lengthL and lengthR are >= 1 */
   for (cL = 1; cL <= leftbound; cL++) {
-    left1 = get_genomic_nt(offset2L+cL,chroffset,chrpos,genomiclength,watsonp);
-    left2 = get_genomic_nt(offset2L+cL+1,chroffset,chrpos,genomiclength,watsonp);
+    left1 = get_genomic_nt(offset2L+cL,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+    left2 = get_genomic_nt(offset2L+cL+1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(left1 == sequenceuc2L[cL]);
     assert(left2 == sequenceuc2L[cL+1]);
@@ -7245,8 +7299,8 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
       debug(printf("  Found left GT at %d.  Scanning from %d - cL - (1-7), or %d to %d\n",
 		   cL,length1,mincR,maxcR));
       for (cR = mincR; cR <= maxcR; cR++) {
-	right2 = get_genomic_nt(revoffset2R-cR-1,chroffset,chrpos,genomiclength,watsonp);
-	right1 = get_genomic_nt(revoffset2R-cR,chroffset,chrpos,genomiclength,watsonp);
+	right2 = get_genomic_nt(revoffset2R-cR-1,chroffset,chrhigh,chrpos,genomiclength,watsonp);
+	right1 = get_genomic_nt(revoffset2R-cR,chroffset,chrhigh,chrpos,genomiclength,watsonp);
 #ifdef EXTRACT_GENOMICSEG
 	assert(right2 == revsequenceuc2R[-cR-1]);
 	assert(right1 == revsequenceuc2R[-cR]);
@@ -7278,15 +7332,15 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 	  for (p = hits; p != NULL; p = Intlist_next(p)) {
 	    candidate = textleft + Intlist_head(p);
 #ifdef EXTRACT_GENOMICSEG
-	    assert(get_genomic_nt(candidate-2,chroffset,chrpos,genomiclength,watsonp) == genomicuc[candidate - 2]);
-	    assert(get_genomic_nt(candidate-1,chroffset,chrpos,genomiclength,watsonp) == genomicuc[candidate - 1]);
-	    assert(get_genomic_nt(candidate+middlelength,chroffset,chrpos,genomiclength,watsonp) == genomicuc[candidate + middlelength]);
-	    assert(get_genomic_nt(candidate+middlelength+1,chroffset,chrpos,genomiclength,watsonp) == genomicuc[candidate + middlelength+1]);
+	    assert(get_genomic_nt(candidate-2,chroffset,chrhigh,chrpos,genomiclength,watsonp) == genomicuc[candidate - 2]);
+	    assert(get_genomic_nt(candidate-1,chroffset,chrhigh,chrpos,genomiclength,watsonp) == genomicuc[candidate - 1]);
+	    assert(get_genomic_nt(candidate+middlelength,chroffset,chrhigh,chrpos,genomiclength,watsonp) == genomicuc[candidate + middlelength]);
+	    assert(get_genomic_nt(candidate+middlelength+1,chroffset,chrhigh,chrpos,genomiclength,watsonp) == genomicuc[candidate + middlelength+1]);
 #endif
-	    if (/*genomicuc[candidate - 2]*/ get_genomic_nt(candidate-2,chroffset,chrpos,genomiclength,watsonp) == intron3 &&
-		/*genomicuc[candidate - 1]*/ get_genomic_nt(candidate-1,chroffset,chrpos,genomiclength,watsonp)  == intron4 &&
-		/*genomicuc[candidate + middlelength]*/ get_genomic_nt(candidate+middlelength,chroffset,chrpos,genomiclength,watsonp) == intron1 &&
-		/*genomicuc[candidate + middlelength + 1]*/ get_genomic_nt(candidate+middlelength+1,chroffset,chrpos,genomiclength,watsonp) == intron2) {
+	    if (/*genomicuc[candidate - 2]*/ get_genomic_nt(candidate-2,chroffset,chrhigh,chrpos,genomiclength,watsonp) == intron3 &&
+		/*genomicuc[candidate - 1]*/ get_genomic_nt(candidate-1,chroffset,chrhigh,chrpos,genomiclength,watsonp)  == intron4 &&
+		/*genomicuc[candidate + middlelength]*/ get_genomic_nt(candidate+middlelength,chroffset,chrhigh,chrpos,genomiclength,watsonp) == intron1 &&
+		/*genomicuc[candidate + middlelength + 1]*/ get_genomic_nt(candidate+middlelength+1,chroffset,chrhigh,chrpos,genomiclength,watsonp) == intron2) {
 	      debug(printf("  Successful microexon at %d >>> %d..%d >>> %d\n",offset2L+cL,candidate,candidate+middlelength,revoffset2R-cR));
 
 	      /* Not handling known splice sites yet */
@@ -7361,7 +7415,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 					queryseq,queryuc,
 #endif
 					genomicseg,genomicuc,
-					chroffset,chrpos,genomiclength,watsonp,
+					chroffset,chrhigh,chrpos,genomiclength,watsonp,
 					pairpool,gapchar,*dynprogindex);
 #ifdef PMAP
     FREE(instsequence1);
@@ -7454,8 +7508,13 @@ Dynprog_microexon_5 (int *dynprogindex, int *microintrontype, int *microexonleng
   }
 #endif
 
+#ifdef EXTRACT_GENOMICSEG
   debug(printf("Begin microexon search at 5' for %.*s\n",
 	       length2,&(revsequence2[-length2+1])));
+#else
+  debug(printf("Begin microexon search at 5'\n"));
+#endif
+
 #ifdef PMAP
   instsequence1 = instantiate_codons(&(revsequence1[-length1+1]),queryaaseq,revoffset1-length1+1,length1);
   instrevsequence1 = &(instsequence1[length1-1]);
@@ -7599,7 +7658,11 @@ Dynprog_microexon_3 (int *dynprogindex, int *microintrontype, int *microexonleng
   }
 #endif
 
+#ifdef EXTRACT_GENOMICSEG
   debug(printf("Begin microexon search at 3' for %.*s\n",length2,sequence2));
+#else
+  debug(printf("Begin microexon search at 3'\n"));
+#endif
 
 #ifdef PMAP
   instsequence1 = instantiate_codons(sequence1,queryaaseq,offset1,length1);

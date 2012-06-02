@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 65027 2012-05-25 02:12:23Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 65571 2012-06-01 19:43:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11242,7 +11242,7 @@ align_single_hit_with_gmap (Stage3end_T hit, bool extend_left_p, bool extend_rig
 #else
 				    /*query_subseq_offset*/0,/*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
 #endif
-				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
+				    chrnum,chroffset,chrhigh,/*chrpos*/genomicstart-chroffset,
 				    knownsplice_limit_low,knownsplice_limit_high,
 				    /*genome*/NULL,/*usersegment_p*/false,watsonp,genestrand,
 				    /*jump_late_p*/watsonp ? false : true,
@@ -11627,7 +11627,7 @@ align_single_terminal_with_gmap (Stage3end_T terminal,
 #else
 				    /*query_subseq_offset*/0,/*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
 #endif
-				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
+				    chrnum,chroffset,chrhigh,/*chrpos*/genomicstart-chroffset,
 				    knownsplice_limit_low,knownsplice_limit_high,
 				    /*genome*/NULL,/*usersegment_p*/false,watsonp,genestrand,
 				    /*jump_late_p*/watsonp ? false : true,
@@ -13311,7 +13311,7 @@ align_halfmapping_with_gmap (Stage3end_T hit5, Stage3end_T hit3,
 #else
 				    /*query_subseq_offset*/0,/*genomicseg_ptr*/NULL,/*genomicuc_ptr*/NULL,
 #endif
-				    chrnum,chroffset,/*chrpos*/genomicstart-chroffset,
+				    chrnum,chroffset,chrhigh,/*chrpos*/genomicstart-chroffset,
 				    knownsplice_limit_low,knownsplice_limit_high,
 				    /*genome*/NULL,/*usersegment_p*/false,watsonp,genestrand,
 				    /*jump_late_p*/watsonp ? false : true,

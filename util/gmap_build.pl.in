@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 58449 2012-02-24 19:53:40Z twu $
+# $Id: gmap_build.pl.in 65046 2012-05-25 17:11:19Z twu $
 
 use warnings;	
 
@@ -36,8 +36,13 @@ if (!defined($kmersize = $opt_k)) {
     $kmersize = 15;
     $basesize = 12;
 } elsif (!defined($basesize = $opt_b)) {
-    print STDERR "-k flag specified, but not -b, so building with basesize == kmer size\n";
-    $basesize = $kmersize;
+    if ($kmersize == 15) {
+	print STDERR "-k flag specified as 15, but not -b, so building with basesize == 12\n";
+	$basesize = 12;
+    } else {
+	print STDERR "-k flag specified (not as 15), but not -b, so building with basesize == kmer size\n";
+	$basesize = $kmersize;
+    }
 }
 
 if (!defined($sampling = $opt_q)) {

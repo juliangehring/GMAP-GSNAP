@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 64291 2012-05-16 23:10:59Z twu $";
+static char rcsid[] = "$Id: gsnap.c 65449 2012-05-31 20:37:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2057,8 +2057,8 @@ main (int argc, char *argv[]) {
       if (user_snpsdir == NULL) {
 	fprintf(stderr,"Available files:\n");
 	Datadir_list_directory(stderr,genomesubdir);
-	fprintf(stderr,"Either install file %s or specify a full directory path\n",snps_root);
-	fprintf(stderr,"using the -D flag to gsnap.\n");
+	fprintf(stderr,"Either install file %s.iit or specify a directory for the IIT file\n",snps_root);
+	fprintf(stderr,"using the -M flag.\n");
 	exit(9);
       }
     }
@@ -2896,8 +2896,7 @@ is still designed to be fast.\n\
                                    (not fully implemented yet)\n\
   --failsonly                    Print only failed alignments, those with no results\n\
   --nofails                      Exclude printing of failed alignments\n\
-  --fails-as-input=STRING        Print completely failed alignments as input FASTA or FASTQ format\n\
-                                   Allowed values: yes, no\n\
+  --fails-as-input               Print completely failed alignments as input FASTA or FASTQ format\n\
 ");
 
 #ifdef HAVE_GOBY

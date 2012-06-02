@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 64180 2012-05-16 00:17:32Z twu $";
+static char rcsid[] = "$Id: genome.c 65624 2012-06-02 03:33:53Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10016,7 +10016,7 @@ Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char 
     delta = -left;
     length -= delta;
     for (i = 0; i < delta; i++) {
-      gbuffer1[i] = 'N';
+      gbuffer1[i] = '*';	/* Don't use 'N', which works in dynamic programming */
     }
     gbuffer1[i] = '\0';
     gbuffer1 += delta;
@@ -10112,7 +10112,7 @@ Genome_fill_buffer_simple_alt (T this, Genomicpos_T left, Genomicpos_T length, c
     delta = -left;
     length -= delta;
     for (i = 0; i < delta; i++) {
-      gbuffer1[i] = 'N';
+      gbuffer1[i] = '*';	/* Don't use 'N', which works in dynamic programming */
     }
     gbuffer1[i] = '\0';
     gbuffer1 += delta;
@@ -10228,6 +10228,8 @@ Genome_get_char (T this, Genomicpos_T left) {
   char c;
   char gbuffer1[1];
   
+  assert(left < 4000000000U);
+
   if (this->compressedp == false) {
     if (this->access == FILEIO) {
 #ifdef HAVE_PTHREAD
@@ -10274,6 +10276,8 @@ Genome_get_char_blocks (Genomicpos_T left) {
   char c;
   char gbuffer1[1];
   
+  assert(left < 4000000000U);
+
   c = uncompress_one_char(genome_blocks,left);
 #ifdef EXTRACT_GENOMICSEG
   uncompress_mmap(gbuffer1,genome_blocks,left,left+1);

@@ -1,4 +1,4 @@
-/* $Id: stage3.h 64738 2012-05-23 02:33:01Z twu $ */
+/* $Id: stage3.h 65571 2012-06-01 19:43:31Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -226,7 +226,8 @@ Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_directi
 	    int matches, int unknowns, int mismatches, int qopens, int qindels,
 	    int topens, int tindels, int ncanonical, int nsemicanonical,
 	    int nnoncanonical, double defect_rate,
-	    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, bool watsonp,
+	    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrlength,
+	    Genomicpos_T chrpos, bool watsonp,
 	    int skiplength, int trimlength, double stage3_runtime,
 	    int straintype, char *strain, IIT_T altstrain_iit);
 
@@ -256,8 +257,8 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 		char *queryseq_ptr, char *queryuc_ptr, int querylength,
 		int skiplength, int query_subseq_offset,
 		char *genomicseg_ptr, char *genomicuc_ptr,
-		Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos,
-		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+		Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrlength,
+		Genomicpos_T chrpos, Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 		Genome_T genome, bool usersegment_p, bool watsonp, int genestrand, bool jump_late_p,
 		int maxpeelback, int maxpeelback_distalmedial, int nullgap,
 		int extramaterial_end, int extramaterial_paired,

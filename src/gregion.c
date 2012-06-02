@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c 64181 2012-05-16 00:18:33Z twu $";
+static char rcsid[] = "$Id: gregion.c 65571 2012-06-01 19:43:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -63,7 +63,9 @@ struct T {
   Genomicpos_T extentend;
 
   Genomicpos_T chroffset;	/* This is for chr, not the segment */
+  Genomicpos_T chrhigh;
   Genomicpos_T chrlength;	/* This is for chr, not the segment */
+
   int querystart;		/* Used only for maponly mode */
   int queryend;			/* Used only for maponly mode */
   int matchsize;		/* Used only for maponly mode */
@@ -175,6 +177,11 @@ Gregion_chroffset (T this) {
 }
 
 Genomicpos_T
+Gregion_chrhigh (T this) {
+  return this->chrhigh;
+}
+
+Genomicpos_T
 Gregion_chrlength (T this) {
   return this->chrlength;
 }
@@ -240,7 +247,8 @@ Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
   } else {
     new->chrnum = IIT_get_one(chromosome_iit,/*divstring*/NULL,genomicstart,genomicstart);
     new->chroffset = Interval_low(IIT_interval(chromosome_iit,new->chrnum));
-    new->chrlength = Interval_high(IIT_interval(chromosome_iit,new->chrnum)) - new->chroffset;
+    new->chrhigh = Interval_high(IIT_interval(chromosome_iit,new->chrnum));
+    new->chrlength = new->chrhigh - new->chroffset;
   }
   
   assert(genomicstart < genomicend);
@@ -602,7 +610,7 @@ Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int qu
 
   if (this->chrend + right >= this->chrlength) {
     /* At end of chromosome */
-    this->genomicend = this->chroffset + this->chrlength;
+    this->genomicend = this->chrhigh;
     this->chrend = this->chrlength;
   } else {
     this->genomicend += right;

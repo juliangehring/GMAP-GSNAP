@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 64819 2012-05-23 19:22:08Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 65611 2012-06-02 01:13:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8347,6 +8347,7 @@ pair_remove_overlaps (List_T hitpairlist, bool finalp) {
 		n,finalp == true ? "FINAL" : "not final"));
 
   if (n < 2) {
+    debug8(printf("  Exiting pair_remove_overlaps with %d < 2 pairs\n",n));
     return hitpairlist;
   } else {
     eliminate = (bool *) CALLOC(n,sizeof(bool));
@@ -8784,13 +8785,17 @@ pair_remove_overlaps (List_T hitpairlist, bool finalp) {
 
 List_T
 Stage3pair_remove_overlaps (List_T hitpairlist, bool finalp) {
-  List_T indep_overlapping = NULL, unique_separate, unique_overlapping,
+  List_T unique_separate, unique_overlapping,
     separate = NULL, overlapping = NULL, p;
+  Stage3pair_T hitpair;
+
+  List_T indep_overlapping = NULL;
   Stage3pair_T *array_separate, *array_overlapping;
-  Stage3pair_T hitpair, hitpair_overlapping;
+  Stage3pair_T hitpair_overlapping;
   Genomicpos_T low, high;
-  bool subsumedp;
+  bool subsumedp, equalp;
   int n_separate, n_overlapping, i, j;
+
 
   for (p = hitpairlist; p != NULL; p = List_next(p)) {
     hitpair = (Stage3pair_T) List_head(p);
@@ -8835,7 +8840,16 @@ Stage3pair_remove_overlaps (List_T hitpairlist, bool finalp) {
 
       subsumedp = false;
       while (j < n_separate && subsumedp == false && array_separate[j]->low <= high) {
-	subsumedp = hitpair_subsumption(array_separate[j],hitpair_overlapping);
+	if (hitpair_goodness_cmp(&equalp,array_separate[j],
+#ifdef DEBUG8
+				 j,
+#endif
+				 hitpair_overlapping,finalp) > 0) {
+	  debug8(printf("separate pair %d better than overlapping pair %d\n",j,i));
+	  subsumedp = hitpair_subsumption(array_separate[j],hitpair_overlapping);
+	  debug8(printf("  checking if separate pair %d subsumes overlapping pair %d => %d\n",
+			j,i,subsumedp));
+	}
 	j++;
       }
       j -= 1;

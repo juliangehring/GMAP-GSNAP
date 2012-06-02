@@ -1,4 +1,4 @@
-/* $Id: gregion.h 64181 2012-05-16 00:18:33Z twu $ */
+/* $Id: gregion.h 65571 2012-06-01 19:43:31Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
@@ -45,6 +45,9 @@ Gregion_chrpos (T this);
 
 extern Genomicpos_T
 Gregion_chroffset (T this);
+
+extern Genomicpos_T
+Gregion_chrhigh (T this);
 
 extern Genomicpos_T
 Gregion_chrlength (T this);

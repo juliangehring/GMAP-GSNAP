@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 64302 2012-05-17 00:03:05Z twu $";
+static char rcsid[] = "$Id: stage2.c 65538 2012-06-01 17:38:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3817,6 +3817,9 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 #ifndef USE_DIAGPOOL
   List_p;
   Diag_T diag;
+#endif
+#ifdef EXTRACT_GENOMICSEG
+  int *counts;
 #endif
 
   if (debug_graphic_p == true) {

@@ -1,4 +1,79 @@
+2012-06-02  twu
+
+    * genome.c: Added assertions to Genome_get_char and Genome_get_char_blocks
+      to check for negative coordinates
+
+    * dynprog.c: Removed debugging statements
+
+    * stage3.c: Fixed get_genomic_nt to check for both genomicpos between 0 and
+      genomiclength, and pos between chroffset and chrhigh
+
+    * dynprog.c: Fixed get_genomic_nt to check for both genomicpos between 0 and
+      genomiclength, and pos between chroffset and chrhigh
+
+    * VERSION, index.html: Updated version number
+
+    * dynprog.c, stage3.c: Checking only for genomepos < 0 in get_genomic_nt,
+      not for chrpos between chroffset and chrhigh, which may need further
+      debugging for chimeras.
+
+    * dynprog.c: Checking for genomepos < 0 in get_genomic_nt.
+
+    * stage3.c: For Stage3_extend_left and Stage3_extend_right, using
+      get_genomic_nt instead of going directly to Genome_get_char.  Checking for
+      genomepos < 0 in get_genomic_nt.
+
+    * stage3hr.c: In Stage3pair_remove_overlaps, allowing separate pair to
+      subsume overlapping pair only if it is better
+
+2012-06-01  twu
+
+    * stage3.c: Fixed check of chrpos to compare genomicpos against chrhigh
+
+    * dynprog.c: Fixed check of chrpos to compare genomicpos against chrhigh
+
+    * dynprog.c, stage3.c: Checking for chrpos between 0 and chrhigh - 1,
+      inclusive
+
+    * dynprog.c, dynprog.h, gmap.c, gregion.c, gregion.h, splicetrie.c,
+      splicetrie.h, stage1hr.c, stage3.c, stage3.h: Passing chrhigh along with
+      chroffset to all procedures
+
+    * dynprog.c, genome.c: When chromosomal coordinate is negative, returns '*'
+      instead of 'N'. Traceback procedures in dynamic programming will not add
+      pairs with '*' genomic nucleotides.
+
+    * util: Merged changes from last branch
+
+    * config.site.rescomp.tst: Updated version number
+
+    * README: Added note that MAX_READLENGTH applies only to GSNAP
+
+    * VERSION, index.html: Updated version number
+
+    * stage2.c, stage3.c: Merged changes from
+      branches/2012-06-01-merge-single-gap to fix problems with merging single
+      gap on minus strand
+
+2012-05-31  twu
+
+    * stage3.c: Protected another debugging statement from referring to
+      genomicseg
+
+    * gsnap.c: Fixed documentation for --fails-as-input flag.
+
+    * gmap.c: Added --fails-as-input string to getopt processing.  Fixed
+      documentation for --fails-as-input flag.
+
+    * dynprog.c: Added messages to stderr before all abort statements
+
+    * translation.c: Requiring translation_leftpos and translation_rightpos to
+      be between 0 and querylength-1.
+
 2012-05-25  twu
+
+    * gmap_build.pl.in: If -k 15 specified, but not -b, setting basesize to be
+      12
 
     * Makefile.gsnaptoo.am: Added uniqscan program
 

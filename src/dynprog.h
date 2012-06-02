@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 64733 2012-05-23 02:19:21Z twu $ */
+/* $Id: dynprog.h 65571 2012-06-01 19:43:31Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -73,7 +73,8 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore,
 		    int *nmatches, int *nmismatches, int *nopens, int *nindels,
 		    T dynprog, char *sequence1, char *sequenceuc1, char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2,
-		    Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
@@ -87,7 +88,8 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 		  char *sequence2, char *sequenceuc2,
 		  int length1L, int length1R, int length2,
 		  int offset1L, int revoffset1R, int offset2,
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
@@ -104,7 +106,8 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 		    char *revsequence2R, char *revsequenceuc2R,
 		    int length1, int length2L, int length2R, 
 		    int offset1, int offset2L, int revoffset2R, 
-		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, Genomicpos_T genomiclength,
 		    char *genomicuc_ptr, bool use_genomicseg_p,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -119,7 +122,8 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *revsequence1, char *revsequenceuc1,
 		  char *revsequence2, char *revsequenceuc2,
 		  int length1, int length2, int revoffset1, int revoffset2, 
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
@@ -133,7 +137,8 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			     char *revsequence1, char *revsequenceuc1,
 			     char *revsequence2, char *revsequenceuc2,
 			     int length1, int length2, int revoffset1, int revoffset2_anchor, int revoffset2_far,
-			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+			     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			     Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 			     char *queryaaseq,
 #endif
@@ -146,7 +151,8 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  char *sequence1, char *sequenceuc1,
 		  char *sequence2, char *sequenceuc2,
 		  int length1, int length2, int offset1, int offset2, 
-		  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+		  Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 		  char *queryaaseq,
 #endif
@@ -160,7 +166,8 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 			     char *sequence1, char *sequenceuc1,
 			     char *sequence2, char *sequenceuc2,
 			     int length1, int length2, int offset1, int offset2_anchor, int offset2_far,
-			     Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength,
+			     Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			     Genomicpos_T chrpos, Genomicpos_T genomiclength,
 #ifdef PMAP
 			     char *queryaaseq,
 #endif
@@ -179,12 +186,14 @@ Dynprog_make_splicejunction_3 (char *splicejunction, Genomicpos_T splicecoord,
 
 extern List_T
 Dynprog_add_known_splice_5 (int *nmatches_distal, List_T pairs, Genomicpos_T anchor_splicesite, Genomicpos_T far_splicesite,
-			    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+			    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			    Genomicpos_T chrpos, int genomiclength,
 			    bool watsonp, Pairpool_T pairpool);
 
 extern List_T
 Dynprog_add_known_splice_3 (int *nmatches_distal, List_T pairs, Genomicpos_T anchor_splicesite, Genomicpos_T far_splicesite,
-			    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+			    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			    Genomicpos_T chrpos, int genomiclength,
 			    bool watsonp, Pairpool_T pairpool);
 
 
@@ -195,7 +204,8 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *revsequence1, char *revsequenceuc1,
 		    char *revsequence2, char *revsequenceuc2,
 		    int length1, int length2, int revoffset1, int revoffset2, 
-		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, int genomiclength,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -215,7 +225,8 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 		    char *sequence1, char *sequenceuc1,
 		    char *sequence2, char *sequenceuc2,
 		    int length1, int length2, int offset1, int offset2, int querylength,
-		    Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		    Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		    Genomicpos_T chrpos, int genomiclength,
 		    Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
 #ifdef PMAP
 		    char *queryaaseq,
@@ -266,7 +277,8 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 		       char *queryaaseq,
 #endif
 		       char *queryseq, char *queryuc, char *genomicseg, char *genomicuc,
-		       Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
+		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Genomicpos_T chrpos, Genomicpos_T genomiclength, bool watsonp,
 		       bool use_genomicseg_p, Pairpool_T pairpool, double defect_rate);
 
 extern List_T

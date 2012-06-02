@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: translation.c 65446 2012-05-31 20:36:07Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1575,7 +1575,9 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 	pairs[i].aapos = aapos;
       }
       *translation_leftpos = minpos;
-      *translation_rightpos = maxpos + 2;
+      if ((*translation_rightpos = maxpos + 2) >= querylength) {
+	*translation_rightpos = querylength - 1;
+      }
       if (lastaa == '*') {
 	*translation_length -= 1;
       }
@@ -1624,7 +1626,9 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
 	}
 	pairs[i].aapos = aapos;
       }
-      *translation_leftpos = minpos - 2;
+      if ((*translation_leftpos = minpos - 2) < 0) {
+	*translation_leftpos = 0;
+      }
       *translation_rightpos = maxpos;
       if (lastaa == '*') {
 	*translation_length -= 1;
@@ -1653,9 +1657,9 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
     *relaaend = pairs[translation_endi].aapos;
 
     debug(printf("Translation start = pair #%d (querypos %d, aa #%d)\n",
-		 translation_starti,*translation_leftpos,*relaastart));
+		 translation_starti,*translation_rightpos,*relaaend));
     debug(printf("Translation end = pair #%d (querypos %d, aa#%d)\n",
-		 translation_endi,*translation_rightpos,*relaaend));
+		 translation_endi,*translation_leftpos,*relaastart));
     debug(printf("Translation length = %d aa\n",*translation_length));
     
     if (strictp == true) {

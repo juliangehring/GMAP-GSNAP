@@ -38,7 +38,8 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
 
 		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
 		       Splicetype_T far_splicetype,
-		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Genomicpos_T chrpos, int genomiclength,
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *revsequence1, char *revsequenceuc1,
 		       int length1, int length2, int revoffset1, int revoffset2,
@@ -58,7 +59,8 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned i
 
 		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
 		       Splicetype_T far_splicetype,
-		       Genomicpos_T chroffset, Genomicpos_T chrpos, int genomiclength,
+		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Genomicpos_T chrpos, int genomiclength,
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *sequence1, char *sequenceuc1,
 		       int length1, int length2, int offset1, int offset2,

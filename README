@@ -64,6 +64,9 @@ MAX_READLENGTH as an environment variable before calling ./configure.
 If you do not set MAX_READLENGTH, it will have the default value shown
 when you run "./configure --help".
 
+Note that MAX_READLENGTH applies only to GSNAP.  GMAP, on the other
+hand, can process queries up to 1 million bp.
+
 
 Note 4: GSNAP can read from gzip-compressed FASTA or FASTQ input
 files.  This feature requires the zlib library to be present

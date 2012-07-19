@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 61380 2012-04-09 22:48:58Z twu $";
+static char rcsid[] = "$Id: substring.c 66750 2012-06-18 18:19:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -148,9 +148,8 @@ static bool output_sam_p;
 static Mode_T mode;
 
 
-#if 0
-static char *
-endtype_string (Endtype_T endtype) {
+char *
+Endtype_string (Endtype_T endtype) {
   switch (endtype) {
   case END: return "end";
   case INS: return "ins";
@@ -166,7 +165,6 @@ endtype_string (Endtype_T endtype) {
   }
   return "";
 }
-#endif
 
 
 static char complCode[128] = COMPLEMENT_LC;
@@ -1792,8 +1790,9 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
 }
 
 
+/* Look also at Pair_compute_mapq */
 double
-Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string) {
+Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string, bool trim_terminals_p) {
   int mapq_start, mapq_end;
 
   /* mapq */
@@ -1803,20 +1802,16 @@ Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string)
   /* It appears from simulated reads that it is better not to trim in
      computing MAPQ.  The correct mapping then tends to be selected
      with a higher MAPQ score. */
-#ifdef USE_TRIMMED_FOR_MAPQ
-  if (this->start_endtype == TERM) {
-    mapq_start += this->trim_left;
-    /* mapq_end -= this->trim_right; */ /* Don't allow trimming found on right */
-
-  } else if (this->end_endtype == TERM) {
-    /* mapq_start += this->trim_left; */ /* Don't allow trimming found on left */
-    mapq_end -= this->trim_right;
-
-  } else {
-    mapq_start += this->trim_left;
-    mapq_end -= this->trim_right;
+  /* But if all ends are terminals, then terminal parts should not be
+     included in MAPQ scoring */
+  if (trim_terminals_p == true) {
+    if (this->start_endtype == TERM) {
+      mapq_start += this->trim_left;
+    }
+    if (this->end_endtype == TERM) {
+      mapq_end -= this->trim_right;
+    }
   }
-#endif
 
   if (this->exactp == true) {
     /* this->mapq_loglik = MAPQ_loglik_exact(quality_string,0,querylength); */

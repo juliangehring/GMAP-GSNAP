@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 64017 2012-05-14 22:35:15Z twu $ */
+/* $Id: stage3hr.h 67010 2012-06-20 23:37:13Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -39,7 +39,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		int pairmax_in, int expected_pairlength_in, int pairlength_deviation_in,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
-		int index1part, int index1interval);
+		double gmap_min_coverage_in, int index1part, int index1interval);
 
 extern Hittype_T
 Stage3end_hittype (T this);
@@ -222,6 +222,7 @@ Stage3end_new_deletion (int *found_score, int nindels, int indel_pos, int nmisma
 extern T
 Stage3end_new_terminal (int querystart, int queryend, Genomicpos_T left, Compress_T query_compress,
 			int querylength, bool plusp, int genestrand,
+			Endtype_T start_endtype, Endtype_T end_endtype,
 			Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
 			int max_mismatches_allowed);
 extern T
@@ -312,7 +313,7 @@ extern List_T
 Stage3pair_sort_bymatches (List_T hits);
 
 extern List_T
-Stage3pair_remove_overlaps (List_T hitpairlist, bool finalp);
+Stage3pair_remove_overlaps (List_T hitpairlist, bool translocp, bool finalp);
 
 extern List_T
 Stage3pair_resolve_multimapping (List_T hitpairs);
@@ -333,7 +334,7 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
 
 extern List_T
 Stage3_pair_up_concordant (bool *abort_pairing_p, int *found_score, int *nconcordant,
-			   List_T *samechr, List_T *conc_transloc, List_T hitpairs,
+			   List_T *samechr, List_T *conc_transloc, List_T *with_terminal, List_T hitpairs,
 			   List_T *hitarray5, int narray5, List_T *hitarray3, int narray3,
 			   int cutoff_level_5, int cutoff_level_3, int subopt_levels,
 			   Genomicpos_T *splicesites,

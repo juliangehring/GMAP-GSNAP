@@ -1,4 +1,4 @@
-/* $Id: substring.h 61380 2012-04-09 22:48:58Z twu $ */
+/* $Id: substring.h 66750 2012-06-18 18:19:54Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -14,6 +14,9 @@
 #include "pairdef.h"
 
 typedef enum {END, INS, DEL, DON, ACC, AMB_DON, AMB_ACC, TERM} Endtype_T;
+
+extern char *
+Endtype_string (Endtype_T endtype);
 
 extern void
 Substring_setup (bool print_nsnpdiffs_p_in, bool print_snplabels_p_in,
@@ -36,7 +39,7 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
 	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength);
 
 extern double
-Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string);
+Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string, bool trim_terminals_p);
 
 extern int
 Substring_display_prep (char **deletion, T this, char *query, Compress_T query_compress_fwd, Compress_T query_compress_rev,

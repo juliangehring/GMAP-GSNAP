@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 64737 2012-05-23 02:32:01Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 67012 2012-06-20 23:51:02Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -59,6 +59,7 @@ static char rcsid[] = "$Id: uniqscan.c 64737 2012-05-23 02:32:01Z twu $";
  ************************************************************************/
 
 static int gmap_mode = GMAP_PAIRSEARCH | GMAP_TERMINAL | GMAP_IMPROVEMENT;
+static double gmap_min_coverage = 0.50;
 static int nullgap = 600;
 static int maxpeelback = 11;
 static int maxpeelback_distalmedial = 24;
@@ -1075,7 +1076,7 @@ main (int argc, char *argv[]) {
 		 /*runlength_iit*/NULL,/*runlength_divint_crosstable*/NULL,
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
-		 favor_multiexon_p,index1part,index1interval);
+		 favor_multiexon_p,gmap_min_coverage,index1part,index1interval);
 
   uniqueness_scan(argv[0]);
 

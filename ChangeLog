@@ -1,3 +1,239 @@
+2012-07-12  twu
+
+    * VERSION, config.site.rescomp.tst, index.html: Updated version number
+
+    * pair.h: Fixed problem in SAM output with an unpaired alignment with one
+      end being a GMAP alignment
+
+    * pair.c, samprint.c: Fixed problem in SAM output with an unpaired alignment
+      with one end being a GMAP alignment
+
+2012-07-09  twu
+
+    * gff3_introns.pl.in, gff3_splicesites.pl.in: Added -Q flag to suppress
+      messages to stderr
+
+    * gff3_genes.pl.in, gff3_introns.pl.in: Checking for transcript lines as
+      well as mRNA lines
+
+    * gff3_splicesites.pl.in: Checking for transcript lines as well as mRNA
+      lines
+
+2012-07-06  twu
+
+    * README: Added instructions for using vcf_iit
+
+    * Makefile.am, configure.ac, vcf_iit.pl.in: Added vcf_iit program for
+      processing VCF files
+
+2012-07-05  twu
+
+    * dbsnp_iit.pl.in: Added exception types InconsistentAlleles and
+      SingleAlleleFreq
+
+    * dbsnp_iit.pl.in: Printing exception handling rules to stderr even if
+      exception file not given
+
+2012-07-04  twu
+
+    * VERSION, index.html: Updated version number
+
+    * parserange.c: No longer checking for labels that match a contig
+
+    * stage3.c: In extend_ending5 and extend_ending3, checking for a gap between
+      gappairs and the rest of the read
+
+2012-06-27  twu
+
+    * gmap.c: Fixed bug which prevented -1 flag from working
+
+    * stage1.c: Made stage 1 work for PMAP
+
+    * stage3hr.c: Turned off debugging
+
+    * stage3hr.c: For hitpair_equiv_cmp, not looking at score or nmatches
+      anymore
+
+2012-06-26  twu
+
+    * VERSION, index.html: Updated version number
+
+    * splicetrie_build.c: Fixed contents of splicesite_i in splicestrings, after
+      sorting of splice sites
+
+2012-06-20  twu
+
+    * uniqscan.c: Using new interface to Stage3hr_setup
+
+    * VERSION, index.html: Updated version number
+
+    * gsnap.c, index.html, stage3hr.c, stage3hr.h: Added --gmap-min-coverage
+      flag
+
+    * stage2.c: Changed find_shifted_canonical to go directly to Genome_hr
+      procedures instead of allocating memory and saving past results
+
+    * gsnap.c, stage1hr.c: Added indel_knownsplice as option to --gmap-mode
+
+2012-06-19  twu
+
+    * gmap_build.pl.in: Added -M flag for handling NCBI MD files
+
+2012-06-18  twu
+
+    * stage3hr.c: Cleaned up optimal_score commands for removing terminal
+      alignments in final stage.  Using trim_terminals_p argument in calling
+      compute_mapq functions.
+
+    * pair.c, pair.h, substring.c, substring.h: Added trim_terminals_p argument
+      to compute_mapq functions
+
+2012-06-15  twu
+
+    * index.html: Reverted back to old behavior for computing MAPQ in entire
+      read, but trimming off ends of type TERM
+
+    * pair.c, substring.c: Reverted back to old behavior for computing MAPQ in
+      entire read, but trimming off ends of type TERM
+
+    * index.html: Added comments for changes
+
+    * gmap_build.pl.in: Using long flag names
+
+    * pair.c, pair.h, stage3hr.c, substring.c: Computing MAPQ scores over
+      trim-kept region, instead of entire substring
+
+    * VERSION, config.site.rescomp.tst, index.html: Updated version number
+
+    * stage3.c: In trim_noncanonical_end_exons, keeping known introns only if
+      nmismatches == 0
+
+    * stage3hr.c: Allowing Stage3end_remove_overlaps to work with translocations
+
+    * stage1hr.c: Allowing for multiple translocations to be reported.  Not
+      updating nconcordant for GMAP pair revisions
+
+2012-06-14  twu
+
+    * outbuffer.c, resulthr.c, samprint.c: Allowing for multiple single-end and
+      unpaired translocations to be printed
+
+    * resulthr.c, samprint.c: Allowing for multiple paired translocations to be
+      printed
+
+    * stage3hr.c, stage3hr.h: Changed Stage3pair_remove_overlaps and
+      hitpair_sort_cmp, so they work on translocations
+
+    * stage3hr.c: Allowing multiple concordant translocations to be printed
+
+    * stage1hr.c: Not skipping GMAP on terminal alignments.  Performing
+      align_concordant_with_gmap on with_terminal list.
+
+    * resulthr.c, resulthr.h: Changed pairtype TRANSLOCATION to
+      CONCORDANT_TRANSLOCATIONS
+
+    * pair.c: Changed pairtype TRANSLOCATION to CONCORDANT_TRANSLOCATIONS
+
+    * stage1hr.c, stage3hr.c, stage3hr.h: Added a category of hitpairs called
+      with_terminal, with lower priority than samechr or conc_transloc
+
+    * stage2.c: Increased value of SHIFT_EXTRA to fix a fatal bug
+
+2012-06-13  twu
+
+    * stage3.c: Counting indels and short gaps as mismatches in
+      Stage3_bad_stretch_p
+
+2012-06-12  twu
+
+    * index.html: Added comment about improved detection of translocations
+      within read ends
+
+    * stage3hr.c: Computing substring_for_concordance for both translocations
+      (chrnum == 0) and intrachromosomal rearrangements (shortdistancep ==
+      false)
+
+    * stage1hr.c: Checking for bad stretch in GMAP hits, as soon as we call
+      Stage3end_new_gmap
+
+    * index.html: Updated version number
+
+    * VERSION, trunk: Updated version
+
+    * Makefile.gsnaptoo.am: Removed extra includes of cmet and atoi files for
+      GMAP
+
+    * oligoindex_hr.c: Getting the final oligomers when computing mappings
+
+    * stage3.c: Fixed computation of mappingstart and mappingend for traversing
+      dual breaks on crick strand
+
+    * stage1.c: Restoring old scan ends algorithm
+
+2012-06-11  twu
+
+    * stage1hr.c: Removed unused debugging macro
+
+    * stage3.c: In trimming novel splice ends, allowing perfect matches to
+      extend into intron
+
+    * psl_introns.pl.in: Added print command
+
+    * Makefile.gsnaptoo.am: Added file dependencies
+
+    * stage3.c: Using QUERYEND_NOGAPS for pass 9a and pass 9b for GSNAP, so
+      trimming will work.  Fixed computation of mappingstart and mappingend in
+      traverse_dual_break.
+
+2012-06-07  twu
+
+    * Makefile.dna.am, stage3hr.c: Adding an absolute sufficient minlength for a
+      terminal, besides using querylength
+
+    * VERSION, config.site.rescomp.tst, index.html: Updated version number
+
+    * src: Committing property changes from last merge
+
+    * gmap.c: Increased max_nalignments from 3 to 10
+
+    * stage1hr.c: Fixed bug in find_terminals, where querypos3 was used to
+      compute start_endtype and querypos5 was used to compute end_endtype,
+      instead of querypos5 and querypos3, respectively.
+
+    * stage3hr.c: Allowing both ends to be of type TERM in a terminal, and
+      checking for mismatches only between the trimmed ends.  Requiring that
+      final length is querylength/3.
+
+    * dynprog.c: Dropped mismatch scores, which helps GMAP extend ends and find
+      chimeras.
+
+    * stage3.c: Changed endalign for pass 9a and 9b from QUERYEND_NOGAPS to
+      BEST_LOCAL.  This fixes an issue in GMAP where ends are truncated, and
+      chimeras not found, as introduced in revision 64732 on 2012-05-22.
+
+2012-06-06  twu
+
+    * stage2.c: Fixed bug in condition on suboptimal stage 2 paths, where we
+      were requiring fewer than max_nalignments results plus the score ==
+      bestscore.  The condition should have been a disjunction, not a
+      conjunction.
+
+    * stage1hr.c: Skipping computation of GMAP on single-end terminal
+      alignments, since that is a duplication of effort
+
+    * stage1hr.c, stage3hr.c, stage3hr.h, substring.c, substring.h: Restored
+      assignment of endtypes to terminal alignments.  Using them again determine
+      whether to extend terminals left or right for GMAP alignments.
+
+    * stage1hr.c: Integrated two criteria for finding terminals: old method
+      based on counting mismatches from ends, and new method based on width of
+      (querypos3 - querypos5).
+
+2012-06-05  twu
+
+    * stage3.c: Fixed bug in local chimera alignment with uninitialized value
+      for genomicseg_ptr
+
 2012-06-02  twu
 
     * genome.c: Added assertions to Genome_get_char and Genome_get_char_blocks

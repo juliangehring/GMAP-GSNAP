@@ -9,7 +9,8 @@ undef $opt_R;			# If provided, will report only introns with non-canonical splic
 undef $opt_2;			# If provided, will print dinucleotides at splice sites.  Requires -d flag.
 undef $opt_D;			# Genome directory
 undef $opt_d;			# Genome index
-getopts("D:d:CR2");
+undef $opt_Q;			# Quiet (nothing to stderr)
+getopts("D:d:CR2Q");
 
 
 if (defined($opt_d)) {
@@ -48,7 +49,7 @@ if (defined($opt_d)) {
 		    $chr = $fields[0];
 		    @exons = ();
 
-		} elsif ($fields[2] eq "mRNA") {
+		} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
 		    if ($#exons > 0) {
 			query_dinucleotides(\@exons,$chr,$strand,$FP);
 			#print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
@@ -111,7 +112,7 @@ while (defined($line = get_line())) {
 	    $chr = $fields[0];
 	    @exons = ();
 
-	} elsif ($fields[2] eq "mRNA") {
+	} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
 	    if ($#exons > 0) {
 		print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
 	    }
@@ -307,10 +308,14 @@ sub print_exons {
 		$acceptor_dinucl = get_dinucleotide($query,$FP);
 
 		if (defined($opt_C) && donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
-		    printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.intron%d/%d on plus strand\n",
+		    if (!defined($opt_Q)) {
+			printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.intron%d/%d on plus strand\n",
+		    }
 		    $intron_length,$gene_name,$transcript_id,$i+1,$nexons-1;
 		} elsif (defined($opt_C) && acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
-		    printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.intron%d/%d on plus strand\n",
+		    if (!defined($opt_Q)) {
+			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.intron%d/%d on plus strand\n",
+		    }
 		    $intron_length,$gene_name,$transcript_id,$i+1,$nexons-1;
 		} elsif (defined($opt_R)) {
 		    if (donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0 || acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
@@ -342,10 +347,14 @@ sub print_exons {
 		$acceptor_dinucl = get_dinucleotide($query,$FP);
 
 		if (defined($opt_C) && donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
-		    printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.intron%d/%d on minus strand\n",
+		    if (!defined($opt_Q)) {
+			printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.intron%d/%d on minus strand\n",
+		    }
 		    $intron_length,$gene_name,$transcript_id,$i+1,$nexons-1;
 		} elsif (defined($opt_C) && acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
-		    printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.intron%d/%d on minus strand\n",
+		    if (!defined($opt_Q)) {
+			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.intron%d/%d on minus strand\n",
+		    }
 		    $intron_length,$gene_name,$transcript_id,$i+1,$nexons-1;
 		} elsif (defined($opt_R)) {
 		    if (donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0 || acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {

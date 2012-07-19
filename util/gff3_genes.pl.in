@@ -34,7 +34,7 @@ while (defined($line = <>)) {
 	    $chr = $fields[0];
 	    @exons = ();
 	    
-	} elsif ($fields[2] eq "mRNA") {
+	} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
 	    if ($#exons > 0) {
 		if ($strand eq "+") {
 		    ($start,$end) = get_gene_bounds_plus(\@exons);

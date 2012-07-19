@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: parserange.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: parserange.c 68086 2012-07-04 04:03:51Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -422,6 +422,9 @@ Parserange_universal (char **div, bool *revcomp,
 
     IIT_free(&chromosome_iit);
 
+#if 0
+    /* Contig IIT's are of type 1, which require some work to compute
+       on current div-based scheme.  Just abandoning for now. */
     if (rc != 0) {
       /* Try contig */
       filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
@@ -432,7 +435,10 @@ Parserange_universal (char **div, bool *revcomp,
       FREE(filename);
 
       debug(printf("Interpreting segment %s as a contig\n",*div));
-      if (isnumberp(&result,coords)) {
+      if (coords == NULL) {
+	debug(printf("  entire contig\n"));
+	rc = translate_contig_universal(&(*genomicstart),&(*genomiclength),*div,left=0,length=0,chromosome_iit);
+      } else if (isnumberp(&result,coords)) {
 	debug(printf("  and coords %s as a number\n",coords));
 	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,contig_iit);
       } else if (isrange(&left,&length,&(*revcomp),coords)) {
@@ -446,6 +452,7 @@ Parserange_universal (char **div, bool *revcomp,
 
       IIT_free(&contig_iit);
     }
+#endif
 
     if (rc != 0) {
       fprintf(stderr,"Can't find coordinates %s:%s\n",*div,coords);

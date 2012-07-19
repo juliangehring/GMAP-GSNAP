@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 64506 2012-05-18 23:48:32Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 67377 2012-06-26 00:17:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -711,7 +711,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 
 #ifdef DEBUG2
   for (k = 0; k < *nsplicesites; k++) {
-    printf("%u %d %08X\n",splicesites[k],(*splicetypes)[k],(*splicefrags_ref)[k]);
+    printf("%d: %u %s %08X\n",k,splicesites[k],Splicetype_string((*splicetypes)[k]),(*splicefrags_ref)[k]);
     for (p = (*splicestrings)[k]; p != NULL; p = List_next(p)) {
       splicestring = (Splicestring_T) List_head(p);
       printf("  %u %u %u\n",splicestring->string,splicestring->splicesite,splicestring->splicesite_i);
@@ -771,14 +771,9 @@ Splicetrie_retrieve_via_introns (
   Genomicpos_T *temp_splicesites;
   Splicetype_T *temp_splicetypes;
   Genomicpos_T *temp_splicedists;
-  List_T *temp_splicestrings;
+  List_T *temp_splicestrings, p;
   UINT4 *temp_splicefrags_ref, *temp_splicefrags_alt;
-
-
-#ifdef DEBUG2
-  List_T p;
   Splicestring_T splicestring;
-#endif
 
 #ifdef GSNAP
   int nblocks;
@@ -1145,6 +1140,11 @@ Splicetrie_retrieve_via_introns (
     (*splicetypes)[j] = temp_splicetypes[k];
     (*splicedists)[j] = temp_splicedists[k];
     (*splicestrings)[j] = temp_splicestrings[k];
+    for (p = (*splicestrings)[j]; p != NULL; p = List_next(p)) {
+      /* Fix reference back to splicesite */
+      splicestring = (Splicestring_T) List_head(p);
+      splicestring->splicesite_i = j;
+    }
     (*splicefrags_ref)[j] = temp_splicefrags_ref[k];
     (*splicefrags_alt)[j] = temp_splicefrags_alt[k];
   }
@@ -1164,7 +1164,7 @@ Splicetrie_retrieve_via_introns (
 
 #ifdef DEBUG2
   for (k = 0; k < *nsplicesites; k++) {
-    printf("%u %d %08X\n",splicesites[k],(*splicetypes)[k],(*splicefrags_ref)[k]);
+    printf("%d: %u %s %08X\n",k,splicesites[k],Splicetype_string((*splicetypes)[k]),(*splicefrags_ref)[k]);
     for (p = (*splicestrings)[k]; p != NULL; p = List_next(p)) {
       splicestring = (Splicestring_T) List_head(p);
       printf("  %u %u %u\n",splicestring->string,splicestring->splicesite,splicestring->splicesite_i);

@@ -1,4 +1,4 @@
-/* $Id: pair.h 64017 2012-05-14 22:35:15Z twu $ */
+/* $Id: pair.h 68834 2012-07-12 18:59:13Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -138,7 +138,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		int absmq_score, int first_absmq, int second_absmq,
 #ifdef GSNAP
 		unsigned int flag, int pair_mapq_score, int end_mapq_score,
-		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
+		Genomicpos_T chrpos, Chrnum_T mate_chrnum, Genomicpos_T mate_chrpos, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif
@@ -271,7 +271,8 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs);
 
 #ifdef GSNAP
 extern double
-Pair_compute_mapq (struct T *pairarray, int npairs, char *quality_string);
+Pair_compute_mapq (struct T *pairarray, int npairs, int trim_left, int trim_right,
+		   int querylength, char *quality_string, bool trim_terminals_p);
 extern Overlap_T
 Pair_gene_overlap (struct T *pairarray, int npairs, IIT_T genes_iit, int divno,
 		   bool favor_multiexon_p);

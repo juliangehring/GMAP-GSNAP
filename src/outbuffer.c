@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 63197 2012-05-03 17:41:52Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 66534 2012-06-14 23:59:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1054,7 +1054,6 @@ print_result_sam (T this, Result_T result, Request_T request) {
   Genomicpos_T chrpos;
   int ignore = 0;
   int npaths, pathnum, first_absmq, second_absmq;
-  FILE *fp;
 
   resulttype = Result_resulttype(result);
 
@@ -1073,12 +1072,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
       }
     }
 
-  } else if (resulttype == SINGLEEND_UNIQ || resulttype == SINGLEEND_TRANSLOC) {
-    if (resulttype == SINGLEEND_UNIQ) {
-      fp = this->fp_unpaired_uniq;
-    } else {
-      fp = this->fp_unpaired_transloc;
-    }
+  } else if (resulttype == SINGLEEND_UNIQ) {
     stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     if (this->failsonlyp == true) {
@@ -1090,7 +1084,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
       stage3 = stage3array[0];
       chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,stage3,
 				  Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
-      SAM_print(fp,stage3,/*mate*/NULL,/*acc*/Shortread_accession(queryseq1),/*pathnum*/1,npaths,
+      SAM_print(this->fp_unpaired_uniq,stage3,/*mate*/NULL,/*acc*/Shortread_accession(queryseq1),/*pathnum*/1,npaths,
 		Stage3end_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		Stage3end_mapq_score(stage3array[0]),
 		this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
@@ -1099,6 +1093,41 @@ print_result_sam (T this, Result_T result, Request_T request) {
 		/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
 		this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
 		this->merge_samechr_p);
+    }
+
+  } else if (resulttype == SINGLEEND_TRANSLOC) {
+    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
+
+    if (this->failsonlyp == true) {
+      /* Skip */
+
+    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths) {
+      queryseq1 = Request_queryseq1(request);
+      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths,queryseq1); */
+      SAM_print_nomapping(this->fp_unpaired_transloc,queryseq1,/*mate*/NULL,/*acc*/Shortread_accession(queryseq1),
+			  this->chromosome_iit,resulttype,
+			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
+			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
+
+    } else {
+      queryseq1 = Request_queryseq1(request);
+      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths,queryseq1); */
+      for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths; pathnum++) {
+
+	stage3 = stage3array[pathnum-1];
+	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,stage3,
+				    Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+	SAM_print(this->fp_unpaired_transloc,stage3,/*mate*/NULL,/*acc*/Shortread_accession(queryseq1),
+		  pathnum,npaths,
+		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
+		  Stage3end_mapq_score(stage3array[pathnum-1]),
+		  this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
+		  /*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
+		  /*hardclip_low*/0,/*hardclip_high*/0,resulttype,
+		  /*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
+		  this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
+		  this->merge_samechr_p);
+      }
     }
 
   } else if (resulttype == SINGLEEND_MULT) {
@@ -1160,11 +1189,9 @@ print_result_sam (T this, Result_T result, Request_T request) {
 static void
 print_result_gsnap (T this, Result_T result, Request_T request) {
   Resulttype_T resulttype;
-  bool translocationp;
   Shortread_T queryseq1;
   Stage3end_T *stage3array, stage3;
   int npaths, pathnum, first_absmq, second_absmq;
-  FILE *fp;
 
   resulttype = Result_resulttype(result);
 
@@ -1180,33 +1207,53 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
       }
     }
 
-  } else if (resulttype == SINGLEEND_UNIQ || resulttype == SINGLEEND_TRANSLOC) {
-    if (resulttype == SINGLEEND_UNIQ) {
-      translocationp = false;
-      fp = this->fp_unpaired_uniq;
-    } else {
-      translocationp = true;
-      fp = this->fp_unpaired_transloc;
-    }
-
+  } else if (resulttype == SINGLEEND_UNIQ) {
     stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
     if (this->failsonlyp == true) {
       /* Skip */
     } else {
-      print_header_singleend(this,this->fp_unpaired_uniq,request,translocationp,/*npaths*/1);
+      print_header_singleend(this,this->fp_unpaired_uniq,request,/*translocationp*/false,/*npaths*/1);
 
       queryseq1 = Request_queryseq1(request);
 #if 0
       Stage3end_eval_and_sort(stage3array,/*npaths*/1,this->maxpaths,queryseq1);
 #endif
       stage3 = stage3array[0];
-      Stage3end_print(fp,stage3,Stage3end_score(stage3),
+      Stage3end_print(this->fp_unpaired_uniq,stage3,Stage3end_score(stage3),
 		      this->chromosome_iit,queryseq1,this->invert_first_p,
 		      /*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
 		      /*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
 		      Stage3end_mapq_score(stage3));
       fprintf(this->fp_unpaired_uniq,"\n");
+    }
+
+  } else if (resulttype == SINGLEEND_TRANSLOC) {
+    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
+
+    if (this->failsonlyp == true) {
+      /* Skip */
+
+    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths) {
+      print_header_singleend(this,this->fp_unpaired_transloc,request,/*translocationp*/true,npaths);
+      fprintf(this->fp_unpaired_transloc,"\n");
+
+    } else {
+      print_header_singleend(this,this->fp_unpaired_transloc,request,/*translocationp*/true,npaths);
+
+      queryseq1 = Request_queryseq1(request);
+#if 0
+      Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths,queryseq1);
+#endif
+      for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths; pathnum++) {
+	stage3 = stage3array[pathnum-1];
+	Stage3end_print(this->fp_unpaired_transloc,stage3,Stage3end_score(stage3),
+			this->chromosome_iit,queryseq1,this->invert_first_p,
+			/*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
+			/*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
+			Stage3end_mapq_score(stage3));
+      }
+      fprintf(this->fp_unpaired_transloc,"\n");
     }
 
   } else if (resulttype == SINGLEEND_MULT) {

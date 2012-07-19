@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 64294 2012-05-16 23:15:49Z twu $";
+static char rcsid[] = "$Id: stage1.c 67607 2012-06-27 22:42:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,6 +24,11 @@ static char rcsid[] = "$Id: stage1.c 64294 2012-05-16 23:15:49Z twu $";
 #include "chrsubset.h"
 #include "gregion.h"
 #include "orderstat.h"
+
+
+/* Restoring old scan_ends algorithm, removed on 2012-05-14, to get
+   ends correctly (e.g., NM_004449) */
+#define SCAN_ENDS 1
 
 
 #define MAX_INDELS 15
@@ -2238,8 +2243,6 @@ check_old_new (Genomicpos_T *old_positions, int old_npositions, Genomicpos_T *ne
 static void
 sample_oligos (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int querylength, int oligobase) {
   int querypos;
-  int plus_npositions, minus_npositions;
-  Genomicpos_T *plus_positions, *minus_positions;
 
   for (querypos = 0; querypos < querylength - oligobase; querypos++) {
 #if 0
@@ -2264,6 +2267,31 @@ sample_oligos (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int queryle
       this->minus_positions[querypos] = 
 	Indexdb_read_with_diagterm(&(this->minus_npositions[querypos]),indexdb_rev,this->oligos[querypos],
 				   /*diagterm*/querypos + index1part_aa*3);
+      debug(printf("Sampling at querypos %d, plus_npositions = %d, minus_npositions = %d\n",
+		   querypos,this->plus_npositions[querypos],this->minus_npositions[querypos]));
+      this->processedp[querypos] = true;
+    }
+  }
+
+  return;
+}
+
+/* This procedure is equivalent to sample_oligos */
+static void
+sample_oligos_nolimit (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int querylength, int oligobase) {
+  int querypos;
+
+  for (querypos = 0; querypos < querylength - oligobase; querypos++) {
+    /* FORMULA */
+    if (this->validp[querypos] == true && this->processedp[querypos] == false) {
+      this->plus_positions[querypos] = 
+	Indexdb_read_with_diagterm(&(this->plus_npositions[querypos]),indexdb_fwd,this->oligos[querypos],
+				   /*diagterm*/querylength-querypos);
+
+      this->minus_positions[querypos] =
+	Indexdb_read_with_diagterm(&(this->minus_npositions[querypos]),indexdb_rev,this->oligos[querypos],
+				   /*diagterm*/querypos + index1part_aa*3);
+
       debug(printf("Sampling at querypos %d, plus_npositions = %d, minus_npositions = %d\n",
 		   querypos,this->plus_npositions[querypos],this->minus_npositions[querypos]));
       this->processedp[querypos] = true;
@@ -3854,6 +3882,21 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 	dangling_pct(this_fwd->matches3) > MAX_DANGLING_PCT) {
 #endif
 
+#ifdef PMAP
+      debug(printf("Starting sample_oligos, fwd\n"));
+      sample_oligos_nolimit(this_fwd,indexdb_fwd,indexdb_fwd,this_fwd->querylength,/*oligobase*/index1part_aa);
+      collapse_diagonals(this_fwd->plus_positions,this_fwd->plus_npositions,this_fwd->oligos,
+			 /*oligobase*/index1part_aa,this_fwd->querylength);
+      plus_segments_fwd = find_segments(&plus_nsegments_fwd,this_fwd->plus_positions,this_fwd->plus_npositions,
+					this_fwd->oligos,/*oligobase*/index1part_aa,this_fwd->querylength,
+					/*threshold_score*/18,/*plusp*/true);
+
+      collapse_diagonals(this_fwd->minus_positions,this_fwd->minus_npositions,this_fwd->oligos,
+			 /*oligobase*/index1part_aa,this_fwd->querylength);
+      minus_segments_fwd = find_segments(&minus_nsegments_fwd,this_fwd->minus_positions,this_fwd->minus_npositions,
+					 this_fwd->oligos,/*oligobase*/index1part_aa,this_fwd->querylength,
+					 /*threshold_score*/18,/*plusp*/false);
+#else
       debug(printf("Starting sample_oligos, fwd\n"));
       sample_oligos_nolimit(this_fwd,indexdb_fwd,indexdb_fwd,this_fwd->querylength,/*oligobase*/index1part);
       collapse_diagonals(this_fwd->plus_positions,this_fwd->plus_npositions,this_fwd->forward_oligos,
@@ -3867,6 +3910,7 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
       minus_segments_fwd = find_segments(&minus_nsegments_fwd,this_fwd->minus_positions,this_fwd->minus_npositions,
 					 this_fwd->revcomp_oligos,/*oligobase*/index1part,this_fwd->querylength,
 					 /*threshold_score*/18,/*plusp*/false);
+#endif
 
       maxexons = 3;
       plus_scores_fwd = compute_paths(&plus_prev_fwd,plus_segments_fwd,plus_nsegments_fwd,maxexons,/*plusp*/true);
@@ -3881,6 +3925,21 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 	dangling_pct(this_rev->matches3) > MAX_DANGLING_PCT) {
 #endif
 
+#ifdef PMAP
+      debug(printf("Starting sample_oligos, rev\n"));
+      sample_oligos_nolimit(this_rev,indexdb_rev,indexdb_rev,this_rev->querylength,/*oligobase*/index1part_aa);
+      collapse_diagonals(this_rev->plus_positions,this_rev->plus_npositions,this_rev->oligos,
+			 /*oligobase*/index1part_aa,this_rev->querylength);
+      plus_segments_rev = find_segments(&plus_nsegments_rev,this_rev->plus_positions,this_rev->plus_npositions,
+					this_rev->oligos,/*oligobase*/index1part_aa,this_rev->querylength,
+					/*threshold_score*/18,/*plusp*/true);
+
+      collapse_diagonals(this_rev->minus_positions,this_rev->minus_npositions,this_rev->oligos,
+			 /*oligobase*/index1part_aa,this_rev->querylength);
+      minus_segments_rev = find_segments(&minus_nsegments_rev,this_rev->minus_positions,this_rev->minus_npositions,
+					 this_rev->oligos,/*oligobase*/index1part_aa,this_rev->querylength,
+					 /*threshold_score*/18,/*plusp*/false);
+#else
       debug(printf("Starting sample_oligos, rev\n"));
       sample_oligos_nolimit(this_rev,indexdb_rev,indexdb_rev,this_rev->querylength,/*oligobase*/index1part);
       collapse_diagonals(this_rev->plus_positions,this_rev->plus_npositions,this_rev->forward_oligos,
@@ -3894,6 +3953,7 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
       minus_segments_rev = find_segments(&minus_nsegments_rev,this_rev->minus_positions,this_rev->minus_npositions,
 					 this_rev->revcomp_oligos,/*oligobase*/index1part,this_rev->querylength,
 					 /*threshold_score*/18,/*plusp*/false);
+#endif
 
       maxexons = 3;
       plus_scores_rev = compute_paths(&plus_prev_rev,plus_segments_rev,plus_nsegments_rev,maxexons,/*plusp*/true);

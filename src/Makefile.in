@@ -66,11 +66,11 @@ am__objects_1 = atoiindex-except.$(OBJEXT) atoiindex-assert.$(OBJEXT) \
 	atoiindex-bigendian.$(OBJEXT) atoiindex-genomicpos.$(OBJEXT) \
 	atoiindex-stopwatch.$(OBJEXT) atoiindex-access.$(OBJEXT) \
 	atoiindex-interval.$(OBJEXT) atoiindex-iit-read.$(OBJEXT) \
-	atoiindex-compress.$(OBJEXT) atoiindex-genome_hr.$(OBJEXT) \
-	atoiindex-indexdb.$(OBJEXT) atoiindex-atoi.$(OBJEXT) \
-	atoiindex-list.$(OBJEXT) atoiindex-datadir.$(OBJEXT) \
-	atoiindex-getopt.$(OBJEXT) atoiindex-getopt1.$(OBJEXT) \
-	atoiindex-atoiindex.$(OBJEXT)
+	atoiindex-compress.$(OBJEXT) atoiindex-cmet.$(OBJEXT) \
+	atoiindex-atoi.$(OBJEXT) atoiindex-genome_hr.$(OBJEXT) \
+	atoiindex-indexdb.$(OBJEXT) atoiindex-list.$(OBJEXT) \
+	atoiindex-datadir.$(OBJEXT) atoiindex-getopt.$(OBJEXT) \
+	atoiindex-getopt1.$(OBJEXT) atoiindex-atoiindex.$(OBJEXT)
 dist_atoiindex_OBJECTS = $(am__objects_1)
 atoiindex_OBJECTS = $(dist_atoiindex_OBJECTS)
 am__DEPENDENCIES_1 =
@@ -83,11 +83,11 @@ am__objects_2 = cmetindex-except.$(OBJEXT) cmetindex-assert.$(OBJEXT) \
 	cmetindex-bigendian.$(OBJEXT) cmetindex-genomicpos.$(OBJEXT) \
 	cmetindex-stopwatch.$(OBJEXT) cmetindex-access.$(OBJEXT) \
 	cmetindex-interval.$(OBJEXT) cmetindex-iit-read.$(OBJEXT) \
-	cmetindex-compress.$(OBJEXT) cmetindex-genome_hr.$(OBJEXT) \
-	cmetindex-indexdb.$(OBJEXT) cmetindex-cmet.$(OBJEXT) \
-	cmetindex-list.$(OBJEXT) cmetindex-datadir.$(OBJEXT) \
-	cmetindex-getopt.$(OBJEXT) cmetindex-getopt1.$(OBJEXT) \
-	cmetindex-cmetindex.$(OBJEXT)
+	cmetindex-compress.$(OBJEXT) cmetindex-cmet.$(OBJEXT) \
+	cmetindex-atoi.$(OBJEXT) cmetindex-genome_hr.$(OBJEXT) \
+	cmetindex-indexdb.$(OBJEXT) cmetindex-list.$(OBJEXT) \
+	cmetindex-datadir.$(OBJEXT) cmetindex-getopt.$(OBJEXT) \
+	cmetindex-getopt1.$(OBJEXT) cmetindex-cmetindex.$(OBJEXT)
 dist_cmetindex_OBJECTS = $(am__objects_2)
 cmetindex_OBJECTS = $(dist_cmetindex_OBJECTS)
 cmetindex_DEPENDENCIES = $(am__DEPENDENCIES_1)
@@ -121,17 +121,17 @@ am__objects_4 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-iit-read.$(OBJEXT) gmap-md5.$(OBJEXT) \
 	gmap-sequence.$(OBJEXT) gmap-reader.$(OBJEXT) \
 	gmap-genomicpos.$(OBJEXT) gmap-compress.$(OBJEXT) \
-	gmap-gbuffer.$(OBJEXT) gmap-genome.$(OBJEXT) \
-	gmap-genome_hr.$(OBJEXT) gmap-genome-write.$(OBJEXT) \
-	gmap-indexdb.$(OBJEXT) gmap-indexdb_hr.$(OBJEXT) \
-	gmap-oligo.$(OBJEXT) gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
+	gmap-cmet.$(OBJEXT) gmap-atoi.$(OBJEXT) gmap-gbuffer.$(OBJEXT) \
+	gmap-genome.$(OBJEXT) gmap-genome_hr.$(OBJEXT) \
+	gmap-genome-write.$(OBJEXT) gmap-indexdb.$(OBJEXT) \
+	gmap-indexdb_hr.$(OBJEXT) gmap-oligo.$(OBJEXT) \
+	gmap-block.$(OBJEXT) gmap-chrom.$(OBJEXT) \
 	gmap-segmentpos.$(OBJEXT) gmap-chrnum.$(OBJEXT) \
 	gmap-chrsubset.$(OBJEXT) gmap-uinttable.$(OBJEXT) \
 	gmap-gregion.$(OBJEXT) gmap-match.$(OBJEXT) \
 	gmap-matchpool.$(OBJEXT) gmap-diagnostic.$(OBJEXT) \
 	gmap-stage1.$(OBJEXT) gmap-diag.$(OBJEXT) \
-	gmap-diagpool.$(OBJEXT) gmap-cmet.$(OBJEXT) \
-	gmap-atoi.$(OBJEXT) gmap-orderstat.$(OBJEXT) \
+	gmap-diagpool.$(OBJEXT) gmap-orderstat.$(OBJEXT) \
 	gmap-oligoindex.$(OBJEXT) gmap-oligoindex_hr.$(OBJEXT) \
 	gmap-intron.$(OBJEXT) gmap-maxent.$(OBJEXT) \
 	gmap-maxent_hr.$(OBJEXT) gmap-pair.$(OBJEXT) \
@@ -159,6 +159,7 @@ am__objects_5 = gmapindex-except.$(OBJEXT) gmapindex-assert.$(OBJEXT) \
 	gmapindex-access.$(OBJEXT) gmapindex-iit-read.$(OBJEXT) \
 	gmapindex-iit-write.$(OBJEXT) gmapindex-genomicpos.$(OBJEXT) \
 	gmapindex-compress.$(OBJEXT) gmapindex-genome-write.$(OBJEXT) \
+	gmapindex-cmet.$(OBJEXT) gmapindex-atoi.$(OBJEXT) \
 	gmapindex-genome_hr.$(OBJEXT) gmapindex-indexdb.$(OBJEXT) \
 	gmapindex-table.$(OBJEXT) gmapindex-tableint.$(OBJEXT) \
 	gmapindex-chrom.$(OBJEXT) gmapindex-segmentpos.$(OBJEXT) \
@@ -177,7 +178,8 @@ am__objects_6 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
 	gsnap-access.$(OBJEXT) gsnap-iit-read.$(OBJEXT) \
 	gsnap-md5.$(OBJEXT) gsnap-sequence.$(OBJEXT) \
 	gsnap-reader.$(OBJEXT) gsnap-genomicpos.$(OBJEXT) \
-	gsnap-compress.$(OBJEXT) gsnap-genome.$(OBJEXT) \
+	gsnap-compress.$(OBJEXT) gsnap-cmet.$(OBJEXT) \
+	gsnap-atoi.$(OBJEXT) gsnap-genome.$(OBJEXT) \
 	gsnap-genome_hr.$(OBJEXT) gsnap-indexdb.$(OBJEXT) \
 	gsnap-indexdb_hr.$(OBJEXT) gsnap-oligo.$(OBJEXT) \
 	gsnap-chrom.$(OBJEXT) gsnap-segmentpos.$(OBJEXT) \
@@ -185,8 +187,7 @@ am__objects_6 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
 	gsnap-samprint.$(OBJEXT) gsnap-mapq.$(OBJEXT) \
 	gsnap-shortread.$(OBJEXT) gsnap-substring.$(OBJEXT) \
 	gsnap-stage3hr.$(OBJEXT) gsnap-goby.$(OBJEXT) \
-	gsnap-spanningelt.$(OBJEXT) gsnap-cmet.$(OBJEXT) \
-	gsnap-atoi.$(OBJEXT) gsnap-maxent.$(OBJEXT) \
+	gsnap-spanningelt.$(OBJEXT) gsnap-maxent.$(OBJEXT) \
 	gsnap-pair.$(OBJEXT) gsnap-pairpool.$(OBJEXT) \
 	gsnap-diag.$(OBJEXT) gsnap-diagpool.$(OBJEXT) \
 	gsnap-orderstat.$(OBJEXT) gsnap-oligoindex.$(OBJEXT) \
@@ -259,6 +260,7 @@ am__objects_10 = snpindex-except.$(OBJEXT) snpindex-assert.$(OBJEXT) \
 	snpindex-uintlist.$(OBJEXT) snpindex-stopwatch.$(OBJEXT) \
 	snpindex-access.$(OBJEXT) snpindex-iit-read.$(OBJEXT) \
 	snpindex-genomicpos.$(OBJEXT) snpindex-compress.$(OBJEXT) \
+	snpindex-cmet.$(OBJEXT) snpindex-atoi.$(OBJEXT) \
 	snpindex-genome_hr.$(OBJEXT) snpindex-indexdb.$(OBJEXT) \
 	snpindex-chrom.$(OBJEXT) snpindex-md5.$(OBJEXT) \
 	snpindex-sequence.$(OBJEXT) snpindex-genome.$(OBJEXT) \
@@ -278,15 +280,15 @@ am__objects_11 = uniqscan-except.$(OBJEXT) uniqscan-assert.$(OBJEXT) \
 	uniqscan-access.$(OBJEXT) uniqscan-iit-read.$(OBJEXT) \
 	uniqscan-md5.$(OBJEXT) uniqscan-sequence.$(OBJEXT) \
 	uniqscan-reader.$(OBJEXT) uniqscan-genomicpos.$(OBJEXT) \
-	uniqscan-compress.$(OBJEXT) uniqscan-genome.$(OBJEXT) \
+	uniqscan-compress.$(OBJEXT) uniqscan-cmet.$(OBJEXT) \
+	uniqscan-atoi.$(OBJEXT) uniqscan-genome.$(OBJEXT) \
 	uniqscan-genome_hr.$(OBJEXT) uniqscan-indexdb.$(OBJEXT) \
 	uniqscan-indexdb_hr.$(OBJEXT) uniqscan-oligo.$(OBJEXT) \
 	uniqscan-chrom.$(OBJEXT) uniqscan-segmentpos.$(OBJEXT) \
 	uniqscan-chrnum.$(OBJEXT) uniqscan-maxent_hr.$(OBJEXT) \
 	uniqscan-mapq.$(OBJEXT) uniqscan-shortread.$(OBJEXT) \
 	uniqscan-substring.$(OBJEXT) uniqscan-stage3hr.$(OBJEXT) \
-	uniqscan-spanningelt.$(OBJEXT) uniqscan-cmet.$(OBJEXT) \
-	uniqscan-atoi.$(OBJEXT) uniqscan-maxent.$(OBJEXT) \
+	uniqscan-spanningelt.$(OBJEXT) uniqscan-maxent.$(OBJEXT) \
 	uniqscan-pair.$(OBJEXT) uniqscan-pairpool.$(OBJEXT) \
 	uniqscan-diag.$(OBJEXT) uniqscan-diagpool.$(OBJEXT) \
 	uniqscan-orderstat.$(OBJEXT) uniqscan-oligoindex.$(OBJEXT) \
@@ -474,6 +476,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
+ cmet.c cmet.h atoi.c atoi.h \
  gbuffer.c gbuffer.h genome.c genome.h genome_hr.c genome_hr.h \
  genome-write.c genome-write.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
@@ -483,7 +486,6 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
  diagdef.h diag.c diag.h diagpool.c diagpool.h \
- cmet.c cmet.h atoi.c atoi.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h \
  scores.h intron.c intron.h maxent.c maxent.h maxent_hr.c maxent_hr.h samflags.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
@@ -494,7 +496,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h stage3.c stage3.h \
  request.c request.h result.c result.h \
  inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
- chimera.c chimera.h datadir.c datadir.h \
+ chimera.c chimera.h datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gmap.c
 
 
@@ -512,6 +514,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
+ cmet.c cmet.h atoi.c atoi.h \
  genome.c genome.h genome_hr.c genome_hr.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h \
@@ -520,7 +523,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  maxent_hr.c maxent_hr.h samflags.h samprint.c samprint.h \
  mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
  goby.c goby.h \
- spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
+ spanningelt.c spanningelt.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
  intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
@@ -548,6 +551,7 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
+ cmet.c cmet.h atoi.c atoi.h \
  genome.c genome.h genome_hr.c genome_hr.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h \
@@ -555,7 +559,7 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrnum.c chrnum.h \
  maxent_hr.c maxent_hr.h \
  mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
- spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
+ spanningelt.c spanningelt.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
  intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
@@ -578,7 +582,8 @@ GMAPINDEX_FILES = fopen.h bool.h types.h \
  interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h iit-write.c iit-write.h \
  genomicpos.c genomicpos.h compress.c compress.h genome-write.c genome-write.h \
- genome_hr.c genome_hr.h indexdbdef.h indexdb.c indexdb.h \
+ cmet.c cmet.h atoi.c atoi.h \
+ mode.h genome_hr.c genome_hr.h indexdbdef.h indexdb.c indexdb.h \
  table.c table.h tableint.c tableint.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  gmapindex.c
@@ -595,7 +600,8 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h iitdef.h iit-read.c iit-read.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome_hr.c genome_hr.h indexdbdef.h indexdb.c indexdb.h \
+ cmet.c cmet.h atoi.c atoi.h \
+ mode.h genome_hr.c genome_hr.h indexdbdef.h indexdb.c indexdb.h \
  chrom.c chrom.h \
  complement.h md5.c md5.h sequence.c sequence.h genome.c genome.h \
  datadir.c datadir.h \
@@ -612,7 +618,8 @@ CMETINDEX_FILES = fopen.h bool.h types.h \
  genomicpos.c genomicpos.h \
  stopwatch.c stopwatch.h access.c access.h \
  interval.h interval.c iitdef.h iit-read.h iit-read.c complement.h compress.c compress.h \
- genome_hr.c genome_hr.h indexdbdef.h indexdb.h indexdb.c cmet.c cmet.h \
+ cmet.c cmet.h atoi.c atoi.h \
+ mode.h genome_hr.c genome_hr.h indexdbdef.h indexdb.h indexdb.c \
  list.c list.h listdef.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h cmetindex.c
 
@@ -627,7 +634,8 @@ ATOIINDEX_FILES = fopen.h bool.h types.h \
  genomicpos.c genomicpos.h \
  stopwatch.c stopwatch.h access.c access.h \
  interval.h interval.c iitdef.h iit-read.h iit-read.c complement.h compress.c compress.h \
- genome_hr.c genome_hr.h indexdbdef.h indexdb.h indexdb.c atoi.c atoi.h \
+ cmet.c cmet.h atoi.c atoi.h \
+ mode.h genome_hr.c genome_hr.h indexdbdef.h indexdb.h indexdb.c \
  list.c list.h listdef.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h atoiindex.c
 
@@ -818,6 +826,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-atoi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-atoiindex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-bigendian.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-cmet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-compress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-datadir.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-except.Po@am__quote@
@@ -834,6 +843,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atoiindex-stopwatch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-atoi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-cmet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmetindex-cmetindex.Po@am__quote@
@@ -943,8 +953,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-uinttable.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-atoi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-chrom.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-cmet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-compress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-except.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapindex-genome-write.Po@am__quote@
@@ -1080,8 +1092,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iit_store-uintlist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-atoi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-bigendian.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-chrom.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-cmet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-compress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-datadir.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snpindex-except.Po@am__quote@
@@ -1337,6 +1351,34 @@ atoiindex-compress.obj: compress.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
 
+atoiindex-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-cmet.o -MD -MP -MF $(DEPDIR)/atoiindex-cmet.Tpo -c -o atoiindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-cmet.Tpo $(DEPDIR)/atoiindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='atoiindex-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+atoiindex-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-cmet.obj -MD -MP -MF $(DEPDIR)/atoiindex-cmet.Tpo -c -o atoiindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-cmet.Tpo $(DEPDIR)/atoiindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='atoiindex-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+atoiindex-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-atoi.o -MD -MP -MF $(DEPDIR)/atoiindex-atoi.Tpo -c -o atoiindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-atoi.Tpo $(DEPDIR)/atoiindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='atoiindex-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+atoiindex-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-atoi.obj -MD -MP -MF $(DEPDIR)/atoiindex-atoi.Tpo -c -o atoiindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-atoi.Tpo $(DEPDIR)/atoiindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='atoiindex-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 atoiindex-genome_hr.o: genome_hr.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-genome_hr.o -MD -MP -MF $(DEPDIR)/atoiindex-genome_hr.Tpo -c -o atoiindex-genome_hr.o `test -f 'genome_hr.c' || echo '$(srcdir)/'`genome_hr.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-genome_hr.Tpo $(DEPDIR)/atoiindex-genome_hr.Po
@@ -1364,20 +1406,6 @@ atoiindex-indexdb.obj: indexdb.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='atoiindex-indexdb.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-indexdb.obj `if test -f 'indexdb.c'; then $(CYGPATH_W) 'indexdb.c'; else $(CYGPATH_W) '$(srcdir)/indexdb.c'; fi`
-
-atoiindex-atoi.o: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-atoi.o -MD -MP -MF $(DEPDIR)/atoiindex-atoi.Tpo -c -o atoiindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-atoi.Tpo $(DEPDIR)/atoiindex-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='atoiindex-atoi.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-
-atoiindex-atoi.obj: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-atoi.obj -MD -MP -MF $(DEPDIR)/atoiindex-atoi.Tpo -c -o atoiindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/atoiindex-atoi.Tpo $(DEPDIR)/atoiindex-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='atoiindex-atoi.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -c -o atoiindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
 
 atoiindex-list.o: list.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atoiindex_CFLAGS) $(CFLAGS) -MT atoiindex-list.o -MD -MP -MF $(DEPDIR)/atoiindex-list.Tpo -c -o atoiindex-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
@@ -1603,6 +1631,34 @@ cmetindex-compress.obj: compress.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
 
+cmetindex-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-cmet.o -MD -MP -MF $(DEPDIR)/cmetindex-cmet.Tpo -c -o cmetindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-cmet.Tpo $(DEPDIR)/cmetindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='cmetindex-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+cmetindex-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-cmet.obj -MD -MP -MF $(DEPDIR)/cmetindex-cmet.Tpo -c -o cmetindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-cmet.Tpo $(DEPDIR)/cmetindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='cmetindex-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+cmetindex-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-atoi.o -MD -MP -MF $(DEPDIR)/cmetindex-atoi.Tpo -c -o cmetindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-atoi.Tpo $(DEPDIR)/cmetindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='cmetindex-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+cmetindex-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-atoi.obj -MD -MP -MF $(DEPDIR)/cmetindex-atoi.Tpo -c -o cmetindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-atoi.Tpo $(DEPDIR)/cmetindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='cmetindex-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 cmetindex-genome_hr.o: genome_hr.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-genome_hr.o -MD -MP -MF $(DEPDIR)/cmetindex-genome_hr.Tpo -c -o cmetindex-genome_hr.o `test -f 'genome_hr.c' || echo '$(srcdir)/'`genome_hr.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-genome_hr.Tpo $(DEPDIR)/cmetindex-genome_hr.Po
@@ -1630,20 +1686,6 @@ cmetindex-indexdb.obj: indexdb.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='indexdb.c' object='cmetindex-indexdb.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-indexdb.obj `if test -f 'indexdb.c'; then $(CYGPATH_W) 'indexdb.c'; else $(CYGPATH_W) '$(srcdir)/indexdb.c'; fi`
-
-cmetindex-cmet.o: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-cmet.o -MD -MP -MF $(DEPDIR)/cmetindex-cmet.Tpo -c -o cmetindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-cmet.Tpo $(DEPDIR)/cmetindex-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='cmetindex-cmet.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-
-cmetindex-cmet.obj: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-cmet.obj -MD -MP -MF $(DEPDIR)/cmetindex-cmet.Tpo -c -o cmetindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/cmetindex-cmet.Tpo $(DEPDIR)/cmetindex-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='cmetindex-cmet.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -c -o cmetindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
 
 cmetindex-list.o: list.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cmetindex_CFLAGS) $(CFLAGS) -MT cmetindex-list.o -MD -MP -MF $(DEPDIR)/cmetindex-list.Tpo -c -o cmetindex-list.o `test -f 'list.c' || echo '$(srcdir)/'`list.c
@@ -2289,6 +2331,34 @@ gmap-compress.obj: compress.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
 
+gmap-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-cmet.o -MD -MP -MF $(DEPDIR)/gmap-cmet.Tpo -c -o gmap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-cmet.Tpo $(DEPDIR)/gmap-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmap-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+gmap-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-cmet.obj -MD -MP -MF $(DEPDIR)/gmap-cmet.Tpo -c -o gmap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-cmet.Tpo $(DEPDIR)/gmap-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmap-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+gmap-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-atoi.o -MD -MP -MF $(DEPDIR)/gmap-atoi.Tpo -c -o gmap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-atoi.Tpo $(DEPDIR)/gmap-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmap-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+gmap-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-atoi.obj -MD -MP -MF $(DEPDIR)/gmap-atoi.Tpo -c -o gmap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-atoi.Tpo $(DEPDIR)/gmap-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmap-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 gmap-gbuffer.o: gbuffer.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-gbuffer.o -MD -MP -MF $(DEPDIR)/gmap-gbuffer.Tpo -c -o gmap-gbuffer.o `test -f 'gbuffer.c' || echo '$(srcdir)/'`gbuffer.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-gbuffer.Tpo $(DEPDIR)/gmap-gbuffer.Po
@@ -2568,34 +2638,6 @@ gmap-diagpool.obj: diagpool.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='diagpool.c' object='gmap-diagpool.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-diagpool.obj `if test -f 'diagpool.c'; then $(CYGPATH_W) 'diagpool.c'; else $(CYGPATH_W) '$(srcdir)/diagpool.c'; fi`
-
-gmap-cmet.o: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-cmet.o -MD -MP -MF $(DEPDIR)/gmap-cmet.Tpo -c -o gmap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-cmet.Tpo $(DEPDIR)/gmap-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmap-cmet.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-
-gmap-cmet.obj: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-cmet.obj -MD -MP -MF $(DEPDIR)/gmap-cmet.Tpo -c -o gmap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-cmet.Tpo $(DEPDIR)/gmap-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmap-cmet.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-
-gmap-atoi.o: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-atoi.o -MD -MP -MF $(DEPDIR)/gmap-atoi.Tpo -c -o gmap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-atoi.Tpo $(DEPDIR)/gmap-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmap-atoi.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-
-gmap-atoi.obj: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-atoi.obj -MD -MP -MF $(DEPDIR)/gmap-atoi.Tpo -c -o gmap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-atoi.Tpo $(DEPDIR)/gmap-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmap-atoi.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
 
 gmap-orderstat.o: orderstat.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-orderstat.o -MD -MP -MF $(DEPDIR)/gmap-orderstat.Tpo -c -o gmap-orderstat.o `test -f 'orderstat.c' || echo '$(srcdir)/'`orderstat.c
@@ -3199,6 +3241,34 @@ gmapindex-genome-write.obj: genome-write.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -c -o gmapindex-genome-write.obj `if test -f 'genome-write.c'; then $(CYGPATH_W) 'genome-write.c'; else $(CYGPATH_W) '$(srcdir)/genome-write.c'; fi`
 
+gmapindex-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-cmet.o -MD -MP -MF $(DEPDIR)/gmapindex-cmet.Tpo -c -o gmapindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapindex-cmet.Tpo $(DEPDIR)/gmapindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmapindex-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -c -o gmapindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+gmapindex-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-cmet.obj -MD -MP -MF $(DEPDIR)/gmapindex-cmet.Tpo -c -o gmapindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapindex-cmet.Tpo $(DEPDIR)/gmapindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gmapindex-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -c -o gmapindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+gmapindex-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-atoi.o -MD -MP -MF $(DEPDIR)/gmapindex-atoi.Tpo -c -o gmapindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapindex-atoi.Tpo $(DEPDIR)/gmapindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmapindex-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -c -o gmapindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+gmapindex-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-atoi.obj -MD -MP -MF $(DEPDIR)/gmapindex-atoi.Tpo -c -o gmapindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapindex-atoi.Tpo $(DEPDIR)/gmapindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gmapindex-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -c -o gmapindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 gmapindex-genome_hr.o: genome_hr.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapindex_CFLAGS) $(CFLAGS) -MT gmapindex-genome_hr.o -MD -MP -MF $(DEPDIR)/gmapindex-genome_hr.Tpo -c -o gmapindex-genome_hr.o `test -f 'genome_hr.c' || echo '$(srcdir)/'`genome_hr.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapindex-genome_hr.Tpo $(DEPDIR)/gmapindex-genome_hr.Po
@@ -3535,6 +3605,34 @@ gsnap-compress.obj: compress.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
 
+gsnap-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-cmet.o -MD -MP -MF $(DEPDIR)/gsnap-cmet.Tpo -c -o gsnap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-cmet.Tpo $(DEPDIR)/gsnap-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gsnap-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+gsnap-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-cmet.obj -MD -MP -MF $(DEPDIR)/gsnap-cmet.Tpo -c -o gsnap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-cmet.Tpo $(DEPDIR)/gsnap-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gsnap-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+gsnap-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-atoi.o -MD -MP -MF $(DEPDIR)/gsnap-atoi.Tpo -c -o gsnap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-atoi.Tpo $(DEPDIR)/gsnap-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gsnap-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+gsnap-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-atoi.obj -MD -MP -MF $(DEPDIR)/gsnap-atoi.Tpo -c -o gsnap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-atoi.Tpo $(DEPDIR)/gsnap-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gsnap-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 gsnap-genome.o: genome.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-genome.o -MD -MP -MF $(DEPDIR)/gsnap-genome.Tpo -c -o gsnap-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-genome.Tpo $(DEPDIR)/gsnap-genome.Po
@@ -3758,34 +3856,6 @@ gsnap-spanningelt.obj: spanningelt.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='spanningelt.c' object='gsnap-spanningelt.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-spanningelt.obj `if test -f 'spanningelt.c'; then $(CYGPATH_W) 'spanningelt.c'; else $(CYGPATH_W) '$(srcdir)/spanningelt.c'; fi`
-
-gsnap-cmet.o: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-cmet.o -MD -MP -MF $(DEPDIR)/gsnap-cmet.Tpo -c -o gsnap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-cmet.Tpo $(DEPDIR)/gsnap-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gsnap-cmet.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-
-gsnap-cmet.obj: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-cmet.obj -MD -MP -MF $(DEPDIR)/gsnap-cmet.Tpo -c -o gsnap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-cmet.Tpo $(DEPDIR)/gsnap-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='gsnap-cmet.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-
-gsnap-atoi.o: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-atoi.o -MD -MP -MF $(DEPDIR)/gsnap-atoi.Tpo -c -o gsnap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-atoi.Tpo $(DEPDIR)/gsnap-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gsnap-atoi.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-
-gsnap-atoi.obj: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-atoi.obj -MD -MP -MF $(DEPDIR)/gsnap-atoi.Tpo -c -o gsnap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-atoi.Tpo $(DEPDIR)/gsnap-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='gsnap-atoi.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
 
 gsnap-maxent.o: maxent.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-maxent.o -MD -MP -MF $(DEPDIR)/gsnap-maxent.Tpo -c -o gsnap-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c
@@ -5089,6 +5159,34 @@ snpindex-compress.obj: compress.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
 
+snpindex-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-cmet.o -MD -MP -MF $(DEPDIR)/snpindex-cmet.Tpo -c -o snpindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-cmet.Tpo $(DEPDIR)/snpindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='snpindex-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+snpindex-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-cmet.obj -MD -MP -MF $(DEPDIR)/snpindex-cmet.Tpo -c -o snpindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-cmet.Tpo $(DEPDIR)/snpindex-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='snpindex-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+snpindex-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-atoi.o -MD -MP -MF $(DEPDIR)/snpindex-atoi.Tpo -c -o snpindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-atoi.Tpo $(DEPDIR)/snpindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='snpindex-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+snpindex-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-atoi.obj -MD -MP -MF $(DEPDIR)/snpindex-atoi.Tpo -c -o snpindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-atoi.Tpo $(DEPDIR)/snpindex-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='snpindex-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -c -o snpindex-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 snpindex-genome_hr.o: genome_hr.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(snpindex_CFLAGS) $(CFLAGS) -MT snpindex-genome_hr.o -MD -MP -MF $(DEPDIR)/snpindex-genome_hr.Tpo -c -o snpindex-genome_hr.o `test -f 'genome_hr.c' || echo '$(srcdir)/'`genome_hr.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/snpindex-genome_hr.Tpo $(DEPDIR)/snpindex-genome_hr.Po
@@ -5467,6 +5565,34 @@ uniqscan-compress.obj: compress.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-compress.obj `if test -f 'compress.c'; then $(CYGPATH_W) 'compress.c'; else $(CYGPATH_W) '$(srcdir)/compress.c'; fi`
 
+uniqscan-cmet.o: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-cmet.o -MD -MP -MF $(DEPDIR)/uniqscan-cmet.Tpo -c -o uniqscan-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-cmet.Tpo $(DEPDIR)/uniqscan-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='uniqscan-cmet.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
+
+uniqscan-cmet.obj: cmet.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-cmet.obj -MD -MP -MF $(DEPDIR)/uniqscan-cmet.Tpo -c -o uniqscan-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-cmet.Tpo $(DEPDIR)/uniqscan-cmet.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='uniqscan-cmet.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
+
+uniqscan-atoi.o: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-atoi.o -MD -MP -MF $(DEPDIR)/uniqscan-atoi.Tpo -c -o uniqscan-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-atoi.Tpo $(DEPDIR)/uniqscan-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='uniqscan-atoi.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
+
+uniqscan-atoi.obj: atoi.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-atoi.obj -MD -MP -MF $(DEPDIR)/uniqscan-atoi.Tpo -c -o uniqscan-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-atoi.Tpo $(DEPDIR)/uniqscan-atoi.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='uniqscan-atoi.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
+
 uniqscan-genome.o: genome.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-genome.o -MD -MP -MF $(DEPDIR)/uniqscan-genome.Tpo -c -o uniqscan-genome.o `test -f 'genome.c' || echo '$(srcdir)/'`genome.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-genome.Tpo $(DEPDIR)/uniqscan-genome.Po
@@ -5662,34 +5788,6 @@ uniqscan-spanningelt.obj: spanningelt.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='spanningelt.c' object='uniqscan-spanningelt.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-spanningelt.obj `if test -f 'spanningelt.c'; then $(CYGPATH_W) 'spanningelt.c'; else $(CYGPATH_W) '$(srcdir)/spanningelt.c'; fi`
-
-uniqscan-cmet.o: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-cmet.o -MD -MP -MF $(DEPDIR)/uniqscan-cmet.Tpo -c -o uniqscan-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-cmet.Tpo $(DEPDIR)/uniqscan-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='uniqscan-cmet.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-cmet.o `test -f 'cmet.c' || echo '$(srcdir)/'`cmet.c
-
-uniqscan-cmet.obj: cmet.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-cmet.obj -MD -MP -MF $(DEPDIR)/uniqscan-cmet.Tpo -c -o uniqscan-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-cmet.Tpo $(DEPDIR)/uniqscan-cmet.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cmet.c' object='uniqscan-cmet.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-cmet.obj `if test -f 'cmet.c'; then $(CYGPATH_W) 'cmet.c'; else $(CYGPATH_W) '$(srcdir)/cmet.c'; fi`
-
-uniqscan-atoi.o: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-atoi.o -MD -MP -MF $(DEPDIR)/uniqscan-atoi.Tpo -c -o uniqscan-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-atoi.Tpo $(DEPDIR)/uniqscan-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='uniqscan-atoi.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-atoi.o `test -f 'atoi.c' || echo '$(srcdir)/'`atoi.c
-
-uniqscan-atoi.obj: atoi.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-atoi.obj -MD -MP -MF $(DEPDIR)/uniqscan-atoi.Tpo -c -o uniqscan-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/uniqscan-atoi.Tpo $(DEPDIR)/uniqscan-atoi.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atoi.c' object='uniqscan-atoi.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -c -o uniqscan-atoi.obj `if test -f 'atoi.c'; then $(CYGPATH_W) 'atoi.c'; else $(CYGPATH_W) '$(srcdir)/atoi.c'; fi`
 
 uniqscan-maxent.o: maxent.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(uniqscan_CFLAGS) $(CFLAGS) -MT uniqscan-maxent.o -MD -MP -MF $(DEPDIR)/uniqscan-maxent.Tpo -c -o uniqscan-maxent.o `test -f 'maxent.c' || echo '$(srcdir)/'`maxent.c

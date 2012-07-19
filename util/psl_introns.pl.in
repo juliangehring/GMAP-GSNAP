@@ -54,6 +54,8 @@ while (defined($line = <>)) {
 	print STDERR "Reported number of exons $fields[$opt_s + 7] != observed $nexons: Skipping $line\n";
 
     } else {
+	print_exons(\@starts,\@ends,$acc,$chr,$strand);
+
     }
 
 }

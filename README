@@ -997,8 +997,17 @@ For SAM output format, all differences from the reference sequence are
 shown in the NM and MD fields, although the alignment scoring and
 mapping qualities are based on a SNP-tolerant alignment.
 
-To specify a set of known SNPs, you will need to create a file with the
-following format:
+Before deciding to use SNP-tolerant alignment, please note the
+following.  First, SNP-tolerant alignment requires more memory than
+standard alignment, perhaps twice as much.  Also, with longer reads
+now of 75 or more bp, GSNAP alignments are generally fine without
+SNP-tolerant alignment.  Finally, if your SNPs are incorrect (and many
+in the databases are), then they can lead SNP-tolerant alignment to
+favor the faulty SNPs.
+
+If you still wish to use SNP-tolerant alignment, you will need to
+specify a set of known SNPs by creating a file with the following
+format:
 
 >rs62211261 21:14379270 CG
 >rs62211262 21:14379281 CG
@@ -1026,9 +1035,10 @@ separate lines at that position with the genotypes "WX" and "WY",
 where "W" is the reference allele and "X" and "Y" are two different
 alternate alleles.
 
-To help you generate the file, this package includes a program called
-dbsnp_iit that can process the dbsnp files from UCSC.  First, you will
-need to get a dbsnp file, like this
+To help you generate the file, this package includes programs that can
+process known SNP data, either from older dbSNP files or from newer
+files in VCF format.  The older dbSNP files can be obtained from UCSC,
+like this
 
     ftp://hgdownload.cse.ucsc.edu/goldenPath/hg18/database/snp130.txt.gz
 
@@ -1037,7 +1047,8 @@ which will require this file:
 
     ftp://hgdownload.cse.ucsc.edu/goldenPath/hg18/database/snp130Exceptions.txt.gz
 
-You can then process these files using dbsnp_iit, like this:
+You can then process these files using our program dbsnp_iit, like
+this:
 
     gunzip -c snp130.txt.gz | dbsnp_iit [-w <weight>] [-e snp130Exceptions.txt.gz] > <snpfile>.txt, or
     gunzip -c snp130.txt.gz | dbsnp_iit [-w <weight>] [-e snp130Exceptions.txt] > <snpfile>.txt
@@ -1060,8 +1071,29 @@ However, if you want to include some types of exceptions, you will
 need to modify the dbsnp_iit program (written in Perl) to indicate a
 "1" for the type of exception you want to include.
 
-Once you have built a <snpfile>.txt file using dbsnp_iit, you create
-an IIT file by doing this
+The more recent SNP data are provided in VCF format, and can be
+retrieved like this:
+
+    ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606/VCF/00-All.vcf.gz
+
+You can process VCF files using our program vcf_iit, like this:
+
+    gunzip -c 00-All.vcf.gz | vcf_iit [-v <version>] > <snpfile>.txt
+
+The VCF file contains multiple versions of dbSNP, so if you want a
+particular version, such as 135, you would use the flag "-v 135".  The
+vcf_iit program tries to pick a subset of SNPs that somewhat parallel
+the ones without exceptions in the UCSC dbSNP file.  It keeps all SNPs
+that have been validated (marked in the VCF file as "VLD") or have a
+submitter link-out ("SLO").  Otherwise, it excludes SNPs that are
+individual genotypes ("GNO").  If none of these conditions hold, then
+the SNP is allowed.  These rules might not be the best ones; I made
+them up by trying to compare version 135 of the VCF data with
+version 135 of the UCSC dbSNP data.
+
+
+Once you have built a <snpfile>.txt file using either dbsnp_iit or
+vcf_iit, you create an IIT file by doing this
                                                                                                 
     cat <snpfile>.txt | iit_store -o <snpfile>
                                                                                                 

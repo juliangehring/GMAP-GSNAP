@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c 63820 2012-05-11 03:54:34Z twu $";
+static char rcsid[] = "$Id: resulthr.c 66534 2012-06-14 23:59:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -106,12 +106,17 @@ Result_single_read_new (int id, void **resultarray, int npaths, int first_absmq,
   if (npaths == 0) {
     new->resulttype = SINGLEEND_NOMAPPING;
   } else if (Stage3end_chrnum((Stage3end_T) resultarray[0]) == 0) {
+#if 0
     if (npaths == 1) {
       new->resulttype = SINGLEEND_TRANSLOC;
     } else {
       fprintf(stderr,"Unexpected: multiple singleend transloc\n");
       abort();
     }
+#else
+    new->resulttype = SINGLEEND_TRANSLOC;
+#endif
+
   } else {
     if (npaths > 1) {
       new->resulttype = SINGLEEND_MULT;
@@ -144,13 +149,17 @@ Result_paired_read_new (int id, void **resultarray, int npaths, int first_absmq,
   if (npaths == 0) {
     abort();
 
-  } else if (final_pairtype == CONCORDANT_TRANSLOC) {
+  } else if (final_pairtype == CONCORDANT_TRANSLOCATIONS) {
+#if 0
     if (npaths == 1) {
       new->resulttype = CONCORDANT_TRANSLOC;
     } else {
       fprintf(stderr,"Unexpected: multiple singleend transloc\n");
       abort();
     }
+#else
+    new->resulttype = CONCORDANT_TRANSLOC;
+#endif
 
   } else if (final_pairtype == PAIRED_UNSPECIFIED) {
     if (npaths == 1) {
@@ -170,6 +179,10 @@ Result_paired_read_new (int id, void **resultarray, int npaths, int first_absmq,
 	new->resulttype = CONCORDANT_UNIQ;
       }
     }
+
+  } else {
+    fprintf(stderr,"final_pairtype %d not recognized\n",final_pairtype);
+    abort();
   }
 
   new->id = id;

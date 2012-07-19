@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 65623 2012-06-02 03:33:15Z twu $";
+static char rcsid[] = "$Id: dynprog.c 65940 2012-06-07 04:28:51Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -163,9 +163,12 @@ typedef enum {HIGHQ, MEDQ, LOWQ, ENDQ} Mismatchtype_T;
    CAG
 
 */
-#define MISMATCH_HIGHQ -5
-#define MISMATCH_MEDQ -4
-#define MISMATCH_LOWQ -3
+
+/* These values were set to -5, -4, -3, but this led to chopped ends
+   in GMAP alignments, and failure to find chimeras */
+#define MISMATCH_HIGHQ -3
+#define MISMATCH_MEDQ -2
+#define MISMATCH_LOWQ -1
 
 /* Previously allowed lower mismatch scores on end to allow more
    complete alignments to the end, and because ends are typically of

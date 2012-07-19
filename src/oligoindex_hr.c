@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 64183 2012-05-16 00:19:28Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 66221 2012-06-12 01:04:26Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9810,6 +9810,7 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 
 
   left_plus_length -= indexsize;
+  left_plus_length += 1;	/* Needed to get last oligomer to match */
 
   ptr = startptr = left/32U*3;
   endptr = left_plus_length/32U*3;
@@ -10086,6 +10087,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 
 
   left_plus_length -= indexsize;
+  left_plus_length += 1;	/* Needed to get last oligomer to match */
 
   ptr = startptr = left/32U*3;
   endptr = left_plus_length/32U*3;
@@ -11777,6 +11779,7 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low, high, nextlow;
 
 
+  left -= 1;	/* Needed to get last oligomer to match */
   left_plus_length -= indexsize;
 
   startptr = left/32U*3;
@@ -12031,6 +12034,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     low, high, nextlow;
 
 
+  left -= 1;	/* Needed to get last oligomer to match */
   left_plus_length -= indexsize;
 
   startptr = left/32U*3;
@@ -12382,6 +12386,8 @@ Oligoindex_hr_tally (T this, Genomicpos_T genomicstart, Genomicpos_T genomicend,
   this->overabundant[POLY_G & this->mask] = true;
   this->overabundant[POLY_T & this->mask] = true;
 #endif
+
+  debug(printf("called with mapping %u..%u\n",mappingstart,mappingend));
 
   if (plusp == true) {
     debug(printf("plus, first sequencepos is %u = %u - %u\n",mappingstart-genomicstart,mappingstart,genomicstart));

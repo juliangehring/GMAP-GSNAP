@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 65571 2012-06-01 19:43:31Z twu $";
+static char rcsid[] = "$Id: gmap.c 67608 2012-06-27 22:42:29Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -82,7 +82,7 @@ static char rcsid[] = "$Id: gmap.c 65571 2012-06-01 19:43:31Z twu $";
 #define MIN_MATCHES 20
 
 
-#define MAX_NALIGNMENTS 3
+#define MAX_NALIGNMENTS 10
 
 
 /* #define EXTRACT_GENOMICSEG 1 */
@@ -3718,7 +3718,6 @@ main (int argc, char *argv[]) {
 #endif
   }
 
-
   if (splicing_file != NULL && genome != NULL) {
     if (Genome_blocks(genome) == NULL) {
       fprintf(stderr,"known splicing can be used only with compressed genome\n");
@@ -3797,7 +3796,7 @@ main (int argc, char *argv[]) {
   }
 
 
-  if (user_genomicseg != NULL) {
+  if (usersegment != NULL) {
     Genome_user_setup(genome_blocks);
     Genome_hr_user_setup(genome_blocks,/*query_unk_mismatch_p*/false,
 			 /*genome_unk_mismatch_p*/true,/*mode*/STANDARD);

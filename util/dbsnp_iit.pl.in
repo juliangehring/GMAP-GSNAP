@@ -44,25 +44,45 @@ if (defined($exceptions_file = $opt_e)) {
 	}
     }
     close($FP);
+
+    print STDERR "Exceptions to be allowed (allowp == 1 in dbsnp_iit program):\n";
+    foreach $exception_type (sort {$a cmp $b} keys %nallow_explicit) {
+	print STDERR "  $exception_type: $nallow_explicit{$exception_type}\n";
+    }
+    print STDERR "\n";
+    
+    print STDERR "Exceptions to be excluded (allowp == 0 in dbsnp_iit program):\n";
+    foreach $exception_type (sort {$a cmp $b} (keys %nexclude_explicit)) {
+	print STDERR "  $exception_type: $nexclude_explicit{$exception_type}\n";
+    }
+    print STDERR "\n";
+
+    print STDERR "Exceptions excluded implicitly (not defined in allowp in dbsnp_iit program):\n";
+    foreach $exception_type (sort {$a cmp $b} (keys %nexclude_implicit)) {
+	print STDERR "  $exception_type: $nexclude_implicit{$exception_type}\n";
+    }
+    print STDERR "\n";
+
+} else {
+    print STDERR "Exceptions to be allowed (allowp == 1 in dbsnp_iit program):\n";
+    foreach $exception_type (sort {$a cmp $b} keys %allowp) {
+	if ($allowp{$exception_type} == 1) {
+	    # Allow this SNP (explicitly)
+	    print STDERR "  $exception_type\n";
+	}
+    }
+    print STDERR "\n";
+
+    print STDERR "Exceptions to be excluded (allowp == 0 in dbsnp_iit program):\n";
+    foreach $exception_type (sort {$a cmp $b} keys %allowp) {
+	if ($allowp{$exception_type} == 0) {
+	    # Excluded this SNP (explicitly)
+	    print STDERR "  $exception_type\n";
+	}
+    }
+    print STDERR "\n";
 }
 
-print STDERR "Exceptions to be allowed:\n";
-foreach $exception_type (sort {$a cmp $b} keys %nallow_explicit) {
-    print STDERR "  $exception_type: $nallow_explicit{$exception_type}\n";
-}
-print STDERR "\n";
-
-print STDERR "Exceptions to be excluded (explicitly listed in program):\n";
-foreach $exception_type (sort {$a cmp $b} (keys %nexclude_explicit)) {
-    print STDERR "  $exception_type: $nexclude_explicit{$exception_type}\n";
-}
-print STDERR "\n";
-
-print STDERR "Exceptions excluded implicitly (not listed in program):\n";
-foreach $exception_type (sort {$a cmp $b} (keys %nexclude_implicit)) {
-    print STDERR "  $exception_type: $nexclude_implicit{$exception_type}\n";
-}
-print STDERR "\n";
 
 
 while (defined($line = <>)) {
@@ -71,6 +91,10 @@ while (defined($line = <>)) {
     @fields = split /\t/,$line;
     $item_class = $fields[11];
     if ($item_class eq "single") {
+	if (!defined($exceptions_file)) {
+	    record_new_exceptions($fields[18]);
+	}
+
 	$chr = $fields[1];
 	if (!defined($opt_c) || $chr eq $opt_c) {
 	    $item_weight = $fields[17];
@@ -105,7 +129,29 @@ while (defined($line = <>)) {
     }
 }
     
+
+if (!defined($exceptions_file)) {
+    print STDERR "Exceptions excluded implicitly (not defined in allowp in dbsnp_iit program):\n";
+    foreach $exception_type (sort {$a cmp $b} keys %newp) {
+	print STDERR $exception_type . "\n";
+    }
+    print STDERR "\n";
+}
+
+
 exit;
+
+
+sub record_new_exceptions {
+    my ($exceptions) = @_;
+
+    foreach $exception (split ",",$exceptions) {
+	if (!defined($allowp{$exception})) {
+	    $newp{$exception} = 1;
+	}
+    }
+}
+
 
 
 sub exclude_for_exceptions {
@@ -155,6 +201,8 @@ BEGIN {
 	"MultipleAlignments" => 0, # This variant aligns in more than one location.
 	"NonIntegerChromCount" => 0, # At least one allele frequency corresponds to a non-integer (+-0.010000) count of chromosomes on which the allele was observed.  The reported total sample count for this SNP is probably incorrect.
 	"AlleleFreqSumNot1" => 0, # Allele frequencies do not sum to 1.0 (+-0.010000).  This SNP's allele frequency data are probably incomplete.
+	"InconsistentAlleles" => 0,
+	"SingleAlleleFreq" => 0,
 	);
 }
 

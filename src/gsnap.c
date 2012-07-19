@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 65449 2012-05-31 20:37:39Z twu $";
+static char rcsid[] = "$Id: gsnap.c 67010 2012-06-20 23:37:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -81,6 +81,7 @@ static char rcsid[] = "$Id: gsnap.c 65449 2012-05-31 20:37:39Z twu $";
  ************************************************************************/
 
 static int gmap_mode = GMAP_PAIRSEARCH | GMAP_INDEL_KNOWNSPLICE | GMAP_TERMINAL | GMAP_IMPROVEMENT;
+static double gmap_min_coverage = 0.50;
 static int nullgap = 600;
 static int maxpeelback = 11;
 static int maxpeelback_distalmedial = 24;
@@ -426,6 +427,7 @@ static struct option long_options[] = {
 
   {"gmap-mode", required_argument, 0, 0}, /* gmap_mode */
   {"trigger-score-for-gmap", required_argument, 0, 0}, /* trigger_score_for_gmap */
+  {"gmap-min-coverage", required_argument, 0, 0},      /* gmap_min_coverage */
   {"max-gmap-pairsearch", required_argument, 0, 0}, /* max_gmap_pairsearch */
   {"max-gmap-terminal", required_argument, 0, 0}, /* max_gmap_terminal */
   {"max-gmap-improvement", required_argument, 0, 0}, /* max_gmap_improvement */
@@ -1036,11 +1038,13 @@ add_gmap_mode (char *string) {
       gmap_mode |= GMAP_IMPROVEMENT;
     } else if (!strcmp(string,"terminal")) {
       gmap_mode |= GMAP_TERMINAL;
+    } else if (!strcmp(string,"indel_knownsplice")) {
+      gmap_mode |= GMAP_INDEL_KNOWNSPLICE;
     } else if (!strcmp(string,"pairsearch")) {
       gmap_mode |= GMAP_PAIRSEARCH;
     } else {
       fprintf(stderr,"Don't recognize gmap-mode type %s\n",string);
-      fprintf(stderr,"Allowed values are: none, improve, terminal, pairsearch\n");
+      fprintf(stderr,"Allowed values are: none, improve, terminal, indel_knownsplice, pairsearch\n");
       exit(9);
     }
     return 1;
@@ -1263,6 +1267,9 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"trigger-score-for-gmap")) {
 	trigger_score_for_gmap = atoi(check_valid_int(optarg));
+
+      } else if (!strcmp(long_name,"gmap-min-coverage")) {
+	gmap_min_coverage = atof(check_valid_float(optarg));
 
       } else if (!strcmp(long_name,"max-gmap-pairsearch")) {
 	max_gmap_pairsearch = atoi(check_valid_int(optarg));
@@ -2373,7 +2380,7 @@ main (int argc, char *argv[]) {
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
-		 favor_multiexon_p,index1part,index1interval);
+		 favor_multiexon_p,gmap_min_coverage,index1part,index1interval);
   SAM_setup(quiet_if_excessive_p,maxpaths,sam_multiple_primaries_p);
   Goby_setup(show_refdiff_p);
 
@@ -2780,7 +2787,8 @@ is still designed to be fast.\n\
                                    (or multiple values, separated by commas).\n\
                                    Default: all on, i.e., pairsearch,indel_knownsplice,terminal,improve\n\
   --trigger-score-for-gmap=INT   Try GMAP pairsearch on nearby genomic regions if best score (the total\n\
-                                   of both ends if paired-end) exceeds this value (default 5)\n \
+                                   of both ends if paired-end) exceeds this value (default 5)\n\
+  --gmap-min-coverage=FLOAT      Keep GMAP hits only if total coverage exceeds this value (default 0.50)\n\
   --max-gmap-pairsearch=INT      Perform GMAP pairsearch on nearby genomic regions up to this many\n\
                                    many candidate ends (default 10).  Requires pairsearch in --gmap-mode\n\
   --max-gmap-terminal=INT        Perform GMAP terminal on nearby genomic regions up to this many\n\

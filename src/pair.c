@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 64816 2012-05-23 19:18:55Z twu $";
+static char rcsid[] = "$Id: pair.c 68833 2012-07-12 18:54:25Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2916,7 +2916,8 @@ print_pair_info (FILE *fp, int insertlength, int pairscore, Pairtype_T pairtype)
   case PAIRED_SCRAMBLE: fprintf(fp,",pairtype:scramble"); break;
   case PAIRED_INVERSION: fprintf(fp,",pairtype:inversion"); break;
   case PAIRED_TOOLONG: fprintf(fp,",pairtype:toolong"); break;
-  case TRANSLOCATION: break;
+  case CONCORDANT_TRANSLOCATIONS: break;
+  case CONCORDANT_TERMINAL: break;
   case PAIRED_UNSPECIFIED: abort();
   case UNPAIRED: abort();
   }
@@ -3578,7 +3579,7 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
 		int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, unsigned int flag,
 #ifdef GSNAP
 		int pair_mapq_score, int end_mapq_score,
-		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
+		Genomicpos_T chrpos, char *mate_chrstring, Genomicpos_T mate_chrpos, int pairedlength,
 #else
 		int mapq_score, struct T *pairarray, int npairs,
 #endif
@@ -3627,7 +3628,7 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
   if (mate_chrpos == 0U) {
     fprintf(fp,"\t*\t0");
   } else {
-    fprintf(fp,"\t=\t%u",mate_chrpos /* +1U*/);
+    fprintf(fp,"\t%s\t%u",mate_chrstring,mate_chrpos /* +1U*/);
   }
 #else
   fprintf(fp,"\t*\t0");
@@ -4554,14 +4555,16 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		int absmq_score, int first_absmq, int second_absmq,
 #ifdef GSNAP
 		unsigned int flag, int pair_mapq_score, int end_mapq_score,
-		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int pairedlength,
+		Genomicpos_T chrpos, Chrnum_T mate_chrnum, Genomicpos_T mate_chrpos, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif
 		char *sam_read_group_id) {
 
   char *chrstring = NULL;
-#ifndef GSNAP
+#ifdef GSNAP
+  char *mate_chrstring, *mate_chrstring_alloc = NULL;
+#else
   unsigned int flag;
 #endif
 
@@ -4579,7 +4582,13 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
     chrstring = Chrnum_to_string(chrnum,chromosome_iit);
   }
 
-#ifndef GSNAP
+#ifdef GSNAP
+  if (mate_chrnum == chrnum) {
+    mate_chrstring = "=";
+  } else {
+    mate_chrstring = mate_chrstring_alloc = Chrnum_to_string(mate_chrnum,chromosome_iit);
+  }
+#else
   flag = compute_sam_flag_nomate(pathnum,npaths,firstp,watsonp,sam_paired_p);
 #endif
 
@@ -4609,7 +4618,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		 querylength_given,chimera,quality_shift,pathnum,npaths,
 		 absmq_score,first_absmq,second_absmq,flag,
 #ifdef GSNAP
-		 pair_mapq_score,end_mapq_score,chrpos,mate_chrpos,pairedlength,
+		 pair_mapq_score,end_mapq_score,chrpos,mate_chrstring,mate_chrpos,pairedlength,
 #else
 		 mapq_score,clipped_pairs,clipped_npairs,
 #endif
@@ -4620,6 +4629,11 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
   List_free(&cigar_tokens);
 
 
+#ifdef GSNAP
+  if (mate_chrstring_alloc != NULL) {
+    FREE(mate_chrstring_alloc);
+  }
+#endif
   if (chrnum != 0) {
     FREE(chrstring);
   }
@@ -7110,8 +7124,10 @@ mismatch_logprob[MAX_QUALITY_SCORE+1] =
 
 
 
+/* Look also at Substring_compute_mapq */
 double
-Pair_compute_mapq (struct T *pairarray, int npairs, char *quality_string) {
+Pair_compute_mapq (struct T *pairarray, int npairs, int trim_left, int trim_right, int querylength,
+		   char *quality_string, bool trim_terminals_p) {
   double loglik = 0.0;
   int Q;
   T pair;
@@ -7119,7 +7135,11 @@ Pair_compute_mapq (struct T *pairarray, int npairs, char *quality_string) {
 
   for (i = 0; i < npairs; i++) {
     pair = &(pairarray[i]);
-    if (pair->comp == MISMATCH_COMP) {
+    if (trim_terminals_p == true && pair->querypos < trim_left) {
+      /* Skip */
+    } else if (trim_terminals_p == true && pair->querypos >= querylength - trim_right) {
+      /* Skip */
+    } else if (pair->comp == MISMATCH_COMP) {
       /* printf("Got a mismatch at querypos %d, cdna %c\n",pair->querypos,pair->cdna); */
       querypos = pair->querypos;
       Q = (quality_string == NULL) ? MAX_QUALITY_SCORE : quality_string[querypos] - quality_score_adj;

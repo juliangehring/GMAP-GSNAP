@@ -4,7 +4,7 @@
 #include "genomicpos.h"
 
 extern void
-Maxent_hr_setup (UINT4 *ref_blocks_in);
+Maxent_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in);
 
 extern double
 Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset);

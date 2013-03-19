@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 67607 2012-06-27 22:42:13Z twu $";
+static char rcsid[] = "$Id: stage1.c 82071 2012-12-19 21:43:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -95,6 +95,13 @@ static char *queryuc_ptr;
 #define debug(x)
 #endif
 
+/* final results */
+#ifdef DEBUG0
+#define debug0(x) x
+#else
+#define debug0(x)
+#endif
+
 /* show positions.  Should also specify DEBUG */
 #ifdef DEBUG1
 #define debug1(x) x
@@ -163,24 +170,42 @@ static char *queryuc_ptr;
 #ifdef PMAP
 static int index1part_aa;
 static int leftreadshift;
+static Genomicpos_T maxextension;
+static Genomicpos_T maxtotallen_bound;
+static int min_extra_end;
+static int circular_typeint;
 
 void
-Stage1_setup (int index1part_aa_in) {
+Stage1_setup (int index1part_aa_in, Genomicpos_T maxextension_in, Genomicpos_T maxtotallen_bound_in,
+	      int min_extra_end_in, int circular_typeint_in) {
   index1part_aa = index1part_aa_in;
   leftreadshift = 32 - 2*index1part_aa_in; /* chars are shifted into left of a 32 bit word */
+  maxextension = maxextension_in;
+  maxtotallen_bound = maxtotallen_bound_in;
+  min_extra_end = min_extra_end_in;
+  circular_typeint = circular_typeint_in;
   return;
 }
 
 #else
 static int index1part;
 static int leftreadshift;
+static Genomicpos_T maxextension;
+static Genomicpos_T maxtotallen_bound;
+static int min_extra_end;
 static Storedoligomer_T oligobase_mask;
+static int circular_typeint;
 
 void
-Stage1_setup (int index1part_in) {
+Stage1_setup (int index1part_in, Genomicpos_T maxextension_in, Genomicpos_T maxtotallen_bound_in,
+	      int min_extra_end_in, int circular_typeint_in) {
   index1part = index1part_in;
   leftreadshift = 32 - 2*index1part_in; /* chars are shifted into left of a 32 bit word */
   oligobase_mask = ~(~0UL << 2*index1part_in);
+  maxextension = maxextension_in;
+  maxtotallen_bound = maxtotallen_bound_in;
+  min_extra_end = min_extra_end_in;
+  circular_typeint = circular_typeint_in;
   return;
 }
 #endif
@@ -475,7 +500,8 @@ pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
 	    if (Match_acceptable_pair(match5,match3,trimlength,matchsize) == true) {
 #endif
 	      new_gregions = List_push(new_gregions,Gregion_new_from_matches(match5,match3,genestrand,chromosome_iit,
-									     querylength,matchsize,trimstart,trimend));
+									     querylength,matchsize,trimstart,trimend,
+									     circular_typeint));
 #if 1
 	    }
 #endif
@@ -497,7 +523,8 @@ pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
 	    if (Match_acceptable_pair(match5,match3,trimlength,matchsize) == true) {
 #endif
 	      new_gregions = List_push(new_gregions,Gregion_new_from_matches(match5,match3,genestrand,chromosome_iit,
-									     querylength,matchsize,trimstart,trimend));
+									     querylength,matchsize,trimstart,trimend,
+									     circular_typeint));
 #if 1
 	    }
 #endif
@@ -519,7 +546,8 @@ pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
 	    if (Match_acceptable_pair(match5,match3,trimlength,matchsize) == true) {
 #endif
 	      new_gregions = List_push(new_gregions,Gregion_new_from_matches(match5,match3,genestrand,chromosome_iit,
-									     querylength,matchsize,trimstart,trimend));
+									     querylength,matchsize,trimstart,trimend,
+									     circular_typeint));
 #if 1
 	    }
 #endif
@@ -1658,7 +1686,7 @@ find_range (int **querypositions, int *ninrange, int starti, int endi,
 
 static void
 find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
-		 Gregion_T gregion, int maxintronlen_bound, bool continuousp) {
+		 Gregion_T gregion, bool continuousp) {
   int *querypositions, querystart, queryend, ninrange, i, j, lastj;
   Genomicpos_T *range, leftbound, rightbound, best_start, best_end, expectedi, expectedj;
   int best_concentration, concentration;
@@ -1669,7 +1697,7 @@ find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
 
   querystart = Gregion_querystart(gregion);
   queryend = Gregion_queryend(gregion);
-  debug2(printf("Entering Stage1_find_extensions with querystart = %d, queryend = %d, querylength %d\n",
+  debug2(printf("Entering find_extensions with querystart = %d, queryend = %d, querylength %d\n",
 		querystart,queryend,this->querylength));
 
   debug2(printf("continuousp = %d, this->trimlength %d (vs %d), querystart %d (vs %d)\n",
@@ -1677,7 +1705,7 @@ find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
   if (continuousp == true || this->trimlength < SINGLEEXONLENGTH || querystart < NOEXTENDLEN) {
     maxintronlen5 = querystart + 20;
   } else {
-    maxintronlen5 = maxintronlen_bound;
+    maxintronlen5 = maxextension;
   }
 
   debug2(printf("continuousp = %d, this->trimlength %d (vs %d), this->trimlength - queryend %d (vs %d)\n",
@@ -1685,7 +1713,7 @@ find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
   if (continuousp == true || this->trimlength < SINGLEEXONLENGTH || this->trimlength - queryend < NOEXTENDLEN) {
     maxintronlen3 = this->querylength - queryend + 20;
   } else {
-    maxintronlen3 = maxintronlen_bound;
+    maxintronlen3 = maxextension;
   }
   debug2(printf("Set maxintronlen5 = %u, maxintronlen3 = %u\n",maxintronlen5,maxintronlen3));
 
@@ -1746,7 +1774,7 @@ find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
       concentration = 1;
       lastj = i;
       for (j = i+1; j < ninrange; j++) {
-	debug2(printf("  %u%d",range[j],querypositions[j]));
+	debug2(printf("  %u@%d",range[j],querypositions[j]));
 	expectedi = range[j] + querypositions[j] - querypositions[i];
 	if (range[i] + 20 > expectedi && range[i] < expectedi + 20) {
 	  concentration++;
@@ -3271,11 +3299,13 @@ find_good_paths (List_T gregionlist, int nexons, int *prev, int *scores,
 #ifdef PMAP
 	  gregionlist = List_push(gregionlist,Gregion_new(nexons,genomicstart,genomicend,/*plusp*/true,genestrand,
 							  chromosome_iit,querystart,queryend,querylength,
-							  /*matchsize*/index1part_aa,trimstart,trimend));
+							  /*matchsize*/index1part_aa,trimstart,trimend,
+							  circular_typeint));
 #else
 	  gregionlist = List_push(gregionlist,Gregion_new(nexons,genomicstart,genomicend,/*plusp*/true,genestrand,
 							  chromosome_iit,querystart,queryend,querylength,
-							  /*matchsize*/index1part,trimstart,trimend));
+							  /*matchsize*/index1part,trimstart,trimend,
+							  circular_typeint));
 #endif
 	}
       } else if (plusp == false) {
@@ -3289,11 +3319,13 @@ find_good_paths (List_T gregionlist, int nexons, int *prev, int *scores,
 #ifdef PMAP
 	  gregionlist = List_push(gregionlist,Gregion_new(nexons,genomicstart,genomicend,/*plusp*/false,genestrand,
 							  chromosome_iit,querystart,queryend,querylength,
-							  /*matchsize*/index1part_aa,trimstart,trimend));
+							  /*matchsize*/index1part_aa,trimstart,trimend,
+							  circular_typeint));
 #else
 	  gregionlist = List_push(gregionlist,Gregion_new(nexons,genomicstart,genomicend,/*plusp*/false,genestrand,
 							  chromosome_iit,querystart,queryend,querylength,
-							  /*matchsize*/index1part,trimstart,trimend));
+							  /*matchsize*/index1part,trimstart,trimend,
+							  circular_typeint));
 #endif
 	}
       } else {
@@ -3329,8 +3361,12 @@ scan_ends (List_T oldlist, T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
 #ifdef PMAP
   matchsize = this->oligosize + this->oligosize;
 #else
-  /* Originally set for 12-mers, but now allow for 13, 14, and 15-mers */
-  matchsize = index1part + 12;
+  if (index1part < 12) {
+    matchsize = index1part + index1part;
+  } else {
+    /* Originally set for 12-mers, but now allow for 13, 14, and 15-mers */
+    matchsize = index1part + 12;
+  }
 #endif
 
   while (loopp && matchsize >= this->oligosize && foundpairp == false) {
@@ -3447,11 +3483,12 @@ sufficient_gregion_p (List_T gregionlist) {
 List_T
 Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
 		int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
-		Matchpool_T matchpool, int maxintronlen_bound, int maxtotallen_bound, int min_extra_end,
-		int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch, int nbest) {
+		Matchpool_T matchpool, int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch,
+		int nbest) {
   List_T gregionlist = NULL, p, q;
   T this = NULL;
-  int trimlength, trimstart, trimend, maxtotallen, matchsize, maxentries, i;
+  int trimlength, trimstart, trimend, matchsize, maxentries, i;
+  Genomicpos_T maxtotallen;
   Genomicpos_T extension5, extension3;
   Gregion_T gregion;
 
@@ -3636,7 +3673,7 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
     gregion = (Gregion_T) List_head(p);
     if (Gregion_extendedp(gregion) == false) {
       /* Need to extend, otherwise we won't align NM_003360 */
-      find_extensions(&extension5,&extension3,this,gregion,maxintronlen_bound,/*continuousp*/false);
+      find_extensions(&extension5,&extension3,this,gregion,/*continuousp*/false);
       Gregion_extend(gregion,extension5,extension3,this->querylength,min_extra_end);
     }
   }
@@ -3650,8 +3687,8 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
 	}
 	);
 
-#if 1
-  /* Don't filter for support anymore */
+#if 0
+  /* Don't filter for support anymore.  Causes loss of good regions. */
   gregionlist = Gregion_filter_support(gregionlist,BOUNDARY_SUPPORT,PCT_MAX_SUPPORT,DIFF_MAX_SUPPORT);
   debug(printf("After filtering for support, %d regions\n",List_length(gregionlist)));
 #endif
@@ -3718,7 +3755,14 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
 
   Stage1_free(&this);
 
-  debug(printf("Stage 1 returning %d new regions\n",List_length(gregionlist)));
+  debug0(printf("Stage 1 returning %d new regions\n",List_length(gregionlist)));
+  debug0(
+	 for (p = gregionlist; p != NULL; p = List_next(p)) {
+	   gregion = (Gregion_T) List_head(p);
+	   Gregion_print(gregion);
+	 }
+	 );
+
   return gregionlist;
 }
 
@@ -3728,12 +3772,13 @@ List_T
 Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 			    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
 			    int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
-			    Matchpool_T matchpool, int maxintronlen_bound, int maxtotallen_bound, int min_extra_end,
-			    int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch, int nbest) {
+			    Matchpool_T matchpool, int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch,
+			    int nbest) {
   List_T gregionlist = NULL, p, q;
   T this_fwd = NULL, this_rev = NULL;
   Sequence_T queryrc;
-  int trimlength, trimstart, trimend, maxtotallen, matchsize, maxentries, i;
+  int trimlength, trimstart, trimend, matchsize, maxentries, i;
+  Genomicpos_T maxtotallen;
   Genomicpos_T extension5, extension3;
   Gregion_T gregion;
 
@@ -4049,10 +4094,10 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
     if (Gregion_extendedp(gregion) == false) {
       /* Need to extend, otherwise we won't align NM_003360 */
       if (Gregion_genestrand(gregion) > 0) {
-	find_extensions(&extension5,&extension3,this_fwd,gregion,maxintronlen_bound,/*continuousp*/false);
+	find_extensions(&extension5,&extension3,this_fwd,gregion,/*continuousp*/false);
 	Gregion_extend(gregion,extension5,extension3,this_fwd->querylength,min_extra_end);
       } else {
-	find_extensions(&extension5,&extension3,this_rev,gregion,maxintronlen_bound,/*continuousp*/false);
+	find_extensions(&extension5,&extension3,this_rev,gregion,/*continuousp*/false);
 	Gregion_extend(gregion,extension5,extension3,this_rev->querylength,min_extra_end);
       }
     }
@@ -4067,7 +4112,7 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 	}
 	);
 
-#if 1
+#if 0
   /* For nonstranded, want to filter for support */
   gregionlist = Gregion_filter_support(gregionlist,BOUNDARY_SUPPORT,PCT_MAX_SUPPORT,DIFF_MAX_SUPPORT);
   debug(printf("After filtering for support, %d regions\n",List_length(gregionlist)));
@@ -4138,7 +4183,14 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 
   Sequence_free(&queryrc);
 
-  debug(printf("Stage 1 returning %d new regions\n",List_length(gregionlist)));
+  debug0(printf("Stage 1 returning %d new regions\n",List_length(gregionlist)));
+  debug0(
+	 for (p = gregionlist; p != NULL; p = List_next(p)) {
+	   gregion = (Gregion_T) List_head(p);
+	   Gregion_print(gregion);
+	 }
+	 );
+
   return gregionlist;
 }
 

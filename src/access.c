@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 49085 2011-10-05 15:50:12Z twu $";
+static char rcsid[] = "$Id: access.c 78503 2012-11-06 21:31:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -89,6 +89,72 @@ Access_filesize (char *filename) {
   debug(printf("filesize is %lu\n",sb.st_size));
   return sb.st_size;
 }
+
+
+size_t
+Access_file_copy (char *dest_file, char *source_file) {
+  size_t nbytes = 0;
+  FILE *dest, *source;
+  int c;
+
+  if ((source = FOPEN_READ_BINARY(source_file)) == NULL) {
+    fprintf(stderr,"Cannot open source file %s\n",source_file);
+    return 0;
+
+  } else if ((dest = FOPEN_WRITE_BINARY(dest_file)) == NULL) {
+    fprintf(stderr,"Cannot open destination file %s\n",dest_file);
+    fclose(source);
+    return 0;
+
+  } else {
+    while ((c = fgetc(source)) != EOF) {
+      fputc(c,dest);
+      nbytes++;
+    }
+    fclose(dest);
+    fclose(source);
+    return nbytes;
+  }
+}
+
+
+bool
+Access_file_equal (char *file1, char *file2) {
+  FILE *fp1, *fp2;
+  int c1, c2;
+
+  if ((fp1 = FOPEN_READ_BINARY(file1)) == NULL) {
+    fprintf(stderr,"Cannot open file %s\n",file1);
+    exit(9);
+
+  } else if ((fp2 = FOPEN_READ_BINARY(file2)) == NULL) {
+    fprintf(stderr,"Cannot open file %s\n",file2);
+    fclose(fp1);
+    exit(9);
+
+  } else {
+    c1 = fgetc(fp1);
+    c2 = fgetc(fp2);
+    while (c1 != EOF && c2 != EOF) {
+      if (c1 != c2) {
+	fclose(fp2);
+	fclose(fp1);
+	return false;
+      }
+      c1 = fgetc(fp1);
+      c2 = fgetc(fp2);
+    }
+    fclose(fp2);
+    fclose(fp1);
+
+    if (c1 == EOF && c2 == EOF) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+}
+
 
 int
 Access_fileio (char *filename) {
@@ -270,7 +336,7 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on len %lu from length %lu.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on len %ju from length %ju.  Error %d: %s\n",
 	      length,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",length,length));
       memory = NULL;
@@ -335,7 +401,7 @@ Access_mmap_offset (int *remainder, int fd, off_t offset, size_t length, size_t 
 #endif
 		  ,fd,offset);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on fd %d, offset %lu, length %lu.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on fd %d, offset %ju, length %ju.  Error %d: %s\n",
 	      fd,offset,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on fd %d, offset %lu, length %lu\n",fd,offset,length));
       memory = NULL;
@@ -405,7 +471,7 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on len %lu from length %lu.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on len %ju from length %ju.  Error %d: %s\n",
 	      *len,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;
@@ -468,7 +534,7 @@ Access_mmap_offset_rw (int *remainder, int fd, off_t offset, size_t length, size
 #endif
 		  ,fd,offset);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on offset %lu, length %lu.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on offset %ju, length %ju.  Error %d: %s\n",
 	      offset,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on offset %lu, length %lu\n",offset,length));
       memory = NULL;
@@ -553,7 +619,7 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on len %lu from length %lu.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on len %ju from length %ju.  Error %d: %s\n",
 	      *len,length,errno,strerror(errno));
       debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
       memory = NULL;

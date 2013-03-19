@@ -1,4 +1,4 @@
-/* $Id: pair.h 69180 2012-07-18 00:29:55Z twu $ */
+/* $Id: pair.h 82068 2012-12-19 21:42:22Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -15,14 +15,20 @@ typedef struct Pair_T *Pair_T;
 #include "genome.h"
 #include "chimera.h"
 #include "substring.h"		/* For Endtype_T */
+#include "sense.h"
+
+#ifdef GSNAP
+#include "resulthr.h"		/* For Resulttype_T.  Don't call for GMAP, because result.h conflicts */
+#endif
 
 #define MATCHESPERGAP 3
-
 
 #define T Pair_T
 
 extern void
-Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in, bool sam_insert_0M_p_in);
+Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in,
+	    bool sam_insert_0M_p_in, bool force_xs_direction_p_in,
+	    bool md_lowercase_variant_p_in, bool snps_p_in);
 extern int
 Pair_querypos (T this);
 extern int
@@ -33,6 +39,8 @@ extern char
 Pair_comp (T this);
 extern char
 Pair_genome (T this);
+extern char
+Pair_genomealt (T this);
 extern bool
 Pair_gapp (T this);
 extern bool
@@ -43,13 +51,17 @@ extern void
 Pair_print_ends (List_T pairs);
 
 extern void
-Pair_set_genomepos (struct Pair_T *pairarray, int npairs, Genomicpos_T chrpos,
-		    Genomicpos_T genomiclength, bool watsonp);
+Pair_set_genomepos (struct Pair_T *pairarray, int npairs, Genomicpos_T chroffset,
+		    Genomicpos_T chrhigh, bool watsonp);
+#if 0
 extern void
-Pair_set_genomepos_list (List_T pairs, Genomicpos_T chrpos,
-			 Genomicpos_T genomiclength, bool watsonp);
+Pair_set_genomepos_list (List_T pairs, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+			 bool watsonp);
+#endif
 extern List_T
-Pair_protect (List_T pairs);
+Pair_protect_end5 (List_T pairs, Pairpool_T pairpool);
+extern List_T
+Pair_protect_end3 (List_T pairs, Pairpool_T pairpool);
 
 extern T
 Pair_new (int querypos, int genomepos, char cdna, char comp, char genome);
@@ -81,8 +93,8 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
 			bool watsonp, int cdna_direction,
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool maponlyp,
-			bool diagnosticp, int stage1_genomicstart, int stage1_genomiclength,
-			int stage2_source, int stage2_indexsize, double stage3_defectrate);
+			bool diagnosticp, int stage2_source, int stage2_indexsize,
+			double stage3_defectrate);
 
 extern void
 Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
@@ -126,10 +138,29 @@ Pair_print_gsnap (FILE *fp, struct T *pairs, int npairs, int nsegments, bool inv
 		  int insertlength, int pairscore, int mapq_score,
 		  IIT_T chromosome_iit, IIT_T splicesites_iit,
 		  int *splicesites_divint_crosstable, int donor_typeint, int acceptor_typeint);
+
+extern void
+Pair_fix_cdna_direction_array (struct T *pairs_querydir, int npairs, int cdna_direction);
+extern int
+Pair_guess_cdna_direction_array (int *sensedir, struct T *pairs_querydir, int npairs, bool invertedp,
+				 Genomicpos_T chroffset, bool watsonp);
+extern int
+Pair_guess_cdna_direction (int *sensedir, List_T pairs, bool invertedp,
+			   Genomicpos_T chroffset, bool watsonp);
 extern int
 Pair_gsnap_nsegments (int *total_nmismatches, int *total_nindels, int *nintrons,
 		      int *nindelbreaks, struct T *pairs, int npairs);
 
+
+extern int
+Pair_circularpos (struct T *pairs, int npairs, Genomicpos_T chrlength, bool plusp, int querylength);
+extern void
+Pair_alias_circular (struct T *pairs, int npairs, Genomicpos_T chrlength);
+extern void
+Pair_unalias_circular (struct T *pairs, int npairs, Genomicpos_T chrlength);
+
+extern List_T
+Pair_clean_cigar (List_T tokens, bool watsonp);
 
 extern void
 Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
@@ -138,14 +169,15 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
 		int quality_shift, bool firstp, int pathnum, int npaths,
-		int absmq_score, int first_absmq, int second_absmq,
+		int absmq_score, int first_absmq, int second_absmq, Genomicpos_T chrpos,
 #ifdef GSNAP
-		unsigned int flag, int pair_mapq_score, int end_mapq_score,
-		Genomicpos_T chrpos, Chrnum_T mate_chrnum, Genomicpos_T mate_chrpos, int pairedlength,
+		Resulttype_T resulttype, unsigned int flag, int pair_mapq_score, int end_mapq_score,
+		Chrnum_T mate_chrnum, Genomicpos_T mate_chrpos, int mate_cdna_direction,
+		int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif
-		char *sam_read_group_id);
+		char *sam_read_group_id, bool invertp, bool circularp);
 
 extern void
 Pair_print_sam_nomapping (FILE *fp, char *accession, char *queryseq_ptr,
@@ -264,9 +296,9 @@ extern Genomicpos_T
 Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap);
 
 extern T
-Pair_start_bound (List_T pairs, int breakpoint);
+Pair_start_bound (int *cdna_direction, List_T pairs, int breakpoint);
 extern T
-Pair_end_bound (List_T pairs, int breakpoint);
+Pair_end_bound (int *cdna_direction, List_T pairs, int breakpoint);
 
 
 extern List_T

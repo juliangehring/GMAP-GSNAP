@@ -1,4 +1,4 @@
-/* $Id: types.h 56964 2012-02-02 17:57:52Z twu $ */
+/* $Id: types.h 89124 2013-03-13 22:23:20Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -27,6 +27,7 @@ typedef unsigned long long UINT8;
 typedef unsigned long long Oligospace_T;
 #else
 #define MAXIMUM_KMER 15
+#define OLIGOSPACE_NOT_LONG
 typedef unsigned int Oligospace_T;
 #endif
 
@@ -37,6 +38,8 @@ typedef UINT4 Positionsptr_T;
 
 /* Typically 12 nt or 24 bits, requiring 3 bytes */
 typedef UINT4 Storedoligomer_T;
+
+typedef UINT4 Genomecomp_T;
 
 #endif
 

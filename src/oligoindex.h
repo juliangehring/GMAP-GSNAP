@@ -1,4 +1,4 @@
-/* $Id: oligoindex.h 64017 2012-05-14 22:35:15Z twu $ */
+/* $Id: oligoindex.h 79521 2012-11-19 22:11:24Z twu $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #include "bool.h"
@@ -30,7 +30,7 @@ struct T {
   int suffnconsecutive;
 
   bool query_evaluated_p;
-  int oligospace;
+  Oligospace_T oligospace;
   bool *overabundant;
   bool *inquery;
   int *counts;
@@ -44,6 +44,9 @@ Oligoindex_indexsize (T this);
 
 extern int *
 Oligoindex_counts_copy (T this);
+
+extern void
+Oligoindex_dump (T this);
 
 extern void
 Oligoindex_counts_dump (T this, int *counts);
@@ -74,9 +77,12 @@ extern void
 Oligoindex_free_array (T **oligoindices, int noligoindices);
 
 extern List_T
-Oligoindex_get_mappings (List_T diagonals, bool *coveredp, unsigned int **mappings, int *npositions,
+Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Genomicpos_T **mappings, int *npositions,
 			 int *totalpositions, bool *oned_matrix_p, int *maxnconsecutive, 
-			 T this, char *queryuc_ptr, int querylength, int genomiclength, Diagpool_T diagpool);
+			 T this, char *queryuc_ptr, int querylength,
+			 Genomicpos_T chrstart, Genomicpos_T chrend,
+			 Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
+			 Diagpool_T diagpool);
 
 #undef T
 #endif

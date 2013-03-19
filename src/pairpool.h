@@ -1,4 +1,4 @@
-/* $Id: pairpool.h 64730 2012-05-23 01:44:39Z twu $ */
+/* $Id: pairpool.h 82070 2012-12-19 21:42:59Z twu $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 
@@ -21,9 +21,11 @@ Pairpool_new (void);
 extern void
 Pairpool_reset (T this);
 extern List_T
-Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome, int dynprogindex);
+Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp,
+	       char genome, char genomealt, int dynprogindex);
 extern List_T
-Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome, bool extraexonp);
+Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp,
+			int introntype, char genome, char genomealt, bool extraexonp);
 extern List_T
 Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump, bool knownp);
 extern List_T

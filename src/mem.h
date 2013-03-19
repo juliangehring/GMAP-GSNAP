@@ -1,4 +1,4 @@
-/* $Id: mem.h 40330 2011-05-30 17:40:46Z twu $ */
+/* $Id: mem.h 82065 2012-12-19 21:35:44Z twu $ */
 #ifndef MEM_INCLUDED
 #define MEM_INCLUDED
 
@@ -28,9 +28,13 @@ Mem_usage_set_threadname (const char *threadname);
 extern void
 Mem_usage_reset (long int x);
 extern void
+Mem_usage_reset_max ();
+extern void
 Mem_usage_add (long int x);
 extern long int
 Mem_usage_report ();
+extern long int
+Mem_max_usage_report ();
 extern long int
 Mem_usage_in_report ();
 extern long int

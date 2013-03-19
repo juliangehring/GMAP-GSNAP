@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 67012 2012-06-20 23:51:02Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 87226 2013-02-25 17:51:59Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -85,7 +85,9 @@ static int max_deletionlength = 50;
  ************************************************************************/
 
 static IIT_T chromosome_iit = NULL;
+static int circular_typeint = -1;
 static int nchromosomes = 0;
+static bool *circularp = NULL;
 static Indexdb_T indexdb = NULL;
 static Indexdb_T indexdb2 = NULL; /* For cmet or atoi */
 static Genome_T genome = NULL;
@@ -127,9 +129,6 @@ static int pairmax;
 static int pairmax_dna = 1000;
 static int pairmax_rna = 200000;
 
-static Genomicpos_T expected_pairlength = 200;
-static Genomicpos_T pairlength_deviation = 50;
-
 
 /* static Masktype_T masktype = MASK_REPETITIVE; */
 static int subopt_levels = 0;
@@ -151,6 +150,7 @@ static int max_end_deletions = 6;
 static int min_indel_end_matches = 4;
 static Genomicpos_T shortsplicedist = 200000;
 static Genomicpos_T shortsplicedist_known;
+static Genomicpos_T shortsplicedist_novelend = 50000;
 static int localsplicing_penalty = 0;
 static int distantsplicing_penalty = 100;
 static int min_distantsplicing_end_matches = 16;
@@ -235,8 +235,8 @@ static struct option long_options[] = {
   {"genomefull", no_argument, 0, 'G'}, /* uncompressedp */
 
   /* Compute options */
-  {"from-5-end", no_argument, 0, 0}, /* from_right_p */
-  {"from-3-end", no_argument, 0, 0}, /* from_right_p */
+  {"from-5-end", no_argument, 0, '5'}, /* from_right_p */
+  {"from-3-end", no_argument, 0, '3'}, /* from_right_p */
 
   {"pairmax-dna", required_argument, 0, 0}, /* pairmax_dna */
   {"pairmax-rna", required_argument, 0, 0}, /* pairmax_rna */
@@ -374,9 +374,11 @@ print_program_usage ();
 
 #define POOL_FREE_INTERVAL 200
 
+static char digit[10];
+
 static void
-uniqueness_scan (char *sequence) {
-  char *subsequence;
+uniqueness_scan (bool from_right_p) {
+  char *result, *subsequence, sequence[1024];
   int fulllength, sublength;
   Stage3end_T *stage3array;
   int npaths, first_absmq, second_absmq;
@@ -412,23 +414,24 @@ uniqueness_scan (char *sequence) {
   Mem_usage_reset(0);
 #endif
 
-  fulllength = strlen(sequence);
-  subsequence = (char *) CALLOC(fulllength+1,sizeof(char));
+  for (i = 0; i < 10; i++) {
+    sprintf(&(digit[i]),"%d",i);
+  }
 
-  sublength = index1part+2;
-  npaths = 2;
-  while (sublength <= fulllength && npaths > 1) {
-    if (from_right_p == true) {
-      strncpy(subsequence,&(sequence[fulllength-sublength]),sublength);
-    } else {
-      strncpy(subsequence,sequence,sublength);
+  while (fgets(sequence,1024,stdin) != NULL) {
+    fulllength = strlen(sequence) - 1; /* Ignore '\n' */
+    result = (char *) CALLOC(fulllength+1,sizeof(char));
+    for (i = 0; i < fulllength; i++) {
+      result[i] = '.';
     }
-    queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,subsequence,
-			      /*sequence_length*/sublength,/*quality*/NULL,/*quality_length*/0,
+
+    /* Handle full sequence */
+    queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,sequence,
+			      /*sequence_length*/fulllength,/*quality*/NULL,/*quality_length*/0,
 			      /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false);
     stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-				     genome,floors_array,/*maxpaths*/1000000,user_maxlevel_float,subopt_levels,
+				     genome,floors_array,user_maxlevel_float,subopt_levels,
 				     indel_penalty_middle,indel_penalty_end,
 				     max_middle_insertions,max_middle_deletions,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
@@ -438,17 +441,86 @@ uniqueness_scan (char *sequence) {
 				     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				     dynprogL,dynprogM,dynprogR,
 				     /*keep_floors_p*/true);
-    printf("%d: %d\n",sublength,npaths);
+
+    /* printf("%d: %d\n",sublength,npaths); */
+    if (from_right_p == true) {
+      if (npaths < 10) {
+	result[0] = digit[npaths];
+      } else {
+	result[0] = '*';
+      }
+    } else {
+      if (npaths < 10) {
+	result[fulllength-1] = digit[npaths];
+      } else {
+	result[fulllength-1] = '*';
+      }
+    }
+
     for (i = 0; i < npaths; i++) {
       Stage3end_free(&(stage3array[i]));
     }
     FREE_OUT(stage3array);
     Shortread_free(&queryseq1);
-    sublength++;
+    
+
+    if (npaths < 10) {
+      subsequence = (char *) CALLOC(fulllength+1,sizeof(char));
+      sublength = index1part+2;
+      npaths = 2;
+      while (sublength < fulllength && npaths > 1) {
+	if (from_right_p == true) {
+	  strncpy(subsequence,&(sequence[fulllength-sublength]),sublength);
+	} else {
+	  strncpy(subsequence,sequence,sublength);
+	}
+	queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,subsequence,
+				  /*sequence_length*/sublength,/*quality*/NULL,/*quality_length*/0,
+				  /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false);
+	stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
+					 queryseq1,indexdb,indexdb2,indexdb_size_threshold,
+					 genome,floors_array,user_maxlevel_float,subopt_levels,
+					 indel_penalty_middle,indel_penalty_end,
+					 max_middle_insertions,max_middle_deletions,
+					 allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
+					 shortsplicedist,localsplicing_penalty,/*distantsplicing_penalty*/100,
+					 min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
+					 oligoindices_major,noligoindices_major,
+					 oligoindices_minor,noligoindices_minor,pairpool,diagpool,
+					 dynprogL,dynprogM,dynprogR,
+					 /*keep_floors_p*/true);
+
+	/* printf("%d: %d\n",sublength,npaths); */
+	if (from_right_p == true) {
+	  if (npaths < 10) {
+	    result[fulllength-sublength] = digit[npaths];
+	  } else {
+	    result[fulllength-sublength] = '*';
+	  }
+	} else {
+	  if (npaths < 10) {
+	    result[sublength-1] = digit[npaths];
+	  } else {
+	    result[sublength-1] = '*';
+	  }
+	}
+
+	for (i = 0; i < npaths; i++) {
+	  Stage3end_free(&(stage3array[i]));
+	}
+	FREE_OUT(stage3array);
+	Shortread_free(&queryseq1);
+	sublength++;
+      }
+
+      FREE(subsequence);
+    }
+
+    printf("%s",sequence);
+    printf("%s\n",result);
+    FREE(result);
+
   }
-
-
-  FREE(subsequence);
 
   for (i = 0; i <= MAX_READLENGTH; i++) {
     if (floors_array[i] != NULL) {
@@ -602,7 +674,7 @@ main (int argc, char *argv[]) {
 
 
   while ((opt = getopt_long(argc,argv,
-			    "D:d:b:k:q:GN:M:m:i:y:Y:z:Z:w:e:l:g:S:s:V:v:p:53",
+			    "D:d:b:k:q:GN:M:m:i:y:Y:z:Z:w:e:l:g:S:s:V:v:53",
 			    long_options, &long_option_index)) != -1) {
     switch (opt) {
     case 0:
@@ -788,11 +860,6 @@ main (int argc, char *argv[]) {
     case 'V': user_snpsdir = optarg; break;
     case 'v': snps_root = optarg; break;
 
-
-#if 0
-    case 'p': expected_pairlength = atoi(check_valid_int(optarg)); break;
-#endif
-
     case '5': from_right_p = false; break;
     case '3': from_right_p = true; break;
 
@@ -857,6 +924,8 @@ main (int argc, char *argv[]) {
     exit(9);
   } else {
     nchromosomes = IIT_total_nintervals(chromosome_iit);
+    circular_typeint = IIT_typeint(chromosome_iit,"circular");
+    circularp = IIT_circularp(chromosome_iit);
   }
   FREE(iitfile);
 
@@ -1032,10 +1101,10 @@ main (int argc, char *argv[]) {
   FREE(dbroot);
 
 
-  Genome_setup(genome,/*mode*/STANDARD);
+  Genome_setup(genome,genomealt,/*mode*/STANDARD,circular_typeint);
   Genome_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL,
 		  query_unk_mismatch_p,genome_unk_mismatch_p,mode);
-  Maxent_hr_setup(Genome_blocks(genome));
+  Maxent_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL);
   Indexdb_setup(index1part);
   Indexdb_hr_setup(index1part);
   Oligo_setup(index1part);
@@ -1044,9 +1113,10 @@ main (int argc, char *argv[]) {
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,/*amb_clip_p*/true,min_shortend);
   spansize = Spanningelt_setup(index1part,index1interval);
   Stage1hr_setup(index1part,index1interval,spansize,chromosome_iit,nchromosomes,
-		 genomealt,mode,/*terminal_threshold*/100,
+		 genomealt,mode,/*maxpaths_search*/10,/*terminal_threshold*/5,
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,shortsplicedist_known,
+		 shortsplicedist_novelend,min_intronlength,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
 		 extramaterial_end,extramaterial_paired,gmap_mode,
 		 trigger_score_for_gmap,max_gmap_pairsearch,
@@ -1056,29 +1126,31 @@ main (int argc, char *argv[]) {
 		  genes_iit,genes_divint_crosstable,
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
-		  /*output_sam_p*/false,mode);
+		  novelsplicingp,knownsplicingp,/*output_sam_p*/false,mode);
   Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-		genome);
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
   Oligoindex_hr_setup(Genome_blocks(genome),/*mode*/STANDARD);
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
-	       suboptimal_score_start,suboptimal_score_end,mode);
-  Pair_setup(trim_mismatch_score,trim_indel_score,/*sam_insert_0M_p*/false);
+	       suboptimal_score_start,suboptimal_score_end,mode,/*snps_p*/snps_iit ? true : false);
+  Pair_setup(trim_mismatch_score,trim_indel_score,/*sam_insert_0M_p*/false,
+	     /*force_xs_direction_p*/false,/*md_lowercase_variant_p*/false,
+	     /*snps_p*/snps_iit ? true : false);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
-	       splicing_iit,splicing_divint_crosstable,donor_typeint,acceptor_typeint,
+	       /*require_splicedir_p*/false,splicing_iit,splicing_divint_crosstable,
+	       donor_typeint,acceptor_typeint,
 	       splicesites,min_intronlength,max_deletionlength,
-	       /*expected_pairlength*/0,/*pairlength_deviation*/0,
 	       /*output_sam_p*/false);
   Stage3hr_setup(/*invert_first_p*/false,/*invert_second_p*/false,genes_iit,genes_divint_crosstable,
 		 /*tally_iit*/NULL,/*tally_divint_crosstable*/NULL,
 		 /*runlength_iit*/NULL,/*runlength_divint_crosstable*/NULL,
-		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
+		 distances_observed_p,pairmax,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
-		 favor_multiexon_p,gmap_min_coverage,index1part,index1interval);
+		 favor_multiexon_p,gmap_min_coverage,index1part,index1interval,
+		 novelsplicingp,circularp);
 
-  uniqueness_scan(argv[0]);
+  uniqueness_scan(from_right_p);
 
   Dynprog_term();
 
@@ -1131,6 +1203,10 @@ main (int argc, char *argv[]) {
   if (snps_iit != NULL) {
     FREE(snps_divint_crosstable);
     IIT_free(&snps_iit);
+  }
+
+  if (circularp != NULL) {
+    FREE(circularp);
   }
 
   if (chromosome_iit != NULL) {

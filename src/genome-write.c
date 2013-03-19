@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c 64300 2012-05-17 00:02:18Z twu $";
+static char rcsid[] = "$Id: genome-write.c 85396 2013-02-05 20:22:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -28,6 +28,7 @@ static char rcsid[] = "$Id: genome-write.c 64300 2012-05-17 00:02:18Z twu $";
 #include "compress.h"
 #include "iit-write.h"
 #include "complement.h"
+#include "genome.h"		/* For Genome_uncompress_mmap */
 
 #define CONTROLM 13		/* From PC */
 
@@ -218,7 +219,7 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 static void
 genome_write_file (FILE *refgenome_fp, FILE *input, 
 		   IIT_T contig_iit, IIT_T altstrain_iit, char *fileroot, bool uncompressedp,
-		   int index1part) {
+		   int index1part, int nmessages) {
   char Buffer[BUFFERSIZE], Complement[BUFFERSIZE], *segment;
   char *accession, *p;
   Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
@@ -242,7 +243,7 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
       accession = parse_accession(Buffer);
       find_positions(&revcompp,&leftposition,&rightposition,&startposition,&endposition,
 		     &truelength,&contigtype,accession,contig_iit);
-      if (++ncontigs < 50) {
+      if (++ncontigs < nmessages) {
 	if (revcompp == true) {
 	  fprintf(stderr,"Writing contig %s to universal coordinates %u..%u in genome %s\n",
 		  accession,startposition,endposition,fileroot);
@@ -250,8 +251,8 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
 	  fprintf(stderr,"Writing contig %s to universal coordinates %u..%u in genome %s\n",
 		  accession,startposition+1U,endposition+1U,fileroot);
 	}
-      } else if (ncontigs == 50) {
-	fprintf(stderr,"More than 50 contigs.  Will stop printing messages\n");
+      } else if (ncontigs == nmessages) {
+	fprintf(stderr,"More than %d contigs.  Will stop printing messages\n",nmessages);
       }
 
       if (contigtype > 0) {
@@ -389,7 +390,8 @@ genome_write_file (FILE *refgenome_fp, FILE *input,
 /* Permits arbitrary ASCII characters.  Useful for storing numeric data */
 static void
 genome_writeraw_file (FILE *refgenome_fp, FILE *input, 
-		      IIT_T contig_iit, IIT_T altstrain_iit, char *fileroot, int index1part) {
+		      IIT_T contig_iit, IIT_T altstrain_iit, char *fileroot, int index1part,
+		      int nmessages) {
   char Buffer[BUFFERSIZE], Reverse[BUFFERSIZE], *segment;
   char *accession, c;
   Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
@@ -417,7 +419,7 @@ genome_writeraw_file (FILE *refgenome_fp, FILE *input,
       accession = parse_accession(Buffer);
       find_positions(&revcompp,&leftposition,&rightposition,&startposition,&endposition,
 		     &truelength,&contigtype,accession,contig_iit);
-      if (++ncontigs < 50) {
+      if (++ncontigs < nmessages) {
 	if (revcompp == true) {
 	  fprintf(stderr,"Writing contig %s to universal coordinates %u..%u in genome %s\n",
 		  accession,startposition,endposition,fileroot);
@@ -425,8 +427,8 @@ genome_writeraw_file (FILE *refgenome_fp, FILE *input,
 	  fprintf(stderr,"Writing contig %s to universal coordinates %u..%u in genome %s\n",
 		  accession,startposition+1U,endposition+1U,fileroot);
 	}
-      } else if (ncontigs == 50) {
-	fprintf(stderr,"More than 50 contigs.  Will stop printing messages\n");
+      } else if (ncontigs == nmessages) {
+	fprintf(stderr,"More than %d contigs.  Will stop printing messages\n",nmessages);
       }
 
       if (contigtype > 0) {
@@ -564,18 +566,57 @@ genome_writeraw_file (FILE *refgenome_fp, FILE *input,
   return;
 }
 
+static void
+fill_circular_chromosomes (UINT4 *genomecomp, IIT_T chromosome_iit, int circular_typeint) {
+  int indx;
+  Interval_T interval;
+  char *segment, *chr;
+  Genomicpos_T seglength, alias_startpos, alias_endpos, orig_startpos, orig_endpos;
+  bool allocp;
+
+  for (indx = 1; indx <= IIT_total_nintervals(chromosome_iit); indx++) {
+    interval = IIT_interval(chromosome_iit,indx);
+    if (Interval_type(interval) == circular_typeint) {
+      orig_startpos = Interval_low(interval);
+      orig_endpos = Interval_high(interval);
+      seglength = orig_endpos - orig_startpos + 1U;
+
+      alias_startpos = orig_endpos + 1U;
+      alias_endpos = alias_startpos + seglength - 1U;
+
+      chr = IIT_label(chromosome_iit,indx,&allocp);
+      /* Add 1U to report 1-based coordinates */
+      fprintf(stderr,"Chromosome %s is circular.  Copying %u..%u to %u..%u\n",chr,orig_startpos+1U,orig_endpos+1U,alias_startpos+1U,alias_endpos+1U);
+      if (allocp) {
+	FREE(chr);
+      }
+
+      segment = (char *) CALLOC(seglength+1U,sizeof(char));
+      /* Add 1U because procedures below are expecting exclusive coordinates */
+      Genome_uncompress_mmap(segment,genomecomp,orig_startpos,orig_endpos+1U);
+      Compress_update_memory(/*nbadchars*/0,genomecomp,segment,alias_startpos,alias_endpos+1U);
+      FREE(segment);
+    }
+  }
+
+  return;
+}
+
+
+
 /* Puts reference genome into refgenome_fp (assume compressed),
    and puts alternate strain sequences into altstrain_iit. */
 static void
 genome_write_memory (FILE *refgenome_fp, FILE *input, 
-		     IIT_T contig_iit, IIT_T altstrain_iit, UINT4 *genomecomp,
-		     unsigned int nuint4, char *fileroot) {
+		     IIT_T contig_iit, IIT_T altstrain_iit, 
+		     IIT_T chromosome_iit, int circular_typeint, UINT4 *genomecomp,
+		     unsigned int nuint4, char *fileroot, int nmessages) {
   char Buffer[BUFFERSIZE], Complement[BUFFERSIZE], *segment;
   char *accession, *p;
   Genomicpos_T leftposition, rightposition, startposition, endposition, truelength, 
     maxposition = 0, currposition = 0;
   int contigtype;
-  bool revcompp;
+  bool revcompp = false;
 #ifdef ALTSTRAIN
   int altstrain_index, altstrain_offset;
 #endif
@@ -588,7 +629,7 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
       accession = parse_accession(Buffer);
       find_positions(&revcompp,&leftposition,&rightposition,&startposition,&endposition,
 		     &truelength,&contigtype,accession,contig_iit);
-      if (++ncontigs < 50) {
+      if (++ncontigs < nmessages) {
 	if (revcompp == true) {
 	  fprintf(stderr,"Writing contig %s to universal coordinates %u..%u in genome %s\n",
 		  accession,startposition,endposition,fileroot);
@@ -596,8 +637,8 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
 	  fprintf(stderr,"Writing contig %s to universal coordinates %u..%u in genome %s\n",
 		  accession,startposition+1U,endposition+1U,fileroot);
 	}
-      } else if (ncontigs == 50) {
-	fprintf(stderr,"More than 50 contigs.  Will stop printing messages\n");
+      } else if (ncontigs == nmessages) {
+	fprintf(stderr,"More than %d contigs.  Will stop printing messages\n",nmessages);
       }
 
       if (contigtype > 0) {
@@ -713,6 +754,8 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
     }
   }
 
+  fill_circular_chromosomes(genomecomp,chromosome_iit,circular_typeint);
+
   move_absolute(refgenome_fp,0U);
   FWRITE_UINTS(genomecomp,nuint4,refgenome_fp);
 
@@ -723,12 +766,14 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
 
 void
 Genome_write (char *genomesubdir, char *fileroot, FILE *input, 
-	      IIT_T contig_iit, IIT_T altstrain_iit, bool uncompressedp, bool rawp,
-	      bool writefilep, unsigned int genomelength, int index1part) {
+	      IIT_T contig_iit, IIT_T altstrain_iit, IIT_T chromosome_iit,
+	      bool uncompressedp, bool rawp, bool writefilep,
+	      unsigned int genomelength, int index1part, int nmessages) {
   unsigned int nuint4;
   FILE *refgenome_fp;
   char *filename;
   UINT4 *genomecomp;
+  int circular_typeint;
 
   fprintf(stderr,"Genome length is %u nt\n",genomelength);
   if (uncompressedp == true) {
@@ -740,9 +785,10 @@ Genome_write (char *genomesubdir, char *fileroot, FILE *input,
       exit(9);
     }
     if (rawp == true) {
-      genome_writeraw_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,index1part);
+      genome_writeraw_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,index1part,nmessages);
     } else {
-      genome_write_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,/*uncompressedp*/true,index1part);
+      genome_write_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,
+			/*uncompressedp*/true,index1part,nmessages);
     }
     fclose(refgenome_fp);
     FREE(filename);
@@ -757,7 +803,8 @@ Genome_write (char *genomesubdir, char *fileroot, FILE *input,
       fprintf(stderr,"Can't open file %s for read/write\n",filename);
       exit(9);
     }
-    genome_write_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,/*uncompressedp*/false,index1part);
+    genome_write_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,
+		      /*uncompressedp*/false,index1part,nmessages);
     fclose(refgenome_fp);
     FREE(filename);
 
@@ -775,7 +822,8 @@ Genome_write (char *genomesubdir, char *fileroot, FILE *input,
 	fprintf(stderr,"Can't open file %s for read/write\n",filename);
 	exit(9);
       }
-      genome_write_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,/*uncompressedp*/false,index1part);
+      genome_write_file(refgenome_fp,input,contig_iit,altstrain_iit,fileroot,
+			/*uncompressedp*/false,index1part,nmessages);
       fclose(refgenome_fp);
 
     } else {
@@ -789,7 +837,9 @@ Genome_write (char *genomesubdir, char *fileroot, FILE *input,
 	fprintf(stderr,"Can't open file %s for write\n",filename);
 	exit(9);
       }
-      genome_write_memory(refgenome_fp,input,contig_iit,altstrain_iit,genomecomp,nuint4,fileroot);
+      circular_typeint = IIT_typeint(chromosome_iit,"circular");
+      genome_write_memory(refgenome_fp,input,contig_iit,altstrain_iit,chromosome_iit,circular_typeint,
+			  genomecomp,nuint4,fileroot,nmessages);
       fclose(refgenome_fp);
       FREE(genomecomp);
     }

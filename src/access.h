@@ -1,4 +1,4 @@
-/* $Id: access.h 44854 2011-08-13 06:42:25Z twu $ */
+/* $Id: access.h 77636 2012-10-26 00:14:01Z twu $ */
 #ifndef ACCESS_INCLUDED
 #define ACCESS_INCLUDED
 
@@ -25,6 +25,12 @@ Access_file_exists_p (char *filename);
 
 extern off_t
 Access_filesize (char *filename);
+
+extern size_t
+Access_file_copy (char *dest_file, char *source_file);
+
+extern bool
+Access_file_equal (char *file1, char *file2);
 
 extern int
 Access_fileio (char *filename);

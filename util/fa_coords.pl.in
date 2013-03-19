@@ -12,10 +12,17 @@ undef($opt_C);			# Try to parse chromosomal information
 undef($opt_E);			# Interpret argument as a command
 undef($opt_g);			# gunzip each file first
 #undef($opt_S);			# Do not order chromosomes
+undef($opt_c);			# Circular chromosomes
 use Getopt::Std;
-getopts("o:CEg");
+getopts("o:CEgc:");
 
 # Usage: fa_coords [-o <output>] [-C] [-E] [-g] <fastafiles or command>
+
+if (defined($circular = $opt_c)) {
+    foreach $chr (split ",",$circular) {
+	$circularp{$chr} = 1;
+    }
+}
 
 if (!defined($outfile = $opt_o)) {
     $outfile = "coords.txt";
@@ -43,7 +50,7 @@ if ($#{$output} < 0) {
     print $OUT "# To rename a chromosome, edit each occurrence of that chromosome in the gmap_coordinates\n";
     print $OUT "# The strain column has information copied from NCBI md files, but is not otherwise used by gmap_setup\n";
     print $OUT "# To exclude a contig, place a '#' sign at the beginning of the line\n";
-    print $OUT "#contig" . "\t" . "gmap_coordinates" . "\t" . "strain\n";
+    print $OUT "#contig" . "\t" . "gmap_coordinates" . "\t" . "linear/circular" . "\t" . "strain\n";
 
     #if (defined($opt_S)) {
     #@sorted = @ {$output};
@@ -150,7 +157,7 @@ sub parse_fa_files {
 	    $FP = new IO::File("$arg |") or die "Can't execute $arg";
 	} elsif (defined($opt_g)) {
 	    printf STDOUT "Opening gzipped file $arg\n";
-	    $FP = new IO::File("gunzip -c $arg |") or die "Can't execute $arg";
+	    $FP = new IO::File("gunzip -c \"$arg\" |") or die "Can't execute $arg";
 	} else {
 	    printf STDOUT "Opening file $arg\n";
 	    $FP = new IO::File("$arg") or die "Can't open file $arg";
@@ -214,10 +221,17 @@ sub parse_fa_files {
 		    }
 
 		    if (defined($orientation) && $orientation eq "rev") {
-			$string = sprintf("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+			$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
 		    } else {
-			$string = sprintf("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+			$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
 		    }
+		    if (defined($circularp{$chr})) {
+			$string .= "\tcircular";
+		    } else {
+			$string .= "\tlinear";
+		    }
+		    $string .= "\n";
+
 		    push @output,$string;
 		    if (!defined($lowest{$chr})) {
 			$lowest{$chr} = $chrpos{$chr};
@@ -371,10 +385,16 @@ sub parse_fa_files {
 	    }
 
 	    if (defined($orientation) && $orientation eq "rev") {
-		$string = sprintf("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+		$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
 	    } else {
-		$string = sprintf("%s\t%s:%d..%d\n",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+		$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
 	    }
+	    if (defined($circularp{$chr})) {
+		$string .= "\tcircular";
+	    } else {
+		$string .= "\tlinear";
+	    }
+	    $string .= "\n";
 	    push @output,$string;
 	    if (!defined($lowest{$chr})) {
 		$lowest{$chr} = $chrpos{$chr};

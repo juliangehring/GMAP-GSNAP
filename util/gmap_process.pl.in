@@ -61,7 +61,13 @@ sub read_coords {
       $universal_coord{$contig} = $universal_coord;
 
       ($chrstart,$chrend) = $coords{$contig} =~ /\S+:(\d+)\.\.(\d+)/;
-      $universal_coord += $chrend - $chrstart + 1;
+      if (defined($fields[2]) && $fields[2] eq "circular") {
+	  $circularp{$contig} = 1;
+	  $universal_coord += $chrend - $chrstart + 1;
+	  $universal_coord += $chrend - $chrstart + 1;
+      } else {
+	  $universal_coord += $chrend - $chrstart + 1;
+      }
     }
   }
   close($FP);
@@ -70,29 +76,30 @@ sub read_coords {
 
 
 sub find_contig_name {
-  my ($contiginfo, $coords) = @_;
+    my ($contiginfo, $coords) = @_;
 
-  if ($contiginfo !~ /\|/) {
-    if (defined($ {$coords}{$contiginfo})) {
-      return $contiginfo;
-    } elsif ($contiginfo =~ /(\S+)/ && defined($ {$coords}{$1})) {
-      return $1;
+    if ($contiginfo !~ /\|/) {
+	if (defined($ {$coords}{$contiginfo})) {
+	    return $contiginfo;
+	} elsif ($contiginfo =~ /(\S+)/ && defined($ {$coords}{$1})) {
+	    return $1;
+	} else {
+	    # Failed
+	    return $contiginfo;
+	}
     } else {
-      # Failed
-      return $contiginfo;
+	# Old code for FASTA files that contained pipe delimiters
+	@parts = split /\|/,$contiginfo;
+	foreach $part (@parts) {
+	    if (defined($ {$coords}{$part})) {
+		return $part;
+	    } elsif ($part =~ /(\S+)/ && defined($ {$coords}{$1})) {
+		return $1;
+	    }
+	}
+	# Failed
+	return $contiginfo;
     }
-  } else {
-    @parts = split /\|/,$contiginfo;
-    foreach $part (@parts) {
-      if (defined($ {$coords}{$part})) {
-	return $part;
-      } elsif ($part =~ /(\S+)/ && defined($ {$coords}{$1})) {
-	return $1;
-      }
-    }
-    # Failed
-    return $contiginfo;
-  }
 }
 
 sub process_fasta {
@@ -101,7 +108,7 @@ sub process_fasta {
 
   foreach $arg (@ {$argv}) {
       if (defined($opt_g)) {
-	  $FP = new IO::File("gunzip -c $arg |") or die "Cannot open file $arg";
+	  $FP = new IO::File("gunzip -c \"$arg\" |") or die "Cannot open file $arg";
       } else {
 	  $FP = new IO::File($arg) or die "Cannot open file $arg";
       }
@@ -112,7 +119,10 @@ sub process_fasta {
 	  if ($line !~ /\S/) {
 	      # Skip blank lines
 	  } elsif ($line =~ /^>(\S+)/) {
-	      $contig = find_contig_name($1,\%coords);
+
+	      # $contig = find_contig_name($1,\%coords);
+	      $contig = $1;
+
 	      if (!defined($coords{$contig})) {
 		  print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
 		  $printp = 0;
@@ -125,7 +135,11 @@ sub process_fasta {
 		  
 		  $processedp{$contig} = 1;
 		  #printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
-		  printf (">%s\t%s\t%u\n",$contig,$coords{$contig},$universal_coord{$contig});
+		  printf (">%s\t%s\t%u",$contig,$coords{$contig},$universal_coord{$contig});
+		  if (defined($circularp{$contig})) {
+		      print "\tcircular";
+		  }
+		  print "\n";
 		  $printp = 1;
 		  
 	      }

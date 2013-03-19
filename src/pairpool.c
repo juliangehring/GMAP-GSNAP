@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 64730 2012-05-23 01:44:39Z twu $";
+static char rcsid[] = "$Id: pairpool.c 82070 2012-12-19 21:42:59Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,10 +7,12 @@ static char rcsid[] = "$Id: pairpool.c 64730 2012-05-23 01:44:39Z twu $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>		/* For memcpy */
+#include "assert.h"
 #include "mem.h"
 #include "comp.h"
 #include "pairdef.h"
 #include "listdef.h"
+#include "intron.h"
 
 #define CHUNKSIZE 20000
 
@@ -166,11 +168,14 @@ Pairpool_reset (T this) {
    SHORTGAP_COMP */
 
 List_T
-Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome, int dynprogindex) {
+Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp,
+	       char genome, char genomealt, int dynprogindex) {
   List_T listcell;
   Pair_T pair;
   List_T p;
   int n;
+
+  assert(querypos >= 0);
 
   if (this->pairctr >= this->npairs) {
     this->pairptr = add_new_pairchunk(this);
@@ -191,6 +196,7 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->cdna = cdna;
   pair->comp = comp;
   pair->genome = genome;
+  pair->genomealt = genomealt;
   pair->dynprogindex = dynprogindex;
 
   pair->aa_g = ' ';
@@ -198,6 +204,7 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
   pair->shortexonp = false;
   pair->gapp = false;
   pair->knowngapp = false;
+  pair->introntype = NONINTRON;
   if (comp == EXTRAEXON_COMP) {
     pair->extraexonp = true;
   } else {
@@ -281,8 +288,8 @@ Pairpool_push_copy (List_T list, T this, Pair_T orig) {
 
 
 List_T
-Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp, char genome,
-			bool extraexonp) {
+Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp,
+			int introntype, char genome, char genomealt, bool extraexonp) {
   List_T listcell;
   Pair_T pair;
   List_T p;
@@ -307,6 +314,7 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
   pair->cdna = cdna;
   pair->comp = comp;
   pair->genome = genome;
+  pair->genomealt = genomealt;
   pair->dynprogindex = 0;
 
   pair->aa_g = ' ';
@@ -314,6 +322,7 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
   pair->shortexonp = false;
   pair->gapp = true;
   pair->knowngapp = false;
+  pair->introntype = introntype;
   pair->extraexonp = extraexonp;
   
   pair->queryjump = 0;
@@ -327,8 +336,8 @@ Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char c
   pair->end_intron_p = false;
 
   debug(
-	printf("Creating %p: %d %d %c %c %c\n",
-	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	printf("Creating %p: %d %d %c %c %c introntype %d\n",
+	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome,pair->introntype);
 	);
 
 	if (this->listcellctr >= this->nlistcells) {
@@ -375,6 +384,7 @@ Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump, boo
   pair->cdna = ' ';
   pair->comp = ' ';
   pair->genome = ' ';
+  pair->genomealt = ' ';
   pair->dynprogindex = 0;
 
   pair->aa_g = ' ';
@@ -390,6 +400,7 @@ Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump, boo
     pair->donor_prob = 0.0;
     pair->acceptor_prob = 0.0;
   }
+  pair->introntype = NONINTRON;
   pair->extraexonp = false;
 
   pair->queryjump = queryjump;

@@ -1,4 +1,4 @@
-/* $Id: iit-read.h 55440 2012-01-06 22:13:36Z twu $ */
+/* $Id: iit-read.h 80072 2012-11-28 07:44:07Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -39,16 +39,27 @@ extern unsigned int
 IIT_divlength (T this, char *divstring);
 extern unsigned int
 IIT_totallength (T this);
+extern unsigned int
+IIT_genomelength (T chromosome_iit, bool with_circular_alias_p);
+extern bool *
+IIT_circularp (T chromosome_iit);
 extern Interval_T
 IIT_interval (T this, int index);
 extern unsigned int
 IIT_interval_low (T this, int index);
 extern unsigned int
 IIT_interval_high (T this, int index);
+extern unsigned int
+IIT_interval_length (T this, int index);
+extern int
+IIT_interval_type (T this, int index);
+extern unsigned int
+IIT_next_chrbound (T this, int index, int circular_typeint);
 extern int
 IIT_interval_sign (T this, int index);
 extern void
-IIT_interval_bounds (unsigned int *low, unsigned int *high, T this, int index);
+IIT_interval_bounds (unsigned int *low, unsigned int *high, unsigned int *length, T this,
+		     int index, int circular_typeint);
 extern int
 IIT_index (T this, int divno, int i);
 
@@ -137,6 +148,8 @@ IIT_high_exists_signed_p (T this, int divno, unsigned int x, int sign);
 
 extern int *
 IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, bool sortp);
+extern int *
+IIT_get_signed (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, int sign, bool sortp);
 extern bool
 IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y);
 extern bool
@@ -156,7 +169,8 @@ IIT_get_flanking_with_divno (int **leftflanks, int *nleftflanks, int **rightflan
 			     T this, int divno, unsigned int x, unsigned int y, int nflanking, int sign);
 extern void
 IIT_get_flanking_typed (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
-			T this, char *divstring, unsigned int x, unsigned int y, int nflanking, int type);
+			T this, char *divstring, unsigned int x, unsigned int y, int nflanking, int type,
+			int sign);
 extern void
 IIT_get_flanking_multiple_typed (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
 				 T this, char *divstring, unsigned int x, unsigned int y, int nflanking, int *types, int ntypes);

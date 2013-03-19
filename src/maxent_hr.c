@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: maxent_hr.c 53340 2011-11-29 23:07:16Z twu $";
+static char rcsid[] = "$Id: maxent_hr.c 77638 2012-10-26 00:15:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -27190,10 +27190,13 @@ acceptor_minus_31 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 
 
 static UINT4 *ref_blocks;
+static UINT4 *snp_blocks;	/* Could be NULL */
 
 void
-Maxent_hr_setup (UINT4 *ref_blocks_in) {
+Maxent_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in) {
   ref_blocks = ref_blocks_in;
+  snp_blocks = snp_blocks_in;
+
   return;
 }
 
@@ -27220,6 +27223,11 @@ Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T ptr;
   int shift;
   UINT4 high, low, nextlow;
+  double refprob, altprob;
+#ifdef DEBUG
+  char g_alt;
+#endif
+  
 
   if (splice_pos < chroffset + DONOR_MODEL_LEFT_MARGIN) {
     return 0.0;
@@ -27229,7 +27237,7 @@ Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     shift = startpos % 32;
 
     debug(printf("splice_pos = %u, donor dinucleotide is %c%c\n",
-		 splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
+		 splice_pos,Genome_get_char_blocks(&g_alt,splice_pos),Genome_get_char_blocks(&g_alt,splice_pos + 1)));
 
     debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
     debug(printf("startpos is %u, shift is %d\n",startpos,shift));
@@ -27243,8 +27251,27 @@ Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    refprob = (donor_plus_table[shift])(low,high,nextlow);
 
-    return (donor_plus_table[shift])(low,high,nextlow);
+    if (snp_blocks == NULL) {
+      return refprob;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(snp_blocks[ptr]);
+      low = Bigendian_convert_uint(snp_blocks[ptr+1]);
+      nextlow = Bigendian_convert_uint(snp_blocks[ptr+4]);
+#else
+      high = snp_blocks[ptr];
+      low = snp_blocks[ptr+1];
+      nextlow = snp_blocks[ptr+4];
+#endif
+
+      if ((altprob = (donor_plus_table[shift])(low,high,nextlow)) > refprob) {
+	return altprob;
+      } else {
+	return refprob;
+      }
+    }
   }
 }
 
@@ -27264,6 +27291,10 @@ Maxent_hr_acceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T ptr;
   int shift;
   UINT4 low, high, nextlow, nexthigh;
+  double refprob, altprob;
+#ifdef DEBUG
+  char g_alt;
+#endif
 
   if (splice_pos < chroffset + ACCEPTOR_MODEL_LEFT_MARGIN) {
     return 0.0;
@@ -27273,7 +27304,7 @@ Maxent_hr_acceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     shift = startpos % 32;
 
     debug(printf("splice_pos = %u, acceptor dinucleotide is %c%c\n",
-		 splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
+		 splice_pos,Genome_get_char_blocks(&g_alt,splice_pos - 2),Genome_get_char_blocks(&g_alt,splice_pos - 1)));
 
     debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
     debug(printf("startpos is %u, shift is %d\n",startpos,shift));
@@ -27289,8 +27320,29 @@ Maxent_hr_acceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     nexthigh = ref_blocks[ptr+3];
     nextlow = ref_blocks[ptr+4];
 #endif
+    refprob = (acceptor_plus_table[shift])(low,high,nextlow,nexthigh);
 
-    return (acceptor_plus_table[shift])(low,high,nextlow,nexthigh);
+    if (snp_blocks == NULL) {
+      return refprob;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(snp_blocks[ptr]);
+      low = Bigendian_convert_uint(snp_blocks[ptr+1]);
+      nexthigh = Bigendian_convert_uint(snp_blocks[ptr+3]);
+      nextlow = Bigendian_convert_uint(snp_blocks[ptr+4]);
+#else
+      high = snp_blocks[ptr];
+      low = snp_blocks[ptr+1];
+      nexthigh = snp_blocks[ptr+3];
+      nextlow = snp_blocks[ptr+4];
+#endif
+
+      if ((altprob = (acceptor_plus_table[shift])(low,high,nextlow,nexthigh)) > refprob) {
+	return altprob;
+      } else {
+	return refprob;
+      }
+    }
   }
 }
 
@@ -27310,6 +27362,10 @@ Maxent_hr_antidonor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T ptr;
   int shift;
   UINT4 high, low, nextlow;
+  double refprob, altprob;
+#ifdef DEBUG
+  char g_alt;
+#endif
 
   if (splice_pos < chroffset + DONOR_MODEL_RIGHT_MARGIN) {
     return 0.0;
@@ -27319,7 +27375,7 @@ Maxent_hr_antidonor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     shift = startpos % 32;
 
     debug(printf("splice_pos = %u, antidonor dinucleotide is %c%c\n",
-		 splice_pos,Genome_get_char_blocks(splice_pos - 2),Genome_get_char_blocks(splice_pos - 1)));
+		 splice_pos,Genome_get_char_blocks(&g_alt,splice_pos - 2),Genome_get_char_blocks(&g_alt,splice_pos - 1)));
 
     debug(Genome_print_blocks(ref_blocks,startpos,startpos+9));
     debug(printf("startpos is %u, shift is %d\n",startpos,shift));
@@ -27333,8 +27389,26 @@ Maxent_hr_antidonor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     low = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
+    refprob = (donor_minus_table[shift])(low,high,nextlow);
 
-    return (donor_minus_table[shift])(low,high,nextlow);
+    if (snp_blocks == NULL) {
+      return refprob;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(snp_blocks[ptr]);
+      low = Bigendian_convert_uint(snp_blocks[ptr+1]);
+      nextlow = Bigendian_convert_uint(snp_blocks[ptr+4]);
+#else
+      high = snp_blocks[ptr];
+      low = snp_blocks[ptr+1];
+      nextlow = snp_blocks[ptr+4];
+#endif
+      if ((altprob = (donor_minus_table[shift])(low,high,nextlow)) > refprob) {
+	return altprob;
+      } else {
+	return refprob;
+      }
+    }
   }
 }
 
@@ -27354,6 +27428,10 @@ Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
   Genomicpos_T ptr;
   int shift;
   UINT4 low, high, nextlow, nexthigh;
+  double refprob, altprob;
+#ifdef DEBUG
+  char g_alt;
+#endif
 
   if (splice_pos < chroffset + ACCEPTOR_MODEL_RIGHT_MARGIN) {
     return 0.0;
@@ -27363,7 +27441,7 @@ Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     shift = startpos % 32;
 
     debug(printf("splice_pos = %u, antiacceptor dinucleotide is %c%c\n",
-		 splice_pos,Genome_get_char_blocks(splice_pos),Genome_get_char_blocks(splice_pos + 1)));
+		 splice_pos,Genome_get_char_blocks(&g_alt,splice_pos),Genome_get_char_blocks(&g_alt,splice_pos + 1)));
 
     debug(Genome_print_blocks(ref_blocks,startpos,startpos+22));
     debug(printf("startpos is %u, shift is %d\n",startpos,shift));
@@ -27379,8 +27457,29 @@ Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
     nexthigh = ref_blocks[ptr+3];
     nextlow = ref_blocks[ptr+4];
 #endif
+    refprob = (acceptor_minus_table[shift])(low,high,nextlow,nexthigh);
 
-    return (acceptor_minus_table[shift])(low,high,nextlow,nexthigh);
+    if (snp_blocks == NULL) {
+      return refprob;
+    } else {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(snp_blocks[ptr]);
+      low = Bigendian_convert_uint(snp_blocks[ptr+1]);
+      nexthigh = Bigendian_convert_uint(snp_blocks[ptr+3]);
+      nextlow = Bigendian_convert_uint(snp_blocks[ptr+4]);
+#else
+      high = snp_blocks[ptr];
+      low = snp_blocks[ptr+1];
+      nexthigh = snp_blocks[ptr+3];
+      nextlow = snp_blocks[ptr+4];
+#endif
+
+      if ((altprob = (acceptor_minus_table[shift])(low,high,nextlow,nexthigh)) > refprob) {
+	return altprob;
+      } else {
+	return refprob;
+      }
+    }
   }
 }
 

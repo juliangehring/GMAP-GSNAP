@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c 44063 2011-08-01 18:04:15Z twu $";
+static char rcsid[] = "$Id: iit_store.c 83597 2013-01-16 23:02:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -257,7 +257,7 @@ static char *
 scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelist, Tableint_T div_seenp, Tableint_T typetable, 
 		 char **label, unsigned int *start, unsigned int *end, int *type, char **restofheader,
 		 char *header) {
-  char *divstring, *coords, *copy, Buffer[1024], query[1024], tag[1024], *typestring, *p;
+  char *divstring = NULL, *coords, *copy, Buffer[1024], query[1024], tag[1024], *typestring, *p;
 
   if (sscanf(header,">%s %s\n",Buffer,query) < 2) {
     fprintf(stderr,"Error parsing %s.  Expecting a FASTA type header with a label, coords (as <div>:<number>..<number>), and optional tag.\n",header);
@@ -269,6 +269,7 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
   strcpy(*label,Buffer);
 
   if (!index(query,':')) {
+    debug(printf("Query %s has no div\n",query));
     divstring = (char *) CALLOC(1,sizeof(char));
     divstring[0] = '\0';
     coords = query;
@@ -947,7 +948,7 @@ main (int argc, char *argv[]) {
       if (tempstring[0] == '\0') {
 	FREE(tempstring);
       } else {
-	chroms[i++] = Chrom_from_string(tempstring,mitochondrial_string,order++);
+	chroms[i++] = Chrom_from_string(tempstring,mitochondrial_string,order++,/*circularp*/false);
       }
     }
   }

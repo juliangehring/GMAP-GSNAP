@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: table.c 48036 2011-09-22 22:12:35Z twu $";
+static char rcsid[] = "$Id: table.c 81280 2012-12-11 19:43:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -234,6 +234,7 @@ Table_keys_by_timeindex (T table, void *end) {
     keyarray[j] = (void *) p->key;
   }
   keyarray[j] = end;
+  FREE(buckets);
 
   return keyarray;
 }

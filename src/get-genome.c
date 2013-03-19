@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 61876 2012-04-16 20:33:43Z twu $";
+static char rcsid[] = "$Id: get-genome.c 85655 2013-02-07 17:26:37Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -63,6 +63,7 @@ static char *map_iitfile = NULL;
 static int nflanking = 0;
 static bool exonsp = false;
 static bool sequencep = false;
+static bool signedp = false;
 
 static bool sortp = false;
 
@@ -97,6 +98,7 @@ static struct option long_options[] = {
   {"flanking", required_argument, 0, 'u'}, /* nflanking */
   {"exons", no_argument, 0, 'E'},	   /* exonsp */
   {"sequence", no_argument, 0, 'S'},	   /* sequencep */
+  {"signed", no_argument, 0, 's'},	   /* signedp */
 
   /* Dump options */
   {"dump", no_argument, 0, 'A'},	/* dumpallp */
@@ -162,6 +164,9 @@ External map file options\n\
   -r, --raw               Prints sequence as ASCII numeric codes\n\
   -u, --flanking=INT      Show flanking hits (default 0)\n\
   -t, --maptype=STRING    Show only intervals with given type\n\
+  -s, --signed            Show only intervals with same direction as query.  If flanking hits\n\
+                            are also requested, show only flanking hits downstream in direction of\n\
+                            query.\n\
 \n\
 Dump options\n\
   -A, --dump              Dump entire genome in FASTA format\n\
@@ -617,9 +622,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, 
       printf("%s",SEPARATOR);
       chromosome2 = IIT_string_from_position(&chrpos,genomicstart+1,chromosome_iit);
       if (strcmp(chromosome2,chromosome1) == 0) {
-	printf("%u",chrpos+1U);
+	printf("%u",chrpos);
       } else {
-	printf("%s:%u",chromosome2,chrpos+1U);
+	printf("%s:%u",chromosome2,chrpos);
       }
       printf(" %s:%u%s%u\n",dbversion,genomicstart+genomiclength,SEPARATOR,genomicstart+1U);
       FREE(chromosome2);
@@ -788,10 +793,11 @@ print_sequence (Genome_T genome, Genome_T genomealt, Genomicpos_T genomicstart, 
 }
 
 
+#if 0
 static int *
 parse_and_get_matches (int *nmatches, char **divstring, unsigned int *coordstart, unsigned int *coordend,
-	     int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
-	     char *query, char *typestring, IIT_T *iit, char *filename) {
+		       int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
+		       char *query, char *typestring, IIT_T *iit, char *filename) {
   int *matches;
   bool revcomp;
   int typeint;
@@ -858,28 +864,41 @@ parse_and_get_matches (int *nmatches, char **divstring, unsigned int *coordstart
 
   return matches;
 }
+#endif
 
 
 static int *
-get_matches (int *nmatches, char *divstring, unsigned int coordstart, unsigned int coordend,
+get_matches (int *nmatches, int *sign, char *divstring, unsigned int coordstart, unsigned int coordend, bool revcomp,
 	     int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
 	     char *typestring, IIT_T *iit, char *filename) {
   int *matches;
   int typeint;
 
+  if (signedp == false) {
+    *sign = 0;
+  } else if (revcomp == true) {
+    *sign = -1;
+  } else if (coordend == coordstart) {
+    *sign = 0;
+  } else {
+    *sign = +1;
+  }
+
   if (typestring == NULL) {
     /* Treat query as coordinates, without a typestring */
     if (*iit == NULL) {
+      /* This call can give a warning if there are no entries in the map IIT file for the given div */
       if ((*iit = IIT_read(filename,/*name*/NULL,true,/*divread*/READ_ONE,divstring,
 			   /*add_iit_p*/true,/*labels_read_p*/false)) == NULL) {
 	fprintf(stderr,"File %s appears to be an invalid IIT file\n",filename);
 	exit(9);
       }
     }
-    matches = IIT_get(&(*nmatches),*iit,divstring,coordstart,coordend,sortp);
+
+    matches = IIT_get_signed(&(*nmatches),*iit,divstring,coordstart,coordend,*sign,sortp);
     if (nflanking > 0) {
       IIT_get_flanking(&(*leftflanks),&(*nleftflanks),&(*rightflanks),&(*nrightflanks),*iit,divstring,
-		       coordstart,coordend,nflanking,/*sign*/0);
+		       coordstart,coordend,nflanking,*sign);
     }
 
   } else if ((typeint = IIT_typeint(*iit,typestring)) < 0) {
@@ -892,10 +911,10 @@ get_matches (int *nmatches, char *divstring, unsigned int coordstart, unsigned i
 	exit(9);
       }
     }
-    matches = IIT_get(&(*nmatches),*iit,divstring,coordstart,coordend,sortp);
+    matches = IIT_get_signed(&(*nmatches),*iit,divstring,coordstart,coordend,*sign,sortp);
     if (nflanking > 0) {
       IIT_get_flanking(&(*leftflanks),&(*nleftflanks),&(*rightflanks),&(*nrightflanks),*iit,divstring,
-		       coordstart,coordend,nflanking,/*sign*/0);
+		       coordstart,coordend,nflanking,*sign);
     }
 
   } else {
@@ -907,10 +926,10 @@ get_matches (int *nmatches, char *divstring, unsigned int coordstart, unsigned i
 	exit(9);
       }
     }
-    matches = IIT_get_typed(&(*nmatches),*iit,divstring,coordstart,coordend,typeint,sortp);
+    matches = IIT_get_typed_signed(&(*nmatches),*iit,divstring,coordstart,coordend,typeint,*sign,sortp);
     if (nflanking > 0) {
       IIT_get_flanking_typed(&(*leftflanks),&(*nleftflanks),&(*rightflanks),&(*nrightflanks),*iit,divstring,
-			     coordstart,coordend,nflanking,typeint);
+			     coordstart,coordend,nflanking,typeint,*sign);
     }
   }
 
@@ -1088,7 +1107,7 @@ print_interval (char *divstring, int index, IIT_T iit, int ndivs, IIT_T chromoso
   Interval_T interval;
   char *label, *annotation, *restofheader;
   bool allocp;
-  bool annotationonlyp = false, signedp = true;
+  bool annotationonlyp = false, signed_output_p = true;
   int divno;
   Genomicpos_T chroffset;
 
@@ -1145,7 +1164,7 @@ print_interval (char *divstring, int index, IIT_T iit, int ndivs, IIT_T chromoso
       }
 
       interval = IIT_interval(iit,index);
-      if (signedp == false) {
+      if (signed_output_p == false) {
 	printf("%u..%u",Interval_low(interval),Interval_high(interval));
       } else if (Interval_sign(interval) < 0) {
 	printf("%u..%u",Interval_high(interval),Interval_low(interval));
@@ -1202,6 +1221,7 @@ main (int argc, char *argv[]) {
 
   int fieldint = -1;
   int *matches, nmatches, ndivs, i, *leftflanks, *rightflanks, nleftflanks = 0, nrightflanks = 0;
+  int sign;
   unsigned int coordstart, coordend;
 
   char *chr, *with_colon;
@@ -1259,6 +1279,7 @@ main (int argc, char *argv[]) {
     case 'u': nflanking = atoi(optarg); break;
     case 'E': exonsp = true; break;
     case 'S': sequencep = true; break;
+    case 's': signedp = true; break;
 
     case 'A': dumpallp = true; break;
     case 'L': dumpchrp = true; dumpchr_forsam_p = false; break;
@@ -1510,13 +1531,15 @@ main (int argc, char *argv[]) {
 	  coordend += 1U;
 	  debug(printf("Query translated to %s:%u..%u\n",divstring,coordstart,coordend));
 	}
-	matches = get_matches(&nmatches,divstring,coordstart,coordend,
+	matches = get_matches(&nmatches,&sign,divstring,coordstart,coordend,revcomp,
 			      &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
 			      /*typestring*/NULL,&map_iit,/*filename*/iitfile);
 	ndivs = IIT_ndivs(map_iit);
 	if (nflanking > 0) {
-	  for (i = nleftflanks-1; i >= 0; i--) {
-	    print_interval(divstring,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	  if (sign != +1) {
+	    for (i = nleftflanks-1; i >= 0; i--) {
+	      print_interval(divstring,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	    }
 	  }
 	  printf("====================\n");
 	  FREE(leftflanks);
@@ -1528,8 +1551,10 @@ main (int argc, char *argv[]) {
 
 	if (nflanking > 0) {
 	  printf("====================\n");
-	  for (i = 0; i < nrightflanks; i++) {
-	    print_interval(divstring,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	  if (sign != -1) {
+	    for (i = 0; i < nrightflanks; i++) {
+	      print_interval(divstring,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	    }
 	  }
 	  FREE(rightflanks);
 	}
@@ -1550,6 +1575,8 @@ main (int argc, char *argv[]) {
 	debug(printf("Looking up label %s => %d matches\n",argv[0],nmatches));
 	ndivs = IIT_ndivs(map_iit);
 
+#if 0
+	/* Not doing flanking */
 	if (nflanking > 0) {
 	  for (i = nleftflanks-1; i >= 0; i--) {
 	    print_interval(/*divstring*/NULL,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
@@ -1557,12 +1584,15 @@ main (int argc, char *argv[]) {
 	  printf("====================\n");
 	  FREE(leftflanks);
 	}
+#endif
 
 	for (i = 0; i < nmatches; i++) {
 	  print_interval(/*divstring*/NULL,matches[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
 	}
 	FREE(matches);
 
+#if 0
+	/* Not doing flanking */
 	if (nflanking > 0) {
 	  printf("====================\n");
 	  for (i = 0; i < nrightflanks; i++) {
@@ -1570,7 +1600,7 @@ main (int argc, char *argv[]) {
 	  }
 	  FREE(rightflanks);
 	}
-
+#endif
 
       }
       FREE(iitfile);
@@ -1658,12 +1688,14 @@ main (int argc, char *argv[]) {
 	}
 
 	if (map_iit != NULL) {
-	  matches = get_matches(&nmatches,divstring,coordstart,coordend,
+	  matches = get_matches(&nmatches,&sign,divstring,coordstart,coordend,revcomp,
 				&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
 				/*typestring*/NULL,&map_iit,/*filename*/NULL);
 	  if (nflanking > 0) {
-	    for (i = nleftflanks-1; i >= 0; i--) {
-	      print_interval(divstring,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	    if (sign != +1) {
+	      for (i = nleftflanks-1; i >= 0; i--) {
+		print_interval(divstring,leftflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	      }
 	    }
 	    printf("====================\n");
 	    FREE(leftflanks);
@@ -1675,8 +1707,10 @@ main (int argc, char *argv[]) {
 
 	  if (nflanking > 0) {
 	    printf("====================\n");
-	    for (i = 0; i < nrightflanks; i++) {
-	      print_interval(divstring,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	    if (sign != -1) {
+	      for (i = 0; i < nrightflanks; i++) {
+		print_interval(divstring,rightflanks[i],map_iit,ndivs,chromosome_iit,genome,fieldint);
+	      }
 	    }
 	    FREE(rightflanks);
 	  }

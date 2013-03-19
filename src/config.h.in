@@ -15,6 +15,9 @@
 /* Define to 1 if __builtin_popcount works. */
 #undef HAVE_BUILTIN_POPCOUNT
 
+/* Define to 1 if you have a working bzlib library. */
+#undef HAVE_BZLIB
+
 /* Define to 1 if the system has the type `caddr_t'. */
 #undef HAVE_CADDR_T
 
@@ -109,9 +112,6 @@
 /* Define to 1 if you have the `rint' function. */
 #undef HAVE_RINT
 
-/* Define to 1 if you have a working Samtools library. */
-#undef HAVE_SAMTOOLS
-
 /* Define to 1 if you have the `sigaction' function. */
 #undef HAVE_SIGACTION
 
@@ -205,6 +205,9 @@
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
+
+/* The size of `off_t', as computed by sizeof. */
+#undef SIZEOF_OFF_T
 
 /* The size of `unsigned long', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_LONG

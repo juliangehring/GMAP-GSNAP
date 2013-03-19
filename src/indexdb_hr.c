@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 56964 2012-02-02 17:57:52Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 77362 2012-10-20 19:23:08Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1525,7 +1525,7 @@ Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
 #endif
 
   debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
-	       subst,shortoligo_nt(subst,index1part),end0,ptr0,end0-ptr0));
+	       oligo,shortoligo_nt(oligo,index1part),end0,ptr0,end0-ptr0));
   return (end0 - ptr0);
 }
 

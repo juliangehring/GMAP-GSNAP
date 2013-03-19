@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 69408 2012-07-20 21:22:20Z twu $
+# $Id: gmap_build.pl.in 87978 2013-03-05 17:56:07Z twu $
 
 use warnings;	
 
@@ -33,7 +33,11 @@ GetOptions(
 
     's|sort=s' => \$sorting,	# Sorting
     'g|gunzip' => \$gunzipp,	# gunzip files
-    'w=s' => \$sleeptime # waits (sleeps) this many seconds between steps.  Useful if there is a delay in the filesystem.
+    'w=s' => \$sleeptime, # waits (sleeps) this many seconds between steps.  Useful if there is a delay in the filesystem.
+
+    'c|circular=s' => \$circular,  # Circular chromosomes
+
+    'e|nmessages=s' => \$nmessages  # Max number of warnings or messages to print
     );
 
 
@@ -85,8 +89,25 @@ if (defined($gunzipp)) {
     $gunzip_flag = "";
 }
 
+if (defined($circular)) {
+    $circular_flag = "-c $circular";
+} else {
+    $circular_flag = "";
+}
 
-$genome_fasta = join(" ",@ARGV);
+if (defined($nmessages)) {
+    $nmessages_flag = "-e $nmessages";
+} else {
+    $nmessages_flag = "";
+}
+
+
+
+@quoted = ();
+foreach $fasta (@ARGV) {
+    push @quoted,"\"$fasta\"";
+}
+$genome_fasta = join(" ",@quoted);
 
 
 
@@ -108,9 +129,10 @@ exit;
 
 sub create_coords {
     if (defined($mdfile)) {
+	# MD file cannot specify that a chromosome is circular
 	$cmd = "$bindir/md_coords -o $builddir/$dbname.coords $mdfile";
     } else {
-	$cmd = "$bindir/fa_coords $gunzip_flag -o $builddir/$dbname.coords $genome_fasta";
+	$cmd = "$bindir/fa_coords $gunzip_flag $circular_flag -o $builddir/$dbname.coords $genome_fasta";
     }
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
@@ -138,7 +160,7 @@ sub create_genome_version {
 
 sub make_contig {
     check_coords_exists();
-    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -D $builddir -A $chr_order_flag";
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex $nmessages_flag -d $dbname -D $builddir -A $chr_order_flag";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -148,7 +170,7 @@ sub make_contig {
 }
 
 sub compress_genome {
-    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -F $builddir -D $builddir -G";
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex $nmessages_flag -d $dbname -F $builddir -D $builddir -G";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -161,7 +183,7 @@ sub full_ASCII_genome {
     check_coords_exists();
     make_contig();
 	
-    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex -d $dbname -F $builddir -D $builddir -l -G";
+    $cmd = "$bindir/gmap_process $gunzip_flag -c $builddir/$dbname.coords $genome_fasta | $bindir/gmapindex $nmessages_flag -d $dbname -F $builddir -D $builddir -l -G";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -171,7 +193,7 @@ sub full_ASCII_genome {
 }
 
 sub create_index_offsets {
-    $cmd = "cat $builddir/$dbname.genomecomp | $bindir/gmapindex -b $basesize -k $kmersize -q $sampling -d $dbname -F $builddir -D $builddir -O";
+    $cmd = "cat $builddir/$dbname.genomecomp | $bindir/gmapindex -b $basesize -k $kmersize -q $sampling $nmessages_flag -d $dbname -F $builddir -D $builddir -O";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -181,7 +203,7 @@ sub create_index_offsets {
 }
 
 sub create_index_positions {
-    $cmd = "cat $builddir/$dbname.genomecomp | $bindir/gmapindex -b $basesize -k $kmersize -q $sampling -d $dbname -F $builddir -D $builddir -P";
+    $cmd = "cat $builddir/$dbname.genomecomp | $bindir/gmapindex -b $basesize -k $kmersize -q $sampling $nmessages_flag -d $dbname -F $builddir -D $builddir -P";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -207,15 +229,15 @@ sub install_db {
     push @suffixes,sprintf "ref%02d%dpositions",$kmersize,$sampling;
 
     print STDERR "Copying files to directory $destdir/$dbname\n";
-    system("mkdir -p $destdir/$dbname");
-    system("mkdir -p $destdir/$dbname/$dbname.maps");
-    system("chmod 755 $destdir/$dbname/$dbname.maps");
+    system("mkdir -p \"$destdir/$dbname\"");
+    system("mkdir -p \"$destdir/$dbname/$dbname.maps\"");
+    system("chmod 755 \"$destdir/$dbname/$dbname.maps\"");
     foreach $suffix (@suffixes) {
-	system("mv $builddir/$dbname.$suffix $destdir/$dbname/$dbname.$suffix");
-	system("chmod 644 $destdir/$dbname/$dbname.$suffix");
+	system("mv \"$builddir/$dbname.$suffix\" \"$destdir/$dbname/$dbname.$suffix\"");
+	system("chmod 644 \"$destdir/$dbname/$dbname.$suffix\"");
     }
 
-    system("rm -f $builddir/$dbname.coords");
+    system("rm -f \"$builddir/$dbname.coords\"");
     return;
 }
 
@@ -249,6 +271,9 @@ Options:
     -g, --gunzip            Files are gzipped, so need to gunzip each file first
     -w INT                  Wait (sleep) this many seconds after each step (default 2)
 
+    -c, --circular=STRING   Circular chromosomes (separated by a comma)
+
+    -e, --nmessages=INT     Maximum number of messages (warnings, contig reports) to report (default 50)
 TEXT1
   return;
 }

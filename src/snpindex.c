@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 60849 2012-03-30 19:25:41Z twu $";
+static char rcsid[] = "$Id: snpindex.c 83596 2013-01-16 23:01:47Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -99,6 +99,7 @@ static int index1interval = 3;
 static int required_interval = 0;
 
 static char *dbversion = NULL;
+static int circular_typeint = -1;
 
 static char *snps_root = NULL;
 static bool show_warnings_p = true;
@@ -187,18 +188,17 @@ shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
 }
 
 static char
-check_acgt (char nt, IIT_T snps_iit, int divno, int i) {
-  int index;
+check_acgt (char nt, IIT_T snps_iit, int divno, char *divstring,
+	    int origindex, Interval_T interval) {
   char *label;
   bool allocp;
 
   if (nt == 'N') {
     return nt;
   } else if (nt != 'A' && nt != 'C' && nt != 'G' && nt != 'T') {
-    index = IIT_index(snps_iit,divno,i);
-    label = IIT_label(snps_iit,index,&allocp);
-    fprintf(stderr,"\nFor %s, alternate allele %c is not ACGT, so using 'N' as alternate allele",
-	    label,nt);
+    label = IIT_label(snps_iit,origindex,&allocp);
+    fprintf(stderr,"\nFor %s at %s:%u, alternate allele %c is not ACGT, so using 'N' as alternate allele",
+	    label,divstring,Interval_low(interval),nt);
     if (allocp) {
       FREE(label);
     }
@@ -237,9 +237,44 @@ samep (char *string1, char *string2, int length) {
 }
 #endif
 
+
+typedef struct Labeled_interval_T *Labeled_interval_T;
+struct Labeled_interval_T {
+  int origindex;
+  Interval_T interval;
+};
+
+static Labeled_interval_T
+Labeled_interval_new (int origindex, Interval_T interval) {
+  Labeled_interval_T new = (Labeled_interval_T) MALLOC(sizeof(*new));
+
+  new->origindex = origindex;
+  new->interval = interval;
+  return new;
+}
+
+static void
+Labeled_interval_free (Labeled_interval_T *old, bool free_interval_p) {
+  if (free_interval_p == true) {
+    Interval_free(&((*old)->interval));
+  }
+  FREE(*old);
+  return;
+}
+
+static int
+Labeled_interval_cmp (const void *a, const void *b) {
+  Labeled_interval_T x = * (Labeled_interval_T *) a;
+  Labeled_interval_T y = * (Labeled_interval_T *) b;
+
+  return Interval_cmp((const void *) &(x->interval),(const void *) &(y->interval));
+}
+
+
+
 static int
 process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positions,
-		   Interval_T *intervals, int nintervals,
+		   Labeled_interval_T *intervals, int nintervals,
 		   Genomicpos_T chroffset, Genome_T genome,
 		   UINT4 *snp_blocks, int divno, char *divstring, int intervali,
 		   IIT_T snps_iit, IIT_T chromosome_iit, int index1part) {
@@ -269,8 +304,8 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 
 
   /* Subtract 1 because snps_iit is 1-based */
-  first_snppos = Interval_low(intervals[0]) - 1U;
-  last_snppos = Interval_low(intervals[nintervals-1]) - 1U;
+  first_snppos = Interval_low(intervals[0]->interval) - 1U;
+  last_snppos = Interval_low(intervals[nintervals-1]->interval) - 1U;
   debug1(
 	 if (nintervals == 1) {
 	   printf("Processing snp at chrpos %s:%u\n",divstring,first_snppos+1U);
@@ -292,13 +327,21 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
   refstring = (char *) CALLOC(length + 1,sizeof(char));
   altstring = (char *) CALLOC(length + 1,sizeof(char));
 
+#if 0
+  /* Doesn't work with circular chromosomes */
   Genome_fill_buffer(&chrnum,&nunknowns,genome,/*left*/startposition,length,
 		     refstring,chromosome_iit);
+#else
+  Genome_fill_buffer_simple(genome,/*left*/startposition,length,refstring);
+#endif
 
   for (i = 0; i < nintervals; i++) {
-    interval = intervals[i];
+    interval = intervals[i]->interval;
     snpposition = chroffset + Interval_low(interval) - 1U; /* Subtract 1 because snps_iit is 1-based */
-    debug1(printf("  Neighbor at %s:%u\n",divstring,Interval_low(interval)));
+
+    debug1(label = IIT_label(snps_iit,intervals[i]->origindex,&allocp));
+    debug1(printf("  Neighbor %s at %s:%u\n",label,divstring,Interval_low(interval)));
+
     stringi = snpposition - startposition;
 
     snptype = IIT_typestring(snps_iit,Interval_type(interval));
@@ -311,8 +354,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 	if (altstring[stringi] != '\0' && altstring[stringi] != snptype[1]) {
 	  nerrors++;
 	  if (show_warnings_p == true) {
-	    index = IIT_index(snps_iit,divno,intervali+i);
-	    label = IIT_label(snps_iit,index,&allocp);
+	    label = IIT_label(snps_iit,intervals[i]->origindex,&allocp);
 	    fprintf(stderr,"\nFor %s at %s:%u, saw two different alternate alleles %c and %c, so using N as alternate allele.",
 		    label,divstring,Interval_low(interval),altstring[stringi],snptype[1]);
 	    if (allocp == true) {
@@ -325,14 +367,13 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 	  }
 	  altnt = 'N';
 	} else {
-	  altnt = check_acgt(snptype[1],snps_iit,divno,intervali+i);
+	  altnt = check_acgt(snptype[1],snps_iit,divno,divstring,intervals[i]->origindex,intervals[i]->interval);
 	}
       } else if (refnt == snptype[1]) {
 	if (altstring[stringi] != '\0' && altstring[stringi] != snptype[0]) {
 	  nerrors++;
 	  if (show_warnings_p == true) {
-	    index = IIT_index(snps_iit,divno,intervali+i);
-	    label = IIT_label(snps_iit,index,&allocp);
+	    label = IIT_label(snps_iit,intervals[i]->origindex,&allocp);
 	    fprintf(stderr,"\nFor %s at %s:%u, saw two different alternate alleles %c and %c, so using N as alternate allele.",
 		    label,divstring,Interval_low(interval),altstring[stringi],snptype[0]);
 	    if (allocp == true) {
@@ -345,13 +386,12 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 	  }
 	  altnt = 'N';
 	} else {
-	  altnt = check_acgt(snptype[0],snps_iit,divno,intervali+i);
+	  altnt = check_acgt(snptype[0],snps_iit,divno,divstring,intervals[i]->origindex,intervals[i]->interval);
 	}
       } else {
 	nerrors++;
 	if (show_warnings_p == true) {
-	  index = IIT_index(snps_iit,divno,intervali+i);
-	  label = IIT_label(snps_iit,index,&allocp);
+	  label = IIT_label(snps_iit,intervals[i]->origindex,&allocp);
 	  fprintf(stderr,"\nFor %s at %s:%u, snptype %s not consistent with reference allele %c, so ignoring.",
 		  label,divstring,Interval_low(interval),snptype,refstring[stringi]);
 	  if (allocp == true) {
@@ -445,7 +485,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
   
   for (starti = 0, position = startposition, chrpos = startposition - chroffset; 
        position <= endposition-index1part+1U; starti++, position++, chrpos++) {
-    if (chrpos % 3 == 0) {
+    if (chrpos % index1interval == 0) {
       /* chrpos % 3 == 0 is same as the condition in indexdb.c for storing a position */
       nsnps = 0;
       badcharp = false;
@@ -552,12 +592,14 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
 		 Oligospace_T oligospace, int index1part) {
   Positionsptr_T *offsets;
 
-  Interval_T *intervals;
-  int nintervals, nerrors, divno, i, j;
+  Labeled_interval_T *intervals;
+  int origindex;
+  Interval_T interval, copy;
+  int nintervals, nintervals_alias, nerrors, divno, i, j;
   Oligospace_T oligoi;
   char *divstring;
   Chrnum_T chrnum;
-  Genomicpos_T chroffset;
+  Genomicpos_T chroffset, chrlength;
   int nwarnings = 0;
 
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
@@ -571,24 +613,54 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
       nerrors = 0;
       fprintf(stderr,"has %d snps...",IIT_nintervals(snps_iit,divno));
       chroffset = IIT_interval_low(chromosome_iit,chrnum);
-
+      chrlength = IIT_interval_length(chromosome_iit,chrnum);
       nintervals = IIT_nintervals(snps_iit,divno);
-      intervals = (Interval_T *) CALLOC(nintervals,sizeof(Interval_T));
-      for (i = 0; i < nintervals; i++) {
-	intervals[i] = &(snps_iit->intervals[divno][i]);
+
+      if (IIT_interval_type(chromosome_iit,chrnum) == circular_typeint) {
+	fprintf(stderr,"and is circular...");
+	nintervals_alias = 2*nintervals;
+	intervals = (Labeled_interval_T *) CALLOC(nintervals_alias,sizeof(Labeled_interval_T));
+	for (i = 0; i < nintervals; i++) {
+	  origindex = IIT_index(snps_iit,divno,i);
+	  intervals[i] = Labeled_interval_new(origindex,/*interval*/&(snps_iit->intervals[divno][i]));
+	}
+	for (j = 0; i < nintervals_alias; i++, j++) {
+	  origindex = IIT_index(snps_iit,divno,j);
+	  interval = intervals[j]->interval;
+	  copy = Interval_new(/*low*/Interval_low(interval) + chrlength,
+			      /*high*/Interval_high(interval) + chrlength,
+			      Interval_type(interval));
+	  intervals[i] = Labeled_interval_new(origindex,/*interval*/copy);
+	}
+
+      } else {
+	nintervals_alias = nintervals;
+	intervals = (Labeled_interval_T *) CALLOC(nintervals,sizeof(Labeled_interval_T));
+	for (i = 0; i < nintervals; i++) {
+	  origindex = IIT_index(snps_iit,divno,i);
+	  intervals[i] = Labeled_interval_new(origindex,/*interval*/&(snps_iit->intervals[divno][i]));
+	}
       }
-      qsort(intervals,nintervals,sizeof(Interval_T),Interval_cmp);
+
+      qsort(intervals,nintervals,sizeof(Labeled_interval_T),Labeled_interval_cmp);
 
       i = 0;
-      while (i < nintervals) {
+      while (i < nintervals_alias) {
 	j = i + 1;
-	while (j < nintervals && Interval_low(intervals[j]) < Interval_low(intervals[j-1]) + index1part) {
+	while (j < nintervals_alias && Interval_low(intervals[j]->interval) < Interval_low(intervals[j-1]->interval) + index1part) {
 	  j++;
 	}
-	nerrors += process_snp_block(&nwarnings,offsets,/*positions*/NULL,&(intervals[i]),j-i,
+	nerrors += process_snp_block(&nwarnings,offsets,/*positions*/NULL,&(intervals[i]),/*nintervals*/j-i,
 				     chroffset,genome,snp_blocks,
 				     divno,divstring,/*intervali*/i,snps_iit,chromosome_iit,index1part);
 	i = j;
+      }
+
+      for (i = nintervals; i < nintervals_alias; i++) {
+	Labeled_interval_free(&(intervals[i]),/*free_interval_p*/true);
+      }
+      for (i = 0; i < nintervals; i++) {
+	Labeled_interval_free(&(intervals[i]),/*free_interval_p*/false);
       }
 
       FREE(intervals);
@@ -601,7 +673,7 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
   for (oligoi = 1; oligoi <= oligospace; oligoi++) {
     offsets[oligoi] = offsets[oligoi] + offsets[oligoi-1];
     debug(if (offsets[oligoi] != offsets[oligoi-1]) {
-	    printf("Offset for %X: %u\n",oligoi,offsets[oligoi]);
+	    printf("Offset for %lX: %u\n",oligoi,offsets[oligoi]);
 	  });
   }
 
@@ -614,12 +686,14 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
 		   Genome_T genome, Oligospace_T oligospace) {
   Genomicpos_T *positions;
 
-  Interval_T *intervals;
-  int nintervals, divno, i, j;
+  Labeled_interval_T *intervals;
+  int origindex;
+  Interval_T interval, copy;
+  int nintervals, nintervals_alias, divno, i, j;
   Oligospace_T oligoi;
   char *divstring;
   Chrnum_T chrnum;
-  Genomicpos_T chroffset;
+  Genomicpos_T chroffset, chrlength;
   Positionsptr_T *pointers, totalcounts, block_start, block_end, npositions;
   int nwarnings = 0;
 
@@ -657,24 +731,54 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
     } else {
       fprintf(stderr,"has %d snps...",IIT_nintervals(snps_iit,divno));
       chroffset = IIT_interval_low(chromosome_iit,chrnum);
-
+      chrlength = IIT_interval_length(chromosome_iit,chrnum);
       nintervals = IIT_nintervals(snps_iit,divno);
-      intervals = (Interval_T *) CALLOC(nintervals,sizeof(Interval_T));
-      for (i = 0; i < nintervals; i++) {
-	intervals[i] = &(snps_iit->intervals[divno][i]);
+
+      if (IIT_interval_type(chromosome_iit,chrnum) == circular_typeint) {
+	fprintf(stderr,"and is circular...");
+	nintervals_alias = 2*nintervals;
+	intervals = (Labeled_interval_T *) CALLOC(nintervals_alias,sizeof(Labeled_interval_T));
+	for (i = 0; i < nintervals; i++) {
+	  origindex = IIT_index(snps_iit,divno,i);
+	  intervals[i] = Labeled_interval_new(origindex,/*interval*/&(snps_iit->intervals[divno][i]));
+	}
+	for (j = 0; i < nintervals_alias; i++, j++) {
+	  origindex = IIT_index(snps_iit,divno,j);
+	  interval = intervals[j]->interval;
+	  copy = Interval_new(/*low*/Interval_low(interval) + chrlength,
+			      /*high*/Interval_high(interval) + chrlength,
+			      Interval_type(interval));
+	  intervals[i] = Labeled_interval_new(origindex,/*interval*/copy);
+	}
+
+      } else {
+	nintervals_alias = nintervals;
+	intervals = (Labeled_interval_T *) CALLOC(nintervals,sizeof(Labeled_interval_T));
+	for (i = 0; i < nintervals; i++) {
+	  origindex = IIT_index(snps_iit,divno,i);
+	  intervals[i] = Labeled_interval_new(origindex,/*interval*/&(snps_iit->intervals[divno][i]));
+	}
       }
-      qsort(intervals,nintervals,sizeof(Interval_T),Interval_cmp);
+
+      qsort(intervals,nintervals,sizeof(Labeled_interval_T),Labeled_interval_cmp);
 
       i = 0;
-      while (i < nintervals) {
+      while (i < nintervals_alias) {
 	j = i + 1;
-	while (j < nintervals && Interval_low(intervals[j]) < Interval_low(intervals[j-1]) + index1part) {
+	while (j < nintervals_alias && Interval_low(intervals[j]->interval) < Interval_low(intervals[j-1]->interval) + index1part) {
 	  j++;
 	}
-	process_snp_block(&nwarnings,/*offsets*/pointers,positions,&(intervals[i]),
-			  /*nintervals*/j-i,chroffset,genome,/*snp_blocks*/NULL,
+	process_snp_block(&nwarnings,/*offsets*/pointers,positions,&(intervals[i]),/*nintervals*/j-i,
+			  chroffset,genome,/*snp_blocks*/NULL,
 			  divno,divstring,/*intervali*/i,snps_iit,chromosome_iit,index1part);
 	i = j;
+      }
+
+      for (i = nintervals; i < nintervals_alias; i++) {
+	Labeled_interval_free(&(intervals[i]),/*free_interval_p*/true);
+      }
+      for (i = 0; i < nintervals; i++) {
+	Labeled_interval_free(&(intervals[i]),/*free_interval_p*/false);
       }
 
       FREE(intervals);
@@ -900,6 +1004,8 @@ main (int argc, char *argv[]) {
 				 /*labels_read_p*/true)) == NULL) {
     fprintf(stderr,"IIT file %s is not valid\n",filename);
     exit(9);
+  } else {
+    circular_typeint = IIT_typeint(chromosome_iit,"circular");
   }
   FREE(filename);
 
@@ -923,6 +1029,7 @@ main (int argc, char *argv[]) {
   } else {
     destdir = user_destdir;
   }
+  fprintf(stderr,"Writing snpindex files to %s\n",destdir);
 
   if (max_warnings == 0) {
     show_warnings_p = false;
@@ -993,16 +1100,20 @@ main (int argc, char *argv[]) {
 
 
   /* Write offsets */
-  filename1 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(gammaptrs_basename_ptr)+
-			      strlen(".")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename1,"%s/%s.%s",destdir,gammaptrs_basename_ptr,snps_root);
+  if (gammaptrs_basename_ptr == NULL) {
+    filename1 = (char *) NULL;
+  } else {
+    filename1 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(gammaptrs_basename_ptr)+
+				strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename1,"%s/%s.%s",destdir,gammaptrs_basename_ptr,snps_root);
+  }
 
   filename2 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(offsetscomp_basename_ptr)+
-			     strlen(".")+strlen(snps_root)+1,sizeof(char));
+			      strlen(".")+strlen(snps_root)+1,sizeof(char));
   sprintf(filename2,"%s/%s.%s",destdir,offsetscomp_basename_ptr,snps_root);
 
 
-  fprintf(stderr,"Writing %d offsets with %u total positions\n",oligospace+1,offsets[oligospace]);
+  fprintf(stderr,"Writing %lu offsets with %u total positions\n",oligospace+1,offsets[oligospace]);
 #ifdef PRE_GAMMAS
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
 #else
@@ -1010,7 +1121,9 @@ main (int argc, char *argv[]) {
 			  /*blocksize*/power(4,index1part - offsetscomp_basesize));
 #endif
   FREE(filename2);
-  FREE(filename1);
+  if (filename1 != NULL) {
+    FREE(filename1);
+  }
   FREE(offsets);
 
 
@@ -1098,14 +1211,32 @@ main (int argc, char *argv[]) {
   FREE(sourcedir);
 
 
+  fprintf(stderr,"SNP genome indices created.\n");
   if (Access_file_exists_p(filename) == true) {
-    fprintf(stderr,"SNP genome indices created.  IIT file already present as %s, so no need to install\n",filename);
+    if (Access_file_equal(filename,argv[1]) == false) {
+      fprintf(stderr,"IIT file already present as %s, but it is different from the given file %s\n",
+	      filename,argv[1]);
+      fprintf(stderr,"Please copy file %s as %s\n",argv[1],filename);
+    } else {
+      fprintf(stderr,"IIT file already present as %s, and it is the same as given file %s\n",
+	      filename,argv[1]);
+    }
+
   } else if (argc > 1) {
-    fprintf(stderr,"SNP genome indices created.  Need to install IIT file %s as %s\n",
+    fprintf(stderr,"Now installing IIT file %s as %s...",
 	    argv[1],filename);
+    Access_file_copy(/*dest*/filename,/*source*/argv[1]);
+    fprintf(stderr,"done\n");
+
   } else {
-    fprintf(stderr,"SNP genome indices created.  Need to copy IIT file from %s/%s.iit to %s\n",
+    fprintf(stderr,"Now copying IIT file from %s/%s.iit to %s...",
 	    mapdir,snps_root,filename);
+    filename1 = (char *) CALLOC(strlen(mapdir)+strlen("/")+
+				strlen(snps_root)+strlen(".iit")+1,sizeof(char));
+    sprintf(filename1,"%s/%s.iit",mapdir,snps_root);
+    Access_file_copy(/*dest*/filename,/*source*/filename1);
+    fprintf(stderr,"done\n");
+    FREE(filename1);
     FREE(mapdir);
   }
 

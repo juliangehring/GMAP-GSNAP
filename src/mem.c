@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c 40330 2011-05-30 17:40:46Z twu $";
+static char rcsid[] = "$Id: mem.c 82065 2012-12-19 21:35:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -60,6 +60,7 @@ Mem_trap_check (const char *file, int line) {
 #ifdef HAVE_PTHREAD
 static pthread_mutex_t memusage_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_key_t key_memusage; /* Memory that is used by a thread within a query */
+static pthread_key_t key_max_memusage;
 static pthread_key_t key_memusage_keep; /* Memory that is kept by a thread between queries  */
 static pthread_key_t key_threadname;
 #else
@@ -67,6 +68,7 @@ static char *threadname = "program";
 #endif
 
 static long int memusage = 0;
+static long int max_memusage = 0;
 static long int memusage_in = 0; /* Memory from inbuffer to threads */
 static long int memusage_out = 0; /* Memory from threads to outbuffer */
 
@@ -74,11 +76,14 @@ void
 Mem_usage_init () {
 #ifdef HAVE_PTHREAD
   pthread_key_create(&key_memusage,NULL);
+  pthread_key_create(&key_max_memusage,NULL);
   pthread_key_create(&key_memusage_keep,NULL);
   pthread_key_create(&key_threadname,NULL);
   pthread_setspecific(key_memusage,(void *) 0);
+  pthread_setspecific(key_max_memusage,(void *) 0);
 #else
   memusage = 0;
+  max_memusage = 0;
 #endif
 
   memusage_in = 0;
@@ -104,10 +109,24 @@ Mem_usage_reset (long int x) {
   threadname = (char *) pthread_getspecific(key_threadname);
   memusage = (long int) pthread_getspecific(key_memusage);
   debug(printf("%ld %s: Reset memusage to %ld\n",memusage,threadname,x));
-  pthread_setspecific(key_memusage,(void *) x);
+  pthread_setspecific(key_max_memusage,(void *) x);
 #else
   debug(printf("%ld: Reset memusage to %ld\n",memusage,x));
   memusage = x;
+#endif
+}
+
+void
+Mem_usage_reset_max () {
+#ifdef HAVE_PTHREAD
+  char *threadname;
+  long int max_memusage;
+
+  threadname = (char *) pthread_getspecific(key_threadname);
+  max_memusage = (long int) pthread_getspecific(key_max_memusage);
+  pthread_setspecific(key_max_memusage,(void *) 0);
+#else
+  max_memusage = 0;
 #endif
 }
 
@@ -140,6 +159,15 @@ Mem_usage_report () {
 }
 
 long int
+Mem_max_usage_report () {
+#ifdef HAVE_PTHREAD
+  return (long int) pthread_getspecific(key_max_memusage);
+#else
+  return max_memusage;
+#endif
+}
+
+long int
 Mem_usage_in_report () {
   return memusage_in;
 }
@@ -156,7 +184,7 @@ struct descriptor {
   const void *ptr;
   long size;
 };
-static struct descriptor *htab[2048];
+static struct descriptor *htab[2048000];
 
 /* Also removes element from linked list */
 static struct descriptor *
@@ -192,7 +220,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&memusage_mutex);
-  long int memusage;
+  long int memusage, max_memusage;
   char *threadname;
 #endif
 #endif
@@ -206,8 +234,16 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   memusage = (long int) pthread_getspecific(key_memusage);
   memusage += nbytes;
   pthread_setspecific(key_memusage,(void *) memusage);
+
+  max_memusage = (long int) pthread_getspecific(key_max_memusage);
+  if (memusage > max_memusage) {
+    pthread_setspecific(key_max_memusage,(void *) memusage);
+  }
 #else
   memusage += nbytes;
+  if (memusage > max_memusage) {
+    max_memusage = memusage;
+  }
 #endif
   h = hash(ptr,htab);
   bp = malloc(sizeof(*bp));
@@ -474,7 +510,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&memusage_mutex);
-  long int memusage;
+  long int memusage, max_memusage;
   char *threadname;
 #endif
 #endif
@@ -510,8 +546,16 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   memusage = (long int) pthread_getspecific(key_memusage);
   memusage += count*nbytes;
   pthread_setspecific(key_memusage,(void *) memusage);
+
+  max_memusage = (long int) pthread_getspecific(key_max_memusage);
+  if (memusage > max_memusage) {
+    pthread_setspecific(key_max_memusage,(void *) memusage);
+  }
 #else
   memusage += count*nbytes;
+  if (memusage > max_memusage) {
+    max_memusage = memusage;
+  }
 #endif
   h = hash(ptr,htab);
   bp = malloc(sizeof(*bp));

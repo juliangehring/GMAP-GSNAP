@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: iit_get.c 84317 2013-01-24 22:35:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -48,7 +48,8 @@ static bool runlengthp = false;
 static bool tallyp = false;
 static bool zeroesp = false;
 static bool statsp = false;
-static bool labelp = false;
+static bool force_label_p = false;
+static bool force_coords_p = false;
 static bool overall_total_p = false;
 
 static struct option long_options[] = {
@@ -64,7 +65,8 @@ static struct option long_options[] = {
   {"tally", no_argument, 0, 'T'}, /* tallyp */
   {"zeroes", no_argument, 0, 'Z'}, /* zeroesp */
   {"stats", no_argument, 0, 'N'}, /* statsp */
-  {"label", no_argument, 0, 'L'}, /* labelp */
+  {"label", no_argument, 0, 'L'}, /* force_label_p */
+  {"coords", no_argument, 0, 'C'}, /* force_coords_p */
 
   /* Help options */
   {"version", no_argument, 0, 'V'}, /* print_program_version */
@@ -101,7 +103,8 @@ where query is one of the following forms:\n\
 \n\
 Options\n\
   -f, --field=STRING      Show given field part of the annotation\n\
-  -L, --label             Interpret query as a label, even if it is numeric\n\
+  -L, --label             Interpret query or queries as a label, even if it is numeric\n\
+  -C, --coords            Interpret query or queries as coords\n\
   -A, --annotonly         Show annotation lines only (no headers)\n\
   -S, --sort              Sort results by coordinates\n\
   -U, --unsigned          Print all intervals as low..high, even those entered as reverse (high < low)\n\
@@ -305,13 +308,13 @@ print_line (char *ptr) {
 
 
 /* Need to store just the part of the query specified (e.g., 1..10) */
-static void
+static long int
 print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coordstart, unsigned int coordend,
 		      int indexi, IIT_T iit, bool zeroesp) {
+  long int total = 0, subtotal;
   Interval_T interval;
   char *annotation, *restofheader, *ptr, *nextptr;
   bool allocp;
-  long int total = 0;
   unsigned int chrpos, intervalend;
 
   annotation = IIT_annotation(&restofheader,iit,indexi,&allocp);
@@ -324,7 +327,9 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
 
   if (zeroesp == true) {
     while (*lastcoord < chrpos) {
-      printf("%s\t%u\t%d\t\n",divstring,*lastcoord,0);
+      if (statsp == false) {
+	printf("%s\t%u\t%d\t\n",divstring,*lastcoord,0);
+      }
       (*lastcoord)++;
     }
   }
@@ -333,7 +338,7 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
     if ((ptr = index(ptr,'\n')) == NULL) {
       fprintf(stderr,"Premature end of tally from %u to %u\n",
 	      Interval_low(interval),Interval_high(interval));
-      return;
+      return total;
     } else {
       ptr++;
     }
@@ -341,18 +346,21 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
   }
 
   while (chrpos <= intervalend && chrpos <= coordend) {
-    total = 0;
-    nextptr = get_total_tally(&total,ptr);
-    if (total > 0 || zeroesp == true) {
-      printf("%s\t%u\t%ld\t",divstring,chrpos,total);
-      print_line(ptr);
-      printf("\n");
+    subtotal = 0;
+    nextptr = get_total_tally(&subtotal,ptr);
+    if (subtotal > 0 || zeroesp == true) {
+      if (statsp == false) {
+	printf("%s\t%u\t%ld\t",divstring,chrpos,total);
+	print_line(ptr);
+	printf("\n");
+      }
     }
+    total += subtotal;
     ptr = nextptr;
     if ((ptr = index(ptr,'\n')) == NULL) {
       fprintf(stderr,"Premature end of tally from %u to %u\n",
 	      Interval_low(interval),Interval_high(interval));
-      return;
+      return total;
     } else {
       ptr++;
     }
@@ -365,7 +373,7 @@ print_interval_tally (unsigned int *lastcoord, char *divstring, unsigned int coo
     FREE(restofheader);
   }
   
-  return;
+  return total;
 }
 
 
@@ -510,8 +518,9 @@ compute_logtotal_tally (long int *total, int *n, unsigned int coordstart, unsign
 
 
 /* coordstart used only if centerp or tallyp is true */
-static void
-print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstart, unsigned int coordend, 
+static long int
+print_interval (unsigned int *lastcoord, long int total,
+		char *divstring, unsigned int coordstart, unsigned int coordend, 
 		int index, IIT_T iit, int ndivs, int fieldint) {
   Interval_T interval;
   char *label, *annotation, *restofheader;
@@ -519,13 +528,13 @@ print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstar
 
   if (centerp == true) {
     print_interval_centered(divstring,coordstart,index,iit,fieldint);
-    return;
+    return 0;
   } else if (tallyp == true) {
-    print_interval_tally(&(*lastcoord),divstring,coordstart,coordend,index,iit,zeroesp);
-    return;
+    total += print_interval_tally(&(*lastcoord),divstring,coordstart,coordend,index,iit,zeroesp);
+    return total;
   } else if (runlengthp == true) {
     print_interval_runlength(&(*lastcoord),divstring,coordstart,coordend,index,iit,zeroesp);
-    return;
+    return 0;
   }
 
   if (annotationonlyp == false) {
@@ -543,6 +552,7 @@ print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstar
       printf("%s:",divstring);
     }
 
+    debug(printf("index is %d\n",index));
     interval = IIT_interval(iit,index);
     if (signedp == false) {
       printf("%u..%u",Interval_low(interval),Interval_high(interval));
@@ -575,7 +585,7 @@ print_interval (unsigned int *lastcoord, char *divstring, unsigned int coordstar
     FREE(annotation);
   }
 
-  return;
+  return 0;
 }
 
 
@@ -590,7 +600,7 @@ get_matches (int *nmatches, char **divstring, unsigned int *coordstart, unsigned
   debug(printf("Entering get_matches with query %s.\n",query));
 
 
-  if (labelp == true || Parserange_query(&(*divstring),&(*coordstart),&(*coordend),&revcomp,query,filename) == false) {
+  if (force_label_p == true || (force_coords_p == false && Parserange_query(&(*divstring),&(*coordstart),&(*coordend),&revcomp,query,filename) == false)) {
     /* Treat query as a label */
     *divstring = (char *) NULL;
     if (*iit == NULL) {
@@ -605,6 +615,7 @@ get_matches (int *nmatches, char **divstring, unsigned int *coordstart, unsigned
 	exit(9);
       }
     }
+    *nleftflanks = *nrightflanks = 0;
     matches = IIT_find(&(*nmatches),*iit,query);
 
   } else {
@@ -639,6 +650,7 @@ get_matches (int *nmatches, char **divstring, unsigned int *coordstart, unsigned
       }
 #else
       matches = (int *) NULL;
+      *nleftflanks = *nrightflanks = 0;
       nmatches = 0;
 #endif      
 
@@ -646,8 +658,9 @@ get_matches (int *nmatches, char **divstring, unsigned int *coordstart, unsigned
       /* Treat query as coordinates, with a typestring */
       matches = IIT_get_typed(&(*nmatches),*iit,*divstring,*coordstart,*coordend,typeint,sortp);
       if (nflanking > 0) {
+	debug(printf("Running IIT_get_flanking_typed\n"));
 	IIT_get_flanking_typed(&(*leftflanks),&(*nleftflanks),&(*rightflanks),&(*nrightflanks),*iit,*divstring,
-			       *coordstart,*coordend,nflanking,typeint);
+			       *coordstart,*coordend,nflanking,typeint,/*sign*/0);
       }
     }
 
@@ -664,7 +677,7 @@ get_matches_multiple_typed (int *nmatches, char **divstring, unsigned int *coord
   int *matches;
   bool revcomp;
 
-  if (labelp == true || Parserange_query(&(*divstring),&(*coordstart),&(*coordend),&revcomp,query,filename) == false) {
+  if (force_label_p == true || (force_coords_p == false && Parserange_query(&(*divstring),&(*coordstart),&(*coordend),&revcomp,query,filename) == false)) {
     /* Not expecting a label */
     abort();
   }
@@ -709,10 +722,11 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   int long_option_index = 0;
 
-  while ((opt = getopt_long(argc,argv,"f:LASUu:c:HRTZN",long_options,&long_option_index)) != -1) {
+  while ((opt = getopt_long(argc,argv,"f:LCASUu:c:HRTZN",long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 'f': fieldstring = optarg; break;
-    case 'L': labelp = true; break;
+    case 'L': force_label_p = true; break;
+    case 'C': force_coords_p = true; break;
     case 'A': annotationonlyp = true; break;
     case 'S': sortp = true; break;
     case 'U': signedp = false; break;
@@ -741,7 +755,7 @@ main (int argc, char *argv[]) {
     filename = argv[1];
   }
 
-  if (statsp == true && argc == 2) {
+  if (0 && statsp == true && argc == 2) {
     /* Want total over entire IIT */
     if ((iit = IIT_read(filename,NULL,true,/*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/true,
 			/*labels_read_p*/false)) == NULL) {
@@ -765,6 +779,7 @@ main (int argc, char *argv[]) {
     return 0;
 
   } else if (argc == 2) {
+    debug(printf("Running under argc 2\n"));
 
     /* Expecting input from stdin */
     if ((iit = IIT_read(filename,NULL,true,/*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/true,
@@ -796,11 +811,13 @@ main (int argc, char *argv[]) {
       skipp = false;
 
       if ((nargs = sscanf(nocomment,"%s %s",query,typestring)) == 2) {
+	debug(printf("typestring is %s\n",typestring));
 	matches = get_matches(&nmatches,&divstring,&coordstart,&coordend,
 			      &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
 			      query,typestring,&iit,filename);
 
       } else if (nargs == 1) {
+	debug(printf("typestring is NULL\n"));
 	matches = get_matches(&nmatches,&divstring,&coordstart,&coordend,
 			      &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
 			      query,/*typestring*/NULL,&iit,filename);
@@ -809,13 +826,34 @@ main (int argc, char *argv[]) {
 	skipp = true;
       }
 	
+      total = 0;
       if (skipp == false) {
 	fprintf(stdout,"# Query: %s\n",Buffer);
 	ndivs = IIT_ndivs(iit);
+	if (nflanking > 0) {
+	  for (i = nleftflanks-1; i >= 0; i--) {
+	    debug(printf("\nleft index = %d\n",leftflanks[i]));
+	    print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,leftflanks[i],iit,ndivs,fieldint);
+	  }
+	  printf("====================\n");
+	  FREE(leftflanks);
+	}
+
 	lastcoord = coordstart;
 	for (i = 0; i < nmatches; i++) {
-	  print_interval(&lastcoord,divstring,coordstart,coordend,matches[i],iit,ndivs,fieldint);
+	  debug(printf("\nindex = %d\n",matches[i]));
+	  total = print_interval(&lastcoord,total,divstring,coordstart,coordend,matches[i],iit,ndivs,fieldint);
 	}
+
+	if (nflanking > 0) {
+	  printf("====================\n");
+	  for (i = 0; i < nrightflanks; i++) {
+	    debug(printf("\nright index = %d\n",rightflanks[i]));
+	    print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,rightflanks[i],iit,ndivs,fieldint);
+	  }
+	  FREE(rightflanks);
+	}
+
 	if (zeroesp == true) {
 	  while (lastcoord <= coordend) {
 	    printf("%s\t%u\t%d\n",divstring,lastcoord,0);
@@ -823,7 +861,9 @@ main (int argc, char *argv[]) {
 	  }
 	}
       }
+
       FREE(matches);
+      printf("%ld\n",total);
       fprintf(stdout,"# End\n");
       fflush(stdout);
     }
@@ -836,6 +876,7 @@ main (int argc, char *argv[]) {
 			    argv[2],/*typestring*/NULL,&iit,filename);
     } else if (argc == 4) {
       /* Try as 0:<iitfile> 1:<query> 2:<type> */
+      debug(printf("Running under argc 4\n"));
       matches = get_matches(&nmatches,&divstring,&coordstart,&coordend,
 			    &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
 			    argv[2],argv[3],&iit,filename);
@@ -900,7 +941,8 @@ main (int argc, char *argv[]) {
       ndivs = IIT_ndivs(iit);
       if (nflanking > 0) {
 	for (i = nleftflanks-1; i >= 0; i--) {
-	  print_interval(&lastcoord,divstring,coordstart,coordend,leftflanks[i],iit,ndivs,fieldint);
+	  debug(printf("\nleft index = %d\n",leftflanks[i]));
+	  print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,leftflanks[i],iit,ndivs,fieldint);
 	}
 	printf("====================\n");
 	FREE(leftflanks);
@@ -908,14 +950,15 @@ main (int argc, char *argv[]) {
 
       lastcoord = coordstart;
       for (i = 0; i < nmatches; i++) {
-	debug(printf("index = %d\n",matches[i]));
-	print_interval(&lastcoord,divstring,coordstart,coordend,matches[i],iit,ndivs,fieldint);
+	debug(printf("\nindex = %d\n",matches[i]));
+	print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,matches[i],iit,ndivs,fieldint);
       }
       
       if (nflanking > 0) {
 	printf("====================\n");
 	for (i = 0; i < nrightflanks; i++) {
-	  print_interval(&lastcoord,divstring,coordstart,coordend,rightflanks[i],iit,ndivs,fieldint);
+	  debug(printf("\nright index = %d\n",rightflanks[i]));
+	  print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,rightflanks[i],iit,ndivs,fieldint);
 	}
 	FREE(rightflanks);
       }

@@ -76,7 +76,15 @@ this feature, you can add "--disable-zlib" to the ./configure command
 or edit your config.site file to have the command "disable_zlib".
 
 
-Note 5: GSNAP optionally supports the Goby input and output file
+Note 5: GSNAP can read from bzip2-compressed FASTA or FASTQ input
+files.  This feature requires the bzlib library to be present.  The
+configure program will detect the availability of bzlib automatically.
+However, to disable this feature, you can add "--disable-bzlib" to the
+./configure command or edit your config.site file to have the command
+"disable_bzlib".
+
+
+Note 6: GSNAP optionally supports the Goby input and output file
 formats.  To implement this functionality, you need to obtain and
 compile the libraries from http://campagnelab.org/software/goby.  If
 the resulting header files are located in /path/to/goby/include and
@@ -150,6 +158,11 @@ or small fragments.
 
 You will need to start with a set of FASTA files containing either
 entire chromosomes or contigs that represent pieces of chromosomes.
+For example, for the human genome, you can retrieve all of the FASTA
+files under the ftp directory at
+
+    ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/
+
 If your FASTA entries each contain a single chromosome, and the
 accession for each chromosome is the chromosome number/letter, you can
 simply run this command
@@ -182,11 +195,24 @@ required.  Therefore, you may want to build your genomic index on a
 computer with sufficient RAM, and distribute that index to be used by
 computers with less RAM.
 
+The amount of compression can be controlled using the -b or --basesize
+parameter to gmap_build.  By default, the value for k-mer size is 15,
+and the value for basesize is 12.  If you select a different value for
+k-mer size, then basesize is made by default to be equal to that k-mer
+size.
+
 If you want to build your genomic databases with more than one k-mer
 size, you can re-run gmap_build with different values of -k.  This
 will overwrite only the identical files from the previous runs.  You
 can then choose the k-mer size at run-time by using the -k flag for
 either GMAP or GSNAP.
+
+Finally, you can provide information to gmap_build that certain
+chromosomes are circular, with the -c or --circular flag.  The value
+for these flags is a list of chromosomes, separated by commas.  The
+gmap_build program will then allow GSNAP and GMAP to align reads
+across the ends of the chromosome.  For example, the mitochondrial
+genome in human beings is circular.
 
 
 
@@ -532,13 +558,26 @@ or
 
 
 For paired-end reads, the two corresponding FASTQ files should be
-given as command-line arguments, like this
+given as command-line arguments in pairs, like this
 
-    gsnap -d <genome> <fastq_file_1> <fastq_file_2>
+    gsnap -d <genome> <fastq_file_1> <fastq_file_2> [<fastq_file_3> <fastq_file_4>...]
 
 A pipe cannot work since GSNAP needs to access both FASTQ files in
 parallel.  The reads in FASTQ files may have varying lengths, if
-desired.
+desired.  Note that GSNAP can process multiple sets of paired-end
+reads, by adding the files in pairs.  If you want to provide multiple
+single-end files, you can either use "cat" to concatenate them into
+the stdin of gsnap, like this:
+
+    cat <fastq_file_1> [<fastq_file_2>...] | gsnap -d <genome>
+
+or you can provide them all on the command line with the
+--force-single-end flag, like this:
+
+    gsnap -d <genome> --force-single-end <fastq_file_1> [<fastq_file_2>...]
+
+which will process each FASTQ file one at a time as single-end reads,
+and not try to pair them up.
 
 GSNAP also has the ability to deal with files compressed with gzip, if
 the configure script at compile time can find a zlib library in your
@@ -546,11 +585,27 @@ system (see Note 3 in the section above about building and installing
 GMAP and GSNAP).  If so, and your files are gzipped, you can then read
 in gzipped files directly like this
 
-    gsnap --gunzip -d <genome> <fastq.gz>
+    gsnap --gunzip -d <genome> <fastq.gz>, or 
+    gsnap --gunzip -d <genome> --force-single-end <fastq1.gz> [<fastq2.gz>...]
 
 for single-end reads, or
 
-    gsnap --gunzip -d <genome> <fastq_1.gz> <fastq_2.gz>
+    gsnap --gunzip -d <genome> <fastq_1.gz> <fastq_2.gz> [<fastq_3.gz> <fastq_4.gz>...]
+
+for paired-end reads.
+
+Likewise, GSNAP can handle files compressed with bzip2, if the
+configure script at compile time can find a bzlib library in your
+system (see Note 3 in the section above about building and installing
+GMAP and GSNAP).  If so, and your files are bzip2-compressed, you can
+then read in those files directly like this
+
+    gsnap --bunzip2 -d <genome> <fastq.bz2>, or 
+    gsnap --bunzip2 -d <genome> --force-single-end <fastq1.bz2> [<fastq2.bz2>...]
+
+for single-end reads, or
+
+    gsnap --bunzip2 -d <genome> <fastq_1.bz2> <fastq_2.bz2> [<fastq_1.bz2> <fastq_2.bz2>...]
 
 for paired-end reads.
 
@@ -648,11 +703,26 @@ or AT-AC dinucleotide pair is on the plus strand of the genome, and
 "-" means the dinucleotides are on the minus strand.  If the
 orientation is not obvious, because the dinucleotides do not match
 GT-AG, GC-AG, AT-AC, or their complements, then the program applies a
-probabilistic splice model to determine the orientation.
+probabilistic splice model to determine the orientation.  If the
+splice sites have low probability, then the program may not be able to
+determine an orientation, and the result will be printed as XS:A:?.
+To prevent this flag, which cannot be handled by such programs (such
+as Cufflinks), use the --force-xs-dir flag.  However, this flag will
+merely change occurrences of XS:A:? arbitrarily to XS:A:+.
 
 XT: Prints the intron dinucleotides and splice probabilities around a
 distant splicing event (genomic deletion, inversion, scramble, or
 translocation).
+
+XW and XV: Printed only when SNP-tolerant alignment is enabled.  XW
+provides the number of mismatches against both the reference and
+alternate alleles (or the "World" population).  Therefore, these are
+true mismatches.  XV provides the number of positions that are
+mismatches against the reference genome, but do match the alternate
+genome.  Therefore, these are known variant positions.  The sum of XW
+and XV provides the number of differences relative to the reference
+genome, and with the exception of indels, should equal the value of
+NM.
 
 
 GSNAP output format
@@ -1157,9 +1227,22 @@ create the necessary index files by doing
 
 Then, you can align the reads by doing
 
-    gsnap -d <genome> --mode=cmet
+    gsnap -d <genome> --mode=cmet-stranded, or
+    gsnap -d <genome> --mode=cmet-nonstranded
 
-on your set of short reads.
+on your set of short reads.  The stranded flag works on data where
+the laboratory allows only reads that go from 5' to 3' on each strand
+of the genome, and excludes their reverse complement reads that would
+be produced by PCR amplification.  The resulting reads should have a
+preponderance of C's converted to T's.
+
+The non-stranded flag is for the laboratory protocol that allows both
+the 5'-to-3' genomic reads on each strand, as well as their reverse
+complements.  The reverse complemented reads will have the C-to-T
+conversion show up as a G-to-A change.  The resulting reads should
+have a preponderance of T's in half the reads, and a preponderance of
+A's in half the reads.
+
 
 
 RNA-editing tolerance in GSNAP
@@ -1178,7 +1261,11 @@ create the necessary index files by doing
 
 Then, you can align the reads by doing
 
-    gsnap -d <genome> --mode=atoi
+    gsnap -d <genome> --mode=atoi-stranded, or 
+    gsnap -d <genome> --mode=atoi-nonstranded
 
-on your set of short reads.
+on your set of short reads.  As with bisulfite sequencing, the
+stranded flag is for laboratory protocols that allow only the 5'-to-3'
+RNA, or sense, reads, and the non-stranded flag is for laboratory
+protocols that allow both sense and antisense reads.
 

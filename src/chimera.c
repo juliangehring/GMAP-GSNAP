@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c 60937 2012-04-02 20:57:03Z twu $";
+static char rcsid[] = "$Id: chimera.c 77641 2012-10-26 00:16:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -450,17 +450,18 @@ Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T righ
 static double
 find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		   char *comp, double *donor_prob, double *acceptor_prob,
-		   Stage3_T left_part, Stage3_T right_part, Genome_T genome, IIT_T chromosome_iit,
-		   int breakpoint_start, int breakpoint_end) {
-  Sequence_T donor_genomicseg, acceptor_genomicseg;
-  char *donor_ptr, *acceptor_ptr;
+		   Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
+		   IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
+  Sequence_T donor_genomicseg, acceptor_genomicseg, donor_genomicalt, acceptor_genomicalt;
+  char *donor_ptr, *acceptor_ptr, *donor_altptr, *acceptor_altptr;
   int i, j;
   Genomicpos_T left;
   int donor_length, acceptor_length;
   bool revcomp;
   char left1, left2, right2, right1;
+  char left1_alt, left2_alt, right2_alt, right1_alt;
   int introntype;
-  double donor_prob_1, acceptor_prob_1, bestproduct = 0.0, product;
+  double donor_prob_1, acceptor_prob_1, donor_altprob_1, acceptor_altprob_1, bestproduct = 0.0, product;
 
   *exonexonpos = -1;
 
@@ -478,6 +479,9 @@ find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
   debug2(printf("Getting donor at left %u\n",left));
   donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,chromosome_iit,revcomp);
   donor_ptr = Sequence_fullpointer(donor_genomicseg);
+  donor_genomicalt = Genome_get_segment_alt(genomealt,left,donor_length+1,chromosome_iit,revcomp);
+  donor_altptr = Sequence_fullpointer(donor_genomicalt);
+
   debug2(
 	 for (i = 0; i < ACCEPTOR_MODEL_LEFT_MARGIN - DONOR_MODEL_LEFT_MARGIN; i++) {
 	   printf(" ");
@@ -499,6 +503,8 @@ find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
   debug2(printf("Getting acceptor at left %u\n",left));
   acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,chromosome_iit,revcomp);
   acceptor_ptr = Sequence_fullpointer(acceptor_genomicseg);
+  acceptor_genomicalt = Genome_get_segment(genomealt,left,acceptor_length+1,chromosome_iit,revcomp);
+  acceptor_altptr = Sequence_fullpointer(acceptor_genomicalt);
   debug2(
 	 for (i = 0; i < DONOR_MODEL_LEFT_MARGIN - ACCEPTOR_MODEL_LEFT_MARGIN; i++) {
 	   printf(" ");
@@ -518,28 +524,46 @@ find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
     right2 = acceptor_ptr[j-2];
     right1 = acceptor_ptr[j-1];
 
+    left1_alt = donor_altptr[i+1];
+    left2_alt = donor_altptr[i+2];
+    right2_alt = acceptor_altptr[j-2];
+    right1_alt = acceptor_altptr[j-1];
+
     debug2(printf("  Dinucleotides are %c%c..%c%c\n",left1,left2,right2,right1));
-    introntype = Intron_type(left1,left2,right2,right1,/*cdna_direction*/+1);
+    introntype = Intron_type(left1,left2,right2,right1,
+			     left1_alt,left2_alt,right2_alt,right1_alt,
+			     /*cdna_direction*/+1);
     debug2(printf("  Introntype is %s\n",Intron_type_string(introntype)));
 
     donor_prob_1 = Maxent_donor_prob(&(donor_ptr[i+1-DONOR_MODEL_LEFT_MARGIN]));
     acceptor_prob_1 = Maxent_acceptor_prob(&(acceptor_ptr[j-ACCEPTOR_MODEL_LEFT_MARGIN]));
+    donor_altprob_1 = Maxent_donor_prob(&(donor_altptr[i+1-DONOR_MODEL_LEFT_MARGIN]));
+    acceptor_altprob_1 = Maxent_acceptor_prob(&(acceptor_altptr[j-ACCEPTOR_MODEL_LEFT_MARGIN]));
+
     debug2(printf("%d %c%c %c%c %.2f %.2f\n",
 		  breakpoint_start - DONOR_MODEL_LEFT_MARGIN + i,
 		  donor_ptr[i+1],donor_ptr[i+2],acceptor_ptr[j-2],acceptor_ptr[j-1],
 		  donor_prob_1,acceptor_prob_1));
 
-    if (donor_prob_1 < 0.50 && acceptor_prob_1 < 0.50) {
+    if (donor_prob_1 < 0.50 && acceptor_prob_1 < 0.50 && donor_altprob_1 < 0.50 && acceptor_altprob_1 < 0.50) {
       /* Skip */
-    } else if (introntype != NONINTRON || donor_prob_1 > 0.90 || acceptor_prob_1 > 0.90) {
+    } else if (introntype != NONINTRON || donor_prob_1 > 0.90 || acceptor_prob_1 > 0.90 || donor_altprob_1 > 0.90 || acceptor_altprob_1 > 0.90) {
       if ((product = donor_prob_1*acceptor_prob_1) > bestproduct) {
 	bestproduct = product;
 	*donor1 = donor_ptr[i+1];
 	*donor2 = donor_ptr[i+2];
 	*acceptor2 = acceptor_ptr[j-2];
 	*acceptor1 = acceptor_ptr[j-1];
-	*donor_prob = donor_prob_1;
-	*acceptor_prob = acceptor_prob_1;
+	if (donor_prob_1 >= donor_altprob_1) {
+	  *donor_prob = donor_prob_1;
+	} else {
+	  *donor_prob = donor_altprob_1;
+	}
+	if (acceptor_prob_1 >= acceptor_altprob_1) {
+	  *acceptor_prob = acceptor_prob_1;
+	} else {
+	  *acceptor_prob = acceptor_altprob_1;
+	}
 	*exonexonpos = breakpoint_start - DONOR_MODEL_LEFT_MARGIN + i;
 
 	switch (introntype) {
@@ -553,6 +577,8 @@ find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
     }
   }
 
+  Sequence_free(&acceptor_genomicalt);
+  Sequence_free(&donor_genomicalt);
   Sequence_free(&acceptor_genomicseg);
   Sequence_free(&donor_genomicseg);
 
@@ -562,17 +588,18 @@ find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
 static double
 find_exonexon_rev (int *exonexonpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		   char *comp, double *donor_prob, double *acceptor_prob,
-		   Stage3_T left_part, Stage3_T right_part, Genome_T genome, IIT_T chromosome_iit,
-		   int breakpoint_start, int breakpoint_end) {
-  Sequence_T donor_genomicseg, acceptor_genomicseg;
-  char *donor_ptr, *acceptor_ptr;
+		   Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
+		   IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
+  Sequence_T donor_genomicseg, acceptor_genomicseg, donor_genomicalt, acceptor_genomicalt;
+  char *donor_ptr, *acceptor_ptr, *donor_altptr, *acceptor_altptr;
   int i, j;
   Genomicpos_T left;
   int donor_length, acceptor_length;
   bool revcomp;
   char left1, left2, right2, right1;
+  char left1_alt, left2_alt, right2_alt, right1_alt;
   int introntype;
-  double donor_prob_1, acceptor_prob_1, bestproduct = 0.0, product;
+  double donor_prob_1, acceptor_prob_1, donor_altprob_1, acceptor_altprob_1, bestproduct = 0.0, product;
 
   *exonexonpos = -1;
 
@@ -590,6 +617,8 @@ find_exonexon_rev (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
   debug2(printf("Getting donor at left %u\n",left));
   donor_genomicseg = Genome_get_segment(genome,left,donor_length+1,chromosome_iit,revcomp);
   donor_ptr = Sequence_fullpointer(donor_genomicseg);
+  donor_genomicalt = Genome_get_segment(genomealt,left,donor_length+1,chromosome_iit,revcomp);
+  donor_altptr = Sequence_fullpointer(donor_genomicalt);
   debug2(
 	 for (i = 0; i < ACCEPTOR_MODEL_LEFT_MARGIN - DONOR_MODEL_LEFT_MARGIN; i++) {
 	   printf(" ");
@@ -611,6 +640,8 @@ find_exonexon_rev (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
   debug2(printf("Getting acceptor at left %u\n",left));
   acceptor_genomicseg = Genome_get_segment(genome,left,acceptor_length+1,chromosome_iit,revcomp);
   acceptor_ptr = Sequence_fullpointer(acceptor_genomicseg);
+  acceptor_genomicalt = Genome_get_segment(genomealt,left,acceptor_length+1,chromosome_iit,revcomp);
+  acceptor_altptr = Sequence_fullpointer(acceptor_genomicalt);
   debug2(
 	 for (i = 0; i < DONOR_MODEL_LEFT_MARGIN - ACCEPTOR_MODEL_LEFT_MARGIN; i++) {
 	   printf(" ");
@@ -630,29 +661,47 @@ find_exonexon_rev (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
     right2 = acceptor_ptr[j-2];
     right1 = acceptor_ptr[j-1];
 
+    left1_alt = donor_altptr[i+1];
+    left2_alt = donor_altptr[i+2];
+    right2_alt = acceptor_altptr[j-2];
+    right1_alt = acceptor_altptr[j-1];
+
     /* Use cdna_direction == +1, because revcomp already applied */
     debug2(printf("  Dinucleotides are %c%c..%c%c\n",left1,left2,right2,right1));
-    introntype = Intron_type(left1,left2,right2,right1,/*cdna_direction*/+1);
+    introntype = Intron_type(left1,left2,right2,right1,
+			     left1_alt,left2_alt,right2_alt,right1_alt,
+			     /*cdna_direction*/+1);
     debug2(printf("  Introntype is %s\n",Intron_type_string(introntype)));
 
     donor_prob_1 = Maxent_donor_prob(&(donor_ptr[i+1-DONOR_MODEL_LEFT_MARGIN]));
     acceptor_prob_1 = Maxent_acceptor_prob(&(acceptor_ptr[j-ACCEPTOR_MODEL_LEFT_MARGIN]));
+    donor_altprob_1 = Maxent_donor_prob(&(donor_altptr[i+1-DONOR_MODEL_LEFT_MARGIN]));
+    acceptor_altprob_1 = Maxent_acceptor_prob(&(acceptor_altptr[j-ACCEPTOR_MODEL_LEFT_MARGIN]));
+
     debug2(printf("%d %c%c %c%c %.2f %.2f\n",
 		  breakpoint_end + DONOR_MODEL_LEFT_MARGIN - i,
 		  donor_ptr[i+1],donor_ptr[i+2],acceptor_ptr[j-2],acceptor_ptr[j-1],
 		  donor_prob_1,acceptor_prob_1));
 
-    if (donor_prob_1 < 0.50 && acceptor_prob_1 < 0.50) {
+    if (donor_prob_1 < 0.50 && acceptor_prob_1 < 0.50 && donor_altprob_1 < 0.50 && acceptor_altprob_1 < 0.50) {
       /* Skip */
-    } else if (introntype != NONINTRON || donor_prob_1 > 0.90 || acceptor_prob_1 > 0.90) {
+    } else if (introntype != NONINTRON || donor_prob_1 > 0.90 || acceptor_prob_1 > 0.90 || donor_altprob_1 > 0.90 || acceptor_altprob_1 > 0.90) {
       if ((product = donor_prob_1*acceptor_prob_1) > bestproduct) {
 	bestproduct = product;
 	*donor1 = donor_ptr[i+1];
 	*donor2 = donor_ptr[i+2];
 	*acceptor2 = acceptor_ptr[j-2];
 	*acceptor1 = acceptor_ptr[j-1];
-	*donor_prob = donor_prob_1;
-	*acceptor_prob = acceptor_prob_1;
+	if (donor_prob_1 >= donor_altprob_1) {
+	  *donor_prob = donor_prob_1;
+	} else {
+	  *donor_prob = donor_altprob_1;
+	}
+	if (acceptor_prob_1 >= acceptor_altprob_1) {
+	  *acceptor_prob = acceptor_prob_1;
+	} else {
+	  *acceptor_prob = acceptor_altprob_1;
+	}
 	*exonexonpos = breakpoint_end + DONOR_MODEL_LEFT_MARGIN - i;
 
 	/* Have to look for forward intron types, but return the revcomp comp */
@@ -666,6 +715,8 @@ find_exonexon_rev (int *exonexonpos, char *donor1, char *donor2, char *acceptor2
     }
   }
 
+  Sequence_free(&acceptor_genomicalt);
+  Sequence_free(&donor_genomicalt);
   Sequence_free(&acceptor_genomicseg);
   Sequence_free(&donor_genomicseg);
 
@@ -677,7 +728,7 @@ int
 Chimera_find_exonexon (int *found_cdna_direction, int *try_cdna_direction,
 		       char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		       char *comp, double *donor_prob, double *acceptor_prob,
-		       Stage3_T left_part, Stage3_T right_part, Genome_T genome,
+		       Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
 		       IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
   int exonexonpos_fwd, exonexonpos_rev;
   char donor1_fwd, donor2_fwd, acceptor2_fwd, acceptor1_fwd,
@@ -728,23 +779,23 @@ Chimera_find_exonexon (int *found_cdna_direction, int *try_cdna_direction,
     *found_cdna_direction = +1;
     bestproduct_fwd = find_exonexon_fwd(&exonexonpos_fwd,&donor1_fwd,&donor2_fwd,&acceptor2_fwd,&acceptor1_fwd,
 					&comp_fwd,&donor_prob_fwd,&acceptor_prob_fwd,
-					left_part,right_part,genome,chromosome_iit,breakpoint_start,breakpoint_end);
+					left_part,right_part,genome,genomealt,chromosome_iit,breakpoint_start,breakpoint_end);
     bestproduct_rev = 0.0;
 
   } else if (*try_cdna_direction == -1) {
     *found_cdna_direction = -1;
     bestproduct_rev = find_exonexon_rev(&exonexonpos_rev,&donor1_rev,&donor2_rev,&acceptor2_rev,&acceptor1_rev,
 					&comp_rev,&donor_prob_rev,&acceptor_prob_rev,
-					left_part,right_part,genome,chromosome_iit,breakpoint_start,breakpoint_end);
+					left_part,right_part,genome,genomealt,chromosome_iit,breakpoint_start,breakpoint_end);
     bestproduct_fwd = 0.0;
 
   } else {
     bestproduct_fwd = find_exonexon_fwd(&exonexonpos_fwd,&donor1_fwd,&donor2_fwd,&acceptor2_fwd,&acceptor1_fwd,
 					&comp_fwd,&donor_prob_fwd,&acceptor_prob_fwd,
-					left_part,right_part,genome,chromosome_iit,breakpoint_start,breakpoint_end);
+					left_part,right_part,genome,genomealt,chromosome_iit,breakpoint_start,breakpoint_end);
     bestproduct_rev = find_exonexon_rev(&exonexonpos_rev,&donor1_rev,&donor2_rev,&acceptor2_rev,&acceptor1_rev,
 					&comp_rev,&donor_prob_rev,&acceptor_prob_rev,
-					left_part,right_part,genome,chromosome_iit,breakpoint_start,breakpoint_end);
+					left_part,right_part,genome,genomealt,chromosome_iit,breakpoint_start,breakpoint_end);
   }
 
   if (bestproduct_fwd == 0.0 && bestproduct_rev == 0.0) {

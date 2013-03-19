@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 66221 2012-06-12 01:04:26Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 89140 2013-03-13 23:15:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8371,6 +8371,8 @@ dump_positions (Genomicpos_T **positions, int *counts, int oligospace, int index
   char *nt;
 #endif
 
+  printf("Entered dump_positions with oligospace %d\n",oligospace);
+
 #ifdef PMAP
   for (i = 0; i < oligospace; i++) {
     aa = aaindex_aa(i,indexsize/3);
@@ -8444,7 +8446,7 @@ count_8mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 }
 
 static int
-store_8mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -8455,8 +8457,8 @@ store_8mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = high_rev >> (16 - 2*pos);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
@@ -8465,8 +8467,8 @@ store_8mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked |= high_rev << (2*pos - 16);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
@@ -8474,8 +8476,8 @@ store_8mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rev >> (48 - 2*pos);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
     
@@ -8484,12 +8486,12 @@ store_8mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked |= low_rev << (2*pos - 48);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -8538,7 +8540,7 @@ count_7mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 }
 
 static int
-store_7mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_7mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -8548,8 +8550,8 @@ store_7mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
   while (pos <= enddiscard && pos <= 9) {
     masked = high_rev >> (18 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
@@ -8557,16 +8559,16 @@ store_7mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rev >> (50 - 2*pos);
     masked |= high_rev << (2*pos - 18);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
   while (pos <= enddiscard && pos <= 25) {
     masked = low_rev >> (50 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
     
@@ -8574,12 +8576,12 @@ store_7mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = nexthigh_rev >> (82 - 2*pos);
     masked |= low_rev << (2*pos - 50);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -8629,7 +8631,7 @@ count_6mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 
 
 static int
-store_6mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_6mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -8639,8 +8641,8 @@ store_6mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
   while (pos <= enddiscard && pos <= 10) {
     masked = high_rev >> (20 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
@@ -8648,16 +8650,16 @@ store_6mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rev >> (52 - 2*pos);
     masked |= high_rev << (2*pos - 20);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
   while (pos <= enddiscard && pos <= 26) {
     masked = low_rev >> (52 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
     
@@ -8665,12 +8667,12 @@ store_6mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = nexthigh_rev >> (84 - 2*pos);
     masked |= low_rev << (2*pos - 52);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -8720,7 +8722,7 @@ count_5mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 
 
 static int
-store_5mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_5mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -8730,8 +8732,8 @@ store_5mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
   while (pos <= enddiscard && pos <= 11) {
     masked = high_rev >> (22 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
@@ -8739,16 +8741,16 @@ store_5mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rev >> (54 - 2*pos);
     masked |= high_rev << (2*pos - 22);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
   while (pos <= enddiscard && pos <= 27) {
     masked = low_rev >> (54 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
     
@@ -8756,12 +8758,12 @@ store_5mers_fwd_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = nexthigh_rev >> (86 - 2*pos);
     masked |= low_rev << (2*pos - 54);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos++;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -8910,116 +8912,116 @@ count_8mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_8mers_fwd (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_8mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
   UINT4 masked, oligo;
 
   masked = high_rev >> 16;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
   
   masked = (high_rev >> 14) & MASK8;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (high_rev >> 12) & MASK8;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (high_rev >> 10) & MASK8;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = (high_rev >> 8) & MASK8;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = (high_rev >> 6) & MASK8;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = (high_rev >> 4) & MASK8;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rev >> 2) & MASK8;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = high_rev & MASK8;		/* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
 
   oligo = low_rev >> 18;		/* For 9..15 */
   oligo |= high_rev << 14;
 
   masked = (oligo >> 12) & MASK8; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = (oligo >> 10) & MASK8; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = (oligo >> 8) & MASK8; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (oligo >> 6) & MASK8; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (oligo >> 4) & MASK8; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (oligo >> 2) & MASK8; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = oligo & MASK8; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   masked = low_rev >> 16;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
   
   masked = (low_rev >> 14) & MASK8; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (low_rev >> 12) & MASK8; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (low_rev >> 10) & MASK8; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = (low_rev >> 8) & MASK8;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = (low_rev >> 6) & MASK8;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = (low_rev >> 4) & MASK8;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rev >> 2) & MASK8;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = low_rev & MASK8;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
 
   oligo = nexthigh_rev >> 18;	/* For 25..31 */
   oligo |= low_rev << 14;
 
   masked = (oligo >> 12) & MASK8; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = (oligo >> 10) & MASK8; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = (oligo >> 8) & MASK8; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (oligo >> 6) & MASK8; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (oligo >> 4) & MASK8; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (oligo >> 2) & MASK8; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = oligo & MASK8; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -9169,116 +9171,116 @@ count_7mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_7mers_fwd (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_7mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
   UINT4 masked, oligo;
 
   masked = high_rev >> 18;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
   
   masked = (high_rev >> 16) & MASK7;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (high_rev >> 14) & MASK7;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (high_rev >> 12) & MASK7;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = (high_rev >> 10) & MASK7;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = (high_rev >> 8) & MASK7;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = (high_rev >> 6) & MASK7;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rev >> 4) & MASK7;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rev >> 2) & MASK7; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = high_rev & MASK7;	/* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
 
   oligo = low_rev >> 20;	/* For 10..15 */
   oligo |= high_rev << 12;
 
   masked = (oligo >> 10) & MASK7; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = (oligo >> 8) & MASK7; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (oligo >> 6) & MASK7; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (oligo >> 4) & MASK7; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (oligo >> 2) & MASK7; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = oligo & MASK7; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   masked = low_rev >> 18;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
   
   masked = (low_rev >> 16) & MASK7; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (low_rev >> 14) & MASK7; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (low_rev >> 12) & MASK7; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = (low_rev >> 10) & MASK7;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = (low_rev >> 8) & MASK7;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = (low_rev >> 6) & MASK7;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rev >> 4) & MASK7;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rev >> 2) & MASK7;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = low_rev & MASK7;	/* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
 
   oligo = nexthigh_rev >> 20;	/* For 26..31 */
   oligo |= low_rev << 12;
 
   masked = (oligo >> 10) & MASK7; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = (oligo >> 8) & MASK7; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (oligo >> 6) & MASK7; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (oligo >> 4) & MASK7; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (oligo >> 2) & MASK7; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = oligo & MASK7; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -9428,116 +9430,116 @@ count_6mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_6mers_fwd (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_6mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
   UINT4 masked, oligo;
 
   masked = high_rev >> 20;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
   
   masked = (high_rev >> 18) & MASK6;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (high_rev >> 16) & MASK6;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (high_rev >> 14) & MASK6;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = (high_rev >> 12) & MASK6;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = (high_rev >> 10) & MASK6;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = (high_rev >> 8) & MASK6;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rev >> 6) & MASK6;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rev >> 4) & MASK6; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = (high_rev >> 2) & MASK6; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = high_rev & MASK6;	/* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
 
   oligo = low_rev >> 22;	/* For 11..15 */
   oligo |= high_rev << 10;
 
   masked = (oligo >> 8) & MASK6; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (oligo >> 6) & MASK6; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (oligo >> 4) & MASK6; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (oligo >> 2) & MASK6; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = oligo & MASK6; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   masked = low_rev >> 20;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
   
   masked = (low_rev >> 18) & MASK6; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (low_rev >> 16) & MASK6; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (low_rev >> 14) & MASK6; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = (low_rev >> 12) & MASK6;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = (low_rev >> 10) & MASK6;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = (low_rev >> 8) & MASK6;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rev >> 6) & MASK6;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rev >> 4) & MASK6;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = (low_rev >> 2) & MASK6;	/* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = low_rev & MASK6;	/* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
 
   oligo = nexthigh_rev >> 22;	/* For 27..31 */
   oligo |= low_rev << 10;
 
   masked = (oligo >> 8) & MASK6; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (oligo >> 6) & MASK6; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (oligo >> 4) & MASK6; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (oligo >> 2) & MASK6; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = oligo & MASK6; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -9687,116 +9689,116 @@ count_5mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_5mers_fwd (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_5mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
   UINT4 masked, oligo;
 
   masked = high_rev >> 22;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
   
   masked = (high_rev >> 20) & MASK5;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (high_rev >> 18) & MASK5;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (high_rev >> 16) & MASK5;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = (high_rev >> 14) & MASK5;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = (high_rev >> 12) & MASK5;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = (high_rev >> 10) & MASK5;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rev >> 8) & MASK5;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rev >> 6) & MASK5; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = (high_rev >> 4) & MASK5; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = (high_rev >> 2) & MASK5; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = high_rev & MASK5;	/* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
 
   oligo = low_rev >> 24;	/* For 12..15 */
   oligo |= high_rev << 8;
 
   masked = (oligo >> 6) & MASK5; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (oligo >> 4) & MASK5; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (oligo >> 2) & MASK5; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = oligo & MASK5; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   masked = low_rev >> 22;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
   
   masked = (low_rev >> 20) & MASK5; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (low_rev >> 18) & MASK5; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (low_rev >> 16) & MASK5; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = (low_rev >> 14) & MASK5;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = (low_rev >> 12) & MASK5;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = (low_rev >> 10) & MASK5;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rev >> 8) & MASK5;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rev >> 6) & MASK5;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = (low_rev >> 4) & MASK5;	/* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = (low_rev >> 2) & MASK5;	/* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = low_rev & MASK5;	/* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
 
   oligo = nexthigh_rev >> 24;	/* For 28..31 */
   oligo |= low_rev << 8;
 
   masked = (oligo >> 6) & MASK5; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (oligo >> 4) & MASK5; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (oligo >> 2) & MASK5; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = oligo & MASK5; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -10079,7 +10081,7 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 
 static void
 store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
-		     Genomicpos_T left, Genomicpos_T left_plus_length, int sequencepos,
+		     Genomicpos_T left, Genomicpos_T left_plus_length, Genomicpos_T chrpos,
 		     int genestrand) {
   Genomicpos_T startdiscard, enddiscard;
   UINT4 ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
@@ -10125,13 +10127,13 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
     if (indexsize == 8) {
-      sequencepos = store_8mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      sequencepos = store_7mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      sequencepos = store_6mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      sequencepos = store_5mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -10167,13 +10169,13 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
     if (indexsize == 8) {
-      sequencepos = store_8mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      sequencepos = store_7mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      sequencepos = store_6mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      sequencepos = store_5mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -10209,7 +10211,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	sequencepos = store_8mers_fwd(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_8mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else if (indexsize == 7) {
@@ -10240,7 +10242,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	sequencepos = store_7mers_fwd(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_7mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else if (indexsize == 6) {
@@ -10271,7 +10273,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	sequencepos = store_6mers_fwd(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_6mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else if (indexsize == 5) {
@@ -10302,7 +10304,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	sequencepos = store_5mers_fwd(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_5mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else {
@@ -10337,13 +10339,13 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
     if (indexsize == 8) {
-      sequencepos = store_8mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      sequencepos = store_7mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      sequencepos = store_6mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      sequencepos = store_5mers_fwd_partial(sequencepos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else {
       abort();
     }
@@ -10405,7 +10407,7 @@ count_8mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_8mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -10417,16 +10419,16 @@ store_8mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
@@ -10434,20 +10436,20 @@ store_8mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -10498,7 +10500,7 @@ count_7mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_7mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -10510,16 +10512,16 @@ store_7mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
@@ -10527,20 +10529,20 @@ store_7mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -10591,7 +10593,7 @@ count_6mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_6mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -10603,16 +10605,16 @@ store_6mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
@@ -10620,20 +10622,20 @@ store_6mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -10684,7 +10686,7 @@ count_5mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_5mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
 			 int startdiscard, int enddiscard) {
   UINT4 masked;
@@ -10696,16 +10698,16 @@ store_5mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
@@ -10713,20 +10715,20 @@ store_5mers_rev_partial (int sequencepos, Genomicpos_T **pointers, int *counts,
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
-    sequencepos++;
+    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    chrpos++;
     pos--;
   }
 
-  return sequencepos;
+  return chrpos;
 }
 
 
@@ -10877,7 +10879,7 @@ count_8mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_8mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_8mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
   UINT4 masked, oligo;
 
@@ -10885,108 +10887,108 @@ store_8mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
   oligo |= nextlow_rc << 14;
 
   masked = (oligo >> 12) & MASK8; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
 
   masked = (oligo >> 10) & MASK8; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (oligo >> 8) & MASK8; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (oligo >> 6) & MASK8; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = (oligo >> 4) & MASK8; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = (oligo >> 2) & MASK8; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = oligo & MASK8; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
 
   masked = (high_rc >> 16) & MASK8; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rc >> 14) & MASK8; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = (high_rc >> 12) & MASK8; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = (high_rc >> 10) & MASK8; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = (high_rc >> 8) & MASK8; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (high_rc >> 6) & MASK8; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (high_rc >> 4) & MASK8; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (high_rc >> 2) & MASK8; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = high_rc & MASK8;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   oligo = low_rc >> 18;		/* For 15..9 */
   oligo |= high_rc << 14;
 
   masked = (oligo >> 12) & MASK8; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
 
   masked = (oligo >> 10) & MASK8; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (oligo >> 8) & MASK8; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (oligo >> 6) & MASK8; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = (oligo >> 4) & MASK8; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = (oligo >> 2) & MASK8; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = oligo & MASK8; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
 
   masked = (low_rc >> 16) & MASK8; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rc >> 14) & MASK8; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = (low_rc >> 12) & MASK8; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = (low_rc >> 10) & MASK8; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = (low_rc >> 8) & MASK8; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (low_rc >> 6) & MASK8; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (low_rc >> 4) & MASK8; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (low_rc >> 2) & MASK8; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = low_rc & MASK8;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -11138,7 +11140,7 @@ count_7mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_7mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_7mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
   UINT4 masked, oligo;
 
@@ -11146,108 +11148,108 @@ store_7mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
   oligo |= nextlow_rc << 12;
 
   masked = (oligo >> 10) & MASK7; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
 
   masked = (oligo >> 8) & MASK7; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (oligo >> 6) & MASK7; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (oligo >> 4) & MASK7; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = (oligo >> 2) & MASK7; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = oligo & MASK7; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
 
   masked = (high_rc >> 18) & MASK7; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rc >> 16) & MASK7; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rc >> 14) & MASK7; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = (high_rc >> 12) & MASK7; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = (high_rc >> 10) & MASK7; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = (high_rc >> 8) & MASK7; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (high_rc >> 6) & MASK7; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (high_rc >> 4) & MASK7; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (high_rc >> 2) & MASK7; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = high_rc & MASK7;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   oligo = low_rc >> 20;		/* For 15..10 */
   oligo |= high_rc << 12;
 
   masked = (oligo >> 10) & MASK7; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
 
   masked = (oligo >> 8) & MASK7; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (oligo >> 6) & MASK7; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (oligo >> 4) & MASK7; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = (oligo >> 2) & MASK7; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = oligo & MASK7; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
 
   masked = (low_rc >> 18) & MASK7; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rc >> 16) & MASK7; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rc >> 14) & MASK7; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = (low_rc >> 12) & MASK7; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = (low_rc >> 10) & MASK7; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = (low_rc >> 8) & MASK7; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (low_rc >> 6) & MASK7; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (low_rc >> 4) & MASK7; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (low_rc >> 2) & MASK7; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = low_rc & MASK7;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -11398,7 +11400,7 @@ count_6mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_6mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_6mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
   UINT4 masked, oligo;
 
@@ -11406,108 +11408,108 @@ store_6mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
   oligo |= nextlow_rc << 10;
 
   masked = (oligo >> 8) & MASK6; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
 
   masked = (oligo >> 6) & MASK6; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (oligo >> 4) & MASK6; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = (oligo >> 2) & MASK6; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
   masked = oligo & MASK6; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
 
   masked = (high_rc >> 20) & MASK6; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = (high_rc >> 18) & MASK6; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rc >> 16) & MASK6; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rc >> 14) & MASK6; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = (high_rc >> 12) & MASK6; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = (high_rc >> 10) & MASK6; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = (high_rc >> 8) & MASK6; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (high_rc >> 6) & MASK6; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (high_rc >> 4) & MASK6; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (high_rc >> 2) & MASK6; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = high_rc & MASK6;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   oligo = low_rc >> 22;		/* For 15..11 */
   oligo |= high_rc << 10;
 
   masked = (oligo >> 8) & MASK6; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
 
   masked = (oligo >> 6) & MASK6; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (oligo >> 4) & MASK6; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = (oligo >> 2) & MASK6; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
   masked = oligo & MASK6; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
 
   masked = (low_rc >> 20) & MASK6; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = (low_rc >> 18) & MASK6; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rc >> 16) & MASK6; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rc >> 14) & MASK6; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = (low_rc >> 12) & MASK6; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = (low_rc >> 10) & MASK6; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = (low_rc >> 8) & MASK6; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (low_rc >> 6) & MASK6; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (low_rc >> 4) & MASK6; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (low_rc >> 2) & MASK6; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = low_rc & MASK6;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -11658,7 +11660,7 @@ count_5mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_5mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
+store_5mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
   UINT4 masked, oligo;
 
@@ -11666,108 +11668,108 @@ store_5mers_rev (int sequencepos, Genomicpos_T **pointers, int *counts,
   oligo |= nextlow_rc << 8;
 
   masked = (oligo >> 6) & MASK5; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
 
   masked = (oligo >> 4) & MASK5; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 1; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
 
   masked = (oligo >> 2) & MASK5; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 2; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
 
   masked = oligo & MASK5; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 3; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
 
 
   masked = (high_rc >> 22) & MASK5; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 4; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
 
   masked = (high_rc >> 20) & MASK5; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 5; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
 
   masked = (high_rc >> 18) & MASK5; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 6; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
 
   masked = (high_rc >> 16) & MASK5; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 7; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
 
   masked = (high_rc >> 14) & MASK5; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 8; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
 
   masked = (high_rc >> 12) & MASK5; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 9; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
 
   masked = (high_rc >> 10) & MASK5; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 10; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
 
   masked = (high_rc >> 8) & MASK5; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 11; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
 
   masked = (high_rc >> 6) & MASK5; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 12; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
 
   masked = (high_rc >> 4) & MASK5; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 13; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
 
   masked = (high_rc >> 2) & MASK5; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 14; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
 
   masked = high_rc & MASK5;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 15; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
 
 
   oligo = low_rc >> 24;		/* For 15..12 */
   oligo |= high_rc << 8;
 
   masked = (oligo >> 6) & MASK5; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 16; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
 
   masked = (oligo >> 4) & MASK5; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 17; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
 
   masked = (oligo >> 2) & MASK5; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 18; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
 
   masked = oligo & MASK5; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 19; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
 
 
   masked = (low_rc >> 22) & MASK5; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 20; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
 
   masked = (low_rc >> 20) & MASK5; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 21; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
 
   masked = (low_rc >> 18) & MASK5; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 22; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
 
   masked = (low_rc >> 16) & MASK5; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 23; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
 
   masked = (low_rc >> 14) & MASK5; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 24; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
 
   masked = (low_rc >> 12) & MASK5; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 25; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
 
   masked = (low_rc >> 10) & MASK5; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 26; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
 
   masked = (low_rc >> 8) & MASK5; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 27; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
 
   masked = (low_rc >> 6) & MASK5; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 28; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
 
   masked = (low_rc >> 4) & MASK5; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 29; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
 
   masked = (low_rc >> 2) & MASK5; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 30; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
 
   masked = low_rc & MASK5;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = (Genomicpos_T) sequencepos + 31; }
+  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
 
-  return sequencepos + 32;
+  return chrpos + 32;
 }
 
 
@@ -11779,7 +11781,9 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low, high, nextlow;
 
 
-  left -= 1;	/* Needed to get last oligomer to match */
+  if (left != 0U) {
+    left -= 1;	/* Needed to get last oligomer to match */
+  }
   left_plus_length -= indexsize;
 
   startptr = left/32U*3;
@@ -12027,14 +12031,16 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 
 static void
 store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
-		     Genomicpos_T left, Genomicpos_T left_plus_length, int sequencepos,
+		     Genomicpos_T left, Genomicpos_T left_plus_length, Genomicpos_T chrpos,
 		     int genestrand) {
   Genomicpos_T startdiscard, enddiscard;
   UINT4 ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
 
 
-  left -= 1;	/* Needed to get last oligomer to match */
+  if (left != 0U) {
+    left -= 1;	/* Needed to get last oligomer to match */
+  }
   left_plus_length -= indexsize;
 
   startptr = left/32U*3;
@@ -12070,13 +12076,13 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     nextlow_rc = ~nextlow;
 
     if (indexsize == 8) {
-      sequencepos = store_8mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_8mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      sequencepos = store_7mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      sequencepos = store_6mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      sequencepos = store_5mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -12109,13 +12115,13 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     nextlow_rc = ~nextlow;
 
     if (indexsize == 8) {
-      sequencepos = store_8mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_8mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      sequencepos = store_7mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      sequencepos = store_6mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      sequencepos = store_5mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else {
       abort();
     }
@@ -12147,7 +12153,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	sequencepos = store_8mers_rev(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_8mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else if (indexsize == 7) {
@@ -12175,7 +12181,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	sequencepos = store_7mers_rev(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_7mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else if (indexsize == 6) {
@@ -12203,7 +12209,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	sequencepos = store_6mers_rev(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_6mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else if (indexsize == 5) {
@@ -12231,7 +12237,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	sequencepos = store_5mers_rev(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_5mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else {
@@ -12263,13 +12269,13 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     nextlow_rc = ~nextlow;
 
     if (indexsize == 8) {
-      sequencepos = store_8mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_8mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      sequencepos = store_7mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      sequencepos = store_6mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      sequencepos = store_5mers_rev_partial(sequencepos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -12355,9 +12361,9 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions,
 #endif
 
 void
-Oligoindex_hr_tally (T this, Genomicpos_T genomicstart, Genomicpos_T genomicend,
+Oligoindex_hr_tally (T this, 
 		     Genomicpos_T mappingstart, Genomicpos_T mappingend, bool plusp,
-		     char *queryuc_ptr, int querylength, int sequencepos, int genestrand) {
+		     char *queryuc_ptr, int querylength, Genomicpos_T chrpos, int genestrand) {
   int badoligos, repoligos, trimoligos, trim_start, trim_end;
 
   Oligoindex_set_inquery(&badoligos,&repoligos,&trimoligos,&trim_start,&trim_end,this,
@@ -12390,24 +12396,44 @@ Oligoindex_hr_tally (T this, Genomicpos_T genomicstart, Genomicpos_T genomicend,
   debug(printf("called with mapping %u..%u\n",mappingstart,mappingend));
 
   if (plusp == true) {
-    debug(printf("plus, first sequencepos is %u = %u - %u\n",mappingstart-genomicstart,mappingstart,genomicstart));
+    debug(printf("plus, first sequencepos is %u\n",chrpos));
+#ifdef PMAP
+    count_positions_fwd(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
+    if (allocate_positions(this->pointers,this->positions,this->overabundant,
+			   this->inquery,this->counts,this->relevant_counts,
+			   this->oligospace) > 0) {
+      store_positions_fwd(this->pointers,this->counts,this->indexsize_aa,mappingstart,mappingend,
+			  chrpos,genestrand);
+    }
+#else
     count_positions_fwd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
     if (allocate_positions(this->pointers,this->positions,this->overabundant,
 			   this->inquery,this->counts,this->relevant_counts,
 			   this->oligospace) > 0) {
       store_positions_fwd(this->pointers,this->counts,this->indexsize,mappingstart,mappingend,
-			  sequencepos,genestrand);
+			  chrpos,genestrand);
     }
+#endif
 
   } else {
-    debug(printf("minus, first sequencepos is %u = %u - %u\n",genomicend-mappingend,genomicend,mappingend));
+    debug(printf("minus, first sequencepos is %u\n",chrpos));
+#ifdef PMAP
+    count_positions_rev(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
+    if (allocate_positions(this->pointers,this->positions,this->overabundant,
+			   this->inquery,this->counts,this->relevant_counts,
+			   this->oligospace) > 0) {
+      store_positions_rev(this->pointers,this->counts,this->indexsize_aa,mappingstart,mappingend,
+			  chrpos,genestrand);
+    }
+#else
     count_positions_rev(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
     if (allocate_positions(this->pointers,this->positions,this->overabundant,
 			   this->inquery,this->counts,this->relevant_counts,
 			   this->oligospace) > 0) {
       store_positions_rev(this->pointers,this->counts,this->indexsize,mappingstart,mappingend,
-			  sequencepos,genestrand);
+			  chrpos,genestrand);
     }
+#endif
   }
 
 

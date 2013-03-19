@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrom.c 44154 2011-08-02 20:52:17Z twu $";
+static char rcsid[] = "$Id: chrom.c 77346 2012-10-20 02:43:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -44,6 +44,7 @@ struct T {
   unsigned int num;		/* The initial numeric part; valid only if numericp == true */
   char *alpha;			/* The alphabetic part, possibly after the number; valid only if numericp == true */
   Chromtype_T chromtype;
+  bool circularp;
 };
 
 void
@@ -62,6 +63,12 @@ Chrom_string (T this) {
   return this->string;
 }
 
+bool
+Chrom_circularp (T this) {
+  return this->circularp;
+}
+
+
 /* Largest number for an unsigned int is 4294967295, which is 10
    digits.  However, the organism with the most chromosomes is the
    Indian fern, with 1260.  Hence, more than 4 digits would suggest
@@ -69,7 +76,7 @@ Chrom_string (T this) {
    a string. */
 
 T
-Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order) {
+Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order, bool circularp) {
   T new = (T) MALLOC(sizeof(*new));
   int ndigits = 0;
   char *p;
@@ -78,6 +85,7 @@ Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order)
   debug(printf("string is %s\n",string));
 
   new->order = order;
+  new->circularp = circularp;
 
   new->string = (char *) CALLOC(strlen(string)+1,sizeof(char));
   strcpy(new->string,string);

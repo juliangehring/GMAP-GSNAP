@@ -1,4 +1,4 @@
-/* $Id: samprint.h 63195 2012-05-03 17:39:12Z twu $ */
+/* $Id: samprint.h 87096 2013-02-22 21:04:02Z twu $ */
 #ifndef SAMPRINT_INCLUDED
 #define SAMPRINT_INCLUDED
 
@@ -12,7 +12,8 @@
 #include "bool.h"
 
 extern void
-SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_in, bool sam_multiple_primaries_p_in);
+SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in, bool sam_multiple_primaries_p_in,
+	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in);
 
 extern Genomicpos_T
 SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
@@ -45,11 +46,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
 		  int quality_shift, char *sam_read_group_id,
 		  FILE *fp_nomapping_1, FILE *fp_nomapping_2,
-		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_transloc, FILE *fp_unpaired_mult,
-		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_transloc, FILE *fp_halfmapping_mult,
-		  FILE *fp_paired_uniq_inv, FILE *fp_paired_uniq_scr, FILE *fp_paired_long,
-		  FILE *fp_paired_mult, FILE *fp_concordant_uniq, FILE *fp_concordant_transloc,
-		  FILE *fp_concordant_mult);
+		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_circular,
+		  FILE *fp_unpaired_transloc, FILE *fp_unpaired_mult,
+		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_circular,
+		  FILE *fp_halfmapping_transloc, FILE *fp_halfmapping_mult,
+		  FILE *fp_paired_uniq_circular, FILE *fp_paired_uniq_inv, FILE *fp_paired_uniq_scr,
+		  FILE *fp_paired_long, FILE *fp_paired_mult,
+		  FILE *fp_concordant_uniq, FILE *fp_concordant_circular,
+		  FILE *fp_concordant_transloc, FILE *fp_concordant_mult);
 
 #endif
 

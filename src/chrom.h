@@ -1,4 +1,4 @@
-/* $Id: chrom.h 44063 2011-08-01 18:04:15Z twu $ */
+/* $Id: chrom.h 77346 2012-10-20 02:43:12Z twu $ */
 #ifndef CHROM_INCLUDED
 #define CHROM_INCLUDED
 #include "bool.h"
@@ -11,8 +11,10 @@ extern void
 Chrom_free (T *old);
 extern char *
 Chrom_string (T this);
+extern bool
+Chrom_circularp (T this);
 extern T
-Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order);
+Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order, bool circularp);
 
 extern int
 Chrom_cmp_alpha (T a, T b);

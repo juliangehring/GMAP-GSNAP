@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intron.c 41614 2011-06-22 22:57:46Z twu $";
+static char rcsid[] = "$Id: intron.c 82064 2012-12-19 21:35:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,7 +15,9 @@ static char rcsid[] = "$Id: intron.c 41614 2011-06-22 22:57:46Z twu $";
 
 
 int
-Intron_type (char left1, char left2, char right2, char right1, int cdna_direction
+Intron_type (char left1, char left2, char right2, char right1,
+	     char left1_alt, char left2_alt, char right2_alt, char right1_alt,
+	     int cdna_direction
 #ifdef INTRON_HELP
 	     , IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 	     int donor_typeint, int acceptor_typeint, Chrnum_T chrnum,
@@ -25,14 +27,14 @@ Intron_type (char left1, char left2, char right2, char right1, int cdna_directio
 	     ) {
   int introntype, leftdi, rightdi;
 
-  if (left1 == 'G' && left2 == 'T') {
+  if ((left1 == 'G' || left1_alt == 'G') && (left2 == 'T' || left2_alt == 'T')) {
     leftdi = LEFT_GT;
-  } else if (left1 == 'G' && left2 == 'C') {
+  } else if ((left1 == 'G' || left1_alt == 'G') && (left2 == 'C' || left2_alt == 'C')) {
     leftdi = LEFT_GC;
-  } else if (left1 == 'A' && left2 == 'T') {
+  } else if ((left1 == 'A' || left1_alt == 'A') && (left2 == 'T' || left2_alt == 'T')) {
     leftdi = LEFT_AT;
 #ifndef PMAP
-  } else if (left1 == 'C' && left2 == 'T') {
+  } else if ((left1 == 'C' || left1_alt == 'A') && (left2 == 'T' || left2_alt == 'T')) {
     leftdi = LEFT_CT;
 #endif
 
@@ -94,14 +96,14 @@ Intron_type (char left1, char left2, char right2, char right1, int cdna_directio
     return NONINTRON;
   }
 
-  if (right2 == 'A' && right1 == 'G') {
+  if ((right2 == 'A' || right2_alt == 'A') && (right1 == 'G' || right1_alt == 'G')) {
     rightdi = RIGHT_AG;
-  } else if (right2 == 'A' && right1 == 'C') {
+  } else if ((right2 == 'A' || right2_alt == 'A') && (right1 == 'C' || right1_alt == 'C')) {
     rightdi = RIGHT_AC;
 #ifndef PMAP
-  } else if (right2 == 'G' && right1 == 'C') {
+  } else if ((right2 == 'G' || right2_alt == 'G') && (right1 == 'C' || right1_alt == 'C')) {
     rightdi = RIGHT_GC;
-  } else if (right2 == 'A' && right1 == 'T') {
+  } else if ((right2 == 'A' || right2_alt == 'A') && (right1 == 'T' || right1_alt == 'T')) {
     rightdi = RIGHT_AT;
 #endif
 
@@ -170,7 +172,9 @@ Intron_type (char left1, char left2, char right2, char right1, int cdna_directio
       return introntype;
     }
   } else {
-    return NONINTRON;
+    /* Should happen only from Stage3_merge_local_splice */
+    /* return NONINTRON; */
+    return introntype;		/* Needed for guess */
   }
 }
 
@@ -181,9 +185,11 @@ Intron_type_string (int introntype) {
   case GTAG_FWD: return "GT-AG, fwd";
   case GCAG_FWD: return "GC-AG, fwd";
   case ATAC_FWD: return "AT-AC, fwd";
+#ifndef PMAP
   case GTAG_REV: return "GT-AG, rev";
   case GCAG_REV: return "GC-AG, rev";
   case ATAC_REV: return "AT-AC, rev";
+#endif
   default: return "nonintron";
   }
 }    
@@ -194,7 +200,9 @@ Intron_left_dinucl_string (int dinucl) {
   case LEFT_GT: return "GT-";
   case LEFT_GC: return "GC-";
   case LEFT_AT: return "AT-";
+#ifndef PMAP
   case LEFT_CT: return "CT-";
+#endif
   default: return "XX-";
   }
 }
@@ -204,8 +212,10 @@ Intron_right_dinucl_string (int dinucl) {
   switch (dinucl) {
   case RIGHT_AG: return "-AG";
   case RIGHT_AC: return "-AC";
+#ifndef PMAP
   case RIGHT_GC: return "-GC";
   case RIGHT_AT: return "-AT";
+#endif
   default: return "-XX";
   }
 }

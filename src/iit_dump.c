@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_dump.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: iit_dump.c 79302 2012-11-15 23:55:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -124,7 +124,7 @@ isnumberp (long int *result, char *string) {
 static void
 print_runlengths (IIT_T iit, char *divstring) {
   long int *cum, level, n;
-  unsigned int divlength, low, high, lastpos, pos;
+  unsigned int divlength, chrlength, low, high, lastpos, pos;
   int index, *matches;
   int nmatches, i;
   char *label;
@@ -143,9 +143,9 @@ print_runlengths (IIT_T iit, char *divstring) {
     if (allocp == true) {
       FREE(label);
     }
-    IIT_interval_bounds(&low,&high,iit,index);
+    IIT_interval_bounds(&low,&high,&chrlength,iit,index,/*circular_typeint*/-1);
     cum[low] += n;
-    cum[high+1] -= n;
+    cum[high] -= n;
     
   }
   FREE(matches);

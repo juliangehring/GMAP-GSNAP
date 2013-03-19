@@ -1,4 +1,4 @@
-/* $Id: inbuffer.h 59606 2012-03-13 17:00:32Z twu $ */
+/* $Id: inbuffer.h 83593 2013-01-16 22:59:40Z twu $ */
 #ifndef INBUFFER_INCLUDED
 #define INBUFFER_INCLUDED
 #include <stdio.h>
@@ -9,6 +9,10 @@
 
 #ifdef HAVE_ZLIB
 #include <zlib.h>
+#endif
+
+#ifdef HAVE_BZLIB
+#include "bzip2.h"
 #endif
 
 
@@ -26,6 +30,9 @@ Inbuffer_new (int nextchar, FILE *input,
 	      FILE *input2,
 #ifdef HAVE_ZLIB
 	      gzFile gzipped, gzFile gzipped2,
+#endif
+#ifdef HAVE_BZLIB
+	      Bzip2_T bzipped, Bzip2_T bzipped2,
 #endif
 #ifdef HAVE_GOBY
 	      Gobyreader_T gobyreader,
@@ -52,7 +59,12 @@ extern unsigned int
 Inbuffer_fill_init (T this);
 
 extern Request_T
+#ifdef GSNAP
 Inbuffer_get_request (T this);
+#else
+Inbuffer_get_request (Sequence_T *usersegment, T this, bool user_pairalign_p);
+#endif
+
 
 extern Request_T
 Inbuffer_first_request (T this);

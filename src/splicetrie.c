@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 65571 2012-06-01 19:43:31Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 79302 2012-11-15 23:55:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -312,10 +312,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 		int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
-		Splicetype_T far_splicetype,
+		Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		int splicelength, int contlength, Splicetype_T far_splicetype,
 		Genomicpos_T chroffset, Genomicpos_T chrhigh,
-		Genomicpos_T chrpos, int genomiclength,
 		int *dynprogindex, Dynprog_T dynprog, 
 		char *revsequence1, char *revsequenceuc1,
 		int length1, int length2, int revoffset1, int revoffset2,
@@ -339,9 +338,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
     debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
     if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
       debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-      Dynprog_make_splicejunction_5(splicejunction,splicecoord,splicelength,contlength,far_splicetype,watsonp);
-      debug7(printf("length1 = %d, length2 = %d, chroffset = %u, chrpos = %u, genomiclength %d, splicecoord = %u\n",
-		    length1,length2,chroffset,chrpos,genomiclength,splicecoord));
+      Dynprog_make_splicejunction_5(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
+      debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
+		    length1,length2,chroffset,splicecoord));
       if (watsonp) {
 	spliceoffset2_anchor = revoffset2;
 	spliceoffset2_far = spliceoffset2_anchor - anchor_splicesite + splicecoord;
@@ -352,8 +351,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
       pairs = Dynprog_end5_splicejunction(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
 					  &nopens0,&nindels0,dynprog,revsequence1,revsequenceuc1,
 					  /*revsequence2*/&(splicejunction[length2-1]),/*revsequenceuc2*/&(splicejunction[length2-1]),
+					  /*revsequencealt2*/&(splicejunction_alt[length2-1]),
 					  length1,length2,revoffset1,spliceoffset2_anchor,spliceoffset2_far,
-					  chroffset,chrhigh,chrpos,genomiclength,
+					  chroffset,chrhigh,
 #ifdef PMAP
 					  queryaaseq,
 #endif
@@ -366,8 +366,8 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	debug7(printf("miss %d < threshold %d - %d",miss_score,*threshold_miss_score,obsmax_penalty));
 #if 0
 	/* Just use results from Dynprog_end5_splicejunction */
-	pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-					   genomiclength,watsonp,pairpool);
+	pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,
+					   watsonp,pairpool);
 #else
 	length_distal = length1 - contlength;
 #endif
@@ -403,8 +403,8 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 			  miss_score,*threshold_miss_score,obsmax_penalty,intron_length,shortest_intron_length));
 #if 0
 	    /* Just use results from Dynprog_end5_splicejunction */
-	    pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-					       genomiclength,watsonp,pairpool);
+	    pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,
+					       watsonp,pairpool);
 #else
 	    length_distal = length1 - contlength;
 #endif
@@ -434,9 +434,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
       debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
       if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
 	debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-	Dynprog_make_splicejunction_5(splicejunction,splicecoord,splicelength,contlength,far_splicetype,watsonp);
-	debug7(printf("length1 = %d, length2 = %d, chroffset = %u, chrpos = %u, genomiclength %d, splicecoord = %u\n",
-		      length1,length2,chroffset,chrpos,genomiclength,splicecoord));
+	Dynprog_make_splicejunction_5(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
+	debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
+		      length1,length2,chroffset,splicecoord));
 	if (watsonp) {
 	  spliceoffset2_anchor = revoffset2;
 	  spliceoffset2_far = spliceoffset2_anchor - anchor_splicesite + splicecoord;
@@ -447,8 +447,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	pairs = Dynprog_end5_splicejunction(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
 					    &nopens0,&nindels0,dynprog,revsequence1,revsequenceuc1,
 					    /*revsequence2*/&(splicejunction[length2-1]),/*revsequenceuc2*/&(splicejunction[length2-1]),
+					    /*revsequencealt2*/&(splicejunction_alt[length2-1]),
 					    length1,length2,revoffset1,spliceoffset2_anchor,spliceoffset2_far,
-					    chroffset,chrhigh,chrpos,genomiclength,
+					    chroffset,chrhigh,
 #ifdef PMAP
 					    queryaaseq,
 #endif
@@ -461,8 +462,7 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	  debug7(printf("miss %d < threshold %d - %d",miss_score,*threshold_miss_score,obsmax_penalty));
 #if 0
 	  /* Just use results from Dynprog_end5_splicejunction */
-	  pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-					     genomiclength,watsonp,pairpool);
+	  pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,watsonp,pairpool);
 #else
 	  length_distal = length1 - contlength;
 #endif
@@ -498,8 +498,7 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 			    miss_score,*threshold_miss_score,obsmax_penalty,intron_length,shortest_intron_length));
 #if 0
 	      /* Just use results from Dynprog_end5_splicejunction */
-	      pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-						 genomiclength,watsonp,pairpool);
+	      pairs = Dynprog_add_known_splice_5(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,watsonp,pairpool);
 #else
 	      length_distal = length1 - contlength;
 #endif
@@ -535,8 +534,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -549,8 +549,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -563,8 +564,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -577,8 +579,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -600,10 +603,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 		int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
-		Splicetype_T far_splicetype,
+		Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		int splicelength, int contlength, Splicetype_T far_splicetype,
 		Genomicpos_T chroffset, Genomicpos_T chrhigh,
-		Genomicpos_T chrpos, int genomiclength,
 		int *dynprogindex, Dynprog_T dynprog, 
 		char *sequence1, char *sequenceuc1,
 		int length1, int length2, int offset1, int offset2,
@@ -627,9 +629,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
     debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
     if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
       debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-      Dynprog_make_splicejunction_3(splicejunction,splicecoord,splicelength,contlength,far_splicetype,watsonp);
-      debug7(printf("length1 = %d, length2 = %d, chroffset = %u, chrpos = %u, genomiclength %d, splicecoord = %u\n",
-		    length1,length2,chroffset,chrpos,genomiclength,splicecoord));
+      Dynprog_make_splicejunction_3(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
+      debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
+		    length1,length2,chroffset,splicecoord));
       if (watsonp) {
 	spliceoffset2_anchor = offset2;
 	spliceoffset2_far = spliceoffset2_anchor - anchor_splicesite + splicecoord;
@@ -640,8 +642,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
       pairs = Dynprog_end3_splicejunction(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
 					  &nopens0,&nindels0,dynprog,sequence1,sequenceuc1,
 					  /*sequence2*/splicejunction,/*sequenceuc2*/splicejunction,
+					  /*sequencealt2*/splicejunction_alt,
 					  length1,length2,offset1,spliceoffset2_anchor,spliceoffset2_far,
-					  chroffset,chrhigh,chrpos,genomiclength,
+					  chroffset,chrhigh,
 #ifdef PMAP
 					  queryaaseq,
 #endif
@@ -654,8 +657,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	debug7(printf("miss %d < threshold %d - %d",miss_score,*threshold_miss_score,obsmax_penalty));
 #if 0
 	/* Just results of Dynprog_end3_splicejunction */
-	pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-					   genomiclength,watsonp,pairpool);
+	pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,watsonp,pairpool);
 #else
 	length_distal = length1 - contlength;
 #endif
@@ -691,8 +693,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 			  miss_score,*threshold_miss_score,obsmax_penalty,intron_length,shortest_intron_length));
 #if 0
 	    /* Just use results of Dynprog_end3_splicejunction */
-	    pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-					       genomiclength,watsonp,pairpool);
+	    pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,watsonp,pairpool);
 #else
 	    length_distal = length1 - contlength;
 #endif
@@ -722,9 +723,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
       debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
       if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
 	debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-	Dynprog_make_splicejunction_3(splicejunction,splicecoord,splicelength,contlength,far_splicetype,watsonp);
-	debug7(printf("length1 = %d, length2 = %d, chroffset = %u, chrpos = %u, genomiclength %d, splicecoord = %u\n",
-		      length1,length2,chroffset,chrpos,genomiclength,splicecoord));
+	Dynprog_make_splicejunction_3(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
+	debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
+		      length1,length2,chroffset,splicecoord));
 	if (watsonp) {
 	  spliceoffset2_anchor = offset2;
 	  spliceoffset2_far = spliceoffset2_anchor - anchor_splicesite + splicecoord;
@@ -735,8 +736,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	pairs = Dynprog_end3_splicejunction(&(*dynprogindex),&score,&nmatches0,&nmismatches0,
 					    &nopens0,&nindels0,dynprog,sequence1,sequenceuc1,
 					    /*sequence2*/splicejunction,/*sequenceuc2*/splicejunction,
+					    /*sequencealt2*/splicejunction_alt,
 					    length1,length2,offset1,spliceoffset2_anchor,spliceoffset2_far,
-					    chroffset,chrhigh,chrpos,genomiclength,
+					    chroffset,chrhigh,
 #ifdef PMAP
 					    queryaaseq,
 #endif
@@ -749,8 +751,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	  debug7(printf("miss %d < threshold %d - %d",miss_score,*threshold_miss_score,obsmax_penalty));
 #if 0
 	  /* Just use results of Dynprog_end3_splicejunction */
-	  pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-					     genomiclength,watsonp,pairpool);
+	  pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,watsonp,pairpool);
 #else
 	  length_distal = length1 - contlength;
 #endif
@@ -785,8 +786,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 			    miss_score,*threshold_miss_score,obsmax_penalty,intron_length,shortest_intron_length));
 #if 0
 	      /* Just use results of Dynprog_end3_splicejunction */
-	      pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,chrpos,
-						 genomiclength,watsonp,pairpool);
+	      pairs = Dynprog_add_known_splice_3(&length_distal,pairs,anchor_splicesite,splicecoord,chroffset,watsonp,pairpool);
 #else
 	      length_distal = length1 - contlength;
 #endif
@@ -822,8 +822,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -836,8 +837,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -850,8 +852,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -864,8 +867,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 				  &(*finalscore),&(*nmatches),&(*nmismatches),
 				  &(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				  &(*threshold_miss_score),obsmax_penalty,perfect_score,
-				  anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				  chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				  anchor_splicesite,splicejunction,splicejunction_alt,
+				  splicelength,contlength,far_splicetype,
+				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 				  queryaaseq,
@@ -885,10 +889,9 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
 		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
-		       Splicetype_T far_splicetype,
+		       Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		       int splicelength, int contlength, Splicetype_T far_splicetype,
 		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
-		       Genomicpos_T chrpos, int genomiclength,
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *revsequence1, char *revsequenceuc1,
 		       int length1, int length2, int revoffset1, int revoffset2,
@@ -919,8 +922,9 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
 				&(*finalscore),&(*nmatches),&(*nmismatches),
 				&(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				&(*threshold_miss_score),obsmax_penalty,perfect_score,
-				anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				anchor_splicesite,splicejunction,splicejunction_alt,
+				splicelength,contlength,far_splicetype,
+				chroffset,chrhigh,&(*dynprogindex),dynprog,
 				revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
 #ifdef PMAP
 				queryaaseq,
@@ -956,10 +960,9 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned i
 		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		       Genomicpos_T anchor_splicesite, char *splicejunction, int splicelength, int contlength,
-		       Splicetype_T far_splicetype,
+		       Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		       int splicelength, int contlength, Splicetype_T far_splicetype,
 		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
-		       Genomicpos_T chrpos, int genomiclength,
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *sequence1, char *sequenceuc1,
 		       int length1, int length2, int offset1, int offset2,
@@ -990,8 +993,9 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned i
 				&(*finalscore),&(*nmatches),&(*nmismatches),
 				&(*nopens),&(*nindels),&(*knownsplicep),&(*ambig_end_length),
 				&(*threshold_miss_score),obsmax_penalty,perfect_score,
-				anchor_splicesite,splicejunction,splicelength,contlength,far_splicetype,
-				chroffset,chrhigh,chrpos,genomiclength,&(*dynprogindex),dynprog,
+				anchor_splicesite,splicejunction,splicejunction_alt,
+				splicelength,contlength,far_splicetype,
+				chroffset,chrhigh,&(*dynprogindex),dynprog,
 				sequence1,sequenceuc1,length1,length2,offset1,offset2,
 #ifdef PMAP
 				queryaaseq,

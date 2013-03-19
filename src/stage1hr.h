@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 63195 2012-05-03 17:39:12Z twu $ */
+/* $Id: stage1hr.h 87096 2013-02-22 21:04:02Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -51,7 +51,7 @@ extern Stage3end_T *
 Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
 		    Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
 		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
-		    int maxpaths, double usermax_level_float, int subopt_levels,
+		    double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    Genomicpos_T shortsplicedist,
@@ -70,7 +70,7 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 		    Shortread_T queryseq5, Shortread_T queryseq3,
 		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
 		    Genome_T genome, Floors_T *floors_array,
-		    int maxpaths, double usermax_level_float, int subopt_levels,
+		    double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    Genomicpos_T shortsplicedist, int localsplicing_penalty, int distantsplicing_penalty,
@@ -84,13 +84,15 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 extern void
 Stage1hr_setup (int index1part_in, int index1interval_in, int spansize_in,
 		IIT_T chromosome_iit_in, int nchromosomes_in,
-		Genome_T genomealt, Mode_T mode_in,
+		Genome_T genomealt, Mode_T mode_in, int maxpaths_search_in,
 		int terminal_threshold_in,
 
 		Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
 		Genomicpos_T *splicedists_in, int nsplicesites_in,
 
-		bool novelsplicingp_in, bool knownsplicingp_in,	int shortsplicedist_known_in,
+		bool novelsplicingp_in, bool knownsplicingp_in,
+		int shortsplicedist_known_in, int shortsplicedist_novelend_in,
+		Genomicpos_T min_intronlength_in,
 
 		int nullgap_in, int maxpeelback_in, int maxpeelback_distalmedial_in,
 		int extramaterial_end_in, int extramaterial_paired_in,

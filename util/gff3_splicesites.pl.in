@@ -32,6 +32,8 @@ if (defined($opt_d)) {
 	while (defined($line = <>)) {
 	    if ($line =~ /^\#/) {
 		# Skip
+	    } elsif ($line !~ /\S/) {
+		# Skip blank line
 	    } else {
 		$line =~ s/\r\n/\n/;
 		push @lines,$line;
@@ -97,6 +99,8 @@ $last_transcript_id = "";
 while (defined($line = get_line())) {
     if ($line =~ /^\#/) {
 	# Skip
+    } elsif ($line !~ /\S/) {
+	# Skip blank line
     } else {
 	$line =~ s/\r\n/\n/;
 	chop $line;
@@ -297,8 +301,9 @@ sub print_exons {
     if ($strand eq "+") {
 	($starts,$ends) = get_intron_bounds_plus($exons);
 	for ($i = 0; $i < $nexons - 1; $i++) {
-	    $intron_length = $ {$starts}[$i] - $ {$ends}[$i] - 1;
-	    if (!defined($opt_d)) {
+	    if (($intron_length = $ {$starts}[$i] - $ {$ends}[$i] - 1) < 0) {
+		printf STDERR "gene %s, transcript %s, intron %d with donor at %s:%u and acceptor at %s:%u implies a negative intron length of %d...skipping\n",$gene_name,$transcript_id,$i+1,$chr,$ {$ends}[$i],$chr,$ {$starts}[$i],$intron_length;
+	    } elsif (!defined($opt_d)) {
 		printf ">%s.%s.exon%d/%d %s:%u..%u donor $intron_length\n",$gene_name,$transcript_id,$i+1,$nexons,$chr,$ {$ends}[$i],$ {$ends}[$i]+1;
 		printf ">%s.%s.exon%d/%d %s:%u..%u acceptor $intron_length\n",$gene_name,$transcript_id,$i+2,$nexons,$chr,$ {$starts}[$i]-1,$ {$starts}[$i];
 	    } else {
@@ -310,9 +315,9 @@ sub print_exons {
 
 		if (defined($opt_C) && donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 		    if (!defined($opt_Q)) {
-			printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.exon%d/%d on plus strand\n",
+			printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.exon%d/%d on plus strand\n",$intron_length,$gene_name,$transcript_id,$i+1,$nexons;
 		    }
-		    $intron_length,$gene_name,$transcript_id,$i+1,$nexons;
+		    
 		} elsif (defined($opt_R)) {
 		    if (donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 			printf ">%s.%s.exon%d/%d %s:%u..%u donor $intron_length",$gene_name,$transcript_id,$i+1,$nexons,$chr,$ {$ends}[$i],$ {$ends}[$i]+1;
@@ -329,9 +334,9 @@ sub print_exons {
 		    
 		if (defined($opt_C) && acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 		    if (!defined($opt_Q)) {
-			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.exon%d/%d on plus strand\n",
+			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.exon%d/%d on plus strand\n",$intron_length,$gene_name,$transcript_id,$i+2,$nexons;
 		    }
-		    $intron_length,$gene_name,$transcript_id,$i+2,$nexons;
+		    
 		} elsif (defined($opt_R)) {
 		    if (acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 			printf ">%s.%s.exon%d/%d %s:%u..%u acceptor $intron_length",$gene_name,$transcript_id,$i+2,$nexons,$chr,$ {$starts}[$i]-1,$ {$starts}[$i];
@@ -351,8 +356,9 @@ sub print_exons {
     } elsif ($strand eq "-") {
 	($starts,$ends) = get_intron_bounds_minus($exons);
 	for ($i = 0; $i < $nexons - 1; $i++) {
-	    $intron_length = $ {$starts}[$i] - $ {$ends}[$i] - 1;
-	    if (!defined($opt_d)) {
+	    if (($intron_length = $ {$starts}[$i] - $ {$ends}[$i] - 1) < 0) {
+		printf STDERR "gene %s, transcript %s, intron %d with donor at %s:%u and acceptor at %s:%u implies a negative intron length of %d...skipping\n",$gene_name,$transcript_id,$i+1,$chr,$ {$starts}[$i],$chr,$ {$ends}[$i],$intron_length;
+	    } elsif (!defined($opt_d)) {
 		printf ">%s.%s.exon%d/%d %s:%u..%u donor $intron_length\n",$gene_name,$transcript_id,$i+1,$nexons,$chr,$ {$starts}[$i],$ {$starts}[$i]-1;
 		printf ">%s.%s.exon%d/%d %s:%u..%u acceptor $intron_length\n",$gene_name,$transcript_id,$i+2,$nexons,$chr,$ {$ends}[$i]+1,$ {$ends}[$i];
 	    } else {
@@ -364,9 +370,9 @@ sub print_exons {
 
 		if (defined($opt_C) && donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 		    if (!defined($opt_Q)) {
-			printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.exon%d/%d on minus strand\n",
+			printf STDERR "Skipping non-canonical donor $donor_dinucl, intron length %d for %s.%s.exon%d/%d on minus strand\n",$intron_length,$gene_name,$transcript_id,$i+1,$nexons;
 		    }
-		    $intron_length,$gene_name,$transcript_id,$i+1,$nexons;
+		    
 		} elsif (defined($opt_R)) {
 		    if (donor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 			printf ">%s.%s.exon%d/%d %s:%u..%u donor $intron_length",$gene_name,$transcript_id,$i+1,$nexons,$chr,$ {$starts}[$i],$ {$starts}[$i]-1;
@@ -383,9 +389,9 @@ sub print_exons {
 		
 		if (defined($opt_C) && acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 		    if (!defined($opt_Q)) {
-			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.exon%d/%d on minus strand\n",
+			printf STDERR "Skipping non-canonical acceptor $acceptor_dinucl, intron length %d for %s.%s.exon%d/%d on minus strand\n",$intron_length,$gene_name,$transcript_id,$i+2,$nexons;
 		    }
-		    $intron_length,$gene_name,$transcript_id,$i+2,$nexons;
+		    
 		} elsif (defined($opt_R)) {
 		    if (acceptor_okay_p($donor_dinucl,$acceptor_dinucl) == 0) {
 			printf ">%s.%s.exon%d/%d %s:%u..%u acceptor $intron_length",$gene_name,$transcript_id,$i+2,$nexons,$chr,$ {$ends}[$i]+1,$ {$ends}[$i];

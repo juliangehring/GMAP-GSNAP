@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: datadir.c 46646 2011-09-07 03:13:14Z twu $";
+static char rcsid[] = "$Id: datadir.c 73988 2012-09-13 23:55:05Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -91,7 +91,8 @@ find_fileroot (char *genomesubdir, char *genomedir, char *dbroot) {
     } else {
       fprintf(stderr,"Unable to find genome %s in directory %s.\n",dbroot,genomedir);
       fprintf(stderr,"Make sure you have typed the genome correctly, or use the -D flag\n");
-      fprintf(stderr,"to specify a directory.  For example, '-D .' specifies this directory.\n");
+      fprintf(stderr,"(or the -F flag for cmetindex or atoiindex) to specify a directory.\n");
+      fprintf(stderr,"For example, '-D .' specifies this directory.\n");
       exit(9);
     }
   }

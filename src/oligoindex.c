@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex.c 64017 2012-05-14 22:35:15Z twu $";
+static char rcsid[] = "$Id: oligoindex.c 79521 2012-11-19 22:11:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -418,8 +418,25 @@ shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
 
 #ifndef PMAP
 void
+Oligoindex_dump (T this) {
+  Oligospace_T i;
+  char *nt;
+
+  for (i = 0; i < this->oligospace; i++) {
+    if (this->counts[i] == 0) {
+    } else {
+      nt = shortoligo_nt(i,this->indexsize);
+      printf("%s %d\n",nt,this->counts[i]);
+      FREE(nt);
+    }
+  }
+  return;
+}
+
+
+void
 Oligoindex_counts_dump (T this, int *counts) {
-  int i;
+  Oligospace_T i;
   char *nt;
 
   for (i = 0; i < this->oligospace; i++) {
@@ -436,7 +453,7 @@ Oligoindex_counts_dump (T this, int *counts) {
 
 bool
 Oligoindex_counts_equal (T this, int *counts) {
-  int i;
+  Oligospace_T i;
   char *nt;
 
   for (i = 0; i < this->oligospace; i++) {
@@ -1367,7 +1384,7 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions, bool *ove
 /* Logic of this procedure should match that of allocate_positions */
 static int
 store_positions (Genomicpos_T **pointers, bool *overabundant, 
-		 bool *inquery, int oligospace, int indexsize,
+		 bool *inquery, Oligospace_T oligospace, int indexsize,
 #ifdef PMAP
 		 Shortoligomer_T msb,
 #else
@@ -1738,11 +1755,14 @@ typedef struct Genomicdiag_T *Genomicdiag_T;
 /* Note: Be careful on totalpositions, because nhits may be < 0 */
 List_T
 Oligoindex_get_mappings (List_T diagonals,
-			 bool *coveredp, unsigned int **mappings, int *npositions,
+			 bool *coveredp, Genomicpos_T **mappings, int *npositions,
 			 int *totalpositions, bool *oned_matrix_p, int *maxnconsecutive, 
-			 T this, char *queryuc_ptr, int querylength, int genomiclength,
+			 T this, char *queryuc_ptr, int querylength,
+			 Genomicpos_T chrstart, Genomicpos_T chrend,
+			 Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
 			 Diagpool_T diagpool) {
-  int nhits, hit, diagi, diagi_adjustment, i;
+  int nhits, hit, diagi_adjustment, i;
+  Genomicpos_T diagi;
   int diag_lookback, suffnconsecutive;
 #ifdef PREV_MAXCONSECUTIVE
   int prev_querypos, prev_nhits;
@@ -1756,6 +1776,7 @@ Oligoindex_get_mappings (List_T diagonals,
   char *p;
   int in_counter = 0, querypos;
   Shortoligomer_T masked;
+  Genomicpos_T genomiclength, chrinit;
 
   void *item;
   struct Genomicdiag_T *genomicdiag;
@@ -1771,6 +1792,12 @@ Oligoindex_get_mappings (List_T diagonals,
 
   diag_lookback = this->diag_lookback;
   suffnconsecutive = this->suffnconsecutive;
+  genomiclength = chrend - chrstart;
+  if (plusp == true) {
+    chrinit = chrstart;
+  } else {
+    chrinit = (chrhigh - chroffset) - chrend;
+  }
 
 #ifdef PMAP
   genomicdiag = (struct Genomicdiag_T *) CALLOC(3*querylength+genomiclength+1,sizeof(struct Genomicdiag_T));
@@ -1846,10 +1873,14 @@ Oligoindex_get_mappings (List_T diagonals,
 	  diagi_adjustment = querylength - querypos;
 #endif
 	  for (hit = 0; hit < nhits; hit++) {
-	    diagi = mappings[querypos][hit] + diagi_adjustment;
+	    diagi = mappings[querypos][hit] + diagi_adjustment - chrinit;
 	    ptr = &(genomicdiag[diagi]);
 
+#ifdef PMAP
+	    assert(diagi <= 3*querylength+genomiclength);
+#else
 	    assert(diagi <= querylength+genomiclength);
+#endif
 
 	    if (ptr->i == 0) {
 	      /* Initialize */

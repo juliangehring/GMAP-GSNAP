@@ -1,4 +1,4 @@
-/* $Id: chimera.h 60937 2012-04-02 20:57:03Z twu $ */
+/* $Id: chimera.h 77641 2012-10-26 00:16:49Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -53,7 +53,7 @@ extern int
 Chimera_find_exonexon (int *found_cdna_direction, int *try_cdna_direction,
 		       char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		       char *comp, double *donor_prob, double *acceptor_prob,
-		       Stage3_T left_part, Stage3_T right_part, Genome_T genome, IIT_T chromosome_iit,
-		       int breakpoint_start, int breakpoint_end);
+		       Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
+		       IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end);
 #undef T
 #endif

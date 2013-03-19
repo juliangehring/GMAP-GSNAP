@@ -9,6 +9,8 @@ $last_transcript_id = "";
 while (defined($line = <>)) {
     if ($line =~ /^\#/) {
 	# Skip
+    } elsif ($line !~ /\S/) {
+	# Skip blank line
     } else {
 	$line =~ s/\r\n/\n/;
 	chop $line;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: result.c 63195 2012-05-03 17:39:12Z twu $";
+static char rcsid[] = "$Id: result.c 81292 2012-12-11 20:32:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -156,18 +156,18 @@ Result_free (T *old) {
       stage3 = (*old)->array[0];
       debug(printf("Freeing 0 stage3 %p and pairarray %p\n",
 		   stage3,Stage3_pairarray(stage3)));
-      Stage3_free(&stage3,/*free_pairarray_p*/true);
+      Stage3_free(&stage3);
 
       stage3 = (*old)->array[1];
       debug(printf("Freeing 1 stage3 %p, but not pairarray %p\n",
 		   stage3,Stage3_pairarray(stage3)));
-      Stage3_free(&stage3,/*free_pairarray_p*/false);
+      Stage3_free(&stage3);
       
       for (i = 2; i < (*old)->npaths; i++) {
 	stage3 = (*old)->array[i];
 	debug(printf("Freeing %d stage3 %p and pairarray %p\n",
 		     i,stage3,Stage3_pairarray(stage3)));
-	Stage3_free(&stage3,/*free_pairarray_p*/true);
+	Stage3_free(&stage3);
       }
 
       FREE_OUT((*old)->array);
@@ -176,7 +176,7 @@ Result_free (T *old) {
       if ((*old)->array) {
 	for (i = 0; i < (*old)->npaths; i++) {
 	  stage3 = (*old)->array[i];
-	  Stage3_free(&stage3,/*free_pairarray_p*/true);
+	  Stage3_free(&stage3);
 	}
 	FREE_OUT((*old)->array);
       }

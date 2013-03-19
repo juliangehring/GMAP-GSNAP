@@ -166,6 +166,7 @@ AC_TYPE_OFF_T
 AC_CHECK_TYPES([caddr_t])
 AC_CHECK_SIZEOF(unsigned long)
 AC_CHECK_SIZEOF(unsigned long long)
+AC_CHECK_SIZEOF(off_t)
 
 # Checks for library functions.
 #AC_FUNC_MALLOC -- Causes use of rpl_malloc
@@ -320,40 +321,45 @@ esac
 AC_SUBST(ZLIB_LIBS)
 
 
-# Samtools package
+# bzip2 package
 
-AC_MSG_CHECKING(for samtools library)
-AC_ARG_WITH([samtools],
-            AC_HELP_STRING([--with-samtools=DIR],
-                           [Location of samtools header and library files (both in DIR) (optional)]),
-            [answer="$withval"],
-            [answer=""])
-if test x"$answer" = x; then
-  SAMTOOLS_CFLAGS=""
-  SAMTOOLS_LDFLAGS=""
-  SAMTOOLS_LIBS=""
-  AC_MSG_RESULT(disabled)
-  samtools=false
-else
-  if test x$have_zlib = xno; then
-     SAMTOOLS_CFLAGS=""
-     SAMTOOLS_LDFLAGS=""
-     SAMTOOLS_LIBS=""
-     AC_MSG_RESULT(enabled, but zlib not enabled)
-     samtools=false
-  else
-     AC_DEFINE(HAVE_SAMTOOLS,1,[Define to 1 if you have a working Samtools library.])
-     SAMTOOLS_CFLAGS="-I$withval"
-     SAMTOOLS_LDFLAGS="-L$withval"
-     SAMTOOLS_LIBS="-lbam"
-     AC_MSG_RESULT(enabled)
-     samtools=true
-  fi
-fi
-AC_SUBST(SAMTOOLS_CFLAGS)
-AC_SUBST(SAMTOOLS_LDFLAGS)
-AC_SUBST(SAMTOOLS_LIBS)
-AM_CONDITIONAL([SAMTOOLS], [test "x$samtools" = xtrue])
+AC_MSG_CHECKING(for bzlib support)
+AC_ARG_ENABLE([bzlib],
+              AC_HELP_STRING([--enable-bzlib],
+                             [Enable bzlib support (option needed for uncompressing bzip2 files) (default=yes)]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+   xno)
+   AC_MSG_RESULT(disabled)
+   BZLIB_LIBS=""
+   have_bzlib=no
+   ;;
+
+   *)
+   AC_MSG_RESULT(enabled)
+   failed=0;
+   passed=0;
+   AC_CHECK_HEADER(bzlib.h,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(bz2,BZ2_bzReadOpen,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(bz2,BZ2_bzRead,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_CHECK_LIB(bz2,BZ2_bzReadClose,passed=`expr $passed + 1`,failed=`expr $failed + 1`)
+   AC_MSG_CHECKING(if bzlib package is complete)
+   if test $failed -gt 0
+   then
+      AC_MSG_RESULT(no -- some components failed test)
+      BZLIB_LIBS=""
+      have_bzlib=no
+   else
+      AC_MSG_RESULT(working)
+      AC_DEFINE(HAVE_BZLIB,1,[Define to 1 if you have a working bzlib library.])
+      BZLIB_LIBS="-lbz2"
+      have_bzlib=yes
+   fi
+   ;;
+
+esac
+AC_SUBST(BZLIB_LIBS)
 
 
 # Goby package

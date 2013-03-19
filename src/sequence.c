@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 48861 2011-10-01 22:37:54Z twu $";
+static char rcsid[] = "$Id: sequence.c 83593 2013-01-16 22:59:40Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -256,7 +256,7 @@ static char Sequence2[HALFLEN+3]; /* 1 at end for '\0' and 2 extra in cyclic par
 
 static char *Firsthalf;
 static char *Secondhalf;
-static int Initc = '\0';
+/* static int Initc = '\0'; */
 
 
 /* The first element of Sequence is always the null character, to mark
@@ -308,6 +308,35 @@ Sequence_input_init_gzip (gzFile fp) {
   Secondhalf = &(Sequence2[0]);
 
   while (okayp == false && (c = gzgetc(fp)) != EOF) {
+    debug(printf("Read character %c\n",c));
+    if (iscntrl(c)) {
+#ifdef DASH
+    } else if (c == DASH) {
+#endif
+    } else if (isspace(c)) {
+    } else {
+      okayp = true;
+    }
+  }
+
+  debug(printf("Returning initial character %c\n",c));
+  return c;
+}
+#endif
+
+#ifdef HAVE_BZLIB
+/* Returns '@', '>', or '<' if FASTA file, first sequence char if not */
+int
+Sequence_input_init_bzip2 (Bzip2_T fp) {
+  int c;
+  bool okayp = false;
+
+  Header[0] = '\0';
+  Sequence[0] = '\0';
+  Firsthalf = &(Sequence1[0]);
+  Secondhalf = &(Sequence2[0]);
+
+  while (okayp == false && (c = bzgetc(fp)) != EOF) {
     debug(printf("Read character %c\n",c));
     if (iscntrl(c)) {
 #ifdef DASH
@@ -1222,7 +1251,7 @@ Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles
 /* This is intended for user genomicseg, which will start with
    standard FASTA ">" */
 T
-Sequence_read_unlimited (FILE *input) {
+Sequence_read_unlimited (int *nextchar, FILE *input) {
   T new;
   Intlist_T intlist = NULL;
   char *p;
@@ -1230,36 +1259,37 @@ Sequence_read_unlimited (FILE *input) {
   bool eolnp;
 
   if (feof(input)) {
+    *nextchar = EOF;
     return NULL;
   }
 
-  if (Initc == '\0') {
-    if ((Initc = Sequence_input_init(input)) == EOF) {
+  if (*nextchar == '\0') {
+    if ((*nextchar = Sequence_input_init(input)) == EOF) {
+      *nextchar = EOF;
       return NULL;
     }
   }
 
   new = (T) MALLOC_IN(sizeof(*new));
 
-  if (Initc != '>' /* && Initc != '<' */) {
+  if (*nextchar != '>' /* && *nextchar != '<' */) {
     new->firstp = true;		/* by default */
     blank_header(new);
-    Sequence[startpos++] = (char) Initc;
+    Sequence[startpos++] = (char) *nextchar;
     maxseqlen--;
   } else if (input_header(input,new) == NULL) {
     /* File ends after >.  Don't process. */
     FREE_IN(new);
     return NULL;
-  } else if (Initc == '>') {
+  } else if (*nextchar == '>') {
     new->firstp = true;
 #if 0
-  } else if (Initc == '<') {
+  } else if (*nextchar == '<') {
     new->firstp = false;
 #endif
   } else {
     abort();
   }
-
 
   /* Don't touch Sequence[0], because subsequent calls to
      Sequence_read depend on it being '\0'. */
@@ -1307,7 +1337,7 @@ Sequence_read_unlimited (FILE *input) {
     new->skiplength = 0;
 
     /* Important to initialize for subsequent cDNA reads */
-    Initc = '\0';
+    *nextchar = '\0';
 
     return new;
   }

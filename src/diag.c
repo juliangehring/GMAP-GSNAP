@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c 51052 2011-10-28 20:00:28Z twu $";
+static char rcsid[] = "$Id: diag.c 79302 2012-11-15 23:55:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -35,7 +35,7 @@ static char rcsid[] = "$Id: diag.c 51052 2011-10-28 20:00:28Z twu $";
 
 #ifndef USE_DIAGPOOL
 T
-Diag_new (int diagonal, int querystart, int queryend, int nconsecutive) {
+Diag_new (Genomicpos_T diagonal, int querystart, int queryend, int nconsecutive) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->diagonal = diagonal;
@@ -54,7 +54,7 @@ Diag_free (T *old) {
 }
 #endif
 
-int
+Genomicpos_T
 Diag_diagonal (T this) {
   return this->diagonal;
 }
@@ -446,25 +446,39 @@ Diag_range (int *start, int *end, List_T diagonals, int querylength) {
 
 
 int
-Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T diagonals,
-		     int genomiclength, int querylength, bool debug_graphic_p,
-		     bool diagnosticp, char *queryuc_ptr, char *genomicuc_ptr) {
-  int nunique, ndiagonals, diagonal, i, j;
-  int querypos, position;
+Diag_compute_bounds (Genomicpos_T *minactive, Genomicpos_T *maxactive, List_T diagonals,
+		     int querylength, bool debug_graphic_p,
+		     Genomicpos_T chrstart, Genomicpos_T chrend,
+		     Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp) {
+  int nunique, ndiagonals, i, j;
+  Genomicpos_T diagonal;
+  Genomicpos_T genomiclength, position, chrinit, chrterm;
+  int querypos;
   T *array, diag;
   int activestart, activeend;
   List_T gooddiagonals = NULL, p;
   
+  genomiclength = chrend - chrstart;
+
+  if (plusp == true) {
+    chrinit = chrstart;
+    chrterm = chrend;
+  } else {
+    chrinit = (chrhigh - chroffset) - chrend;
+    chrterm = (chrhigh - chroffset) - chrstart;
+  }
+
   /* Sort diagonals */
   if ((ndiagonals = List_length(diagonals)) == 0) {
     nunique = 0;
     for (querypos = 0; querypos < querylength; querypos++) {
-      minactive[querypos] = 0;
-      maxactive[querypos] = genomiclength;
+      minactive[querypos] = chrinit;
+      maxactive[querypos] = chrterm;
     }
+
   } else {
     if (debug_graphic_p == true) {
-      printf("plot(c(%d,%d),c(%d,%d),type=\"n\",xlab=\"Query\",ylab=\"Genomic\")\n",0,querylength,0,genomiclength);
+      printf("plot(c(%d,%d),c(%d,%d),type=\"n\",xlab=\"Query\",ylab=\"Genomic\")\n",0,querylength,chrstart,chrend);
     }
 
     assign_scores(diagonals,querylength);
@@ -543,15 +557,15 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
     for ( ; querypos < array[0]->queryend; querypos++) {
 #ifdef PMAP
       if (diagonal + 3*querypos < EXTRA_BOUNDS) {
-	minactive[querypos] = 0U;
+	minactive[querypos] = chrinit;
       } else {
-	minactive[querypos] = (unsigned int) (diagonal + 3*querypos - EXTRA_BOUNDS);
+	minactive[querypos] = (Genomicpos_T) (chrinit + diagonal + 3*querypos - EXTRA_BOUNDS);
       }
 #else
       if (diagonal + querypos < EXTRA_BOUNDS) {
-	minactive[querypos] = 0U;
+	minactive[querypos] = chrinit;
       } else {
-	minactive[querypos] = (unsigned int) (diagonal + querypos - EXTRA_BOUNDS);
+	minactive[querypos] = (Genomicpos_T) (chrinit + diagonal + querypos - EXTRA_BOUNDS);
       }
 #endif
       debug1(printf("to first diagonal: minactive at querypos %d is %u\n",querypos,minactive[querypos]));
@@ -568,15 +582,15 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 	for ( ; querypos <= array[j]->queryend; querypos++) {
 #ifdef PMAP
 	  if (diagonal + 3*querypos < EXTRA_BOUNDS) {
-	    minactive[querypos] = 0U;
+	    minactive[querypos] = chrinit;
 	  } else {
-	    minactive[querypos] = (unsigned int) (diagonal + 3*querypos - EXTRA_BOUNDS);
+	    minactive[querypos] = (Genomicpos_T) (chrinit + diagonal + 3*querypos - EXTRA_BOUNDS);
 	  }
 #else
 	  if (diagonal + querypos < EXTRA_BOUNDS) {
-	    minactive[querypos] = 0U;
+	    minactive[querypos] = chrinit;
 	  } else {
-	    minactive[querypos] = (unsigned int) (diagonal + querypos - EXTRA_BOUNDS);
+	    minactive[querypos] = (Genomicpos_T) (chrinit + diagonal + querypos - EXTRA_BOUNDS);
 	  }
 #endif
 	  debug1(printf("middle diagonals: minactive at querypos %d is %u\n",querypos,minactive[querypos]));
@@ -589,15 +603,15 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
     for ( ; querypos < querylength; querypos++) {
 #ifdef PMAP
       if (diagonal + 3*querypos < EXTRA_BOUNDS) {
-	minactive[querypos] = 0U;
+	minactive[querypos] = chrinit;
       } else {
-	minactive[querypos] = (unsigned int) (diagonal + 3*querypos - EXTRA_BOUNDS);
+	minactive[querypos] = (Genomicpos_T) (chrinit + diagonal + 3*querypos - EXTRA_BOUNDS);
       }
 #else
       if (diagonal + querypos < EXTRA_BOUNDS) {
-	minactive[querypos] = 0U;
+	minactive[querypos] = chrinit;
       } else {
-	minactive[querypos] = (unsigned int) (diagonal + querypos - EXTRA_BOUNDS);
+	minactive[querypos] = (Genomicpos_T) (chrinit + querypos - EXTRA_BOUNDS);
       }
 #endif
       debug1(printf("to end of query: minactive at querypos %d is %u\n",querypos,minactive[querypos]));
@@ -607,7 +621,7 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
     /* Set maxactive */
 
     for (querypos = querylength-1; querypos > activeend; --querypos) {
-      maxactive[querypos] = genomiclength;
+      maxactive[querypos] = chrterm;
       debug1(printf("active end: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
     }
 
@@ -615,15 +629,15 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
     for ( ; querypos > array[nunique-1]->querystart; --querypos) {
 #ifdef PMAP
       if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
-	maxactive[querypos] = genomiclength;
+	maxactive[querypos] = chrterm;
       } else {
-	maxactive[querypos] = (unsigned int) position;
+	maxactive[querypos] = (Genomicpos_T) chrinit + position;
       }
 #else
       if ((position = diagonal + querypos + EXTRA_BOUNDS) > genomiclength) {
-	maxactive[querypos] = genomiclength;
+	maxactive[querypos] = chrterm;
       } else {
-	maxactive[querypos] = (unsigned int) position;
+	maxactive[querypos] = (Genomicpos_T) chrinit + position;
       }
 #endif
       debug1(printf("to last diagonal: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
@@ -640,15 +654,15 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
 	for ( ; querypos >= array[j]->querystart; --querypos) {
 #ifdef PMAP
 	  if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
-	    maxactive[querypos] = genomiclength;
+	    maxactive[querypos] = chrterm;
 	  } else {
-	    maxactive[querypos] = (unsigned int) position;
+	    maxactive[querypos] = (Genomicpos_T) chrinit + position;
 	  }
 #else
 	  if ((position = diagonal + querypos + EXTRA_BOUNDS) > genomiclength) {
-	    maxactive[querypos] = genomiclength;
+	    maxactive[querypos] = chrterm;
 	  } else {
-	    maxactive[querypos] = (unsigned int) position;
+	    maxactive[querypos] = (Genomicpos_T) chrinit + position;
 	  }
 #endif
 	  debug1(printf("middle diagonals: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
@@ -661,15 +675,15 @@ Diag_compute_bounds (unsigned int *minactive, unsigned int *maxactive, List_T di
     for ( ; querypos >= 0; --querypos) {
 #ifdef PMAP
       if ((position = diagonal + 3*querypos + EXTRA_BOUNDS) > genomiclength) {
-	maxactive[querypos] = genomiclength;
+	maxactive[querypos] = chrterm;
       } else {
-	maxactive[querypos] = (unsigned int) position;
+	maxactive[querypos] = (Genomicpos_T) chrinit + position;
       }
 #else
       if ((position = diagonal + querypos + EXTRA_BOUNDS) > genomiclength) {
-	maxactive[querypos] = genomiclength;
+	maxactive[querypos] = chrterm;
       } else {
-	maxactive[querypos] = (unsigned int) position;
+	maxactive[querypos] = (Genomicpos_T) chrinit + position;
       }
 #endif
       debug1(printf("to beginning of query: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));

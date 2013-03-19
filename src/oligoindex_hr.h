@@ -12,9 +12,8 @@ extern void
 Oligoindex_hr_setup (UINT4 *ref_blocks_in, Mode_T mode_in);
 
 extern void
-Oligoindex_hr_tally (T this, Genomicpos_T genomicstart, Genomicpos_T genomicend,
-		     Genomicpos_T mappingstart, Genomicpos_T mappingend, bool plusp,
-		     char *queryuc_ptr, int querylength, int sequencepos, int genestrand);
+Oligoindex_hr_tally (T this, Genomicpos_T mappingstart, Genomicpos_T mappingend, bool plusp,
+		     char *queryuc_ptr, int querylength, Genomicpos_T chrpos, int genestrand);
 
 #undef T
 #endif

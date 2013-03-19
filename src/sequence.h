@@ -1,4 +1,4 @@
-/* $Id: sequence.h 46069 2011-08-30 20:43:46Z twu $ */
+/* $Id: sequence.h 83593 2013-01-16 22:59:40Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -7,6 +7,11 @@
 #ifdef HAVE_ZLIB
 #include <zlib.h>
 #endif
+
+#ifdef HAVE_BZLIB
+#include "bzip2.h"
+#endif
+
 
 #ifdef PMAP
 #define MAXSEQLEN 300000
@@ -30,6 +35,11 @@ Sequence_input_init (FILE *fp);
 #ifdef HAVE_ZLIB
 extern int
 Sequence_input_init_gzip (gzFile fp);
+#endif
+
+#ifdef HAVE_BZLIB
+extern int
+Sequence_input_init_bzip2 (Bzip2_T fp);
 #endif
 
 extern char *
@@ -69,7 +79,7 @@ Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles
 
 
 extern T
-Sequence_read_unlimited (FILE *input);
+Sequence_read_unlimited (int *nextchar, FILE *input);
 #ifdef PMAP
 extern T
 Sequence_convert_to_nucleotides (T this);

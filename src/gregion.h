@@ -1,4 +1,4 @@
-/* $Id: gregion.h 65571 2012-06-01 19:43:31Z twu $ */
+/* $Id: gregion.h 79302 2012-11-15 23:55:58Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
@@ -23,6 +23,12 @@ extern Genomicpos_T
 Gregion_genomicend (T this);
 
 extern Genomicpos_T
+Gregion_chrstart (T this);
+
+extern Genomicpos_T
+Gregion_chrend (T this);
+
+extern Genomicpos_T
 Gregion_genomiclength (T this);
 
 extern bool
@@ -39,9 +45,6 @@ Gregion_chrnum (T this);
 
 extern char *
 Gregion_chr (T this, IIT_T chromosome_iit);
-
-extern Genomicpos_T
-Gregion_chrpos (T this);
 
 extern Genomicpos_T
 Gregion_chroffset (T this);
@@ -80,11 +83,11 @@ Gregion_ncovered (T this);
 extern T
 Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
 	     bool plusp, int genestrand, IIT_T chromosome_iit, int querystart, int queryend, 
-	     int querylength, int matchsize, int trimstart, int trimend);
+	     int querylength, int matchsize, int trimstart, int trimend, int circular_typeint);
 
 extern T
 Gregion_new_from_matches (Match_T match5, Match_T match3, int genestrand, IIT_T chromosome_iit,
-			  int querylength, int matchsize, int trimstart, int trimend);
+			  int querylength, int matchsize, int trimstart, int trimend, int circular_typeint);
 
 extern List_T
 Gregion_filter_unique (List_T gregionlist);

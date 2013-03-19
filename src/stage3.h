@@ -1,4 +1,4 @@
-/* $Id: stage3.h 65571 2012-06-01 19:43:31Z twu $ */
+/* $Id: stage3.h 69180 2012-07-18 00:29:55Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -75,6 +75,8 @@ extern int
 Stage3_querystart (T this);
 extern int
 Stage3_queryend (T this);
+extern void
+Stage3_print_ends (T this);
 extern Chrnum_T
 Stage3_chrnum (T this);
 extern Genomicpos_T
@@ -283,7 +285,7 @@ Stage3_direct (Gregion_T gregion,
 #endif
 
 extern bool
-Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
+Stage3_mergeable (bool *singlep, bool *dualbreakp, int *queryjump, Genomicpos_T *genomejump,
 		  Stage3_T firstpart, Stage3_T secondpart,
 		  int exonexonpos, int queryntlength, int chimera_direction,
 		  double donor_prob, double acceptor_prob);
@@ -317,7 +319,8 @@ Stage3_merge_local_single (T this_left, T this_right,
 
 extern void
 Stage3_merge_local_splice (T this_left, T this_right, char comp,
-			   int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+			   int minpos1, int maxpos1, int minpos2, int maxpos2,
+			   int queryjump, Genomicpos_T genomejump, int cdna_direction,
 #ifdef PMAP
 			   char *queryaaseq_ptr,
 #endif

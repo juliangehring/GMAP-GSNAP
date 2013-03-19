@@ -1,4 +1,4 @@
-/* $Id: pair.h 68834 2012-07-12 18:59:13Z twu $ */
+/* $Id: pair.h 69180 2012-07-18 00:29:55Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -39,6 +39,9 @@ extern bool
 Pair_shortexonp (T this);
 extern void
 Pair_set_shortexonp (T this);
+extern void
+Pair_print_ends (List_T pairs);
+
 extern void
 Pair_set_genomepos (struct Pair_T *pairarray, int npairs, Genomicpos_T chrpos,
 		    Genomicpos_T genomiclength, bool watsonp);

@@ -1,4 +1,4 @@
-/* $Id: indexdb.h 56758 2012-01-31 03:54:16Z twu $ */
+/* $Id: indexdb.h 84074 2013-01-23 00:19:09Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -118,7 +118,7 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
 
 extern void
 Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetscompfile, Positionsptr_T *offsets,
-			 unsigned long oligospace, int blocksize);
+			 Oligospace_T oligospace, int blocksize);
 
 extern void
 Indexdb_write_offsets (char *gammaptrsfile, char *offsetscompfile, FILE *sequence_fp, IIT_T chromosome_iit,

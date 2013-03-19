@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 68085 2012-07-04 04:03:26Z twu $";
+static char rcsid[] = "$Id: stage3.c 80883 2012-12-06 18:21:43Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -439,6 +439,12 @@ Stage3_querystart (T this) {
 int
 Stage3_queryend (T this) {
   return Pair_querypos(&(this->pairarray[this->npairs-1]));
+}
+
+void
+Stage3_print_ends (T this) {
+  Pair_print_ends(this->pairs);
+  return;
 }
 
 
@@ -932,10 +938,11 @@ get_genomic_nt (int genomicpos, int genomiclength,
   char c2;
   Genomicpos_T pos;
 
-  if (genomicpos < 0) {
+  /* Need to allow genomicpos < 0 and genomicpos >= genomiclength for iteration on finding chimeras */
+  if (use_genomicseg_p == true && genomicpos < 0) {
     return '*';
 
-  } else if (genomicpos >= genomiclength) {
+  } else if (use_genomicseg_p == true && genomicpos >= genomiclength) {
     return '*';
 
   } else if (use_genomicseg_p) {
@@ -4071,8 +4078,8 @@ Stage3_merge_chimera (T this_left, T this_right,
 #ifdef PMAP
 			    queryaaseq_ptr,
 #endif
-			    queryseq,/*genomicseg_ptr*/NULL,genome,pairpool,/*gaplength*/0,
-			    ngap);
+			    queryseq,/*genomicseg_ptr*/NULL,genome,pairpool,
+			    /*gaplength*/0,ngap);
   }
 
   return;
@@ -10309,14 +10316,14 @@ Stage3_direct (Gregion_T gregion,
  ************************************************************************/
 
 bool
-Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
+Stage3_mergeable (bool *singlep, bool *dualbreakp, int *queryjump, Genomicpos_T *genomejump,
 		  Stage3_T firstpart, Stage3_T secondpart,
 		  int breakpoint, int queryntlength, int chimera_direction,
 		  double donor_prob, double acceptor_prob) {
   Pair_T end1, start2;
   bool watsonp, connectablep = false;
   Genomicpos_T endchrpos1, startchrpos2;
-  int queryjump, genomejump, jumpdiff;
+  int jumpdiff;
 
   assert(firstpart->pairs != NULL);
   assert(secondpart->pairs != NULL);
@@ -10339,7 +10346,7 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
 
       debug10(printf("? connectable, watson: endchrpos1 %u versus startchrpos2 %u\n",endchrpos1,startchrpos2));
       if (endchrpos1 < startchrpos2) {
-	*genomegap = startchrpos2 - endchrpos1 - 1;
+	*genomejump = startchrpos2 - endchrpos1 - 1;
 	if (startchrpos2 < endchrpos1 + MERGELENGTH) {
 	  connectablep = true;
 	} else if (donor_prob > DONOR_THRESHOLD && acceptor_prob >= ACCEPTOR_THRESHOLD &&
@@ -10356,7 +10363,7 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
 
       debug10(printf("? connectable, crick: startchrpos2 %u versus endchrpos1 %u\n",startchrpos2,endchrpos1));
       if (startchrpos2 < endchrpos1) {
-	*genomegap = endchrpos1 - startchrpos2 - 1;
+	*genomejump = endchrpos1 - startchrpos2 - 1;
 	if (endchrpos1 < startchrpos2 + MERGELENGTH) {
 	  connectablep = true;
 	} else if (donor_prob > DONOR_THRESHOLD && acceptor_prob >= ACCEPTOR_THRESHOLD &&
@@ -10369,15 +10376,14 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
     if (connectablep == false) {
       return false;
     } else {
-      queryjump = start2->querypos - end1->querypos - 1;
-      genomejump = *genomegap;
-      debug10(printf("mergeable: queryjump = %d - %d - 1 = %d\n",start2->querypos,end1->querypos,queryjump));
-      debug10(printf("mergeable: genomejump = %d\n",genomejump));
+      *queryjump = start2->querypos - end1->querypos - 1;
+      debug10(printf("mergeable: queryjump = %d - %d - 1 = %d\n",start2->querypos,end1->querypos,*queryjump));
+      debug10(printf("mergeable: genomejump = %d\n",*genomejump));
 
-      if (queryjump > genomejump) {
-	jumpdiff = queryjump - genomejump;
+      if (*queryjump > *genomejump) {
+	jumpdiff = *queryjump - *genomejump;
       } else {
-	jumpdiff = genomejump - queryjump;
+	jumpdiff = *genomejump - *queryjump;
       }
 
       /* Follows logic of assign_gap_types somewhat */
@@ -10385,7 +10391,7 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, Genomicpos_T *genomegap,
       if (jumpdiff < MININTRONLEN) {
 	debug10(printf("  Gap is a single gap\n"));
 	*singlep = true;
-      } else if (queryjump > 9) {
+      } else if (*queryjump > 9) {
 	*dualbreakp = true;
       }
 
@@ -10408,7 +10414,7 @@ Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
 
   int nconsecutive_mismatches;
   int querypos, querydp5, genomedp5;
-  Genomicpos_T genomepos, genomiclength;
+  Genomicpos_T genomepos, genomiclength, pos;
   char c, c_upper, g, comp;
   bool mismatchp;
 
@@ -10440,13 +10446,13 @@ Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
   genomiclength = this->stage1_genomiclength;
 
   if (this->watsonp == true) {
-    /* pos = this->chroffset + this->chrpos + genomepos; */
-    debug10(printf("watsonp on left is true.  pos is %u\n",pos));
+    pos = this->chroffset + this->chrpos + genomepos;
+    debug10(printf("watsonp on left is true.  pos is %u.  goal querypos is %d\n",genomepos,goal));
 
     querypos++;
     genomepos++;
-    /* pos++; */
-    while (querypos < goal) {
+    pos++;
+    while (querypos < goal && pos <= this->chrhigh) {
       c = queryseq_ptr[querypos];
       c_upper = queryuc_ptr[querypos];
       /* g = Genome_get_char(genome,pos); */
@@ -10460,18 +10466,18 @@ Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
 	  comp = MISMATCH_COMP;
 	}
 	debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
-		       querypos,pos,c,g));
+		       querypos,genomepos,c,g));
 	path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
       }
       querypos++;
       genomepos++;
-      /* pos++; */
+      pos++;
     }
 
     if (max_extend_p == true) {
       debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
       nconsecutive_mismatches = 0;
-      while (querypos < querylength && nconsecutive_mismatches < 3) {
+      while (querypos < querylength && pos <= this->chrhigh && nconsecutive_mismatches < 3) {
 	c = queryseq_ptr[querypos];
 	c_upper = queryuc_ptr[querypos];
 	/* g = Genome_get_char(genome,pos); */
@@ -10487,23 +10493,24 @@ Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
 	    nconsecutive_mismatches += 1;
 	  }
 	  debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
-			 querypos,pos,c,g));
+			 querypos,genomepos,c,g));
 	  path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
 	}
 	querypos++;
 	genomepos++;
-	/* pos++; */
+	pos++;
       }
     }
 
   } else {
-    /* pos = this->chroffset + this->chrpos + (this->stage1_genomiclength - 1) - genomepos; */
-    debug10(printf("watsonp on left is false.  pos is %u\n",pos));
+    pos = this->chroffset + this->chrpos + (this->stage1_genomiclength - 1) - genomepos;
+    debug10(printf("watsonp on left is false.  pos is %u.  querypos is %d.  want to go up to goal querypos %d\n",
+		   genomepos,querypos,goal));
 
     querypos++;
     genomepos++;
-    /* pos--; */
-    while (querypos < goal) {
+    pos--;
+    while (querypos < goal && pos != this->chroffset - 1U) {
       c = queryseq_ptr[querypos];
       c_upper = queryuc_ptr[querypos];
       /* g = complCode[(int) Genome_get_char(genome,pos)]; */
@@ -10517,18 +10524,18 @@ Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
 	  comp = MISMATCH_COMP;
 	}
 	debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
-		       querypos,pos,c,g));
+		       querypos,genomepos,c,g));
 	path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
       }
       querypos++;
       genomepos++;
-      /* pos--; */
+      pos--;
     }
 
     if (max_extend_p == true) {
       debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
       nconsecutive_mismatches = 0;
-      while (querypos < querylength && nconsecutive_mismatches < 3) {
+      while (querypos < querylength && pos != this->chroffset - 1U && nconsecutive_mismatches < 3) {
 	c = queryseq_ptr[querypos];
 	c_upper = queryuc_ptr[querypos];
 	/* g = complCode[(int) Genome_get_char(genome,pos)]; */
@@ -10544,12 +10551,12 @@ Stage3_extend_right (T this, int goal, Sequence_T queryseq, int querylength,
 	    nconsecutive_mismatches += 1;
 	  }
 	  debug10(printf("At querypos %d and pos %u on left, have %c and %c\n",
-			 querypos,pos,c,g));
+			 querypos,genomepos,c,g));
 	  path = Pairpool_push(path,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
 	}
 	querypos++;
 	genomepos++;
-	/* pos--; */
+	pos--;
       }
     }
   }
@@ -10588,7 +10595,7 @@ Stage3_extend_left (T this, int goal, Sequence_T queryseq,
 
   int nconsecutive_mismatches;
   int querypos, querydp3, genomedp3;
-  Genomicpos_T genomepos, genomiclength;
+  Genomicpos_T genomepos, genomiclength, pos;
   char c, c_upper, g, comp;
   bool mismatchp;
 
@@ -10618,13 +10625,13 @@ Stage3_extend_left (T this, int goal, Sequence_T queryseq,
   genomiclength = this->stage1_genomiclength;
   
   if (this->watsonp == true) {
-    /* pos = this->chroffset + this->chrpos + genomepos; */
-    debug10(printf("watsonp on right is true.  pos is %u\n",pos));
+    pos = this->chroffset + this->chrpos + genomepos;
+    debug10(printf("watsonp on right is true.  pos is %u.  goal querypos is %d\n",genomepos,goal));
 
     querypos--;
     genomepos--;
-    /* pos--; */
-    while (querypos >= goal) {
+    pos--;
+    while (querypos >= goal && pos != this->chroffset - 1U) {
       c = queryseq_ptr[querypos];
       c_upper = queryuc_ptr[querypos];
       /* g = Genome_get_char(genome,pos); */
@@ -10638,18 +10645,18 @@ Stage3_extend_left (T this, int goal, Sequence_T queryseq,
 	  comp = MISMATCH_COMP;
 	}
 	debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
-		       querypos,pos,c,g));
+		       querypos,genomepos,c,g));
 	pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
       }
       querypos--;
       genomepos--;
-      /* pos--; */
+      pos--;
     }
 
     if (max_extend_p == true) {
       debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
       nconsecutive_mismatches = 0;
-      while (querypos >= 0 && nconsecutive_mismatches < 3) {
+      while (querypos >= 0 && pos != this->chroffset - 1U && nconsecutive_mismatches < 3) {
 	c = queryseq_ptr[querypos];
 	c_upper = queryuc_ptr[querypos];
 	/* g = Genome_get_char(genome,pos); */
@@ -10665,23 +10672,23 @@ Stage3_extend_left (T this, int goal, Sequence_T queryseq,
 	    nconsecutive_mismatches += 1;
 	  }
 	  debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
-			 querypos,pos,c,g));
+			 querypos,genomepos,c,g));
 	  pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
 	}
 	querypos--;
 	genomepos--;
-	/* pos--; */
+	pos--;
       }
     }
 
   } else {
-    /* pos = this->chroffset + this->chrpos + (this->stage1_genomiclength - 1) - genomepos; */
-    debug10(printf("watsonp on right is false.  pos is %u\n",pos));
+    pos = this->chroffset + this->chrpos + (this->stage1_genomiclength - 1) - genomepos;
+    debug10(printf("watsonp on right is false.  pos is %u.  goal querypos is %d\n",genomepos,goal));
 
     querypos--;
     genomepos--;
-    /* pos++; */
-    while (querypos >= goal) {
+    pos++;
+    while (querypos >= goal && pos <= this->chrhigh) {
       c = queryseq_ptr[querypos];
       c_upper = queryuc_ptr[querypos];
       /* g = complCode[(int) Genome_get_char(genome,pos)]; */
@@ -10695,18 +10702,18 @@ Stage3_extend_left (T this, int goal, Sequence_T queryseq,
 	  comp = MISMATCH_COMP;
 	}
 	debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
-		       querypos,pos,c,g));
+		       querypos,genomepos,c,g));
 	pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
       }
       querypos--;
       genomepos--;
-      /* pos++; */
+      pos++;
     }
 
     if (max_extend_p == true) {
       debug10(printf("\nGoal achieved.  Now looking for consecutive mismatches\n"));
       nconsecutive_mismatches = 0;
-      while (querypos >= 0 && nconsecutive_mismatches > 3) {
+      while (querypos >= 0 && pos <= this->chrhigh && nconsecutive_mismatches > 3) {
 	c = queryseq_ptr[querypos];
 	c_upper = queryuc_ptr[querypos];
 	/* g = complCode[(int) Genome_get_char(genome,pos)]; */
@@ -10722,12 +10729,12 @@ Stage3_extend_left (T this, int goal, Sequence_T queryseq,
 	    nconsecutive_mismatches += 1;
 	  }
 	  debug10(printf("At querypos %d and pos %u on right, have %c and %c\n",
-			 querypos,pos,c,g));
+			 querypos,genomepos,c,g));
 	  pairs = Pairpool_push(pairs,pairpool,querypos,genomepos,c,comp,g,/*dynprogindex*/0);
 	}
 	querypos--;
 	genomepos--;
-	/* pos++; */
+	pos++;
       }
     }
   }
@@ -10804,8 +10811,11 @@ Stage3_merge_local_single (T this_left, T this_right,
     debug10(printf("watsonp %d\n",watsonp));
 
     chrpos = this_left->chrpos;
+#if 0
+    /* Has no effect */
     Pair_set_genomepos_list(this_left->pairs,/*chrpos*/0,this_left->stage1_genomiclength,
 			    /*watsonp*/true);
+#endif
     Pair_set_genomepos_list(this_right->pairs,this_right->chrpos - chrpos,this_right->stage1_genomiclength,
 			    /*watsonp*/true);
 
@@ -10955,6 +10965,12 @@ Stage3_merge_local_single (T this_left, T this_right,
     debug10(printf("END RIGHT\n"));
   }
 
+
+  /* Merge pairs so we can iterate on finding a chimera */
+  this_left->pairs = List_append(this_left->pairs,this_right->pairs);
+  this_right->pairs = (List_T) NULL;
+
+
   /* Merge statistics */
   this_left->npairs = this_left->npairs+this_right->npairs;
   this_right->npairs = 0;
@@ -10975,18 +10991,19 @@ Stage3_merge_local_single (T this_left, T this_right,
 
 void
 Stage3_merge_local_splice (T this_left, T this_right, char comp,
-			   int minpos1, int maxpos1, int minpos2, int maxpos2, int cdna_direction,
+			   int minpos1, int maxpos1, int minpos2, int maxpos2,
+			   int queryjump, Genomicpos_T genomejump, int cdna_direction,
 #ifdef PMAP
 			   char *queryaaseq_ptr,
 #endif
 			   Sequence_T queryseq, Pairpool_T pairpool, Genome_T genome, int ngap) {
-  Pair_T end1, start2, newpair, oldpair;
+  Pair_T end1, start2, newpair, oldpair, pair, lastpair;
   List_T pairs = NULL;
   bool watsonp;
   int genomicpos, querypos, i;
   int gaplength;
   char *genomicseg_ptr;
-  Genomicpos_T left;
+  Genomicpos_T left, chrpos;
   Sequence_T genomicseg;
 
 
@@ -11019,8 +11036,8 @@ Stage3_merge_local_splice (T this_left, T this_right, char comp,
 #ifdef PMAP
 			    queryaaseq_ptr,
 #endif
-			    queryseq,/*genomicseg_ptr*/NULL,genome,pairpool,gaplength,
-			    ngap);
+			    queryseq,/*genomicseg_ptr*/NULL,genome,pairpool,
+			    gaplength,ngap);
 
     /* Fill in gap */
     newpair = &(this_left->pairarray[this_left->npairs]);
@@ -11089,6 +11106,42 @@ Stage3_merge_local_splice (T this_left, T this_right, char comp,
 	
     }
 
+    debug10(Pair_dump_list(this_left->pairs,true));
+    debug10(Pair_dump_list(this_right->pairs,true));
+
+    /* Merge pairs so we can iterate on finding a chimera */
+    if ((watsonp = this_left->watsonp) == true) {
+      chrpos = this_left->chrpos;
+#if 0
+      /* Has no effect */
+      Pair_set_genomepos_list(this_left->pairs,/*chrpos*/0,this_left->stage1_genomiclength,
+			      /*watsonp*/true);
+#endif
+      Pair_set_genomepos_list(this_right->pairs,this_right->chrpos - chrpos,this_right->stage1_genomiclength,
+			      /*watsonp*/true);
+
+      this_right->pairs = Pairpool_push_gapholder(this_right->pairs,pairpool,queryjump,genomejump,/*knownp*/false);
+      pair = (Pair_T) this_right->pairs->first;
+      pair->comp = comp;
+      this_left->pairs = List_append(this_left->pairs,this_right->pairs);
+      this_right->pairs = (List_T) NULL;
+
+    } else {
+      chrpos = this_right->chrpos;
+      Pair_set_genomepos_list(this_left->pairs,this_left->chrpos - chrpos,this_left->stage1_genomiclength,
+			      /*watsonp*/false);
+      Pair_set_genomepos_list(this_right->pairs,/*chrpos*/0,this_right->stage1_genomiclength,
+			      /*watsonp*/false);
+
+      this_right->pairs = Pairpool_push_gapholder(this_right->pairs,pairpool,queryjump,genomejump,/*knownp*/false);
+      pair = (Pair_T) this_right->pairs->first;
+      pair->comp = comp;
+      this_left->pairs = List_append(this_left->pairs,this_right->pairs);
+      this_right->pairs = (List_T) NULL;
+
+      Pair_set_genomepos_list(this_left->pairs,this_left->chrpos - chrpos,this_left->stage1_genomiclength,/*watsonp*/false);
+    }
+    debug10(Pair_dump_list(this_left->pairs,true));
 
     /* Merge statistics */
     this_left->npairs = this_left->npairs+gaplength+this_right->npairs;

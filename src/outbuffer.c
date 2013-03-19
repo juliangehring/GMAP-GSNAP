@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 66534 2012-06-14 23:59:41Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 84315 2013-01-24 22:33:51Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -372,11 +372,11 @@ sevenway_open_paired (T this) {
 	exit(9);
       }
       FREE(filename);
-    }
 
-    if (this->output_sam_p == true && this->sam_headers_p == true) {
-      IIT_dump_sam(this->fp_nomapping_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
-		   this->sam_read_group_library,this->sam_read_group_platform);
+      if (this->output_sam_p == true && this->sam_headers_p == true) {
+	IIT_dump_sam(this->fp_nomapping_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+		     this->sam_read_group_library,this->sam_read_group_platform);
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 68833 2012-07-12 18:54:25Z twu $";
+static char rcsid[] = "$Id: pair.c 83716 2013-01-17 19:26:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -165,6 +165,24 @@ Pair_shortexonp (T this) {
 void
 Pair_set_shortexonp (T this) {
   this->shortexonp = true;
+  return;
+}
+
+
+void
+Pair_print_ends (List_T pairs) {
+  List_T p;
+  T start, end;
+
+  if (pairs == NULL) {
+    printf("0..0, 0..0\n");
+  } else {
+    start = (T) pairs->first;
+    for (p = pairs; p != NULL; p = p->rest) {
+      end = (T) p->first;
+    }
+    printf("%d..%d %u..%u\n",start->querypos,end->querypos,start->genomepos,end->genomepos);
+  }
   return;
 }
 
@@ -1880,14 +1898,14 @@ print_gff3_mrna (FILE *fp, int pathnum, char *sourcename, char *accession, char 
 #else
     coverage = (double) (matches + mismatches + qindels)/(double) (querylength_given + skiplength);
 #endif
-  fprintf(fp,"Coverage=%.1f;",((double) rint(1000.0*coverage))/10.0);
+  fprintf(fp,"coverage=%.1f;",((double) rint(1000.0*coverage))/10.0);
 
   if ((den = matches + mismatches + qindels + tindels) == 0) {
     fracidentity = 1.0;
   } else {
     fracidentity = (double) matches/(double) den;
   }
-  fprintf(fp,"Identity=%.1f",((double) rint(1000.0*fracidentity))/10.0);
+  fprintf(fp,"identity=%.1f",((double) rint(1000.0*fracidentity))/10.0);
 
   putc('\n',fp);
 
@@ -2072,14 +2090,14 @@ print_gff3_est_match (FILE *fp, int pathnum, char *sourcename, char *accession, 
 #else
   coverage = (double) (matches + mismatches + qindels)/(double) (querylength_given + skiplength);
 #endif
-  fprintf(fp,";Coverage=%.1f",((double) rint(1000.0*coverage))/10.0);
+  fprintf(fp,";coverage=%.1f",((double) rint(1000.0*coverage))/10.0);
 
   if ((den = matches + mismatches + qindels + tindels) == 0) {
     fracidentity = 1.0;
   } else {
     fracidentity = (double) matches/(double) den;
   }
-  fprintf(fp,";Identity=%.1f",((double) rint(1000.0*fracidentity))/10.0);
+  fprintf(fp,";identity=%.1f",((double) rint(1000.0*fracidentity))/10.0);
 
   putc('\n',fp);
 }
@@ -3735,6 +3753,10 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
     fprintf(fp,"XT:Z:");
     Chimera_print_sam_tag(fp,chimera);
   }
+
+  /* 12. TAGS: PG */
+  fprintf(fp,"\t");
+  fprintf(fp,"PG:Z:M");
 
   putc('\n',fp);
 

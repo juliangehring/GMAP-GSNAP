@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 63233 2012-05-03 22:17:39Z twu $";
+static char rcsid[] = "$Id: shortread.c 81001 2012-12-07 18:17:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -408,7 +408,9 @@ input_header_gzip (bool *filterp, char **restofheader, gzFile fp) {
 #endif
 
 
+#if FILE_CONSISTENT
 static bool stripp = true;
+#endif
 
 /* Deletes /\D1/ or /\D2 or 3/ endings. */
 static void
@@ -416,7 +418,9 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
   char *p, *q;
   char slash1, slash2;
 
+#if FILE_CONSISTENT
   if (stripp == true) {
+#endif
     p = acc1;
     while (*p != '\0') {
       p++;
@@ -438,18 +442,24 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
     slash2 = q[-2];
 
     if (slash1 != slash2 || isdigit(slash1)) {
+#if FILE_CONSISTENT
       /* fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2); */
       stripp = false;
+#endif
 
     } else if (p[-1] != '1' || (q[-1] != '2' && q[-1] != '3')) {
+#if FILE_CONSISTENT
       /* fprintf(stderr,"Do not see /1 or /2 endings in header fields %s and %s.  Will no longer look for them.\n",acc1,acc2); */
       stripp = false;
+#endif
 
     } else {
       p[-2] = '\0';
       q[-2] = '\0';
     }
+#if FILE_CONSISTENT
   }
+#endif
 
   return;
 }

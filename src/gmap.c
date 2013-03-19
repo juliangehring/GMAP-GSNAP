@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 67608 2012-06-27 22:42:29Z twu $";
+static char rcsid[] = "$Id: gmap.c 69236 2012-07-18 19:00:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -99,6 +99,13 @@ static char rcsid[] = "$Id: gmap.c 67608 2012-06-27 22:42:29Z twu $";
 #define debug2(x) x
 #else
 #define debug2(x)
+#endif
+
+/* Chimera detection, details */
+#ifdef DEBUG2A
+#define debug2a(x) x
+#else
+#define debug2a(x)
 #endif
 
 
@@ -1411,7 +1418,7 @@ static List_T
 merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
 				  Stage3_T *stage3array_sub2, int npaths_sub2, int bestto,
 				  bool singlep, bool dualbreakp, char comp, int cdna_direction, List_T nonjoinable,
-				  int breakpoint, int queryntlength,
+				  int breakpoint, int queryjump, Genomicpos_T genomejump, int queryntlength,
 #ifdef PMAP
 				  char *queryaaseq_ptr,
 #endif
@@ -1462,7 +1469,8 @@ merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int
     } else if (dualbreakp == true) {
       debug2(printf("Running Stage3_merge_local_splice with dualbreak\n"));
       Stage3_merge_local_splice(best0,best1,/*comp*/DUALBREAK_COMP,/*minpos1*/0,/*maxpos1*/breakpoint,
-				/*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,cdna_direction,
+				/*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,queryjump,genomejump,
+				cdna_direction,
 #ifdef PMAP
 				queryaaseq_ptr,
 #endif
@@ -1470,7 +1478,8 @@ merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int
     } else {
       debug2(printf("Running Stage3_merge_local_splice without dualbreak\n"));
       Stage3_merge_local_splice(best0,best1,comp,/*minpos1*/0,/*maxpos1*/breakpoint,
-				/*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,cdna_direction,
+				/*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,queryjump,genomejump,
+				cdna_direction,
 #ifdef PMAP
 				queryaaseq_ptr,
 #endif
@@ -1482,6 +1491,7 @@ merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int
     freed1 = best1;
     Stage3_free(&best1,/*free_pairarray_p*/false);
     debug2(printf("Pushing stage3 %p\n",best0));
+    debug2(Stage3_print_ends(best0));
     *mergedp = true;
   }
 
@@ -1551,8 +1561,15 @@ merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int 
   best0 = stage3array_sub1[bestfrom];
   best1 = stage3array_sub2[bestto];
 
+  debug2(printf("Calling Stage3_merge_chimera with breakpoint %d and querylength %d\n",
+		breakpoint,queryntlength));
+  debug2(printf("Before Stage3_merge_chimera, best0 is %p, query %d..%d\n",
+		best0,Stage3_querystart(best0),Stage3_queryend(best0)));
+  debug2(Stage3_print_ends(best0));
+  debug2(printf("Before Stage3_merge_chimera, best1 is %p, query %d..%d\n",
+		best1,Stage3_querystart(best1),Stage3_queryend(best1)));
+  debug2(Stage3_print_ends(best1));
 
-  debug2(printf("Calling Stage3_merge_chimera with breakpoint %d\n",breakpoint));
   Stage3_merge_chimera(best0,best1,
 		       /*minpos1*/0,/*maxpos1*/breakpoint,
 		       /*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,
@@ -1565,8 +1582,10 @@ merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int 
   newstage3list = (List_T) NULL;
   newstage3list = List_push(newstage3list,(void *) best0);
   newstage3list = List_push(newstage3list,(void *) best1);
-  debug2(printf("Pushing stage3 %p\n",best0));
-  debug2(printf("Pushing stage3 %p\n",best1));
+  debug2(printf("Pushing stage3 %p, ",best0));
+  debug2(Stage3_print_ends(best0));
+  debug2(printf("Pushing stage3 %p, ",best1));
+  debug2(Stage3_print_ends(best1));
 
   if (npaths_sub1 + npaths_sub2 > 2) {
     /* Push rest of results, taking care not to have duplicates */
@@ -1594,7 +1613,8 @@ merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int 
 	/* Skip */
 	debug2(printf("Skipping stage3 %p, because in chimera\n",array[i]));
       } else {
-	debug2(printf("Pushing stage3 %p\n",array[i]));
+	debug2(printf("Pushing stage3 %p",array[i]));
+	debug2(Stage3_print_ends(array[i]));
 	newstage3list = List_push(newstage3list,(void *) array[i]);
 	last = array[i];
       }
@@ -1624,7 +1644,8 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   Sequence_T querysubseq = NULL, querysubuc = NULL;
   Diagnostic_T diagnostic;
   int breakpoint, chimerapos, chimeraequivpos;
-  int queryjump, genomejump;
+  int queryjump;
+  Genomicpos_T genomejump;
   int bestfrom, bestto;
   int five_margin, three_margin, five_score = 0, three_score = 0;
   int npaths_sub1 = 0, npaths_sub2 = 0;
@@ -1643,7 +1664,6 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   double donor_prob, acceptor_prob;
   bool singlep, dualbreakp;
   char comp;
-  Genomicpos_T genomegap;
 
 #ifdef PMAP
   Sequence_T queryntseq;
@@ -1656,7 +1676,7 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   debug2(printf("Margins are %d on the 5' end and %d on the 3' end\n",
 		five_margin,three_margin));
 
-#ifdef DEBUG2
+#ifdef DEBUG2A
   for (p = stage3list; p != NULL; p = List_next(p)) {
     stage3 = (Stage3_T) List_head(p);
     Pair_dump_array(Stage3_pairarray(stage3),Stage3_npairs(stage3),/*zerobasedp*/true);
@@ -1750,9 +1770,9 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 
     from = stage3array_sub1[bestfrom];
     to = stage3array_sub2[bestto];
-    debug2(printf("Chimera_bestpath returns bestfrom %d (%u..%u) to bestto %d (%u..%u)\n",
-		  bestfrom,Stage3_genomicstart(from),Stage3_genomicend(from),
-		  bestto,Stage3_genomicstart(to),Stage3_genomicend(to)));
+    debug2(printf("Chimera_bestpath returns bestfrom %d (%d..%d, %u..%u) to bestto %d (%d..%d, %u..%u)\n",
+		  bestfrom,Stage3_querystart(from),Stage3_queryend(from),Stage3_genomicstart(from),Stage3_genomicend(from),
+		  bestto,Stage3_querystart(to),Stage3_queryend(to),Stage3_genomicstart(to),Stage3_genomicend(to)));
 
     if (Stage3_queryend(from) < Stage3_querystart(to)) {
       /* Gap exists between the two parts */
@@ -1798,6 +1818,13 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
     }
 
 
+    debug2(printf("Before Stage3_extend_right, bestfrom is %p, query %d..%d\n",
+		  stage3array_sub1[bestfrom],Stage3_querystart(stage3array_sub1[bestfrom]),Stage3_queryend(stage3array_sub1[bestfrom])));
+    debug2(Stage3_print_ends(stage3array_sub1[bestfrom]));
+    debug2(printf("Before Stage3_extend_left, bestto is %p, query %d..%d\n",
+		  stage3array_sub2[bestto],Stage3_querystart(stage3array_sub2[bestto]),Stage3_queryend(stage3array_sub2[bestto])));
+    debug2(Stage3_print_ends(stage3array_sub2[bestto]));
+
     Stage3_extend_right(stage3array_sub1[bestfrom],rightpos,queryseq,
 #ifdef PMAP
 			/*querylength*/Sequence_fulllength(queryntseq),
@@ -1822,11 +1849,23 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #endif
 		       max_extend_p,genome,pairpool,ngap,maxpeelback_to);
 
+    debug2(printf("Before Chimera_find_breakpoint, bestfrom is %p, query %d..%d\n",
+		  stage3array_sub1[bestfrom],Stage3_querystart(stage3array_sub1[bestfrom]),Stage3_queryend(stage3array_sub1[bestfrom])));
+    debug2(Stage3_print_ends(stage3array_sub1[bestfrom]));
+    debug2(printf("Before Chimera_find_breakpoint, bestto is %p, query %d..%d\n",
+		  stage3array_sub2[bestto],Stage3_querystart(stage3array_sub2[bestto]),Stage3_queryend(stage3array_sub2[bestto])));
+    debug2(Stage3_print_ends(stage3array_sub2[bestto]));
+
     chimerapos = Chimera_find_breakpoint(&chimeraequivpos,stage3array_sub1[bestfrom],stage3array_sub2[bestto],
 					 queryntlength);
 
     debug2(printf("Chimera_find_breakpoint returns boundary at %d..%d (switch can occur at %d..%d)\n",
 		  chimerapos,chimeraequivpos,chimerapos-1,chimeraequivpos));
+
+    debug2(printf("Before Chimera_find_exonexon, bestfrom is %p, query %d..%d\n",
+		  stage3array_sub1[bestfrom],Stage3_querystart(stage3array_sub1[bestfrom]),Stage3_queryend(stage3array_sub1[bestfrom])));
+    debug2(printf("Before Chimera_find_exonexon, bestto is %p, query %d..%d\n",
+		  stage3array_sub2[bestto],Stage3_querystart(stage3array_sub2[bestto]),Stage3_queryend(stage3array_sub2[bestto])));
 
     if ((exonexonpos = Chimera_find_exonexon(&found_cdna_direction,&try_cdna_direction,
 					     &donor1,&donor2,&acceptor2,&acceptor1,&comp,&donor_prob,&acceptor_prob,
@@ -1843,14 +1882,19 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
     }
 
     /* Check to see if we can merge chimeric parts */
-    if (Stage3_mergeable(&singlep,&dualbreakp,&genomegap,stage3array_sub1[bestfrom],stage3array_sub2[bestto],
+    debug2(printf("Before Stage3_mergeable, bestfrom is %p, query %d..%d\n",
+		  stage3array_sub1[bestfrom],Stage3_querystart(stage3array_sub1[bestfrom]),Stage3_queryend(stage3array_sub1[bestfrom])));
+    debug2(printf("Before Stage3_mergeable, bestto is %p, query %d..%d\n",
+		  stage3array_sub2[bestto],Stage3_querystart(stage3array_sub2[bestto]),Stage3_queryend(stage3array_sub2[bestto])));
+
+    if (Stage3_mergeable(&singlep,&dualbreakp,&queryjump,&genomejump,stage3array_sub1[bestfrom],stage3array_sub2[bestto],
 			 breakpoint,queryntlength,cdna_direction,donor_prob,acceptor_prob) == true) {
       debug2(printf("Mergeable! -- Merging left and right as a readthrough.  cdna_direction = %d\n",cdna_direction));
       List_free(&stage3list);
       stage3list = merge_left_and_right_readthrough(&(*mergedp),stage3array_sub1,npaths_sub1,bestfrom,
 						    stage3array_sub2,npaths_sub2,bestto,
 						    singlep,dualbreakp,comp,cdna_direction,nonjoinable,
-						    breakpoint,queryntlength,
+						    breakpoint,queryjump,genomejump,queryntlength,
 #ifdef PMAP
 						    /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
 						    queryntseq,
@@ -1880,6 +1924,13 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 			     donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
       debug2(printf("Not mergeable -- Merging left and right as a transloc\n"));
       List_free(&stage3list);
+
+      debug2(printf("Before merge_left_and_right_transloc, bestfrom is %p, query %d..%d\n",
+		    stage3array_sub1[bestfrom],Stage3_querystart(stage3array_sub1[bestfrom]),Stage3_queryend(stage3array_sub1[bestfrom])));
+      debug2(printf("Before merge_left_and_right_transloc, bestto is %p, query %d..%d\n",
+		    stage3array_sub2[bestto],Stage3_querystart(stage3array_sub2[bestto]),Stage3_queryend(stage3array_sub2[bestto])));
+
+
       stage3list = merge_left_and_right_transloc(stage3array_sub1,npaths_sub1,bestfrom,
 						 stage3array_sub2,npaths_sub2,bestto,
 						 nonjoinable,breakpoint,queryntlength,
@@ -1917,7 +1968,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 	      Stopwatch_T worker_stopwatch) {
   List_T stage3list;
   Stage3_T nonchimericbest;
-  bool testchimerap = false;
+  bool testchimerap;
   int effective_start, effective_end;
 
   
@@ -1940,42 +1991,53 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
   }
 
   if (stage3list != NULL) {
-    nonchimericbest = (Stage3_T) List_head(stage3list);
+    testchimerap = true;
+    while (testchimerap == true) {
+      debug2(printf("\n\n*** Testing for chimera ***\n"));
 
-    if (chimera_margin <= 0) {
-      debug2(printf("turned off\n"));
-      testchimerap = false;
+      nonchimericbest = (Stage3_T) List_head(stage3list);
 
-    } else if (Stage3_domain(nonchimericbest) < chimera_margin) {
-      debug2(printf("Existing alignment is too short, so won't look for chimera\n"));
-      testchimerap = false;
+      if (chimera_margin <= 0) {
+	debug2(printf("turned off\n"));
+	testchimerap = false;
+
+      } else if (Stage3_domain(nonchimericbest) < chimera_margin) {
+	debug2(printf("Existing alignment is too short, so won't look for chimera\n"));
+	testchimerap = false;
 
 #if 0
-    } else if (Stage3_fracidentity(nonchimericbest) < CHIMERA_IDENTITY &&
-	       Chimera_alignment_break(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq),CHIMERA_FVALUE) >= chimera_margin
-	       ) {
-      debug2(printf("Break in alignment quality at %d..%d detected, so will look for chimera\n",
-		    effective_start,effective_end));
-      testchimerap = true;
+      } else if (Stage3_fracidentity(nonchimericbest) < CHIMERA_IDENTITY &&
+		 Chimera_alignment_break(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq),CHIMERA_FVALUE) >= chimera_margin
+		 ) {
+	debug2(printf("Break in alignment quality at %d..%d detected, so will look for chimera\n",
+		      effective_start,effective_end));
+	testchimerap = true;
 #endif
 
-    } else if (Stage3_largemargin(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq)) >= chimera_margin) {
-      debug2(printf("Large margin at %d..%d detected, so will look for chimera\n",
-		    effective_start,effective_end));
-      testchimerap = true;
+      } else if (Stage3_largemargin(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq)) >= chimera_margin) {
+	debug2(printf("Large margin at %d..%d detected, so will look for chimera\n",
+		      effective_start,effective_end));
+	testchimerap = true;
+	
+      } else {
+	debug2(printf("Good alignment already with identity %f, so won't look for chimera\n",
+		      Stage3_fracidentity(nonchimericbest)));
+	testchimerap = false;
+      }
 
-    } else {
-      debug2(printf("Good alignment already with identity %f, so won't look for chimera\n",
-		    Stage3_fracidentity(nonchimericbest)));
-      testchimerap = false;
-    }
-
-    if (testchimerap == true) {
-      debug2(printf("Checking for chimera, starting with list length %d\n",List_length(stage3list)));
-      stage3list = check_for_chimera(&(*mergedp),&(*chimera),stage3list,effective_start,effective_end,
-				     queryseq,queryuc,usersegment,
-				     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				     matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR);
+      if (testchimerap == true) {
+	debug2(printf("Checking for chimera, starting with list length %d\n",List_length(stage3list)));
+	stage3list = check_for_chimera(&(*mergedp),&(*chimera),stage3list,effective_start,effective_end,
+				       queryseq,queryuc,usersegment,
+				       oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
+				       matchpool,pairpool,diagpool,dynprogL,dynprogM,dynprogR);
+	if (*mergedp == true && *chimera == NULL) {
+	  testchimerap = true;	/* Iterate */
+	} else {
+	  testchimerap = false;
+	}
+	debug2(printf("Mergedp is %d, chimera is %p => testchimera is %d\n",*mergedp,*chimera,testchimerap));
+      }
     }
   }
 

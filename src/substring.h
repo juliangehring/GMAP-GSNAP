@@ -1,4 +1,4 @@
-/* $Id: substring.h 77835 2012-10-28 12:57:28Z twu $ */
+/* $Id: substring.h 91335 2013-04-03 19:39:36Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -97,7 +97,7 @@ Substring_nmatches (T this);
 extern int
 Substring_nmatches_posttrim (T this);
 extern void
-Substring_set_nmismatches_terminal (T this, int nmismatches_whole);
+Substring_set_nmismatches_terminal (T this, int nmismatches_whole, int nmismatches_bothdiff);
 extern Endtype_T
 Substring_start_endtype (T this);
 extern Endtype_T

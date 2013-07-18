@@ -1,4 +1,4 @@
-/* $Id: pair.h 82068 2012-12-19 21:42:22Z twu $ */
+/* $Id: pair.h 92688 2013-04-12 23:28:15Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -45,8 +45,6 @@ extern bool
 Pair_gapp (T this);
 extern bool
 Pair_shortexonp (T this);
-extern void
-Pair_set_shortexonp (T this);
 extern void
 Pair_print_ends (List_T pairs);
 
@@ -172,8 +170,8 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		int absmq_score, int first_absmq, int second_absmq, Genomicpos_T chrpos,
 #ifdef GSNAP
 		Resulttype_T resulttype, unsigned int flag, int pair_mapq_score, int end_mapq_score,
-		Chrnum_T mate_chrnum, Genomicpos_T mate_chrpos, int mate_cdna_direction,
-		int pairedlength,
+		Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum, Genomicpos_T mate_chrpos,
+		int mate_cdna_direction, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif

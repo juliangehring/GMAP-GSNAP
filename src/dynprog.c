@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 87907 2013-03-05 02:23:47Z twu $";
+static char rcsid[] = "$Id: dynprog.c 91337 2013-04-03 19:42:29Z twu $";
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -445,9 +445,11 @@ get_genomic_nt (char *g_alt, int genomicpos, Genomicpos_T chroffset, Genomicpos_
 
   } else {
     if ((pos = chrhigh - genomicpos) < chroffset) { /* Must be <, and not <=, or dynamic programming will fail */
+      *g_alt = '*';
       return '*';
 
     } else if (pos >= chrhigh) {
+      *g_alt = '*';
       return '*';
 
 #if 0
@@ -5682,8 +5684,8 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 
 /* revsequence2 is the splicejunction */
 List_T
-Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches, 
-			     int *nopens, int *nindels, T dynprog, 
+Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
+			     int *nmatches, int *nmismatches, int *nopens, int *nindels, T dynprog, 
 			     char *revsequence1, char *revsequenceuc1,
 			     char *revsequence2, char *revsequenceuc2, char *revsequencealt2,
 			     int length1, int length2, int revoffset1, int revoffset2_anchor, int revoffset2_far,
@@ -5730,6 +5732,7 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
     debug6(printf("length1 %d <= 0, so returning NULL\n",length1));
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
+    *missscore = -100;
     return (List_T) NULL;
   }
   if (length2 <= 0 || length2 > dynprog->maxlength2) {
@@ -5737,6 +5740,7 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
     debug6(printf("length2 %d <= 0, so returning NULL\n",length2));
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
+    *missscore = -100;
     return (List_T) NULL;
   }
 
@@ -5804,6 +5808,10 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 
   /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
   *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ + (*nopens)*open + (*nindels)*extend;
+  *missscore = (*finalscore) - length1*FULLMATCH;
+  debug6(printf("finalscore %d = %d*%d matches + %d*%d mismatches + %d*%d opens + %d*%d extends\n",
+		*finalscore,FULLMATCH,*nmatches,MISMATCH_ENDQ,*nmismatches,open,*nopens,extend,*nindels));
+  debug6(printf("missscore = %d\n",*missscore));
 
   /* Add 1 to count the match already in the alignment */
   pairs = List_reverse(pairs); /* Look at 5' end to remove excess gaps */
@@ -6009,8 +6017,8 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 
 /* sequence2 is the splicejunction */
 List_T
-Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches, 
-			     int *nopens, int *nindels, T dynprog, 
+Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
+			     int *nmatches, int *nmismatches, int *nopens, int *nindels, T dynprog, 
 			     char *sequence1, char *sequenceuc1,
 			     char *sequence2, char *sequenceuc2, char *sequencealt2,
 			     int length1, int length2, int offset1, int offset2_anchor, int offset2_far,
@@ -6057,12 +6065,14 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
     /* Needed to avoid abort by Matrix_alloc */
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
+    *missscore = -100;
     return (List_T) NULL;
   }
   if (length2 <= 0 || length2 > dynprog->maxlength2) {
     /* Needed to avoid abort by Matrix_alloc */
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
+    *missscore = -100;
     return (List_T) NULL;
   }
 
@@ -6134,6 +6144,10 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, 
 
   /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
   *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ + (*nopens)*open + (*nindels)*extend;
+  *missscore = (*finalscore) - length1*FULLMATCH;
+  debug6(printf("finalscore %d = %d*%d matches + %d*%d mismatches + %d*%d opens + %d*%d extends\n",
+		*finalscore,FULLMATCH,*nmatches,MISMATCH_ENDQ,*nmismatches,open,*nopens,extend,*nindels));
+  debug6(printf("missscore = %d\n",*missscore));
 
   /* Add 1 to count the match already in the alignment */
   pairs = List_reverse(pairs); /* Look at 3' end to remove excess gaps */
@@ -6407,15 +6421,26 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 #endif
 				cdna_direction,watsonp,jump_late_p,pairpool,
 				extraband_end,defect_rate,/*endalign*/QUERYEND_NOGAPS);
-  orig_score = *finalscore;
-  orig_pairs = best_pairs;
-  threshold_miss_score = perfect_score - orig_score;
-  debug7(printf("perfect score %d - score %d = threshold %d\n",
-		perfect_score,orig_score,threshold_miss_score));
+  if (*finalscore < 0) {
+    orig_score = 0;
+    orig_pairs = best_pairs = (List_T) NULL;
+  } else {
+    orig_score = *finalscore;
+    orig_pairs = best_pairs;
+  }
+  threshold_miss_score = orig_score - perfect_score;
+  debug7(printf("score %d - perfect score %d = threshold %d",
+		orig_score,perfect_score,threshold_miss_score));
+  if (threshold_miss_score < -2*FULLMATCH) {
+    /* Don't allow more than 2 mismatches in a distant splice */
+    threshold_miss_score = -2*FULLMATCH;
+    debug7(printf(", but revising to %d\n",threshold_miss_score));
+  }
+  debug7(printf("\n"));
   *knownsplicep = false;
 
 
-  if (threshold_miss_score > 0 && length2 > 0) {
+  if (threshold_miss_score < 0 && length2 > 0) {
     /* Try known splicing */
     splicejunction = (char *) CALLOC(length2+1,sizeof(char));
     splicejunction_alt = (char *) CALLOC(length2+1,sizeof(char));
@@ -6511,12 +6536,12 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     queryaaseq,
 #endif
 					     cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	  debug7(printf("  Result\n"));
+	  debug7(printf("  Result on obs with ambig_end_length_5 %d\n",*ambig_end_length));
 	  debug7(Pair_dump_list(best_pairs,/*zerobasedp*/true));
 	  obsmax_penalty += FULLMATCH;
 	}
 
-	if (threshold_miss_score - obsmax_penalty > 0 && trieoffsets_max != NULL) {
+	if (threshold_miss_score + obsmax_penalty < 0 && trieoffsets_max != NULL) {
 	  debug7(printf("  Running Splicetrie_solve_end5 on maxdistance splice sites with revoffset2 %d\n",revoffset2));
 	  best_pairs = Splicetrie_solve_end5(best_pairs,triecontents_max,trieoffsets_max,j,
 					     far_limit_low,far_limit_high,
@@ -6531,7 +6556,7 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     queryaaseq,
 #endif
 					     cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	  debug7(printf("  Result\n"));
+	  debug7(printf("  Result on max with ambig_end_length_5 %d\n",*ambig_end_length));
 	  debug7(Pair_dump_list(best_pairs,/*zerobasedp*/true));
 	}
       }
@@ -6668,15 +6693,26 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 #endif
 				cdna_direction,watsonp,jump_late_p,pairpool,
 				extraband_end,defect_rate,/*endalign*/QUERYEND_NOGAPS);
-  orig_score = *finalscore;
-  orig_pairs = best_pairs;
-  threshold_miss_score = perfect_score - orig_score;
-  debug7(printf("perfect score %d - score %d = threshold %d\n",
-		perfect_score,orig_score,threshold_miss_score));
+  if (*finalscore < 0) {
+    orig_score = 0;
+    orig_pairs = best_pairs = (List_T) NULL;
+  } else {
+    orig_score = *finalscore;
+    orig_pairs = best_pairs;
+  }
+  threshold_miss_score = orig_score - perfect_score;
+  debug7(printf("score %d - perfect score %d = threshold %d",
+		orig_score,perfect_score,threshold_miss_score));
+  if (threshold_miss_score < -2*FULLMATCH) {
+    /* Don't allow more than 2 mismatches in a distant splice */
+    threshold_miss_score = -2*FULLMATCH;
+    debug7(printf(", but revising to %d\n",threshold_miss_score));
+  }
+  debug7(printf("\n"));
   *knownsplicep = false;
 
 
-  if (threshold_miss_score > 0 && length2 > 0) {
+  if (threshold_miss_score < 0 && length2 > 0) {
     /* Try known splicing */
     splicejunction = (char *) CALLOC(length2+1,sizeof(char));
     splicejunction_alt = (char *) CALLOC(length2+1,sizeof(char));
@@ -6772,12 +6808,12 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     queryaaseq,
 #endif
 					     cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	  debug7(printf("  Result\n"));
+	  debug7(printf("  Result on obs with ambig_end_length_3 %d\n",*ambig_end_length));
 	  debug7(Pair_dump_list(best_pairs,/*zerobasedp*/true));
 	  obsmax_penalty += FULLMATCH;
 	}
 
-	if (threshold_miss_score - obsmax_penalty > 0 && trieoffsets_max != NULL) {
+	if (threshold_miss_score + obsmax_penalty < 0 && trieoffsets_max != NULL) {
 	  debug7(printf("  Running Splicetrie_solve_end3 on maxdistance splice sites with offset2 %d\n",offset2));
 	  best_pairs = Splicetrie_solve_end3(best_pairs,triecontents_max,trieoffsets_max,j,
 					     far_limit_low,far_limit_high,
@@ -6792,7 +6828,7 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 					     queryaaseq,
 #endif
 					     cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
-	  debug7(printf("  Result\n"));
+	  debug7(printf("  Result on max with ambig_end_length_3 %d\n",*ambig_end_length));
 	  debug7(Pair_dump_list(best_pairs,/*zerobasedp*/true));
 	}
       }

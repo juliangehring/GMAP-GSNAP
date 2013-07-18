@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: inbuffer.c 83593 2013-01-16 22:59:40Z twu $";
+static char rcsid[] = "$Id: inbuffer.c 90425 2013-03-27 16:27:35Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -418,7 +418,8 @@ fill_buffer (T this) {
 #if 0
 	     nchars < this->maxchars &&
 #endif
-	     (queryseq1 = Shortread_read_fasta_shortreads_gzip(&this->nextchar,&queryseq2,&this->gzipped,&this->files,&this->nfiles,
+	     (queryseq1 = Shortread_read_fasta_shortreads_gzip(&this->nextchar,&queryseq2,&this->gzipped,&this->gzipped2,
+							       &this->files,&this->nfiles,
 							       this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
 	if (this->inputid % this->part_interval != this->part_modulus) {
 	  Shortread_free(&queryseq1);
@@ -458,7 +459,8 @@ fill_buffer (T this) {
 #if 0
 	     nchars < this->maxchars &&
 #endif
-	     (queryseq1 = Shortread_read_fasta_shortreads_bzip2(&this->nextchar,&queryseq2,&this->bzipped,&this->files,&this->nfiles,
+	     (queryseq1 = Shortread_read_fasta_shortreads_bzip2(&this->nextchar,&queryseq2,&this->bzipped,&this->bzipped2,
+								&this->files,&this->nfiles,
 								this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
 	if (this->inputid % this->part_interval != this->part_modulus) {
 	  Shortread_free(&queryseq1);
@@ -497,7 +499,8 @@ fill_buffer (T this) {
 #if 0
 	     nchars < this->maxchars &&
 #endif
-	     (queryseq1 = Shortread_read_fasta_shortreads(&this->nextchar,&queryseq2,&this->input,&this->files,&this->nfiles,
+	     (queryseq1 = Shortread_read_fasta_shortreads(&this->nextchar,&queryseq2,&this->input,&this->input2,
+							  &this->files,&this->nfiles,
 							  this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
 	if (this->inputid % this->part_interval != this->part_modulus) {
 	  Shortread_free(&queryseq1);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 89262 2013-03-14 20:40:43Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 90499 2013-03-27 22:34:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -505,7 +505,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	      exit(9);
 	    } else if (distance > (int) shortsplicedist) {
 	      ntoolong++;
-	      Interval_store_length(intervals[i],shortsplicedist);
+	      Interval_store_length(intervals[i],distance + SPLICEDIST_EXTRA);  /* Previously stored shortsplicedist */
 	    } else {
 	      Interval_store_length(intervals[i],distance + SPLICEDIST_EXTRA);
 	    }
@@ -707,7 +707,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 
   *nsplicesites = k;
   splicesites[*nsplicesites] = (Genomicpos_T) -1U; /* Marker for comparison in identify_all_segments */
-  fprintf(stderr,"%d valid splicesites...",*nsplicesites);
+  fprintf(stderr,"\n%d splicesites are valid...",*nsplicesites);
 
 #ifdef DEBUG2
   for (k = 0; k < *nsplicesites; k++) {
@@ -720,7 +720,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 #endif
 
   if (ntoolong > 0) {
-    fprintf(stderr,"%d entries with distance > %d allowed for prefix tries...",ntoolong,shortsplicedist);
+    fprintf(stderr,"%d entries with distance > %d specified for local splice distance...",ntoolong,shortsplicedist);
   }
 
   return splicesites;
@@ -1096,7 +1096,7 @@ Splicetrie_retrieve_via_introns (
   }
 
   *nsplicesites = k;
-  fprintf(stderr,"%d valid splicesites...",*nsplicesites);
+  fprintf(stderr,"\n%d splicesites are valid...",*nsplicesites);
 
 
   /* Need to sort by individual splicesites */

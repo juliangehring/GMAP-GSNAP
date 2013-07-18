@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 89257 2013-03-14 20:30:03Z twu $";
+static char rcsid[] = "$Id: gsnap.c 90534 2013-03-28 03:26:26Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -87,7 +87,7 @@ static char rcsid[] = "$Id: gsnap.c 89257 2013-03-14 20:30:03Z twu $";
 static int gmap_mode = GMAP_PAIRSEARCH | GMAP_INDEL_KNOWNSPLICE | GMAP_TERMINAL | GMAP_IMPROVEMENT;
 static int gmap_min_nconsecutive = 20;
 static int nullgap = 600;
-static int maxpeelback = 11;
+static int maxpeelback = 20;
 static int maxpeelback_distalmedial = 24;
 static int extramaterial_end = 10;
 static int extramaterial_paired = 8;
@@ -504,6 +504,8 @@ static struct option long_options[] = {
 
 static void
 print_program_version () {
+  char *genomedir;
+
   fprintf(stdout,"\n");
   fprintf(stdout,"GSNAP: Genomic Short Nucleotide Alignment Program\n");
   fprintf(stdout,"Part of GMAP package, version %s\n",PACKAGE_VERSION);
@@ -555,7 +557,10 @@ print_program_version () {
 
   fprintf(stdout,"Sizes: off_t (%lu), size_t (%lu), unsigned int (%lu), long int (%lu)\n",
 	  sizeof(off_t),sizeof(size_t),sizeof(unsigned int),sizeof(long int));
-  fprintf(stdout,"Default gmap directory: %s\n",GMAPDB);
+  fprintf(stdout,"Default gmap directory (compiled): %s\n",GMAPDB);
+  genomedir = Datadir_find_genomedir(/*user_genomedir*/NULL);
+  fprintf(stdout,"Default gmap directory (environment): %s\n",genomedir);
+  FREE(genomedir);
   fprintf(stdout,"Maximum read length: %d\n",MAX_READLENGTH);
   fprintf(stdout,"Thomas D. Wu, Genentech, Inc.\n");
   fprintf(stdout,"Contact: twu@gene.com\n");
@@ -2436,7 +2441,8 @@ main (int argc, char *argv[]) {
   Stage1hr_setup(index1part,index1interval,spansize,chromosome_iit,nchromosomes,
 		 genomealt,mode,maxpaths_search,terminal_threshold,
 		 splicesites,splicetypes,splicedists,nsplicesites,
-		 novelsplicingp,knownsplicingp,shortsplicedist_known,shortsplicedist_novelend,
+		 novelsplicingp,knownsplicingp,distances_observed_p,
+		 shortsplicedist_known,shortsplicedist_novelend,
 		 min_intronlength,nullgap,maxpeelback,maxpeelback_distalmedial,
 		 extramaterial_end,extramaterial_paired,gmap_mode,
 		 trigger_score_for_gmap,max_gmap_pairsearch,

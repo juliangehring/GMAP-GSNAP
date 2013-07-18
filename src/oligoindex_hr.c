@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 89140 2013-03-13 23:15:38Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 91614 2013-04-05 20:12:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11781,9 +11781,12 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
     low, high, nextlow;
 
 
+#if 0
+  /* No.  This extends past the query */
   if (left != 0U) {
     left -= 1;	/* Needed to get last oligomer to match */
   }
+#endif
   left_plus_length -= indexsize;
 
   startptr = left/32U*3;
@@ -12038,9 +12041,12 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     low, high, nextlow;
 
 
+#if 0
+  /* No.  This extends past the query */
   if (left != 0U) {
     left -= 1;	/* Needed to get last oligomer to match */
   }
+#endif
   left_plus_length -= indexsize;
 
   startptr = left/32U*3;

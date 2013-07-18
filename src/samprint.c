@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 87096 2013-02-22 21:04:02Z twu $";
+static char rcsid[] = "$Id: samprint.c 92688 2013-04-12 23:28:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1173,6 +1173,12 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
   /* 12. TAGS: X2 */
   fprintf(fp,"\t");
   fprintf(fp,"X2:i:%d",second_absmq);
+
+  /* 12. TAGS: PG */
+  if (Stage3end_hittype(this) == TERMINAL) {
+    fprintf(fp,"\t");
+    fprintf(fp,"PG:Z:T");
+  }
 
   fprintf(fp,"\n");
   return;
@@ -3862,7 +3868,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 		     /*chimera_part*/0,/*chimera*/NULL,quality_shift,first_read_p,
 		     pathnum,npaths,absmq_score,first_absmq,second_absmq,chrpos,
 		     resulttype,flag,/*pair_mapq_score*/mapq_score,/*end_mapq_score*/mapq_score,
-		     /*mate_chrnum*/Stage3end_chrnum(mate),mate_chrpos,
+		     Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
 		     /*mate_cdna_direction*/Stage3end_cdna_direction(mate),
 		     pairedlength,sam_read_group_id,invertp,/*circularp*/true);
       Pair_print_sam(fp,Stage3end_pairarray(this),Stage3end_npairs(this),
@@ -3874,7 +3880,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 		     /*chimera_part*/0,/*chimera*/NULL,quality_shift,first_read_p,
 		     pathnum,npaths,absmq_score,first_absmq,second_absmq,/*chrpos*/1,
 		     resulttype,flag,/*pair_mapq_score*/mapq_score,/*end_mapq_score*/mapq_score,
-		     /*mate_chrnum*/Stage3end_chrnum(mate),mate_chrpos,
+		     Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
 		     /*mate_cdna_direction*/Stage3end_cdna_direction(mate),
 		     pairedlength,sam_read_group_id,invertp,/*circularp*/true);
     } else {
@@ -3887,7 +3893,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 		     /*chimera_part*/0,/*chimera*/NULL,quality_shift,first_read_p,
 		     pathnum,npaths,absmq_score,first_absmq,second_absmq,chrpos,
 		     resulttype,flag,/*pair_mapq_score*/mapq_score,/*end_mapq_score*/mapq_score,
-		     /*mate_chrnum*/Stage3end_chrnum(mate),mate_chrpos,
+		     Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
 		     /*mate_cdna_direction*/Stage3end_cdna_direction(mate),
 		     pairedlength,sam_read_group_id,invertp,/*circularp*/false);
     }

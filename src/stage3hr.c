@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 87968 2013-03-05 17:22:50Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 91632 2013-04-05 21:58:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -218,7 +218,11 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
     favor_ambiguous_p = true;
   }
 
+#if 0
   ambig_end_interval = index1part + (index1interval - 1);
+#else
+  ambig_end_interval = 8;	/* Since GMAP uses 8-mers */
+#endif
 
   novelsplicingp = novelsplicingp_in;
   circularp = circularp_in;
@@ -306,6 +310,7 @@ struct T {
 
   int gmap_nindelbreaks;
   int gmap_cdna_direction;
+  int gmap_nintrons;
   int sensedir;			/* for splicing */
   int sensedir_nonamb;			/* for splicing */
 
@@ -360,22 +365,6 @@ struct T {
   int alias;			/* -1 if below chrlength, 0 if straddles or NA (e.g., transloc), and +1 if above */
   int circularpos;		/* if alias == 0, then amount of queryseq below chrlength */
 };
-
-
-static char *
-pairtype_string (Pairtype_T pairtype) {
-  switch (pairtype) {
-  case CONCORDANT: return "concordant";
-  case PAIRED_UNSPECIFIED: return "paired_unknown";
-  case PAIRED_INVERSION: return "inversion";
-  case PAIRED_SCRAMBLE: return "scramble";
-  case PAIRED_TOOLONG: return "toolong";
-  case CONCORDANT_TRANSLOCATIONS: return "translocation";
-  case CONCORDANT_TERMINAL: return "concordant";
-  case UNPAIRED: return "unpaired";
-  default: fprintf(stderr,"Unexpected pairtype %d\n",pairtype); abort();
-  }
-}
 
 
 struct Stage3pair_T {
@@ -675,14 +664,26 @@ Stage3end_paired_usedp (T this) {
   return this->paired_usedp;
 }
 
+/* Accounts for ambig ends */
 int
 Stage3end_trim_left (T this) {
   return this->trim_left;
 }
 
+/* Accounts for ambig ends */
 int
 Stage3end_trim_right (T this) {
   return this->trim_right;
+}
+
+int
+Stage3end_trim_left_raw (T this) {
+  return this->trim_left + this->amb_nmatches_start;
+}
+
+int
+Stage3end_trim_right_raw (T this) {
+  return this->trim_right + this->amb_nmatches_end;
 }
 
 int
@@ -815,11 +816,19 @@ Stage3end_cdna_direction (T this) {
   } else if (this->sensedir == SENSE_ANTI) {
     return -1;
   } else {
+#if 0
     /* Leads to non-canonical XS:A:? output in SAM format */
     return 0;
+#else
+    return this->gmap_cdna_direction;
+#endif
   }
 }
 
+int
+Stage3end_nintrons (T this) {
+  return this->gmap_nintrons;
+}
 
 int
 Stage3end_gmap_querystart (T this) {
@@ -896,14 +905,17 @@ Stage3end_gene_overlap (T this) {
 
 bool
 Stage3end_contains_known_splicesite (T this) {
-  assert(this->hittype != GMAP);
+  /* assert(this->hittype != GMAP); */
 
   /* indel + splice => requires gmap
      doublesplice + splice => requires gmap
      other cases should have already been covered by gsnap
   */
 
-  if (this->hittype != INSERTION && this->hittype != DELETION && this->hittype != SHORTEXON) {
+  if (this->hittype == GMAP) {
+    /* Possible now because performing redo of GMAP for sense inconsistency */
+    return false;
+  } else if (this->hittype != INSERTION && this->hittype != DELETION && this->hittype != SHORTEXON) {
     return false;
   } else if (Substring_contains_known_splicesite(this->substring1) == true) {
     return true;
@@ -1444,6 +1456,7 @@ Stage3end_copy (T old) {
 
   new->gmap_nindelbreaks = old->gmap_nindelbreaks;
   new->gmap_cdna_direction = old->gmap_cdna_direction;
+  new->gmap_nintrons = old->gmap_nintrons;
   new->sensedir = old->sensedir;
   new->sensedir_nonamb = old->sensedir_nonamb;
 
@@ -3082,12 +3095,12 @@ Stage3end_new_terminal (int querystart, int queryend, Genomicpos_T left, Compres
   debug0(printf("alignstart_trim = %u, alignend_trim = %u\n",alignstart_trim,alignend_trim));
   if (plusp == true) {
     debug0(printf("pos5 = %d, pos3 = %d\n",alignstart_trim-left,alignend_trim-left));
-    nmismatches_whole = 
+    nmismatches_whole =
       Genome_count_mismatches_substring(query_compress,left,/*pos5*/alignstart_trim-left,
 					/*pos3*/alignend_trim-left,/*plusp*/true,genestrand);
   } else {
     debug0(printf("pos5 = %d, pos3 = %d\n",alignend_trim-left,alignstart_trim-left));
-    nmismatches_whole = 
+    nmismatches_whole =
       Genome_count_mismatches_substring(query_compress,left,/*pos5*/alignend_trim-left,
 					/*pos3*/alignstart_trim-left,/*plusp*/false,genestrand);
   }
@@ -3099,7 +3112,8 @@ Stage3end_new_terminal (int querystart, int queryend, Genomicpos_T left, Compres
     debug0(printf("returning NULL\n"));
     return (T) NULL;
   } else {
-    Substring_set_nmismatches_terminal(substring,nmismatches_whole);
+    /* Code in substring.c suggests that nmismatches_bothdiff would be the same value as nmismatches_whole */
+    Substring_set_nmismatches_terminal(substring,nmismatches_whole,/*nmismatches_bothdiff*/nmismatches_whole);
 #if 0
     if (alignstart_trim >= alignend_trim) {
       Substring_set_endtypes(substring,/*start_endtype*/TERM,/*end_endtype*/END);
@@ -3258,6 +3272,7 @@ ATAGCCCACACGTTCCCCTTAAATAAGACATCACGATGGATCACAGGTCTATCACCCTATTAACCACTCACGGGAG
   new = (T) MALLOC_OUT(sizeof(*new));
   debug0(printf("Stage3end_new_gmap %p: left %u, genomicstart/end %u..%u, chrhigh %u, chrnum %d, nmismatches %d, cdna_direction %d, sensedir %d, max_match_length %d\n",
 		new,left,genomicstart,genomicend,chrhigh,chrnum,nmismatches_whole,cdna_direction,sensedir,max_match_length));
+  debug0(printf("  ambig_end_length_5 %d, ambig_end_length_3 %d\n",ambig_end_length_5,ambig_end_length_3));
 
   new->substring1 = (Substring_T) NULL;
   new->substring2 = (Substring_T) NULL;
@@ -3297,6 +3312,7 @@ ATAGCCCACACGTTCCCCTTAAATAAGACATCACGATGGATCACAGGTCTATCACCCTATTAACCACTCACGGGAG
   new->plusp = plusp;
   new->gmap_nindelbreaks = nindelbreaks;
   new->gmap_cdna_direction = cdna_direction;
+  new->gmap_nintrons = nintrons;
   new->sensedir = new->sensedir_nonamb = sensedir;
 
 #if 0
@@ -3347,10 +3363,10 @@ ATAGCCCACACGTTCCCCTTAAATAAGACATCACGATGGATCACAGGTCTATCACCCTATTAACCACTCACGGGAG
   new->nmatches_posttrim -= localsplicing_penalty * nintrons; /* for use in goodness_cmp procedures */
   new->nmatches_posttrim -= indel_penalty_middle * nindelbreaks; /* for use in goodness_cmp procedures */
 
-#if 0
-  if ((double) new->nmatches_posttrim/(double) querylength < gmap_min_coverage) {
-    debug0(printf("  nmatches %d/querylength %d < min_coverage %f, so returning NULL\n",
-		  new->nmatches_posttrim,querylength,gmap_min_coverage));
+#if 1
+  if (new->nmatches_posttrim< querylength/2) {
+    debug0(printf("  nmatches %d < querylength %d/2, so returning NULL\n",
+		  new->nmatches_posttrim,querylength));
     FREE_OUT(new);
     return NULL;
   }
@@ -4196,6 +4212,7 @@ Stage3end_optimal_score_aux (bool *eliminatedp, List_T hitlist, int cutoff_level
 	debug4(printf("  bad stretch 2."));
       }
 #endif
+
       if (0 && hit->trim_left <= 8) {
 	/* Ignore small trims */
       } else if (hit->trim_left > trim_left) {
@@ -4208,6 +4225,7 @@ Stage3end_optimal_score_aux (bool *eliminatedp, List_T hitlist, int cutoff_level
 	hit->score_eventrim += hit->trim_right - trim_right;
 	debug4(printf("  add trim right (%d - %d).",hit->trim_right,trim_right));
       }
+
       hit->score_eventrim += Pair_nmismatches_region(&nindelbreaks,hit->pairarray,hit->npairs,
 						     trim_left,trim_right,hit->querylength_adj);
       debug4(printf("  add nmismatches %d.",Pair_nmismatches_region(&nindelbreaks,hit->pairarray,hit->npairs,
@@ -5649,7 +5667,7 @@ print_alignment_info (FILE *fp, int nblocks, int score, int mapq_score) {
 
 Pairtype_T
 Stage3_determine_pairtype (T hit5, T hit3) {
-  if (hit5->chrnum != hit3->chrnum) {
+  if (hit5->effective_chrnum != hit3->effective_chrnum) {
     return UNPAIRED;
   } else if (hit5->plusp != hit3->plusp) {
     return PAIRED_INVERSION;
@@ -5733,6 +5751,7 @@ print_pair_info (FILE *fp, T hit5, T hit3, int insertlength, int pairscore,
   case CONCORDANT_TERMINAL: break;
   case PAIRED_UNSPECIFIED: abort();
   case UNPAIRED: abort();
+  case UNSPECIFIED: abort();
   }
 
   return;
@@ -7943,6 +7962,17 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
   int querylength5 = hit5->querylength_adj;
   int querylength3 = hit3->querylength_adj;
 
+  debug10(printf("\nStage3pair_new called with pairtype %s and chrnum %d, %d (effective %d, %d)\n",
+		 Pairtype_string(pairtype),hit5->chrnum,hit3->chrnum,hit5->effective_chrnum,hit3->effective_chrnum));
+
+  if (pairtype == PAIRED_UNSPECIFIED || pairtype == UNSPECIFIED) {
+    /* Can get here from running GMAP improvement on a paired result */
+    pairtype = Stage3_determine_pairtype(hit5,hit3);
+    debug10(printf("  Changing pairtype to %s\n",Pairtype_string(pairtype)));
+    if (pairtype == CONCORDANT) {
+      expect_concordant_p = true;
+    }
+  }
   new->pairtype = pairtype;
   new->genestrand = genestrand;
 
@@ -7951,9 +7981,6 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
   new->mapq_score = 0;
   new->absmq_score = 0;
 #endif
-
-  debug10(printf("\nStage3pair_new called with pairtype %s and chrnum %d, %d\n",
-		 pairtype_string(pairtype),hit5->chrnum,hit3->chrnum));
 
   if (hit5->chrnum == 0 || hit3->chrnum == 0) {
     new->dir = 0;
@@ -7983,11 +8010,12 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
     if (hit5->plusp == true && hit3->plusp == true) {
       new->dir = +1;
 
-      /* Try to resolve ambiguity on inside of concordant ends */
-      assert(expect_concordant_p == true);
-      resolve_inside_ambiguous_splice_plus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
-					   splicesites,query5_compress_fwd,query3_compress_fwd,
-					   localsplicing_penalty,querylength5,querylength3,genestrand);
+      if (expect_concordant_p == true) {
+	/* Try to resolve ambiguity on inside of concordant ends */
+	resolve_inside_ambiguous_splice_plus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
+					     splicesites,query5_compress_fwd,query3_compress_fwd,
+					     localsplicing_penalty,querylength5,querylength3,genestrand);
+      }
 
       /* Have 5-start..end and 3-start..end */
       debug10(printf("plus: comparing hit5->genomicend %u <= hit3->genomicstart %u\n",
@@ -8010,11 +8038,12 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
     } else if (hit5->plusp == false && hit3->plusp == false) {
       new->dir = -1;
 
-      /* Try to resolve ambiguity on inside of concordant ends */
-      assert(expect_concordant_p == true);
-      resolve_inside_ambiguous_splice_minus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
-					    splicesites,query5_compress_rev,query3_compress_rev,
-					    localsplicing_penalty,querylength5,querylength3,genestrand);
+      if (expect_concordant_p == true) {
+	/* Try to resolve ambiguity on inside of concordant ends */
+	resolve_inside_ambiguous_splice_minus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
+					      splicesites,query5_compress_rev,query3_compress_rev,
+					      localsplicing_penalty,querylength5,querylength3,genestrand);
+      }
 
       /* Have 3-end..start and 5-end..start */
       debug10(printf("minus: comparing hit3->genomicstart %u <= hit5->genomicend %u\n",
@@ -8043,11 +8072,12 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
     if (hit5->plusp == true && hit3->plusp == true) {
       new->dir = +1;
 
-      /* Try to resolve ambiguity on inside of concordant ends */
-      assert(expect_concordant_p == true);
-      resolve_inside_ambiguous_splice_plus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
-					   splicesites,query5_compress_fwd,query3_compress_fwd,
-					   localsplicing_penalty,querylength5,querylength3,genestrand);
+      if (expect_concordant_p == true) {
+	/* Try to resolve ambiguity on inside of concordant ends */
+	resolve_inside_ambiguous_splice_plus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
+					     splicesites,query5_compress_fwd,query3_compress_fwd,
+					     localsplicing_penalty,querylength5,querylength3,genestrand);
+      }
 
       /* Have 5-start..end and 3-start..end */
       debug10(printf("plus: comparing hit5->genomicend %u <= hit3->genomicstart %u\n",
@@ -8070,11 +8100,12 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
     } else if (hit5->plusp == false && hit3->plusp == false) {
       new->dir = -1;
 
-      /* Try to resolve ambiguity on inside of concordant ends */
-      assert(expect_concordant_p == true);
-      resolve_inside_ambiguous_splice_minus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
-					    splicesites,query5_compress_rev,query3_compress_rev,
-					    localsplicing_penalty,querylength5,querylength3,genestrand);
+      if (expect_concordant_p == true) {
+	/* Try to resolve ambiguity on inside of concordant ends */
+	resolve_inside_ambiguous_splice_minus(&unresolved_amb_nmatches,&hit5,&hit3,&private5p,&private3p,
+					      splicesites,query5_compress_rev,query3_compress_rev,
+					      localsplicing_penalty,querylength5,querylength3,genestrand);
+      }
 
       /* Have 3-end..start and 5-end..start */
       debug10(printf("minus: comparing hit3->genomicstart %u <= hit5->genomicend %u\n",
@@ -8236,8 +8267,10 @@ Stage3pair_new (T hit5, T hit3,	Genomicpos_T *splicesites,
   }
 
   if (SENSE_CONSISTENT_P(hit5->sensedir,hit3->sensedir)) {
+    debug0(printf("senses are consistent\n"));
     new->sense_consistent_p = true;
   } else {
+    debug0(printf("senses are inconsistent\n"));
     new->sense_consistent_p = false;
   }
 
@@ -8814,7 +8847,7 @@ Stage3pair_remove_duplicates_exact (List_T hitpairlist) {
 	 for (i = 0; i < n; i++) {
 	   hitpair = hitpairs[i];
 	   printf("  Initial %d (%s, %s-%s): %p, %u..%u  %u..%u|%u..%u (dir = %d), nmatches: %d\n",
-		  i,pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
+		  i,Pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
 		  hittype_string(hitpair->hit3->hittype),hitpair,hitpair->low,hitpair->high,
 		  hitpair->hit5->low - hitpair->hit5->chroffset,hitpair->hit5->high - hitpair->hit5->chroffset,
 		  hitpair->hit3->low - hitpair->hit3->chroffset,hitpair->hit3->high - hitpair->hit3->chroffset,
@@ -9158,7 +9191,7 @@ pair_remove_overlaps (List_T hitpairlist, bool translocp, bool finalp) {
 	 for (i = 0; i < n; i++) {
 	   hitpair = hitpairs[i];
 	   printf("  Initial %d (%s, %s-%s): %p, %u..%u  %u..%u|%u..%u (dir = %d), nmatches: %d (%d posttrim), indel_low %d and %d\n",
-		  i,pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
+		  i,Pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
 		  hittype_string(hitpair->hit3->hittype),hitpair,hitpair->low,hitpair->high,
 		  hitpair->hit5->low - hitpair->hit5->chroffset,hitpair->hit5->high - hitpair->hit5->chroffset,
 		  hitpair->hit3->low - hitpair->hit3->chroffset,hitpair->hit3->high - hitpair->hit3->chroffset,
@@ -9229,7 +9262,7 @@ pair_remove_overlaps (List_T hitpairlist, bool translocp, bool finalp) {
 	   for (i = 0; i < n; i++) {
 	     hitpair = hitpairs[i];
 	     printf("  Initial %d (%s, %s-%s): %p, %u..%u  %u..%u|%u..%u (dir = %d), score: %d, nmatches: %d (%d posttrim), nnovel: %d, nknown: %d, insertlength: %u, outerlength: %u\n",
-		    i,pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
+		    i,Pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
 		    hittype_string(hitpair->hit3->hittype),hitpair,hitpair->low,hitpair->high,
 		    hitpair->hit5->low - hitpair->hit5->chroffset,hitpair->hit5->high - hitpair->hit5->chroffset,
 		    hitpair->hit3->low - hitpair->hit3->chroffset,hitpair->hit3->high - hitpair->hit3->chroffset,
@@ -9313,7 +9346,7 @@ pair_remove_overlaps (List_T hitpairlist, bool translocp, bool finalp) {
 	   for (i = 0; i < n; i++) {
 	     hitpair = hitpairs[i];
 	     printf("  Initial %d (%s, %s-%s): %p, %u..%u  %u..%u|%u..%u (dir = %d), score: %d, nmatches: %d (%d posttrim), nnovel: %d, nknown: %d, insertlength: %u, outerlength: %u\n",
-		    i,pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
+		    i,Pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
 		    hittype_string(hitpair->hit3->hittype),hitpair,hitpair->low,hitpair->high,
 		    hitpair->hit5->low - hitpair->hit5->chroffset,hitpair->hit5->high - hitpair->hit5->chroffset,
 		    hitpair->hit3->low - hitpair->hit3->chroffset,hitpair->hit3->high - hitpair->hit3->chroffset,
@@ -9466,7 +9499,7 @@ pair_remove_overlaps (List_T hitpairlist, bool translocp, bool finalp) {
 	 for (i = 0; i < n; i++) {
 	   hitpair = hitpairs[i];
 	   printf("  Initial %d (%s, %s-%s): %p, %u..%u  %u..%u|%u..%u (dir = %d), score: %d, nmatches: %d (%d posttrim), insertlength: %u, outerlength: %u\n",
-		  i,pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
+		  i,Pairtype_string(hitpair->pairtype),hittype_string(hitpair->hit5->hittype),
 		  hittype_string(hitpair->hit3->hittype),hitpair,hitpair->low,hitpair->high,
 		  hitpair->hit5->low - hitpair->hit5->chroffset,hitpair->hit5->high - hitpair->hit5->chroffset,
 		  hitpair->hit3->low - hitpair->hit3->chroffset,hitpair->hit3->high - hitpair->hit3->chroffset,
@@ -10183,6 +10216,7 @@ Stage3pair_optimal_score_aux (bool *eliminatedp, List_T hitpairlist, int cutoff_
 	debug6(printf("  bad stretch 2."));
       }
 #endif
+
       if (0 && hit5->trim_left <= 8) {
 	/* Ignore small trims */
       } else if (hit5->trim_left > trim_left_5) {
@@ -10195,6 +10229,7 @@ Stage3pair_optimal_score_aux (bool *eliminatedp, List_T hitpairlist, int cutoff_
 	hit5->score_eventrim += hit5->trim_right - trim_right_5;
 	debug6(printf("  add trim right (%d - %d).",hit5->trim_right,trim_right_5));
       }
+
       hit5->score_eventrim += Pair_nmismatches_region(&nindelbreaks,hit5->pairarray,hit5->npairs,
 						      trim_left_5,trim_right_5,hit5->querylength_adj);
       debug6(printf("  add nmismatches %d.",Pair_nmismatches_region(&nindelbreaks,hit5->pairarray,hit5->npairs,
@@ -10245,6 +10280,7 @@ Stage3pair_optimal_score_aux (bool *eliminatedp, List_T hitpairlist, int cutoff_
 	debug6(printf("  bad stretch 2."));
       }
 #endif
+
       if (0 && hit3->trim_left <= 8) {
 	/* Ignore small trims */
       } else if (hit3->trim_left > trim_left_3) {
@@ -10257,6 +10293,7 @@ Stage3pair_optimal_score_aux (bool *eliminatedp, List_T hitpairlist, int cutoff_
 	hit3->score_eventrim += hit3->trim_right - trim_right_3;
 	debug6(printf("  add trim right (%d - %d).",hit3->trim_right,trim_right_3));
       }
+
       hit3->score_eventrim += Pair_nmismatches_region(&nindelbreaks,hit3->pairarray,hit3->npairs,
 						      trim_left_3,trim_right_3,hit3->querylength_adj);
       debug6(printf("  add nmismatches %d.",Pair_nmismatches_region(&nindelbreaks,hit3->pairarray,hit3->npairs,
@@ -10511,6 +10548,30 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
   return optimal;
 }
 
+
+
+bool
+Stage3pair_sense_consistent_p (List_T hitpairlist) {
+  Stage3pair_T hitpair;
+  T hit5, hit3;
+  List_T p;
+
+  for (p = hitpairlist; p != NULL; p = List_next(p)) {
+    hitpair = (Stage3pair_T) List_head(p);
+    hit5 = hitpair->hit5;
+    hit3 = hitpair->hit3;
+    if (hit5->sensedir == hit3->sensedir) {
+      return true;
+    } else if (hit5->hittype == GMAP && hit5->gmap_nintrons > 0 && hit5->sensedir == 0) {
+      /* false */
+    } else if (hit3->hittype == GMAP && hit3->gmap_nintrons > 0 && hit3->sensedir == 0) {
+      /* false */
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
 
 
 /* Want to unalias plus and alias minus */

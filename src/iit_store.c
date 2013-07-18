@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c 83597 2013-01-16 23:02:30Z twu $";
+static char rcsid[] = "$Id: iit_store.c 91469 2013-04-04 21:25:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -428,18 +428,20 @@ parse_fieldlist (char *firstchar, FILE *fp) {
   List_T fieldlist = NULL;
   char Buffer[LINELENGTH], *fieldname, *p;
 
-  while ((*firstchar = fgetc(fp)) != '>') {
-    Buffer[0] = *firstchar;
-    fgets(&(Buffer[1]),LINELENGTH-1,fp);
-    if ((p = rindex(Buffer,'\n')) == NULL) {
-      fprintf(stderr,"Line %s exceeds maximum length of %d\n",Buffer,LINELENGTH);
-      exit(9);
-    } else {
-      *p = '\0';
+  while (!feof(fp) && (*firstchar = fgetc(fp)) != '>') {
+    if (*firstchar != EOF) {
+      Buffer[0] = *firstchar;
+      fgets(&(Buffer[1]),LINELENGTH-1,fp);
+      if ((p = rindex(Buffer,'\n')) == NULL) {
+	fprintf(stderr,"Line %s exceeds maximum length of %d\n",Buffer,LINELENGTH);
+	exit(9);
+      } else {
+	*p = '\0';
+      }
+      fieldname = (char *) CALLOC(strlen(Buffer)+1,sizeof(char));
+      strcpy(fieldname,Buffer);
+      fieldlist = List_push(fieldlist,fieldname);
     }
-    fieldname = (char *) CALLOC(strlen(Buffer)+1,sizeof(char));
-    strcpy(fieldname,Buffer);
-    fieldlist = List_push(fieldlist,fieldname);
   }
 
   return List_reverse(fieldlist);
@@ -464,7 +466,10 @@ parse_fasta (
   *annot_totallength = 0LU;
 #endif
 
-  if (firstchar == '\0') {
+  if (feof(fp)) {
+    return;
+
+  } else if (firstchar == '\0') {
     fgets(Buffer,LINELENGTH,fp);
   } else {
     Buffer[0] = firstchar;

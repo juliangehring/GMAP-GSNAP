@@ -1,11 +1,11 @@
-/* $Id: resulthr.h 66479 2012-06-14 16:17:46Z twu $ */
+/* $Id: resulthr.h 91116 2013-04-02 19:50:33Z twu $ */
 #ifndef RESULTHR_INCLUDED
 #define RESULTHR_INCLUDED
 #include "bool.h"
 
 /* PAIRED_UNSPECIFIED assigned only by Stage1hr_paired_read */
 typedef enum {CONCORDANT, PAIRED_UNSPECIFIED, PAIRED_INVERSION, PAIRED_SCRAMBLE, PAIRED_TOOLONG,
-	      CONCORDANT_TRANSLOCATIONS, CONCORDANT_TERMINAL, UNPAIRED} Pairtype_T;
+	      CONCORDANT_TRANSLOCATIONS, CONCORDANT_TERMINAL, UNPAIRED, UNSPECIFIED} Pairtype_T;
 
 typedef enum {SINGLEEND_NOMAPPING, PAIREDEND_NOMAPPING,
 	      SINGLEEND_UNIQ, SINGLEEND_TRANSLOC, SINGLEEND_MULT,
@@ -17,6 +17,8 @@ typedef enum {SINGLEEND_NOMAPPING, PAIREDEND_NOMAPPING,
 #define T Result_T
 typedef struct T *T;
 
+extern char *
+Pairtype_string (Pairtype_T pairtype);
 extern Resulttype_T
 Result_resulttype (T this);
 extern char *

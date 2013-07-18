@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c 49618 2011-10-12 17:07:10Z twu $";
+static char rcsid[] = "$Id: iit-write.c 91468 2013-04-04 21:25:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1270,8 +1270,12 @@ IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Tab
     }
     total_nintervals = cum_nintervals[ndivs];
     if (total_nintervals == 0) {
-      fprintf(stderr,"Error: No intervals were seen in input file\n");
-      exit(9);
+      fprintf(stderr,"Warning: No intervals were seen in input file\n");
+      FREE(cum_nintervals);
+      FREE(nnodes);
+      FREE(nintervals);
+      fclose(fp);
+      return;
     }
 
     cum_nnodes = (int *) CALLOC(ndivs+1,sizeof(int));
@@ -1338,8 +1342,6 @@ IIT_create (List_T divlist, List_T typelist, List_T fieldlist, Table_T intervalt
   struct Interval_T *intervals;
   int *alphas, *betas, *sigmas, *omegas;
 
-  new = (T) MALLOC(sizeof(*new));
-
   ndivs = List_length(divlist);
   nintervals = (int *) CALLOC(ndivs,sizeof(int));
   nnodes = (int *) CALLOC(ndivs,sizeof(int));
@@ -1357,8 +1359,13 @@ IIT_create (List_T divlist, List_T typelist, List_T fieldlist, Table_T intervalt
   }
   total_nintervals = cum_nintervals[ndivs];
   if (total_nintervals == 0) {
-    fprintf(stderr,"Error: No intervals were seen in input file\n");
-    exit(9);
+    fprintf(stderr,"Warning: No intervals were given to IIT_create\n");
+    FREE(cum_nintervals);
+    FREE(nnodes);
+    FREE(nintervals);
+    return (T) NULL;
+  } else {
+    new = (T) MALLOC(sizeof(*new));
   }
 
   cum_nnodes = (int *) CALLOC(ndivs+1,sizeof(int));

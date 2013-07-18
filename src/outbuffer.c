@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 87096 2013-02-22 21:04:02Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 91473 2013-04-04 21:43:11Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1670,7 +1670,11 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
     }
 
   } else if ((chimera = Result_chimera(result)) != NULL) {
-    effective_maxpaths = 2;
+    if (this->chimeras_allowed_p == true) {
+      effective_maxpaths = 2;
+    } else {
+      effective_maxpaths = 0;
+    }
     fp = this->fp_transloc;
 
     if (this->failsonlyp == true) {
@@ -1975,11 +1979,11 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
       Stage3_print_introns(fp,stage3array[0],this->chromosome_iit,queryseq);
     }
 
-  } else if (this->printtype == MAP_GENES) {
+  } else if (this->printtype == MAP_RANGES) {
     for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
       Stage3_print_iit_map(fp,stage3array[pathnum-1],this->chromosome_iit,queryseq);
     }
-
+      
   } else if (this->printtype == MAP_EXONS) {
     for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
       Stage3_print_iit_exon_map(fp,stage3array[pathnum-1],this->chromosome_iit,queryseq);

@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 79302 2012-11-15 23:55:58Z twu $ */
+/* $Id: dynprog.h 90981 2013-04-01 19:41:47Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -124,8 +124,8 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  int extraband_end, double defect_rate, Endalign_T endalign);
 
 extern List_T
-Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches, 
-			     int *nopens, int *nindels, T dynprog, 
+Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
+			     int *nmatches, int *nmismatches, int *nopens, int *nindels, T dynprog, 
 			     char *revsequence1, char *revsequenceuc1,
 			     char *revsequence2, char *revsequenceuc2, char *revsequencealt2,
 			     int length1, int length2, int revoffset1, int revoffset2_anchor, int revoffset2_far,
@@ -149,8 +149,8 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 		  int extraband_end, double defect_rate, Endalign_T endalign);
 
 extern List_T
-Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *nmatches, int *nmismatches,
-			     int *nopens, int *nindels, T dynprog,
+Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
+			     int *nmatches, int *nmismatches, int *nopens, int *nindels, T dynprog,
 			     char *sequence1, char *sequenceuc1,
 			     char *sequence2, char *sequenceuc2, char *sequencealt2,
 			     int length1, int length2, int offset1, int offset2_anchor, int offset2_far,

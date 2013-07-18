@@ -1,4 +1,190 @@
+2013-04-12  twu
+
+    * pair.c, pair.h, samprint.c: Providing effective_chrnum of mate to
+      Pair_print_sam, in case GMAP alignment has a translocation for a mate
+
+2013-04-11  twu
+
+    * gmap.c: Made changes for PMAP to compile
+
+2013-04-10  twu
+
+    * gmap.c: Fixed memory issues in merging middle pieces
+
+2013-04-09  twu
+
+    * Makefile.dna.am: Fixed name of file
+
+2013-04-05  twu
+
+    * stage1hr.c, stage3hr.c, stage3hr.h: When terminal_threshold is set to a
+      high value, using trim_left_raw and trim_right_raw to exclude GMAP hits.
+
+    * samprint.c: Reverting to previous version, where chrpos of 0 indicates
+      nomapping
+
+    * oligoindex_hr.c: Fixed an issue where minus oligomers were extending past
+      the beginning
+
+    * stage3.c: Removed the unused variables nintrons, nnonintrons, intronlen,
+      and nonintronlen.
+
+2013-04-04  twu
+
+    * gmap.c, outbuffer.c, stage3.h: Changed name from map_genes to map_ranges,
+      to avoid confusion
+
+    * iit_store.c: Handling empty files gracefully
+
+    * iit-write.c: If no intervals are found, then returning gracefully instead
+      of exiting
+
+    * outbuffer.c: If allow_chimeras_p is false and chimera is present, then
+      effective_maxpaths is 0.
+
+    * gmap.c: Added flag --no-chimeras
+
+    * stage3hr.c: Added debugging statement
+
+    * samprint.c: Using NULL hit instead of zero chrpos to indicate lack of
+      mapping
+
+2013-04-03  twu
+
+    * dynprog.c, stage3.c: Fixed uninitialized variable for g_alt in
+      get_genomic_nt
+
+    * stage3hr.c, substring.c, substring.h: Updating nmismatches_bothdiff also
+
+2013-04-02  twu
+
+    * stage3hr.c: Handling the new pairtype UNSPECIFIED.
+
+    * stage1hr.c: Allowing align_pair_with_gmap to change final_pairtype.  Calls
+      Stage3pair_new with pairtype UNSPECIFIED.
+
+    * resulthr.c, resulthr.h: Added function Pairtype_string
+
+2013-04-01  twu
+
+    * VERSION, config.site.rescomp.tst: Updated version number
+
+    * stage3.c: Added debugging statements
+
+    * splicetrie.c: Using computed miss_score.  Both miss_score and
+      threshold_miss_score are negative.
+
+    * smooth.c, smooth.h: Added code for marking short exons, but not used
+
+    * pair.c, pair.h: Removed unused procedures
+
+    * dynprog.h: Computing miss_score.  Both miss_score and threshold_miss_score
+      are negative.
+
+    * dynprog.c: Computing miss_score.  Both miss_score and threshold_miss_score
+      are negative.
+
+2013-03-30  twu
+
+    * stage3.c: Fixed bug in handling list for middle exon in
+      build_pairs_dualintrons. In traverse_single_gap, when forcep == false, not
+      adding pairs if finalscore < 0.
+
+2013-03-28  twu
+
+    * stage3.c: Skipping pass 9 (distalmedial) and relying instead of
+      trim_noncanonical_exons.  In pass 8, for extend_endings, not removing
+      indel gaps, and setting quit_on_gap_p true, to preserve indels at ends. 
+      Not setting ambig_end_lengths in trim_noncanonical_exons, reserving it
+      instead for trim_novel_spliceends.  Performing final extension of ends at
+      end of path_compute, and not at beginning of path_trim.
+
+    * stage1hr.c: Allowing redo of GMAP pairs based on inconsistent senses.
+
+    * gmap.c, gsnap.c: Increased maxpeelback from 11 to 20
+
+    * stage3.c: Added quit_on_gap_p parameter to peel_rightward and
+      peel_leftward. This allows smoothing procedures after traverse_single_gap
+      to merge gaps, and dynamic programming traversal of introns to add indels.
+      Calling remove_indel_gaps before dynamic programming solutions of introns.
+       Added computation of max_intron_score, and using it in
+      pick_cdna_direction to determine if sense is NULL.
+
+2013-03-27  twu
+
+    * Makefile.dna.am: Added commands for splicing-score program
+
+    * stage3hr.c: Handling case in Stage3pair_new where expect_concordant_p is
+      false for a GMAP alignment
+
+    * stage1hr.h: Added distances_observed_p to Stage1hr_setup
+
+    * splicetrie_build.c: When observed distance is greater than
+      localsplicedist, storing observed distance
+
+    * gsnap.c, uniqscan.c: Added distances_observed_p to Stage1hr_setup
+
+    * stage1hr.c: In find_splicepairs_distant, if splice distance is within the
+      known maximum distance, then treating as a local splice, rather than a
+      distant splice.
+
+    * substring.c: Added code for Substring_intragenic_splice_p, but using
+      version in stage1hr.c instead
+
+    * stage3hr.c: In Stage3_determine_pairtype, using effective_chrnum instead
+      of chrnum, so new pairs with PAIRED_UNSPECIFIED from GMAP runs work.
+
+    * stage3hr.h: Added function Stage3pair_sense_consistent_p.
+
+    * stage3hr.c: Changed ambig_end_interval, used in penalty, to 8.  In
+      Stage3end_pick_cdna_direction, returning a non-zero cdna_direction. Added
+      function Stage3pair_sense_consistentp.
+
+    * stage3.c: Allowing ambig end only if medial prob > 0.95.  Moved
+      trim_novel_spliceends earlier, so it is effective.  In
+      pick_cdna_direction, making a final use of alignment score.  Checking for
+      divide by zero in computing defect_rate.
+
+    * stage1hr.c: Using matches over entire read to determine whether to perform
+      GMAP. Performing halfmapping of GMAP against terminals only if nconcordant
+      is 0.  Added a redo step on align_pair_with_gmap if the senses are
+      inconsistent.
+
+    * inbuffer.c, shortread.c, shortread.h: Allowing FASTA input files to be
+      paired
+
+2013-03-26  twu
+
+    * stage1hr.c: For GMAP alignments with long trimmed ends, comparing
+      terminal_threshold against user_maxlevel in deciding whether to drop them.
+
+    * stage3hr.c: Allowing GMAP improvement to be run on paired results
+
+    * stage1hr.c: Allowing GMAP improvement to be run on paired results
+
+    * samprint.c: Adding PG:Z:T output for terminal alignments
+
+2013-03-25  twu
+
+    * stage3hr.c: Switching back to old GMAP filter, where nmatches_posttrim
+      must exceed querylength/2.
+
+    * stage1hr.c: Applying terminal_threshold test to GMAP alignments
+
+2013-03-21  twu
+
+    * dynprog.c: Allowing only two mismatches in a distant splice
+
+    * gmap.c, gsnap.c: Made results of --version consistent
+
+    * stage1hr.c: Applying match length criterion to terminal GMAP alignments
+
+    * stage1hr.c: Incrementing nconcordant only for high-quality GMAP pairsearch
+      results, where nmatches is high enough, instead of using GMAP score.
+
 2013-03-14  twu
+
+    * splicetrie_build.c: Fixed type
 
     * gsnap.c, shortread.c, shortread.h: Implemented --force-single-end flag
 

@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 87659 2013-02-28 23:35:20Z twu $ */
+/* $Id: stage3hr.h 91632 2013-04-05 21:58:36Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -112,6 +112,10 @@ Stage3end_trim_left (T this);
 extern int
 Stage3end_trim_right (T this);
 extern int
+Stage3end_trim_left_raw (T this);
+extern int
+Stage3end_trim_right_raw (T this);
+extern int
 Stage3end_circularpos (T this);
 
 
@@ -151,6 +155,8 @@ extern int
 Stage3end_sensedir_nonamb (T this);
 extern int
 Stage3end_cdna_direction (T this);
+extern int
+Stage3end_nintrons (T this);
 extern bool
 Stage3end_gmap_triedp (T this);
 extern void
@@ -284,6 +290,8 @@ extern List_T
 Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches,
 			 Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			 bool keep_gmap_p, bool finalp);
+extern bool
+Stage3pair_sense_consistent_p (List_T hitpairlist);
 extern List_T
 Stage3end_linearize_5 (List_T hitlist);
 extern List_T

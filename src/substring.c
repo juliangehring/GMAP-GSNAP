@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 87009 2013-02-21 23:38:40Z twu $";
+static char rcsid[] = "$Id: substring.c 91335 2013-04-03 19:39:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2122,8 +2122,9 @@ Substring_nmatches_posttrim (T this) {
 
 
 void
-Substring_set_nmismatches_terminal (T this, int nmismatches_whole) {
+Substring_set_nmismatches_terminal (T this, int nmismatches_whole, int nmismatches_bothdiff) {
   this->nmismatches_whole = nmismatches_whole;
+  this->nmismatches_bothdiff = nmismatches_bothdiff;
   if (this->plusp == true) {
     this->nmatches = (this->alignend_trim - this->alignstart_trim) - nmismatches_whole;
   } else {
@@ -3145,6 +3146,70 @@ print_splicesite_labels (FILE *fp, T this, int typeint, int chimera_pos, char *t
 
   return;
 }
+
+
+#if 0
+/* replaced by intragenic_splice_p in stage1hr.c */
+/* donor_genomicpos and acceptor_genomicpos are Univcoord_T */
+bool
+Substring_intragenic_splice_p (Genomicpos_T splicedistance, Chrnum_T chrnum,
+			       Genomicpos_T donor_genomicpos, Genomicpos_T acceptor_genomicpos,
+			       Genomicpos_T chroffset) {
+  Genomicpos_T obsdistance;
+  Genomicpos_T chrpos;
+  int *splicesites, nsplicesites, i;
+  char *annot, *restofheader;
+  bool alloc_header_p;
+
+  debug5(printf("Entered Substring_intragenic_splice_p with donor %u and acceptor %u, chroffset %u => chrpos %u and %u\n",
+		donor_genomicpos,acceptor_genomicpos,chroffset,donor_genomicpos-chroffset,acceptor_genomicpos-chroffset));
+
+  chrpos = donor_genomicpos - chroffset;
+  splicesites = IIT_get_typed_with_divno(&nsplicesites,splicesites_iit,
+					 splicesites_divint_crosstable[chrnum],
+					 chrpos,chrpos,donor_typeint,/*sortp*/false);
+  for (i = 0; i < nsplicesites; i++) {
+    annot = IIT_annotation(&restofheader,splicesites_iit,splicesites[i],&alloc_header_p);
+    debug5(printf("Comparing obsdistance %s at donor %u with splicedistance %u\n",restofheader,chrpos,splicedistance));
+    if (sscanf(restofheader,"%u",&obsdistance) == 1 &&
+	obsdistance >= splicedistance) {
+      if (alloc_header_p == true) {
+	FREE(restofheader);
+      }
+      FREE(splicesites);
+      return true;
+    }
+    if (alloc_header_p == true) {
+      FREE(restofheader);
+    }
+  }
+  FREE(splicesites);
+
+  chrpos = acceptor_genomicpos - chroffset;
+  splicesites = IIT_get_typed_with_divno(&nsplicesites,splicesites_iit,
+					 splicesites_divint_crosstable[chrnum],
+					 acceptor_genomicpos,acceptor_genomicpos,donor_typeint,
+					 /*sortp*/false);
+  for (i = 0; i < nsplicesites; i++) {
+    annot = IIT_annotation(&restofheader,splicesites_iit,splicesites[i],&alloc_header_p);
+    debug5(printf("Comparing obsdistance %s at acceptor %u with splicedistance %u\n",restofheader,chrpos,splicedistance));
+    if (sscanf(restofheader,"%u",&obsdistance) == 1 &&
+	obsdistance >= splicedistance) {
+      if (alloc_header_p == true) {
+	FREE(restofheader);
+      }
+      FREE(splicesites);
+      return true;
+    }
+    if (alloc_header_p == true) {
+      FREE(restofheader);
+    }
+  }
+  FREE(splicesites);
+
+  return false;
+}
+#endif
 
 
 static void

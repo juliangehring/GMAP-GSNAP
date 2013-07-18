@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 87096 2013-02-22 21:04:02Z twu $ */
+/* $Id: stage1hr.h 90500 2013-03-27 22:34:44Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -91,6 +91,7 @@ Stage1hr_setup (int index1part_in, int index1interval_in, int spansize_in,
 		Genomicpos_T *splicedists_in, int nsplicesites_in,
 
 		bool novelsplicingp_in, bool knownsplicingp_in,
+		bool distances_observed_p_in,
 		int shortsplicedist_known_in, int shortsplicedist_novelend_in,
 		Genomicpos_T min_intronlength_in,
 

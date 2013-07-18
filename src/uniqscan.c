@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 87226 2013-02-25 17:51:59Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 90498 2013-03-27 22:33:51Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1115,8 +1115,8 @@ main (int argc, char *argv[]) {
   Stage1hr_setup(index1part,index1interval,spansize,chromosome_iit,nchromosomes,
 		 genomealt,mode,/*maxpaths_search*/10,/*terminal_threshold*/5,
 		 splicesites,splicetypes,splicedists,nsplicesites,
-		 novelsplicingp,knownsplicingp,shortsplicedist_known,
-		 shortsplicedist_novelend,min_intronlength,
+		 novelsplicingp,knownsplicingp,distances_observed_p,
+		 shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
 		 extramaterial_end,extramaterial_paired,gmap_mode,
 		 trigger_score_for_gmap,max_gmap_pairsearch,

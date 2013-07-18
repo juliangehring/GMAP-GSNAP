@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 88796 2013-03-12 19:59:35Z twu $";
+static char rcsid[] = "$Id: pair.c 92688 2013-04-12 23:28:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -172,12 +172,6 @@ Pair_gapp (T this) {
 bool
 Pair_shortexonp (T this) {
   return this->shortexonp;
-}
-
-void
-Pair_set_shortexonp (T this) {
-  this->shortexonp = true;
-  return;
 }
 
 
@@ -3115,6 +3109,7 @@ print_pair_info (FILE *fp, int insertlength, int pairscore, Pairtype_T pairtype)
   case CONCORDANT_TRANSLOCATIONS: break;
   case CONCORDANT_TERMINAL: break;
   case PAIRED_UNSPECIFIED: abort();
+  case UNSPECIFIED: break;
   case UNPAIRED: abort();
   }
 
@@ -5117,8 +5112,8 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		int absmq_score, int first_absmq, int second_absmq, Genomicpos_T chrpos,
 #ifdef GSNAP
 		Resulttype_T resulttype, unsigned int flag, int pair_mapq_score, int end_mapq_score,
-		Chrnum_T mate_chrnum, Genomicpos_T mate_chrpos, int mate_cdna_direction,
-		int pairedlength,
+		Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum, Genomicpos_T mate_chrpos,
+		int mate_cdna_direction, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif
@@ -5147,10 +5142,20 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
   }
 
 #ifdef GSNAP
-  if (mate_chrnum == chrnum) {
-    mate_chrstring = "=";
+  if (mate_chrpos == 0U) {
+    mate_chrstring = "*";
+  } else if (mate_chrnum == 0) {
+    if (/* chrpos > 0U && chrnum > 0 && */ mate_effective_chrnum == chrnum) {
+      mate_chrstring = "=";
+    } else {
+      mate_chrstring = mate_chrstring_alloc = Chrnum_to_string(mate_effective_chrnum,chromosome_iit);
+    }
   } else {
-    mate_chrstring = mate_chrstring_alloc = Chrnum_to_string(mate_chrnum,chromosome_iit);
+    if (/* chrpos > 0U && chrnum > 0 && */ mate_chrnum == chrnum) {
+      mate_chrstring = "=";
+    } else {
+      mate_chrstring = mate_chrstring_alloc = Chrnum_to_string(mate_chrnum,chromosome_iit);
+    }
   }
 #else
   flag = compute_sam_flag_nomate(pathnum,npaths,firstp,watsonp,sam_paired_p);

@@ -5,7 +5,7 @@ EXTRA_DIST = VERSION config.site
 
 CLEANFILES = so_locations
 
-ACLOCAL_AMFLAGS = -I m4
+ACLOCAL_AMFLAGS = -I config
 
 install-data-local:
 	$(mkinstalldirs) $(GMAPDB)

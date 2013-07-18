@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 87096 2013-02-22 21:04:02Z twu $ */
+/* $Id: outbuffer.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -6,6 +6,7 @@
 #include "bool.h"
 #include "genomicpos.h"
 #include "sequence.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 
 #include "request.h"
@@ -30,21 +31,21 @@ typedef struct T *T;
 #ifdef GSNAP
 
 extern T
-Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp, IIT_T chromosome_iit,
+Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp, Univ_IIT_T chromosome_iit,
 	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
 	       Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp, bool fails_as_input_p,
 	       bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
 	       int maxpaths_report, bool quiet_if_excessive_p, int quality_shift,
-	       bool invert_first_p, bool invert_second_p, Genomicpos_T pairmax);
+	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax);
 
 #else
 
 extern T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp,
 	       bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
-	       char *dbversion, Genome_T genome, IIT_T chromosome_iit,
-	       Chrsubset_T chrsubset, IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
+	       char *dbversion, Genome_T genome, Univ_IIT_T chromosome_iit,
+	       Chrsubset_T chrsubset, Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
 #ifndef PMAP
 	       bool sam_headers_p, int quality_shift, bool sam_paired_p,

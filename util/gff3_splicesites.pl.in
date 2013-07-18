@@ -59,9 +59,18 @@ if (defined($opt_d)) {
 
 		    ($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
 		    $strand = $fields[6];
+
+		    # For GFF3 files without a gene line
+		    if (!defined($gene_name) || $gene_name !~ /\S/) {
+			$gene_name = $last_transcript_id;
+		    }
+		    if (!defined($chr) || $chr !~ /\S/) {
+			$chr = $fields[0];
+		    }
+
 		    @exons = ();
 
-		} elsif ($fields[2] eq "exon") {
+		} elsif ($fields[2] eq "exon" || $fields[2] eq "CDS") {
 		    push @exons,"$fields[3] $fields[4]";
 		}
 	    }
@@ -123,9 +132,18 @@ while (defined($line = get_line())) {
 
 	    ($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
 	    $strand = $fields[6];
+
+	    # For GFF3 files without a gene line
+	    if (!defined($gene_name) || $gene_name !~ /\S/) {
+		$gene_name = $last_transcript_id;
+	    }
+	    if (!defined($chr) || $chr !~ /\S/) {
+		$chr = $fields[0];
+	    }
+
 	    @exons = ();
 
-	} elsif ($fields[2] eq "exon") {
+	} elsif ($fields[2] eq "exon" || $fields[2] eq "CDS") {
 	    push @exons,"$fields[3] $fields[4]";
 	}
     }

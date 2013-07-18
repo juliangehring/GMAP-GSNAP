@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c 45942 2011-08-29 21:09:55Z twu $";
+static char rcsid[] = "$Id: segmentpos.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,6 +9,7 @@ static char rcsid[] = "$Id: segmentpos.c 45942 2011-08-29 21:09:55Z twu $";
 #include "mem.h"
 #include "intlist.h"
 #include "separator.h"
+#include "univinterval.h"
 
 
 #ifdef DEBUG
@@ -24,9 +25,9 @@ static char rcsid[] = "$Id: segmentpos.c 45942 2011-08-29 21:09:55Z twu $";
 #define T Segmentpos_T
 struct T {
   Chrom_T chrom;		/* 4 bytes */
-  Genomicpos_T chrpos1;		/* 4 bytes */
-  Genomicpos_T chrpos2;		/* 4 bytes */
-  Genomicpos_T length;		/* 4 bytes */
+  Chrpos_T chrpos1;		/* 4 bytes */
+  Chrpos_T chrpos2;		/* 4 bytes */
+  Chrpos_T length;		/* 4 bytes */
   int type;			/* 4 bytes */
   bool revcompp;
 };
@@ -37,17 +38,17 @@ Segmentpos_chrom (T this) {
   return this->chrom;
 }
 
-Genomicpos_T
+Chrpos_T
 Segmentpos_chrpos1 (T this) {
   return this->chrpos1;
 }
 
-Genomicpos_T
+Chrpos_T
 Segmentpos_chrpos2 (T this) {
   return this->chrpos2;
 }
 
-Genomicpos_T
+Chrpos_T
 Segmentpos_length (T this) {
   return this->length;
 }
@@ -64,8 +65,8 @@ Segmentpos_revcompp (T this) {
 
 
 T
-Segmentpos_new (Chrom_T chrom, Genomicpos_T chrpos1, Genomicpos_T chrpos2, 
-		bool revcompp, Genomicpos_T length, int type) {
+Segmentpos_new (Chrom_T chrom, Chrpos_T chrpos1, Chrpos_T chrpos2, 
+		bool revcompp, Chrpos_T length, int type) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->chrom = chrom;
@@ -85,8 +86,8 @@ Segmentpos_free (T *old) {
 }
 
 void
-Segmentpos_print (FILE *fp, T this, char *acc, Genomicpos_T offset) {
-  fprintf(fp,"%s\t%u\t%s\t%u\t%u\n",acc,offset+this->chrpos1,Chrom_string(this->chrom),this->chrpos1,this->length);
+Segmentpos_print (FILE *fp, T this, char *acc, Univcoord_T chroffset) {
+  fprintf(fp,"%s\t%u\t%s\t%u\t%u\n",acc,chroffset+this->chrpos1,Chrom_string(this->chrom),this->chrpos1,this->length);
   return;
 }
 
@@ -142,21 +143,22 @@ Segmentpos_compare_chrom (const void *x, const void *y) {
 }
 
 static bool
-altstrain_sufficient_p (int *indices, int nindices, IIT_T contig_iit, Genomicpos_T position1,
-			Genomicpos_T position2, char *align_strain) {
+altstrain_sufficient_p (int *indices, int nindices, Univ_IIT_T contig_iit, Univcoord_T position1,
+			Univcoord_T position2, char *align_strain) {
   int i;
-  Genomicpos_T contig_start, contig_end, contig_length;
+  Univcoord_T contig_start, contig_end;
+  Chrpos_T contig_length;
   int index, contig_straintype;
-  Interval_T interval;
+  Univinterval_T interval;
 
   i = 0;
   while (i < nindices) {
     index = indices[i];
-    interval = IIT_interval(contig_iit,index);
-    contig_straintype = Interval_type(interval);
-    if (!strcmp(IIT_typestring(contig_iit,contig_straintype),align_strain)) {
-      contig_start = Interval_low(interval);
-      contig_length = Interval_length(interval);
+    interval = Univ_IIT_interval(contig_iit,index);
+    contig_straintype = Univinterval_type(interval);
+    if (!strcmp(Univ_IIT_typestring(contig_iit,contig_straintype),align_strain)) {
+      contig_start = Univinterval_low(interval);
+      contig_length = Univinterval_length(interval);
       contig_end = contig_start + contig_length;
 
       if (contig_start <= position1 && contig_end >= position2) {
@@ -174,7 +176,7 @@ altstrain_sufficient_p (int *indices, int nindices, IIT_T contig_iit, Genomicpos
 
 
 static bool
-contig_print_p (IIT_T contig_iit, int contig_straintype, bool referencealignp,
+contig_print_p (Univ_IIT_T contig_iit, int contig_straintype, bool referencealignp,
 		char *align_strain, bool printreferencep, bool printaltp) {
   if (contig_straintype == 0) {
     /* Contig is from reference strain */
@@ -192,7 +194,7 @@ contig_print_p (IIT_T contig_iit, int contig_straintype, bool referencealignp,
       return false;
     }
 
-  } else if (strcmp(IIT_typestring(contig_iit,contig_straintype),align_strain)) {
+  } else if (strcmp(Univ_IIT_typestring(contig_iit,contig_straintype),align_strain)) {
     /* Contig is from a non-relevant alternate strain */
     return false;
 
@@ -208,20 +210,21 @@ contig_print_p (IIT_T contig_iit, int contig_straintype, bool referencealignp,
 
 
 void
-Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
-			     Genomicpos_T position2, bool referencealignp, 
+Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T position1,
+			     Univcoord_T position2, bool referencealignp, 
                              char *align_strain) {
-  Genomicpos_T contig_start, contig_length;
+  Univcoord_T contig_start;
+  Chrpos_T contig_length;
   int relstart, relend;		/* Need to be signed int, not long or unsigned long */
   int index, contig_straintype, i = 0;
   char *label, *comma1, *comma2, firstchar;
   int *indices, nindices, j;
-  Interval_T interval;
+  Univinterval_T interval;
   bool printreferencep, printaltp, firstprintp = false, allocp;
 
   fprintf(fp,"    Accessions: ");
 
-  indices = IIT_get(&nindices,contig_iit,/*divstring*/NULL,position1,position2,/*sortp*/false);
+  indices = Univ_IIT_get(&nindices,contig_iit,position1,position2);
   if (referencealignp == true) {
     printreferencep = true;
     printaltp = false;
@@ -236,24 +239,24 @@ Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
   j = 0;
   while (j < nindices && i < MAXACCESSIONS) {
     index = indices[j];
-    interval = IIT_interval(contig_iit,index);
-    contig_straintype = Interval_type(interval);
+    interval = Univ_IIT_interval(contig_iit,index);
+    contig_straintype = Univinterval_type(interval);
     if (contig_print_p(contig_iit,contig_straintype,referencealignp,align_strain,
 		       printreferencep,printaltp) == true) {
-      contig_start = Interval_low(interval);
-      contig_length = Interval_length(interval);
+      contig_start = Univinterval_low(interval);
+      contig_length = Univinterval_length(interval);
 
       relstart = position1 - contig_start;
       if (relstart < 0) {
 	relstart = 0;
       }
       relend = position2 - contig_start;
-      if ((Genomicpos_T) relend > contig_length) {
+      if ((Chrpos_T) relend > contig_length) {
 	relend = contig_length;
       }
 
-      comma1 = Genomicpos_commafmt((Genomicpos_T) (relstart + ONEBASEDP));
-      comma2 = Genomicpos_commafmt((Genomicpos_T) (relend + ONEBASEDP));
+      comma1 = Genomicpos_commafmt((Univcoord_T) (relstart + ONEBASEDP));
+      comma2 = Genomicpos_commafmt((Univcoord_T) (relend + ONEBASEDP));
       
       if (firstprintp == true) {
 	printf("; ");
@@ -261,6 +264,7 @@ Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
 	firstprintp = true;
       }
 
+#if 0
       if (IIT_version(contig_iit) <= 1) {
 	firstchar = IIT_annotation_firstchar(contig_iit,index);
 	if (firstchar == '-') {
@@ -271,8 +275,14 @@ Segmentpos_print_accessions (FILE *fp, IIT_T contig_iit, Genomicpos_T position1,
 	  printf("[-]");
 	}
       }
+#else
+      firstchar = Univ_IIT_annotation_firstchar(contig_iit,index);
+      if (firstchar == '-') {
+	printf("[-]");
+      }
+#endif
 
-      label = IIT_label(contig_iit,index,&allocp);
+      label = Univ_IIT_label(contig_iit,index,&allocp);
       fprintf(fp,"%s",label);
       if (allocp == true) {
 	FREE(label);

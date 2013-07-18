@@ -1,4 +1,4 @@
-/* $Id: shortread.h 90425 2013-03-27 16:27:35Z twu $ */
+/* $Id: shortread.h 98808 2013-06-18 22:16:54Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -18,7 +18,8 @@ typedef struct T *T;
 
 extern void
 Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in,
-		 bool force_singled_end_p_in, bool filter_chastity_p_in);
+		 bool force_singled_end_p_in, bool filter_chastity_p_in,
+		 bool allow_paired_end_mismatch_p_in);
 
 extern char *
 Shortread_accession (T this);
@@ -116,7 +117,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 
 
 extern void
-Shortread_print_header (FILE *fp, T this);
+Shortread_print_header (FILE *fp, T queryseq1, T queryseq2);
 
 extern void
 Shortread_print_query_singleend_fasta (FILE *fp, T queryseq);

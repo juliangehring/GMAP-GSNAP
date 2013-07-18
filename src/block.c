@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: block.c 64017 2012-05-14 22:35:15Z twu $";
+static char rcsid[] = "$Id: block.c 99748 2013-06-27 21:01:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -36,10 +36,10 @@ struct T {
   int querylength;
   int last_querypos;
   Oligostate_T last_state;
-  int oligosize;
+  Width_T oligosize;
 
 #ifdef PMAP
-  unsigned int aaindex;
+  Storedoligomer_T aaindex;
 #else
   int leftreadshift;
   Storedoligomer_T forward;
@@ -51,7 +51,7 @@ struct T {
   int last_querypos_save;
   Oligostate_T last_state_save;
 #ifdef PMAP
-  unsigned int aaindex_save;
+  Storedoligomer_T aaindex_save;
 #else
   Storedoligomer_T forward_save;
   Storedoligomer_T revcomp_save;
@@ -70,7 +70,7 @@ Block_querypos (T this) {
 }
 
 #ifdef PMAP
-unsigned int
+Storedoligomer_T
 Block_aaindex (T this) {
  return this->aaindex;
 }
@@ -169,7 +169,7 @@ Block_reset_ends (T this) {
 
 
 T
-Block_new (cDNAEnd_T cdnaend, int oligosize,
+Block_new (cDNAEnd_T cdnaend, Width_T oligosize,
 #ifndef PMAP
 	   int leftreadshift,
 #endif
@@ -322,8 +322,8 @@ Block_skipto (T this, int querypos) {
 #ifdef PMAP
 
 int
-Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits, 
-		     Genomicpos_T **revpositions, int *nrevhits,
+Block_process_oligo (Univcoord_T **fwdpositions, int *nfwdhits, 
+		     Univcoord_T **revpositions, int *nrevhits,
 		     T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
 
   /* Note that querylength was already multiplied by 3 */
@@ -338,8 +338,8 @@ Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits,
 
 /* In standard mode, indexdb_rev is indexdb_fwd.  They differ for cmet and atoi modes. */
 int
-Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits,
-		     Genomicpos_T **revpositions, int *nrevhits,
+Block_process_oligo (Univcoord_T **fwdpositions, int *nfwdhits,
+		     Univcoord_T **revpositions, int *nrevhits,
 		     T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
 
   if (this->cdnaend == FIVE) {

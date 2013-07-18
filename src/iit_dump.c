@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_dump.c 79302 2012-11-15 23:55:58Z twu $";
+static char rcsid[] = "$Id: iit_dump.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -12,6 +12,7 @@ static char rcsid[] = "$Id: iit_dump.c 79302 2012-11-15 23:55:58Z twu $";
 
 #include "bool.h"
 #include "mem.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "list.h"
 #include "getopt.h"
@@ -186,6 +187,7 @@ print_runlengths (IIT_T iit, char *divstring) {
 int
 main (int argc, char *argv[]) {
   char *iitfile;
+  Univ_IIT_T chromosome_iit;
   IIT_T iit;
   int type;
   int divno;
@@ -215,36 +217,53 @@ main (int argc, char *argv[]) {
   argv += optind;
 
   iitfile = argv[0];
-  if (debugp == true) {
-    IIT_debug(iitfile);
-    return 0;
-  } else if ((iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-			     /*divstring*/NULL,/*add_iit_p*/true,/*labels_read_p*/true)) == NULL) {
-    fprintf(stderr,"Unable to open or parse IIT file %s\n",iitfile);
-    exit(9);
-  }
 
-  if (tagsp == true) {
-    for (type = 1; type < IIT_ntypes(iit); type++) {
-      printf("%s\n",IIT_typestring(iit,type));
-    }
-  } else if (countsp == true) {
-    fprintf(stderr,"Flag -C not implemented\n");
-#if 0
-    IIT_dump_counts(iit,/*alphabetizep*/true);
-#endif
+  if (IIT_universalp(iitfile,/*add_iit_p*/true) == true) {
+    if (debugp == true) {
+      Univ_IIT_debug(iitfile);
+      return 0;
 
-  } else if (integratep == true) {
-    for (divno = 1; divno < IIT_ndivs(iit); divno++) {
-      divstring = IIT_divstring(iit,divno);
-      print_runlengths(iit,divstring);
+    } else if ((chromosome_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/true)) == NULL) {
+      fprintf(stderr,"Unable to open or parse IIT file %s\n",iitfile);
+      exit(9);
+    } else {
+      Univ_IIT_dump(chromosome_iit);
     }
+    Univ_IIT_free(&chromosome_iit);
 
   } else {
-    IIT_dump(iit,annotationonlyp,sortp);
-  }
+    if (debugp == true) {
+      IIT_debug(iitfile);
+      return 0;
 
-  IIT_free(&iit);
+    } else if ((iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
+			       /*divstring*/NULL,/*add_iit_p*/true,/*labels_read_p*/true)) == NULL) {
+      fprintf(stderr,"Unable to open or parse IIT file %s\n",iitfile);
+      exit(9);
+    }
+
+    if (tagsp == true) {
+      for (type = 1; type < IIT_ntypes(iit); type++) {
+	printf("%s\n",IIT_typestring(iit,type));
+      }
+    } else if (countsp == true) {
+      fprintf(stderr,"Flag -C not implemented\n");
+#if 0
+      IIT_dump_counts(iit,/*alphabetizep*/true);
+#endif
+
+    } else if (integratep == true) {
+      for (divno = 1; divno < IIT_ndivs(iit); divno++) {
+	divstring = IIT_divstring(iit,divno);
+	print_runlengths(iit,divstring);
+      }
+
+    } else {
+      IIT_dump(iit,annotationonlyp,sortp);
+    }
+
+    IIT_free(&iit);
+  }
 
   return 0;
 }

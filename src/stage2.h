@@ -1,4 +1,4 @@
-/* $Id: stage2.h 79302 2012-11-15 23:55:58Z twu $ */
+/* $Id: stage2.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 #include "bool.h"
@@ -40,8 +40,8 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 #ifdef PMAP
 	     char *genomicuc_ptr,
 #endif
-	     Genomicpos_T chrstart, Genomicpos_T chrend,
-	     Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
+	     Chrpos_T chrstart, Chrpos_T chrend,
+	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 	     int genestrand, Oligoindex_T *oligoindices, int noligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp);
 
@@ -52,8 +52,8 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 #ifdef PMAP
 		char *genomicuc_ptr,
 #endif
-		Genomicpos_T chrstart, Genomicpos_T chrend,
-		Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp, int genestrand,
+		Chrpos_T chrstart, Chrpos_T chrend,
+		Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
 		int maxintronlen, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
@@ -66,8 +66,8 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 #ifdef PMAP
 		    char *genomicuc_ptr,
 #endif
-		    Genomicpos_T chrstart, Genomicpos_T chrend,
-		    Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp, int genestrand,
+		    Chrpos_T chrstart, Chrpos_T chrend,
+		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 
 		    Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		    Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,

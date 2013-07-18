@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 77362 2012-10-20 19:23:08Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -117,8 +117,8 @@ Indexdb_hr_setup (int index1part_in) {
 typedef struct Batch_T *Batch_T;
 struct Batch_T {
   int nentries;
-  Genomicpos_T position;
-  Genomicpos_T *positionptr;
+  Univcoord_T position;
+  Univcoord_T *positionptr;
 };
 
 typedef struct Header_T *Header_T;
@@ -142,7 +142,7 @@ static const unsigned int PARENT_EVEN[17] =
   {0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8};
 
 static void
-heap_insert_even (Batch_T *heap, int *heapsize, Batch_T elt, Genomicpos_T key) {
+heap_insert_even (Batch_T *heap, int *heapsize, Batch_T elt, Univcoord_T key) {
   unsigned int i, parenti;
 
   i = ++(*heapsize);
@@ -166,7 +166,7 @@ check_heap_even (Batch_T *heap, int heapsize) {
 
   for (i = 1; i <= heapsize; i++) {
     if (heap[i]->position > heap[2*i-1]->position) {
-      fprintf(stderr,"Failed because position %u at heap %d is > position %u at heap %d\n",
+      fprintf(stderr,"Failed because position %lu at heap %d is > position %lu at heap %d\n",
 	      heap[i]->position,i,heap[2*i-1]->position,2*i-1);
       for (j = 1; j <= heapsize*2; j++) {
 	fprintf(stderr,"%02d %u\n",j,heap[j]->position);
@@ -174,7 +174,7 @@ check_heap_even (Batch_T *heap, int heapsize) {
       abort();
     }
     if (heap[i]->position > heap[2*i]->position) {
-      fprintf(stderr,"Failed because position %u at heap %d is > position %u at heap %d\n",
+      fprintf(stderr,"Failed because position %lu at heap %d is > position %lu at heap %d\n",
 	      heap[i]->position,i,heap[2*i]->position,2*i);
       for (j = 1; j <= heapsize*2; j++) {
 	fprintf(stderr,"%02d %u\n",j,heap[j]->position);
@@ -187,9 +187,9 @@ check_heap_even (Batch_T *heap, int heapsize) {
 
 #define READ_THEN_WRITE 1
 
-static Genomicpos_T *
+static Univcoord_T *
 merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int nentries, int diagterm) {
-  Genomicpos_T *positions, *ptr, position, last_position, this_position;
+  Univcoord_T *positions, *ptr, position, last_position, this_position;
   struct Batch_T sentinel_struct;
   Batch_T batch, sentinel, heap[17];
   int heapsize;
@@ -204,7 +204,7 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
 
   debug0(int nentries_save = nentries);
 
-  ptr = positions = (Genomicpos_T *) CALLOC(nentries,sizeof(Genomicpos_T));
+  ptr = positions = (Univcoord_T *) CALLOC(nentries,sizeof(Univcoord_T));
 
   /* Set up heap */
   heapsize = 0;
@@ -212,7 +212,7 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
     batch = &(batchpool[i]);
     if (batch->nentries > 0) {
 #ifdef WORDS_BIGENDIAN
-      batch->position = Bigendian_convert_uint(*batch->positionptr++);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
 #endif
@@ -220,7 +220,7 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
     }
   }
 
-  sentinel_struct.position = (Genomicpos_T) -1; /* infinity */
+  sentinel_struct.position = (Univcoord_T) -1; /* infinity */
   sentinel_struct.positionptr = &(sentinel_struct.position);
   sentinel = &sentinel_struct;
 
@@ -236,7 +236,7 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
     /* Get minimum */
     batch = heap[1];
 #ifdef CONVERT_TO_LITTLEENDIAN
-    this_position = Bigendian_convert_uint(batch->position) + diagterm;
+    this_position = Bigendian_convert_univcoord(batch->position) + diagterm;
 #else
     this_position = batch->position + diagterm;
 #endif
@@ -253,7 +253,7 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
     } else {
       /* Advance heap, and use this batch for insertion */
 #ifdef WORDS_BIGENDIAN
-      batch->position = Bigendian_convert_uint(*batch->positionptr++);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
 #endif
@@ -362,7 +362,7 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
   }
 
 #ifdef CONVERT_TO_LITTLEENDIAN
-  this_position = Bigendian_convert_uint(heap[1]->position) + diagterm;
+  this_position = Bigendian_convert_univcoord(heap[1]->position) + diagterm;
 #else
   this_position = heap[1]->position + diagterm;
 #endif
@@ -393,9 +393,9 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
 }
 
 
-static Genomicpos_T *
+static Univcoord_T *
 merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int nentries, int diagterm) {
-  Genomicpos_T *positions, *ptr, position, last_position, this_position;
+  Univcoord_T *positions, *ptr, position, last_position, this_position;
   struct Batch_T sentinel_struct;
   Batch_T batch, sentinel, heap[5];
   int heapsize;
@@ -410,7 +410,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
 
   debug0(int nentries_save = nentries);
 
-  ptr = positions = (Genomicpos_T *) CALLOC(nentries,sizeof(Genomicpos_T));
+  ptr = positions = (Univcoord_T *) CALLOC(nentries,sizeof(Univcoord_T));
 
   /* Set up heap */
   heapsize = 0;
@@ -418,7 +418,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
     batch = &(batchpool[i]);
     if (batch->nentries > 0) {
 #ifdef WORDS_BIGENDIAN
-      batch->position = Bigendian_convert_uint(*batch->positionptr++);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
 #endif
@@ -426,7 +426,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
     }
   }
 
-  sentinel_struct.position = (Genomicpos_T) -1; /* infinity */
+  sentinel_struct.position = (Univcoord_T) -1; /* infinity */
   sentinel_struct.positionptr = &(sentinel_struct.position);
   sentinel = &sentinel_struct;
 
@@ -442,7 +442,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
     /* Get minimum */
     batch = heap[1];
 #ifdef CONVERT_TO_LITTLEENDIAN
-    this_position = Bigendian_convert_uint(batch->position) + diagterm;
+    this_position = Bigendian_convert_univcoord(batch->position) + diagterm;
 #else
     this_position = batch->position + diagterm;
 #endif
@@ -460,7 +460,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
     } else {
       /* Advance heap, and use this batch for insertion */
 #ifdef WORDS_BIGENDIAN
-      batch->position = Bigendian_convert_uint(*batch->positionptr++);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
 #endif
@@ -517,7 +517,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
   }
 
 #ifdef CONVERT_TO_LITTLEENDIAN
-  this_position = Bigendian_convert_uint(heap[1]->position) + diagterm;
+  this_position = Bigendian_convert_univcoord(heap[1]->position) + diagterm;
 #else
   this_position = heap[1]->position + diagterm;
 #endif
@@ -555,11 +555,11 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
 
 static void
 positions_move_absolute (int positions_fd, Positionsptr_T ptr) {
-  off_t offset = ptr*((off_t) sizeof(Genomicpos_T));
+  off_t offset = ptr*((off_t) sizeof(Univcoord_T));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
     fprintf(stderr,"Attempted to do lseek on offset %u*%lu=%lu\n",
-	    ptr,sizeof(Genomicpos_T),(long unsigned int) offset);
+	    ptr,sizeof(Univcoord_T),(long unsigned int) offset);
     perror("Error in indexdb.c, positions_move_absolute");
     exit(9);
   }
@@ -567,9 +567,9 @@ positions_move_absolute (int positions_fd, Positionsptr_T ptr) {
 }
 
 static void
-positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
+positions_read_multiple (int positions_fd, Univcoord_T *values, int n) {
   int i;
-  Genomicpos_T value;
+  Univcoord_T value;
   unsigned char buffer[4];
 
 #ifdef WORDS_BIGENDIAN
@@ -607,9 +607,9 @@ positions_read_multiple (int positions_fd, Genomicpos_T *values, int n) {
 }
 
 
-static Genomicpos_T *
+static Univcoord_T *
 point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
-  Genomicpos_T *positions;
+  Univcoord_T *positions;
   Positionsptr_T ptr0, end0;
 #ifdef DEBUG
   int i;
@@ -628,10 +628,10 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   debug(printf("point_one_shift: %08X %u %u\n",subst,ptr0,end0));
 
   if ((*nentries = end0 - ptr0) == 0) {
-    return (Genomicpos_T *) NULL;
+    return (Univcoord_T *) NULL;
   } else {
     if (this->positions_access == FILEIO) {
-      positions = (Genomicpos_T *) CALLOC(*nentries,sizeof(Genomicpos_T));
+      positions = (Univcoord_T *) CALLOC(*nentries,sizeof(Univcoord_T));
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
@@ -652,7 +652,7 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   debug(
 	printf("%d entries:",*nentries);
 	for (i = 0; i < *nentries; i++) {
-	  printf(" %u",Bigendian_convert_uint(positions[i]));
+	  printf(" %u",Bigendian_convert_univcoord(positions[i]));
 	}
 	printf("\n");
 	);
@@ -896,7 +896,7 @@ Compoundpos_init_positions_free (bool positions_fileio_p) {
 struct Compoundpos_T {
   int n;
 
-  Genomicpos_T *positions[16];
+  Univcoord_T *positions[16];
   int npositions[16];
 
   struct Batch_T batchpool[16];
@@ -905,7 +905,7 @@ struct Compoundpos_T {
   struct Batch_T sentinel_struct;
   Batch_T sentinel;
 
-  Genomicpos_T *positions_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
+  Univcoord_T *positions_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
   int npositions_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
 };
 
@@ -959,7 +959,7 @@ Compoundpos_dump (Compoundpos_T compoundpos, int diagterm) {
     for (j = 0; j < compoundpos->npositions[i]; j++) {
 #ifdef WORDS_BIGENDIAN
       printf(" compound%d.%d:%u+%d\n",
-	     i,j,Bigendian_convert_uint(compoundpos->positions[i][j]),diagterm);
+	     i,j,Bigendian_convert_univcoord(compoundpos->positions[i][j]),diagterm);
 #else
       printf(" compound%d.%d:%u+%d\n",i,j,compoundpos->positions[i][j],diagterm);
 #endif
@@ -999,7 +999,7 @@ Indexdb_compoundpos_left_subst_2 (T this, Storedoligomer_T oligo) {
 
   compoundpos->n = 16;
   /* compoundpos->npositions = (int *) CALLOC(16,sizeof(int)); */
-  /* compoundpos->positions = (Genomicpos_T **) CALLOC(16,sizeof(Genomicpos_T *)); */
+  /* compoundpos->positions = (Univcoord_T **) CALLOC(16,sizeof(Univcoord_T *)); */
 
   /* Right shift */
   base = (oligo >> 4);
@@ -1020,7 +1020,7 @@ Indexdb_compoundpos_left_subst_1 (T this, Storedoligomer_T oligo) {
 
   compoundpos->n = 4;
   /* compoundpos->npositions = (int *) CALLOC(4,sizeof(int)); */
-  /* compoundpos->positions = (Genomicpos_T **) CALLOC(4,sizeof(Genomicpos_T *)); */
+  /* compoundpos->positions = (Univcoord_T **) CALLOC(4,sizeof(Univcoord_T *)); */
 
   /* Zero shift */
   base = (oligo >> 2);
@@ -1041,7 +1041,7 @@ Indexdb_compoundpos_right_subst_2 (T this, Storedoligomer_T oligo) {
 
   compoundpos->n = 16;
   /* compoundpos->npositions = (int *) CALLOC(16,sizeof(int)); */
-  /* compoundpos->positions = (Genomicpos_T **) CALLOC(16,sizeof(Genomicpos_T *)); */
+  /* compoundpos->positions = (Univcoord_T **) CALLOC(16,sizeof(Univcoord_T *)); */
 
   /* Left shift */
   base = (oligo << 4) & kmer_mask;
@@ -1062,7 +1062,7 @@ Indexdb_compoundpos_right_subst_1 (T this, Storedoligomer_T oligo) {
 
   compoundpos->n = 4;
   /* compoundpos->npositions = (int *) CALLOC(4,sizeof(int)); */
-  /* compoundpos->positions = (Genomicpos_T **) CALLOC(4,sizeof(Genomicpos_T *)); */
+  /* compoundpos->positions = (Univcoord_T **) CALLOC(4,sizeof(Univcoord_T *)); */
 
   /* Zero shift */
   base = (oligo << 2) & kmer_mask;
@@ -1078,7 +1078,7 @@ Indexdb_compoundpos_right_subst_1 (T this, Storedoligomer_T oligo) {
 /************************************************************************/
 
 static int
-binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) {
+binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   bool foundp = false;
   int middlei;
 
@@ -1094,12 +1094,12 @@ binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) 
 #ifdef WORDS_BIGENDIAN
     middlei = (lowi+highi)/2;
     debug2(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
-		  lowi,Bigendian_convert_uint(positions[lowi]),
-		  middlei,Bigendian_convert_uint(positions[middlei]),
-		  highi,Bigendian_convert_uint(positions[highi]),goal));
-    if (goal < Bigendian_convert_uint(positions[middlei])) {
+		  lowi,Bigendian_convert_univcoord(positions[lowi]),
+		  middlei,Bigendian_convert_univcoord(positions[middlei]),
+		  highi,Bigendian_convert_univcoord(positions[highi]),goal));
+    if (goal < Bigendian_convert_univcoord(positions[middlei])) {
       highi = middlei;
-    } else if (goal > Bigendian_convert_uint(positions[middlei])) {
+    } else if (goal > Bigendian_convert_univcoord(positions[middlei])) {
       lowi = middlei + 1;
     } else {
       foundp = true;
@@ -1140,9 +1140,9 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
     if (diagterm < querylength) {
       startbound = querylength - diagterm;
 #ifdef WORDS_BIGENDIAN
-      while (batch->nentries > 0 && Bigendian_convert_uint(*batch->positionptr) < (unsigned int) startbound) {
+      while (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < (unsigned int) startbound) {
 	debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Compoundpos_heap_init)\n",
-		       Bigendian_convert_uint(*batch->positionptr)));
+		       Bigendian_convert_univcoord(*batch->positionptr)));
 	++batch->positionptr;
 	--batch->nentries;
       }
@@ -1157,7 +1157,7 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
     }
     if (batch->nentries > 0) {
 #ifdef WORDS_BIGENDIAN
-      batch->position = Bigendian_convert_uint(*batch->positionptr);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr);
 #else
       batch->position = *batch->positionptr;
 #endif
@@ -1165,7 +1165,7 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
     }
   }
 
-  compoundpos->sentinel_struct.position = (Genomicpos_T) -1U; /* infinity */
+  compoundpos->sentinel_struct.position = (Univcoord_T) -1; /* infinity */
   compoundpos->sentinel_struct.positionptr = &(compoundpos->sentinel_struct.position);
   compoundpos->sentinel = &compoundpos->sentinel_struct;
 
@@ -1196,7 +1196,7 @@ heap_even_dump (Batch_T *heap, int heapsize) {
    empty.  If procedure returns true, empty is guaranteed to be
    false. */
 bool
-Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Genomicpos_T local_goal) {
+Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Univcoord_T local_goal) {
   Batch_T *heap = compoundpos->heap, batch;
   int i, j;
 
@@ -1210,9 +1210,9 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Genomicpos_T local_go
 
     batch = heap[i];
 #ifdef WORDS_BIGENDIAN
-    if (batch->nentries > 0 && Bigendian_convert_uint(*batch->positionptr) < local_goal) {
+    if (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < local_goal) {
       j = 1;
-      while (j < batch->nentries && Bigendian_convert_uint(batch->positionptr[j]) < local_goal) {
+      while (j < batch->nentries && Bigendian_convert_univcoord(batch->positionptr[j]) < local_goal) {
 	j <<= 1;		/* gallop by 2 */
       }
       if (j >= batch->nentries) {
@@ -1223,7 +1223,7 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Genomicpos_T local_go
       batch->positionptr += j;
       batch->nentries -= j;
       debug6(printf("binary search jump %d positions to %d:%u\n",
-		    j,batch->nentries,Bigendian_convert_uint(*batch->positionptr)));
+		    j,batch->nentries,Bigendian_convert_univcoord(*batch->positionptr)));
     }
 #else
     if (batch->nentries > 0 && *batch->positionptr < local_goal) {
@@ -1250,7 +1250,7 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Genomicpos_T local_go
       --compoundpos->heapsize;
 
 #ifdef WORDS_BIGENDIAN
-    } else if (Bigendian_convert_uint(*batch->positionptr) > local_goal) {
+    } else if (Bigendian_convert_univcoord(*batch->positionptr) > local_goal) {
       /* Already advanced past goal, so continue with loop */
       debug6(printf("Setting emptyp to be false\n"));
       *emptyp = false;
@@ -1267,9 +1267,9 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Genomicpos_T local_go
       debug6(printf("Setting emptyp to be false\n"));
       *emptyp = false;
 #ifdef WORDS_BIGENDIAN
-      debug6(printf("Found! Returning position %u\n",Bigendian_convert_uint(*batch->positionptr)));
+      debug6(printf("Found! Returning position %lu\n",Bigendian_convert_univcoord(*batch->positionptr)));
 #else
-      debug6(printf("Found! Returning position %u\n",*batch->positionptr));
+      debug6(printf("Found! Returning position %lu\n",*batch->positionptr));
 #endif
       ++batch->positionptr;
       --batch->nentries;
@@ -1286,10 +1286,10 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Genomicpos_T local_go
 
 /* Returns 0 if heapsize is 0, else 1, and returns smallest value >= local_goal */
 int
-Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T local_goal) {
+Compoundpos_search (Univcoord_T *value, Compoundpos_T compoundpos, Univcoord_T local_goal) {
   int parenti, smallesti, j;
   Batch_T batch, *heap = compoundpos->heap;
-  Genomicpos_T position;
+  Univcoord_T position;
 
   debug3(printf("\nEntering Compoundpos_search with local_goal %u\n",local_goal));
   if (compoundpos->heapsize <= 0) {
@@ -1302,9 +1302,9 @@ Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T
       debug3(printf("Compoundpos_search iteration, heapsize %d:\n",compoundpos->heapsize));
       debug3(heap_even_dump(heap,compoundpos->heapsize));
 #ifdef WORDS_BIGENDIAN
-      if (batch->nentries > 0 && Bigendian_convert_uint(*batch->positionptr) < local_goal) {
+      if (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < local_goal) {
 	j = 1;
-	while (j < batch->nentries && Bigendian_convert_uint(batch->positionptr[j]) < local_goal) {
+	while (j < batch->nentries && Bigendian_convert_univcoord(batch->positionptr[j]) < local_goal) {
 	  j <<= 1;		/* gallop by 2 */
 	}
 	if (j >= batch->nentries) {
@@ -1315,9 +1315,9 @@ Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T
 	batch->positionptr += j;
 	batch->nentries -= j;
 	debug3(printf("binary search jump %d positions to %d:%u\n",
-		      j,batch->nentries,Bigendian_convert_uint(*batch->positionptr)));
+		      j,batch->nentries,Bigendian_convert_univcoord(*batch->positionptr)));
       }
-      batch->position = Bigendian_convert_uint(*batch->positionptr);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr);
 #else
       if (batch->nentries > 0 && *batch->positionptr < local_goal) {
 	j = 1;
@@ -1367,7 +1367,7 @@ Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T
     }
     if (batch->position == local_goal) {
       *value = batch->position;
-      debug3(printf("Found! Returning position %u\n",*value));
+      debug3(printf("Found! Returning position %lu\n",*value));
       return 1;
     }
 
@@ -1377,9 +1377,9 @@ Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T
       debug3(printf("Compoundpos_search iteration, heapsize %d:\n",compoundpos->heapsize));
       debug3(heap_even_dump(heap,compoundpos->heapsize));
 #ifdef WORDS_BIGENDIAN
-      if (batch->nentries > 0 && Bigendian_convert_uint(*batch->positionptr) < local_goal) {
+      if (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < local_goal) {
 	j = 1;
-	while (j < batch->nentries && Bigendian_convert_uint(batch->positionptr[j]) < local_goal) {
+	while (j < batch->nentries && Bigendian_convert_univcoord(batch->positionptr[j]) < local_goal) {
 	  j <<= 1;		/* gallop by 2 */
 	}
 	if (j >= batch->nentries) {
@@ -1390,9 +1390,9 @@ Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T
 	batch->positionptr += j;
 	batch->nentries -= j;
 	debug3(printf("binary search jump %d positions to %d:%u\n",
-		      j,batch->nentries,Bigendian_convert_uint(*batch->positionptr)));
+		      j,batch->nentries,Bigendian_convert_univcoord(*batch->positionptr)));
       }
-      batch->position = Bigendian_convert_uint(*batch->positionptr);
+      batch->position = Bigendian_convert_univcoord(*batch->positionptr);
 #else
       if (batch->nentries > 0 && *batch->positionptr < local_goal) {
 	j = 1;
@@ -1468,18 +1468,18 @@ Compoundpos_search (Genomicpos_T *value, Compoundpos_T compoundpos, Genomicpos_T
     }
     if (batch->position == local_goal) {
       *value = batch->position;
-      debug3(printf("Found! Returning position %u\n",*value));
+      debug3(printf("Found! Returning position %lu\n",*value));
       return 1;
     }
   }
 
   *value = batch->position;
-  debug3(printf("Returning position %u\n",*value));
+  debug3(printf("Returning position %lu\n",*value));
   return 1;
 }
 
 
-Genomicpos_T *
+Univcoord_T *
 Indexdb_merge_compoundpos (int *nmerged, Compoundpos_T compoundpos, int diagterm) {
   int i;
   Batch_T batch;
@@ -1499,7 +1499,7 @@ Indexdb_merge_compoundpos (int *nmerged, Compoundpos_T compoundpos, int diagterm
 
   if (nentries == 0) {
     *nmerged = 0;
-    return (Genomicpos_T *) NULL;
+    return (Univcoord_T *) NULL;
   } else if (compoundpos->n == 4) {
     return merge_batches_one_heap_4_existing(&(*nmerged),batchpool,nentries,diagterm);
   } else {

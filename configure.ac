@@ -55,7 +55,7 @@ AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_AUX_DIR([config])
 # For autotest: AC_CONFIG_TESTDIR([tests],[tests:src:util])
 
-AC_CONFIG_MACRO_DIR([m4])
+AC_CONFIG_MACRO_DIR([config])
 
 AC_CANONICAL_SYSTEM
 AC_SYS_LARGEFILE
@@ -152,6 +152,7 @@ case x"$answer" in
 	;;
 esac	
 
+
 # Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_DIRENT
@@ -168,6 +169,7 @@ AC_CHECK_SIZEOF(unsigned long)
 AC_CHECK_SIZEOF(unsigned long long)
 AC_CHECK_SIZEOF(off_t)
 
+
 # Checks for library functions.
 #AC_FUNC_MALLOC -- Causes use of rpl_malloc
 #AC_FUNC_REALLOC -- Causes use of rpl_realloc
@@ -176,6 +178,7 @@ AC_CHECK_SIZEOF(off_t)
 AC_FUNC_FSEEKO
 
 #AC_FUNC_MMAP        # Checks only private fixed mapping of already-mapped memory
+
 
 AC_MSG_CHECKING(whether mmap is enabled)
 AC_ARG_ENABLE([mmap],
@@ -221,6 +224,7 @@ ACX_PAGESIZE
 ACX_FUNC_FOPEN_BINARY
 ACX_FUNC_FOPEN_TEXT
 
+
 ACX_BUILTIN
 ACX_ASM_BSR
 
@@ -246,6 +250,79 @@ case x"$answer" in
 	;;
 esac	
 
+
+AC_MSG_CHECKING(whether sse2 is enabled)
+AC_ARG_ENABLE([sse2],
+	      AC_HELP_STRING([--enable-sse2],
+                             [Enable sse2 simd commands if they compile and run (default=yes).]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+     xyes)
+     AC_MSG_RESULT(enabled)
+     ax_cv_want_sse2_ext=yes
+     ;;
+
+     xno)
+     AC_MSG_RESULT(disabled)
+     ax_cv_want_sse2_ext=no
+     ;;
+
+     x)
+     AC_MSG_RESULT([not specified so enabled by default])
+     ax_cv_want_sse2_ext=yes
+     ;;
+esac	
+
+AC_MSG_CHECKING(whether sse4.1 is enabled)
+AC_ARG_ENABLE([sse4.1],
+	      AC_HELP_STRING([--enable-sse4.1],
+                             [Enable sse4.1 simd commands if they compile and run (default=yes).  Requires that sse2 be enabled.]),
+              [answer="$enableval"],
+              [answer=""])
+if test "$ax_cv_want_sse2_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled sse2])
+   ax_cv_want_sse41_ext=no
+else
+    case x"$answer" in
+	 xyes)
+	 AC_MSG_RESULT(enabled)
+	 ax_cv_want_sse41_ext=yes
+	 ;;
+
+	 xno)
+	 AC_MSG_RESULT(disabled)
+	 ax_cv_want_sse41_ext=no
+	 ;;
+
+	 x)
+	 AC_MSG_RESULT([not specified so enabled by default])
+	 ax_cv_want_sse41_ext=yes
+	 ;;
+    esac	
+fi
+
+AC_MSG_CHECKING(whether simd is enabled)
+AC_ARG_ENABLE([simd],
+	      AC_HELP_STRING([--enable-simd],
+                             [Enable simd commands in general if they compile and run (default=yes).]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+     xyes)
+     AC_MSG_RESULT(enabled)
+     AX_EXT   # Sets SIMD_FLAGS, and HAVE_ALTIVEC,HAVE_MMX,HAVE_SSE,HAVE_SSE2,HAVE_SSE3,HAVE_SSSE3,HAVE_SSE4_1,HAVE_SSE4_2,HAVE_AVX
+     ;;
+
+     xno)
+     AC_MSG_RESULT(disabled)
+     ;;
+
+     x)
+     AC_MSG_RESULT([not specified so enabled by default])
+     AX_EXT   # Sets SIMD_FLAGS, and HAVE_ALTIVEC,HAVE_MMX,HAVE_SSE,HAVE_SSE2,HAVE_SSE3,HAVE_SSSE3,HAVE_SSE4_1,HAVE_SSE4_2,HAVE_AVX
+     ;;
+esac	
 
 # Genome directory
 AC_MSG_CHECKING(gmapdb)

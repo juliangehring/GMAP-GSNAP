@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bigendian.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: bigendian.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,20 +26,14 @@ Bigendian_convert_int (int littleendian) {
 int
 Bigendian_convert_int (int littleendian) {
   int bigendian;
-  unsigned char byte1, byte2, byte3;
 
-  bigendian = littleendian & 0xff;
-  byte1 = (unsigned char) ((littleendian >>= 8) & 0xff);
-  byte2 = (unsigned char) ((littleendian >>= 8) & 0xff);
-  byte3 = (unsigned char) ((littleendian >>= 8) & 0xff);
-
-  /* bigendian = byte0; */
+  bigendian = littleendian & 0xff; /* 0 */
   bigendian <<= 8;
-  bigendian |= byte1;
+  bigendian |= ((littleendian >>= 8) & 0xff); /* 1 */
   bigendian <<= 8;
-  bigendian |= byte2;
+  bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
   bigendian <<= 8;
-  bigendian |= byte3;
+  bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
 
   return bigendian;
 }
@@ -219,20 +213,14 @@ Bigendian_fread_ints (int *array, int n, FILE *fp) {
 unsigned int
 Bigendian_convert_uint (unsigned int littleendian) {
   unsigned int bigendian;
-  unsigned char byte1, byte2, byte3;
 
-  bigendian = littleendian & 0xff;
-  byte1 = (unsigned char) ((littleendian >>= 8) & 0xff);
-  byte2 = (unsigned char) ((littleendian >>= 8) & 0xff);
-  byte3 = (unsigned char) ((littleendian >>= 8) & 0xff);
-
-  /* bigendian = byte0; */
+  bigendian = littleendian & 0xff; /* 0 */
   bigendian <<= 8;
-  bigendian |= byte1;
+  bigendian |= ((littleendian >>= 8) & 0xff); /* 1 */
   bigendian <<= 8;
-  bigendian |= byte2;
+  bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
   bigendian <<= 8;
-  bigendian |= byte3;
+  bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
 
   return bigendian;
 }
@@ -272,6 +260,7 @@ Bigendian_fwrite_uint (unsigned int value, FILE *fp) {
 }
 #endif
 
+
 #ifdef OUTPUT_BIGENDIAN
 void
 Bigendian_write_uint (unsigned int value, int fd) {
@@ -296,7 +285,6 @@ Bigendian_write_uint (unsigned int value, int fd) {
   write(fd,buf,4);
 }
 #endif
-
 
 #ifdef OUTPUT_BIGENDIAN
 size_t
@@ -505,6 +493,41 @@ Bigendian_convert_uint8 (UINT8 littleendian) {
 
   return bigendian;
 }
+
+
+#ifdef OUTPUT_BIGENDIAN
+void
+Bigendian_write_uint8 (UINT8 value, int fd) {
+  unsigned char buf[8];
+
+  buf[7] = value & 0xff;
+  buf[6] = (value >>= 8) & 0xff;
+  buf[5] = (value >>= 8) & 0xff;
+  buf[4] = (value >>= 8) & 0xff;
+  buf[3] = (value >>= 8) & 0xff;
+  buf[2] = (value >>= 8) & 0xff;
+  buf[1] = (value >>= 8) & 0xff;
+  buf[0] = (value >>= 8) & 0xff;
+  write(fd,buf,8);
+  return;
+}
+#else
+void
+Bigendian_write_uint8 (UINT8 value, int fd) {
+  unsigned char buf[8];
+
+  buf[0] = (unsigned char) (value & 0xff);
+  buf[1] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[2] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[3] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[4] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[5] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[6] = (unsigned char) ((value >>= 8) & 0xff);
+  buf[7] = (unsigned char) ((value >>= 8) & 0xff);
+  write(fd,buf,8);
+}
+#endif
+
 
 
 #ifdef OUTPUT_BIGENDIAN

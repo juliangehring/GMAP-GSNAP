@@ -1,10 +1,11 @@
-/* $Id: gregion.h 79302 2012-11-15 23:55:58Z twu $ */
+/* $Id: gregion.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
 #include "genomicpos.h"
+#include "types.h"
 #include "chrnum.h"
-#include "iit-read.h"
+#include "iit-read-univ.h"
 #include "match.h"
 
 #define T Gregion_T
@@ -16,19 +17,19 @@ Gregion_print (T this);
 extern void
 Gregion_free (T *old);
 
-extern Genomicpos_T
+extern Univcoord_T
 Gregion_genomicstart (T this);
 
-extern Genomicpos_T
+extern Univcoord_T
 Gregion_genomicend (T this);
 
-extern Genomicpos_T
+extern Chrpos_T
 Gregion_chrstart (T this);
 
-extern Genomicpos_T
+extern Chrpos_T
 Gregion_chrend (T this);
 
-extern Genomicpos_T
+extern Chrpos_T
 Gregion_genomiclength (T this);
 
 extern bool
@@ -44,15 +45,15 @@ extern Chrnum_T
 Gregion_chrnum (T this);
 
 extern char *
-Gregion_chr (T this, IIT_T chromosome_iit);
+Gregion_chr (T this, Univ_IIT_T chromosome_iit);
 
-extern Genomicpos_T
+extern Univcoord_T
 Gregion_chroffset (T this);
 
-extern Genomicpos_T
+extern Univcoord_T
 Gregion_chrhigh (T this);
 
-extern Genomicpos_T
+extern Chrpos_T
 Gregion_chrlength (T this);
 
 extern int
@@ -81,12 +82,12 @@ Gregion_ncovered (T this);
 
 
 extern T
-Gregion_new (int nexons, Genomicpos_T genomicstart, Genomicpos_T genomicend,
-	     bool plusp, int genestrand, IIT_T chromosome_iit, int querystart, int queryend, 
+Gregion_new (int nexons, Univcoord_T genomicstart, Univcoord_T genomicend,
+	     bool plusp, int genestrand, Univ_IIT_T chromosome_iit, int querystart, int queryend, 
 	     int querylength, int matchsize, int trimstart, int trimend, int circular_typeint);
 
 extern T
-Gregion_new_from_matches (Match_T match5, Match_T match3, int genestrand, IIT_T chromosome_iit,
+Gregion_new_from_matches (Match_T match5, Match_T match3, int genestrand, Univ_IIT_T chromosome_iit,
 			  int querylength, int matchsize, int trimstart, int trimend, int circular_typeint);
 
 extern List_T
@@ -105,7 +106,7 @@ extern bool
 Gregion_sufficient_support (T this);
 
 extern void
-Gregion_extend (T this, Genomicpos_T extension5, Genomicpos_T extension3, int querylength,
+Gregion_extend (T this, Chrpos_T extension5, Chrpos_T extension3, int querylength,
 		int min_extra_end);
 
 extern int

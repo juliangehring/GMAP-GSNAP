@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 92494 2013-04-11 17:52:53Z twu $";
+static char rcsid[] = "$Id: gmap.c 99750 2013-06-27 21:08:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,6 +11,12 @@ static char rcsid[] = "$Id: gmap.c 92494 2013-04-11 17:52:53Z twu $";
 #include <string.h>		/* For strcpy */
 #include <strings.h>		/* For rindex */
 #include <ctype.h>
+#ifdef HAVE_SSE2
+#include <emmintrin.h>
+#endif
+#ifdef HAVE_SSE4_1
+#include <smmintrin.h>
+#endif
 
 #ifdef HAVE_PTHREAD
 #include <pthread.h>
@@ -56,6 +62,7 @@ static char rcsid[] = "$Id: gmap.c 92494 2013-04-11 17:52:53Z twu $";
 #include "intlist.h"
 #include "list.h"
 #include "listdef.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "chrsubset.h"
 #include "datadir.h"
@@ -122,34 +129,34 @@ static char rcsid[] = "$Id: gmap.c 92494 2013-04-11 17:52:53Z twu $";
  *   Global variables
  ************************************************************************/
 
-static IIT_T chromosome_iit = NULL;
+static Univ_IIT_T chromosome_iit = NULL;
 static int circular_typeint = -1;
 static int nchrs;
 static bool *circularp = NULL;
 static Chrsubset_T chrsubset = NULL;
-static IIT_T contig_iit = NULL;
+static Univ_IIT_T contig_iit = NULL;
 static Genome_T genome = NULL;
 static Genome_T genomealt = NULL;
-static UINT4 *genome_blocks = NULL;
-static UINT4 *snp_blocks = NULL;
+static Genomecomp_T *genome_blocks = NULL;
+static Genomecomp_T *snp_blocks = NULL;
 
 #ifdef PMAP
 static Alphabet_T required_alphabet = AA0;
 static Alphabet_T alphabet = AA20; /* Initialize in case we have a usersegment */
 static int alphabet_size = 20;	   /* Initialize in case we have a usersegment */
-static int index1part_aa = 7;
+static Width_T index1part_aa = 7;
 #else
-static int index1part;
+static Width_T index1part;
 #endif
 
 static Indexdb_T indexdb_fwd = NULL;
 static Indexdb_T indexdb_rev = NULL;
 
-static int basesize;
-static int required_basesize = 0;
-static int required_index1part = 0;
-static int index1interval;
-static int required_index1interval = 0;
+static Width_T basesize;
+static Width_T required_basesize = 0;
+static Width_T required_index1part = 0;
+static Width_T index1interval;
+static Width_T required_index1interval = 0;
 
 static IIT_T altstrain_iit = NULL;
 
@@ -166,8 +173,8 @@ static int *map_divint_crosstable = NULL;
 
 #ifdef PMAP
 #if 0
-static int minindexsize = 3;	/* In stage 2; in aa */
-static int maxindexsize = 6;	/* In stage 2; in aa */
+static Width_T minindexsize = 3;	/* In stage 2; in aa */
+static Width_T maxindexsize = 6;	/* In stage 2; in aa */
 #endif
 static int maxpeelback = 12;	/* Needs to be at least indexsize
 				   because stage 2 jumps by indexsize.
@@ -178,8 +185,8 @@ static int maxpeelback = 12;	/* Needs to be at least indexsize
 /* Making minindexsize too small can lead to spurious exons in stage 2 */
 /* FOOBAR */
 #if 0
-static int minindexsize = 8;	/* In stage 2; in nt.  Used if sampling required in stage 1. */
-static int maxindexsize = 8;	/* In stage 2; in nt */
+static Width_T minindexsize = 8;	/* In stage 2; in nt.  Used if sampling required in stage 1. */
+static Width_T maxindexsize = 8;	/* In stage 2; in nt */
 #endif
 static int maxpeelback = 20;	/* Needs to be at least indexsize
 				   because stage 2 jumps by indexsize.
@@ -339,6 +346,8 @@ static int cds_startpos = -1;
 static bool truncatep = false;
 static int sense_try = 0;		/* both */
 static int sense_filter = 0;		/* both */
+static double min_trimmed_coverage = 0.0;
+static double min_identity = 0.0;
 static bool strictp = true;
 static int proteinmode = 1;
 static bool uncompressedp = false;
@@ -352,7 +361,7 @@ static int wraplength = 50;
 static bool novelsplicingp = true; /* Can be disabled with --nosplicing flag */
 static bool knownsplicingp = false;
 static bool distances_observed_p = false;
-static Genomicpos_T shortsplicedist = 200000;
+static Chrpos_T shortsplicedist = 200000;
 static int min_extra_end;		      /* If knownsplicing, then equals shortsplicedist */
 static char *user_splicingdir = (char *) NULL;
 static char *splicing_file = (char *) NULL;
@@ -363,12 +372,12 @@ static int donor_typeint = -1;		/* for splicing_iit */
 static int acceptor_typeint = -1;	/* for splicing_iit */
 
 static int *splicing_divint_crosstable = NULL;
-static Genomicpos_T *splicesites = NULL;
+static Univcoord_T *splicesites = NULL;
 static Splicetype_T *splicetypes = NULL;
-static Genomicpos_T *splicedists = NULL; /* maximum observed splice distance for given splice site */
+static Chrpos_T *splicedists = NULL; /* maximum observed splice distance for given splice site */
 static List_T *splicestrings = NULL;
-static UINT4 *splicefrags_ref = NULL;
-static UINT4 *splicefrags_alt = NULL;
+static Genomecomp_T *splicefrags_ref = NULL;
+static Genomecomp_T *splicefrags_alt = NULL;
 static int nsplicesites = 0;
 
 /* Splicing via splicesites */
@@ -377,10 +386,10 @@ static int *nsplicepartners_obs = NULL;
 static int *nsplicepartners_max = NULL;
 
 static bool splicetrie_precompute_p = true;
-static unsigned int *trieoffsets_obs = NULL;
-static unsigned int *triecontents_obs = NULL;
-static unsigned int *trieoffsets_max = NULL;
-static unsigned int *triecontents_max = NULL;
+static Trieoffset_T *trieoffsets_obs = NULL;
+static Triecontent_T *triecontents_obs = NULL;
+static Trieoffset_T *trieoffsets_max = NULL;
+static Triecontent_T *triecontents_max = NULL;
 
 
 /* Input/output */
@@ -420,6 +429,7 @@ static struct option long_options[] = {
 #ifdef HAVE_MMAP
   {"batch", required_argument, 0, 'B'}, /* offsetscomp_access, positions_access, genome_access */
 #endif
+  {"expand-offsets", required_argument, 0, 0}, /* expand_offsets_p */
   {"min-intronlength", required_argument, 0, 0}, /* min_intronlength */
   {"intronlength", required_argument, 0, 'K'}, /* maxintronlen_bound */
   {"totallength", required_argument, 0, 'L'}, /* maxtotallen_bound */
@@ -440,6 +450,7 @@ static struct option long_options[] = {
   {"chrsubset", required_argument, 0, 'c'}, /* user_chrsubsetname */
   {"trimendexons", required_argument, 0, 'H'}, /* minendexon */
   {"canonical-mode", required_argument, 0, 0}, /* canonical_mode */
+  {"find-shifted-canonical", no_argument, 0, 0}, /* use_shifted_canonical_p */
   {"cross-species", no_argument, 0, 0}, /* use_shifted_canonical_p */
 #ifndef PMAP
   {"prunelevel", required_argument, 0, 'p'}, /* prune_poor_p, prune_repetitive_p */
@@ -521,6 +532,10 @@ static struct option long_options[] = {
   {"introngap", required_argument, 0, 'i'}, /* ngap */
   {"wraplength", required_argument, 0, 'l'}, /* wraplength */
   
+  /* Filtering options */
+  {"min-trimmed-coverage", required_argument, 0, 0}, /* min_trimmed_coverage */
+  {"min-identity", required_argument, 0, 0},	/* min_identity */
+
   /* Help options */
   {"version", no_argument, 0, 0}, /* print_program_version */
   {"help", no_argument, 0, 0}, /* print_program_usage */
@@ -573,6 +588,7 @@ print_program_version () {
 #endif
   fprintf(stdout,"\n");
 
+
   fprintf(stdout,"Builtin functions:");
 #ifdef HAVE_BUILTIN_CLZ
   fprintf(stdout," clz");
@@ -584,6 +600,38 @@ print_program_version () {
   fprintf(stdout," popcount");
 #endif
   fprintf(stdout,"\n");
+
+
+  fprintf(stdout,"SIMD functions:");
+#ifdef HAVE_ALTIVEC
+  fprintf(stdout," Altivec");
+#endif
+#ifdef HAVE_MMX
+  fprintf(stdout," MMX");
+#endif
+#ifdef HAVE_SSE
+  fprintf(stdout," SSE");
+#endif
+#ifdef HAVE_SSE2
+  fprintf(stdout," SSE2");
+#endif
+#ifdef HAVE_SSE3
+  fprintf(stdout," SSE3");
+#endif
+#ifdef HAVE_SSSE3
+  fprintf(stdout," SSSE3");
+#endif
+#ifdef HAVE_SSE4_1
+  fprintf(stdout," SSE4.1");
+#endif
+#ifdef HAVE_SSE4_2
+  fprintf(stdout," SSE4.2");
+#endif
+#ifdef HAVE_AVX
+  fprintf(stdout," AVX");
+#endif
+  fprintf(stdout,"\n");
+
 
 #ifdef PMAP
   fprintf(stdout,"Stage 1 index size: %d aa\n",index1part_aa);
@@ -606,6 +654,48 @@ print_program_version () {
 
 static void
 print_program_usage ();
+
+
+static void
+check_compiler_assumptions () {
+  unsigned int x = rand(), y = rand();
+#ifdef HAVE_SSE2
+  int z;
+  __m128i a;
+#endif
+
+  fprintf(stderr,"Checking compiler assumptions for popcnt: ");
+  fprintf(stderr,"%08X ",x);
+#ifdef HAVE_BUILTIN_CLZ
+  fprintf(stderr,"clz=%d ",__builtin_clz(x));
+#endif
+#ifdef HAVE_BUILTIN_CTZ
+  fprintf(stderr,"clz=%d ",__builtin_ctz(x));
+#endif
+#ifdef HAVE_BUILTIN_POPCOUNT
+  fprintf(stderr,"popcount=%d ",__builtin_popcount(x));
+#endif
+  fprintf(stderr,"\n");
+
+#ifdef HAVE_SSE2
+  fprintf(stderr,"Checking compiler assumptions for SSE2: ");
+  fprintf(stderr,"%08X %08X",x,y);
+  a = _mm_xor_si128(_mm_set1_epi32(x),_mm_set1_epi32(y));
+  z = _mm_cvtsi128_si32(a);
+  fprintf(stderr," xor=%08X\n",z);
+#endif
+
+#ifdef HAVE_SSE4_1
+  fprintf(stderr,"Checking compiler assumptions for SSE4.1: ");
+  fprintf(stderr,"%d %d",(char) x,(char) y);
+  a = _mm_max_epi8(_mm_set1_epi8((char) x),_mm_set1_epi8((char) y));
+  z = _mm_extract_epi8(a,0);
+  fprintf(stderr," max=%d\n",z);
+#endif
+
+  return;
+}
+
 
 /************************************************************************/
 
@@ -787,8 +877,8 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 		   Oligoindex_T *oligoindices_major, int noligoindices_major,
 		   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		   Pairpool_T pairpool, Diagpool_T diagpool, int straintype, char *strain,
-		   Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength,
-		   Genomicpos_T chrstart, Genomicpos_T chrend, bool watsonp, int genestrand,
+		   Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
+		   Chrpos_T chrstart, Chrpos_T chrend, bool watsonp, int genestrand,
 		   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		   Stopwatch_T worker_stopwatch) {
   bool do_final_p;
@@ -937,7 +1027,7 @@ update_stage3list_maponlyp (List_T stage3list, Gregion_T gregion, Sequence_T que
 			    Sequence_T queryntseq,
 #endif
 			    Sequence_T queryuc, Pairpool_T pairpool, int straintype, char *strain, Genome_T genome,
-			    Chrnum_T chrnum,  Genomicpos_T chroffset, Genomicpos_T chrpos, Genomicpos_T chrlength,
+			    Chrnum_T chrnum,  Univcoord_T chroffset, Chrpos_T chrpos, Chrpos_T chrlength,
 			    bool watsonp, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
   Stage3_T stage3;
 
@@ -964,7 +1054,7 @@ index_compare (const void *a, const void *b) {
   int index1 = * (int *) a;
   int index2 = * (int *) b;
   int type1, type2;
-  Genomicpos_T pos1, pos2;
+  Chrpos_T pos1, pos2;
 
   type1 = Interval_type(IIT_interval(altstrain_iit,index1));
   type2 = Interval_type(IIT_interval(altstrain_iit,index2));
@@ -1001,7 +1091,8 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 			 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 			 Stopwatch_T worker_stopwatch) {
   List_T stage3list;
-  Genomicpos_T chroffset, chrhigh, chrlength, chrpos;
+  Univcoord_T chroffset, chrhigh;
+  Chrpos_T chrlength, chrpos;
   Chrnum_T chrnum = 0;
 
 #ifdef PMAP
@@ -1058,7 +1149,7 @@ stage3list_remove_duplicates (List_T stage3list) {
   List_T unique = NULL;
   Stage3_T *array;
   int best_score;
-  Genomicpos_T shortest_genomiclength;
+  Chrpos_T shortest_genomiclength;
   int n, besti, i, j, k;
   
   if ((n = List_length(stage3list)) == 0) {
@@ -1134,6 +1225,41 @@ stage3list_sort (List_T stage3list) {
     qsort(array,n,sizeof(Stage3_T),Stage3_cmp);
     for (i = n-1; i >= 0; i--) {
       sorted = List_push(sorted,(void *) array[i]);
+    }
+    FREE(array);
+
+    return sorted;
+  }
+}
+
+
+static List_T
+stage3list_filter_and_sort (List_T stage3list) {
+  List_T sorted = NULL;
+  Stage3_T *array, stage3;
+  int n, i;
+
+  if ((n = List_length(stage3list)) == 0) {
+    return (List_T) NULL;
+  } else if (n == 1) {
+    stage3 = (Stage3_T) List_head(stage3list);
+    if (Stage3_passes_filter(stage3,min_trimmed_coverage,min_identity) == false) {
+      Stage3_free(&stage3);
+      List_free(&stage3list);
+      return (List_T) NULL;
+    } else {
+      return stage3list;
+    }
+  } else {
+    array = (Stage3_T *) List_to_array(stage3list,NULL);
+    List_free(&stage3list);
+    qsort(array,n,sizeof(Stage3_T),Stage3_cmp);
+    for (i = n-1; i >= 0; i--) {
+      if (Stage3_passes_filter(array[i],min_trimmed_coverage,min_identity) == false) {
+	Stage3_free(&(array[i]));
+      } else {
+	sorted = List_push(sorted,(void *) array[i]);
+      }
     }
     FREE(array);
 
@@ -1363,58 +1489,6 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 }
 
 
-#if 0
-static bool
-chimeric_join5_p (Stage3_T from, int effective_start, int effective_end) {
-  debug2(printf("From %d..%d -> effective %d..%d ?\n",
-		Stage3_querystart(from),Stage3_queryend(from),effective_start,effective_end));
-  debug2(printf("Checking that effective_end %d > endfrom %d\n",
-		effective_end,Stage3_queryend(from)));
-  debug2(printf("Checking that effective_start %d > startfrom %d\n",
-		effective_start,Stage3_querystart(from)));
-  debug2(printf("Checking that endfrom %d - effective_start %d < %d\n",
-		Stage3_queryend(from),effective_start,CHIMERA_SLOP));
-  debug2(printf("Checking that effective_start %d - endfrom %d < %d\n",
-		effective_start,Stage3_queryend(from),CHIMERA_SLOP));
-
-  if (effective_end > Stage3_queryend(from) &&
-      effective_start > Stage3_querystart(from) &&
-      Stage3_queryend(from) - effective_start <= CHIMERA_SLOP &&
-      effective_start - Stage3_queryend(from) <= CHIMERA_SLOP) {
-    debug2(printf("returning true\n\n"));
-    return true;
-  } else {
-    debug2(printf("returning false\n\n"));
-    return false;
-  }
-}
-
-static bool
-chimeric_join3_p (Stage3_T to, int effective_start, int effective_end) {
-  debug2(printf("Effective %d..%d -> to %d..%d ?\n",
-		effective_start,effective_end,Stage3_querystart(to),Stage3_queryend(to)));
-  debug2(printf("Checking that endto %d > effective_end %d\n",
-		Stage3_queryend(to),effective_end));
-  debug2(printf("Checking that startto %d > effective_start %d\n",
-		Stage3_querystart(to),effective_start));
-  debug2(printf("Checking that effective_end %d - startto %d < %d\n",
-		effective_end,Stage3_querystart(to),CHIMERA_SLOP));
-  debug2(printf("Checking that startto %d - effective_end %d < %d\n",
-		Stage3_querystart(to),effective_end,CHIMERA_SLOP));
-
-  if (Stage3_queryend(to) > effective_end &&
-      Stage3_querystart(to) > effective_start &&
-      effective_end - Stage3_querystart(to) <= CHIMERA_SLOP &&
-      Stage3_querystart(to) - effective_end <= CHIMERA_SLOP) {
-    debug2(printf("returning true\n\n"));
-    return true;
-  } else {
-    debug2(printf("returning false\n\n"));
-    return false;
-  }
-}
-#endif
-
 static bool
 local_join_p (Stage3_T from, Stage3_T to) {
   debug2(printf("? local_join_p from [%p] %d..%d (%u..%u) -> to [%p] %d..%d (%u..%u) => ",
@@ -1514,9 +1588,9 @@ chimeric_join_p (Stage3_T from, Stage3_T to) {
 
 static bool
 middle_piece_local_p (int *querystart, int *queryend,
-		      Genomicpos_T *chrstart, Genomicpos_T *chrend,
-		      Chrnum_T *chrnum, Genomicpos_T *chroffset, Genomicpos_T *chrhigh,
-		      Genomicpos_T *chrlength, bool *plusp, Stage3_T from, Stage3_T to) {
+		      Chrpos_T *chrstart, Chrpos_T *chrend,
+		      Chrnum_T *chrnum, Univcoord_T *chroffset, Univcoord_T *chrhigh,
+		      Chrpos_T *chrlength, bool *plusp, Stage3_T from, Stage3_T to) {
 
   debug2(printf("? middle_piece_local_p from [%p] %d..%d (%u..%u) -> to [%p] %d..%d (%u..%u) => ",
 		from,Stage3_querystart(from),Stage3_queryend(from),
@@ -1553,8 +1627,8 @@ middle_piece_local_p (int *querystart, int *queryend,
       debug2(printf("true, because %u < %u and %u + %u > %u\n",
 		    Stage3_chrend(from),Stage3_chrstart(to),
 		    Stage3_chrend(from),1000000,Stage3_chrstart(to)));
-      IIT_interval_bounds(&(*chroffset),&(*chrhigh),&(*chrlength),chromosome_iit,
-			  *chrnum,circular_typeint);
+      Univ_IIT_interval_bounds(&(*chroffset),&(*chrhigh),&(*chrlength),chromosome_iit,
+			       *chrnum,circular_typeint);
       *querystart = Stage3_queryend(from);
       *queryend = Stage3_querystart(to);
       *chrstart = Stage3_chrend(from);
@@ -1572,8 +1646,8 @@ middle_piece_local_p (int *querystart, int *queryend,
       debug2(printf("true, because %u < %u and %u + %u > %u\n",
 		    Stage3_chrstart(to),Stage3_chrend(from),
 		    Stage3_chrstart(to),1000000,Stage3_chrend(from)));
-      IIT_interval_bounds(&(*chroffset),&(*chrhigh),&(*chrlength),chromosome_iit,
-			  *chrnum,circular_typeint);
+      Univ_IIT_interval_bounds(&(*chroffset),&(*chrhigh),&(*chrlength),chromosome_iit,
+			       *chrnum,circular_typeint);
       *querystart = Stage3_queryend(from);
       *queryend = Stage3_querystart(to);
       *chrstart = Stage3_chrstart(to);
@@ -1616,35 +1690,6 @@ middle_piece_chimera_p (int *querystart, int *queryend, Stage3_T from, Stage3_T 
     return true;
   }
 }
-
-
-/*
-static bool
-chimera_exists_p (Stage3_T *stage3array, int npaths, Genome_T genome, int querylength) {
-  int i;
-  int exonexonpos, cdna_direction;
-  double donor_prob, acceptor_prob;
-
-  for (i = 1; i < npaths; i++) {
-    if (chimeric_join_p(stage3array[0],stage3array[i]) == true) {
-      debug2(printf("Found join for 0 to %d\n",i));
-      if (Chimera_exonexon_p(&exonexonpos,&cdna_direction,&donor_prob,&acceptor_prob,
-			     stage3array[0],stage3array[i],genome,querylength) == true) {
-	debug2(printf("exonexonpos is %d\n",exonexonpos));
-	return true;
-      }
-    } else if (chimeric_join_p(stage3array[i],stage3array[0]) == true) {
-      debug2(printf("Found join for %d to 0\n",i));
-      if (Chimera_exonexon_p(&exonexonpos,&cdna_direction,&donor_prob,&acceptor_prob,
-			     stage3array[i],stage3array[0],genome,querylength) == true) {
-	debug2(printf("exonexonpos is %d\n",exonexonpos));
-	return true;
-      }
-    }
-  }
-  return false;
-}
-*/
 
 
 /* Returns nonjoinable */
@@ -1854,16 +1899,13 @@ chimera_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
   return nonjoinable;
 }
 
-#if 0
-#endif
-
 
 /* Returns a list with only one Stage3_T object */
 static List_T
 merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int npaths_sub1, int bestfrom,
 				  Stage3_T *stage3array_sub2, int npaths_sub2, int bestto,
 				  bool singlep, bool dualbreakp, char comp, int cdna_direction, List_T nonjoinable,
-				  int breakpoint, int queryjump, Genomicpos_T genomejump, int queryntlength,
+				  int breakpoint, int queryjump, int genomejump, int queryntlength,
 #ifdef PMAP
 				  char *queryaaseq_ptr,
 #endif
@@ -2039,16 +2081,6 @@ merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int 
 		best1,Stage3_querystart(best1),Stage3_queryend(best1)));
   debug2(Stage3_print_ends(best1));
 
-  Stage3_merge_chimera(best0,best1,
-		       /*minpos1*/0,/*maxpos1*/breakpoint,
-		       /*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,
-#ifdef PMAP
-		       queryaaseq_ptr,
-#endif
-		       queryseq,queryuc,pairpool,dynprogL,dynprogR,
-		       maxpeelback,maxpeelback_distalmedial,nullgap,
-		       extramaterial_end,extraband_end,ngap);
-
   debug2(printf("Rearranging paths\n"));
   newstage3list = (List_T) NULL;
   newstage3list = List_push(newstage3list,(void *) best0);
@@ -2112,13 +2144,13 @@ find_breakpoint (int *cdna_direction, int *chimerapos, int *chimeraequivpos, int
 #endif
 		 Sequence_T queryseq, Sequence_T queryuc,
 		 int queryntlength, Genome_T genome, Genome_T genomealt,
-		 IIT_T chromosome_iit, Pairpool_T pairpool) {
+		 Univ_IIT_T chromosome_iit, Pairpool_T pairpool) {
   int breakpoint, leftpos, rightpos;
   int maxpeelback_from, maxpeelback_to;
   int found_cdna_direction, try_cdna_direction;
 
   int queryjump;
-  Genomicpos_T genomejump;
+  int genomejump;
   bool max_extend_p;
 
   if (Stage3_queryend(from) < Stage3_querystart(to)) {
@@ -2259,7 +2291,7 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 
   bool singlep, dualbreakp;
   int queryjump;
-  Genomicpos_T genomejump;
+  int genomejump;
   
 
 #ifdef PMAP
@@ -2525,7 +2557,17 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #endif
 
     } else if (Stage3_test_bounds(from,0,chimeraequivpos+chimera_overlap) == true &&
-	       Stage3_test_bounds(to,chimerapos+1-chimera_overlap,queryntlength) == true) {
+	       Stage3_test_bounds(to,chimerapos+1-chimera_overlap,queryntlength) == true &&
+	       Stage3_merge_chimera(/*best0*/from,/*best1*/to,
+				    /*minpos1*/0,/*maxpos1*/breakpoint,
+				    /*minpos2*/breakpoint+1,/*maxpos2*/queryntlength,
+#ifdef PMAP
+				    queryaaseq_ptr,
+#endif
+				    queryseq,queryuc,pairpool,dynprogL,dynprogR,
+				    maxpeelback,maxpeelback_distalmedial,nullgap,
+				    extramaterial_end,extraband_end,ngap) == true) {
+
       *chimera = Chimera_new(chimerapos,chimeraequivpos,exonexonpos,chimera_cdna_direction,
 			     donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
       debug2(printf("Not mergeable -- Merging left and right as a transloc\n"));
@@ -2721,7 +2763,8 @@ check_middle_piece_local (bool *foundp, List_T stage3list, Sequence_T queryseq,
   List_T r;
   bool plusp;
   int querystart, queryend;
-  Genomicpos_T chrstart, chrend, chroffset, chrhigh, chrlength;
+  Chrpos_T chrstart, chrend, chrlength;
+  Univcoord_T chroffset, chrhigh;
   Chrnum_T chrnum;
 
   int breakpointA = 0, chimeraposA, chimeraequivposA, exonexonposA;
@@ -2740,7 +2783,7 @@ check_middle_piece_local (bool *foundp, List_T stage3list, Sequence_T queryseq,
   bool mergeableAp, mergeableBp;
   bool singleAp, dualbreakAp, singleBp, dualbreakBp;
   int queryjumpA, queryjumpB;
-  Genomicpos_T genomejumpA, genomejumpB;
+  int genomejumpA, genomejumpB;
 
   List_T middlepieces;
 
@@ -2940,7 +2983,7 @@ check_middle_piece_chimera (bool *foundp, List_T stage3list,
   bool mergeableAp, mergeableBp, mergedAp, mergedBp;
   bool singleAp, dualbreakAp, singleBp, dualbreakBp;
   int queryjumpA, queryjumpB;
-  Genomicpos_T genomejumpA, genomejumpB;
+  int genomejumpA, genomejumpB;
 
   List_T nonjoinable = NULL, middlepieces = NULL;
   Diagnostic_T diagnostic;
@@ -3331,7 +3374,10 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 
   /* Needed after call to stage3_from_gregions */
   Stage3_recompute_goodness(stage3list);
-  stage3list = stage3list_sort(stage3list);
+
+  /* Final call, so do both filtering and sorting */
+  Stage3_recompute_coverage(stage3list,queryseq);
+  stage3list = stage3list_filter_and_sort(stage3list);
 
   return stage3list;
 }
@@ -3692,7 +3738,7 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
   Diagpool_T diagpool;
   Stopwatch_T stopwatch;
 
-  Genomicpos_T genomicstart, genomiclength;
+  Chrpos_T genomicstart, genomiclength;
   Sequence_T genomicseg, queryuc, referenceuc;
   int jobid = 0;
 
@@ -3886,7 +3932,7 @@ align_relative (FILE *input, char **files, int nfiles, int nextchar,
 #endif
 
 void
-check_map_iit (IIT_T map_iit, IIT_T chromosome_iit) {
+check_map_iit (IIT_T map_iit, Univ_IIT_T chromosome_iit) {
   char *typestring, *lookup, *p;
   int type, destranded_len;
   bool errorp = false;
@@ -3903,7 +3949,7 @@ check_map_iit (IIT_T map_iit, IIT_T chromosome_iit) {
       strncpy(lookup,typestring,destranded_len);
     }
 
-    if (IIT_find_one(chromosome_iit,lookup) < 0) {
+    if (Univ_IIT_find_one(chromosome_iit,lookup) < 0) {
       if (p != NULL) {
 	fprintf(stderr,"Warning: In %s, type %s (without the %s) does not correspond to a known chromosome in %s.\n",
 		map_iitfile,typestring,p,dbversion);
@@ -3920,7 +3966,7 @@ check_map_iit (IIT_T map_iit, IIT_T chromosome_iit) {
   }
   if (errorp == true) {
     fprintf(stderr,"Known chromosomes: ");
-    IIT_dump_labels(stderr,chromosome_iit);
+    Univ_IIT_dump_labels(stderr,chromosome_iit);
   }
   return;
 }
@@ -4111,6 +4157,16 @@ main (int argc, char *argv[]) {
 	print_program_usage();
 	exit(0);
 
+      } else if (!strcmp(long_name,"expand-offsets")) {
+	if (!strcmp(optarg,"1")) {
+	  expand_offsets_p = true;
+	} else if (!strcmp(optarg,"0")) {
+	  expand_offsets_p = false;
+	} else {
+	  fprintf(stderr,"--expand-offsets flag must be 0 or 1\n");
+	  exit(9);
+	}
+
       } else if (!strcmp(long_name,"basesize")) {
 	required_basesize = atoi(check_valid_int(optarg));
 
@@ -4176,6 +4232,9 @@ main (int argc, char *argv[]) {
 	  exit(9);
 	}
 
+      } else if (!strcmp(long_name,"find-shifted-canonical")) {
+	use_shifted_canonical_p = true;
+
       } else if (!strcmp(long_name,"cross-species")) {
 	use_shifted_canonical_p = true;
 
@@ -4200,6 +4259,11 @@ main (int argc, char *argv[]) {
 	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi\n");
 	  exit(9);
 	}
+
+      } else if (!strcmp(long_name,"min-trimmed-coverage")) {
+	min_trimmed_coverage = atof(check_valid_float(optarg));
+      } else if (!strcmp(long_name,"min-identity")) {
+	min_identity = atof(check_valid_float(optarg));
 
       } else if (!strcmp(long_name,"input-buffer-size")) {
 	inbuffer_nspaces = atoi(check_valid_int(optarg));
@@ -4298,7 +4362,8 @@ main (int argc, char *argv[]) {
 
     case 'B': 
       if (!strcmp(optarg,"5")) {
-	expand_offsets_p = true;
+	fprintf(stderr,"Note: Batch mode 5 is now the same as batch mode 4.\n");
+	fprintf(stderr,"Expansion of offsets is now controlled separately by --expand-offsets (default=1).\n");
 	offsetscomp_access = USE_ALLOCATE; /* Doesn't matter */
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_ALLOCATE;
@@ -4329,7 +4394,7 @@ main (int argc, char *argv[]) {
 #ifdef HAVE_MMAP
 	fprintf(stderr,"Batch mode %s not recognized.  Only allow 0-5.  Run 'gmap --help' for more information.\n",optarg);
 #else
-	fprintf(stderr,"Batch mode %s not recognized.  Only allow 4-5.  Run 'gmap --help' for more information.\n",optarg);
+	fprintf(stderr,"Batch mode %s not recognized.  Only allow 4-5, since mmap is disabled.  Run 'gmap --help' for more information.\n",optarg);
 #endif
 	exit(9);
       }
@@ -4535,6 +4600,8 @@ main (int argc, char *argv[]) {
   argv += optind;
       
 
+  check_compiler_assumptions();
+
   if (exception_raise_p == false) {
     fprintf(stderr,"Allowing signals and exceptions to pass through\n");
     Except_inactivate();
@@ -4603,14 +4670,19 @@ main (int argc, char *argv[]) {
     iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-    if ((chromosome_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				   /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+    if ((chromosome_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
       fprintf(stderr,"IIT file %s is not valid\n",iitfile);
       exit(9);
+#ifdef LARGE_GENOMES
+    } else if (Univ_IIT_coord_values_8p(chromosome_iit) == false) {
+      fprintf(stderr,"This program gmapl is designed for large genomes.\n");
+      fprintf(stderr,"For small genomes of less than 2^32 billion nt, please run gmap instead.\n");
+      exit(9);
+#endif
     } else {
-      nchrs = IIT_total_nintervals(chromosome_iit);
-      circular_typeint = IIT_typeint(chromosome_iit,"circular");
-      circularp = IIT_circularp(chromosome_iit);
+      nchrs = Univ_IIT_total_nintervals(chromosome_iit);
+      circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular");
+      circularp = Univ_IIT_circularp(chromosome_iit);
     }
     FREE(iitfile);
 
@@ -4632,7 +4704,7 @@ main (int argc, char *argv[]) {
 	fprintf(stderr,"using the -M flag.\n");
 	exit(9);
       } else {
-	map_divint_crosstable = IIT_divint_crosstable(chromosome_iit,map_iit);
+	map_divint_crosstable = Univ_IIT_divint_crosstable(chromosome_iit,map_iit);
       }
 
       check_map_iit(map_iit,chromosome_iit);
@@ -4870,8 +4942,7 @@ main (int argc, char *argv[]) {
       iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 				strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
       sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
-      if ((contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+      if ((contig_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
 	fprintf(stderr,"IIT file %s is not valid\n",iitfile);
 	exit(9);
       }
@@ -4920,8 +4991,7 @@ main (int argc, char *argv[]) {
       iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 				strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
       sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
-      if ((contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+      if ((contig_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
 	fprintf(stderr,"IIT file %s is not valid\n",iitfile);
 	exit(9);
       }
@@ -4931,7 +5001,7 @@ main (int argc, char *argv[]) {
     genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
     genomealt = (Genome_T) NULL;
     genome_blocks = Genome_blocks(genome);
-    snp_blocks = (UINT4 *) NULL;
+    snp_blocks = (Genomecomp_T *) NULL;
 
     if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
       if (user_cmetdir == NULL) {
@@ -5010,8 +5080,7 @@ main (int argc, char *argv[]) {
       iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 				strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
       sprintf(iitfile,"%s/%s.contig.iit",genomesubdir,fileroot);
-      if ((contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+      if ((contig_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
 	fprintf(stderr,"IIT file %s is not valid\n",iitfile);
 	exit(9);
       }
@@ -5093,7 +5162,7 @@ main (int argc, char *argv[]) {
       /* min_extra_end no longer used by gregion.c */
       min_extra_end = shortsplicedist;
 
-      splicing_divint_crosstable = IIT_divint_crosstable(chromosome_iit,splicing_iit);
+      splicing_divint_crosstable = Univ_IIT_divint_crosstable(chromosome_iit,splicing_iit);
       if ((donor_typeint = IIT_typeint(splicing_iit,"donor")) >= 0 && 
 	  (acceptor_typeint = IIT_typeint(splicing_iit,"acceptor")) >= 0) {
 	fprintf(stderr,"found donor and acceptor tags, so treating as splicesites file\n");
@@ -5106,7 +5175,7 @@ main (int argc, char *argv[]) {
 	  fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
 		  dbroot);
 	  fprintf(stderr,"Chromosomes in the genome: ");
-	  IIT_dump_labels(stderr,chromosome_iit);
+	  Univ_IIT_dump_labels(stderr,chromosome_iit);
 	  fprintf(stderr,"Chromosomes in the splicesites IIT file: ");
 	  IIT_dump_divstrings(stderr,splicing_iit);
 	  exit(9);
@@ -5139,7 +5208,7 @@ main (int argc, char *argv[]) {
 	  fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
 		  dbroot);
 	  fprintf(stderr,"Chromosomes in the genome: ");
-	  IIT_dump_labels(stderr,chromosome_iit);
+	  Univ_IIT_dump_labels(stderr,chromosome_iit);
 	  fprintf(stderr,"Chromosomes in the splicesites IIT file: ");
 	  IIT_dump_divstrings(stderr,splicing_iit);
 	  exit(9);
@@ -5149,8 +5218,8 @@ main (int argc, char *argv[]) {
 #endif
 	    Splicetrie_build_via_introns(&triecontents_obs,&trieoffsets_obs,splicesites,splicetypes,
 					 splicestrings,nsplicesites,chromosome_iit,splicing_iit,splicing_divint_crosstable);
-	    triecontents_max = (unsigned int *) NULL;
-	    trieoffsets_max =  (unsigned int *) NULL;
+	    triecontents_max = (Triecontent_T *) NULL;
+	    trieoffsets_max =  (Trieoffset_T *) NULL;
 	    Splicestring_gc(splicestrings,nsplicesites);
 #if 0
 	  }
@@ -5320,12 +5389,6 @@ main (int argc, char *argv[]) {
   Outbuffer_free(&outbuffer);
   Inbuffer_free(&inbuffer);	/* Also closes inputs */
 
-  if (user_selfalign_p == true) {
-    /* Do not free usersegment */
-  } else if (usersegment != NULL) {
-    Sequence_free(&usersegment);
-  }
-
 #ifdef PMAP
   Backtranslation_term();
 #endif
@@ -5391,16 +5454,22 @@ main (int argc, char *argv[]) {
     IIT_free(&map_iit);
   }
   if (contig_iit != NULL) {
-    IIT_free(&contig_iit);
+    Univ_IIT_free(&contig_iit);
   }
   if (circularp != NULL) {
     FREE(circularp);
   }
   if (chromosome_iit != NULL) {
-    IIT_free(&chromosome_iit);
+    Univ_IIT_free(&chromosome_iit);
   }
   if (chrsubset != NULL) {
     Chrsubset_free(&chrsubset);
+  }
+
+  if (user_selfalign_p == true) {
+    /* Do not free usersegment */
+  } else if (usersegment != NULL) {
+    Sequence_free(&usersegment);
   }
 
   return 0;
@@ -5470,11 +5539,11 @@ Input options (must include -d or -g)\n\
     fprintf(stdout,"\
   -B, --batch=INT                Batch mode (default = 2)\n\
                                  Mode     Offsets       Positions       Genome\n\
-                                   0      allocate      mmap            mmap\n\
-                                   1      allocate      mmap & preload  mmap\n\
-                      (default)    2      allocate      mmap & preload  mmap & preload\n\
-                                   3      allocate      allocate        mmap & preload\n\
-                                   4      allocate      allocate        allocate\n\
+                                   0      see note      mmap            mmap\n\
+                                   1      see note      mmap & preload  mmap\n\
+                      (default)    2      see note      mmap & preload  mmap & preload\n\
+                                   3      see note      allocate        mmap & preload\n\
+                                   4      see note      allocate        allocate\n\
                                    5      expand        allocate        allocate\n\
                            Note: For a single sequence, all data structures use mmap\n\
                            If mmap not available and allocate not chosen, then will use fileio (very slow)\n\
@@ -5483,10 +5552,19 @@ Input options (must include -d or -g)\n\
     fprintf(stdout,"\
   -B, --batch=INT                Batch mode (default = 4, modes 0-3 disallowed because program configured without mmap)\n\
                                  Mode     Offsets       Positions       Genome\n\
-                      (default)    4      allocate      allocate        allocate\n\
-                                   5      expand        allocate        allocate\n\
+                      (default)    4      see note      allocate        allocate\n\
+                                   5      expand        allocate        allocate\n \
 ");
 #endif
+    fprintf(stdout,"\
+                       Note about --batch and offsets: Expansion of offsets can be controlled\n\
+                       independently by the --expand-offsets flag.  The --batch=5 option is equivalent\n\
+                       to --batch=4 plus --expand-offsets=1\n\
+\n\
+  --expand-offsets=INT           Whether to expand the genomic offsets index\n\
+                                   Values: 0 (no, default), or 1 (yes).\n\
+                                   Expansion gives faster alignment, but requires more memory\n\
+");
 
     fprintf(stdout,"\
   --nosplicing                   Turns off splicing (useful for aligning genomic sequences\n\
@@ -5523,8 +5601,9 @@ Input options (must include -d or -g)\n\
                                    sense_filter, antisense_filter,or auto (default))\n\
   -H, --trimendexons=INT         Trim end exons with fewer than given number of matches\n\
                                    (in nt, default 12)\n\
-  --cross-species                For cross-species alignments, use a more sensitive search\n\
-                                   for canonical splicing\n\
+  --find-shifted-canonical       Use a more sensitive search for canonical splicing\n\
+  --cross-species                Synonym for --find-shifted-canonical, which helps especially\n\
+                                   for cross-species alignments and other difficult cases\n\
   --canonical-mode=INT           Reward for canonical and semi-canonical introns\n\
                                    0=low reward, 1=high reward (default), 2=low reward for\n\
                                    high-identity sequences and high reward otherwise\n\
@@ -5724,6 +5803,16 @@ Alignment output options\n\
                                    2=Invert cDNA and print genomic (+) strand\n\
   -i, --introngap=INT            Nucleotides to show on each end of intron (default=3)\n\
   -l, --wraplength=INT           Wrap length for alignment (default=50)\n\
+\n\
+Filtering output options\n\
+  --min-trimmed-coverage=FLOAT   Do not print alignments with trimmed coverage less\n\
+                                   this value (default=0.0, which means no filtering)\n\
+                                   Note that chimeric alignments will be output regardless\n\
+                                   of this filter\n\
+  --min-identity=FLOAT           Do not print alignments with identity less\n\
+                                   this value (default=0.0, which means no filtering)\n\
+                                   Note that chimeric alignments will be output regardless\n\
+                                   of this filter\n\
 \n\
 Help options\n\
   --version                      Show version\n\

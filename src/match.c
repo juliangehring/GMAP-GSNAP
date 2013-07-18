@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: match.c 64182 2012-05-16 00:18:57Z twu $";
+static char rcsid[] = "$Id: match.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,6 +19,7 @@ static char rcsid[] = "$Id: match.c 64182 2012-05-16 00:18:57Z twu $";
 #include "separator.h"
 #include "sequence.h"
 #include "indexdb.h"
+#include "univinterval.h"
 
 #define MIN_STAGE1_FSUPPORT 0.20
 #define MAX_STAGE1_STRETCH 2000.0
@@ -55,7 +56,7 @@ Match_fivep (T this) {
   return this->fivep;
 }
 
-Genomicpos_T
+Univcoord_T
 Match_position (T this) {
   return this->position;
 }
@@ -67,11 +68,11 @@ Match_chrnum (T this) {
 
 /* Used only for debugging.  String is allocated and should be freed. */
 char *
-Match_chr (T this, IIT_T chromosome_iit) {
+Match_chr (T this, Univ_IIT_T chromosome_iit) {
   return Chrnum_to_string(this->chrnum,chromosome_iit);
 }
 
-Genomicpos_T
+Chrpos_T
 Match_chrpos (T this) {
   return this->chrpos;
 }
@@ -129,7 +130,7 @@ Match_cmp (const void *a, const void *b) {
 /* Matches now made in matchpool.c */
 T
 Match_new (int querypos, bool forwardp, bool fivep,
-	   Genomicpos_T position, IIT_T chromosome_iit) {
+	   Univcoord_T position, Univ_IIT_T chromosome_iit) {
   T new = (T) MALLOC(sizeof(*new));
   int index;
 
@@ -145,8 +146,8 @@ Match_new (int querypos, bool forwardp, bool fivep,
     new->chrnum = 0;
     new->chrpos = position;
   } else {
-    index = IIT_get_one(chromosome_iit,/*divstring*/NULL,position,position);
-    new->chrpos = position - Interval_low(IIT_interval(chromosome_iit,index));
+    index = Univ_IIT_get_one(chromosome_iit,position,position);
+    new->chrpos = position - Univinterval_low(Univ_IIT_interval(chromosome_iit,index));
     new->chrnum = index;
   }
 
@@ -171,11 +172,11 @@ Match_free (T *old) {
 #endif
 
 void
-Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_iit, int stage1size) {
+Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, Univ_IIT_T chromosome_iit, int stage1size) {
   char *genomicseg_ptr;
   Sequence_T genomicseg;
   int querypos;
-  Genomicpos_T position;
+  Univcoord_T position;
 
   querypos = this->querypos;
   position = this->position;
@@ -209,7 +210,7 @@ Match_print_mer (T this, char *queryseq_ptr, Genome_T genome, IIT_T chromosome_i
 
 
 void
-Match_print (T this, IIT_T chromosome_iit) {
+Match_print (T this, Univ_IIT_T chromosome_iit) {
   char *chr;
 
   chr = Match_chr(this,chromosome_iit);
@@ -230,7 +231,7 @@ compute_fsupport (T bound5, T bound3, int trimlength, int stage1size) {
 
 static double
 compute_stretch (T bound5, T bound3) {
-  Genomicpos_T position5, position3;
+  Univcoord_T position5, position3;
   int querypos5, querypos3;
 
   querypos5 = bound5->querypos;

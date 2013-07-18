@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 83593 2013-01-16 22:59:40Z twu $";
+static char rcsid[] = "$Id: sequence.c 101724 2013-07-16 23:40:20Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -138,7 +138,7 @@ Sequence_fulllength_given (T this) {
 
 int
 Sequence_trimlength (T this) {
-  return this->trimend - this->trimstart + 1;
+  return this->trimend - this->trimstart;
 }
 
 void

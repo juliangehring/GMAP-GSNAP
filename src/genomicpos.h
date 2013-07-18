@@ -1,19 +1,36 @@
-/* $Id: genomicpos.h 56964 2012-02-02 17:57:52Z twu $ */
+/* $Id: genomicpos.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef GENOMICPOS_INCLUDED
 #define GENOMICPOS_INCLUDED
 #include <stdlib.h>
 #include "types.h"
 
-/* A genomic position, typically 3 billion or less, requiring 32 bits
-   or 4 bytes */
-typedef UINT4 Genomicpos_T;
+/* A genomic position */
+#ifdef LARGE_GENOMES
+#include "uint8list.h"
+typedef Uint8list_T Genomicposlist_T;
+#define Genomicposlist_length(x) Uint8list_length(x)
+#define Genomicposlist_to_array(x,y) Uint8list_to_array(x,y)
+#define Genomicposlist_free(x) Uint8list_free(x)
+#else
+#include "uintlist.h"
+typedef Uintlist_T Genomicposlist_T;
+#define Genomicposlist_length(x) Uintlist_length(x)
+#define Genomicposlist_to_array(x,y) Uintlist_to_array(x,y)
+#define Genomicposlist_free(x) Uintlist_free(x)
+#endif
 
-#define T Genomicpos_T
+/* A chromosomal position */
+typedef UINT4 Chrpos_T;
 
 extern char *
-Genomicpos_commafmt (size_t N);
+Genomicpos_commafmt (Univcoord_T N);
 extern int
-Genomicpos_compare (const void *a, const void *b);
+UINT8_compare (const void *a, const void *b);
+extern int
+UINT4_compare (const void *a, const void *b);
+extern int
+Univcoord_compare (const void *a, const void *b);
+extern int
+Chrpos_compare (const void *a, const void *b);
 
-#undef T
 #endif

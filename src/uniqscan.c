@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 90498 2013-03-27 22:33:51Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,6 +40,7 @@ static char rcsid[] = "$Id: uniqscan.c 90498 2013-03-27 22:33:51Z twu $";
 #include "intlist.h"
 #include "list.h"
 #include "listdef.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "datadir.h"
 
@@ -84,7 +85,7 @@ static int max_deletionlength = 50;
  *   Global parameters
  ************************************************************************/
 
-static IIT_T chromosome_iit = NULL;
+static Univ_IIT_T chromosome_iit = NULL;
 static int circular_typeint = -1;
 static int nchromosomes = 0;
 static bool *circularp = NULL;
@@ -92,7 +93,7 @@ static Indexdb_T indexdb = NULL;
 static Indexdb_T indexdb2 = NULL; /* For cmet or atoi */
 static Genome_T genome = NULL;
 static Genome_T genomealt = NULL;
-static UINT4 *genome_blocks = NULL;
+static Genomecomp_T *genome_blocks = NULL;
 
 
 /************************************************************************
@@ -148,12 +149,12 @@ static int max_middle_deletions = 30;
 static int max_end_insertions = 3;
 static int max_end_deletions = 6;
 static int min_indel_end_matches = 4;
-static Genomicpos_T shortsplicedist = 200000;
-static Genomicpos_T shortsplicedist_known;
-static Genomicpos_T shortsplicedist_novelend = 50000;
+static Chrpos_T shortsplicedist = 200000;
+static Chrpos_T shortsplicedist_known;
+static Chrpos_T shortsplicedist_novelend = 50000;
 static int localsplicing_penalty = 0;
 static int distantsplicing_penalty = 100;
-static int min_distantsplicing_end_matches = 16;
+static int min_distantsplicing_end_matches = 20;
 static double min_distantsplicing_identity = 0.95;
 static int min_shortend = 2;
 static int antistranded_penalty = 0; /* Most RNA-Seq is non-stranded */
@@ -187,13 +188,13 @@ static int donor_typeint = -1;		/* for splicing_iit */
 static int acceptor_typeint = -1;	/* for splicing_iit */
 
 static int *splicing_divint_crosstable = NULL;
-static UINT4 *splicecomp = NULL;
-static Genomicpos_T *splicesites = NULL;
+static Genomecomp_T *splicecomp = NULL;
+static Univcoord_T *splicesites = NULL;
 static Splicetype_T *splicetypes = NULL;
-static Genomicpos_T *splicedists = NULL; /* maximum observed splice distance for given splice site */
+static Chrpos_T *splicedists = NULL; /* maximum observed splice distance for given splice site */
 static List_T *splicestrings = NULL;
-static UINT4 *splicefrags_ref = NULL;
-static UINT4 *splicefrags_alt = NULL;
+static Genomecomp_T *splicefrags_ref = NULL;
+static Genomecomp_T *splicefrags_alt = NULL;
 static int nsplicesites = 0;
 
 /* Splicing via splicesites */
@@ -202,10 +203,10 @@ static int *nsplicepartners_obs = NULL;
 static int *nsplicepartners_max = NULL;
 
 static bool splicetrie_precompute_p = true;
-static unsigned int *trieoffsets_obs = NULL;
-static unsigned int *triecontents_obs = NULL;
-static unsigned int *trieoffsets_max = NULL;
-static unsigned int *triecontents_max = NULL;
+static Trieoffset_T *trieoffsets_obs = NULL;
+static Triecontent_T *triecontents_obs = NULL;
+static Trieoffset_T *trieoffsets_max = NULL;
+static Triecontent_T *triecontents_max = NULL;
 
 
 /* Dibase and CMET */
@@ -435,8 +436,7 @@ uniqueness_scan (bool from_right_p) {
 				     indel_penalty_middle,indel_penalty_end,
 				     max_middle_insertions,max_middle_deletions,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				     shortsplicedist,localsplicing_penalty,/*distantsplicing_penalty*/100,
-				     min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
+				     shortsplicedist,localsplicing_penalty,/*distantsplicing_penalty*/100,min_shortend,
 				     oligoindices_major,noligoindices_major,
 				     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				     dynprogL,dynprogM,dynprogR,
@@ -483,8 +483,7 @@ uniqueness_scan (bool from_right_p) {
 					 indel_penalty_middle,indel_penalty_end,
 					 max_middle_insertions,max_middle_deletions,
 					 allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-					 shortsplicedist,localsplicing_penalty,/*distantsplicing_penalty*/100,
-					 min_distantsplicing_end_matches,min_distantsplicing_identity,min_shortend,
+					 shortsplicedist,localsplicing_penalty,/*distantsplicing_penalty*/100,min_shortend,
 					 oligoindices_major,noligoindices_major,
 					 oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 					 dynprogL,dynprogM,dynprogR,
@@ -918,14 +917,13 @@ main (int argc, char *argv[]) {
   iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			    strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
   sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-  if ((chromosome_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+  if ((chromosome_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
     fprintf(stderr,"IIT file %s is not valid\n",iitfile);
     exit(9);
   } else {
-    nchromosomes = IIT_total_nintervals(chromosome_iit);
-    circular_typeint = IIT_typeint(chromosome_iit,"circular");
-    circularp = IIT_circularp(chromosome_iit);
+    nchromosomes = Univ_IIT_total_nintervals(chromosome_iit);
+    circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular");
+    circularp = Univ_IIT_circularp(chromosome_iit);
   }
   FREE(iitfile);
 
@@ -1076,7 +1074,7 @@ main (int argc, char *argv[]) {
       }
     }
 
-    snps_divint_crosstable = IIT_divint_crosstable(chromosome_iit,snps_iit);
+    snps_divint_crosstable = Univ_IIT_divint_crosstable(chromosome_iit,snps_iit);
 
     fprintf(stderr,"done\n");
     FREE(iitfile);
@@ -1117,6 +1115,7 @@ main (int argc, char *argv[]) {
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,distances_observed_p,
 		 shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
+		 min_distantsplicing_end_matches,min_distantsplicing_identity,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
 		 extramaterial_end,extramaterial_paired,gmap_mode,
 		 trigger_score_for_gmap,max_gmap_pairsearch,
@@ -1210,7 +1209,7 @@ main (int argc, char *argv[]) {
   }
 
   if (chromosome_iit != NULL) {
-    IIT_free(&chromosome_iit);
+    Univ_IIT_free(&chromosome_iit);
   }
 
   return 0;

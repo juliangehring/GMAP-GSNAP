@@ -1,9 +1,10 @@
-/* $Id: matchpool.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: matchpool.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef MATCHPOOL_INCLUDED
 #define MATCHPOOL_INCLUDED
 #include "bool.h"
-#include "iit-read.h"
+#include "iit-read-univ.h"
 #include "genomicpos.h"
+#include "types.h"
 #include "match.h"
 #include "list.h"
 
@@ -24,7 +25,7 @@ extern void
 Matchpool_restore (T this);
 extern List_T
 Matchpool_push (List_T list, T this, int querypos, int querylength, bool forwardp, bool fivep,
-		Genomicpos_T diagonal, IIT_T chromosome_iit);
+		Univcoord_T diagonal, Univ_IIT_T chromosome_iit);
 extern List_T
 Matchpool_push_existing (List_T list, T this, Match_T match);
 extern List_T

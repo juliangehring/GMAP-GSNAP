@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 92688 2013-04-12 23:28:15Z twu $";
+static char rcsid[] = "$Id: samprint.c 101110 2013-07-11 03:31:01Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -170,10 +170,10 @@ SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,
 }
 
 
-Genomicpos_T
+Chrpos_T
 SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 		    Substring_T substring_low, int querylength) {
-  Genomicpos_T chrpos;
+  Chrpos_T chrpos;
   Substring_T substring;
   int querystart, queryend;
   bool plusp;
@@ -246,13 +246,13 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 
     } else {
       /* Add 1 to report in 1-based coordinates */
-      if (querylength - *hardclip_high < Substring_queryend(substring_low)) {
+      if (querylength - *hardclip_low < Substring_queryend(substring_low)) {
 	substring = (Substring_T) NULL;
-	while (*hardclip_high < querylength && substring == NULL) {
-	  substring = Stage3end_substring_containing(this,querylength - 1 - (*hardclip_high));
-	  (*hardclip_high)++;
+	while (*hardclip_low < querylength && substring == NULL) {
+	  substring = Stage3end_substring_containing(this,querylength - 1 - (*hardclip_low));
+	  (*hardclip_low)++;
 	}
-	(*hardclip_high)--;
+	(*hardclip_low)--;
 
 	if (substring == NULL) {
 	  return 0U;
@@ -267,7 +267,7 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 		*hardclip_low,*hardclip_high,querystart,queryend);
 #endif
 
-	if (*hardclip_low >= queryend || querylength - *hardclip_high < querystart) {
+	if (*hardclip_high >= queryend || querylength - *hardclip_low < querystart) {
 	  /* fprintf(stderr,"Returning 0\n"); */
 	  return 0U;
 	}
@@ -277,7 +277,7 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 		chrpos,queryend,querylength,*hardclip_high);
 #endif
 
-	chrpos += queryend - (querylength - (*hardclip_high));
+	chrpos += queryend - (querylength - (*hardclip_low));
       } else {
 	querystart = Substring_querystart(Stage3end_substring_high(this));
 	queryend = Substring_queryend(substring_low);
@@ -287,7 +287,7 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 		*hardclip_low,*hardclip_high,querystart,queryend);
 #endif
 
-	if (*hardclip_low >= queryend || querylength - *hardclip_high < querystart) {
+	if (*hardclip_high >= queryend || querylength - *hardclip_low < querystart) {
 	  /* fprintf(stderr,"Returning 0\n"); */
 	  return 0U;
 	}
@@ -302,8 +302,8 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 
 
 static void
-print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Genomicpos_T chrpos,
-		       IIT_T chromosome_iit) {
+print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Chrpos_T chrpos,
+		       Univ_IIT_T chromosome_iit) {
   bool allocp;
   char *chr;
 
@@ -318,7 +318,7 @@ print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Genomicpos_T chrpos,
     abort();
 
   } else {
-    chr = IIT_label(chromosome_iit,chrnum,&allocp);
+    chr = Univ_IIT_label(chromosome_iit,chrnum,&allocp);
     fprintf(fp,"\t%s",chr);
     if (allocp == true) {
       FREE(chr);
@@ -332,8 +332,8 @@ print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Genomicpos_T chrpos,
 
 static void
 print_mate_chromosomal_pos (FILE *fp, Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum,
-			    Genomicpos_T mate_chrpos, Chrnum_T anchor_chrnum, Genomicpos_T anchor_chrpos,
-			    IIT_T chromosome_iit) {
+			    Chrpos_T mate_chrpos, Chrnum_T anchor_chrnum, Chrpos_T anchor_chrpos,
+			    Univ_IIT_T chromosome_iit) {
   bool allocp;
   char *chr;
 
@@ -347,7 +347,7 @@ print_mate_chromosomal_pos (FILE *fp, Chrnum_T mate_chrnum, Chrnum_T mate_effect
     if (anchor_chrpos > 0U && anchor_chrnum > 0 && mate_effective_chrnum == anchor_chrnum) {
       fprintf(fp,"\t=");
     } else {
-      chr = IIT_label(chromosome_iit,mate_effective_chrnum,&allocp);
+      chr = Univ_IIT_label(chromosome_iit,mate_effective_chrnum,&allocp);
       fprintf(fp,"\t%s",chr);
       if (allocp == true) {
 	FREE(chr);
@@ -362,7 +362,7 @@ print_mate_chromosomal_pos (FILE *fp, Chrnum_T mate_chrnum, Chrnum_T mate_effect
     if (anchor_chrpos > 0U && anchor_chrnum > 0 && mate_chrnum == anchor_chrnum) {
       fprintf(fp,"\t=");
     } else {
-      chr = IIT_label(chromosome_iit,mate_chrnum,&allocp);
+      chr = Univ_IIT_label(chromosome_iit,mate_chrnum,&allocp);
       fprintf(fp,"\t%s",chr);
       if (allocp == true) {
 	FREE(chr);
@@ -396,15 +396,19 @@ make_complement_buffered (char *complement, char *sequence, unsigned int length)
 
 
 void
-SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc,
-		     IIT_T chromosome_iit, Resulttype_T resulttype, bool first_read_p,
-		     int npaths_mate, Genomicpos_T mate_chrpos, int quality_shift,
+SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc1, char *acc2,
+		     Univ_IIT_T chromosome_iit, Resulttype_T resulttype, bool first_read_p,
+		     int npaths_mate, Chrpos_T mate_chrpos, int quality_shift,
 		     char *sam_read_group_id, bool invertp, bool invert_mate_p) {
   unsigned int flag;
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
   
   /* 2. FLAG */
   flag = SAM_compute_flag(/*plusp (NA)*/true,mate,resulttype,first_read_p,
@@ -685,15 +689,15 @@ print_cigar (FILE *fp, char type, int stringlength, int querypos, int querylengt
     debug1(printf("\nEntering print_cigar with type %c, stringlength %d, querypos %d, querylength %d, hardclip_low %d, hardclip_high %d, minus\n",
 		  type,stringlength,querypos,querylength,hardclip_low,hardclip_high));
 
-    if (querylength - hardclip_high < querypos) {
-      startpos = querylength - hardclip_high;
-      cliplength = hardclip_high;
+    if (querylength - hardclip_low < querypos) {
+      startpos = querylength - hardclip_low;
+      cliplength = hardclip_low;
     } else {
       startpos = querypos;
     }
 
-    if (hardclip_low >= querypos - stringlength) {
-      endpos = hardclip_low;
+    if (hardclip_high >= querypos - stringlength) {
+      endpos = hardclip_high;
     } else {
       endpos = querypos - stringlength;
     }
@@ -828,25 +832,25 @@ print_md_string (bool *printp, int *nmismatches_refdiff, int *nmismatches_bothdi
     querypos = querylength - querypos - stringlength;
     debug2(printf("  Revising querypos to be %d\n",querypos));
 
-    if (hardclip_high == 0) {
+    if (hardclip_low == 0) {
       starti = 0;
       hardclip_end_p = true;
-    } else if (hardclip_high > querypos) {
-      /* startpos = hardclip_high; */
-      starti = hardclip_high - querypos;
+    } else if (hardclip_low > querypos) {
+      /* startpos = hardclip_low; */
+      starti = hardclip_low - querypos;
       hardclip_end_p = true;
-      debug2(printf("  Setting starti %d = hardclip_high %d - querypos %d\n",
-		    starti,hardclip_high,querypos));
+      debug2(printf("  Setting starti %d = hardclip_low %d - querypos %d\n",
+		    starti,hardclip_low,querypos));
     } else {
       /* startpos = querypos; */
       starti = 0;
     }
 
-    if (querylength - hardclip_low < querypos + stringlength) {
-      /* endpos = querylength - hardclip_low; */
-      endi = (querylength - hardclip_low) - querypos;
-      debug2(printf("  Setting endi %d = (querylength %d - hardclip_low %d) - querypos %d\n",
-		    endi,querylength,hardclip_low,querypos));
+    if (querylength - hardclip_high < querypos + stringlength) {
+      /* endpos = querylength - hardclip_high; */
+      endi = (querylength - hardclip_high) - querypos;
+      debug2(printf("  Setting endi %d = (querylength %d - hardclip_high %d) - querypos %d\n",
+		    endi,querylength,hardclip_high,querypos));
     } else {
       /* endpos = querypos + stringlength; */
       endi = stringlength;
@@ -940,10 +944,10 @@ print_md_string (bool *printp, int *nmismatches_refdiff, int *nmismatches_bothdi
 
 
 static void
-print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
+print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
 	      int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-	      IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-	      Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+	      Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+	      Chrpos_T chrpos, Chrpos_T mate_chrpos, int clipdir, int hardclip5, int hardclip3,
 	      Resulttype_T resulttype, bool first_read_p,
 	      int npaths_mate, int quality_shift,
 	      char *sam_read_group_id, bool invertp, bool invert_mate_p, bool circularp) {
@@ -961,7 +965,8 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
   substring = Stage3end_substring1(this);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -974,23 +979,38 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     }
   }
+  /* printf("clipdir is %d, hardclip_low %d, hardclip_high %d\n",clipdir,hardclip_low,hardclip_high); */
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(Stage3end_plusp(this),mate,resulttype,first_read_p,
@@ -1186,10 +1206,10 @@ print_single (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathn
 
 
 static void
-print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
+print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
 		 int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		 Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 Chrpos_T chrpos, Chrpos_T mate_chrpos, int clipdir, int hardclip5, int hardclip3,
 		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 		 bool circularp) {
@@ -1211,7 +1231,8 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
   substring2 = Stage3end_substring2(this);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -1224,14 +1245,24 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
@@ -1241,7 +1272,11 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
   nindels = Stage3end_nindels(this);
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
@@ -1478,10 +1513,10 @@ print_insertion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
 
 static void
-print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
+print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
 		int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		Chrpos_T chrpos, Chrpos_T mate_chrpos, int clipdir, int hardclip5, int hardclip3,
 		Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 		bool circularp) {
@@ -1502,7 +1537,8 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
   substring2 = Stage3end_substring2(this);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -1515,14 +1551,24 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
@@ -1539,7 +1585,11 @@ print_deletion (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pat
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
@@ -1831,10 +1881,10 @@ halfacceptor_dinucleotide (char *acceptor2, char *acceptor1, Substring_T accepto
 
 static void
 print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate,
-		 char *acc, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Genomicpos_T concordant_chrpos, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
-		 int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		 char *acc1, char *acc2, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		 Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 Chrpos_T concordant_chrpos, Chrpos_T chrpos, Chrpos_T mate_chrpos,
+		 int clipdir, int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 		 bool use_hardclip_p, bool print_xt_p, char donor1, char donor2, char acceptor2, char acceptor1,
 		 double donor_prob, double acceptor_prob, bool circularp) {
@@ -1853,7 +1903,8 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
   plusp = Substring_plusp(donor);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -1866,14 +1917,24 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
@@ -1882,7 +1943,11 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
@@ -1906,25 +1971,23 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
 
   if (use_hardclip_p == true) {
     if (sensep == plusp) {
+      transloc_hardclip_low = 0;
       if (plusp == true) {
 	/* sensep true */
-	transloc_hardclip_low = 0;
 	transloc_hardclip_high = querylength - Substring_queryend(donor);
 
       } else {
 	/* sensep false */
-	transloc_hardclip_low = Substring_querystart(donor);
-	transloc_hardclip_high = 0;
+	transloc_hardclip_high = Substring_querystart(donor);
       }
 
     } else { /* sensep != Substring_plusp(donor) */
+      transloc_hardclip_high = 0;
       if (plusp == true) {
 	transloc_hardclip_low = Substring_querystart(donor);
-	transloc_hardclip_high = 0;
 
       } else {
-	transloc_hardclip_low = 0;
-	transloc_hardclip_high = querylength - Substring_queryend(donor);
+	transloc_hardclip_low = querylength - Substring_queryend(donor);
       }
     }
 
@@ -2221,10 +2284,10 @@ print_halfdonor (FILE *fp, Substring_T donor, Stage3end_T this, Stage3end_T mate
 
 static void
 print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_T mate,
-		    char *acc, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		    IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		    Genomicpos_T concordant_chrpos, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
-		    int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
+		    char *acc1, char *acc2, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
+		    Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		    Chrpos_T concordant_chrpos, Chrpos_T chrpos, Chrpos_T mate_chrpos,
+		    int clipdir, int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		    int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 		    bool use_hardclip_p, bool print_xt_p, char donor1, char donor2, char acceptor2, char acceptor1,
 		    double donor_prob, double acceptor_prob, bool circularp) {
@@ -2243,7 +2306,8 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
   plusp = Substring_plusp(acceptor);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -2256,14 +2320,24 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
@@ -2272,7 +2346,11 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
@@ -2296,25 +2374,23 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
 
   if (use_hardclip_p == true) {
     if (sensep != plusp) {
+      transloc_hardclip_low = 0;
       if (plusp == true) {
 	/* sensep false */
-	transloc_hardclip_low = 0;
 	transloc_hardclip_high = querylength - Substring_queryend(acceptor);
 
       } else {
 	/* sensep true */
-	transloc_hardclip_low = Substring_querystart(acceptor);
-	transloc_hardclip_high = 0;
+	transloc_hardclip_high = Substring_querystart(acceptor);
       }
 
     } else { /*  sensep == Substring_plusp(acceptor) */
+      transloc_hardclip_high = 0;
       if (plusp == true) {
 	transloc_hardclip_low = Substring_querystart(acceptor);
-	transloc_hardclip_high = 0;
 
       } else {
-	transloc_hardclip_low = 0;
-	transloc_hardclip_high = querylength - Substring_queryend(acceptor);
+	transloc_hardclip_low = querylength - Substring_queryend(acceptor);
       }
     }
 
@@ -2612,10 +2688,10 @@ print_halfacceptor (FILE *fp, Substring_T acceptor, Stage3end_T this, Stage3end_
 
 
 static void
-print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
+print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
 		   int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		   IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		   Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		   Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		   Chrpos_T chrpos, Chrpos_T mate_chrpos, int clipdir, int hardclip5, int hardclip3,
 		   Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		   int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 		   bool circularp) {
@@ -2639,7 +2715,8 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
   sensep = (sensedir == SENSE_FORWARD);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -2652,14 +2729,24 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
@@ -2668,7 +2755,11 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
@@ -2934,17 +3025,17 @@ print_localsplice (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int 
 
 
 static void
-print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, int pathnum, int npaths,
+print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
 		 int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Genomicpos_T chrpos, Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		 Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 Chrpos_T chrpos, Chrpos_T mate_chrpos, int clipdir, int hardclip5, int hardclip3,
 		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 		 bool circularp) {
   unsigned int flag = 0U;
   /* substring1 is low coordinate on genome, substring2 is high */
   Substring_T substring1, substring2, substringM;
-  Genomicpos_T distance1, distance2;
+  Chrpos_T distance1, distance2;
   int nmismatches_refdiff = 0, nmismatches_bothdiff = 0, querylength;
   int sensedir;
   bool sensep;
@@ -2964,7 +3055,8 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
   sensep = (sensedir == SENSE_FORWARD);
 
   if (circularp == true) {
-    if (plusp == true) {
+    /* clipdir should be +1 */
+    if (1 || plusp == true) {
       hardclip_low = hardclip5;
       hardclip_high = hardclip3;
       /* mate_hardclip_low = 0; */
@@ -2977,14 +3069,24 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
     }
   } else {
     if (first_read_p == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+      if (clipdir >= 0) {
+	hardclip_low = 0;
+	hardclip_high = hardclip5;
+      } else {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      }
       /* mate_hardclip_low = hardclip3; */
       /* mate_hardclip_high = 0; */
       /* fprintf(stderr,"first read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (clipdir >= 0) {
+	hardclip_low = hardclip3;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
       /* mate_hardclip_low = 0; */
       /* mate_hardclip_high = hardclip5; */
       /* fprintf(stderr,"second read: hardclip_low = %d, hardclip_high = %d\n",hardclip_low,hardclip_high); */
@@ -2993,7 +3095,11 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 
 
   /* 1. QNAME */
-  fprintf(fp,"%s",acc);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
 
   /* 2. FLAG */
   flag = SAM_compute_flag(plusp,mate,resulttype,first_read_p,
@@ -3396,13 +3502,13 @@ print_shortexon (FILE *fp, Stage3end_T shortexon, Stage3end_T mate, char *acc, i
 
 /* Distant splicing, including scramble, inversion, translocation */
 static void
-print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
+print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
 		 int absmq_score, int first_absmq, int second_absmq, int mapq_score,
-		 IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Genomicpos_T mate_chrpos, int hardclip5, int hardclip3,
+		 Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
+		 Chrpos_T mate_chrpos, int clipdir, int hardclip5, int hardclip3,
 		 Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p) {
-  Genomicpos_T donor_chrpos, acceptor_chrpos, concordant_chrpos;
+  Chrpos_T donor_chrpos, acceptor_chrpos, concordant_chrpos;
   Substring_T donor, acceptor;
   int hardclip_low, hardclip_high;
   char donor1, donor2, acceptor2, acceptor1;
@@ -3421,6 +3527,7 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
     hardclip_high = 0;
   }
 #else
+  /* Shouldn't have any overlap on a distant splice */
   hardclip_low = hardclip_high = 0;
 #endif
 
@@ -3448,30 +3555,30 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
     /* NEEDS WORK: Need to decide whether to split halfdonor or halfacceptor */
     /* Not sure if circular chromosomes should participate in distant splicing anyway */
     if (0 && (circularpos = Stage3end_circularpos(this)) > 0) {
-      print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
 		      concordant_chrpos,donor_chrpos,mate_chrpos,
-		      /*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
+		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
-      print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/1,/*donor_chrpos*/1,mate_chrpos,
-		      /*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
+		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
     } else {
-      print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
 		      concordant_chrpos,donor_chrpos,mate_chrpos,
-		      hardclip5,hardclip3,resulttype,first_read_p,
+		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
@@ -3479,30 +3586,30 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
     }
 
     if (0 && (circularpos = Stage3end_circularpos(this)) > 0) {
-      print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
 			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
-			 /*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-			 npaths_mate,quality_shift,sam_read_group_id,
+			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
-      print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/1,/*acceptor_chrpos*/1,mate_chrpos,
-			 /*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-			 npaths_mate,quality_shift,sam_read_group_id,
+			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
     } else {
-      print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
 			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
-			 hardclip5,hardclip3,resulttype,first_read_p,
+			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
@@ -3511,30 +3618,30 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
   } else if (Stage3end_sensedir(this) == SENSE_ANTI) {
     if (0 && (circularpos = Stage3end_circularpos(this)) > 0) {
-      print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
 			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
-			 /*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-			 npaths_mate,quality_shift,sam_read_group_id,
+			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
-      print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/1,/*acceptor_chrpos*/1,mate_chrpos,
-			 /*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-			 npaths_mate,quality_shift,sam_read_group_id,
+			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
     } else {
-      print_halfacceptor(fp,acceptor,this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
 			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
-			 hardclip5,hardclip3,resulttype,first_read_p,
+			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
@@ -3542,30 +3649,30 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
     }
 
     if (0 && (circularpos = Stage3end_circularpos(this)) > 0) {
-      print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
 		      concordant_chrpos,donor_chrpos,mate_chrpos,
-		      /*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
-      print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/1,/*donor_chrpos*/1,mate_chrpos,
-		      /*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
     } else {
-      print_halfdonor(fp,donor,this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
 		      concordant_chrpos,donor_chrpos,mate_chrpos,
-		      hardclip5,hardclip3,resulttype,first_read_p,
+		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
@@ -3582,10 +3689,10 @@ print_exon_exon (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pa
 
 
 void
-SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-	   int absmq_score, int first_absmq, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq,
-	   Shortread_T queryseq_mate, int pairedlength, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
-	   int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p,
+SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
+	   int absmq_score, int first_absmq, int second_absmq, int mapq_score, Univ_IIT_T chromosome_iit, Shortread_T queryseq,
+	   Shortread_T queryseq_mate, int pairedlength, Chrpos_T chrpos, Chrpos_T mate_chrpos,
+	   int clipdir, int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p,
 	   int npaths_mate, int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 	   bool merge_samechr_p) {
   Hittype_T hittype;
@@ -3597,8 +3704,9 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 
 
   hittype = Stage3end_hittype(this);
+  /* printf("hittype %s, chrpos %u\n",Stage3end_hittype_string(this),chrpos); */
   if (chrpos == 0U) {
-    SAM_print_nomapping(fp,queryseq,mate,acc,chromosome_iit,resulttype,first_read_p,
+    SAM_print_nomapping(fp,queryseq,mate,acc1,acc2,chromosome_iit,resulttype,first_read_p,
 			npaths_mate,mate_chrpos,quality_shift,
 			sam_read_group_id,invertp,invert_mate_p);
 
@@ -3612,20 +3720,20 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 	assert(chrpos-Stage3end_trim_right(this)+circularpos-Stage3end_chrlength(this) == 1);
       }
 #endif
-      print_single(fp,this,mate,acc,pathnum,npaths,
+      print_single(fp,this,mate,acc1,acc2,pathnum,npaths,
 		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		   chrpos,mate_chrpos,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
+		   chrpos,mate_chrpos,/*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p,/*circularp*/true);
-      print_single(fp,this,mate,acc,pathnum,npaths,
+      print_single(fp,this,mate,acc1,acc2,pathnum,npaths,
 		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		   /*chrpos*/1,mate_chrpos,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
+		   /*chrpos*/1,mate_chrpos,/*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p,/*circularp*/true);
     } else {
-      print_single(fp,this,mate,acc,pathnum,npaths,
+      print_single(fp,this,mate,acc1,acc2,pathnum,npaths,
 		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		   chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		   chrpos,mate_chrpos,clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p,/*circularp*/false);
     }
@@ -3633,20 +3741,20 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
   } else if (hittype == INSERTION) {
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_insertion(fp,this,mate,acc,pathnum,npaths,
+      print_insertion(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      chrpos,mate_chrpos,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      chrpos,mate_chrpos,/*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*circularp*/true);
-      print_insertion(fp,this,mate,acc,pathnum,npaths,
+      print_insertion(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      /*chrpos*/1,mate_chrpos,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      /*chrpos*/1,mate_chrpos,/*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*circularp*/true);
     } else {
-      print_insertion(fp,this,mate,acc,pathnum,npaths,
+      print_insertion(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		      chrpos,mate_chrpos,clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*circularp*/false);
     }
@@ -3654,20 +3762,20 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
   } else if (hittype == DELETION) {
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_deletion(fp,this,mate,acc,pathnum,npaths,
+      print_deletion(fp,this,mate,acc1,acc2,pathnum,npaths,
 		     absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		     chrpos,mate_chrpos,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-		     npaths_mate,quality_shift,sam_read_group_id,
+		     chrpos,mate_chrpos,/*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+		     resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		     invertp,invert_mate_p,/*circularp*/true);
-      print_deletion(fp,this,mate,acc,pathnum,npaths,
+      print_deletion(fp,this,mate,acc1,acc2,pathnum,npaths,
 		     absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		     /*chrpos*/1,mate_chrpos,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-		     npaths_mate,quality_shift,sam_read_group_id,
+		     /*chrpos*/1,mate_chrpos,/*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+		     resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		     invertp,invert_mate_p,/*circularp*/true);
     } else {
-      print_deletion(fp,this,mate,acc,pathnum,npaths,
+      print_deletion(fp,this,mate,acc1,acc2,pathnum,npaths,
 		     absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		     chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		     chrpos,mate_chrpos,clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		     npaths_mate,quality_shift,sam_read_group_id,
 		     invertp,invert_mate_p,/*circularp*/false);
     }
@@ -3675,27 +3783,27 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
   } else if (hittype == HALFSPLICE_DONOR) {
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
-		      /*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
-      print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/1,/*chrpos*/1,mate_chrpos,
-		      /*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
     } else {
-      print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc,pathnum,npaths,
+      print_halfdonor(fp,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
-		      hardclip5,hardclip3,resulttype,first_read_p,
+		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
@@ -3705,27 +3813,27 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
   } else if (hittype == HALFSPLICE_ACCEPTOR) {
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
-			 /*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-			 npaths_mate,quality_shift,sam_read_group_id,
+			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
-      print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/1,/*chrpos*/1,mate_chrpos,
-			 /*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-			 npaths_mate,quality_shift,sam_read_group_id,
+			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
     } else {
-      print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc,pathnum,npaths,
+      print_halfacceptor(fp,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
-			 hardclip5,hardclip3,resulttype,first_read_p,
+			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
@@ -3742,9 +3850,9 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
     } else if (hittype == TRANSLOC_SPLICE || (hittype == SAMECHR_SPLICE && merge_samechr_p == false)) {
       /* Stage3end_chrnum(this) == 0 || Stage3end_distance(this) == 0U */
       /* distant splice */
-      print_exon_exon(fp,this,mate,acc,pathnum,npaths,
+      print_exon_exon(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
+		      mate_chrpos,clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p);
     } else {
@@ -3782,28 +3890,28 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
       if (normalp == true) {
 	if ((circularpos = Stage3end_circularpos(this)) > 0) {
 	  querylength = Shortread_fulllength(queryseq);
-	  print_localsplice(fp,this,mate,acc,pathnum,npaths,
+	  print_localsplice(fp,this,mate,acc1,acc2,pathnum,npaths,
 			    absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			    chrpos,mate_chrpos,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-			    npaths_mate,quality_shift,sam_read_group_id,
+			    chrpos,mate_chrpos,/*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+			    resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			    invertp,invert_mate_p,/*circularp*/true);
-	  print_localsplice(fp,this,mate,acc,pathnum,npaths,
+	  print_localsplice(fp,this,mate,acc1,acc2,pathnum,npaths,
 			    absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			    /*chrpos*/1,mate_chrpos,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-			    npaths_mate,quality_shift,sam_read_group_id,
+			    /*chrpos*/1,mate_chrpos,/*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+			    resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			    invertp,invert_mate_p,/*circularp*/true);
 	} else {
-	  print_localsplice(fp,this,mate,acc,pathnum,npaths,
+	  print_localsplice(fp,this,mate,acc1,acc2,pathnum,npaths,
 			    absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			    chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
-			    npaths_mate,quality_shift,sam_read_group_id,
+			    chrpos,mate_chrpos,clipdir,hardclip5,hardclip3,
+			    resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			    invertp,invert_mate_p,/*circularp*/false);
 	}
       } else {
-	print_exon_exon(fp,this,mate,acc,pathnum,npaths,
+	print_exon_exon(fp,this,mate,acc1,acc2,pathnum,npaths,
 			absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
-			npaths_mate,quality_shift,sam_read_group_id,
+			mate_chrpos,clipdir,hardclip5,hardclip3,
+			resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			invertp,invert_mate_p);
       }
     }
@@ -3811,21 +3919,21 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
   } else if (hittype == ONE_THIRD_SHORTEXON || hittype == TWO_THIRDS_SHORTEXON || hittype == SHORTEXON) {
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_shortexon(fp,this,mate,acc,pathnum,npaths,
+      print_shortexon(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      chrpos,mate_chrpos,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      chrpos,mate_chrpos,/*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*circularp*/true);
-      print_shortexon(fp,this,mate,acc,pathnum,npaths,
+      print_shortexon(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      /*chrpos*/1,mate_chrpos,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      /*chrpos*/1,mate_chrpos,/*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*circularp*/true);
     } else {
-      print_shortexon(fp,this,mate,acc,pathnum,npaths,
+      print_shortexon(fp,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      chrpos,mate_chrpos,hardclip5,hardclip3,resulttype,first_read_p,
-		      npaths_mate,quality_shift,sam_read_group_id,
+		      chrpos,mate_chrpos,clipdir,hardclip5,hardclip3,
+		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*circularp*/false);
     }
 
@@ -3860,7 +3968,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
       Pair_print_sam(fp,Stage3end_pairarray(this),Stage3end_npairs(this),
-		     acc,Stage3end_chrnum(this),chromosome_iit,
+		     acc1,acc2,Stage3end_chrnum(this),chromosome_iit,
 		     /*usersegment*/(Sequence_T) NULL,
 		     Shortread_fullpointer(queryseq),Shortread_quality_string(queryseq),
 		     /*hardclip5*/0,/*hardclip3*/querylength-circularpos,Shortread_fulllength(queryseq),
@@ -3872,7 +3980,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 		     /*mate_cdna_direction*/Stage3end_cdna_direction(mate),
 		     pairedlength,sam_read_group_id,invertp,/*circularp*/true);
       Pair_print_sam(fp,Stage3end_pairarray(this),Stage3end_npairs(this),
-		     acc,Stage3end_chrnum(this),chromosome_iit,
+		     acc1,acc2,Stage3end_chrnum(this),chromosome_iit,
 		     /*usersegment*/(Sequence_T) NULL,
 		     Shortread_fullpointer(queryseq),Shortread_quality_string(queryseq),
 		     /*hardclip5*/circularpos,/*hardclip3*/0,Shortread_fulllength(queryseq),
@@ -3885,7 +3993,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 		     pairedlength,sam_read_group_id,invertp,/*circularp*/true);
     } else {
       Pair_print_sam(fp,Stage3end_pairarray(this),Stage3end_npairs(this),
-		     acc,Stage3end_chrnum(this),chromosome_iit,
+		     acc1,acc2,Stage3end_chrnum(this),chromosome_iit,
 		     /*usersegment*/(Sequence_T) NULL,
 		     Shortread_fullpointer(queryseq),Shortread_quality_string(queryseq),
 		     hardclip5,hardclip3,Shortread_fulllength(queryseq),
@@ -3908,7 +4016,7 @@ SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum,
 
 void
 SAM_print_paired (Result_T result, Resulttype_T resulttype,
-		  IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
+		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  bool invert_first_p, bool invert_second_p,
 		  bool nofailsp, bool failsonlyp, bool fails_as_input_p,
 		  bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
@@ -3924,16 +4032,16 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  FILE *fp_concordant_transloc, FILE *fp_concordant_mult) {
   Stage3pair_T *stage3pairarray, stage3pair;
   Stage3end_T *stage3array1, *stage3array2, stage3, mate, hit5, hit3;
-  Genomicpos_T chrpos5, chrpos3;
-  int overlap;
+  Chrpos_T chrpos5, chrpos3;
   int npaths, npaths1, npaths2, pathnum;
   int first_absmq, second_absmq, first_absmq1, second_absmq1, first_absmq2, second_absmq2;
-  int hardclip5 = 0, hardclip3 = 0, ignore = 0;
-  char *acc;
+  int hardclip5 = 0, hardclip3 = 0, ignore = 0, clipdir;
+  char *acc1, *acc2;
   Pairtype_T pairtype;
   FILE *fp;
 
-  acc = Shortread_accession(queryseq1);
+  acc1 = Shortread_accession(queryseq1);
+  acc2 = Shortread_accession(queryseq2); /* NULL, unless --allow-pe-name-mismatch is specified */
 
   if (resulttype == PAIREDEND_NOMAPPING) {
     if (nofailsp == true) {
@@ -3951,12 +4059,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
     } else {
       SAM_print_nomapping(fp_nomapping_1,queryseq1,/*mate*/(Stage3end_T) NULL,
-			  acc,chromosome_iit,resulttype,
+			  acc1,acc2,chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*npaths_mate*/0,
 			  /*mate_chrpos*/0U,quality_shift,
 			  sam_read_group_id,invert_first_p,invert_second_p);
       SAM_print_nomapping(fp_nomapping_1,queryseq2,/*mate*/(Stage3end_T) NULL,
-			  acc,chromosome_iit,resulttype,
+			  acc1,acc2,chromosome_iit,resulttype,
 			  /*first_read_p*/false,/*npaths_mate*/0,
 			  /*mate_chrpos*/0U,quality_shift,
 			  sam_read_group_id,invert_second_p,invert_first_p);
@@ -3972,18 +4080,26 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       stage3pair = stage3pairarray[0];
       hardclip5 = hardclip3 = 0;
-      if (clip_overlap_p == true && (overlap = Stage3pair_overlap(stage3pair)) > 0) {
-	debug3(printf("overlap = %d\n",overlap));
-	hardclip5 = overlap/2;
-	hardclip3 = overlap - hardclip5;
+      if (clip_overlap_p == false) {
+	clipdir = 0;
+      } else {
+	clipdir = Stage3pair_overlap(&hardclip5,&hardclip3,stage3pair);
+	debug3(printf("clipdir %d with hardclip5 = %d, hardclip3 = %d\n",clipdir,hardclip5,hardclip3));
       }
 
       hit5 = Stage3pair_hit5(stage3pair);
       hit3 = Stage3pair_hit3(stage3pair);
-      chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
-				   Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
-      chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
-				   Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+      if (clipdir >= 0) {
+	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+				     Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+				     Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+      } else {
+	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&hardclip5,/*hardclip_high*/&ignore,hit5,
+				     Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip3,hit3,
+				     Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+      }
 
       /* Note: it is possible that hard clipping can changed a concordant_uniq to an unpaired_uniq,
 	 or a concordant_transloc to an unpaired_transloc */
@@ -3995,22 +4111,22 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
       /* print first end */
-      SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
+      SAM_print(fp,hit5,/*mate*/hit3,acc1,acc2,/*pathnum*/1,/*npaths*/1,
 		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		clipdir,hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
 		quality_shift,sam_read_group_id,invert_first_p,invert_second_p,
 		merge_samechr_p);
 
       /* print second end */
-      SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
+      SAM_print(fp,hit3,/*mate*/hit5,acc1,acc2,/*pathnum*/1,/*npaths*/1,
 		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		clipdir,hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
 		quality_shift,sam_read_group_id,invert_second_p,invert_first_p,
 		merge_samechr_p);
 
@@ -4020,12 +4136,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
 	/* Print as nomapping, but send to fp_concordant_transloc */
 	SAM_print_nomapping(fp_concordant_transloc,queryseq1,/*mate*/(Stage3end_T) NULL,
-			    acc,chromosome_iit,resulttype,
+			    acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths,
 			    /*mate_chrpos*/0U,quality_shift,
 			    sam_read_group_id,invert_first_p,invert_second_p);
 	SAM_print_nomapping(fp_concordant_transloc,queryseq2,/*mate*/(Stage3end_T) NULL,
-			    acc,chromosome_iit,resulttype,
+			    acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths,
 			    /*mate_chrpos*/0U,quality_shift,
 			    sam_read_group_id,invert_second_p,invert_first_p);
@@ -4036,36 +4152,44 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 	  stage3pair = stage3pairarray[pathnum-1];
 	  hardclip5 = hardclip3 = 0;
-	  if (clip_overlap_p == true && (overlap = Stage3pair_overlap(stage3pair)) > 0) {
-	    debug3(printf("overlap = %d\n",overlap));
-	    hardclip5 = overlap/2;
-	    hardclip3 = overlap - hardclip5;
+	  if (clip_overlap_p == false) {
+	    clipdir = 0;
+	  } else {
+	    clipdir = Stage3pair_overlap(&hardclip5,&hardclip3,stage3pair);
+	    debug3(printf("clipdir %d with hardclip5 = %d, hardclip3 = %d\n",clipdir,hardclip5,hardclip3));
 	  }
 
 	  hit5 = Stage3pair_hit5(stage3pair);
 	  hit3 = Stage3pair_hit3(stage3pair);
-	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
-				       Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
-	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
-				       Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+	  if (clipdir >= 0) {
+	    chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+					 Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	    chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+					 Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+	  } else {
+	    chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&hardclip5,/*hardclip_high*/&ignore,hit5,
+					 Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	    chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip3,hit3,
+					 Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+	  }
 
 	  /* print first end */
-	  SAM_print(fp_concordant_transloc,hit5,/*mate*/hit3,acc,pathnum,npaths,
+	  SAM_print(fp_concordant_transloc,hit5,/*mate*/hit3,acc1,acc2,pathnum,npaths,
 		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		    hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		    clipdir,hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
 		    quality_shift,sam_read_group_id,invert_first_p,invert_second_p,
 		    merge_samechr_p);
 
 	  /* print second end */
-	  SAM_print(fp_concordant_transloc,hit3,/*mate*/hit5,acc,pathnum,npaths,
+	  SAM_print(fp_concordant_transloc,hit3,/*mate*/hit5,acc1,acc2,pathnum,npaths,
 		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		    hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		    clipdir,hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
 		    quality_shift,sam_read_group_id,invert_second_p,invert_first_p,
 		    merge_samechr_p);
 	}
@@ -4077,12 +4201,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
 	/* Print as nomapping, but send to fp_concordant_mult */
 	SAM_print_nomapping(fp_concordant_mult,queryseq1,/*mate*/(Stage3end_T) NULL,
-			    acc,chromosome_iit,resulttype,
+			    acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths,
 			    /*mate_chrpos*/0U,quality_shift,
 			    sam_read_group_id,invert_first_p,invert_second_p);
 	SAM_print_nomapping(fp_concordant_mult,queryseq2,/*mate*/(Stage3end_T) NULL,
-			    acc,chromosome_iit,resulttype,
+			    acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths,
 			    /*mate_chrpos*/0U,quality_shift,
 			    sam_read_group_id,invert_second_p,invert_first_p);
@@ -4093,36 +4217,44 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
 	  stage3pair = stage3pairarray[pathnum-1];
 	  hardclip5 = hardclip3 = 0;
-	  if (clip_overlap_p == true && (overlap = Stage3pair_overlap(stage3pair)) > 0) {
-	    debug3(printf("overlap = %d\n",overlap));
-	    hardclip5 = overlap/2;
-	    hardclip3 = overlap - hardclip5;
+	  if (clip_overlap_p == false) {
+	    clipdir = 0;
+	  } else {
+	    clipdir = Stage3pair_overlap(&hardclip5,&hardclip3,stage3pair);
+	    debug3(printf("clipdir %d with hardclip5 = %d, hardclip3 = %d\n",clipdir,hardclip5,hardclip3));
 	  }
 
 	  hit5 = Stage3pair_hit5(stage3pair);
 	  hit3 = Stage3pair_hit3(stage3pair);
-	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
-				       Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
-	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
-				       Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+	  if (clipdir >= 0) {
+	    chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,hit5,
+					 Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	    chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,hit3,
+					 Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+	  } else {
+	    chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&hardclip5,/*hardclip_high*/&ignore,hit5,
+					 Stage3end_substring_low(hit5),Shortread_fulllength(queryseq1));
+	    chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip3,hit3,
+					 Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
+	  }
 
 	  /* print first end */
-	  SAM_print(fp_concordant_mult,hit5,/*mate*/hit3,acc,pathnum,npaths,
+	  SAM_print(fp_concordant_mult,hit5,/*mate*/hit3,acc1,acc2,pathnum,npaths,
 		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		    hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		    clipdir,hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
 		    quality_shift,sam_read_group_id,invert_first_p,invert_second_p,
 		    merge_samechr_p);
 
 	  /* print second end */
-	  SAM_print(fp_concordant_mult,hit3,/*mate*/hit5,acc,pathnum,npaths,
+	  SAM_print(fp_concordant_mult,hit3,/*mate*/hit5,acc1,acc2,pathnum,npaths,
 		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		    hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		    clipdir,hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
 		    quality_shift,sam_read_group_id,invert_second_p,invert_first_p,
 		    merge_samechr_p);
 	}
@@ -4146,9 +4278,6 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	abort();
       }
 
-      if (clip_overlap_p == true) {
-	overlap = Stage3pair_overlap(stage3pair);
-      }
       hardclip5 = hardclip3 = 0;
 
       hit5 = Stage3pair_hit5(stage3pair);
@@ -4159,22 +4288,22 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				   Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
 
       /* print first end */
-      SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
+      SAM_print(fp,hit5,/*mate*/hit3,acc1,acc2,/*pathnum*/1,/*npaths*/1,
 		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		/*clipdir*/0,hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
 		quality_shift,sam_read_group_id,invert_first_p,invert_second_p,
 		merge_samechr_p);
 
       /* print second end */
-      SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
+      SAM_print(fp,hit3,/*mate*/hit5,acc1,acc2,/*pathnum*/1,/*npaths*/1,
 		Stage3pair_absmq_score(stage3pair),first_absmq,/*second_absmq*/0,
 		Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		/*clipdir*/0,hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
 		quality_shift,sam_read_group_id,invert_second_p,invert_first_p,
 		merge_samechr_p);
 
@@ -4184,12 +4313,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
 	/* Print as nomapping, but send to fp_concordant_mult */
 	SAM_print_nomapping(fp_paired_mult,queryseq1,/*mate*/(Stage3end_T) NULL,
-			    acc,chromosome_iit,resulttype,
+			    acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths,
 			    /*mate_chrpos*/0U,quality_shift,
 			    sam_read_group_id,invert_first_p,invert_second_p);
 	SAM_print_nomapping(fp_paired_mult,queryseq2,/*mate*/(Stage3end_T) NULL,
-			    acc,chromosome_iit,resulttype,
+			    acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths,
 			    /*mate_chrpos*/0U,quality_shift,
 			    sam_read_group_id,invert_second_p,invert_first_p);
@@ -4199,9 +4328,6 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	for (pathnum = 1; pathnum <= npaths && pathnum <= maxpaths_report; pathnum++) {
 
 	  stage3pair = stage3pairarray[pathnum-1];
-	  if (clip_overlap_p == true) {
-	    overlap = Stage3pair_overlap(stage3pair);
-	  }
 	  hardclip5 = hardclip3 = 0;
 
 	  hit5 = Stage3pair_hit5(stage3pair);
@@ -4212,22 +4338,22 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 				       Stage3end_substring_low(hit3),Shortread_fulllength(queryseq2));
 
 	  /* print first end */
-	  SAM_print(fp_paired_mult,hit5,/*mate*/hit3,acc,pathnum,npaths,
+	  SAM_print(fp_paired_mult,hit5,/*mate*/hit3,acc1,acc2,pathnum,npaths,
 		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		    hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
+		    /*clipdir*/0,hardclip5,hardclip3,resulttype,/*first_read_p*/true,/*npaths_mate*/npaths,
 		    quality_shift,sam_read_group_id,invert_first_p,invert_second_p,
 		    merge_samechr_p);
 
 	  /* print second end */
-	  SAM_print(fp_paired_mult,hit3,/*mate*/hit5,acc,pathnum,npaths,
+	  SAM_print(fp_paired_mult,hit3,/*mate*/hit5,acc1,acc2,pathnum,npaths,
 		    Stage3pair_absmq_score(stage3pair),first_absmq,second_absmq,
 		    Stage3pair_mapq_score(stage3pair),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    Stage3pair_pairlength(stage3pair),/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		    hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
+		    /*clipdir*/0,hardclip5,hardclip3,resulttype,/*first_read_p*/false,/*npaths_mate*/npaths,
 		    quality_shift,sam_read_group_id,invert_second_p,invert_first_p,
 		    merge_samechr_p);
 	}
@@ -4255,23 +4381,23 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       /* print first end */
       /* Stage3end_eval_and_sort(stage3array1,npaths1,maxpaths_report,queryseq1); */
-      SAM_print(fp,hit5,/*mate*/hit3,acc,/*pathnum*/1,/*npaths*/1,
+      SAM_print(fp,hit5,/*mate*/hit3,acc1,acc2,/*pathnum*/1,/*npaths*/1,
 		Stage3end_absmq_score(stage3array1[0]),first_absmq1,/*second_absmq*/0,
 		Stage3end_mapq_score(stage3array1[0]),chromosome_iit,
 		/*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		/*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
+		/*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		/*npaths_mate*/1,quality_shift,sam_read_group_id,invert_first_p,invert_second_p,
 		merge_samechr_p);
 
       /* print second end */
       /* Stage3end_eval_and_sort(stage3array2,npaths2,maxpaths_report,queryseq2); */
-      SAM_print(fp,hit3,/*mate*/hit5,acc,/*pathnum*/1,/*npaths*/1,
+      SAM_print(fp,hit3,/*mate*/hit5,acc1,acc2,/*pathnum*/1,/*npaths*/1,
 		Stage3end_absmq_score(stage3array2[0]),first_absmq2,/*second_absmq*/0,
 		Stage3end_mapq_score(stage3array2[0]),chromosome_iit,
 		/*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		/*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
+		/*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		/*npaths_mate*/1,quality_shift,sam_read_group_id,invert_second_p,invert_first_p,
 		merge_samechr_p);
 
@@ -4326,17 +4452,17 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
-	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths1,
+	SAM_print(fp,stage3,mate,acc1,acc2,/*pathnum*/1,npaths1,
 		  Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
+		  /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		  /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		  invert_first_p,invert_second_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths_report) {
-	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,
+	SAM_print_nomapping(fp,queryseq1,mate,acc1,acc2,chromosome_iit,
 			    resulttype,/*first_read_p*/true,/*npaths_mate*/npaths2,
 			    /*mate_chrpos*/chrpos3,
 			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
@@ -4348,12 +4474,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
-	  SAM_print(fp,stage3,mate,acc,pathnum,npaths1,
+	  SAM_print(fp,stage3,mate,acc1,acc2,pathnum,npaths1,
 		    Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
+		    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		    /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		    invert_first_p,invert_second_p,merge_samechr_p);
 	}
@@ -4379,17 +4505,17 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
-	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths2,
+	SAM_print(fp,stage3,mate,acc1,acc2,/*pathnum*/1,npaths2,
 		  Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
+		  /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		  /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		  invert_second_p,invert_first_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths_report) {
-	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,
+	SAM_print_nomapping(fp,queryseq2,mate,acc1,acc2,chromosome_iit,
 			    resulttype,/*first_read_p*/false,/*npaths_mate*/npaths1,
 			    /*mate_chrpos*/chrpos5,
 			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
@@ -4401,12 +4527,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
-	  SAM_print(fp,stage3,mate,acc,pathnum,npaths2,
+	  SAM_print(fp,stage3,mate,acc1,acc2,pathnum,npaths2,
 		    Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
+		    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		    /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		    invert_second_p,invert_first_p,merge_samechr_p);
 	}
@@ -4474,7 +4600,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       if (npaths1 == 0) {
 	/* mate should be non-NULL here */
-	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,resulttype,
+	SAM_print_nomapping(fp,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths2,
 			    /*mate_chrpos*/chrpos3,
 			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
@@ -4487,18 +4613,18 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
-	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths1,
+	SAM_print(fp,stage3,mate,acc1,acc2,/*pathnum*/1,npaths1,
 		  Stage3end_absmq_score(stage3),first_absmq1,/*second_absmq1*/0,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		  /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
+		  /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		  /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		  invert_first_p,invert_second_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths_report) {
 	/* mate should be NULL here */
-	SAM_print_nomapping(fp,queryseq1,mate,acc,chromosome_iit,resulttype,
+	SAM_print_nomapping(fp,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*npaths_mate*/npaths2,
 			    /*mate_chrpos*/chrpos3,
 			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
@@ -4511,12 +4637,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	  chrpos5 = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&hardclip5,stage3,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 
-	  SAM_print(fp,stage3,mate,acc,pathnum,npaths1,
+	  SAM_print(fp,stage3,mate,acc1,acc2,pathnum,npaths1,
 		    Stage3end_absmq_score(stage3),first_absmq1,second_absmq1,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq1,/*queryseq_mate*/queryseq2,
 		    /*pairedlength*/0U,/*chrpos*/chrpos5,/*mate_chrpos*/chrpos3,
-		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
+		    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/true,
 		    /*npaths_mate*/npaths2,quality_shift,sam_read_group_id,
 		    invert_first_p,invert_second_p,merge_samechr_p);
 	}
@@ -4538,7 +4664,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       if (npaths2 == 0) {
 	/* mate should be non-NULL here */
-	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,resulttype,
+	SAM_print_nomapping(fp,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths1,
 			    /*mate_chrpos*/chrpos5,
 			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
@@ -4551,18 +4677,18 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
 				     Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
-	SAM_print(fp,stage3,mate,acc,/*pathnum*/1,npaths2,
+	SAM_print(fp,stage3,mate,acc1,acc2,/*pathnum*/1,npaths2,
 		  Stage3end_absmq_score(stage3),first_absmq2,/*second_absmq2*/0,
 		  Stage3end_mapq_score(stage3),chromosome_iit,
 		  /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		  /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		  /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
+		  /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		  /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		  invert_second_p,invert_first_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths_report) {
 	/* mate should be NULL here */
-	SAM_print_nomapping(fp,queryseq2,mate,acc,chromosome_iit,resulttype,
+	SAM_print_nomapping(fp,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
 			    /*first_read_p*/false,/*npaths_mate*/npaths1,
 			    /*mate_chrpos*/chrpos5,
 			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
@@ -4575,12 +4701,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 	  chrpos3 = SAM_compute_chrpos(/*hardclip_low*/&hardclip3,/*hardclip_high*/&ignore,stage3,
 				       Stage3end_substring_low(stage3),Shortread_fulllength(queryseq2));
 
-	  SAM_print(fp,stage3,mate,acc,pathnum,npaths2,
+	  SAM_print(fp,stage3,mate,acc1,acc2,pathnum,npaths2,
 		    Stage3end_absmq_score(stage3),first_absmq2,second_absmq2,
 		    Stage3end_mapq_score(stage3),chromosome_iit,
 		    /*queryseq*/queryseq2,/*queryseq_mate*/queryseq1,
 		    /*pairedlength*/0U,/*chrpos*/chrpos3,/*mate_chrpos*/chrpos5,
-		    /*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
+		    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,resulttype,/*first_read_p*/false,
 		    /*npaths_mate*/npaths1,quality_shift,sam_read_group_id,
 		    invert_second_p,invert_first_p,merge_samechr_p);
 	}

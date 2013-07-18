@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrom.c 77346 2012-10-20 02:43:12Z twu $";
+static char rcsid[] = "$Id: chrom.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -38,7 +38,7 @@ Chromtype_string (Chromtype_T chromtype) {
 
 #define T Chrom_T
 struct T {
-  unsigned int order;		/* order used for sorting (can be universal coordinate) */
+  Univcoord_T order;            /* order used for sorting (can be universal coordinate) */
   bool numericp;
   char *string;			/* The original string */
   unsigned int num;		/* The initial numeric part; valid only if numericp == true */
@@ -76,7 +76,7 @@ Chrom_circularp (T this) {
    a string. */
 
 T
-Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order, bool circularp) {
+Chrom_from_string (char *string, char *mitochondrial_string, Univcoord_T order, bool circularp) {
   T new = (T) MALLOC(sizeof(*new));
   int ndigits = 0;
   char *p;

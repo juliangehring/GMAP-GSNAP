@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 82070 2012-12-19 21:42:59Z twu $";
+static char rcsid[] = "$Id: pairpool.c 94753 2013-05-02 18:07:51Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -587,45 +587,49 @@ Pairpool_clip_bounded (List_T source, int minpos, int maxpos) {
   Pair_T pair;
   int starti = -1, endi = -1, i;
 
-  for (p = source, i = 0; p != NULL; p = p->rest, i++) {
-    pair = (Pair_T) List_head(p);
-    if (pair->querypos == minpos) {
-      starti = i;		/* Advances in case of ties */
-    } else if (pair->querypos > minpos && starti < 0) {
-      starti = i;		/* Handles case where minpos was skipped */
+  if (source == NULL) {
+    return (List_T) NULL;
+  } else {
+    for (p = source, i = 0; p != NULL; p = p->rest, i++) {
+      pair = (Pair_T) List_head(p);
+      if (pair->querypos == minpos) {
+	starti = i;		/* Advances in case of ties */
+      } else if (pair->querypos > minpos && starti < 0) {
+	starti = i;		/* Handles case where minpos was skipped */
+      }
+
+      if (pair->querypos == maxpos && endi < 0) {
+	endi = i + 1;		/* Does not advance in case of tie */
+      } else if (pair->querypos > maxpos && endi < 0) {
+	endi = i;	   /* Handles case where maxpos was skipped */
+      }
     }
 
-    if (pair->querypos == maxpos && endi < 0) {
-      endi = i + 1;		/* Does not advance in case of tie */
-    } else if (pair->querypos > maxpos && endi < 0) {
-      endi = i;	   /* Handles case where maxpos was skipped */
+    if (starti < 0) {
+      starti = 0;
     }
-  }
+    if (endi < 0) {
+      endi = i;
+    }
 
-  if (starti < 0) {
-    starti = 0;
-  }
-  if (endi < 0) {
-    endi = i;
-  }
+    p = source;
+    i = 0;
+    while (i < starti) {
+      p = p->rest;
+      i++;
+    }
 
-  p = source;
-  i = 0;
-  while (i < starti) {
-    p = p->rest;
-    i++;
-  }
-
-  dest = p;
-  prev = &p->rest;
-  while (i < endi) {
+    dest = p;
     prev = &p->rest;
-    p = p->rest;
-    i++;
-  }
+    while (i < endi) {
+      prev = &p->rest;
+      p = p->rest;
+      i++;
+    }
 
-  *prev = NULL;		/* Clip rest of list */
-  return dest;
+    *prev = NULL;		/* Clip rest of list */
+    return dest;
+  }
 }
 
 

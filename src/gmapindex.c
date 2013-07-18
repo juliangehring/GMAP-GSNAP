@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 80931 2012-12-06 23:57:41Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,21 +14,28 @@ static char rcsid[] = "$Id: gmapindex.c 80931 2012-12-06 23:57:41Z twu $";
 #include <ctype.h>
 #include <string.h>
 #include <strings.h>		/* For rindex */
+#include "types.h"
 #include "bool.h"
 #include "assert.h"
 #include "mem.h"
 #include "fopen.h"
 
 #include "table.h"
-#include "tableint.h"
-#include "genomicpos.h"
+#ifdef HAVE_64_BIT
+#include "tableuint8.h"
+typedef Tableuint8_T Table_chrpos_T;
+#else
+#include "tableuint.h"
+typedef Tableuint_T Table_chrpos_T;
+#endif
 #include "compress.h"
 #include "chrom.h"
 #include "segmentpos.h"
-#include "iit-write.h"
-#include "iit-read.h"
+#include "univinterval.h"
+#include "iit-write-univ.h"
+#include "iit-read-univ.h"
 #include "genome-write.h"
-#include "indexdb.h"
+#include "indexdb-write.h"
 #include "intlist.h"
 
 #define BUFFERSIZE 8192
@@ -152,28 +159,40 @@ read_strain_from_coordsfile (char *coordsfile) {
  ************************************************************************/
 
 /* accsegmentpos_table: char *accession -> Segmentpos_T segmentpos
-   chrlength_table:     Chrom_T chrom -> Genomicpos_T chrlength
+   chrlength_table:     Chrom_T chrom -> Chrpos_T chrlength
 */
 
 static void
-chrlength_update (Tableint_T chrlength_table, Chrom_T chrom, Genomicpos_T segend) {
-  Genomicpos_T oldsegend;
+chrlength_update (Table_chrpos_T chrlength_table, Chrom_T chrom, Univcoord_T segend) {
+  Univcoord_T oldsegend;
 
-  if ((oldsegend = (Genomicpos_T) Tableint_get(chrlength_table,chrom)) == (Genomicpos_T) 0) {
+#ifdef HAVE_64_BIT
+  if ((oldsegend = (Univcoord_T) Tableuint8_get(chrlength_table,chrom)) == 0) {
     /* Initial entry for this chromosome */
-    Tableint_put(chrlength_table,chrom,segend);
+    Tableuint8_put(chrlength_table,chrom,segend);
 
   } else if (segend > oldsegend) {
     /* Revise */
-    Tableint_put(chrlength_table,chrom,segend);
+    Tableuint8_put(chrlength_table,chrom,segend);
   }
+#else
+  if ((oldsegend = (Univcoord_T) Tableuint_get(chrlength_table,chrom)) == 0) {
+    /* Initial entry for this chromosome */
+    Tableuint_put(chrlength_table,chrom,segend);
+
+  } else if (segend > oldsegend) {
+    /* Revise */
+    Tableuint_put(chrlength_table,chrom,segend);
+  }
+#endif
+
   return;
 }
 
 static void
-store_accession (Table_T accsegmentpos_table, Tableint_T chrlength_table,
-		 char *accession, char *chr_string, Genomicpos_T chrpos1, 
-		 Genomicpos_T chrpos2, bool revcompp, Genomicpos_T seglength, 
+store_accession (Table_T accsegmentpos_table, Table_chrpos_T chrlength_table,
+		 char *accession, char *chr_string, Chrpos_T chrpos1, 
+		 Chrpos_T chrpos2, bool revcompp, Chrpos_T seglength, 
 		 int contigtype, unsigned int universal_coord, bool circularp) {
   Chrom_T chrom;
   Segmentpos_T segmentpos;
@@ -196,9 +215,9 @@ store_accession (Table_T accsegmentpos_table, Tableint_T chrlength_table,
 
 /* We assume that header has already been read.  We need to check each
    new line for a new header */
-static Genomicpos_T
+static Chrpos_T
 count_sequence () {
-  Genomicpos_T seglength = 0U;
+  Chrpos_T seglength = 0U;
   int c;
   char Buffer[BUFFERSIZE], *p;
   bool newline = true;
@@ -222,13 +241,13 @@ count_sequence () {
       } else {
 	newline = false;
       }
-      seglength += (Genomicpos_T) strlen(Buffer);
+      seglength += (Chrpos_T) strlen(Buffer);
     }
   }
 }
 
 static void
-skip_sequence (Genomicpos_T seglength) {
+skip_sequence (Chrpos_T seglength) {
   int c;
   char Buffer[BUFFERSIZE];
 
@@ -261,12 +280,12 @@ skip_sequence (Genomicpos_T seglength) {
 }
 
 static bool
-process_sequence_aux (Genomicpos_T *seglength, Table_T accsegmentpos_table, Tableint_T chrlength_table,
+process_sequence_aux (Chrpos_T *seglength, Table_T accsegmentpos_table, Table_chrpos_T chrlength_table,
 		      char *fileroot, int ncontigs) {
   char Buffer[BUFFERSIZE], accession_p[BUFFERSIZE], *accession, 
     chrpos_string[BUFFERSIZE], *chr_string, *coords, *ptr, *p;
-  Genomicpos_T chrpos1, chrpos2, lower, upper;
-  Genomicpos_T universal_coord = 0U;
+  Chrpos_T chrpos1, chrpos2, lower, upper;
+  Univcoord_T universal_coord = 0U;
   bool revcompp, circularp;
   int nitems;
 
@@ -275,7 +294,8 @@ process_sequence_aux (Genomicpos_T *seglength, Table_T accsegmentpos_table, Tabl
     return false;
   }
 
-  if ((nitems = sscanf(Buffer,"%s %s %u",accession_p,chrpos_string,&universal_coord)) < 2) {
+  nitems = sscanf(Buffer,"%s %s %lu",accession_p,chrpos_string,&universal_coord);
+  if (nitems < 2) {
     fprintf(stderr,"Can't parse line %s\n",Buffer);
     exit(1);
   } else {
@@ -330,13 +350,13 @@ process_sequence_aux (Genomicpos_T *seglength, Table_T accsegmentpos_table, Tabl
 	ptr++;
 	*ptr = '\0';
       }
-      if ((contigtype = Tableint_get(contigtype_table,(void *) p)) == 0) {
+      if ((contigtype = Tableuint_get(contigtype_table,(void *) p)) == 0) {
 	debug(printf("Storing type %s.\n",p));
 	/* Store types as 1-based */
-	contigtype = Tableint_length(contigtype_table) + 1;
+	contigtype = Tableuint_length(contigtype_table) + 1;
 	typestring = (char *) CALLOC(strlen(p)+1,sizeof(char));
 	strcpy(typestring,p);
-	Tableint_put(contigtype_table,(void *) typestring,contigtype);
+	Tableuint_put(contigtype_table,(void *) typestring,contigtype);
 	*contigtypelist = List_push(*contigtypelist,typestring);
       }
     }
@@ -403,27 +423,39 @@ process_sequence_aux (Genomicpos_T *seglength, Table_T accsegmentpos_table, Tabl
 
 /* Modifies chrlength_table to store offsets, rather than chrlengths */
 static void
-write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_table) {
+write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlength_table,
+		       bool coord_values_8p) {
   FILE *textfp, *chrsubsetfp;
   char *divstring, *textfile, *chrsubsetfile, *iitfile, *chr_string, emptystring[1];
   int n, i;
   int typeint;
   Chrom_T *chroms;
-  Genomicpos_T chroffset = 0, chrlength;
+  Univcoord_T chroffset = 0;
+  Chrpos_T chrlength;
   List_T divlist = NULL;
   List_T intervallist = NULL, chrtypelist = NULL, labellist = NULL, annotlist = NULL, p;
   Table_T intervaltable, labeltable, annottable;
-  Interval_T interval;
+  Univinterval_T interval;
 
   emptystring[0] = '\0';
 
   if (divsort == NO_SORT) {
-    chroms = (Chrom_T *) Tableint_keys_by_timeindex(chrlength_table,0U);
-    n = Tableint_length(chrlength_table);
+#ifdef HAVE_64_BIT
+    chroms = (Chrom_T *) Tableuint8_keys_by_timeindex(chrlength_table,0U);
+    n = Tableuint8_length(chrlength_table);
+#else
+    chroms = (Chrom_T *) Tableuint_keys_by_timeindex(chrlength_table,0U);
+    n = Tableuint_length(chrlength_table);
+#endif
   } else {
     /* Get chromosomes in order */
-    chroms = (Chrom_T *) Tableint_keys(chrlength_table,0U);
-    n = Tableint_length(chrlength_table);
+#ifdef HAVE_64_BIT
+    chroms = (Chrom_T *) Tableuint8_keys(chrlength_table,0U);
+    n = Tableuint8_length(chrlength_table);
+#else
+    chroms = (Chrom_T *) Tableuint_keys(chrlength_table,0U);
+    n = Tableuint_length(chrlength_table);
+#endif
     switch (divsort) {
     case ALPHA_SORT: qsort(chroms,n,sizeof(Chrom_T),Chrom_compare_alpha); break;
     case NUMERIC_ALPHA_SORT: qsort(chroms,n,sizeof(Chrom_T),Chrom_compare_numeric_alpha); break;
@@ -458,11 +490,15 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   chrtypelist = List_push(chrtypelist,"circular");
   chrtypelist = List_push(chrtypelist,"");
   for (i = 0; i < n; i++) {
-    chrlength = (Genomicpos_T) Tableint_get(chrlength_table,chroms[i]);
+#ifdef HAVE_64_BIT
+    chrlength = (Univcoord_T) Tableuint8_get(chrlength_table,chroms[i]);
+#else
+    chrlength = (Univcoord_T) Tableuint_get(chrlength_table,chroms[i]);
+#endif
     assert(chroffset <= chroffset+chrlength-1);
     chr_string = Chrom_string(chroms[i]);
     if (i < nmessages) {
-      fprintf(stderr,"Chromosome %s has universal coordinates %u..%u\n",
+      fprintf(stderr,"Chromosome %s has universal coordinates %lu..%lu\n",
 	      chr_string,chroffset+1,chroffset+1+chrlength-1);
     } else if (i == nmessages) {
       fprintf(stderr,"More than %d contigs.  Will stop printing messages\n",nmessages);
@@ -473,7 +509,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
       fprintf(chrsubsetfp,"+%s\n",chr_string);
     }
 
-    fprintf(textfp,"%s\t%u..%u\t%u",
+    fprintf(textfp,"%s\t%lu..%lu\t%u",
 	    chr_string,chroffset+1,chroffset+chrlength,chrlength);
     if (Chrom_circularp(chroms[i]) == true) {
       fprintf(textfp,"\tcircular");
@@ -483,10 +519,14 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
     }
     fprintf(textfp,"\n");
 
-    intervallist = List_push(intervallist,(void *) Interval_new(chroffset,chroffset+chrlength-1U,typeint));
+    intervallist = List_push(intervallist,(void *) Univinterval_new(chroffset,chroffset+chrlength-1U,typeint));
     labellist = List_push(labellist,(void *) chr_string);
     annotlist = List_push(annotlist,(void *) emptystring); /* No annotations */
-    Tableint_put(chrlength_table,chroms[i],chroffset);
+#ifdef HAVE_64_BIT
+    Tableuint8_put(chrlength_table,chroms[i],chroffset);
+#else
+    Tableuint_put(chrlength_table,chroms[i],chroffset);
+#endif
     if (Chrom_circularp(chroms[i]) == true) {
       chroffset += chrlength;
       chroffset += chrlength;
@@ -517,10 +557,9 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			    strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
   sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-  IIT_write(iitfile,divlist,chrtypelist,/*fieldlist*/(List_T) NULL,
-	    intervaltable,labeltable,annottable,divsort,
-	    /*version, use 1 for backward compatibility*/1,
-	    /*label_pointers_8p*/false,/*annot_pointers_8p*/false);
+  IIT_write_univ(iitfile,divlist,chrtypelist,
+		 intervaltable,labeltable,annottable,
+		 coord_values_8p,/*label_pointers_8p*/false,/*annot_pointers_8p*/false);
   FREE(iitfile);
 
   List_free(&divlist);
@@ -539,8 +578,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Tableint_T chrlength_
   List_free(&chrtypelist);
 
   for (p = intervallist; p != NULL; p = List_next(p)) {
-    interval = (Interval_T) List_head(p);
-    Interval_free(&interval);
+    interval = (Univinterval_T) List_head(p);
+    Univinterval_free(&interval);
   }
   List_free(&intervallist);
 
@@ -580,17 +619,17 @@ bysegmentpos_compare (const void *x, const void *y) {
 
 static void
 write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_table, 
-		   Tableint_T chrlength_table, List_T contigtypelist) {
+		   Table_chrpos_T chrlength_table, List_T contigtypelist, bool coord_values_8p) {
   FILE *textfp;
   char *textfile, *iitfile, *annot;
   int naccessions, i;
-  char **accessions, *divstring;
+  char **accessions, *divstring, seglength[12]; /* 2^32 = 4*10^9 */
   Segmentpos_T segmentpos;
   Chrom_T chrom;
-  Genomicpos_T chroffset, universalpos1, universalpos2;
+  Univcoord_T chroffset, universalpos1, universalpos2;
   List_T divlist = NULL, intervallist = NULL, labellist = NULL, annotlist = NULL, p;
   Table_T intervaltable, labeltable, annottable;
-  Interval_T interval;
+  Univinterval_T interval;
 #if 0
   void **keys;
   int *values, ntypes;
@@ -609,9 +648,9 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
 
 #if 0
   /* Get types in order */
-  keys = Tableint_keys(contigtype_table,NULL);
-  values = Tableint_values(contigtype_table,0);
-  ntypes = Tableint_length(contigtype_table);
+  keys = Tableuint_keys(contigtype_table,NULL);
+  values = Tableuint_values(contigtype_table,0);
+  ntypes = Tableuint_length(contigtype_table);
   contigtypes = (char **) CALLOC(ntypes+1,sizeof(char *)); /* Add 1 for type 0 */
   contigtypes[0] = "";
   for (j = 0; j < ntypes; j++) {
@@ -635,22 +674,28 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
   for (i = 0; i < naccessions; i++) {
     segmentpos = (Segmentpos_T) Table_get(accsegmentpos_table,(void *) accessions[i]);
     chrom = Segmentpos_chrom(segmentpos);
-    chroffset = (Genomicpos_T) Tableint_get(chrlength_table,chrom);
+#ifdef HAVE_64_BIT
+    chroffset = (Univcoord_T) Tableuint8_get(chrlength_table,chrom);
+#else
+    chroffset = (Univcoord_T) Tableuint_get(chrlength_table,chrom);
+#endif
     universalpos1 = chroffset + Segmentpos_chrpos1(segmentpos);
     universalpos2 = chroffset + Segmentpos_chrpos2(segmentpos);
 
     /* Print as 1-based, inclusive [a,b] */
     if (Segmentpos_revcompp(segmentpos) == true) {
-      fprintf(textfp,"%s\t%u..%u\t%s:%u..%u\t%u",
+      fprintf(textfp,"%s\t%lu..%lu\t%s:%u..%u\t%u",
 	      accessions[i],universalpos2+1U,universalpos1,
 	      Chrom_string(chrom),Segmentpos_chrpos2(segmentpos)+1U,Segmentpos_chrpos1(segmentpos),
 	      Segmentpos_length(segmentpos));
     } else {
-      fprintf(textfp,"%s\t%u..%u\t%s:%u..%u\t%u",
+      fprintf(textfp,"%s\t%lu..%lu\t%s:%u..%u\t%u",
 	      accessions[i],universalpos1+1U,universalpos2,
 	      Chrom_string(chrom),Segmentpos_chrpos1(segmentpos)+1U,Segmentpos_chrpos2(segmentpos),
 	      Segmentpos_length(segmentpos));
     }
+
+
 #if 0
     if (Segmentpos_type(segmentpos) > 0) {
       fprintf(textfp,"\t%s",contigtypes[Segmentpos_type(segmentpos)]);
@@ -665,21 +710,21 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
       /* The negative sign in the interval is the indication that the
 	 contig was reverse complement */
       intervallist = List_push(intervallist, 
-			       (void *) Interval_new(universalpos2-1U,universalpos1,
-						     Segmentpos_type(segmentpos)));
+			       (void *) Univinterval_new(universalpos2-1U,universalpos1,
+							 Segmentpos_type(segmentpos)));
     } else {
       intervallist = List_push(intervallist, 
-			       (void *) Interval_new(universalpos1,universalpos2-1U,
-						     Segmentpos_type(segmentpos)));
+			       (void *) Univinterval_new(universalpos1,universalpos2-1U,
+							 Segmentpos_type(segmentpos)));
     }
 
-#if 0
-    /* IIT version 1 */
+#if 1
+    /* IIT version 1.  Need to indicate revcomp with '-' as first character. */
     sprintf(seglength,"%u",Segmentpos_length(segmentpos));
     annot = (char *) CALLOC(strlen(seglength)+1,sizeof(char));
     strcpy(annot,seglength);
 #else
-    /* IIT versions >= 2 */
+    /* IIT versions >= 2.  Not used anymore, since universal IITs are restricted to version 1. */
     annot = (char *) CALLOC(1,sizeof(char));
     annot[0] = '\0';
 #endif
@@ -721,10 +766,9 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
 	}
 	);
 #endif
-  IIT_write(iitfile,divlist,contigtypelist,/*fieldlist*/(List_T) NULL,
-	    intervaltable,labeltable,annottable,divsort,
-	    /*version, use 1 for backward compatibility*/1,
-	    /*label_pointers_8p*/false,/*annot_pointers_8p*/false);
+  IIT_write_univ(iitfile,divlist,contigtypelist,
+		 intervaltable,labeltable,annottable,
+		 coord_values_8p,/*label_pointers_8p*/false,/*annot_pointers_8p*/false);
   FREE(iitfile);
 
   List_free(&divlist);
@@ -744,8 +788,8 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
   List_free(&labellist);
 
   for (p = intervallist; p != NULL; p = List_next(p)) {
-    interval = (Interval_T) List_head(p);
-    Interval_free(&interval);
+    interval = (Univinterval_T) List_head(p);
+    Univinterval_free(&interval);
   }
   List_free(&intervallist);
 
@@ -772,9 +816,14 @@ stringlist_gc (List_T *list) {
 
 
 static void
-chrlength_table_gc (Tableint_T *chrlength_table) {
+chrlength_table_gc (Table_chrpos_T *chrlength_table) {
   /* Don't free chrom entries in table, because they are freed by Segmentpos_free */
-  Tableint_free(&(*chrlength_table));
+#ifdef HAVE_64_BIT
+  Tableuint8_free(&(*chrlength_table));
+#else
+  Tableuint_free(&(*chrlength_table));
+#endif
+
   return;
 }
 
@@ -833,14 +882,15 @@ int
 main (int argc, char *argv[]) {
   int ncontigs;
   Table_T accsegmentpos_table;
-  Tableint_T chrlength_table;
+  Table_chrpos_T chrlength_table;
   List_T contigtypelist = NULL, p;
-  IIT_T chromosome_iit, contig_iit;
+  Univ_IIT_T chromosome_iit, contig_iit;
   char *typestring;
-  unsigned int genomelength;
+  Univcoord_T genomelength, totalnts;
   char *chromosomefile, *iitfile, *positionsfile, *gammaptrsfile, *offsetsfile, interval_char;
-  Genomicpos_T totalnts, seglength;
+  Chrpos_T seglength;
   FILE *fp;
+  bool coord_values_8p;
 
   int c;
   extern int optind;
@@ -938,12 +988,16 @@ main (int argc, char *argv[]) {
     /* Holds contigs.  keys are strings; values are structs. */
     accsegmentpos_table = Table_new(65522,Table_string_compare,Table_string_hash);
     /* Hold chromosomes.  keys are Chrom_Ts; values are uints. */
-    chrlength_table = Tableint_new(65522,Chrom_compare_table,Chrom_hash_table);
+#ifdef HAVE_64_BIT
+    chrlength_table = Tableuint8_new(65522,Chrom_compare_table,Chrom_hash_table);
+#else
+    chrlength_table = Tableuint_new(65522,Chrom_compare_table,Chrom_hash_table);
+#endif
 
 #if 0
     /* No longer supporting strains */
     /* keys are strings; values are ints */
-    contigtype_table = Tableint_new(100,Table_string_compare,Table_string_hash);
+    contigtype_table = Tableuint_new(100,Table_string_compare,Table_string_hash);
 
     refstrain = read_strain_from_coordsfile(coordsfile);
     fprintf(stderr,"Reference strain is %s\n",refstrain);
@@ -964,18 +1018,27 @@ main (int argc, char *argv[]) {
       } else {
 	totalnts = totalnts + seglength;
       }
-
       ncontigs++;
     }
-    fprintf(stderr,"Total genomic length = %u bp\n",totalnts);
+    fprintf(stderr,"Total genomic length = %lu bp\n",totalnts);
 
     if (ncontigs == 0) {
       fprintf(stderr,"No contig information was provided to gmapindex\n");
       exit(9);
     }
 
-    write_chromosome_file(destdir,fileroot,chrlength_table);
-    write_contig_file(destdir,fileroot,accsegmentpos_table,chrlength_table,contigtypelist);
+#ifdef HAVE_64_BIT
+    if (totalnts > 4294967295U) {
+      coord_values_8p = true;
+    } else {
+      coord_values_8p = false;
+    }
+#else
+    coord_values_8p = false;
+#endif
+
+    write_chromosome_file(destdir,fileroot,chrlength_table,coord_values_8p);
+    write_contig_file(destdir,fileroot,accsegmentpos_table,chrlength_table,contigtypelist,coord_values_8p);
 
     for (p = contigtypelist; p != NULL; p = List_next(p)) {
       typestring = (char *) List_head(p);
@@ -995,37 +1058,34 @@ main (int argc, char *argv[]) {
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
-    if ((chromosome_iit = IIT_read(chromosomefile,/*name*/NULL,/*readonlyp*/true,
-				   /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
-				   /*labels_read_p*/true)) == NULL) {
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
       fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
       exit(9);
     }
-    genomelength = IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
+    genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
     FREE(chromosomefile);
 
     iitfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 			      strlen(fileroot)+strlen(".contig.iit")+1,sizeof(char));
     sprintf(iitfile,"%s/%s.contig.iit",sourcedir,fileroot);
-    if ((contig_iit = IIT_read(iitfile,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-			       /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+    if ((contig_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
       fprintf(stderr,"IIT file %s is not valid\n",iitfile);
       exit(9);
     }
     FREE(iitfile);
     
-    if (IIT_ntypes(contig_iit) == 1) {
+    if (Univ_IIT_ntypes(contig_iit) == 1) {
       /* index1part needed only if writing an uncompressed genome using a file */
       Genome_write(destdir,fileroot,stdin,contig_iit,/*altstrain_iit*/NULL,
 		   chromosome_iit,genome_lc_p,rawp,writefilep,genomelength,
 		   index1part,nmessages);
-    } else if (IIT_ntypes(contig_iit) > 1) {
+    } else if (Univ_IIT_ntypes(contig_iit) > 1) {
       fprintf(stderr,"GMAPINDEX no longer supports alternate strains\n");
       abort();
     }
 
-    IIT_free(&chromosome_iit);
-    IIT_free(&contig_iit);
+    Univ_IIT_free(&chromosome_iit);
+    Univ_IIT_free(&contig_iit);
 
   } else if (action == COMPRESS) {
     /* Usage: cat <genomefile> | gmapindex -C > <genomecompfile>, or
@@ -1058,9 +1118,7 @@ main (int argc, char *argv[]) {
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
-    if ((chromosome_iit = IIT_read(chromosomefile,/*name*/NULL,/*readonlyp*/true,
-				   /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
-				   /*labels_read_p*/false)) == NULL) {
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
       fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
       exit(9);
     }
@@ -1105,7 +1163,7 @@ main (int argc, char *argv[]) {
 
     FREE(offsetsfile);
     FREE(gammaptrsfile);
-    IIT_free(&chromosome_iit);
+    Univ_IIT_free(&chromosome_iit);
 
   } else if (action == POSITIONS) {
     /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -P
@@ -1115,9 +1173,7 @@ main (int argc, char *argv[]) {
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
-    if ((chromosome_iit = IIT_read(chromosomefile,/*name*/NULL,/*readonlyp*/true,
-				   /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
-				   /*labels_read_p*/false)) == NULL) {
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
       fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
       exit(9);
     }
@@ -1171,14 +1227,20 @@ main (int argc, char *argv[]) {
 	      destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
     }
     
+    if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
+      coord_values_8p = true;
+    } else {
+      coord_values_8p = false;
+    }
+
     Indexdb_write_positions(positionsfile,gammaptrsfile,offsetsfile,stdin,chromosome_iit,
 			    offsetscomp_basesize,index1part,index1interval,
-			    genome_lc_p,writefilep,fileroot,mask_lowercase_p);
+			    genome_lc_p,writefilep,fileroot,mask_lowercase_p,coord_values_8p);
 
     FREE(positionsfile);
     FREE(offsetsfile);
     FREE(gammaptrsfile);
-    IIT_free(&chromosome_iit);
+    Univ_IIT_free(&chromosome_iit);
 
 
 #if 0

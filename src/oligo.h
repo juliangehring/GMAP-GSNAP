@@ -1,4 +1,4 @@
-/* $Id: oligo.h 57094 2012-02-03 19:42:33Z twu $ */
+/* $Id: oligo.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef OLIGO_INCLUDED
 #define OLIGO_INCLUDED
 #include "bool.h"
@@ -15,7 +15,7 @@ extern char *
 Oligo_one_nt (Storedoligomer_T oligo, int oligosize);
 
 extern int
-Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo);
+Oligo_lookup (Univcoord_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo);
 
 extern Oligostate_T
 Oligo_next (Oligostate_T last_state, int *querypos, Storedoligomer_T *forward, 

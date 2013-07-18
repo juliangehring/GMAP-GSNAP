@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c 91469 2013-04-04 21:25:46Z twu $";
+static char rcsid[] = "$Id: iit_store.c 101491 2013-07-15 17:07:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -22,10 +22,12 @@ static char rcsid[] = "$Id: iit_store.c 91469 2013-04-04 21:25:46Z twu $";
 #include "fopen.h"
 
 #include "list.h"
+#include "univinterval.h"
 #include "interval.h"
 #include "table.h"
 #include "tableint.h"
 #include "chrom.h"
+#include "iit-write-univ.h"
 #include "iit-write.h"
 #include "getopt.h"
 
@@ -156,8 +158,9 @@ the iit_get program can retrieve information by label, as well as by\n\
 coordinates.\n\
 \n\
 Limitations: Start and end coordinates must be non-negative integers, and are\n\
-limited to the domain of an unsigned int.  For machines where unsigned ints\n\
-are 4 bytes, this means coordinates must be less than 2^32 = 4294967296.\n\
+limited to the domain of a 64-bit quantity, which means coordinates must be\n\
+less than 2^64.  If your machine is a 32-bit machine, coordinates must be less\n\
+than 2^32 = 4294967295.\n\
 \n\
 See also: iit_get, iit_dump\n\
 ");
@@ -190,7 +193,7 @@ concatenate_lines (List_T lines, int content_size) {
 
 /* Note that isnumber is a function in ctype.h on some systems */
 static bool
-isnumberp (unsigned int *result, char *string) {
+isnumberp (Univcoord_T *result, char *string) {
   char *p = string;
 
   *result = 0U;
@@ -208,9 +211,9 @@ isnumberp (unsigned int *result, char *string) {
 }
 
 static bool
-isrange (unsigned int *start, unsigned int *end, char *string) {
+isrange (Univcoord_T *start, Univcoord_T *end, char *string) {
   bool result;
-  unsigned int length;
+  Univcoord_T length;
   char *copy, *startstring, *endstring;
 
   copy = (char *) CALLOC(strlen(string)+1,sizeof(char));
@@ -255,10 +258,10 @@ isrange (unsigned int *start, unsigned int *end, char *string) {
 /* Other variants: >A 1..10 red, or >A 1..10 */
 static char *
 scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelist, Tableint_T div_seenp, Tableint_T typetable, 
-		 char **label, unsigned int *start, unsigned int *end, int *type, char **restofheader,
-		 char *header) {
+		 char **label, Univcoord_T *start, Univcoord_T *end, int *type, char **restofheader, char *header) {
   char *divstring = NULL, *coords, *copy, Buffer[1024], query[1024], tag[1024], *typestring, *p;
 
+  *seenp = false;
   if (sscanf(header,">%s %s\n",Buffer,query) < 2) {
     fprintf(stderr,"Error parsing %s.  Expecting a FASTA type header with a label, coords (as <div>:<number>..<number>), and optional tag.\n",header);
     exit(9);
@@ -304,8 +307,11 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
     debug(printf("  and coords %s as a number\n",coords));
     *end = *start;
   } else if (isrange(&(*start),&(*end),coords)) {
-    debug(printf("  and coords %s as a range starting at %u and ending at %u\n",
-		 coords,*start,*end));
+#ifdef HAVE_64_BIT
+    debug(printf("  and coords %s as a range starting at %lu and ending at %lu\n",coords,*start,*end));
+#else
+    debug(printf("  and coords %s as a range starting at %u and ending at %u\n",coords,*start,*end));
+#endif
   } else {
     fprintf(stderr,"Error parsing %s:%s.  Expecting coords (as <div>:<number>..<number>)\n",query,coords);
     fprintf(stderr,"Problematic line was: %s\n",header);
@@ -353,13 +359,20 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
 /* Example: >A 1 10 X red.  Here, A is a label, 1 and 10 are start and end, X is a div, and red is a type. */
 static char *
 scan_header_spaces (int *labellength, bool *seenp, List_T *divlist, List_T *typelist, Tableint_T div_seenp, Tableint_T typetable, 
-		    char **label, unsigned int *start, unsigned int *end, int *type,
-		    char *header) {
+		    char **label, Univcoord_T *start, Univcoord_T *end, int *type, char *header) {
   char *divstring, *copy, Buffer[1024], *typestring, *p, *ptr, *divstart;
   int divlength;
+  int nscanned;
 
   /* Example: >A 1 10 X red.  Here, A is a label, 1 and 10 are start and end, X is a div, and red is a type. */
-  if (sscanf(header,">%s %u %u\n",Buffer,&(*start),&(*end)) < 3) {
+
+  *seenp = false;
+#ifdef HAVE_64_BIT
+  nscanned = sscanf(header,">%s %lu %lu\n",Buffer,&(*start),&(*end));
+#else
+  nscanned = sscanf(header,">%s %u %u\n",Buffer,&(*start),&(*end));
+#endif
+  if (nscanned < 3) {
     fprintf(stderr,"Error parsing %s.  Expecting a FASTA type header with a label, two coordinates, and optional tag.\n",header);
     exit(9);
   } else {
@@ -449,22 +462,18 @@ parse_fieldlist (char *firstchar, FILE *fp) {
 
 
 static void
-parse_fasta (
-#ifdef HAVE_64_BIT
-	     UINT8 *label_totallength, UINT8 *annot_totallength,
-#endif
+parse_fasta (Univcoord_T *max_coordinate, Univcoord_T *label_totallength, Univcoord_T *annot_totallength,
 	     List_T *divlist, List_T *typelist, Table_T intervaltable, Table_T labeltable, Table_T annottable,
 	     FILE *fp, Tableint_T div_seenp, Tableint_T typetable, char firstchar) {
   char Buffer[LINELENGTH], *divstring, *label, *restofheader = NULL, *tempstring;
-  unsigned int start, end;
+  Univcoord_T start, end;
   List_T lines, d;
   int labellength, content_size, type, nentries;
   bool seenp;
 
-#ifdef HAVE_64_BIT
-  *label_totallength = 0LU;
-  *annot_totallength = 0LU;
-#endif
+  /* *max_coordinate = 0; */
+  *label_totallength = 0;
+  *annot_totallength = 0;
 
   if (feof(fp)) {
     return;
@@ -482,9 +491,11 @@ parse_fasta (
     divstring = scan_header_div(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,
 				&restofheader,Buffer);
   }
-#ifdef HAVE_64_BIT
+  *max_coordinate = start;
+  if (end > *max_coordinate) {
+    *max_coordinate = end;
+  }
   *label_totallength = labellength;
-#endif
   Table_put(labeltable,(void *) divstring,
 	    List_push(Table_get(labeltable,(void *) divstring),label));
 
@@ -502,9 +513,10 @@ parse_fasta (
 	fprintf(stderr,"Read %d entries in FASTA file...\n",nentries);
       }
 
+      /* Store as Univinterval_T now, but may need to change to Interval_T later */
       Table_put(intervaltable,(void *) divstring,
 		List_push(Table_get(intervaltable,(void *) divstring),
-			  (void *) Interval_new(start,end,type)));
+			  (void *) Univinterval_new(start,end,type)));
 
       lines = List_reverse(lines);
       if (restofheader == NULL && content_size > 0) {
@@ -514,9 +526,7 @@ parse_fasta (
 	lines = List_push(lines,tempstring);
 	content_size += 1;
       }
-#ifdef HAVE_64_BIT
       *annot_totallength += content_size;
-#endif
 
       Table_put(annottable,(void *) divstring,
 		List_push(Table_get(annottable,(void *) divstring),
@@ -533,9 +543,13 @@ parse_fasta (
 	divstring = scan_header_div(&labellength,&seenp,&(*divlist),&(*typelist),div_seenp,typetable,&label,&start,&end,&type,
 				    &restofheader,Buffer);
       }
-#ifdef HAVE_64_BIT
+      if (start > *max_coordinate) {
+	*max_coordinate = start;
+      }
+      if (end > *max_coordinate) {
+	*max_coordinate = end;
+      }
       *label_totallength += labellength;
-#endif
       Table_put(labeltable,(void *) divstring,
 		List_push(Table_get(labeltable,(void *) divstring),label));
 
@@ -555,9 +569,10 @@ parse_fasta (
   }
   fprintf(stderr,"Finished reading FASTA file -- total entries: %d\n",nentries);
 
+  /* Store as Univinterval_T now, but may need to change later */
   Table_put(intervaltable,(void *) divstring,
 	    List_push(Table_get(intervaltable,(void *) divstring),
-		      (void *) Interval_new(start,end,type)));
+		      (void *) Univinterval_new(start,end,type)));
 
   lines = List_reverse(lines);
   if (restofheader == NULL && content_size > 0) {
@@ -567,9 +582,7 @@ parse_fasta (
     lines = List_push(lines,tempstring);
     content_size += 1;
   }
-#ifdef HAVE_64_BIT
   *annot_totallength += content_size;
-#endif
   Table_put(annottable,(void *) divstring,
 	    List_push(Table_get(annottable,(void *) divstring),
 		      (void *) concatenate_lines(lines,content_size)));
@@ -580,11 +593,16 @@ parse_fasta (
   }
   
 #ifdef HAVE_64_BIT
+  fprintf(stderr,"Maximum coordinate: %lu\n",*max_coordinate);
   fprintf(stderr,"Total label length: %lu + %d separators\n",*label_totallength,nentries);
   fprintf(stderr,"Total annotation length: %lu + %d separators\n",*annot_totallength,nentries);
+#else
+  fprintf(stderr,"Maximum coordinate: %u\n",*max_coordinate);
+  fprintf(stderr,"Total label length: %u + %d separators\n",*label_totallength,nentries);
+  fprintf(stderr,"Total annotation length: %u + %d separators\n",*annot_totallength,nentries);
+#endif
   *label_totallength += nentries;
   *annot_totallength += nentries;
-#endif
 
   /* Reverse all lists */
   fprintf(stderr,"Saw %d distinct divisions/chromosomes\n",List_length(*divlist)-1);
@@ -691,7 +709,7 @@ parse_gff3 (List_T *divlist, Table_T intervaltable, Table_T labeltable, Table_T 
   char Buffer[LINELENGTH], Space[1000], *columns[GFF3_COLUMNS],
     *divstring, *label, *p, *chr, *line, *idptr;
   List_T d;
-  unsigned int start, end;
+  Univcoord_T start, end;
   int nfields, lineno = 0, row = 0, labelstrlen;
   char strandchar;
   char *labelstr;
@@ -745,9 +763,11 @@ parse_gff3 (List_T *divlist, Table_T intervaltable, Table_T labeltable, Table_T 
 	  Tableint_put(div_seenp,(void *) divstring,(int) true);
 	  *divlist = List_push(*divlist,divstring);
 	}
+
+	/* Store Univinterval_T now, but may need to change later */
 	Table_put(intervaltable,(void *) divstring,
 		  List_push(Table_get(intervaltable,(void *) divstring),
-			    (void *) Interval_new(start,end,/*type*/0)));
+			    (void *) Univinterval_new(start,end,/*type*/0)));
 
 	if (nfields <= FEATURECOLUMN) {
 	  sprintf(Space,"gff.%d",row);
@@ -798,18 +818,17 @@ main (int argc, char *argv[]) {
   char *inputfile = NULL, *iitfile, *tempstring, *divstring, *typestring, *p;
   char firstchar;
   List_T d, l, templist = NULL, divlist = NULL, typelist = NULL, fieldlist = NULL;
+  List_T newlist;
   FILE *fp;
+  Univinterval_T univinterval;
   Interval_T interval;
   Tableint_T div_seenp, typetable;
   Table_T intervaltable, labeltable, annottable;
   Chrom_T *chroms = NULL;
   int n_proper_divs = 0, i;
-  bool label_pointers_8p, annot_pointers_8p;
-  unsigned int order;
-
-#ifdef HAVE_64_BIT
-  UINT8 label_totallength, annot_totallength;
-#endif
+  bool coord_values_8p, label_pointers_8p, annot_pointers_8p;
+  Univcoord_T order;
+  Univcoord_T max_coordinate, label_totallength, annot_totallength;
 
   int opt;
   extern int optind;
@@ -887,10 +906,7 @@ main (int argc, char *argv[]) {
     parse_gff3(&divlist,intervaltable,labeltable,annottable,fp,div_seenp);
   } else {
     fieldlist = parse_fieldlist(&firstchar,fp);
-    parse_fasta(
-#ifdef HAVE_64_BIT
-		&label_totallength,&annot_totallength,
-#endif
+    parse_fasta(&max_coordinate,&label_totallength,&annot_totallength,
 		&divlist,&typelist,intervaltable,labeltable,annottable,fp,div_seenp,typetable,firstchar);
   }
 
@@ -898,9 +914,20 @@ main (int argc, char *argv[]) {
     fclose(fp);
   }
 
+
+  if (iit_version == 0 && List_length(divlist) == 1) {
+    /* No divs other than NULL */
+    fprintf(stderr,"No divs/chromosomes provided, so storing as IIT version 1\n");
+    iit_version = 1;
+  }
+
+  coord_values_8p = false;
   label_pointers_8p = false;
   annot_pointers_8p = false;
 #ifdef HAVE_64_BIT
+  if (max_coordinate > 4294967295U) {
+    coord_values_8p = true;
+  }
   if (iit_version == 0) {
     if (label_totallength > 4294967295U) {
       label_pointers_8p = true;
@@ -929,6 +956,39 @@ main (int argc, char *argv[]) {
   }
 #endif
 
+  if (iit_version == 1) {
+    /* Will use Univinterval_T objects, which may print as UINT8 or UINT4 */
+  } else if (coord_values_8p == true) {
+    fprintf(stderr,"Cannot have large coordinates, except for chromosome IIT files\n");
+    exit(9);
+  } else {
+    /* Convert all Univinterval_T objects to Interval_T objects */
+    
+    for (d = divlist; d != NULL; d = List_next(d)) {
+      divstring = (char *) List_head(d);
+      templist = (List_T) Table_get(intervaltable,(void *) divstring);
+      newlist = (List_T) NULL;
+      for (l = templist; l != NULL; l = List_next(l)) {
+	univinterval = (Univinterval_T) List_head(l);
+	if (Univinterval_sign(univinterval) < 0) {
+	  newlist = List_push(newlist,
+			      (void *) Interval_new(Univinterval_high(univinterval),
+						    Univinterval_low(univinterval),
+						    Univinterval_type(univinterval)));
+	} else {
+	  newlist = List_push(newlist,
+			      (void *) Interval_new(Univinterval_low(univinterval),
+						    Univinterval_high(univinterval),
+						    Univinterval_type(univinterval)));
+	}
+	Univinterval_free(&univinterval);
+      }
+      Table_put(intervaltable,(void *) divstring,(void *) List_reverse(newlist));
+      List_free(&templist);
+    }
+  }
+
+
   /* Figure out name of iit file */
   if (strlen(outputfile) < 4) {
     iitfile = (char *) CALLOC(strlen(outputfile)+strlen(".iit")+1,sizeof(char));
@@ -951,7 +1011,7 @@ main (int argc, char *argv[]) {
     for (l = divlist, i = 0; l != NULL; l = List_next(l)) {
       tempstring = List_head(l);
       if (tempstring[0] == '\0') {
-	FREE(tempstring);
+	/* FREE(tempstring); -- Causes invalid read later in table_string_compare */
       } else {
 	chroms[i++] = Chrom_from_string(tempstring,mitochondrial_string,order++,/*circularp*/false);
       }
@@ -987,8 +1047,13 @@ main (int argc, char *argv[]) {
   FREE(chroms);
 
 
-  IIT_write(iitfile,divlist,typelist,fieldlist,intervaltable,labeltable,annottable,
-	    divsort,iit_version,label_pointers_8p,annot_pointers_8p);
+  if (iit_version == 1) {
+    IIT_write_univ(iitfile,divlist,typelist,intervaltable,labeltable,annottable,
+		   coord_values_8p,label_pointers_8p,annot_pointers_8p);
+  } else {
+    IIT_write(iitfile,divlist,typelist,fieldlist,intervaltable,labeltable,annottable,
+	      divsort,iit_version,label_pointers_8p,annot_pointers_8p);
+  }
   FREE(iitfile);
 
 
@@ -1010,11 +1075,19 @@ main (int argc, char *argv[]) {
     List_free(&templist);
 
     templist = (List_T) Table_get(intervaltable,(void *) divstring);
-    for (l = templist; l != NULL; l = List_next(l)) {
-      interval = (Interval_T) List_head(l);
-      Interval_free(&interval);
+    if (iit_version == 1) {
+      for (l = templist; l != NULL; l = List_next(l)) {
+	univinterval = (Univinterval_T) List_head(l);
+	Univinterval_free(&univinterval);
+      }
+    } else {
+      for (l = templist; l != NULL; l = List_next(l)) {
+	interval = (Interval_T) List_head(l);
+	Interval_free(&interval);
+      }
     }
     List_free(&templist);
+      
   }
 
 

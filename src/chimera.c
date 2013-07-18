@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c 77641 2012-10-26 00:16:49Z twu $";
+static char rcsid[] = "$Id: chimera.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,6 +8,8 @@ static char rcsid[] = "$Id: chimera.c 77641 2012-10-26 00:16:49Z twu $";
 #include <stdlib.h>
 #include <math.h>		/* For sqrt */
 #include "mem.h"
+#include "genomicpos.h"
+#include "types.h"
 #include "maxent.h"
 #include "intron.h"
 #include "comp.h"
@@ -73,8 +75,9 @@ Chimera_cdna_direction (T this) {
 
 void
 Chimera_print_sam_tag (FILE *fp, T this) {
-  fprintf(fp,"%c%c-%c%c,%.2f,%.2f",
-	  this->donor1,this->donor2,this->acceptor2,this->acceptor1,this->donor_prob,this->acceptor_prob);
+  fprintf(fp,"%c%c-%c%c,%.2f,%.2f,%d..%d",
+	  this->donor1,this->donor2,this->acceptor2,this->acceptor1,this->donor_prob,this->acceptor_prob,
+	  this->chimerapos+1,this->equivpos+1);
   return;
 }
 
@@ -451,11 +454,11 @@ static double
 find_exonexon_fwd (int *exonexonpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		   char *comp, double *donor_prob, double *acceptor_prob,
 		   Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
-		   IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
+		   Univ_IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
   Sequence_T donor_genomicseg, acceptor_genomicseg, donor_genomicalt, acceptor_genomicalt;
   char *donor_ptr, *acceptor_ptr, *donor_altptr, *acceptor_altptr;
   int i, j;
-  Genomicpos_T left;
+  Univcoord_T left;
   int donor_length, acceptor_length;
   bool revcomp;
   char left1, left2, right2, right1;
@@ -589,11 +592,11 @@ static double
 find_exonexon_rev (int *exonexonpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		   char *comp, double *donor_prob, double *acceptor_prob,
 		   Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
-		   IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
+		   Univ_IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
   Sequence_T donor_genomicseg, acceptor_genomicseg, donor_genomicalt, acceptor_genomicalt;
   char *donor_ptr, *acceptor_ptr, *donor_altptr, *acceptor_altptr;
   int i, j;
-  Genomicpos_T left;
+  Univcoord_T left;
   int donor_length, acceptor_length;
   bool revcomp;
   char left1, left2, right2, right1;
@@ -729,7 +732,7 @@ Chimera_find_exonexon (int *found_cdna_direction, int *try_cdna_direction,
 		       char *donor1, char *donor2, char *acceptor2, char *acceptor1,
 		       char *comp, double *donor_prob, double *acceptor_prob,
 		       Stage3_T left_part, Stage3_T right_part, Genome_T genome, Genome_T genomealt,
-		       IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
+		       Univ_IIT_T chromosome_iit, int breakpoint_start, int breakpoint_end) {
   int exonexonpos_fwd, exonexonpos_rev;
   char donor1_fwd, donor2_fwd, acceptor2_fwd, acceptor1_fwd,
     donor1_rev, donor2_rev, acceptor2_rev, acceptor1_rev;

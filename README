@@ -148,13 +148,17 @@ these newer versions, you will need to make a symbolic link like this:
 You can also build your own genomic database, using one of two utility
 programs provided with this package: gmap_build (the newer, one-step
 method) or gmap_setup (the older way that uses Makefile and requires
-multiple steps).  Note that the total sequence length in your database
-cannot exceed 2^32 = 4,294,967,296 (about 4 billion) bp.  This is
-because the format uses 32-bit pointers.  If your total sequence
-provided to the utility programs exceeds 4 billion bp, the programs
-will abort.  Below I use the "genome" and "chromosome", but the input
-sequences can be anything you wish to align to, including transcripts
-or small fragments.
+multiple steps).
+
+Previous versions limited the total sequence length in your database
+to 2^32 = 4,294,967,296 (about 4 billion) bp.  However, starting with
+version 2013-04-XX, a total "genome" may now contain up to 2^64 bp.
+However, each individual chromosome is still limited to 2^32 bp.  The
+utility programs below will automatically recognize when a genome is
+larger than 2^32 bp and build the index files accordingly.  Below I
+use the "genome" and "chromosome", but the input sequences can be
+anything you wish to align to, including transcripts or small
+fragments.
 
 You will need to start with a set of FASTA files containing either
 entire chromosomes or contigs that represent pieces of chromosomes.
@@ -438,6 +442,16 @@ set the environment variable GMAPDB to point to that directory.)
     cat x | gmap_uncompress
 
 
+Note that gmap is written for small genomes (less than 2^32 bp in
+total length).  With large genomes, there is an equivalent program
+called gmapl, which you should run instead of gmap.  The gmapl program
+is equivalent to gmap, and is based on the same source code, but is
+compiled to use 64-bit index files instead of 32-bit files.  The gmap
+and gmapl programs will detect whether the genomes are the correct
+size, and will exit if you try to run them on the wrong-sized genomes.
+
+
+
 Building map files
 ==================
 
@@ -667,6 +681,17 @@ an extended FASTA format for paired-end reads, like this:
 
 This extended FASTA format is useful if paired-end information needs
 to be piped into GSNAP via stdin.
+
+
+As with gmap, gsnap is written for small genomes (less than 2^32 bp in
+total length).  With large genomes, there is an equivalent program
+called gsnapl, which you should run instead of gsnap.  The gsnapl
+program is equivalent to gmap, and is based on the same source code,
+but is compiled to use 64-bit index files instead of 32-bit files.
+The gsnap and gsnapl programs will detect whether the genomes are the
+correct size, and will exit if you try to run them on the wrong-sized
+genomes.
+
 
 
 SAM output format

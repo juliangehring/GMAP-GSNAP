@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 91614 2013-04-05 20:12:13Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 101727 2013-07-16 23:42:52Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,9 @@ static char rcsid[] = "$Id: oligoindex_hr.c 91614 2013-04-05 20:12:13Z twu $";
 #include "mem.h"
 #include "orderstat.h"
 #include "cmet.h"
+#ifdef HAVE_SSE2
+#include <emmintrin.h>
+#endif
 
 
 #define T Oligoindex_T
@@ -41,7 +44,7 @@ static char rcsid[] = "$Id: oligoindex_hr.c 91614 2013-04-05 20:12:13Z twu $";
 #endif
 
 
-static const UINT4 reverse_nt[] = 
+static const Genomecomp_T reverse_nt[] = 
 {0x0000,0x4000,0x8000,0xC000,0x1000,0x5000,0x9000,0xD000,
  0x2000,0x6000,0xA000,0xE000,0x3000,0x7000,0xB000,0xF000,
  0x0400,0x4400,0x8400,0xC400,0x1400,0x5400,0x9400,0xD400,
@@ -8248,11 +8251,11 @@ static const UINT4 reverse_nt[] =
 #define MASK6 0x00000FFF
 #define MASK5 0x000003FF
 
-static UINT4 *ref_blocks;
+static Genomecomp_T *ref_blocks;
 static Mode_T mode;
 
 void
-Oligoindex_hr_setup (UINT4 *ref_blocks_in, Mode_T mode_in) {
+Oligoindex_hr_setup (Genomecomp_T *ref_blocks_in, Mode_T mode_in) {
   ref_blocks = ref_blocks_in;
   mode = mode_in;
   return;
@@ -8261,7 +8264,7 @@ Oligoindex_hr_setup (UINT4 *ref_blocks_in, Mode_T mode_in) {
 
 
 static void
-write_chars (UINT4 high, UINT4 low, UINT4 flags) {
+write_chars (Genomecomp_T high, Genomecomp_T low, Genomecomp_T flags) {
   char Buffer[33];
   int i;
 
@@ -8300,10 +8303,11 @@ write_chars (UINT4 high, UINT4 low, UINT4 flags) {
 
 
 static void
-Genome_print_blocks (UINT4 *blocks, Genomicpos_T startpos, Genomicpos_T endpos) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
-  UINT4 high, low, flags;
+Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  int startdiscard, enddiscard;
+  Genomecomp_T high, low, flags;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
@@ -8363,7 +8367,7 @@ shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
 }
 
 static void
-dump_positions (Genomicpos_T **positions, int *counts, int oligospace, int indexsize) {
+dump_positions (Chrpos_T **positions, Count_T *counts, int oligospace, int indexsize) {
   int i;
 #ifdef PMAP
   char *aa;
@@ -8398,13 +8402,31 @@ dump_positions (Genomicpos_T **positions, int *counts, int oligospace, int index
 #endif
 
 /************************************************************************
+ *   Counting and storage procedures.  We count the number of
+ *   occurrences of each oligomer in the genomic region, modulo 256
+ *   (because Count_T is an unsigned char).  The allocate_positions
+ *   procedure then assigns pointers (which advance) and positions
+ *   (which stay fixed) based on those counts, except that oligomers
+ *   not in the query sequence have their counts set to 0, and no
+ *   space allocated.  However, during storage, if a pointer hits the
+ *   next position, that must mean that the count cycled past 255.  We
+ *   set that count to be 0, so that oligomer is not used by
+ *   Oligomer_get_mappings.  A count greater that 255 is overabundant
+ *   and not useful in stage 2.  We would normally check whether
+ *   pointers[masked] == positions[masked+1], but by providing
+ *   &(positions[1]), we can check pointers[masked] ==
+ *   positions[masked] instead.
+ ************************************************************************/
+
+
+/************************************************************************
  *   FWD
  ************************************************************************/
 
 static void
-count_8mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+count_8mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
@@ -8446,10 +8468,10 @@ count_8mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 }
 
 static int
-store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+store_8mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
@@ -8457,7 +8479,13 @@ store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = high_rev >> (16 - 2*pos);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8467,7 +8495,13 @@ store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked |= high_rev << (2*pos - 16);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8476,7 +8510,13 @@ store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rev >> (48 - 2*pos);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8486,7 +8526,13 @@ store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked |= low_rev << (2*pos - 48);
     masked &= MASK8;
     debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8496,9 +8542,9 @@ store_8mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_7mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+count_7mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
@@ -8540,17 +8586,23 @@ count_7mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 }
 
 static int
-store_7mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+store_7mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
   while (pos <= enddiscard && pos <= 9) {
     masked = high_rev >> (18 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8559,7 +8611,13 @@ store_7mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rev >> (50 - 2*pos);
     masked |= high_rev << (2*pos - 18);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8567,7 +8625,13 @@ store_7mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos <= enddiscard && pos <= 25) {
     masked = low_rev >> (50 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8576,7 +8640,13 @@ store_7mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = nexthigh_rev >> (82 - 2*pos);
     masked |= low_rev << (2*pos - 50);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8586,9 +8656,9 @@ store_7mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_6mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+count_6mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
@@ -8631,17 +8701,23 @@ count_6mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 
 
 static int
-store_6mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+store_6mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
   while (pos <= enddiscard && pos <= 10) {
     masked = high_rev >> (20 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8650,7 +8726,13 @@ store_6mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rev >> (52 - 2*pos);
     masked |= high_rev << (2*pos - 20);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8658,7 +8740,13 @@ store_6mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos <= enddiscard && pos <= 26) {
     masked = low_rev >> (52 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8667,7 +8755,13 @@ store_6mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = nexthigh_rev >> (84 - 2*pos);
     masked |= low_rev << (2*pos - 52);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8677,9 +8771,9 @@ store_6mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_5mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+count_5mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
@@ -8722,17 +8816,23 @@ count_5mers_fwd_partial (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexth
 
 
 static int
-store_5mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev,
+store_5mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = startdiscard;
   while (pos <= enddiscard && pos <= 11) {
     masked = high_rev >> (22 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8741,7 +8841,13 @@ store_5mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rev >> (54 - 2*pos);
     masked |= high_rev << (2*pos - 22);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8749,7 +8855,13 @@ store_5mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos <= enddiscard && pos <= 27) {
     masked = low_rev >> (54 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8758,7 +8870,13 @@ store_5mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = nexthigh_rev >> (86 - 2*pos);
     masked |= low_rev << (2*pos - 54);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos++;
   }
@@ -8768,8 +8886,8 @@ store_5mers_fwd_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_8mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+count_8mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 16;		/* 0 */
   debug(printf("%04X\n",masked));
@@ -8912,122 +9030,314 @@ count_8mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_8mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+store_8mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 16;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
   
   masked = (high_rev >> 14) & MASK8;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (high_rev >> 12) & MASK8;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (high_rev >> 10) & MASK8;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = (high_rev >> 8) & MASK8;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = (high_rev >> 6) & MASK8;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = (high_rev >> 4) & MASK8;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rev >> 2) & MASK8;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = high_rev & MASK8;		/* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
 
   oligo = low_rev >> 18;		/* For 9..15 */
   oligo |= high_rev << 14;
 
   masked = (oligo >> 12) & MASK8; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = (oligo >> 10) & MASK8; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = (oligo >> 8) & MASK8; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (oligo >> 6) & MASK8; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (oligo >> 4) & MASK8; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (oligo >> 2) & MASK8; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = oligo & MASK8; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   masked = low_rev >> 16;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
   
   masked = (low_rev >> 14) & MASK8; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (low_rev >> 12) & MASK8; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (low_rev >> 10) & MASK8; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = (low_rev >> 8) & MASK8;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = (low_rev >> 6) & MASK8;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = (low_rev >> 4) & MASK8;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rev >> 2) & MASK8;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = low_rev & MASK8;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
 
   oligo = nexthigh_rev >> 18;	/* For 25..31 */
   oligo |= low_rev << 14;
 
   masked = (oligo >> 12) & MASK8; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = (oligo >> 10) & MASK8; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = (oligo >> 8) & MASK8; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (oligo >> 6) & MASK8; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (oligo >> 4) & MASK8; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (oligo >> 2) & MASK8; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = oligo & MASK8; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
 
 
 static void
-count_7mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+count_7mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 18;		/* 0 */
   debug(printf("%04X\n",masked));
@@ -9171,122 +9481,314 @@ count_7mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_7mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+store_7mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 18;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
   
   masked = (high_rev >> 16) & MASK7;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (high_rev >> 14) & MASK7;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (high_rev >> 12) & MASK7;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = (high_rev >> 10) & MASK7;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = (high_rev >> 8) & MASK7;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = (high_rev >> 6) & MASK7;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rev >> 4) & MASK7;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rev >> 2) & MASK7; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = high_rev & MASK7;	/* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
 
   oligo = low_rev >> 20;	/* For 10..15 */
   oligo |= high_rev << 12;
 
   masked = (oligo >> 10) & MASK7; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = (oligo >> 8) & MASK7; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (oligo >> 6) & MASK7; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (oligo >> 4) & MASK7; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (oligo >> 2) & MASK7; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = oligo & MASK7; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   masked = low_rev >> 18;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
   
   masked = (low_rev >> 16) & MASK7; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (low_rev >> 14) & MASK7; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (low_rev >> 12) & MASK7; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = (low_rev >> 10) & MASK7;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = (low_rev >> 8) & MASK7;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = (low_rev >> 6) & MASK7;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rev >> 4) & MASK7;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rev >> 2) & MASK7;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = low_rev & MASK7;	/* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
 
   oligo = nexthigh_rev >> 20;	/* For 26..31 */
   oligo |= low_rev << 12;
 
   masked = (oligo >> 10) & MASK7; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = (oligo >> 8) & MASK7; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (oligo >> 6) & MASK7; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (oligo >> 4) & MASK7; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (oligo >> 2) & MASK7; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = oligo & MASK7; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
 
 
 static void
-count_6mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+count_6mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 20;		/* 0 */
   debug(printf("%04X\n",masked));
@@ -9430,122 +9932,314 @@ count_6mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_6mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+store_6mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 20;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
   
   masked = (high_rev >> 18) & MASK6;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (high_rev >> 16) & MASK6;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (high_rev >> 14) & MASK6;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = (high_rev >> 12) & MASK6;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = (high_rev >> 10) & MASK6;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = (high_rev >> 8) & MASK6;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rev >> 6) & MASK6;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rev >> 4) & MASK6; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = (high_rev >> 2) & MASK6; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = high_rev & MASK6;	/* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
 
   oligo = low_rev >> 22;	/* For 11..15 */
   oligo |= high_rev << 10;
 
   masked = (oligo >> 8) & MASK6; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (oligo >> 6) & MASK6; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (oligo >> 4) & MASK6; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (oligo >> 2) & MASK6; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = oligo & MASK6; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   masked = low_rev >> 20;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
   
   masked = (low_rev >> 18) & MASK6; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (low_rev >> 16) & MASK6; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (low_rev >> 14) & MASK6; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = (low_rev >> 12) & MASK6;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = (low_rev >> 10) & MASK6;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = (low_rev >> 8) & MASK6;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rev >> 6) & MASK6;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rev >> 4) & MASK6;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = (low_rev >> 2) & MASK6;	/* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = low_rev & MASK6;	/* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
 
   oligo = nexthigh_rev >> 22;	/* For 27..31 */
   oligo |= low_rev << 10;
 
   masked = (oligo >> 8) & MASK6; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (oligo >> 6) & MASK6; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (oligo >> 4) & MASK6; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (oligo >> 2) & MASK6; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = oligo & MASK6; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
 
 
 static void
-count_5mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+count_5mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 22;		/* 0 */
   debug(printf("%04X\n",masked));
@@ -9689,114 +10383,306 @@ count_5mers_fwd (int *counts, UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev)
 
 
 static int
-store_5mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 high_rev, UINT4 low_rev, UINT4 nexthigh_rev) {
-  UINT4 masked, oligo;
+store_5mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
 
   masked = high_rev >> 22;		/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
   
   masked = (high_rev >> 20) & MASK5;	/* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (high_rev >> 18) & MASK5;	/* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (high_rev >> 16) & MASK5;	/* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = (high_rev >> 14) & MASK5;	/* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = (high_rev >> 12) & MASK5;	/* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = (high_rev >> 10) & MASK5;	/* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rev >> 8) & MASK5;	/* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rev >> 6) & MASK5; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = (high_rev >> 4) & MASK5; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = (high_rev >> 2) & MASK5; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = high_rev & MASK5;	/* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
 
   oligo = low_rev >> 24;	/* For 12..15 */
   oligo |= high_rev << 8;
 
   masked = (oligo >> 6) & MASK5; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (oligo >> 4) & MASK5; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (oligo >> 2) & MASK5; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = oligo & MASK5; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   masked = low_rev >> 22;		/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
   
   masked = (low_rev >> 20) & MASK5; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (low_rev >> 18) & MASK5; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (low_rev >> 16) & MASK5; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = (low_rev >> 14) & MASK5;	/* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = (low_rev >> 12) & MASK5;	/* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = (low_rev >> 10) & MASK5;	/* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rev >> 8) & MASK5;	/* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rev >> 6) & MASK5;	/* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = (low_rev >> 4) & MASK5;	/* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = (low_rev >> 2) & MASK5;	/* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = low_rev & MASK5;	/* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
 
   oligo = nexthigh_rev >> 24;	/* For 28..31 */
   oligo |= low_rev << 8;
 
   masked = (oligo >> 6) & MASK5; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (oligo >> 4) & MASK5; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (oligo >> 2) & MASK5; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = oligo & MASK5; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
@@ -9804,15 +10690,17 @@ store_5mers_fwd (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 
 
 static void
-count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T left_plus_length,
+count_positions_fwd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
 		     int genestrand) {
-  Genomicpos_T startdiscard, enddiscard;
-  UINT4 ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
     low, high, nextlow;
 
 
   left_plus_length -= indexsize;
+#if 0
   left_plus_length += 1;	/* Needed to get last oligomer to match */
+#endif
 
   ptr = startptr = left/32U*3;
   endptr = left_plus_length/32U*3;
@@ -10080,16 +10968,18 @@ count_positions_fwd (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
 
 
 static void
-store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
-		     Genomicpos_T left, Genomicpos_T left_plus_length, Genomicpos_T chrpos,
+store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
+		     Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
 		     int genestrand) {
-  Genomicpos_T startdiscard, enddiscard;
-  UINT4 ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
     low, high, nextlow;
 
 
   left_plus_length -= indexsize;
+#if 0
   left_plus_length += 1;	/* Needed to get last oligomer to match */
+#endif
 
   ptr = startptr = left/32U*3;
   endptr = left_plus_length/32U*3;
@@ -10127,13 +11017,13 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
     if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -10169,13 +11059,13 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
     if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -10211,7 +11101,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	chrpos = store_8mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_8mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else if (indexsize == 7) {
@@ -10242,7 +11132,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	chrpos = store_7mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_7mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else if (indexsize == 6) {
@@ -10273,7 +11163,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	chrpos = store_6mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_6mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else if (indexsize == 5) {
@@ -10304,7 +11194,7 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
 	nexthigh_rev = reverse_nt[nextlow >> 16];
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-	chrpos = store_5mers_fwd(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev);
+	chrpos = store_5mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
     } else {
@@ -10339,13 +11229,13 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
     if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else {
       abort();
     }
@@ -10361,9 +11251,9 @@ store_positions_fwd (Genomicpos_T **pointers, int *counts, int indexsize,
  ************************************************************************/
 
 static void
-count_8mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+count_8mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10407,10 +11297,10 @@ count_8mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+store_8mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10419,7 +11309,13 @@ store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10427,7 +11323,13 @@ store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10436,7 +11338,13 @@ store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10444,7 +11352,13 @@ store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK8;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10454,9 +11368,9 @@ store_8mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_7mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
-			    int startdiscard, int enddiscard) {
-  UINT4 masked;
+count_7mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
+			 int startdiscard, int enddiscard) {
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10500,10 +11414,10 @@ count_7mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+store_7mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10512,7 +11426,13 @@ store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10520,7 +11440,13 @@ store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10529,7 +11455,13 @@ store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10537,7 +11469,13 @@ store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK7;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10547,9 +11485,9 @@ store_7mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_6mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+count_6mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10593,10 +11531,10 @@ count_6mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+store_6mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10605,7 +11543,13 @@ store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10613,7 +11557,13 @@ store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10622,7 +11572,13 @@ store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10630,7 +11586,13 @@ store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK6;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10640,9 +11602,9 @@ store_6mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_5mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+count_5mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10686,10 +11648,10 @@ count_5mers_rev_partial (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow
 
 
 static int
-store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-			 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc,
+store_5mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
-  UINT4 masked;
+  Genomecomp_T masked;
   int pos;
 
   pos = enddiscard;
@@ -10698,7 +11660,13 @@ store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = high_rc >> (2*pos - 32);
     masked |= nextlow_rc << (64 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10706,7 +11674,13 @@ store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard && pos >= 16) {
     masked = high_rc >> (2*pos - 32);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10715,7 +11689,13 @@ store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10723,7 +11703,13 @@ store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
   while (pos >= startdiscard) {
     masked = low_rc >> 2*pos;
     masked &= MASK5;
-    if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked/*+1*/]) {
+	counts[masked] = 0;
+      } else {
+	*(pointers[masked]++) = chrpos;
+      }
+    }
     chrpos++;
     pos--;
   }
@@ -10733,8 +11719,8 @@ store_5mers_rev_partial (Genomicpos_T chrpos, Genomicpos_T **pointers, int *coun
 
 
 static void
-count_8mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+count_8mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 18;	/* For 31..25 */
   oligo |= nextlow_rc << 14;
@@ -10879,114 +11865,306 @@ count_8mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_8mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+store_8mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 18;	/* For 31..25 */
   oligo |= nextlow_rc << 14;
 
   masked = (oligo >> 12) & MASK8; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
 
   masked = (oligo >> 10) & MASK8; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (oligo >> 8) & MASK8; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (oligo >> 6) & MASK8; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = (oligo >> 4) & MASK8; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = (oligo >> 2) & MASK8; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = oligo & MASK8; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
 
   masked = (high_rc >> 16) & MASK8; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rc >> 14) & MASK8; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = (high_rc >> 12) & MASK8; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = (high_rc >> 10) & MASK8; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = (high_rc >> 8) & MASK8; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (high_rc >> 6) & MASK8; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (high_rc >> 4) & MASK8; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (high_rc >> 2) & MASK8; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = high_rc & MASK8;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   oligo = low_rc >> 18;		/* For 15..9 */
   oligo |= high_rc << 14;
 
   masked = (oligo >> 12) & MASK8; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
 
   masked = (oligo >> 10) & MASK8; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (oligo >> 8) & MASK8; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (oligo >> 6) & MASK8; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = (oligo >> 4) & MASK8; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = (oligo >> 2) & MASK8; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = oligo & MASK8; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
 
   masked = (low_rc >> 16) & MASK8; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rc >> 14) & MASK8; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = (low_rc >> 12) & MASK8; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = (low_rc >> 10) & MASK8; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = (low_rc >> 8) & MASK8; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (low_rc >> 6) & MASK8; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (low_rc >> 4) & MASK8; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (low_rc >> 2) & MASK8; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = low_rc & MASK8;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
@@ -10994,8 +12172,8 @@ store_8mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
 
 
 static void
-count_7mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+count_7mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 20;	/* For 31..26 */
   oligo |= nextlow_rc << 12;
@@ -11140,122 +12318,314 @@ count_7mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_7mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+store_7mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 20;	/* For 31..26 */
   oligo |= nextlow_rc << 12;
 
   masked = (oligo >> 10) & MASK7; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
 
   masked = (oligo >> 8) & MASK7; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (oligo >> 6) & MASK7; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (oligo >> 4) & MASK7; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = (oligo >> 2) & MASK7; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = oligo & MASK7; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
 
   masked = (high_rc >> 18) & MASK7; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rc >> 16) & MASK7; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rc >> 14) & MASK7; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = (high_rc >> 12) & MASK7; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = (high_rc >> 10) & MASK7; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = (high_rc >> 8) & MASK7; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (high_rc >> 6) & MASK7; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (high_rc >> 4) & MASK7; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (high_rc >> 2) & MASK7; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = high_rc & MASK7;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   oligo = low_rc >> 20;		/* For 15..10 */
   oligo |= high_rc << 12;
 
   masked = (oligo >> 10) & MASK7; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
 
   masked = (oligo >> 8) & MASK7; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (oligo >> 6) & MASK7; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (oligo >> 4) & MASK7; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = (oligo >> 2) & MASK7; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = oligo & MASK7; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
 
   masked = (low_rc >> 18) & MASK7; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rc >> 16) & MASK7; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rc >> 14) & MASK7; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = (low_rc >> 12) & MASK7; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = (low_rc >> 10) & MASK7; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = (low_rc >> 8) & MASK7; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (low_rc >> 6) & MASK7; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (low_rc >> 4) & MASK7; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (low_rc >> 2) & MASK7; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = low_rc & MASK7;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
 
 
 static void
-count_6mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+count_6mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 22;	/* For 31..27 */
   oligo |= nextlow_rc << 10;
@@ -11400,122 +12770,314 @@ count_6mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_6mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+store_6mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 22;	/* For 31..27 */
   oligo |= nextlow_rc << 10;
 
   masked = (oligo >> 8) & MASK6; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
 
   masked = (oligo >> 6) & MASK6; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (oligo >> 4) & MASK6; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = (oligo >> 2) & MASK6; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
   masked = oligo & MASK6; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
 
   masked = (high_rc >> 20) & MASK6; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = (high_rc >> 18) & MASK6; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rc >> 16) & MASK6; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rc >> 14) & MASK6; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = (high_rc >> 12) & MASK6; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = (high_rc >> 10) & MASK6; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = (high_rc >> 8) & MASK6; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (high_rc >> 6) & MASK6; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (high_rc >> 4) & MASK6; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (high_rc >> 2) & MASK6; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = high_rc & MASK6;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   oligo = low_rc >> 22;		/* For 15..11 */
   oligo |= high_rc << 10;
 
   masked = (oligo >> 8) & MASK6; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
 
   masked = (oligo >> 6) & MASK6; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (oligo >> 4) & MASK6; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = (oligo >> 2) & MASK6; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
   masked = oligo & MASK6; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
 
   masked = (low_rc >> 20) & MASK6; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = (low_rc >> 18) & MASK6; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rc >> 16) & MASK6; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rc >> 14) & MASK6; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = (low_rc >> 12) & MASK6; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = (low_rc >> 10) & MASK6; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = (low_rc >> 8) & MASK6; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (low_rc >> 6) & MASK6; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (low_rc >> 4) & MASK6; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (low_rc >> 2) & MASK6; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = low_rc & MASK6;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
 
 
 static void
-count_5mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+count_5mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 24;	/* For 31..28 */
   oligo |= nextlow_rc << 8;
@@ -11660,124 +13222,316 @@ count_5mers_rev (int *counts, UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
 
 
 static int
-store_5mers_rev (Genomicpos_T chrpos, Genomicpos_T **pointers, int *counts,
-		 UINT4 low_rc, UINT4 high_rc, UINT4 nextlow_rc) {
-  UINT4 masked, oligo;
+store_5mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
 
   oligo = high_rc >> 24;	/* For 31..28 */
   oligo |= nextlow_rc << 8;
 
   masked = (oligo >> 6) & MASK5; /* 31 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
 
   masked = (oligo >> 4) & MASK5; /* 30 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 1; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
 
   masked = (oligo >> 2) & MASK5; /* 29 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 2; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
 
   masked = oligo & MASK5; /* 28 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 3; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
 
 
   masked = (high_rc >> 22) & MASK5; /* 27 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 4; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
 
   masked = (high_rc >> 20) & MASK5; /* 26 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 5; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
 
   masked = (high_rc >> 18) & MASK5; /* 25 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 6; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
 
   masked = (high_rc >> 16) & MASK5; /* 24 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 7; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
 
   masked = (high_rc >> 14) & MASK5; /* 23 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 8; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
 
   masked = (high_rc >> 12) & MASK5; /* 22 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 9; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
 
   masked = (high_rc >> 10) & MASK5; /* 21 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 10; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
 
   masked = (high_rc >> 8) & MASK5; /* 20 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 11; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
 
   masked = (high_rc >> 6) & MASK5; /* 19 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 12; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
 
   masked = (high_rc >> 4) & MASK5; /* 18 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 13; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
 
   masked = (high_rc >> 2) & MASK5; /* 17 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 14; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
 
   masked = high_rc & MASK5;	/* 16 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 15; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
 
 
   oligo = low_rc >> 24;		/* For 15..12 */
   oligo |= high_rc << 8;
 
   masked = (oligo >> 6) & MASK5; /* 15 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 16; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
 
   masked = (oligo >> 4) & MASK5; /* 14 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 17; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
 
   masked = (oligo >> 2) & MASK5; /* 13 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 18; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
 
   masked = oligo & MASK5; /* 12 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 19; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
 
 
   masked = (low_rc >> 22) & MASK5; /* 11 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 20; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
 
   masked = (low_rc >> 20) & MASK5; /* 10 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 21; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
 
   masked = (low_rc >> 18) & MASK5; /* 9 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 22; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
 
   masked = (low_rc >> 16) & MASK5; /* 8 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 23; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
 
   masked = (low_rc >> 14) & MASK5; /* 7 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 24; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
 
   masked = (low_rc >> 12) & MASK5; /* 6 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 25; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
 
   masked = (low_rc >> 10) & MASK5; /* 5 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 26; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
 
   masked = (low_rc >> 8) & MASK5; /* 4 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 27; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
 
   masked = (low_rc >> 6) & MASK5; /* 3 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 28; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
 
   masked = (low_rc >> 4) & MASK5; /* 2 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 29; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
 
   masked = (low_rc >> 2) & MASK5; /* 1 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 30; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
 
   masked = low_rc & MASK5;	/* 0 */
-  if (counts[masked]) { *(pointers[masked]++) = chrpos + 31; }
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
 
   return chrpos + 32;
 }
 
 
 static void
-count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T left_plus_length,
+count_positions_rev (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
 		     int genestrand) {
-  Genomicpos_T startdiscard, enddiscard;
-  UINT4 ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
 
 
@@ -12033,11 +13787,11 @@ count_positions_rev (int *counts, int indexsize, Genomicpos_T left, Genomicpos_T
  
 
 static void
-store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
-		     Genomicpos_T left, Genomicpos_T left_plus_length, Genomicpos_T chrpos,
+store_positions_rev (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
+		     Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
 		     int genestrand) {
-  Genomicpos_T startdiscard, enddiscard;
-  UINT4 ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
 
 
@@ -12082,13 +13836,13 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     nextlow_rc = ~nextlow;
 
     if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -12121,13 +13875,13 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     nextlow_rc = ~nextlow;
 
     if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else {
       abort();
     }
@@ -12159,7 +13913,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	chrpos = store_8mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_8mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else if (indexsize == 7) {
@@ -12187,7 +13941,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	chrpos = store_7mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_7mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else if (indexsize == 6) {
@@ -12215,7 +13969,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	chrpos = store_6mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_6mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else if (indexsize == 5) {
@@ -12243,7 +13997,7 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 	high_rc = ~high;
 	nextlow_rc = ~nextlow;
 
-	chrpos = store_5mers_rev(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc);
+	chrpos = store_5mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
     } else {
@@ -12275,13 +14029,13 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
     nextlow_rc = ~nextlow;
 
     if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -12292,12 +14046,14 @@ store_positions_rev (Genomicpos_T **pointers, int *counts, int indexsize,
 }
 
 
+#if 0
+/* Checks for overabundance */
 static int
-allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions,
-		    bool *overabundant, bool *inquery, int *counts, int *relevant_counts,
-		    int oligospace) {
+allocate_positions_check (Chrpos_T **pointers, Chrpos_T **positions,
+			  bool *overabundant, bool *inquery, Count_T *counts, int *relevant_counts,
+			  int oligospace) {
   int totalcounts;
-  Genomicpos_T *p;
+  Chrpos_T *p;
   int overabundance_threshold;
   int n, i;
 
@@ -12337,26 +14093,19 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions,
   }
 
   if (totalcounts == 0) {
-    positions[0] = (Genomicpos_T *) NULL;
+    positions[0] = (Chrpos_T *) NULL;
   } else {
-    p = (Genomicpos_T *) CALLOC(totalcounts,sizeof(Genomicpos_T));
+    p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
     for (i = 0; i < oligospace; i++) {
       positions[i] = p;
       p += counts[i];
     }
-    memcpy((void *) pointers,positions,oligospace*sizeof(Genomicpos_T *));
+    memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
   }
 
   return totalcounts;
 }
-
-
-
-/* Notes: genomicstart and genomicend define the region for alignment.
-   Within that interval, mappingstart and mappingend define the region
-   for allowable mappings.  This allows GSNAP to define a larger
-   alignment region for end splices, and a smaller mapping region for
-   running stage 2 */
+#endif
 
 
 #ifndef PMAP
@@ -12366,18 +14115,217 @@ allocate_positions (Genomicpos_T **pointers, Genomicpos_T **positions,
 #define POLY_T 0xFFFF
 #endif
 
+#ifdef HAVE_SSE2
+
+#if 0
+/* For debugging of SIMD procedures*/
+static void
+print_vector (__m128i x, char *label) {
+  __m128i a[1];
+  unsigned int *s = a;
+
+  _mm_store_si128(a,x);
+  printf("%s: %u %u %u %u\n",label,s[0],s[1],s[2],s[3]);
+  return;
+}
+#endif
+
+#define ONE_CHAR 1
+#define TWO_CHARS 2
+#define SIMD_NCHARS 16
+
+#define ONE_INT 4
+#define TWO_INTS 8
+#define SIMD_NINTS 4
+
+static int
+allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
+		    Count_T *inquery, Count_T *counts, int oligospace
+#ifndef PMAP
+		    , Shortoligomer_T mask
+#endif
+		    ) {
+  /* int totalcounts_old; */
+  int totalcounts = 0;
+  Chrpos_T *p;
+  int i;
+  __m128i *inquery_ptr, *counts_ptr, *end_ptr, zero, vec;
+  __m128i terms_ptr[1];
+  Count_T *terms;
+  /* __m128i result_allocated[1]; */
+  /* int *result; */
+  int *nskip, *nskip_ptr;
+
+
+#ifndef PMAP
+  counts[POLY_A & mask] = 0;
+  counts[POLY_C & mask] = 0;
+  counts[POLY_G & mask] = 0;
+  counts[POLY_T & mask] = 0;
+#endif
+
+  nskip_ptr = nskip = (int *) CALLOC(oligospace/SIMD_NCHARS + 1,sizeof(int));
+
+  inquery_ptr = (__m128i *) inquery;
+  counts_ptr = (__m128i *) counts;
+  end_ptr = &(counts_ptr[oligospace/SIMD_NCHARS]);
+  terms = (Count_T *) terms_ptr;
+  zero = _mm_set1_epi8(0);
+  while (counts_ptr < end_ptr) {
+    vec = _mm_and_si128(*counts_ptr,*inquery_ptr++);
+    _mm_store_si128(counts_ptr++,vec);
+    if (/*cmp*/_mm_movemask_epi8(_mm_cmpeq_epi8(vec,zero)) == 0xFFFF) {
+      /* All counts are zero, so incrementing nskip */
+      (*nskip_ptr) += SIMD_NCHARS;
+    } else {
+      /* Non-zero count found */
+      _mm_store_si128(terms_ptr,vec);
+      totalcounts += terms[0] + terms[1] + terms[2] + terms[3] + terms[4] + terms[5] + terms[6] + terms[7] +
+	terms[8] + terms[9] + terms[10] + terms[11] + terms[12] + terms[13] + terms[14] + terms[15];
+      nskip_ptr++;
+    }
+  }
+
+#if 0
+  /* For debugging */
+  totalcounts_old = 0;
+  for (i = 0; i < oligospace; i++) {
+    if (inquery[i] == /*true*/0xFF) {
+      totalcounts_old += counts[i];
+    }
+  }
+
+  fprintf(stderr,"Old method %d, new method %d\n",totalcounts_old,totalcounts);
+  if (totalcounts != totalcounts_old) {
+    abort();
+  }
+#endif
+
+  if (totalcounts == 0) {
+    positions[0] = (Chrpos_T *) NULL;
+  } else {
+    /* Need to assign positions[0] so we can free the space */
+    positions[0] = p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
+
+    nskip_ptr = nskip;
+    i = *nskip_ptr++;
+    while (i < oligospace) {
+      positions[i] = p;	/* 0 */
+      p += counts[i++];
+      positions[i] = p;	/* 1 */
+      p += counts[i++];
+      positions[i] = p;	/* 2 */
+      p += counts[i++];
+      positions[i] = p;	/* 3 */
+      p += counts[i++];
+      positions[i] = p;	/* 4 */
+      p += counts[i++];
+      positions[i] = p;	/* 5 */
+      p += counts[i++];
+      positions[i] = p;	/* 6 */
+      p += counts[i++];
+      positions[i] = p;	/* 7 */
+      p += counts[i++];
+      positions[i] = p;	/* 8 */
+      p += counts[i++];
+      positions[i] = p;	/* 9 */
+      p += counts[i++];
+      positions[i] = p;	/* 10 */
+      p += counts[i++];
+      positions[i] = p;	/* 11 */
+      p += counts[i++];
+      positions[i] = p;	/* 12 */
+      p += counts[i++];
+      positions[i] = p;	/* 13 */
+      p += counts[i++];
+      positions[i] = p;	/* 14 */
+      p += counts[i++];
+      positions[i] = p;	/* 15 */
+      p += counts[i++];
+      positions[i] = p;	/* 16, used for indicating if pointer hits next position */
+
+      i += *nskip_ptr++;
+    }
+    /* Does not copy position[oligospace] */
+    memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
+  }
+
+  FREE(nskip);
+
+  return totalcounts;
+}
+
+#else
+
+static int
+allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
+		    bool *inquery, Count_T *counts, int oligospace
+#ifndef PMAP
+		    , Shortoligomer_T mask
+#endif
+		    ) {
+  int totalcounts;
+  Chrpos_T *p;
+  int i;
+
+#ifndef PMAP
+  counts[POLY_A & mask] = 0;
+  counts[POLY_C & mask] = 0;
+  counts[POLY_G & mask] = 0;
+  counts[POLY_T & mask] = 0;
+#endif
+
+  for (i = 0; i < oligospace; i++) {
+    if (inquery[i] == false) {
+      counts[i] = 0;
+    }
+  }
+
+  totalcounts = 0;
+  for (i = 0; i < oligospace; i++) {
+    totalcounts += counts[i];
+  }
+
+
+  if (totalcounts == 0) {
+    positions[0] = (Chrpos_T *) NULL;
+  } else {
+    p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
+    /* First iteration sets positions[0] so we can free the memory */
+    for (i = 0; i < oligospace; i++) {
+      positions[i] = p;
+      p += counts[i];
+    }
+    positions[i] = p;		/* For positions[oligospace], used for indicating if pointer hits next position */
+    /* Does not copy positions[oligospace] */
+    memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
+  }
+
+  return totalcounts;
+}
+
+#endif
+
+
+/* Notes: genomicstart and genomicend define the region for alignment.
+   Within that interval, mappingstart and mappingend define the region
+   for allowable mappings.  This allows GSNAP to define a larger
+   alignment region for end splices, and a smaller mapping region for
+   running stage 2 */
+
+
 void
 Oligoindex_hr_tally (T this, 
-		     Genomicpos_T mappingstart, Genomicpos_T mappingend, bool plusp,
-		     char *queryuc_ptr, int querylength, Genomicpos_T chrpos, int genestrand) {
+		     Univcoord_T mappingstart, Univcoord_T mappingend, bool plusp,
+		     char *queryuc_ptr, int querylength, Chrpos_T chrpos, int genestrand) {
   int badoligos, repoligos, trimoligos, trim_start, trim_end;
 
   Oligoindex_set_inquery(&badoligos,&repoligos,&trimoligos,&trim_start,&trim_end,this,
 			 queryuc_ptr,querylength,/*trimp*/false);
 
-  memset((void *) this->counts,0,this->oligospace*sizeof(int));
-  memset((void *) this->overabundant,false,this->oligospace*sizeof(bool));
+  memset((void *) this->counts,0,this->oligospace*sizeof(Count_T));
 #if 0
+  memset((void *) this->overabundant,false,this->oligospace*sizeof(bool));
   /* Test for thread safety */
   for (i = 0; i < this->oligospace; i++) {
     if (this->counts[i] != 0) {
@@ -12389,7 +14337,6 @@ Oligoindex_hr_tally (T this,
       abort();
     }
   }
-#endif
 
 #ifndef PMAP
   /* These values will prevent oligoindex from getting mappings later */
@@ -12398,6 +14345,7 @@ Oligoindex_hr_tally (T this,
   this->overabundant[POLY_G & this->mask] = true;
   this->overabundant[POLY_T & this->mask] = true;
 #endif
+#endif
 
   debug(printf("called with mapping %u..%u\n",mappingstart,mappingend));
 
@@ -12405,18 +14353,18 @@ Oligoindex_hr_tally (T this,
     debug(printf("plus, first sequencepos is %u\n",chrpos));
 #ifdef PMAP
     count_positions_fwd(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
-    if (allocate_positions(this->pointers,this->positions,this->overabundant,
-			   this->inquery,this->counts,this->relevant_counts,
+    if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
 			   this->oligospace) > 0) {
-      store_positions_fwd(this->pointers,this->counts,this->indexsize_aa,mappingstart,mappingend,
+      /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
+      store_positions_fwd(this->pointers,&(this->positions[1]),this->counts,this->indexsize_aa,mappingstart,mappingend,
 			  chrpos,genestrand);
     }
 #else
     count_positions_fwd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
-    if (allocate_positions(this->pointers,this->positions,this->overabundant,
-			   this->inquery,this->counts,this->relevant_counts,
-			   this->oligospace) > 0) {
-      store_positions_fwd(this->pointers,this->counts,this->indexsize,mappingstart,mappingend,
+    if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
+			   this->oligospace,this->mask) > 0) {
+      /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
+      store_positions_fwd(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
 			  chrpos,genestrand);
     }
 #endif
@@ -12425,18 +14373,18 @@ Oligoindex_hr_tally (T this,
     debug(printf("minus, first sequencepos is %u\n",chrpos));
 #ifdef PMAP
     count_positions_rev(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
-    if (allocate_positions(this->pointers,this->positions,this->overabundant,
-			   this->inquery,this->counts,this->relevant_counts,
+    if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
 			   this->oligospace) > 0) {
-      store_positions_rev(this->pointers,this->counts,this->indexsize_aa,mappingstart,mappingend,
+      /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
+      store_positions_rev(this->pointers,&(this->positions[1]),this->counts,this->indexsize_aa,mappingstart,mappingend,
 			  chrpos,genestrand);
     }
 #else
     count_positions_rev(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
-    if (allocate_positions(this->pointers,this->positions,this->overabundant,
-			   this->inquery,this->counts,this->relevant_counts,
-			   this->oligospace) > 0) {
-      store_positions_rev(this->pointers,this->counts,this->indexsize,mappingstart,mappingend,
+    if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
+			   this->oligospace,this->mask) > 0) {
+      /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
+      store_positions_rev(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
 			  chrpos,genestrand);
     }
 #endif

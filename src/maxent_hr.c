@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: maxent_hr.c 77638 2012-10-26 00:15:24Z twu $";
+static char rcsid[] = "$Id: maxent_hr.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24663,7 +24663,7 @@ static const double acc_score589_minus[16384] =
 
 #ifdef DEBUG
 static void
-write_chars (UINT4 high, UINT4 low, UINT4 flags) {
+write_chars (Genomecomp_T high, Genomecomp_T low, Genomecomp_T flags) {
   char Buffer[33];
   int i;
 
@@ -24702,7 +24702,7 @@ write_chars (UINT4 high, UINT4 low, UINT4 flags) {
 
 
 static void
-print_blocks (UINT4 *blocks, int nblocks) {
+print_blocks (Genomecomp_T *blocks, int nblocks) {
   int ptr = 0;
 
   while (ptr < nblocks*3) {
@@ -24717,10 +24717,11 @@ print_blocks (UINT4 *blocks, int nblocks) {
 }
 
 static void
-Genome_print_blocks (UINT4 *blocks, Genomicpos_T startpos, Genomicpos_T endpos) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
-  UINT4 high, low, flags;
+Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  int startdiscard, enddiscard;
+  Genomecomp_T high, low, flags;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
@@ -24753,12 +24754,12 @@ Genome_print_blocks (UINT4 *blocks, Genomicpos_T startpos, Genomicpos_T endpos) 
 
 #if 0
 static double
-donor_prob_plus (Genomicpos_T startpos, UINT4 *blocks) {
+donor_prob_plus (Univcoord_T startpos, Genomecomp_T *blocks) {
   double odds;
-  Genomicpos_T ptr;
+  Univcoord_T ptr;
   int shift;
-  UINT4 high, low, nextlow;
-  UINT4 seq;
+  Genomecomp_T high, low, nextlow;
+  Genomecomp_T seq;
 
   ptr = startpos/32U*3;
   shift = startpos % 32;
@@ -24814,9 +24815,9 @@ donor_prob_plus (Genomicpos_T startpos, UINT4 *blocks) {
 
 
 static double
-donor_plus_00 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_00 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low;			/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24824,9 +24825,9 @@ donor_plus_00 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_01 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_01 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 2;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24834,9 +24835,9 @@ donor_plus_01 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_02 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_02 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 4;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24844,9 +24845,9 @@ donor_plus_02 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_03 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_03 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 6;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24854,9 +24855,9 @@ donor_plus_03 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_04 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_04 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 8;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24864,9 +24865,9 @@ donor_plus_04 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_05 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_05 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 10;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24874,9 +24875,9 @@ donor_plus_05 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_06 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_06 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 12;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24884,9 +24885,9 @@ donor_plus_06 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_07 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_07 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 14;		/* 2 * shift */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24894,9 +24895,9 @@ donor_plus_07 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_08 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_08 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 16;		/* 2 * shift */
   seq |= high << 16;		/* 2 * (16 - shift) */
@@ -24905,9 +24906,9 @@ donor_plus_08 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_09 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_09 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 18;		/* 2 * shift */
   seq |= high << 14;		/* 2 * (16 - shift) */
@@ -24916,9 +24917,9 @@ donor_plus_09 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_10 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_10 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 20;		/* 2 * shift */
   seq |= high << 12;		/* 2 * (16 - shift) */
@@ -24927,9 +24928,9 @@ donor_plus_10 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_11 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_11 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 22;		/* 2 * shift */
   seq |= high << 10;		/* 2 * (16 - shift) */
@@ -24938,9 +24939,9 @@ donor_plus_11 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_12 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_12 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 24;		/* 2 * shift */
   seq |= high << 8;		/* 2 * (16 - shift) */
@@ -24949,9 +24950,9 @@ donor_plus_12 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_13 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_13 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 26;		/* 2 * shift */
   seq |= high << 6;		/* 2 * (16 - shift) */
@@ -24960,9 +24961,9 @@ donor_plus_13 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_14 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_14 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 28;		/* 2 * shift */
   seq |= high << 4;		/* 2 * (16 - shift) */
@@ -24971,9 +24972,9 @@ donor_plus_14 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_15 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_15 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 30;		/* 2 * shift */
   seq |= high << 2;		/* 2 * (16 - shift) */
@@ -24982,9 +24983,9 @@ donor_plus_15 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_16 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_16 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high;			/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -24992,9 +24993,9 @@ donor_plus_16 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_17 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_17 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 2;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25002,9 +25003,9 @@ donor_plus_17 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_18 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_18 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 4;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25012,9 +25013,9 @@ donor_plus_18 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_19 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_19 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 6;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25022,9 +25023,9 @@ donor_plus_19 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_20 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_20 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 8;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25032,9 +25033,9 @@ donor_plus_20 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_21 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_21 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 10;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25042,9 +25043,9 @@ donor_plus_21 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_22 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_22 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 12;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25052,9 +25053,9 @@ donor_plus_22 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_23 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_23 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 14;		/* 2 * (shift - 16) */
   odds = donor_score_plus[(seq & 0x3F) | ((seq >> 4) & 0x3FC0)] * donor_discore_plus[(seq >> 6) & 0x0F];
@@ -25062,9 +25063,9 @@ donor_plus_23 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_24 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_24 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 16;		/* 2 * (shift - 16) */
   seq |= nextlow << 16;		/* 2 * (32 - shift) */
@@ -25073,9 +25074,9 @@ donor_plus_24 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_25 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_25 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 18;		/* 2 * (shift - 16) */
   seq |= nextlow << 14;		/* 2 * (32 - shift) */
@@ -25084,9 +25085,9 @@ donor_plus_25 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_26 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_26 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 20;		/* 2 * (shift - 16) */
   seq |= nextlow << 12;		/* 2 * (32 - shift) */
@@ -25095,9 +25096,9 @@ donor_plus_26 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_27 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_27 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 22;		/* 2 * (shift - 16) */
   seq |= nextlow << 10;		/* 2 * (32 - shift) */
@@ -25106,9 +25107,9 @@ donor_plus_27 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_28 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_28 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 24;		/* 2 * (shift - 16) */
   seq |= nextlow << 8;		/* 2 * (32 - shift) */
@@ -25117,9 +25118,9 @@ donor_plus_28 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_29 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_29 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 26;		/* 2 * (shift - 16) */
   seq |= nextlow << 6;		/* 2 * (32 - shift) */
@@ -25128,9 +25129,9 @@ donor_plus_29 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_30 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_30 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 28;		/* 2 * (shift - 16) */
   seq |= nextlow << 4;		/* 2 * (32 - shift) */
@@ -25139,9 +25140,9 @@ donor_plus_30 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_plus_31 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_plus_31 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 30;		/* 2 * (shift - 16) */
   seq |= nextlow << 2;		/* 2 * (32 - shift) */
@@ -25158,12 +25159,12 @@ donor_plus_31 (UINT4 low, UINT4 high, UINT4 nextlow) {
 
 #if 0
 static double
-acceptor_prob_plus (Genomicpos_T startpos, UINT4 *blocks) {
+acceptor_prob_plus (Univcoord_T startpos, Genomecomp_T *blocks) {
   double odds;
-  Genomicpos_T ptr;
+  Univcoord_T ptr;
   int shift;
-  UINT4 high, low, nexthigh, nextlow;
-  UINT4 seq;
+  Genomecomp_T high, low, nexthigh, nextlow;
+  Genomecomp_T seq;
 
   ptr = startpos/32U*3;
   shift = startpos % 32;
@@ -25297,9 +25298,9 @@ acceptor_prob_plus (Genomicpos_T startpos, UINT4 *blocks) {
 
 
 static double
-acceptor_plus_00 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_00 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low;			/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25318,9 +25319,9 @@ acceptor_plus_00 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_01 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_01 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 2;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25339,9 +25340,9 @@ acceptor_plus_01 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_02 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_02 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 4;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25359,9 +25360,9 @@ acceptor_plus_02 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_03 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_03 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 6;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25380,9 +25381,9 @@ acceptor_plus_03 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_04 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_04 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 8;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25401,9 +25402,9 @@ acceptor_plus_04 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_05 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_05 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 10;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25421,9 +25422,9 @@ acceptor_plus_05 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_06 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_06 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 12;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25442,9 +25443,9 @@ acceptor_plus_06 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_07 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_07 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 14;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25463,9 +25464,9 @@ acceptor_plus_07 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_08 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_08 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 16;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25484,9 +25485,9 @@ acceptor_plus_08 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_09 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_09 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 18;		/* 2 * shift */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25504,9 +25505,9 @@ acceptor_plus_09 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_10 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_10 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 20;		/* 2 * shift */
   seq |= high << 12;		/* 2 * (16 - shift) */
@@ -25526,9 +25527,9 @@ acceptor_plus_10 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_11 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_11 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 22;		/* 2 * shift */
   seq |= high << 10;		/* 2 * (16 - shift) */
@@ -25548,9 +25549,9 @@ acceptor_plus_11 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_12 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_12 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 24;		/* 2 * shift */
   seq |= high << 8;		/* 2 * (16 - shift) */
@@ -25569,9 +25570,9 @@ acceptor_plus_12 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_13 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_13 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 26;		/* 2 * shift */
   seq |= high << 6;		/* 2 * (16 - shift) */
@@ -25590,9 +25591,9 @@ acceptor_plus_13 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_14 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_14 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 28;		/* 2 * shift */
   seq |= high << 4;		/* 2 * (16 - shift) */
@@ -25611,9 +25612,9 @@ acceptor_plus_14 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_15 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_15 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 30;		/* 2 * shift */
   seq |= high << 2;		/* 2 * (16 - shift) */
@@ -25633,9 +25634,9 @@ acceptor_plus_15 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_16 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_16 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high;			/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25654,9 +25655,9 @@ acceptor_plus_16 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_17 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_17 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 2;		/*2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25675,9 +25676,9 @@ acceptor_plus_17 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_18 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_18 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 4;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25695,9 +25696,9 @@ acceptor_plus_18 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_19 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_19 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 6;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25716,9 +25717,9 @@ acceptor_plus_19 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_20 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_20 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 8;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25737,9 +25738,9 @@ acceptor_plus_20 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_21 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_21 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 10;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25757,9 +25758,9 @@ acceptor_plus_21 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_22 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_22 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 12;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25778,9 +25779,9 @@ acceptor_plus_22 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_23 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_23 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 14;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25799,9 +25800,9 @@ acceptor_plus_23 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_24 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_24 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 16;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25820,9 +25821,9 @@ acceptor_plus_24 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_25 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_25 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 18;		/* 2 * (shift - 16) */
   odds = acc_score1_plus[seq & 0x3FFF];
@@ -25840,9 +25841,9 @@ acceptor_plus_25 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_26 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_26 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 20;		/* 2 * (shift - 16) */
   seq |= nextlow << 12;		/* 2 * (32 - shift) */
@@ -25862,9 +25863,9 @@ acceptor_plus_26 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_27 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_27 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 22;		/* 2 * (shift - 16) */
   seq |= nextlow << 10;		/* 2 * (32 - shift) */
@@ -25884,9 +25885,9 @@ acceptor_plus_27 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_28 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_28 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 24;		/* 2 * (shift - 16) */
   seq |= nextlow << 8;		/* 2 * (32 - shift) */
@@ -25905,9 +25906,9 @@ acceptor_plus_28 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_29 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_29 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 26;		/* 2 * (shift - 16) */
   seq |= nextlow << 6;		/* 2 * (32 - shift) */
@@ -25926,9 +25927,9 @@ acceptor_plus_29 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_30 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_30 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 28;		/* 2 * (shift - 16) */
   seq |= nextlow << 4;		/* 2 * (32 - shift) */
@@ -25947,9 +25948,9 @@ acceptor_plus_30 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_plus_31 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_plus_31 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 30;		/* 2 * (shift - 16) */
   seq |= nextlow << 2;		/* 2 * (32 - shift) */
@@ -25975,12 +25976,12 @@ acceptor_plus_31 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 
 #if 0
 static double
-donor_prob_minus (Genomicpos_T startpos, UINT4 *blocks) {
+donor_prob_minus (Univcoord_T startpos, Genomecomp_T *blocks) {
   double odds;
-  Genomicpos_T ptr;
+  Univcoord_T ptr;
   int shift;
-  UINT4 high, low, nextlow;
-  UINT4 seq;
+  Genomecomp_T high, low, nextlow;
+  Genomecomp_T seq;
 
   ptr = startpos/32U*3;
   shift = startpos % 32;
@@ -26038,9 +26039,9 @@ donor_prob_minus (Genomicpos_T startpos, UINT4 *blocks) {
 
 
 static double
-donor_minus_00 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_00 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low;			/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26048,9 +26049,9 @@ donor_minus_00 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_01 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_01 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 2;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26058,9 +26059,9 @@ donor_minus_01 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_02 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_02 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 4;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26068,9 +26069,9 @@ donor_minus_02 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_03 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_03 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 6;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26078,9 +26079,9 @@ donor_minus_03 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_04 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_04 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 8;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26088,9 +26089,9 @@ donor_minus_04 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_05 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_05 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 10;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26098,9 +26099,9 @@ donor_minus_05 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_06 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_06 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 12;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26108,9 +26109,9 @@ donor_minus_06 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_07 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_07 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 14;		/* 2 * shift */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26118,9 +26119,9 @@ donor_minus_07 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_08 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_08 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 16;		/* 2 * shift */
   seq |= high << 16;		/* 2 * (16 - shift) */
@@ -26129,9 +26130,9 @@ donor_minus_08 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_09 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_09 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 18;		/* 2 * shift */
   seq |= high << 14;		/* 2 * (16 - shift) */
@@ -26140,9 +26141,9 @@ donor_minus_09 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_10 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_10 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 20;		/* 2 * shift */
   seq |= high << 12;		/* 2 * (16 - shift) */
@@ -26151,9 +26152,9 @@ donor_minus_10 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_11 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_11 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 22;		/* 2 * shift */
   seq |= high << 10;		/* 2 * (16 - shift) */
@@ -26162,9 +26163,9 @@ donor_minus_11 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_12 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_12 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 24;		/* 2 * shift */
   seq |= high << 8;		/* 2 * (16 - shift) */
@@ -26173,9 +26174,9 @@ donor_minus_12 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_13 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_13 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 26;		/* 2 * shift */
   seq |= high << 6;		/* 2 * (16 - shift) */
@@ -26184,9 +26185,9 @@ donor_minus_13 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_14 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_14 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 28;		/* 2 * shift */
   seq |= high << 4;		/* 2 * (16 - shift) */
@@ -26195,9 +26196,9 @@ donor_minus_14 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_15 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_15 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = low >> 30;		/* 2 * shift */
   seq |= high << 2;		/* 2 * (16 - shift) */
@@ -26206,9 +26207,9 @@ donor_minus_15 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_16 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_16 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high;			/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26216,9 +26217,9 @@ donor_minus_16 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_17 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_17 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 2;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26226,9 +26227,9 @@ donor_minus_17 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_18 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_18 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 4;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26236,9 +26237,9 @@ donor_minus_18 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_19 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_19 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 6;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26246,9 +26247,9 @@ donor_minus_19 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_20 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_20 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 8;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26256,9 +26257,9 @@ donor_minus_20 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_21 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_21 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 10;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26266,9 +26267,9 @@ donor_minus_21 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_22 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_22 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 12;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26276,9 +26277,9 @@ donor_minus_22 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_23 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_23 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 14;		/* 2 * (shift - 16) */
   odds = donor_score_minus[(seq & 0xFF) | ((seq >> 4) & 0x3F00)] * donor_discore_minus[(seq >> 8) & 0x0F];
@@ -26286,9 +26287,9 @@ donor_minus_23 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_24 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_24 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 16;		/* 2 * (shift - 16) */
   seq |= nextlow << 16;		/* 2 * (32 - shift) */
@@ -26297,9 +26298,9 @@ donor_minus_24 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_25 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_25 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 18;		/* 2 * (shift - 16) */
   seq |= nextlow << 14;		/* 2 * (32 - shift) */
@@ -26308,9 +26309,9 @@ donor_minus_25 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_26 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_26 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 20;		/* 2 * (shift - 16) */
   seq |= nextlow << 12;		/* 2 * (32 - shift) */
@@ -26319,9 +26320,9 @@ donor_minus_26 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_27 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_27 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 22;		/* 2 * (shift - 16) */
   seq |= nextlow << 10;		/* 2 * (32 - shift) */
@@ -26330,9 +26331,9 @@ donor_minus_27 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_28 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_28 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 24;		/* 2 * (shift - 16) */
   seq |= nextlow << 8;		/* 2 * (32 - shift) */
@@ -26341,9 +26342,9 @@ donor_minus_28 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_29 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_29 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 26;		/* 2 * (shift - 16) */
   seq |= nextlow << 6;		/* 2 * (32 - shift) */
@@ -26352,9 +26353,9 @@ donor_minus_29 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_30 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_30 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 28;		/* 2 * (shift - 16) */
   seq |= nextlow << 4;		/* 2 * (32 - shift) */
@@ -26363,9 +26364,9 @@ donor_minus_30 (UINT4 low, UINT4 high, UINT4 nextlow) {
 }
 
 static double
-donor_minus_31 (UINT4 low, UINT4 high, UINT4 nextlow) {
+donor_minus_31 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 30;		/* 2 * (shift - 16) */
   seq |= nextlow << 2;		/* 2 * (32 - shift) */
@@ -26381,12 +26382,12 @@ donor_minus_31 (UINT4 low, UINT4 high, UINT4 nextlow) {
 
 #if 0
 static double
-acceptor_prob_minus (Genomicpos_T startpos, UINT4 *blocks) {
+acceptor_prob_minus (Univcoord_T startpos, Genomecomp_T *blocks) {
   double odds;
-  Genomicpos_T ptr;
+  Univcoord_T ptr;
   int shift;
-  UINT4 high, low, nexthigh, nextlow;
-  UINT4 seq;
+  Genomecomp_T high, low, nexthigh, nextlow;
+  Genomecomp_T seq;
 
   ptr = startpos/32U*3;
   shift = startpos % 32;
@@ -26517,9 +26518,9 @@ acceptor_prob_minus (Genomicpos_T startpos, UINT4 *blocks) {
 
 
 static double
-acceptor_minus_00 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_00 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high;			/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26537,9 +26538,9 @@ acceptor_minus_00 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_01 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_01 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 2;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26558,9 +26559,9 @@ acceptor_minus_01 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_02 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_02 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 4;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26579,9 +26580,9 @@ acceptor_minus_02 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_03 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_03 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 6;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26600,9 +26601,9 @@ acceptor_minus_03 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_04 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_04 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 8;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26620,9 +26621,9 @@ acceptor_minus_04 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_05 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_05 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 10;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26641,9 +26642,9 @@ acceptor_minus_05 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_06 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_06 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 12;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26662,9 +26663,9 @@ acceptor_minus_06 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_07 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_07 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 14;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26682,9 +26683,9 @@ acceptor_minus_07 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_08 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_08 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 16;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26703,9 +26704,9 @@ acceptor_minus_08 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_09 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_09 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 18;		/* 2 * shift */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26724,9 +26725,9 @@ acceptor_minus_09 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_10 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_10 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 20;		/* 2 * shift */
   seq |= nextlow << 12;		/* 2 * (16 - shift) */
@@ -26746,9 +26747,9 @@ acceptor_minus_10 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_11 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_11 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 22;		/* 2 * shift */
   seq |= nextlow << 10;		/* 2 * (16 - shift) */
@@ -26767,9 +26768,9 @@ acceptor_minus_11 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_12 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_12 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 24;		/* 2 * shift */
   seq |= nextlow << 8;		/* 2 * (16 - shift) */
@@ -26788,9 +26789,9 @@ acceptor_minus_12 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_13 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_13 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 26;		/* 2 * shift */
   seq |= nextlow << 6;		/* 2 * (16 - shift) */
@@ -26809,9 +26810,9 @@ acceptor_minus_13 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_14 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_14 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 28;		/* 2 * shift */
   seq |= nextlow << 4;		/* 2 * (16 - shift) */
@@ -26831,9 +26832,9 @@ acceptor_minus_14 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_15 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_15 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = high >> 30;		/* 2 * shift */
   seq |= nextlow << 2;		/* 2 * (16 - shift) */
@@ -26853,9 +26854,9 @@ acceptor_minus_15 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_16 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_16 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26873,9 +26874,9 @@ acceptor_minus_16 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_17 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_17 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 2;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26894,9 +26895,9 @@ acceptor_minus_17 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_18 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_18 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 4;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26915,9 +26916,9 @@ acceptor_minus_18 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_19 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_19 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 6;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26936,9 +26937,9 @@ acceptor_minus_19 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_20 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_20 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 8;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26956,9 +26957,9 @@ acceptor_minus_20 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_21 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_21 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 10;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26977,9 +26978,9 @@ acceptor_minus_21 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_22 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_22 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 12;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -26998,9 +26999,9 @@ acceptor_minus_22 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_23 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_23 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 14;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -27018,9 +27019,9 @@ acceptor_minus_23 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_24 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_24 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 16;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -27039,9 +27040,9 @@ acceptor_minus_24 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_25 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_25 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 18;		/* 2 * (shift - 16) */
   odds = acc_score1_minus[seq & 0x3FFF];
@@ -27060,9 +27061,9 @@ acceptor_minus_25 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_26 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_26 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 20;		/* 2 * (shift - 16) */
   seq |= nexthigh << 12;	/* 2 * (32 - shift) */
@@ -27082,9 +27083,9 @@ acceptor_minus_26 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_27 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_27 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 22;		/* 2 * (shift - 16) */
   seq |= nexthigh << 10;	/*  * (32 - shift */
@@ -27103,9 +27104,9 @@ acceptor_minus_27 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_28 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_28 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 24;		/* 2 * (shift - 16) */
   seq |= nexthigh << 8;		/*  * (32 - shift */
@@ -27124,9 +27125,9 @@ acceptor_minus_28 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_29 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_29 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 26;		/* 2 * (shift - 16) */
   seq |= nexthigh << 6;		/*  * (32 - shift */
@@ -27145,9 +27146,9 @@ acceptor_minus_29 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_30 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_30 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 28;		/* 2 * (shift - 16) */
   seq |= nexthigh << 4;		/*  * (32 - shift */
@@ -27167,9 +27168,9 @@ acceptor_minus_30 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 static double
-acceptor_minus_31 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
+acceptor_minus_31 (Genomecomp_T low, Genomecomp_T high, Genomecomp_T nextlow, Genomecomp_T nexthigh) {
   double odds;
-  UINT4 seq;
+  Genomecomp_T seq;
 
   seq = nextlow >> 30;		/* 2 * (shift - 16) */
   seq |= nexthigh << 2;		/*  * (32 - shift */
@@ -27189,11 +27190,11 @@ acceptor_minus_31 (UINT4 low, UINT4 high, UINT4 nextlow, UINT4 nexthigh) {
 }
 
 
-static UINT4 *ref_blocks;
+static Genomecomp_T *ref_blocks;
 static UINT4 *snp_blocks;	/* Could be NULL */
 
 void
-Maxent_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in) {
+Maxent_hr_setup (Genomecomp_T *ref_blocks_in, Genomecomp_T *snp_blocks_in) {
   ref_blocks = ref_blocks_in;
   snp_blocks = snp_blocks_in;
 
@@ -27204,8 +27205,8 @@ Maxent_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in) {
  *   Dispatch procedures
  ************************************************************************/
 
-typedef double (*Handler3_T) (UINT4, UINT4, UINT4);
-typedef double (*Handler4_T) (UINT4, UINT4, UINT4, UINT4);
+typedef double (*Handler3_T) (Genomecomp_T, Genomecomp_T, Genomecomp_T);
+typedef double (*Handler4_T) (Genomecomp_T, Genomecomp_T, Genomecomp_T, Genomecomp_T);
 
 static Handler3_T donor_plus_table[32] =
   {donor_plus_00, donor_plus_01, donor_plus_02, donor_plus_03,
@@ -27218,11 +27219,11 @@ static Handler3_T donor_plus_table[32] =
    donor_plus_28, donor_plus_29, donor_plus_30, donor_plus_31};
 
 double
-Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
-  Genomicpos_T startpos;
-  Genomicpos_T ptr;
+Maxent_hr_donor_prob (Univcoord_T splice_pos, Univcoord_T chroffset) {
+  Univcoord_T startpos;
+  Univcoord_T ptr;
   int shift;
-  UINT4 high, low, nextlow;
+  Genomecomp_T high, low, nextlow;
   double refprob, altprob;
 #ifdef DEBUG
   char g_alt;
@@ -27286,11 +27287,11 @@ static Handler4_T acceptor_plus_table[32] =
    acceptor_plus_28, acceptor_plus_29, acceptor_plus_30, acceptor_plus_31};
 
 double
-Maxent_hr_acceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
-  Genomicpos_T startpos;
-  Genomicpos_T ptr;
+Maxent_hr_acceptor_prob (Univcoord_T splice_pos, Univcoord_T chroffset) {
+  Univcoord_T startpos;
+  Univcoord_T ptr;
   int shift;
-  UINT4 low, high, nextlow, nexthigh;
+  Genomecomp_T low, high, nextlow, nexthigh;
   double refprob, altprob;
 #ifdef DEBUG
   char g_alt;
@@ -27357,11 +27358,11 @@ static Handler3_T donor_minus_table[32] =
    donor_minus_28, donor_minus_29, donor_minus_30, donor_minus_31};
 
 double
-Maxent_hr_antidonor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
-  Genomicpos_T startpos;
-  Genomicpos_T ptr;
+Maxent_hr_antidonor_prob (Univcoord_T splice_pos, Univcoord_T chroffset) {
+  Univcoord_T startpos;
+  Univcoord_T ptr;
   int shift;
-  UINT4 high, low, nextlow;
+  Genomecomp_T high, low, nextlow;
   double refprob, altprob;
 #ifdef DEBUG
   char g_alt;
@@ -27423,11 +27424,11 @@ static Handler4_T acceptor_minus_table[32] =
    acceptor_minus_28, acceptor_minus_29, acceptor_minus_30, acceptor_minus_31};
 
 double
-Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset) {
-  Genomicpos_T startpos;
-  Genomicpos_T ptr;
+Maxent_hr_antiacceptor_prob (Univcoord_T splice_pos, Univcoord_T chroffset) {
+  Univcoord_T startpos;
+  Univcoord_T ptr;
   int shift;
-  UINT4 low, high, nextlow, nexthigh;
+  Genomecomp_T low, high, nextlow, nexthigh;
   double refprob, altprob;
 #ifdef DEBUG
   char g_alt;

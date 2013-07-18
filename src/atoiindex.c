@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: atoiindex.c 60849 2012-03-30 19:25:41Z twu $";
+static char rcsid[] = "$Id: atoiindex.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -54,7 +54,9 @@ static char rcsid[] = "$Id: atoiindex.c 60849 2012-03-30 19:25:41Z twu $";
 
 #include "bool.h"
 #include "genomicpos.h"
+#include "iit-read-univ.h"
 #include "indexdb.h"
+#include "indexdb-write.h"
 #include "datadir.h"
 #include "getopt.h"
 
@@ -282,9 +284,12 @@ compute_offsets_tc (Positionsptr_T *oldoffsets, Oligospace_T oligospace, Storedo
 
 static void
 compute_ag (char *gammaptrs_filename, char *offsetscomp_filename,
-	    FILE *positions_fp, Positionsptr_T *oldoffsets, Genomicpos_T *oldpositions,
-	    Oligospace_T oligospace, Storedoligomer_T mask) {
-  Genomicpos_T *positions;
+	    FILE *positions_fp, Positionsptr_T *oldoffsets,
+	    UINT8 *oldpositions8, UINT4 *oldpositions4,
+	    Oligospace_T oligospace, Storedoligomer_T mask,
+	    bool coord_values_8p) {
+  UINT8 *positions8;
+  UINT4 *positions4;
   Positionsptr_T *snpoffsets, j;
   Oligospace_T oligoi, oligok, reduced;
   Positionsptr_T *pointers, *offsets, preunique_totalcounts, block_start, block_end, npositions, offsets_ptr;
@@ -298,10 +303,23 @@ compute_ag (char *gammaptrs_filename, char *offsetscomp_filename,
   if (preunique_totalcounts == 0) {
     fprintf(stderr,"Something is wrong with the offsets.  Total counts is zero.\n");
     exit(9);
+
+  } else if (coord_values_8p == true) {
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",preunique_totalcounts,(int) sizeof(UINT8));
+    positions4 = (UINT4 *) NULL;
+    positions8 = (UINT8 *) CALLOC_NO_EXCEPTION(preunique_totalcounts,sizeof(UINT8));
+    if (positions8 == NULL) {
+      fprintf(stderr,"failed.  Need a computer with sufficient memory.\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"done\n");
+    }
+
   } else {
-    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",preunique_totalcounts,(int) sizeof(Genomicpos_T));
-    positions = (Genomicpos_T *) CALLOC_NO_EXCEPTION(preunique_totalcounts,sizeof(Genomicpos_T));
-    if (positions == NULL) {
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",preunique_totalcounts,(int) sizeof(UINT4));
+    positions8 = (UINT8 *) NULL;
+    positions4 = (UINT4 *) CALLOC_NO_EXCEPTION(preunique_totalcounts,sizeof(UINT4));
+    if (positions4 == NULL) {
       fprintf(stderr,"failed.  Need a computer with sufficient memory.\n");
       exit(9);
     } else {
@@ -319,26 +337,52 @@ compute_ag (char *gammaptrs_filename, char *offsetscomp_filename,
     }
     reduced = Atoi_reduce_ag(oligoi) & mask;
 #ifdef WORDS_BIGENDIAN
-    for (j = Bigendian_convert_uint(oldoffsets[oligoi]); j < Bigendian_convert_uint(oldoffsets[oligoi+1]); j++) {
-      debug(nt1 = shortoligo_nt(oligoi,index1part);
-	    nt2 = shortoligo_nt(reduced,index1part);
-	    printf("Oligo %s => %s: copying position %u to location %u\n",
-		   nt1,nt2,oldpositions[j],pointers[oligoi]);
-	    FREE(nt2);
-	    FREE(nt1);
-	    );
-      positions[pointers[reduced]++] = Bigendian_convert_uint(oldpositions[j]);
+    if (coord_values_8p == true) {
+      for (j = Bigendian_convert_uint(oldoffsets[oligoi]); j < Bigendian_convert_uint(oldoffsets[oligoi+1]); j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions8[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions8[pointers[reduced]++] = Bigendian_convert_uint8(oldpositions8[j]);
+      }
+    } else {
+      for (j = Bigendian_convert_uint(oldoffsets[oligoi]); j < Bigendian_convert_uint(oldoffsets[oligoi+1]); j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions4[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions4[pointers[reduced]++] = Bigendian_convert_uint(oldpositions4[j]);
+      }
     }
 #else
-    for (j = oldoffsets[oligoi]; j < oldoffsets[oligoi+1]; j++) {
-      debug(nt1 = shortoligo_nt(oligoi,index1part);
-	    nt2 = shortoligo_nt(reduced,index1part);
-	    printf("Oligo %s => %s: copying position %u to location %u\n",
-		   nt1,nt2,oldpositions[j],pointers[oligoi]);
-	    FREE(nt2);
-	    FREE(nt1);
-	    );
-      positions[pointers[reduced]++] = oldpositions[j];
+    if (coord_values_8p == true) {
+      for (j = oldoffsets[oligoi]; j < oldoffsets[oligoi+1]; j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions8[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions8[pointers[reduced]++] = oldpositions8[j];
+      }
+    } else {
+      for (j = oldoffsets[oligoi]; j < oldoffsets[oligoi+1]; j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions4[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions4[pointers[reduced]++] = oldpositions4[j];
+      }
     }
 #endif
   }
@@ -356,30 +400,59 @@ compute_ag (char *gammaptrs_filename, char *offsetscomp_filename,
     offsets_ptr = 0U;
     snpoffsets[oligok++] = offsets_ptr;
   }
-  for (oligoi = 0; oligoi < oligospace; oligoi++) {
-    if (oligoi % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,".");
-    }
-    block_start = offsets[oligoi];
-    block_end = offsets[oligoi+1];
-    if ((npositions = block_end - block_start) > 0) {
-      qsort(&(positions[block_start]),npositions,sizeof(Genomicpos_T),Genomicpos_compare);
-      if (snps_root == NULL) {
-	FWRITE_UINTS(&(positions[block_start]),npositions,positions_fp);
-      } else {
-	FWRITE_UINT(positions[block_start],positions_fp);
-	for (j = block_start+1; j < block_end; j++) {
-	  if (positions[j] == positions[j-1]) {
-	    npositions--;
-	  } else {
-	    FWRITE_UINT(positions[j],positions_fp);
+  if (coord_values_8p == true) {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+      if (oligoi % MONITOR_INTERVAL == 0) {
+	fprintf(stderr,".");
+      }
+      block_start = offsets[oligoi];
+      block_end = offsets[oligoi+1];
+      if ((npositions = block_end - block_start) > 0) {
+	qsort(&(positions8[block_start]),npositions,sizeof(UINT8),UINT8_compare);
+	if (snps_root == NULL) {
+	  FWRITE_UINT8S(&(positions8[block_start]),npositions,positions_fp);
+	} else {
+	  FWRITE_UINT8(positions8[block_start],positions_fp);
+	  for (j = block_start+1; j < block_end; j++) {
+	    if (positions8[j] == positions8[j-1]) {
+	      npositions--;
+	    } else {
+	      FWRITE_UINT8(positions8[j],positions_fp);
+	    }
 	  }
+	  offsets_ptr += npositions;
 	}
-	offsets_ptr += npositions;
+      }
+      if (snps_root) {
+	snpoffsets[oligok++] = offsets_ptr;
       }
     }
-    if (snps_root) {
-      snpoffsets[oligok++] = offsets_ptr;
+  } else {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+      if (oligoi % MONITOR_INTERVAL == 0) {
+	fprintf(stderr,".");
+      }
+      block_start = offsets[oligoi];
+      block_end = offsets[oligoi+1];
+      if ((npositions = block_end - block_start) > 0) {
+	qsort(&(positions4[block_start]),npositions,sizeof(UINT4),UINT4_compare);
+	if (snps_root == NULL) {
+	  FWRITE_UINTS(&(positions4[block_start]),npositions,positions_fp);
+	} else {
+	  FWRITE_UINT(positions4[block_start],positions_fp);
+	  for (j = block_start+1; j < block_end; j++) {
+	    if (positions4[j] == positions4[j-1]) {
+	      npositions--;
+	    } else {
+	      FWRITE_UINT(positions4[j],positions_fp);
+	    }
+	  }
+	  offsets_ptr += npositions;
+	}
+      }
+      if (snps_root) {
+	snpoffsets[oligok++] = offsets_ptr;
+      }
     }
   }
   fprintf(stderr,"done\n");
@@ -398,16 +471,23 @@ compute_ag (char *gammaptrs_filename, char *offsetscomp_filename,
   }
 
   FREE(offsets);
-  FREE(positions);
+  if (coord_values_8p == true) {
+    FREE(positions8);
+  } else {
+    FREE(positions4);
+  }
 
   return;
 }
 
 static void
 compute_tc (char *gammaptrs_filename, char *offsetscomp_filename,
-	    FILE *positions_fp, Positionsptr_T *oldoffsets, Genomicpos_T *oldpositions,
-	    Oligospace_T oligospace, Storedoligomer_T mask) {
-  Genomicpos_T *positions;
+	    FILE *positions_fp, Positionsptr_T *oldoffsets,
+	    UINT8 *oldpositions8, UINT4 *oldpositions4,
+	    Oligospace_T oligospace, Storedoligomer_T mask,
+	    bool coord_values_8p) {
+  UINT8 *positions8;
+  UINT4 *positions4;
   Positionsptr_T *snpoffsets, j;
   Oligospace_T oligoi, oligok, reduced;
   Positionsptr_T *pointers, *offsets, preunique_totalcounts, block_start, block_end, npositions, offsets_ptr;
@@ -421,10 +501,23 @@ compute_tc (char *gammaptrs_filename, char *offsetscomp_filename,
   if (preunique_totalcounts == 0) {
     fprintf(stderr,"Something is wrong with the offsets.  Total counts is zero.\n");
     exit(9);
+
+  } else if (coord_values_8p == true) {
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",preunique_totalcounts,(int) sizeof(UINT8));
+    positions4 = (UINT4 *) NULL;
+    positions8 = (UINT8 *) CALLOC_NO_EXCEPTION(preunique_totalcounts,sizeof(UINT8));
+    if (positions8 == NULL) {
+      fprintf(stderr,"failed.  Need a computer with sufficient memory.\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"done\n");
+    }
+
   } else {
-    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",preunique_totalcounts,(int) sizeof(Genomicpos_T));
-    positions = (Genomicpos_T *) CALLOC_NO_EXCEPTION(preunique_totalcounts,sizeof(Genomicpos_T));
-    if (positions == NULL) {
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",preunique_totalcounts,(int) sizeof(UINT4));
+    positions8 = (UINT8 *) NULL;
+    positions4 = (UINT4 *) CALLOC_NO_EXCEPTION(preunique_totalcounts,sizeof(UINT4));
+    if (positions4 == NULL) {
       fprintf(stderr,"failed.  Need a computer with sufficient memory.\n");
       exit(9);
     } else {
@@ -443,26 +536,52 @@ compute_tc (char *gammaptrs_filename, char *offsetscomp_filename,
 
     reduced = Atoi_reduce_tc(oligoi) & mask;
 #ifdef WORDS_BIGENDIAN
-    for (j = Bigendian_convert_uint(oldoffsets[oligoi]); j < Bigendian_convert_uint(oldoffsets[oligoi+1]); j++) {
-      debug(nt1 = shortoligo_nt(oligoi,index1part);
-	    nt2 = shortoligo_nt(reduced,index1part);
-	    printf("Oligo %s => %s: copying position %u to location %u\n",
-		   nt1,nt2,oldpositions[j],pointers[oligoi]);
-	    FREE(nt2);
-	    FREE(nt1);
-	    );
-      positions[pointers[reduced]++] = Bigendian_convert_uint(oldpositions[j]);
+    if (coord_values_8p == true) {
+      for (j = Bigendian_convert_uint(oldoffsets[oligoi]); j < Bigendian_convert_uint(oldoffsets[oligoi+1]); j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions8[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions8[pointers[reduced]++] = Bigendian_convert_uint8(oldpositions8[j]);
+      }
+    } else {
+      for (j = Bigendian_convert_uint(oldoffsets[oligoi]); j < Bigendian_convert_uint(oldoffsets[oligoi+1]); j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions4[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions4[pointers[reduced]++] = Bigendian_convert_uint(oldpositions4[j]);
+      }
     }
 #else
-    for (j = oldoffsets[oligoi]; j < oldoffsets[oligoi+1]; j++) {
-      debug(nt1 = shortoligo_nt(oligoi,index1part);
-	    nt2 = shortoligo_nt(reduced,index1part);
-	    printf("Oligo %s => %s: copying position %u to location %u\n",
-		   nt1,nt2,oldpositions[j],pointers[oligoi]);
-	    FREE(nt2);
-	    FREE(nt1);
-	    );
-      positions[pointers[reduced]++] = oldpositions[j];
+    if (coord_values_8p == true) {
+      for (j = oldoffsets[oligoi]; j < oldoffsets[oligoi+1]; j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions8[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions8[pointers[reduced]++] = oldpositions8[j];
+      }
+    } else {
+      for (j = oldoffsets[oligoi]; j < oldoffsets[oligoi+1]; j++) {
+	debug(nt1 = shortoligo_nt(oligoi,index1part);
+	      nt2 = shortoligo_nt(reduced,index1part);
+	      printf("Oligo %s => %s: copying position %u to location %u\n",
+		     nt1,nt2,oldpositions4[j],pointers[oligoi]);
+	      FREE(nt2);
+	      FREE(nt1);
+	      );
+	positions4[pointers[reduced]++] = oldpositions4[j];
+      }
     }
 #endif
   }
@@ -480,30 +599,59 @@ compute_tc (char *gammaptrs_filename, char *offsetscomp_filename,
     offsets_ptr = 0U;
     snpoffsets[oligok++] = offsets_ptr;
   }
-  for (oligoi = 0; oligoi < oligospace; oligoi++) {
-    if (oligoi % MONITOR_INTERVAL == 0) {
-      fprintf(stderr,".");
-    }
-    block_start = offsets[oligoi];
-    block_end = offsets[oligoi+1];
-    if ((npositions = block_end - block_start) > 0) {
-      qsort(&(positions[block_start]),npositions,sizeof(Genomicpos_T),Genomicpos_compare);
-      if (snps_root == NULL) {
-	FWRITE_UINTS(&(positions[block_start]),npositions,positions_fp);
-      } else {
-	FWRITE_UINT(positions[block_start],positions_fp);
-	for (j = block_start+1; j < block_end; j++) {
-	  if (positions[j] == positions[j-1]) {
-	    npositions--;
-	  } else {
-	    FWRITE_UINT(positions[j],positions_fp);
+  if (coord_values_8p == true) {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+      if (oligoi % MONITOR_INTERVAL == 0) {
+	fprintf(stderr,".");
+      }
+      block_start = offsets[oligoi];
+      block_end = offsets[oligoi+1];
+      if ((npositions = block_end - block_start) > 0) {
+	qsort(&(positions8[block_start]),npositions,sizeof(UINT8),UINT8_compare);
+	if (snps_root == NULL) {
+	  FWRITE_UINT8S(&(positions8[block_start]),npositions,positions_fp);
+	} else {
+	  FWRITE_UINT8(positions8[block_start],positions_fp);
+	  for (j = block_start+1; j < block_end; j++) {
+	    if (positions8[j] == positions8[j-1]) {
+	      npositions--;
+	    } else {
+	      FWRITE_UINT8(positions8[j],positions_fp);
+	    }
 	  }
+	  offsets_ptr += npositions;
 	}
-	offsets_ptr += npositions;
+      }
+      if (snps_root) {
+	snpoffsets[oligok++] = offsets_ptr;
       }
     }
-    if (snps_root) {
-      snpoffsets[oligok++] = offsets_ptr;
+  } else {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+      if (oligoi % MONITOR_INTERVAL == 0) {
+	fprintf(stderr,".");
+      }
+      block_start = offsets[oligoi];
+      block_end = offsets[oligoi+1];
+      if ((npositions = block_end - block_start) > 0) {
+	qsort(&(positions4[block_start]),npositions,sizeof(UINT4),UINT4_compare);
+	if (snps_root == NULL) {
+	  FWRITE_UINTS(&(positions4[block_start]),npositions,positions_fp);
+	} else {
+	  FWRITE_UINT(positions4[block_start],positions_fp);
+	  for (j = block_start+1; j < block_end; j++) {
+	    if (positions4[j] == positions4[j-1]) {
+	      npositions--;
+	    } else {
+	      FWRITE_UINT(positions4[j],positions_fp);
+	    }
+	  }
+	  offsets_ptr += npositions;
+	}
+      }
+      if (snps_root) {
+	snpoffsets[oligok++] = offsets_ptr;
+      }
     }
   }
   fprintf(stderr,"done\n");
@@ -522,7 +670,12 @@ compute_tc (char *gammaptrs_filename, char *offsetscomp_filename,
   }
 
   FREE(offsets);
-  FREE(positions);
+  if (coord_values_8p == true) {
+    FREE(positions8);
+  } else {
+    FREE(positions4);
+  }
+
   return;
 }
 
@@ -538,10 +691,13 @@ main (int argc, char *argv[]) {
     *gammaptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
     *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
   char *new_gammaptrs_filename, *new_offsetscomp_filename;
+  Univ_IIT_T chromosome_iit;
   Positionsptr_T *ref_offsets;
   Storedoligomer_T mask;
-  Genomicpos_T *ref_positions;
+  UINT8 *ref_positions8;
+  UINT4 *ref_positions4;
   Oligospace_T oligospace;
+  bool coord_values_8p;
 
   FILE *positions_fp, *ref_positions_fp;
   int ref_positions_fd;
@@ -596,6 +752,19 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"Reading source files from %s\n",sourcedir);
   }
 
+  /* Chromosome IIT file.  Need to determine coord_values_8p */
+  filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
+			    strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+  sprintf(filename,"%s/%s.chromosome.iit",sourcedir,fileroot);
+  if ((chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
+    fprintf(stderr,"IIT file %s is not valid\n",filename);
+    exit(9);
+  } else {
+    coord_values_8p = Univ_IIT_coord_values_8p(chromosome_iit);
+  }
+  Univ_IIT_free(&chromosome_iit);
+  FREE(filename);
+
 
   Indexdb_get_filenames(&gammaptrs_filename,&offsetscomp_filename,&positions_filename,
 			&gammaptrs_basename_ptr,&offsetscomp_basename_ptr,&positions_basename_ptr,
@@ -617,11 +786,21 @@ main (int argc, char *argv[]) {
   }
 
 #ifdef HAVE_MMAP
-  ref_positions = (Genomicpos_T *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					       positions_filename,sizeof(Genomicpos_T),/*randomp*/false);
+  if (coord_values_8p == true) {
+    ref_positions8 = (UINT8 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
+					   positions_filename,sizeof(UINT8),/*randomp*/false);
+  } else {
+    ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
+					   positions_filename,sizeof(UINT4),/*randomp*/false);
+  }
 #else
-  ref_positions = (Genomicpos_T *) Access_allocated(&ref_positions_len,&seconds,
-						    positions_filename,sizeof(Genomicpos_T));
+  if (coord_values_8p == true) {
+    ref_positions8 = (UINT8 *) Access_allocated(&ref_positions_len,&seconds,
+						positions_filename,sizeof(UINT8));
+  } else {
+    ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_len,&seconds,
+						positions_filename,sizeof(UINT4));
+  }
 #endif
 
 
@@ -658,7 +837,8 @@ main (int argc, char *argv[]) {
 
   /* Compute and write AG files */
   compute_ag(new_gammaptrs_filename,new_offsetscomp_filename,
-	     positions_fp,ref_offsets,ref_positions,oligospace,mask);
+	     positions_fp,ref_offsets,ref_positions8,ref_positions4,
+	     oligospace,mask,coord_values_8p);
   fclose(positions_fp);
   FREE(new_offsetscomp_filename);
   if (index1part != offsetscomp_basesize) {
@@ -692,7 +872,8 @@ main (int argc, char *argv[]) {
 
   /* Compute and write TC files */
   compute_tc(new_gammaptrs_filename,new_offsetscomp_filename,
-	     positions_fp,ref_offsets,ref_positions,oligospace,mask);
+	     positions_fp,ref_offsets,ref_positions8,ref_positions4,
+	     oligospace,mask,coord_values_8p);
   fclose(positions_fp);
   FREE(new_offsetscomp_filename);
   if (index1part != offsetscomp_basesize) {
@@ -705,10 +886,18 @@ main (int argc, char *argv[]) {
   FREE(ref_offsets);
 
 #ifdef HAVE_MMAP
-  munmap((void *) ref_positions,ref_positions_len);
+  if (coord_values_8p == true) {
+    munmap((void *) ref_positions8,ref_positions_len);
+  } else {
+    munmap((void *) ref_positions4,ref_positions_len);
+  }
   close(ref_positions_fd);
 #else
-  FREE(ref_positions);
+  if (coord_values_8p == true) {
+    FREE(ref_positions8);
+  } else {
+    FREE(ref_positions4);
+  }
 #endif
 
   FREE(positions_filename);

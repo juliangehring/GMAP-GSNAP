@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c 57025 2012-02-03 01:59:44Z twu $";
+static char rcsid[] = "$Id: spanningelt.c 99756 2013-06-27 21:20:19Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -43,9 +43,9 @@ static char rcsid[] = "$Id: spanningelt.c 57025 2012-02-03 01:59:44Z twu $";
 
 static bool free_positions_p;	/* Needs to be true if Indexdb positions are FILEIO */
 
-static int index1part;
-static int index1interval;
-static int spansize;
+static Width_T index1part;
+static Width_T index1interval;
+static Width_T spansize;
 
 /* spansize is the interval at which spanningelts must be spaced, due
    to sampling (i.e., largest multiple of index1interval >=
@@ -54,8 +54,8 @@ static int spansize;
    alignment against the genome).  If spansize is smaller than
    index1part, this lower bound won't hold. */
 
-int
-Spanningelt_setup (int index1part_in, int index1interval_in) {
+Width_T
+Spanningelt_setup (Width_T index1part_in, Width_T index1interval_in) {
   index1part = index1part_in;
   index1interval = index1interval_in;
 
@@ -174,7 +174,7 @@ Spanningelt_print_set (List_T spanningset) {
 
 static T
 Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
-		 Genomicpos_T ***stage1_positions, int **stage1_npositions,
+		 Univcoord_T ***stage1_positions, int **stage1_npositions,
 		 Indexdb_T indexdb, bool partnerp, int querypos1, int querypos2,
 		 int query_lastpos, int querylength, bool plusp) {
   T new = (T) MALLOC(sizeof(*new));
@@ -183,15 +183,15 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
   debug(printf("Entered Spanningelt_new with querypos1 %d, querypos2 %d, query_lastpos %d, querylength %d\n",
 	       querypos1,querypos2,query_lastpos,querylength));
   new->querylength = querylength;
-  new->intersection_diagonals = (Genomicpos_T *) NULL;
+  new->intersection_diagonals = (Univcoord_T *) NULL;
   new->intersection_ndiagonals = 0;
-  new->intersection_diagonals_reset = (Genomicpos_T *) NULL;
+  new->intersection_diagonals_reset = (Univcoord_T *) NULL;
   new->intersection_ndiagonals_reset = 0;
 
   /* Handle partner */
   if ((new->partnerp = partnerp) == false) {
     debug(printf("partnerp is false, so querypos = querypos1 %d\n",querypos1));
-    new->partner_positions = (Genomicpos_T *) NULL;
+    new->partner_positions = (Univcoord_T *) NULL;
     new->partner_npositions = 0;
     new->querypos = querypos = querypos1;
 
@@ -227,7 +227,7 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
     if (free_positions_p == true) {
       new->positions_allocated = new->positions;
     } else {
-      new->positions_allocated = (Genomicpos_T *) NULL;
+      new->positions_allocated = (Univcoord_T *) NULL;
     }
     new->diagterm = plusp ? querylength - querypos : querypos + index1part; /* FORMULA */
 
@@ -336,7 +336,7 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 
 static List_T
 make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
-		      Genomicpos_T ***stage1_positions, int **stage1_npositions,
+		      Univcoord_T ***stage1_positions, int **stage1_npositions,
 		      Indexdb_T indexdb, int query_lastpos, int querylength,
 		      int first, int last, bool plusp) {
   List_T spanningset;
@@ -414,7 +414,7 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
 
 List_T
 Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
-		 Genomicpos_T ***stage1_positions, int **stage1_npositions,
+		 Univcoord_T ***stage1_positions, int **stage1_npositions,
 		 Indexdb_T indexdb, int query_lastpos, int querylength,
 		 int mod, bool plusp) {
   int first, last;
@@ -472,7 +472,7 @@ Spanningelt_pruning_cmp (const void *a, const void *b) {
 /* Called only by exact/sub:1 procedures, so need to do Bigendian conversion */
 #ifdef WORDS_BIGENDIAN
 static int
-binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) {
+binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   bool foundp = false;
   int middlei;
 
@@ -481,11 +481,11 @@ binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) 
   while (!foundp && lowi < highi) {
     middlei = (lowi+highi)/2;
     debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
-		   lowi,Bigendian_convert_uint(positions[lowi]),middlei,Bigendian_convert_uint(positions[middlei]),
-		   highi,Bigendian_convert_uint(positions[highi]),goal));
-    if (goal < Bigendian_convert_uint(positions[middlei])) {
+		   lowi,Bigendian_convert_univcoord(positions[lowi]),middlei,Bigendian_convert_univcoord(positions[middlei]),
+		   highi,Bigendian_convert_univcoord(positions[highi]),goal));
+    if (goal < Bigendian_convert_univcoord(positions[middlei])) {
       highi = middlei;
-    } else if (goal > Bigendian_convert_uint(positions[middlei])) {
+    } else if (goal > Bigendian_convert_univcoord(positions[middlei])) {
       lowi = middlei + 1;
     } else {
       foundp = true;
@@ -502,7 +502,7 @@ binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) 
 }
 #else
 static int
-binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) {
+binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   bool foundp = false;
   int middlei;
 
@@ -534,10 +534,10 @@ binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) 
 
 
 /* This procedure needs to eliminate duplicates, which can happen with a SNP-tolerant indexdb */
-static Genomicpos_T *
-compute_intersection (int *ndiagonals, Genomicpos_T *positionsa, int diagterma, int npositionsa, 
-		      Genomicpos_T *positionsb, int diagtermb, int npositionsb) {
-  Genomicpos_T *diagonals, *positions0, *positions1, local_goal, last_diagonal = 0U, this_diagonal;
+static Univcoord_T *
+compute_intersection (int *ndiagonals, Univcoord_T *positionsa, int diagterma, int npositionsa, 
+		      Univcoord_T *positionsb, int diagtermb, int npositionsb) {
+  Univcoord_T *diagonals, *positions0, *positions1, local_goal, last_diagonal = 0U, this_diagonal;
   int npositions0, npositions1, delta, j, diagterm;
 
   if (npositionsa < npositionsb) {
@@ -562,20 +562,20 @@ compute_intersection (int *ndiagonals, Genomicpos_T *positionsa, int diagterma, 
   *ndiagonals = 0;
   if (npositions0 == 0) {
     debug(printf("intersection is null\n"));
-    return (Genomicpos_T *) NULL;
+    return (Univcoord_T *) NULL;
   } else {
     /* Allocate maximum possible size */
-    diagonals = (Genomicpos_T *) CALLOC(npositions0,sizeof(Genomicpos_T));
+    diagonals = (Univcoord_T *) CALLOC(npositions0,sizeof(Univcoord_T));
   }
 
   while (npositions0 > 0) {
 #ifdef WORDS_BIGENDIAN
-    local_goal = Bigendian_convert_uint(*positions0) + delta;
+    local_goal = Bigendian_convert_univcoord(*positions0) + delta;
     debug(printf("intersection list 0: %d:%u => local_goal %u\n",
-		 npositions0,Bigendian_convert_uint(*positions0),local_goal));
-    if (npositions1 > 0 && Bigendian_convert_uint(*positions1) < local_goal) {
+		 npositions0,Bigendian_convert_univcoord(*positions0),local_goal));
+    if (npositions1 > 0 && Bigendian_convert_univcoord(*positions1) < local_goal) {
       j = 1;
-      while (j < npositions1 && Bigendian_convert_uint(positions1[j]) < local_goal) {
+      while (j < npositions1 && Bigendian_convert_univcoord(positions1[j]) < local_goal) {
 	j <<= 1;		/* gallop by 2 */
       }
       if (j >= npositions1) {
@@ -607,10 +607,10 @@ compute_intersection (int *ndiagonals, Genomicpos_T *positionsa, int diagterma, 
 #ifdef WORDS_BIGENDIAN
     if (npositions1 <= 0) {
       return diagonals;
-    } else if (Bigendian_convert_uint(*positions1) == local_goal) {
+    } else if (Bigendian_convert_univcoord(*positions1) == local_goal) {
       /* Found local goal.  Save and advance */
       debug(printf("    intersection list 1: %d:%u  found\n",
-		   npositions1,Bigendian_convert_uint(*positions1)));
+		   npositions1,Bigendian_convert_univcoord(*positions1)));
       if ((this_diagonal = local_goal + diagterm) != last_diagonal) {
 	diagonals[(*ndiagonals)++] = this_diagonal;
       }
@@ -644,10 +644,10 @@ compute_intersection (int *ndiagonals, Genomicpos_T *positionsa, int diagterma, 
 
 
 /* This procedure needs to eliminate duplicates, which can happen with a SNP-tolerant indexdb */
-static Genomicpos_T *
-compoundpos_intersect (int *ndiagonals, Genomicpos_T *positions0, int diagterm0, int npositions0, 
+static Univcoord_T *
+compoundpos_intersect (int *ndiagonals, Univcoord_T *positions0, int diagterm0, int npositions0, 
 		       Compoundpos_T compoundpos, int diagterm1) {
-  Genomicpos_T *diagonals, local_goal, last_local_goal;
+  Univcoord_T *diagonals, local_goal, last_local_goal;
   int delta;
   bool emptyp;
 
@@ -655,16 +655,16 @@ compoundpos_intersect (int *ndiagonals, Genomicpos_T *positions0, int diagterm0,
 
   *ndiagonals = 0;
   if (npositions0 == 0) {
-    return (Genomicpos_T *) NULL;
+    return (Univcoord_T *) NULL;
   } else {
   /* Could add up compoundpos->npositions to see if we could allocate less memory */
-    diagonals = (Genomicpos_T *) CALLOC(npositions0,sizeof(Genomicpos_T));
+    diagonals = (Univcoord_T *) CALLOC(npositions0,sizeof(Univcoord_T));
   }
   
   last_local_goal = 0U;
   while (npositions0 > 0) {
 #ifdef WORDS_BIGENDIAN
-    local_goal = Bigendian_convert_uint(*positions0) + delta;
+    local_goal = Bigendian_convert_univcoord(*positions0) + delta;
 #else
     local_goal = (*positions0) + delta;
 #endif
@@ -694,8 +694,8 @@ compoundpos_intersect (int *ndiagonals, Genomicpos_T *positions0, int diagterm0,
 
 #ifdef CHECK
 static void
-check_diagonals (Genomicpos_T *diagonals, int ndiagonals) {
-  Genomicpos_T last_diagonal = 0U;
+check_diagonals (Univcoord_T *diagonals, int ndiagonals) {
+  Univcoord_T last_diagonal = 0U;
   int i;
   
   for (i = 0; i < ndiagonals; i++) {
@@ -714,9 +714,9 @@ check_diagonals (Genomicpos_T *diagonals, int ndiagonals) {
 /* Assumes that we want a single list of diagonals for use in
    generating candidates.  Hides all issues about partner and
    compoundpos. */
-Genomicpos_T *
+Univcoord_T *
 Spanningelt_diagonals (int *ndiagonals, T this, int *miss_querypos5, int *miss_querypos3) {
-  Genomicpos_T *p, *q, last_diagonal;
+  Univcoord_T *p, *q, last_diagonal;
   int diagterm, i;
 
   *miss_querypos5 = this->miss_querypos5;
@@ -736,20 +736,20 @@ Spanningelt_diagonals (int *ndiagonals, T this, int *miss_querypos5, int *miss_q
       debug(printf("Positions only.  Converting to diagonals\n"));
       /* Positions only.  Convert to diagonals */
       if (this->npositions == 0) {
-	this->intersection_diagonals = (Genomicpos_T *) NULL;
+	this->intersection_diagonals = (Univcoord_T *) NULL;
 	*ndiagonals = this->intersection_ndiagonals = 0;
       } else {
-	q = this->intersection_diagonals = (Genomicpos_T *) CALLOC(this->npositions,sizeof(Genomicpos_T));
+	q = this->intersection_diagonals = (Univcoord_T *) CALLOC(this->npositions,sizeof(Univcoord_T));
 	p = this->positions;
 	diagterm = this->diagterm;
 
 	last_diagonal = 0U;
 #ifdef WORDS_BIGENDIAN
 	for (i = 0; i < this->npositions; i++) {
-	  if (Bigendian_convert_uint(*p) != last_diagonal) {
-	    *q++ = Bigendian_convert_uint(*p) + diagterm;
+	  if (Bigendian_convert_univcoord(*p) != last_diagonal) {
+	    *q++ = Bigendian_convert_univcoord(*p) + diagterm;
 	  }
-	  last_diagonal = Bigendian_convert_uint(*p++);
+	  last_diagonal = Bigendian_convert_univcoord(*p++);
 	}
 #else
 	for (i = 0; i < this->npositions; i++) {

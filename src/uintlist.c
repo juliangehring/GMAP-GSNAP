@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uintlist.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: uintlist.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,12 +11,12 @@ static char rcsid[] = "$Id: uintlist.c 40271 2011-05-28 02:29:18Z twu $";
 
 #define T Uintlist_T
 struct T {
-  unsigned int first;
+  UINT4 first;
   T rest;
 };
 
 T
-Uintlist_push (T list, unsigned int x) {
+Uintlist_push (T list, UINT4 x) {
   T new = (T) MALLOC(sizeof(*new));
   
   new->first = x;
@@ -25,7 +25,7 @@ Uintlist_push (T list, unsigned int x) {
 }
 
 T
-Uintlist_pop (T list, unsigned int *x) {
+Uintlist_pop (T list, UINT4 *x) {
   T head;
 
   if (list) {
@@ -38,7 +38,7 @@ Uintlist_pop (T list, unsigned int *x) {
   }
 }
   
-unsigned int
+UINT4
 Uintlist_head (T list) {
   return list->first;
 }
@@ -53,7 +53,7 @@ Uintlist_next (T list) {
 }
 
 void
-Uintlist_head_set (T this, unsigned int x) {
+Uintlist_head_set (T this, UINT4 x) {
   this->first = x;
   return;
 }
@@ -90,13 +90,13 @@ Uintlist_length (T list) {
   return n;
 }
 
-unsigned int *
+UINT4 *
 Uintlist_to_array (int *n, T list) {
-  unsigned int *array;
+  UINT4 *array;
   int i;
 
   *n = Uintlist_length(list);
-  array = (unsigned int *) CALLOC(*n,sizeof(unsigned int));
+  array = (UINT4 *) CALLOC(*n,sizeof(UINT4));
   for (i = 0; i < *n; i++) {
     array[i] = list->first;
     list = list->rest;
@@ -128,7 +128,7 @@ Uintlist_append (T list, T tail) {
   return list;
 }
 
-unsigned int
+UINT4
 Uintlist_last_value (T this) {
   T last = NULL, r;
 
@@ -138,7 +138,7 @@ Uintlist_last_value (T this) {
   return last->first;
 }
 
-unsigned int
+UINT4
 Uintlist_index (T this, int index) {
   while (index-- > 0) {
     this = this->rest;
@@ -148,7 +148,7 @@ Uintlist_index (T this, int index) {
 
 
 bool
-Uintlist_find (T this, unsigned int value) {
+Uintlist_find (T this, UINT4 value) {
   T r;
 
   for (r = this; r != NULL; r = r->rest) {

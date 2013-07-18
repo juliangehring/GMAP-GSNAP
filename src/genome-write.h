@@ -1,18 +1,19 @@
-/* $Id: genome-write.h 89125 2013-03-13 22:23:36Z twu $ */
+/* $Id: genome-write.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef GENOME_WRITE_INCLUDED
 #define GENOME_WRITE_INCLUDED
 #include <stdio.h>
 #include "bool.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "types.h"
 
 extern void
 Genome_write (char *genomesubdir, char *fileroot, FILE *input, 
-	      IIT_T contig_iit, IIT_T altstrain_iit, IIT_T chromosome_iit,
+	      Univ_IIT_T contig_iit, IIT_T altstrain_iit, Univ_IIT_T chromosome_iit,
 	      bool uncompressedp, bool rawp, bool writefilep,
-	      unsigned int genomelength, int index1part, int nmessages);
+	      Univcoord_T genomelength, int index1part, int nmessages);
 
 extern Genomecomp_T *
-Genome_create_blocks (char *genomicseg, unsigned int genomelength);
+Genome_create_blocks (char *genomicseg, Univcoord_T genomelength);
 
 #endif

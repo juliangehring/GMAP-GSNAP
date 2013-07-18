@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 80933 2012-12-06 23:58:51Z twu $";
+static char rcsid[] = "$Id: iit-read.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -94,7 +94,7 @@ static char rcsid[] = "$Id: iit-read.c 80933 2012-12-06 23:58:51Z twu $";
 #define T IIT_T
 
 static void
-file_move_absolute (int fd, off_t offset, off_t objsize, unsigned int n) {
+file_move_absolute (int fd, off_t offset, off_t objsize, Chrpos_T n) {
   off_t position = offset + n*objsize;
 
   if (lseek(fd,position,SEEK_SET) < 0) {
@@ -102,6 +102,51 @@ file_move_absolute (int fd, off_t offset, off_t objsize, unsigned int n) {
     exit(9);
   }
   return;
+}
+
+
+bool
+IIT_universalp (char *filename, bool add_iit_p) {
+  char *newfile;
+  FILE *fp;
+  int total_nintervals;
+
+  if (add_iit_p == true) {
+    newfile = (char *) CALLOC(strlen(filename)+strlen(".iit")+1,sizeof(char));
+    sprintf(newfile,"%s.iit",filename);
+    if ((fp = FOPEN_READ_BINARY(newfile)) != NULL) {
+      filename = newfile;
+    } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+      /* fprintf(stderr,"Cannot open IIT file %s or %s\n",filename,newfile); */
+      FREE(newfile);
+      return false;
+    }
+  } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+    return false;
+  }
+
+  if (FREAD_INT(&total_nintervals,fp) < 1) {
+    fprintf(stderr,"IIT file %s appears to be empty\n",filename);
+    fclose(fp);
+    if (add_iit_p == true) {
+      FREE(newfile);
+    }
+    return false;
+  } else if (total_nintervals == 0) {
+    /* Need to use Univ_IIT_read instead */
+    fclose(fp);
+    if (add_iit_p == true) {
+      FREE(newfile);
+    }
+    return false;
+  } else {
+    fclose(fp);
+    if (add_iit_p == true) {
+      FREE(newfile);
+    }
+    return true;
+  }
 }
 
 
@@ -137,7 +182,7 @@ IIT_nfields (T this) {
 }
 
 
-unsigned int
+Chrpos_T
 IIT_length (T this, int index) {
   Interval_T interval;
 
@@ -146,9 +191,9 @@ IIT_length (T this, int index) {
 }
 
 
-unsigned int
+Chrpos_T
 IIT_divlength (T this, char *divstring) {
-  unsigned int max = 0U;
+  Chrpos_T max = 0U;
   Interval_T interval;
   int divno, i;
 
@@ -165,9 +210,9 @@ IIT_divlength (T this, char *divstring) {
 
 
 /* Assumes intervals are stored using universal coordinates */
-unsigned int
+Chrpos_T
 IIT_totallength (T this) {
-  unsigned int max = 0U;
+  Chrpos_T max = 0U;
   Interval_T interval;
   int divno, i;
 
@@ -184,64 +229,13 @@ IIT_totallength (T this) {
 }
 
 
-/* Assumes intervals are stored using universal coordinates */
-unsigned int
-IIT_genomelength (T chromosome_iit, bool with_circular_alias_p) {
-  unsigned int max = 0U, this_max;
-  Interval_T interval;
-  int i;
-  int circular_typeint;
-
-  circular_typeint = IIT_typeint(chromosome_iit,"circular");
-
-  for (i = 0; i < chromosome_iit->nintervals[/*divno*/0]; i++) {
-    interval = &(chromosome_iit->intervals[/*divno*/0][i]);
-    if (with_circular_alias_p == true && Interval_type(interval) == circular_typeint) {
-      this_max = Interval_high(interval) + Interval_length(interval);
-    } else {
-      this_max = Interval_high(interval);
-    }
-    if (this_max > max) {
-      max = this_max;
-    }
-  }
-
-  /* Convert from zero-based coordinate */
-  return max+1U;
-}
-
-
-bool *
-IIT_circularp (T chromosome_iit) {
-  bool *circularp;
-  Interval_T interval;
-  int chrnum, nchromosomes;
-  int circular_typeint;
-
-  nchromosomes = chromosome_iit->total_nintervals;
-  circularp = (bool *) CALLOC(nchromosomes+1,sizeof(bool));
-
-  circularp[0] = false;		/* chrnum of 0 indicates translocation */
-  if ((circular_typeint = IIT_typeint(chromosome_iit,"circular")) >= 0) {
-    for (chrnum = 0; chrnum < nchromosomes; chrnum++) {
-      interval = &(chromosome_iit->intervals[/*divno*/0][chrnum]);
-      if (Interval_type(interval) == circular_typeint) {
-	circularp[chrnum+1] = true;
-      }
-    }
-  }
-
-  return circularp;
-}
-
-
 Interval_T
 IIT_interval (T this, int index) {
   assert(index <= this->total_nintervals);
   return &(this->intervals[0][index-1]); /* Convert to 0-based */
 }
 
-unsigned int
+Chrpos_T
 IIT_interval_low (T this, int index) {
   Interval_T interval;
 
@@ -250,7 +244,7 @@ IIT_interval_low (T this, int index) {
   return Interval_low(interval);
 }
 
-unsigned int
+Chrpos_T
 IIT_interval_high (T this, int index) {
   Interval_T interval;
 
@@ -259,7 +253,7 @@ IIT_interval_high (T this, int index) {
   return Interval_high(interval);
 }
 
-unsigned int
+Chrpos_T
 IIT_interval_length (T this, int index) {
   Interval_T interval;
 
@@ -277,19 +271,6 @@ IIT_interval_type (T this, int index) {
   return Interval_type(interval);
 }
 
-unsigned int
-IIT_next_chrbound (T this, int index, int circular_typeint) {
-  Interval_T interval;
-
-  assert(index <= this->total_nintervals);
-  interval = &(this->intervals[0][index-1]);
-  if (Interval_type(interval) == circular_typeint) {
-    return Interval_high(interval) + Interval_length(interval);
-  } else {
-    return Interval_high(interval);
-  }
-}
-
 
 int
 IIT_interval_sign (T this, int index) {
@@ -303,7 +284,7 @@ IIT_interval_sign (T this, int index) {
 
 /* chrhigh is one past the highest position in the chromosome */
 void
-IIT_interval_bounds (unsigned int *low, unsigned int *high, unsigned int *length, T this,
+IIT_interval_bounds (Chrpos_T *low, Chrpos_T *high, Chrpos_T *length, T this,
 		     int index, int circular_typeint) {
   Interval_T interval;
 
@@ -337,7 +318,7 @@ IIT_ndivs (T this) {
    it ends */
 char *
 IIT_divstring (T this, int divno) {
-  unsigned int start;
+  UINT4 start;
 
   start = this->divpointers[divno];
   return &(this->divstrings[start]);
@@ -346,7 +327,7 @@ IIT_divstring (T this, int divno) {
 int
 IIT_divint (T this, char *divstring) {
   int i = 0;			/* Actually divstring for divno 0 is NULL */
-  unsigned int start;
+  UINT4 start;
 
   if (divstring == NULL) {
     return 0;
@@ -368,7 +349,7 @@ IIT_divint (T this, char *divstring) {
 char *
 IIT_divstring_from_index (T this, int index) {
   int divno = 1;
-  unsigned int start;
+  UINT4 start;
 
   while (divno <= this->ndivs) {
     /* Checked on existing iit file to confirm we need >= and not > */
@@ -382,47 +363,11 @@ IIT_divstring_from_index (T this, int index) {
 }
 
 
-/* Maps from chromosome_iit chrnums to iit divints */
-int *
-IIT_divint_crosstable (T chromosome_iit, T iit) {
-  int *crosstable;
-  int chrnum, nchromosomes;
-  char *chr;
-  unsigned int start;
-
-  nchromosomes = chromosome_iit->total_nintervals;
-  crosstable = (int *) CALLOC(nchromosomes+1,sizeof(int));
-
-  for (chrnum = 0; chrnum < nchromosomes; chrnum++) {
-#ifdef WORDS_BIGENDIAN
-    /* chromosome_iit should be version 1 */
-    start = Bigendian_convert_uint(chromosome_iit->labelpointers[chrnum]);
-#else
-    start = chromosome_iit->labelpointers[chrnum];
-#endif
-    chr = &(chromosome_iit->labels[start]);
-
-    /* upon lookup, chrnum from IIT_get_one(chromosome_iit)
-       is 1-based, so we need to store in chrnum+1 */
-    crosstable[chrnum+1] = IIT_divint(iit,chr);	
-#if 0
-    if (crosstable[chrnum+1] < 0) {
-      fprintf(stderr,"Note: No splicesites are provided in chr %s\n",chr);
-    } else {
-      fprintf(stderr,"chrnum %d maps to splicesite divint %d\n",chrnum,crosstable[chrnum]);
-    }
-#endif
-  }
-
-  return crosstable;
-}
-
-
 /* The iit file has a '\0' after each string, so functions know where
    it ends */
 char *
 IIT_typestring (T this, int type) {
-  unsigned int start;
+  UINT4 start;
 
   start = this->typepointers[type];
   return &(this->typestrings[start]);
@@ -431,7 +376,7 @@ IIT_typestring (T this, int type) {
 int
 IIT_typeint (T this, char *typestring) {
   int i = 0;
-  unsigned int start;
+  UINT4 start;
 
   while (i < this->ntypes) {
     start = this->typepointers[i];
@@ -446,7 +391,7 @@ IIT_typeint (T this, char *typestring) {
 
 char *
 IIT_fieldstring (T this, int fieldint) {
-  unsigned int start;
+  UINT4 start;
 
   start = this->fieldpointers[fieldint];
   return &(this->fieldstrings[start]);
@@ -455,7 +400,7 @@ IIT_fieldstring (T this, int fieldint) {
 int
 IIT_fieldint (T this, char *fieldstring) {
   int i = 0;
-  unsigned int start;
+  UINT4 start;
 
   while (i < this->nfields) {
     start = this->fieldpointers[i];
@@ -475,7 +420,7 @@ IIT_label (T this, int index, bool *allocp) {
 #ifdef HAVE_64_BIT
   UINT8 start;
 #else
-  unsigned int start;
+  UINT4 start;
 #endif
 
   recno = index - 1; /* Convert to 0-based */
@@ -485,7 +430,7 @@ IIT_label (T this, int index, bool *allocp) {
   if (this->label_pointers_8p == true) {
     start = Bigendian_convert_uint8(this->labelpointers8[recno]);
   } else {
-    start = Bigendian_convert_uint(this->labelpointers[recno]);
+    start = (UINT8) Bigendian_convert_uint(this->labelpointers[recno]);
   }
 #else
   start = Bigendian_convert_uint(this->labelpointers[recno]);
@@ -495,7 +440,7 @@ IIT_label (T this, int index, bool *allocp) {
   if (this->label_pointers_8p == true) {
     start = this->labelpointers8[recno];
   } else {
-    start = this->labelpointers[recno];
+    start = (UINT8) this->labelpointers[recno];
   }
 #else
   start = this->labelpointers[recno];
@@ -519,7 +464,7 @@ IIT_annotation (char **restofheader, T this, int index, bool *alloc_header_p) {
 #ifdef HAVE_64_BIT
   UINT8 start;
 #else
-  unsigned int start;
+  UINT4 start;
 #endif
 
   recno = index - 1; /* Convert to 0-based */
@@ -528,7 +473,7 @@ IIT_annotation (char **restofheader, T this, int index, bool *alloc_header_p) {
   if (this->annot_pointers_8p == true) {
     start = Bigendian_convert_uint8(this->annotpointers8[recno]);
   } else {
-    start = Bigendian_convert_uint(this->annotpointers[recno]);
+    start = (UINT8) Bigendian_convert_uint(this->annotpointers[recno]);
   }
 #else
   start = Bigendian_convert_uint(this->annotpointers[recno]);
@@ -538,7 +483,7 @@ IIT_annotation (char **restofheader, T this, int index, bool *alloc_header_p) {
   if (this->annot_pointers_8p == true) {
     start = this->annotpointers8[recno];
   } else {
-    start = this->annotpointers[recno];
+    start = (UINT8) this->annotpointers[recno];
   }
 #else
   start = this->annotpointers[recno];
@@ -590,7 +535,7 @@ IIT_annotation_firstchar (T this, int index) {
 #ifdef HAVE_64_BIT
   UINT8 start;
 #else
-  unsigned int start;
+  UINT4 start;
 #endif
 
   recno = index - 1; /* Convert to 0-based */
@@ -600,7 +545,7 @@ IIT_annotation_firstchar (T this, int index) {
   if (this->annot_pointers_8p == true) {
     start = Bigendian_convert_uint8(this->annotpointers8[recno]);
   } else {
-    start = Bigendian_convert_uint(this->annotpointers[recno]);
+    start = (UINT8) Bigendian_convert_uint(this->annotpointers[recno]);
   }
 #else
   start = Bigendian_convert_uint(this->annotpointers[recno]);
@@ -610,7 +555,7 @@ IIT_annotation_firstchar (T this, int index) {
   if (this->annot_pointers_8p == true) {
     start = this->annotpointers8[recno];
   } else {
-    start = this->annotpointers[recno];
+    start = (UINT8) this->annotpointers[recno];
   }
 #else
   start = this->annotpointers[recno];
@@ -620,13 +565,17 @@ IIT_annotation_firstchar (T this, int index) {
   return this->annotations[start];
 }
 
-unsigned int
+#ifdef HAVE_64_BIT
+UINT8
+#else
+UINT4
+#endif
 IIT_annotation_strlen (T this, int index) {
   int recno;
 #ifdef HAVE_64_BIT
   UINT8 start, end;
 #else
-  unsigned int start, end;
+  UINT4 start, end;
 #endif
 
   recno = index - 1; /* Convert to 0-based */
@@ -637,8 +586,8 @@ IIT_annotation_strlen (T this, int index) {
     start = Bigendian_convert_uint8(this->annotpointers8[recno]);
     end = Bigendian_convert_uint8(this->annotpointers8[recno+1]);
   } else {
-    start = Bigendian_convert_uint(this->annotpointers[recno]);
-    end = Bigendian_convert_uint(this->annotpointers[recno+1]);
+    start = (UINT8) Bigendian_convert_uint(this->annotpointers[recno]);
+    end = (UINT8) Bigendian_convert_uint(this->annotpointers[recno+1]);
   }
 #else
   start = Bigendian_convert_uint(this->annotpointers[recno]);
@@ -650,8 +599,8 @@ IIT_annotation_strlen (T this, int index) {
     start = this->annotpointers8[recno];
     end = this->annotpointers8[recno+1];
   } else {
-    start = this->annotpointers[recno];
-    end = this->annotpointers[recno+1];
+    start = (UINT8) this->annotpointers[recno];
+    end = (UINT8) this->annotpointers[recno+1];
   }
 #else
   start = this->annotpointers[recno];
@@ -681,7 +630,7 @@ IIT_fieldvalue (T this, int index, int fieldint) {
 #ifdef HAVE_64_BIT
   UINT8 start;
 #else
-  unsigned int start;
+  UINT4 start;
 #endif
   bool allocp;
 
@@ -691,7 +640,7 @@ IIT_fieldvalue (T this, int index, int fieldint) {
   if (this->annot_pointers_8p == true) {
     start = Bigendian_convert_uint8(this->annotpointers8[recno]);
   } else {
-    start = Bigendian_convert_uint(this->annotpointers[recno]);
+    start = (UINT8) Bigendian_convert_uint(this->annotpointers[recno]);
   }
 #else
   start = Bigendian_convert_uint(this->annotpointers[recno]);
@@ -701,7 +650,7 @@ IIT_fieldvalue (T this, int index, int fieldint) {
   if (this->annot_pointers_8p == true) {
     start = this->annotpointers8[recno];
   } else {
-    start = this->annotpointers[recno];
+    start = (UINT8) this->annotpointers[recno];
   }
 #else
   start = this->annotpointers[recno];
@@ -742,7 +691,7 @@ IIT_fieldvalue (T this, int index, int fieldint) {
 void
 IIT_dump_divstrings (FILE *fp, T this) {
   int divno;
-  unsigned int start;
+  UINT4 start;
 
   /* Start with 1, because first divno has no name */
   for (divno = 1; divno < this->ndivs; divno++) {
@@ -758,7 +707,7 @@ IIT_dump_divstrings (FILE *fp, T this) {
 void
 IIT_dump_typestrings (FILE *fp, T this) {
   int type;
-  unsigned int start;
+  UINT4 start;
 
   for (type = 0; type < this->ntypes; type++) {
     start = this->typepointers[type];
@@ -770,7 +719,7 @@ IIT_dump_typestrings (FILE *fp, T this) {
 void
 IIT_dump_fieldstrings (FILE *fp, T this) {
   int field;
-  unsigned int start;
+  UINT4 start;
 
   for (field = 0; field < this->nfields; field++) {
     start = this->fieldpointers[field];
@@ -785,7 +734,7 @@ IIT_dump_labels (FILE *fp, T this) {
 #ifdef HAVE_64_BIT
   UINT8 start;
 #else
-  unsigned int start;
+  UINT4 start;
 #endif
   char *label;
 
@@ -795,7 +744,7 @@ IIT_dump_labels (FILE *fp, T this) {
     if (this->label_pointers_8p == true) {
       start = Bigendian_convert_uint8(this->labelpointers8[i]);
     } else {
-      start = Bigendian_convert_uint(this->labelpointers[i]);
+      start = (UINT8) Bigendian_convert_uint(this->labelpointers[i]);
     }
 #else
     start = Bigendian_convert_uint(this->labelpointers[i]);
@@ -805,7 +754,7 @@ IIT_dump_labels (FILE *fp, T this) {
     if (this->label_pointers_8p == true) {
       start = this->labelpointers8[i];
     } else {
-      start = this->labelpointers[i];
+      start = (UINT8) this->labelpointers[i];
     }
 #else
     start = this->labelpointers[i];
@@ -933,7 +882,7 @@ void
 IIT_dump_simple (T this) {
   int index = 0, i;
   Interval_T interval;
-  unsigned int startpos, endpos;
+  Chrpos_T startpos, endpos;
   char *label;
   bool allocp;
 
@@ -962,125 +911,13 @@ IIT_dump_simple (T this) {
 }
 
 
-/* For chromosome.iit file, which is stored in version 1 */
-void
-IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name,
-	      char *sam_read_group_library, char *sam_read_group_platform) {
-  int index = 0, i;
-  Interval_T interval;
-  unsigned int startpos;
-  char *label;
-  bool allocp;
-
-  if (this == NULL) {
-    return;
-  }
-
-  for (i = 0; i < this->nintervals[0]; i++) {
-    interval = &(this->intervals[0][i]);
-    label = IIT_label(this,index+1,&allocp);
-    fprintf(fp,"@SQ\tSN:%s",label);
-    if (allocp == true) {
-      FREE(label);
-    }
-    startpos = Interval_low(interval);
-    /* endpos = startpos + Interval_length(interval) - 1U; */
-
-    fprintf(fp,"\tLN:%u",Interval_length(interval));
-    fprintf(fp,"\n");
-
-    index++;
-  }
-
-  if (sam_read_group_id != NULL) {
-    fprintf(fp,"@RG\tID:%s",sam_read_group_id);
-    if (sam_read_group_platform != NULL) {
-      fprintf(fp,"\tPL:%s",sam_read_group_platform);
-    }
-    if (sam_read_group_library != NULL) {
-      fprintf(fp,"\tLB:%s",sam_read_group_library);
-    }
-    fprintf(fp,"\tSM:%s",sam_read_group_name);
-    fprintf(fp,"\n");
-  }
-
-  return;
-}
-
-
-
-/* For contig.iit file, which is stored in version 1 */
-void
-IIT_dump_version1 (T this, T chromosome_iit, bool directionalp) {
-  int index = 0, i, chromosome_index;
-  Interval_T interval;
-  unsigned int startpos, endpos, chrstart, chrend, chroffset;
-  char *label, firstchar, *chrstring;
-  bool allocp;
-
-  for (i = 0; i < this->nintervals[0]; i++) {
-    interval = &(this->intervals[0][i]);
-    label = IIT_label(this,index+1,&allocp);
-    printf("%s\t",label);
-    if (allocp == true) {
-      FREE(label);
-    }
-    startpos = Interval_low(interval);
-    endpos = startpos + Interval_length(interval) - 1U;
-
-    chromosome_index = IIT_get_one(chromosome_iit,/*divstring*/NULL,startpos,startpos);
-    chroffset = Interval_low(IIT_interval(chromosome_iit,chromosome_index));
-    chrstart = startpos - chroffset;
-    chrend = endpos - chroffset;
-
-    chrstring = IIT_label(chromosome_iit,chromosome_index,&allocp); 
-
-    if (directionalp == false) {
-      printf("%u..%u\t",startpos+1U,endpos+1U);
-      printf("%s:%u..%u\t",chrstring,chrstart+1U,chrend+1U);
-
-    } else if (this->version <= 1) {
-      firstchar = IIT_annotation_firstchar(this,index+1);
-      if (firstchar == '-') {
-	printf("%u..%u\t",endpos+1U,startpos+1U);
-	printf("%s:%u..%u\t",chrstring,chrend+1U,chrstart+1U);
-      } else {
-	printf("%u..%u\t",startpos+1U,endpos+1U);
-	printf("%s:%u..%u\t",chrstring,chrstart+1U,chrend+1U);
-      }
-    } else {
-      if (Interval_sign(interval) < 0) {
-	printf("%u..%u\t",endpos+1U,startpos+1U);
-	printf("%s:%u..%u\t",chrstring,chrend+1U,chrstart+1U);
-      } else {
-	printf("%u..%u\t",startpos+1U,endpos+1U);
-	printf("%s:%u..%u\t",chrstring,chrstart+1U,chrend+1U);
-      }
-    }
-    if (allocp == true) {
-      FREE(chrstring);
-    }
-    
-    printf("%u",Interval_length(interval));
-    if (Interval_type(interval) > 0) {
-      printf("\t%s",IIT_typestring(this,Interval_type(interval)));
-    }
-    printf("\n");
-    
-    index++;
-  }
-
-  return;
-}
-
-
 #if 0
 /* For higher version files, which are divided into divs */
 void
 IIT_dump_formatted (T this, bool directionalp) {
   int divno, index = 0, i;
   Interval_T interval;
-  unsigned int startpos, endpos;
+  Chrpos_T startpos, endpos;
   char *label, *divstring, firstchar;
   bool allocp;
 
@@ -1147,9 +984,9 @@ uint_cmp (const void *x, const void *y) {
 }
 
 /* Need to work on */
-unsigned int *
+UINT4 *
 IIT_transitions (int **signs, int *nedges, T this) { 
-  unsigned int *edges, *starts, *ends;
+  UINT4 *edges, *starts, *ends;
   int nintervals, i, j, k;
   Interval_T interval;
   Uintlist_T startlist = NULL, endlist = NULL;
@@ -1202,9 +1039,9 @@ IIT_transitions (int **signs, int *nedges, T this) {
   return edges;
 }
 
-unsigned int *
+UINT4 *
 IIT_transitions_subset (int **signs, int *nedges, T this, int *indices, int nindices) { 
-  unsigned int *edges, *starts, *ends;
+  UINT4 *edges, *starts, *ends;
   int nintervals, i, j, k;
   Interval_T interval;
   Uintlist_T startlist = NULL, endlist = NULL;
@@ -1874,13 +1711,14 @@ read_intervals (off_t offset, off_t filesize, FILE *fp, char *filename, T new, i
   return offset;
 }
 
+
 static void
 read_words (off_t offset, off_t filesize, FILE *fp, T new) {
   off_t stringlen;
 #ifdef HAVE_64_BIT
   UINT8 length8;
 #endif
-  unsigned int length;
+  UINT4 length;
 #ifdef DEBUG
   int i;
 #endif
@@ -1896,8 +1734,12 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
 	);
 
   stringlen = new->typepointers[new->ntypes];
-  new->typestrings = (char *) CALLOC(stringlen,sizeof(char));
-  offset += sizeof(char)*FREAD_CHARS(new->typestrings,stringlen,fp);
+  if (stringlen == 0) {
+    new->typestrings = (char *) NULL;
+  } else {
+    new->typestrings = (char *) CALLOC(stringlen,sizeof(char));
+    offset += sizeof(char)*FREAD_CHARS(new->typestrings,stringlen,fp);
+  }
   debug(
 	printf("typestrings:\n");
 	for (i = 0; i < stringlen; i++) {
@@ -1943,16 +1785,16 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
     FREAD_UINT8(&length8,fp);
     new->label_length = (size_t) length8;
   } else {
-    new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
-    /* fprintf(stderr,"Doing a move_relative for labelpointer %lu\n",new->total_nintervals * sizeof(unsigned int)); */
-    move_relative(fp,new->total_nintervals * sizeof(unsigned int));
+    new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
+    /* fprintf(stderr,"Doing a move_relative for labelpointer %lu\n",new->total_nintervals * sizeof(UINT4)); */
+    move_relative(fp,new->total_nintervals * sizeof(UINT4));
     FREAD_UINT(&length,fp);
     new->label_length = (size_t) length;
   }
 #else
-  new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
-  /* fprintf(stderr,"Doing a move_relative for labelpointer %lu\n",new->total_nintervals * sizeof(unsigned int)); */
-  move_relative(fp,new->total_nintervals * sizeof(unsigned int));
+  new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
+  /* fprintf(stderr,"Doing a move_relative for labelpointer %lu\n",new->total_nintervals * sizeof(UINT4)); */
+  move_relative(fp,new->total_nintervals * sizeof(UINT4));
   FREAD_UINT(&length,fp);
   new->label_length = (size_t) length;
 #endif
@@ -1971,10 +1813,10 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
   if (new->annot_pointers_8p == true) {
     new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT8));
   } else {
-    new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
+    new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
   }
 #else
-  new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
+  new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
 #endif
   offset += new->annotpointers_length;
 
@@ -2010,7 +1852,7 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
 #ifdef HAVE_64_BIT
   UINT8 length8;
 #endif
-  unsigned int length;
+  UINT4 length;
   int i;
 #if 0
   off_t last_offset;
@@ -2025,8 +1867,12 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
   printf("\n");
 
   stringlen = new->typepointers[new->ntypes];
-  new->typestrings = (char *) CALLOC(stringlen,sizeof(char));
-  offset += sizeof(char)*FREAD_CHARS(new->typestrings,stringlen,fp);
+  if (stringlen == 0) {
+    new->typestrings = (char *) NULL;
+  } else {
+    new->typestrings = (char *) CALLOC(stringlen,sizeof(char));
+    offset += sizeof(char)*FREAD_CHARS(new->typestrings,stringlen,fp);
+  }
   printf("typestrings:\n");
   for (i = 0; i < stringlen; i++) {
     printf("%c",new->typestrings[i]);
@@ -2067,14 +1913,14 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
     FREAD_UINT8(&length8,fp);
     new->label_length = (size_t) length8;
   } else {
-    new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
-    move_relative(fp,new->total_nintervals * sizeof(unsigned int));
+    new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
+    move_relative(fp,new->total_nintervals * sizeof(UINT4));
     FREAD_UINT(&length,fp);
     new->label_length = (size_t) length;
   }
 #else
-  new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
-  move_relative(fp,new->total_nintervals * sizeof(unsigned int));
+  new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
+  move_relative(fp,new->total_nintervals * sizeof(UINT4));
   FREAD_UINT(&length,fp);
   new->label_length = (size_t) length;
 #endif
@@ -2093,10 +1939,10 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
   if (new->annot_pointers_8p == true) {
     new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT8));
   } else {
-    new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
+    new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
   }
 #else
-  new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(unsigned int));
+  new->annotpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
 #endif
   offset += new->annotpointers_length;
 
@@ -2152,13 +1998,13 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
 #ifdef HAVE_64_BIT
     if (new->label_pointers_8p == true) {
       new->labelpointers8 = (UINT8 *) &(new->labelpointers_mmap[remainder]);
-      new->labelpointers = (unsigned int *) NULL;
+      new->labelpointers = (UINT4 *) NULL;
     } else {
       new->labelpointers8 = (UINT8 *) NULL;
-      new->labelpointers = (unsigned int *) &(new->labelpointers_mmap[remainder]);
+      new->labelpointers = (UINT4 *) &(new->labelpointers_mmap[remainder]);
     }
 #else
-    new->labelpointers = (unsigned int *) &(new->labelpointers_mmap[remainder]);
+    new->labelpointers = (UINT4 *) &(new->labelpointers_mmap[remainder]);
 #endif
     new->labelpointers_length += (size_t) remainder;
 
@@ -2174,13 +2020,13 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
 #ifdef HAVE_64_BIT
     if (new->annot_pointers_8p == true) {
       new->annotpointers8 = (UINT8 *) &(new->annotpointers_mmap[remainder]);
-      new->annotpointers = (unsigned int *) NULL;
+      new->annotpointers = (UINT4 *) NULL;
     } else {
       new->annotpointers8 = (UINT8 *) NULL;
-      new->annotpointers = (unsigned int *) &(new->annotpointers_mmap[remainder]);
+      new->annotpointers = (UINT4 *) &(new->annotpointers_mmap[remainder]);
     }
 #else
-    new->annotpointers = (unsigned int *) &(new->annotpointers_mmap[remainder]);
+    new->annotpointers = (UINT4 *) &(new->annotpointers_mmap[remainder]);
 #endif
     new->annotpointers_length += (size_t) remainder;
 
@@ -2206,13 +2052,13 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
 #ifdef HAVE_64_BIT
     if (new->label_pointers_8p == true) {
       new->labelpointers8 = (UINT8 *) &(new->labelpointers_mmap[remainder]);
-      new->labelpointers = (unsigned int *) NULL;
+      new->labelpointers = (UINT4 *) NULL;
     } else {
       new->labelpointers8 = (UINT8 *) NULL;
-      new->labelpointers = (unsigned int *) &(new->labelpointers_mmap[remainder]);
+      new->labelpointers = (UINT4 *) &(new->labelpointers_mmap[remainder]);
     }
 #else
-    new->labelpointers = (unsigned int *) &(new->labelpointers_mmap[remainder]);
+    new->labelpointers = (UINT4 *) &(new->labelpointers_mmap[remainder]);
 #endif
     new->labelpointers_length += (size_t) remainder;
 
@@ -2226,13 +2072,13 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
 #ifdef HAVE_64_BIT
     if (new->annot_pointers_8p == true) {
       new->annotpointers8 = (UINT8 *) &(new->annotpointers_mmap[remainder]);
-      new->annotpointers = (unsigned int *) NULL;
+      new->annotpointers = (UINT4 *) NULL;
     } else {
       new->annotpointers8 = (UINT8 *) NULL;
-      new->annotpointers = (unsigned int *) &(new->annotpointers_mmap[remainder]);
+      new->annotpointers = (UINT4 *) &(new->annotpointers_mmap[remainder]);
     }
 #else
-    new->annotpointers = (unsigned int *) &(new->annotpointers_mmap[remainder]);
+    new->annotpointers = (UINT4 *) &(new->annotpointers_mmap[remainder]);
 #endif
     new->annotpointers_length += (size_t) remainder;
 
@@ -2299,17 +2145,17 @@ read_annotations (T new) {
     file_move_absolute(new->fd,new->labelpointers_offset,sizeof(UINT8),/*n*/0);
     new->labelpointers8 = (UINT8 *) CALLOC(new->total_nintervals+1,sizeof(UINT8));
     read(new->fd,new->labelpointers8,(new->total_nintervals+1)*sizeof(UINT8));
-    new->labelpointers = (unsigned int *) NULL;
+    new->labelpointers = (UINT4 *) NULL;
   } else {
-    file_move_absolute(new->fd,new->labelpointers_offset,sizeof(unsigned int),/*n*/0);
-    new->labelpointers = (unsigned int *) CALLOC(new->total_nintervals+1,sizeof(unsigned int));
-    read(new->fd,new->labelpointers,(new->total_nintervals+1)*sizeof(unsigned int));
+    file_move_absolute(new->fd,new->labelpointers_offset,sizeof(UINT4),/*n*/0);
+    new->labelpointers = (UINT4 *) CALLOC(new->total_nintervals+1,sizeof(UINT4));
+    read(new->fd,new->labelpointers,(new->total_nintervals+1)*sizeof(UINT4));
     new->labelpointers8 = (UINT8 *) NULL;
   }
 #else
-  file_move_absolute(new->fd,new->labelpointers_offset,sizeof(unsigned int),/*n*/0);
-  new->labelpointers = (unsigned int *) CALLOC(new->total_nintervals+1,sizeof(unsigned int));
-  read(new->fd,new->labelpointers,(new->total_nintervals+1)*sizeof(unsigned int));
+  file_move_absolute(new->fd,new->labelpointers_offset,sizeof(UINT4),/*n*/0);
+  new->labelpointers = (UINT4 *) CALLOC(new->total_nintervals+1,sizeof(UINT4));
+  read(new->fd,new->labelpointers,(new->total_nintervals+1)*sizeof(UINT4));
 #endif
 
   file_move_absolute(new->fd,new->label_offset,sizeof(char),/*n*/0);
@@ -2321,17 +2167,17 @@ read_annotations (T new) {
     file_move_absolute(new->fd,new->annotpointers_offset,sizeof(UINT8),/*n*/0);
     new->annotpointers8 = (UINT8 *) CALLOC(new->total_nintervals+1,sizeof(UINT8));
     read(new->fd,new->annotpointers8,(new->total_nintervals+1)*sizeof(UINT8));
-    new->annotpointers = (unsigned int *) NULL;
+    new->annotpointers = (UINT4 *) NULL;
   } else {
-    file_move_absolute(new->fd,new->annotpointers_offset,sizeof(unsigned int),/*n*/0);
-    new->annotpointers = (unsigned int *) CALLOC(new->total_nintervals+1,sizeof(unsigned int));
-    read(new->fd,new->annotpointers,(new->total_nintervals+1)*sizeof(unsigned int));
+    file_move_absolute(new->fd,new->annotpointers_offset,sizeof(UINT4),/*n*/0);
+    new->annotpointers = (UINT4 *) CALLOC(new->total_nintervals+1,sizeof(UINT4));
+    read(new->fd,new->annotpointers,(new->total_nintervals+1)*sizeof(UINT4));
     new->annotpointers8 = (UINT8 *) NULL;
   }
 #else
-  file_move_absolute(new->fd,new->annotpointers_offset,sizeof(unsigned int),/*n*/0);
-  new->annotpointers = (unsigned int *) CALLOC(new->total_nintervals+1,sizeof(unsigned int));
-  read(new->fd,new->annotpointers,(new->total_nintervals+1)*sizeof(unsigned int));
+  file_move_absolute(new->fd,new->annotpointers_offset,sizeof(UINT4),/*n*/0);
+  new->annotpointers = (UINT4 *) CALLOC(new->total_nintervals+1,sizeof(UINT4));
+  read(new->fd,new->annotpointers,(new->total_nintervals+1)*sizeof(UINT4));
 #endif
 
   file_move_absolute(new->fd,new->annot_offset,sizeof(char),/*n*/0);
@@ -2352,7 +2198,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
   int label_pointer_size, annot_pointer_size;
 
   int i, ndivs;
-  unsigned int *divpointers, stringlen, start;
+  UINT4 *divpointers, stringlen, start;
   char *divstrings;
 
   if (add_iit_p == true) {
@@ -2375,6 +2221,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 
   if (FREAD_INT(&total_nintervals,fp) < 1) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
+    fclose(fp);
     return -1;
   } else if ((offset += sizeof(int)) > filesize) {
     fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
@@ -2445,10 +2292,6 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return -1;
     }
-  }
-  if (total_nintervals < 0) {
-    fprintf(stderr,"IIT file %s appears to have a negative number of intervals\n",filename);
-    return -1;
   }
 
   debug(printf("version: %d\n",version));
@@ -2534,7 +2377,7 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
     }
     debug(printf("divsort: %d\n",divsort));
 
-    divpointers = (unsigned int *) CALLOC(ndivs+1,sizeof(unsigned int));
+    divpointers = (UINT4 *) CALLOC(ndivs+1,sizeof(UINT4));
     offset += sizeof(int)*FREAD_UINTS(divpointers,ndivs+1,fp);
     debug(
 	  printf("divpointers:");
@@ -2634,6 +2477,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 
   if (FREAD_INT(&new->total_nintervals,fp) < 1) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
+    fclose(fp);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
     fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
@@ -2641,10 +2485,10 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     return NULL;
   }
 
-  if (new->total_nintervals > 0) {
-    new->version = 1;
-    new->label_pointers_8p = false;
-    new->annot_pointers_8p = false;
+  if (new->total_nintervals != 0) {
+    /* Need to use Univ_IIT_read instead */
+    fprintf(stderr,"Unexpected error.  Using IIT_read code on a version 1 IIT\n");
+    abort();
 
   } else {
     /* New format to indicate version > 1 */
@@ -2714,10 +2558,6 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
       return NULL;
     }
   }
-  if (new->total_nintervals < 0) {
-    fprintf(stderr,"IIT file %s appears to have a negative number of intervals\n",filename);
-    return NULL;
-  }
 
   debug(printf("version: %d\n",new->version));
   debug(printf("total_nintervals: %d\n",new->total_nintervals));
@@ -2782,7 +2622,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 
     new->divsort = NO_SORT;
 
-    new->divpointers = (unsigned int *) CALLOC(new->ndivs+1,sizeof(unsigned int));
+    new->divpointers = (UINT4 *) CALLOC(new->ndivs+1,sizeof(UINT4));
     new->divpointers[0] = 0;
     new->divpointers[1] = 1;
 
@@ -2857,7 +2697,7 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
     }
     debug(printf("divsort: %d\n",new->divsort));
 
-    new->divpointers = (unsigned int *) CALLOC(new->ndivs+1,sizeof(unsigned int));
+    new->divpointers = (UINT4 *) CALLOC(new->ndivs+1,sizeof(UINT4));
     offset += sizeof(int)*FREAD_UINTS(new->divpointers,new->ndivs+1,fp);
     debug(
 	  printf("divpointers:");
@@ -2868,8 +2708,12 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 	  );
 
     stringlen = new->divpointers[new->ndivs];
-    new->divstrings = (char *) CALLOC(stringlen,sizeof(char));
-    offset += sizeof(char)*FREAD_CHARS(new->divstrings,stringlen,fp);
+    if (stringlen == 0) {
+      new->divstrings = (char *) NULL;
+    } else {
+      new->divstrings = (char *) CALLOC(stringlen,sizeof(char));
+      offset += sizeof(char)*FREAD_CHARS(new->divstrings,stringlen,fp);
+    }
     debug(
 	  printf("divstrings:\n");
 	  for (i = 0; i < stringlen; i++) {
@@ -2888,6 +2732,11 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
   new->sigmas = (int **) CALLOC(new->ndivs,sizeof(int *));
   new->omegas = (int **) CALLOC(new->ndivs,sizeof(int *));
   new->nodes = (struct FNode_T **) CALLOC(new->ndivs,sizeof(struct FNode_T *));
+
+  if (new->version == 1) {
+    abort();
+  }
+
   new->intervals = (struct Interval_T **) CALLOC(new->ndivs,sizeof(struct Interval_T *));
 
   if (divread == READ_ALL) {
@@ -2943,12 +2792,12 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
 
     debug(
 	  /*
-	  printf("sigmas[%d]:\n",desired_divno);
-	  for (i = 0; i < new->nintervals[desired_divno]+1; i++) {
+	    printf("sigmas[%d]:\n",desired_divno);
+	    for (i = 0; i < new->nintervals[desired_divno]+1; i++) {
 	    interval = &(new->intervals[desired_divno][new->sigmas[desired_divno][i]]);
 	    printf("%d %u..%u\n",new->sigmas[desired_divno][i],Interval_low(interval),Interval_high(interval));
-	  }
-	  printf("\n");
+	    }
+	    printf("\n");
 	  */
 
 	  printf("alphas[%d]:\n",desired_divno);
@@ -3033,6 +2882,7 @@ IIT_debug (char *filename) {
 
   if (FREAD_INT(&new->total_nintervals,fp) < 1) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
+    fclose(fp);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
     fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
@@ -3184,7 +3034,7 @@ IIT_debug (char *filename) {
 
     new->divsort = NO_SORT;
 
-    new->divpointers = (unsigned int *) CALLOC(new->ndivs+1,sizeof(unsigned int));
+    new->divpointers = (UINT4 *) CALLOC(new->ndivs+1,sizeof(UINT4));
     new->divpointers[0] = 0;
     new->divpointers[1] = 1;
 
@@ -3251,7 +3101,7 @@ IIT_debug (char *filename) {
     }
     printf("divsort: %d\n",new->divsort);
 
-    new->divpointers = (unsigned int *) CALLOC(new->ndivs+1,sizeof(unsigned int));
+    new->divpointers = (UINT4 *) CALLOC(new->ndivs+1,sizeof(UINT4));
     offset += sizeof(int)*FREAD_UINTS(new->divpointers,new->ndivs+1,fp);
     printf("divpointers:");
     for (i = 0; i < new->ndivs+1; i++) {
@@ -3260,8 +3110,12 @@ IIT_debug (char *filename) {
     printf("\n");
 
     stringlen = new->divpointers[new->ndivs];
-    new->divstrings = (char *) CALLOC(stringlen,sizeof(char));
-    offset += sizeof(char)*FREAD_CHARS(new->divstrings,stringlen,fp);
+    if (stringlen == 0) {
+      new->divstrings = (char *) NULL;
+    } else {
+      new->divstrings = (char *) CALLOC(stringlen,sizeof(char));
+      offset += sizeof(char)*FREAD_CHARS(new->divstrings,stringlen,fp);
+    }
     printf("divstrings:\n");
     for (i = 0; i < stringlen; i++) {
       if (new->divstrings[i] == '\0') {
@@ -3388,7 +3242,7 @@ IIT_debug (char *filename) {
 /************************************************************************/
 
 static void 
-fnode_query_aux (int *min, int *max, T this, int divno, int nodeindex, unsigned int x) {
+fnode_query_aux (int *min, int *max, T this, int divno, int nodeindex, Chrpos_T x) {
   int lambda;
   FNode_T node;
 
@@ -3738,9 +3592,9 @@ uint_compare_descending (const void *a, const void *b) {
 }
 
 
-unsigned int *
-IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x) {
-  unsigned int *uniq = NULL, *coords = NULL, prev;
+Chrpos_T *
+IIT_get_highs_for_low (int *nuniq, T this, int divno, Chrpos_T x) {
+  Chrpos_T *uniq = NULL, *coords = NULL, prev;
   int neval, ncoords, i;
   int match, lambda, min1, max1 = 0;
   struct Interval_T interval;
@@ -3748,7 +3602,7 @@ IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x) {
   if (divno < 0) {
     /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
     *nuniq = 0;
-    return (unsigned int *) NULL;
+    return (Chrpos_T *) NULL;
   }
   min1 = this->nintervals[divno] + 1;
 
@@ -3758,10 +3612,10 @@ IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x) {
 
   if (max1 < min1) {
     *nuniq = 0;
-    return (unsigned int *) NULL;
+    return (Chrpos_T *) NULL;
   } else {
     neval = (max1 - min1 + 1) + (max1 - min1 + 1);
-    coords = (unsigned int *) CALLOC(neval,sizeof(unsigned int));
+    coords = (Chrpos_T *) CALLOC(neval,sizeof(Chrpos_T));
     ncoords = 0;
 
     for (lambda = min1; lambda <= max1; lambda++) {
@@ -3781,9 +3635,9 @@ IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x) {
     }
 
     /* Eliminate duplicates */
-    qsort(coords,ncoords,sizeof(unsigned int),uint_compare_ascending);
+    qsort(coords,ncoords,sizeof(Chrpos_T),uint_compare_ascending);
 
-    uniq = (unsigned int *) CALLOC(ncoords,sizeof(unsigned int));
+    uniq = (Chrpos_T *) CALLOC(ncoords,sizeof(Chrpos_T));
     *nuniq = 0;
     prev = 0;
     for (i = 0; i < ncoords; i++) {
@@ -3799,9 +3653,9 @@ IIT_get_highs_for_low (int *nuniq, T this, int divno, unsigned int x) {
 }
 
 
-unsigned int *
-IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
-  unsigned int *uniq = NULL, *coords = NULL, prev;
+Chrpos_T *
+IIT_get_lows_for_high (int *nuniq, T this, int divno, Chrpos_T x) {
+  Chrpos_T *uniq = NULL, *coords = NULL, prev;
   int neval, ncoords, i;
   int match, lambda, min1, max1 = 0;
   struct Interval_T interval;
@@ -3809,7 +3663,7 @@ IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
   if (divno < 0) {
     /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
     *nuniq = 0;
-    return (unsigned int *) NULL;
+    return (Chrpos_T *) NULL;
   }
   min1 = this->nintervals[divno] + 1;
 
@@ -3819,10 +3673,10 @@ IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
 
   if (max1 < min1) {
     *nuniq = 0;
-    return (unsigned int *) NULL;
+    return (Chrpos_T *) NULL;
   } else {
     neval = (max1 - min1 + 1) + (max1 - min1 + 1);
-    coords = (unsigned int *) CALLOC(neval,sizeof(unsigned int));
+    coords = (Chrpos_T *) CALLOC(neval,sizeof(Chrpos_T));
     ncoords = 0;
 
     for (lambda = min1; lambda <= max1; lambda++) {
@@ -3842,9 +3696,9 @@ IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
     }
 
     /* Eliminate duplicates */
-    qsort(coords,ncoords,sizeof(unsigned int),uint_compare_descending);
+    qsort(coords,ncoords,sizeof(Chrpos_T),uint_compare_descending);
 
-    uniq = (unsigned int *) CALLOC(ncoords,sizeof(unsigned int));
+    uniq = (Chrpos_T *) CALLOC(ncoords,sizeof(Chrpos_T));
     *nuniq = 0;
     prev = 0;
     for (i = 0; i < ncoords; i++) {
@@ -3861,7 +3715,7 @@ IIT_get_lows_for_high (int *nuniq, T this, int divno, unsigned int x) {
 
 
 bool
-IIT_low_exists_signed_p (T this, int divno, unsigned int x, int sign) {
+IIT_low_exists_signed_p (T this, int divno, Chrpos_T x, int sign) {
   int match, lambda, min1, max1 = 0;
   struct Interval_T interval;
 
@@ -3899,7 +3753,7 @@ IIT_low_exists_signed_p (T this, int divno, unsigned int x, int sign) {
 }
 
 bool
-IIT_high_exists_signed_p (T this, int divno, unsigned int x, int sign) {
+IIT_high_exists_signed_p (T this, int divno, Chrpos_T x, int sign) {
   int match, lambda, min1, max1 = 0;
   struct Interval_T interval;
 
@@ -3938,7 +3792,7 @@ IIT_high_exists_signed_p (T this, int divno, unsigned int x, int sign) {
 
 
 int *
-IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, bool sortp) {
+IIT_get (int *nmatches, T this, char *divstring, Chrpos_T x, Chrpos_T y, bool sortp) {
   int *sorted, *matches = NULL, matchstart, *uniq, neval, nuniq, i;
   int lambda, prev;
   int divno;
@@ -4032,7 +3886,7 @@ IIT_get (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y,
 
 
 int *
-IIT_get_signed (int *nmatches, T this, char *divstring, unsigned int x, unsigned int y, int sign, bool sortp) {
+IIT_get_signed (int *nmatches, T this, char *divstring, Chrpos_T x, Chrpos_T y, int sign, bool sortp) {
   int *sorted, *matches = NULL, matchstart, *uniq, neval, nuniq, i;
   int lambda, prev;
   int divno;
@@ -4133,7 +3987,7 @@ IIT_get_signed (int *nmatches, T this, char *divstring, unsigned int x, unsigned
 
 
 bool
-IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y) {
+IIT_exists_with_divno (T this, int divno, Chrpos_T x, Chrpos_T y) {
   int match;
   int lambda;
   int min1, max1 = 0, min2, max2 = 0;
@@ -4165,7 +4019,7 @@ IIT_exists_with_divno (T this, int divno, unsigned int x, unsigned int y) {
 
 
 bool
-IIT_exists_with_divno_signed (T this, int divno, unsigned int x, unsigned int y, int sign) {
+IIT_exists_with_divno_signed (T this, int divno, Chrpos_T x, Chrpos_T y, int sign) {
   int match;
   int lambda;
   int min1, max1 = 0, min2, max2 = 0;
@@ -4203,7 +4057,7 @@ IIT_exists_with_divno_signed (T this, int divno, unsigned int x, unsigned int y,
 
 
 bool
-IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign) {
+IIT_exists_with_divno_typed_signed (T this, int divno, Chrpos_T x, Chrpos_T y, int type, int sign) {
   int match;
   int lambda;
   int min1, max1 = 0, min2, max2 = 0;
@@ -4242,7 +4096,7 @@ IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned 
 
 #if 0
 bool
-IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned int y, int type, int sign) {
+IIT_exists_with_divno_typed_signed (T this, int divno, Chrpos_T x, Chrpos_T y, int type, int sign) {
   int match;
   int lambda;
   int min1, max1 = 0, min2, max2 = 0;
@@ -4281,7 +4135,7 @@ IIT_exists_with_divno_typed_signed (T this, int divno, unsigned int x, unsigned 
 
 
 int *
-IIT_get_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp) {
+IIT_get_with_divno (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, bool sortp) {
   int *sorted, *matches = NULL, matchstart, *uniq, neval, nuniq, i;
   int lambda, prev;
   int min1, max1 = 0, min2, max2 = 0;
@@ -4364,7 +4218,7 @@ IIT_get_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned i
 
 
 int *
-IIT_get_signed_with_divno (int *nmatches, T this, int divno, unsigned int x, unsigned int y, bool sortp,
+IIT_get_signed_with_divno (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, bool sortp,
 			   int sign) {
   int *sorted, *matches = NULL, matchstart, *uniq, neval, nuniq, i;
   int lambda, prev;
@@ -4454,10 +4308,10 @@ IIT_get_signed_with_divno (int *nmatches, T this, int divno, unsigned int x, uns
 
 
 static int
-coord_search_low (T this, int divno, unsigned int x) {
+coord_search_low (T this, int divno, Chrpos_T x) {
   int low, middle, high;
   bool foundp = false;
-  unsigned int middlevalue;
+  Chrpos_T middlevalue;
   int index;
 
   low = 1;			/* not 0, because alphas[divno][0] not used */
@@ -4490,10 +4344,10 @@ coord_search_low (T this, int divno, unsigned int x) {
 }
 
 static int
-coord_search_high (T this, int divno, unsigned int x) {
+coord_search_high (T this, int divno, Chrpos_T x) {
   int low, middle, high;
   bool foundp = false;
-  unsigned int middlevalue;
+  Chrpos_T middlevalue;
   int index;
 
   low = 1;			/* not 0, because betas[divno][0] not used */
@@ -4523,7 +4377,7 @@ coord_search_high (T this, int divno, unsigned int x) {
 
 void
 IIT_get_flanking (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
-		  T this, char *divstring, unsigned int x, unsigned int y, int nflanking, int sign) {
+		  T this, char *divstring, Chrpos_T x, Chrpos_T y, int nflanking, int sign) {
   int lambda, matchstart, i;
   Interval_T interval;
   bool stopp;
@@ -4606,7 +4460,7 @@ IIT_get_flanking (int **leftflanks, int *nleftflanks, int **rightflanks, int *nr
 
 void
 IIT_get_flanking_with_divno (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
-			     T this, int divno, unsigned int x, unsigned int y, int nflanking, int sign) {
+			     T this, int divno, Chrpos_T x, Chrpos_T y, int nflanking, int sign) {
   int lambda, matchstart, i;
   Interval_T interval;
   bool stopp;
@@ -4686,7 +4540,7 @@ IIT_get_flanking_with_divno (int **leftflanks, int *nleftflanks, int **rightflan
 
 void
 IIT_get_flanking_typed (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
-			T this, char *divstring, unsigned int x, unsigned int y, int nflanking, int type,
+			T this, char *divstring, Chrpos_T x, Chrpos_T y, int nflanking, int type,
 			int sign) {
   int lambda, matchstart, i;
   Interval_T interval;
@@ -4775,7 +4629,7 @@ IIT_get_flanking_typed (int **leftflanks, int *nleftflanks, int **rightflanks, i
 
 void
 IIT_get_flanking_multiple_typed (int **leftflanks, int *nleftflanks, int **rightflanks, int *nrightflanks,
-				 T this, char *divstring, unsigned int x, unsigned int y, int nflanking, int *types, int ntypes) {
+				 T this, char *divstring, Chrpos_T x, Chrpos_T y, int nflanking, int *types, int ntypes) {
   int k, i;
   int lambda, matchstart;
   Interval_T interval;
@@ -4869,7 +4723,7 @@ IIT_get_flanking_multiple_typed (int **leftflanks, int *nleftflanks, int **right
 static const Except_T iit_error = { "IIT problem" };
 
 int
-IIT_get_one (T this, char *divstring, unsigned int x, unsigned int y) {
+IIT_get_one (T this, char *divstring, Chrpos_T x, Chrpos_T y) {
   int lambda;
   int min1, max1 = 0, min2, max2 = 0;
   int divno;
@@ -4918,7 +4772,7 @@ IIT_get_one (T this, char *divstring, unsigned int x, unsigned int y) {
    and where x == y. */
 /*
 int
-IIT_get_one_safe (T this, unsigned int x, unsigned int y) {
+IIT_get_one_safe (T this, Chrpos_T x, Chrpos_T y) {
   int index;
   int *matches, nmatches;
 
@@ -4935,7 +4789,7 @@ IIT_get_one_safe (T this, unsigned int x, unsigned int y) {
 */
 
 int *
-IIT_get_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsigned int y, int type, bool sortp) {
+IIT_get_typed (int *ntypematches, T this, char *divstring, Chrpos_T x, Chrpos_T y, int type, bool sortp) {
   int *sorted;
   int index, divno;
   int *typematches = NULL, *matches, nmatches, i, j;
@@ -4984,7 +4838,7 @@ IIT_get_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsig
 }
 
 int *
-IIT_get_typed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y,
+IIT_get_typed_with_divno (int *ntypematches, T this, int divno, Chrpos_T x, Chrpos_T y,
 			  int type, bool sortp) {
   int *sorted;
   int index;
@@ -5040,7 +4894,7 @@ IIT_get_typed_with_divno (int *ntypematches, T this, int divno, unsigned int x, 
 
 
 int *
-IIT_get_typed_signed (int *ntypematches, T this, char *divstring, unsigned int x, unsigned int y,
+IIT_get_typed_signed (int *ntypematches, T this, char *divstring, Chrpos_T x, Chrpos_T y,
 		      int type, int sign, bool sortp) {
   int *sorted;
   int index, divno;
@@ -5091,7 +4945,7 @@ IIT_get_typed_signed (int *ntypematches, T this, char *divstring, unsigned int x
 
 
 int *
-IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, unsigned int x, unsigned int y, 
+IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, Chrpos_T x, Chrpos_T y, 
 				 int type, int sign, bool sortp) {
   int *sorted;
   int index;
@@ -5147,7 +5001,7 @@ IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, unsigned 
 
 
 int *
-IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, unsigned int x, unsigned int y, 
+IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, Chrpos_T x, Chrpos_T y, 
 			int *types, int ntypes, bool sortp) {
   int *sorted;
   int index, divno;
@@ -5205,7 +5059,7 @@ IIT_get_multiple_typed (int *ntypematches, T this, char *divstring, unsigned int
 }
 
 int
-IIT_get_exact (T this, char *divstring, unsigned int x, unsigned int y, int type) {
+IIT_get_exact (T this, char *divstring, Chrpos_T x, Chrpos_T y, int type) {
   int index;
   int *matches, nmatches, i;
   Interval_T interval;
@@ -5226,7 +5080,7 @@ IIT_get_exact (T this, char *divstring, unsigned int x, unsigned int y, int type
 }
 
 bool
-IIT_exact_p (T this, char *divstring, unsigned int x, unsigned int y, int type) {
+IIT_exact_p (T this, char *divstring, Chrpos_T x, Chrpos_T y, int type) {
   int index;
   int *matches, nmatches, i;
   Interval_T interval;
@@ -5274,7 +5128,7 @@ IIT_exact_p (T this, char *divstring, unsigned int x, unsigned int y, int type) 
 
 
 int *
-IIT_get_exact_multiple (int *nexactmatches, T this, char *divstring, unsigned int x, unsigned int y, int type) {
+IIT_get_exact_multiple (int *nexactmatches, T this, char *divstring, Chrpos_T x, Chrpos_T y, int type) {
   int *exactmatches;
   int index;
   int *matches, nmatches, i, j;
@@ -5311,7 +5165,7 @@ IIT_get_exact_multiple (int *nexactmatches, T this, char *divstring, unsigned in
 }
 
 int *
-IIT_get_exact_multiple_with_divno (int *nexactmatches, T this, int divno, unsigned int x, unsigned int y, int type) {
+IIT_get_exact_multiple_with_divno (int *nexactmatches, T this, int divno, Chrpos_T x, Chrpos_T y, int type) {
   int *exactmatches;
   int index;
   int *matches, nmatches, i, j;
@@ -5361,7 +5215,7 @@ IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this) {
   char *label, *annotation, *restofheader, firstchar;
   bool allocp;
   int i;
-  unsigned int seglength;
+  Chrpos_T seglength;
 
   *labellist = NULL;
   *seglength_list = NULL;
@@ -5377,16 +5231,16 @@ IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this) {
 	annotation = IIT_annotation(&restofheader,this,i+1,&allocp);
 	firstchar = annotation[0];
 	if (firstchar == '-') {
-	  seglength = (unsigned int) strtoul(&(annotation[1]),NULL,10);
+	  seglength = (Chrpos_T) strtoul(&(annotation[1]),NULL,10);
 	} else {
-	  seglength = (unsigned int) strtoul(annotation,NULL,10);
+	  seglength = (Chrpos_T) strtoul(annotation,NULL,10);
 	  *seglength_list = Uintlist_push(*seglength_list,seglength);
 	}
 	if (allocp == true) {
 	  FREE(restofheader);
 	}
       } else {
-	seglength = (unsigned int) strtoul(annotation,NULL,10);
+	seglength = (Chrpos_T) strtoul(annotation,NULL,10);
 	*seglength_list = Uintlist_push(*seglength_list,seglength);
       }
     }
@@ -5415,32 +5269,10 @@ IIT_typelist (T this) {
 
 /************************************************************************/
 
-/* Note: Procedure call from get-genome.c needed to subtract 1 from
-   position and then add 1 to chrpos */
-char *
-IIT_string_from_position (unsigned int *chrpos, unsigned int position, 
-			  T chromosome_iit) {
-  char *string, *chrstring;
-  int index;
-  bool allocp;
-
-  index = IIT_get_one(chromosome_iit,/*divstring*/NULL,position,position);
-  *chrpos = position - Interval_low(IIT_interval(chromosome_iit,index));
-  chrstring = IIT_label(chromosome_iit,index,&allocp); 
-  if (allocp == true) {
-    return chrstring;
-  } else {
-    string = (char *) CALLOC(strlen(chrstring)+1,sizeof(char));
-    strcpy(string,chrstring);
-    return string;
-  }
-}
-
-
 /* Assume 0-based index */
 static void
 print_header (FILE *fp, T this, int recno, char *chr, bool map_bothstrands_p,
-	      bool relativep, unsigned int left, bool print_comment_p) {
+	      bool relativep, Chrpos_T left, bool print_comment_p) {
   char *string, *restofheader, *p;
   Interval_T interval;
   bool allocp;
@@ -5512,7 +5344,7 @@ print_header (FILE *fp, T this, int recno, char *chr, bool map_bothstrands_p,
 
 void
 IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
-		  char *chr, bool reversep, bool relativep, unsigned int left,
+		  char *chr, bool reversep, bool relativep, Chrpos_T left,
 		  bool print_comment_p) {
   int recno, i;
 
@@ -5533,10 +5365,10 @@ IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstr
 
 
 Overlap_T
-IIT_gene_overlap (T map_iit, int divno, unsigned int x, unsigned int y, bool favor_multiexon_p) {
+IIT_gene_overlap (T map_iit, int divno, Chrpos_T x, Chrpos_T y, bool favor_multiexon_p) {
   int *matches, index;
   int nmatches, i;
-  unsigned int exonstart, exonend;
+  Chrpos_T exonstart, exonend;
   int observed_genestrand;
   char *annot, *restofheader, *p;
   bool allocp = false;

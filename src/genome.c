@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 79302 2012-11-15 23:55:58Z twu $";
+static char rcsid[] = "$Id: genome.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -33,6 +33,7 @@ static char rcsid[] = "$Id: genome.c 79302 2012-11-15 23:55:58Z twu $";
 #include "complement.h"
 #include "interval.h"
 #include "genomicpos.h"		/* For Genomicpos_commafmt */
+#include "types.h"
 
 
 #ifdef WORDS_BIGENDIAN
@@ -81,7 +82,7 @@ struct T {
   size_t len;
 
   char *chars;
-  UINT4 *blocks;
+  Genomecomp_T *blocks;
   bool compressedp;
 
   char *ptr;
@@ -92,18 +93,18 @@ struct T {
 };
 
 
-UINT4 *
+Genomecomp_T *
 Genome_blocks (T this) {
   return this->blocks;
 }
 
 
-Genomicpos_T
+Univcoord_T
 Genome_totallength (T this) {
   if (this->compressedp == false) {
-    return (Genomicpos_T) this->len;
+    return (Univcoord_T) this->len;
   } else {
-    return (Genomicpos_T) ((this->len/3) * 8);
+    return (Univcoord_T) ((this->len/3) * 8);
   }
 }
 
@@ -166,7 +167,7 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
 
     if (access == USE_ALLOCATE) {
       fprintf(stderr,"Allocating memory for compressed genome...");
-      new->blocks = (UINT4 *) Access_allocated(&new->len,&seconds,filename,sizeof(UINT4));
+      new->blocks = (Genomecomp_T *) Access_allocated(&new->len,&seconds,filename,sizeof(Genomecomp_T));
       if (new->blocks == NULL) {
 	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
 	exit(9);
@@ -180,8 +181,8 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
 #ifdef HAVE_MMAP
     } else if (access == USE_MMAP_PRELOAD) {
       fprintf(stderr,"Pre-loading compressed genome...");
-      new->blocks = (UINT4 *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
-						      filename,sizeof(UINT4));
+      new->blocks = (Genomecomp_T *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
+						      filename,sizeof(Genomecomp_T));
       if (new->blocks == NULL) {
 	fprintf(stderr,"insufficient memory (will use disk file instead)\n");
 	new->access = FILEIO;
@@ -192,7 +193,7 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
 	new->access = MMAPPED;
       }
     } else if (access == USE_MMAP_ONLY) {
-      new->blocks = (UINT4 *) Access_mmap(&new->fd,&new->len,filename,sizeof(UINT4),/*randomp*/false);
+      new->blocks = (Genomecomp_T *) Access_mmap(&new->fd,&new->len,filename,sizeof(Genomecomp_T),/*randomp*/false);
       if (new->blocks == NULL) {
 	fprintf(stderr,"Insufficient memory for genome mmap (will use disk file instead)\n");
 	new->access = FILEIO;
@@ -202,13 +203,13 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
 #endif
 
     } else if (access == USE_FILEIO) {
-      new->blocks = (UINT4 *) NULL;
+      new->blocks = (Genomecomp_T *) NULL;
       new->fd = Access_fileio(filename);
       new->access = FILEIO;
     }
 
   } else {
-    new->blocks = (UINT4 *) NULL;
+    new->blocks = (Genomecomp_T *) NULL;
 
     if (access == USE_ALLOCATE) {
       fprintf(stderr,"Allocating memory for uncompressed genome...");
@@ -287,8 +288,9 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
 
 static char complCode[128] = COMPLEMENT_LC;
 
+#if 0
 static void
-make_complement_buffered (char *complement, char *sequence, Genomicpos_T length) {
+make_complement_buffered (char *complement, char *sequence, Chrpos_T length) {
   int i, j;
 
   for (i = length-1, j = 0; i >= 0; i--, j++) {
@@ -297,9 +299,10 @@ make_complement_buffered (char *complement, char *sequence, Genomicpos_T length)
   complement[length] = '\0';
   return;
 }
+#endif
 
 static void
-make_complement_inplace (char *sequence, Genomicpos_T length) {
+make_complement_inplace (char *sequence, Chrpos_T length) {
   char temp;
   unsigned int i, j;
 
@@ -321,8 +324,8 @@ make_complement_inplace (char *sequence, Genomicpos_T length) {
  ************************************************************************/
 
 static void
-genomecomp_move_absolute (T this, Genomicpos_T ptr) {
-  off_t offset = ptr*((off_t) sizeof(UINT4));
+genomecomp_move_absolute (T this, off_t ptr) {
+  off_t offset = ptr*((off_t) sizeof(Genomecomp_T));
 
   if (lseek(this->fd,offset,SEEK_SET) < 0) {
     perror("Error in gmap, genomecomp_move_absolute");
@@ -331,9 +334,9 @@ genomecomp_move_absolute (T this, Genomicpos_T ptr) {
   return;
 }
 
-static UINT4
+static Genomecomp_T
 genomecomp_read_current (T this) {
-  UINT4 value;
+  Genomecomp_T value;
   char buffer[4];
 
   read(this->fd,buffer,4);
@@ -8566,12 +8569,12 @@ static const char *nucleotides[65536] =
 
 
 static void
-uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos, 
-		   Genomicpos_T endpos, const char defaultchars[],
+uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos, 
+		   Univcoord_T endpos, const char defaultchars[],
 		   const char flagchars[]) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low, flags;
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
   char Buffer[32];
   int startdiscard, enddiscard, i, k = 0;
 
@@ -8667,11 +8670,11 @@ uncompress_fileio (char *gbuffer1, T this, Genomicpos_T startpos,
 
 static void
 ntcounts_fileio (int *na, int *nc, int *ng, int *nt,
-		 T this, Genomicpos_T startpos, Genomicpos_T endpos,
+		 T this, Univcoord_T startpos, Univcoord_T endpos,
 		 const char defaultchars[], const char flagchars[]) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low, flags;
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
   char Buffer[32], c;
   int startdiscard, enddiscard, i;
 
@@ -8794,11 +8797,11 @@ ntcounts_fileio (int *na, int *nc, int *ng, int *nt,
 
 
 static void
-uncompress_mmap_bitbybit (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
-			  Genomicpos_T endpos, const char defaultchars[], const char flagchars[]) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low, flags;
+uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			  Univcoord_T endpos, const char defaultchars[], const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
   char Buffer[32];
   int startdiscard, enddiscard, i, k = 0;
 
@@ -8909,11 +8912,11 @@ uncompress_mmap_bitbybit (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 
 
 void
-Genome_uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
-			Genomicpos_T endpos) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low, flags;
+Genome_uncompress_mmap (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
   char Buffer[32];
   int startdiscard, enddiscard, i, k;
 
@@ -9027,11 +9030,11 @@ Genome_uncompress_mmap (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 
 /* Correct procedure should look at alt high/low and normal flags, and substitute N based on normal flags */
 static void
-uncompress_mmap_snps_subst (char *gbuffer1, UINT4 *refblocks, UINT4 *altblocks, Genomicpos_T startpos, 
-			    Genomicpos_T endpos) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 althigh, altlow, refflags;
+uncompress_mmap_snps_subst (char *gbuffer1, Genomecomp_T *refblocks, Genomecomp_T *altblocks, Univcoord_T startpos, 
+			    Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T althigh, altlow, refflags;
   char Buffer[32];
   int startdiscard, enddiscard, i, k, k1;
 
@@ -9187,11 +9190,11 @@ uncompress_mmap_snps_subst (char *gbuffer1, UINT4 *refblocks, UINT4 *altblocks, 
 static char EMPTY_32[32] = "                                ";
 
 static void
-uncompress_mmap_snps_only (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos, 
-			   Genomicpos_T endpos, const char flagchars[]) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low, flags;
+uncompress_mmap_snps_only (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			   Univcoord_T endpos, const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
   char Buffer[32];
   int startdiscard, enddiscard, i, k = 0;
 
@@ -9330,9 +9333,9 @@ uncompress_mmap_snps_only (char *gbuffer1, UINT4 *blocks, Genomicpos_T startpos,
 static char CHARTABLE[4] = {'A','C','G','T'};
 
 static char
-uncompress_one_char (UINT4 *blocks, Genomicpos_T pos) {
-  Genomicpos_T ptr;
-  UINT4 high, low, flags;
+uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos) {
+  Univcoord_T ptr;
+  Genomecomp_T high, low, flags;
   int bit, c;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
@@ -9371,9 +9374,9 @@ uncompress_one_char (UINT4 *blocks, Genomicpos_T pos) {
   
 
 static char
-uncompress_one_char_ignore_flags (UINT4 *blocks, Genomicpos_T pos) {
-  Genomicpos_T ptr;
-  UINT4 high, low;
+uncompress_one_char_ignore_flags (Genomecomp_T *blocks, Univcoord_T pos) {
+  Univcoord_T ptr;
+  Genomecomp_T high, low;
   int bit, c;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
@@ -9403,12 +9406,12 @@ uncompress_one_char_ignore_flags (UINT4 *blocks, Genomicpos_T pos) {
 
 
 static void
-Genome_ntcounts_mmap (int *na, int *nc, int *ng, int *nt, UINT4 *blocks,
-		      Genomicpos_T startpos, Genomicpos_T endpos, const char defaultchars[],
+Genome_ntcounts_mmap (int *na, int *nc, int *ng, int *nt, Genomecomp_T *blocks,
+		      Univcoord_T startpos, Univcoord_T endpos, const char defaultchars[],
 		      const char flagchars[]) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low, flags;
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
   char Buffer[32], c;
   int startdiscard, enddiscard, i;
 
@@ -9558,11 +9561,11 @@ check_nucleotide (unsigned char nucleotide, char sequence) {
 
 #if 0
 static bool
-uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, UINT4 *blocks, Genomicpos_T startpos, 
-				     Genomicpos_T endpos) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, startdiscard, enddiscard, ptr;
-  UINT4 high, low, flags;
+uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+				     Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, startdiscard, enddiscard, ptr;
+  Genomecomp_T high, low, flags;
   int i, k = 0;
 #ifdef DEBUG3
   char gbuffer_debug[1024];
@@ -9759,11 +9762,11 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, UINT4 *blocks, Geno
 
 
 static void
-uncompress_mmap_nucleotides (unsigned char *gbuffer, UINT4 *blocks, Genomicpos_T startpos, 
-			     Genomicpos_T endpos) {
-  /* Genomicpos_T length = endpos - startpos; */
-  Genomicpos_T startblock, endblock, ptr;
-  UINT4 high, low;
+uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+			     Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low;
   int startdiscard, enddiscard, i, k = 0;
 
   ptr = startblock = startpos/32U*3;
@@ -9891,10 +9894,10 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, UINT4 *blocks, Genomicpos_T
  ************************************************************************/
 
 static T genome;
-static UINT4 *genome_blocks;
+static Genomecomp_T *genome_blocks;
 
 static T genomealt;
-static UINT4 *genomealt_blocks;	/* Can be equal to genome_blocks, but not NULL */
+static Genomecomp_T *genomealt_blocks;	/* Can be equal to genome_blocks, but not NULL */
 
 static Mode_T mode;
 static int circular_typeint = -1;
@@ -9916,7 +9919,7 @@ Genome_setup (T genome_in, T genomealt_in, Mode_T mode_in, int circular_typeint_
 }
 
 void
-Genome_user_setup (UINT4 *genome_blocks_in) {
+Genome_user_setup (Genomecomp_T *genome_blocks_in) {
   genome = (T) NULL;
   genome_blocks = genome_blocks_in;
   genomealt = (T) NULL;
@@ -9930,10 +9933,11 @@ Genome_user_setup (UINT4 *genome_blocks_in) {
 static const Except_T gbufferlen_error = { "Insufficient allocation" };
 
 static bool
-fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,
-	     IIT_T chromosome_iit, bool bitbybitp, const char defaultchars[], const char flagchars[]) {
+fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_T length, char *gbuffer1,
+	     Univ_IIT_T chromosome_iit, bool bitbybitp, const char defaultchars[], const char flagchars[]) {
   Chrnum_T chrnum_left, chrnum_right, chrnumi;
-  Genomicpos_T inbounds_low, inbounds_high, pos, low, high, chrlength, maxoverlap, overlap;
+  Univcoord_T inbounds_low, inbounds_high, pos, low, high, maxoverlap, overlap;
+  Chrpos_T chrlength;
   
   *nunknowns = 0;
   if (length == 0) {
@@ -9989,19 +9993,19 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomi
   }
   gbuffer1[length] = '\0';
 
-  debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
 
   /* Fix out of bounds resulting from crossing chromosomes */
   if (chromosome_iit == NULL) {
     debug(printf("No chr info because chromosome_iit is null\n"));
     /* None provided, perhaps because aligning to user segment */
-  } else if ((chrnum_left = IIT_get_one(chromosome_iit,/*divstring*/NULL,left,left)) == 
-	     (chrnum_right = IIT_get_one(chromosome_iit,/*divstring*/NULL,left+length-1U,left+length-1U))) {
+  } else if ((chrnum_left = Univ_IIT_get_one(chromosome_iit,left,left)) == 
+	     (chrnum_right = Univ_IIT_get_one(chromosome_iit,left+length-1U,left+length-1U))) {
     debug(printf("Chr at beginning = %d, at end = %d\n",chrnum_left,chrnum_right));
     *chrnum = chrnum_left;
 
     /* Fix out of bounds resulting from going past last chromosome */
-    IIT_interval_bounds(&low,&high,&chrlength,chromosome_iit,chrnum_left,circular_typeint);
+    Univ_IIT_interval_bounds(&low,&high,&chrlength,chromosome_iit,chrnum_left,circular_typeint);
     if (left >= high) {
       for (pos = 0; pos < length; pos++) {
 	gbuffer1[pos] = OUTOFBOUNDS;
@@ -10018,7 +10022,7 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomi
     debug(printf("Chr at beginning = %d, at end = %d\n",chrnum_left,chrnum_right));
     maxoverlap = 0;
     for (chrnumi = chrnum_left; chrnumi <= chrnum_right; chrnumi++) {
-      IIT_interval_bounds(&low,&high,&chrlength,chromosome_iit,chrnumi,circular_typeint);
+      Univ_IIT_interval_bounds(&low,&high,&chrlength,chromosome_iit,chrnumi,circular_typeint);
       if (left > low) {
 	low = left;
       }
@@ -10032,7 +10036,7 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomi
 	inbounds_high = high - left;
       }
     }
-    debug(printf("in-bounds at %d..%d\n",inbounds_low,inbounds_high));
+    debug(printf("in-bounds at %lu..%lu\n",inbounds_low,inbounds_high));
     for (pos = 0; pos < inbounds_low; pos++) {
       gbuffer1[pos] = OUTOFBOUNDS;
       *nunknowns += 1;
@@ -10050,15 +10054,15 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomi
 
 
 bool
-Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1,
-		    IIT_T chromosome_iit) {
+Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_T length, char *gbuffer1,
+		    Univ_IIT_T chromosome_iit) {
   return fill_buffer(&(*chrnum),&(*nunknowns),this,left,length,gbuffer1,chromosome_iit,
 		     /*bitbybitp*/false,DEFAULT_CHARS,DEFAULT_FLAGS);
 }
 
 
 void
-Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char *gbuffer1) {
+Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, char *gbuffer1) {
   int delta, i;
   
 #if 0
@@ -10067,7 +10071,11 @@ Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char 
 
   /* Fix out of bounds resulting from negative numbers */
   if (left + length < left) {
+#ifdef HAVE_64_BIT
+    fprintf(stderr,"left %lu + length %u < left %lu\n",left,length,left);
+#else
     fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
+#endif
     delta = -left;
     length -= delta;
     for (i = 0; i < delta; i++) {
@@ -10120,14 +10128,14 @@ Genome_fill_buffer_simple (T this, Genomicpos_T left, Genomicpos_T length, char 
   }
   gbuffer1[length] = '\0';
 
-  debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
 
   return;
 }
 
 
 void
-Genome_fill_buffer_blocks (Genomicpos_T left, Genomicpos_T length, char *gbuffer1) {
+Genome_fill_buffer_blocks (Univcoord_T left, Chrpos_T length, char *gbuffer1) {
   
   if (length > 0) {
     assert(left + length >= left);
@@ -10142,7 +10150,7 @@ Genome_fill_buffer_blocks (Genomicpos_T left, Genomicpos_T length, char *gbuffer
 }
 
 void
-Genome_fill_buffer_blocks_noterm (Genomicpos_T left, Genomicpos_T length, char *gbuffer1, char *gbuffer2) {
+Genome_fill_buffer_blocks_noterm (Univcoord_T left, Chrpos_T length, char *gbuffer1, char *gbuffer2) {
   
   if (length > 0) {
     assert(left + length >= left);
@@ -10155,7 +10163,7 @@ Genome_fill_buffer_blocks_noterm (Genomicpos_T left, Genomicpos_T length, char *
 
 
 void
-Genome_fill_buffer_simple_alt (T genome, T genomealt, Genomicpos_T left, Genomicpos_T length, char *gbuffer1) {
+Genome_fill_buffer_simple_alt (T genome, T genomealt, Univcoord_T left, Chrpos_T length, char *gbuffer1) {
   int delta, i;
   
 #if 0
@@ -10164,7 +10172,7 @@ Genome_fill_buffer_simple_alt (T genome, T genomealt, Genomicpos_T left, Genomic
 
   /* Fix out of bounds resulting from negative numbers */
   if (left + length < left) {
-    fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
+    fprintf(stderr,"left %lu + length %u < left %lu\n",left,length,left);
     delta = -left;
     length -= delta;
     for (i = 0; i < delta; i++) {
@@ -10213,14 +10221,14 @@ Genome_fill_buffer_simple_alt (T genome, T genomealt, Genomicpos_T left, Genomic
   }
   gbuffer1[length] = '\0';
 
-  debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
 
   return;
 }
 
 
 void
-Genome_fill_buffer_nucleotides (T this, Genomicpos_T left, Genomicpos_T length, unsigned char *gbuffer) {
+Genome_fill_buffer_nucleotides (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer) {
   
   if (length == 0) {
     return;
@@ -10280,11 +10288,11 @@ Genome_fill_buffer_nucleotides (T this, Genomicpos_T left, Genomicpos_T length, 
 
 
 char
-Genome_get_char (T this, Genomicpos_T left) {
+Genome_get_char (T this, Univcoord_T left) {
   char c;
   char gbuffer1[1];
   
-  assert(left < 4000000000U);
+  /* assert(left < 4000000000U); */
 
   if (this->compressedp == false) {
     if (this->access == FILEIO) {
@@ -10328,13 +10336,13 @@ Genome_get_char (T this, Genomicpos_T left) {
 
 
 char
-Genome_get_char_blocks (char *charalt, Genomicpos_T left) {
+Genome_get_char_blocks (char *charalt, Univcoord_T left) {
   char c;
 #ifdef EXTRACT_GENOMICSEG
   char gbuffer1[1];
 #endif
   
-  assert(left < 4000000000U);
+  /* assert(left < 4000000000U); */
 
   if ((c = uncompress_one_char(genome_blocks,left)) == 'N' || c == 'X') {
     *charalt = c;
@@ -10364,7 +10372,7 @@ buffers_diff_p (char *buffer1, char *buffer2, int length) {
 
 
 Sequence_T
-Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
+Genome_get_segment (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,
 		    bool revcomp) {
   Chrnum_T chrnum;
   int nunknowns;
@@ -10378,11 +10386,11 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromo
   if (revcomp == true) {
     /* make_complement_buffered(gbuffer2,gbuffer1,length);*/
     make_complement_inplace(gbuffer,length);
-    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug(printf("Got sequence at %lu with length %u, revcomp\n",left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
@@ -10391,7 +10399,7 @@ Genome_get_segment (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromo
 }
 
 Sequence_T
-Genome_get_segment_alt (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
+Genome_get_segment_alt (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,
 			bool revcomp) {
   Chrnum_T chrnum;
   int nunknowns;
@@ -10405,18 +10413,18 @@ Genome_get_segment_alt (T this, Genomicpos_T left, Genomicpos_T length, IIT_T ch
   if (revcomp == true) {
     /* make_complement_buffered(gbuffer2,gbuffer1,length); */
     make_complement_inplace(gbuffer,length);
-    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug(printf("Got sequence at %lu with length %u, revcomp\n",left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer1,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
 }
 
 Sequence_T
-Genome_get_segment_snp (T this, Genomicpos_T left, Genomicpos_T length, IIT_T chromosome_iit,
+Genome_get_segment_snp (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,
 			bool revcomp) {
   Chrnum_T chrnum;
   int nunknowns;
@@ -10430,11 +10438,11 @@ Genome_get_segment_snp (T this, Genomicpos_T left, Genomicpos_T length, IIT_T ch
   if (revcomp == true) {
     /* make_complement_buffered(gbuffer2,gbuffer1,length); */
     make_complement_inplace(gbuffer,length);
-    debug(printf("Got sequence at %u with length %u, revcomp\n",left,length));
+    debug(printf("Got sequence at %lu with length %u, revcomp\n",left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+    debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
@@ -10443,7 +10451,7 @@ Genome_get_segment_snp (T this, Genomicpos_T left, Genomicpos_T length, IIT_T ch
 
 int
 Genome_ntcounts (int *na, int *nc, int *ng, int *nt,
-		 T this, Genomicpos_T left, Genomicpos_T length) {
+		 T this, Univcoord_T left, Chrpos_T length) {
   char *gbuffer, *p;
   unsigned int i;
   
@@ -10518,7 +10526,7 @@ Genome_ntcounts (int *na, int *nc, int *ng, int *nt,
     }
   }
 
-  debug(printf("Got sequence at %u with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
 
   return (*na) + (*nc) + (*ng) + (*nt);
 }
@@ -10566,6 +10574,7 @@ Genome_next_char (T this) {
 
 
 
+#if 0
 /* sbuffer is the strain buffer, with coordinates low--high.  gbuffer1
    has the reference sequence in the forward direction.  The reference
    sequence has coordinates left + length.  The calling procedure has
@@ -10573,10 +10582,10 @@ Genome_next_char (T this) {
    shifting works. */
 Sequence_T
 Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit, 
-		     Genomicpos_T refL, Genomicpos_T reflen,
+		     Chrpos_T refL, Chrpos_T reflen,
 		     bool revcomp, char *gbuffer1, char *gbuffer2, char *gbuffer3,
 		     int gbuffer3len) {
-  Genomicpos_T refR, srcL, srcR, matR;
+  Chrpos_T refR, srcL, srcR, matR;
   Interval_T interval;
   char *dest, *src, *matbuffer, *shiftdest, *shiftsrc, *restofheader;
   int index, i, matlen, patchlen, shiftlen, expansion;
@@ -10659,5 +10668,6 @@ Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit,
     return Sequence_genomic_new(gbuffer3,reflen,/*copyp*/false);
   }
 }
+#endif
 
 

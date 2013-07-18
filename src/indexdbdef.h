@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h 56653 2012-01-27 21:20:20Z twu $ */
+/* $Id: indexdbdef.h 99754 2013-06-27 21:14:05Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 
@@ -11,7 +11,7 @@
 #endif
 
 
-#define BADVAL (Genomicpos_T) -1
+#define BADVAL (Univcoord_T) -1
 
 #define T Indexdb_T
 struct T {
@@ -20,10 +20,10 @@ struct T {
   int alphabet_size;
 #endif
 
-  int index1part;
-  int index1interval;
-  int offsetscomp_basesize;		/* e.g., 12 */
-  int offsetscomp_blocksize;		/* e.g., 64 = 4^(15-12) */
+  Width_T index1part;
+  Width_T index1interval;
+  Width_T offsetscomp_basesize;		/* e.g., 12 */
+  Blocksize_T offsetscomp_blocksize;	/* e.g., 64 = 4^(15-12) */
 
   /* Access_T gammaptrs_access; -- Always ALLOCATED */ 
   int gammaptrs_fd;
@@ -38,7 +38,8 @@ struct T {
   Access_T positions_access;
   int positions_fd;
   size_t positions_len;
-  Genomicpos_T *positions;
+  Univcoord_T *positions;
+
 #ifdef HAVE_PTHREAD
   pthread_mutex_t positions_read_mutex;
 #endif

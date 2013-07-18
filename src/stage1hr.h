@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 90500 2013-03-27 22:34:44Z twu $ */
+/* $Id: stage1hr.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -7,7 +7,7 @@
 #include "genomicpos.h"
 #include "indexdb.h"
 #include "shortread.h"
-#include "iit-read.h"
+#include "iit-read-univ.h"
 #include "genome.h"
 #include "splicetrie.h"
 #include "resulthr.h"		/* For Pairtype_T */
@@ -54,9 +54,8 @@ Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
 		    double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		    Genomicpos_T shortsplicedist,
-		    int localsplicing_penalty, int distantsplicing_penalty,
-		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
+		    Chrpos_T shortsplicedist,
+		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 		    Oligoindex_T *oligoindices_major, int noligoindices_major,
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		    Pairpool_T pairpool, Diagpool_T diagpool,
@@ -73,27 +72,31 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 		    double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		    Genomicpos_T shortsplicedist, int localsplicing_penalty, int distantsplicing_penalty,
-		    int min_distantsplicing_end_matches, double min_distantsplicing_identity, int min_shortend,
+		    Chrpos_T shortsplicedist, int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 		    Oligoindex_T *oligoindices_major, int noligoindices_major,
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		    Pairpool_T pairpool, Diagpool_T diagpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		    Genomicpos_T pairmax, bool keep_floors_p);
+		    Chrpos_T pairmax, bool keep_floors_p);
+
+extern void
+Stage1hr_cleanup ();
 
 extern void
 Stage1hr_setup (int index1part_in, int index1interval_in, int spansize_in,
-		IIT_T chromosome_iit_in, int nchromosomes_in,
+		Univ_IIT_T chromosome_iit_in, int nchromosomes_in,
 		Genome_T genomealt, Mode_T mode_in, int maxpaths_search_in,
 		int terminal_threshold_in,
 
-		Genomicpos_T *splicesites_in, Splicetype_T *splicetypes_in,
-		Genomicpos_T *splicedists_in, int nsplicesites_in,
+		Univcoord_T *splicesites_in, Splicetype_T *splicetypes_in,
+		Chrpos_T *splicedists_in, int nsplicesites_in,
 
 		bool novelsplicingp_in, bool knownsplicingp_in,
 		bool distances_observed_p_in,
 		int shortsplicedist_known_in, int shortsplicedist_novelend_in,
-		Genomicpos_T min_intronlength_in,
+		Chrpos_T min_intronlength_in,
+
+		int min_distantsplicing_end_matches_in, int min_distantsplicing_identity_in,
 
 		int nullgap_in, int maxpeelback_in, int maxpeelback_distalmedial_in,
 		int extramaterial_end_in, int extramaterial_paired_in,

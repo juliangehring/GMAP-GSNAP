@@ -4,8 +4,9 @@
 typedef enum {DONOR, ANTIDONOR, ACCEPTOR, ANTIACCEPTOR} Splicetype_T;
 
 #include "bool.h"
-#include "types.h"
 #include "genomicpos.h"
+#include "types.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "genome.h"
 #include "list.h"
@@ -33,43 +34,43 @@ Splicetype_string (Splicetype_T splicetype);
 extern void
 Splicestring_gc (List_T *splicestrings, int nsplicesites);
 
-extern Genomicpos_T *
+extern Univcoord_T *
 Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 #ifdef GSNAP
-				     UINT4 **splicecomp,
+				     Genomecomp_T **splicecomp,
 #endif
-				     Splicetype_T **splicetypes, Genomicpos_T **splicedists,
-				     List_T **splicestrings, UINT4 **splicefrags_ref, UINT4 **splicefrags_alt,
+				     Splicetype_T **splicetypes, Chrpos_T **splicedists,
+				     List_T **splicestrings, Genomecomp_T **splicefrags_ref, Genomecomp_T **splicefrags_alt,
 				     int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
-				     int donor_typeint, int acceptor_typeint, IIT_T chromosome_iit,
-				     Genome_T genome, Genome_T genomealt, Genomicpos_T shortsplicedist);
-extern Genomicpos_T *
+				     int donor_typeint, int acceptor_typeint, Univ_IIT_T chromosome_iit,
+				     Genome_T genome, Genome_T genomealt, Chrpos_T shortsplicedist);
+extern Univcoord_T *
 Splicetrie_retrieve_via_introns (
 #ifdef GSNAP
-				 UINT4 **splicecomp,
+				 Genomecomp_T **splicecomp,
 #endif
-				 Splicetype_T **splicetypes, Genomicpos_T **splicedists,
-				 List_T **splicestrings, UINT4 **splicefrags_ref, UINT4 **splicefrags_alt,
+				 Splicetype_T **splicetypes, Chrpos_T **splicedists,
+				 List_T **splicestrings, Genomecomp_T **splicefrags_ref, Genomecomp_T **splicefrags_alt,
 				 int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
-				 IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt);
+				 Univ_IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt);
 extern void
 Splicetrie_npartners (int **nsplicepartners_skip, int **nsplicepartners_obs, int **nsplicepartners_max,
-		      Genomicpos_T *splicesites, Splicetype_T *splicetypes,
-		      Genomicpos_T *splicedists, List_T *splicestrings, int nsplicesites,
-		      IIT_T chromosome_iit, Genomicpos_T max_distance,
+		      Univcoord_T *splicesites, Splicetype_T *splicetypes,
+		      Chrpos_T *splicedists, List_T *splicestrings, int nsplicesites,
+		      Univ_IIT_T chromosome_iit, Chrpos_T max_distance,
 		      bool distances_observed_p);
 
 extern void
-Splicetrie_build_via_splicesites (unsigned int **triecontents_obs, unsigned int **trieoffsets_obs,
-				  unsigned int **triecontents_max, unsigned int **trieoffsets_max,
+Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T **trieoffsets_obs,
+				  Triecontent_T **triecontents_max, Trieoffset_T **trieoffsets_max,
 				  int *nsplicepartners_skip, int *nsplicepartners_obs, int *nsplicepartners_max,
 				  Splicetype_T *splicetypes, List_T *splicestrings, int nsplicesites);
 
 extern void
-Splicetrie_build_via_introns (unsigned int **triecontents_obs, unsigned int **trieoffsets_obs,
-			      Genomicpos_T *splicesites, Splicetype_T *splicetypes,
+Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **trieoffsets_obs,
+			      Univcoord_T *splicesites, Splicetype_T *splicetypes,
 			      List_T *splicestrings, int nsplicesites,
-			      IIT_T chromosome_iit, IIT_T splicing_iit, int *splicing_divint_crosstable);
+			      Univ_IIT_T chromosome_iit, IIT_T splicing_iit, int *splicing_divint_crosstable);
 
 #endif
 

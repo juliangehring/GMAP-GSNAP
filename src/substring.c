@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 91335 2013-04-03 19:39:36Z twu $";
+static char rcsid[] = "$Id: substring.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -220,14 +220,14 @@ struct T {
   bool trim_right_splicep;
 
   Chrnum_T chrnum;
-  Genomicpos_T chroffset;
-  Genomicpos_T chrhigh;
-  Genomicpos_T chrlength;
+  Univcoord_T chroffset;
+  Univcoord_T chrhigh;
+  Chrpos_T chrlength;
 
-  Genomicpos_T left_genomicseg;	/* left needed to retrieve genomicseg */
-  Genomicpos_T left;	 /* adjusted by Substring_new for aligndiff */
-  Genomicpos_T genomicstart;	/* For region corresponding to entire querylength (if extrapolated) */
-  Genomicpos_T genomicend;
+  Univcoord_T left_genomicseg;	/* left needed to retrieve genomicseg */
+  Univcoord_T left;	 /* adjusted by Substring_new for aligndiff */
+  Univcoord_T genomicstart;	/* For region corresponding to entire querylength (if extrapolated) */
+  Univcoord_T genomicend;
 
   Endtype_T start_endtype;
   Endtype_T end_endtype;
@@ -238,11 +238,11 @@ struct T {
   int queryend;
   int querylength;
 
-  Genomicpos_T alignstart;	/* For part that aligns to genome, including part that is trimmed (pre-trim) */
-  Genomicpos_T alignend;
+  Univcoord_T alignstart;	/* For part that aligns to genome, including part that is trimmed (pre-trim) */
+  Univcoord_T alignend;
 
-  Genomicpos_T alignstart_trim;	/* For part that aligns to genome, excluding part that is trimmed (post-trim) */
-  Genomicpos_T alignend_trim;
+  Univcoord_T alignstart_trim;	/* For part that aligns to genome, excluding part that is trimmed (post-trim) */
+  Univcoord_T alignend_trim;
 
   int alignoffset;
   int extraleft;
@@ -277,7 +277,7 @@ struct T {
 				   a novel splice site. */
   bool chimera_knownp;
   bool chimera_novelp;
-  Genomicpos_T chimera_modelpos;
+  Univcoord_T chimera_modelpos;
   int chimera_pos;
   double chimera_prob;
 
@@ -286,7 +286,7 @@ struct T {
   int splicesites_i_2;
   bool chimera_knownp_2;
   bool chimera_novelp_2;
-  Genomicpos_T chimera_modelpos_2;
+  Univcoord_T chimera_modelpos_2;
   int chimera_pos_2;
   double chimera_prob_2;
 };
@@ -294,7 +294,7 @@ struct T {
 
 void
 Substring_alias_circular (T this) {
-  Genomicpos_T chrlength;
+  Chrpos_T chrlength;
 
   if (this != NULL) {
     chrlength = this->chrlength;
@@ -317,7 +317,7 @@ Substring_alias_circular (T this) {
 
 void
 Substring_unalias_circular (T this) {
-  Genomicpos_T chrlength;
+  Chrpos_T chrlength;
 
   if (this != NULL) {
     chrlength = this->chrlength;
@@ -566,7 +566,7 @@ count_mismatches_dibase (char *genome, char *query, int start, int end, bool plu
 
 
 static int
-trim_left_end (Compress_T query_compress, Genomicpos_T left, int querystart, int queryend,
+trim_left_end (Compress_T query_compress, Univcoord_T left, int querystart, int queryend,
 	       int querylength, bool plusp, int genestrand, int trim_mismatch_score) {
   int bestscore, score;
   int trim5, alignlength, pos, prevpos, i;
@@ -658,7 +658,7 @@ trim_left_end (Compress_T query_compress, Genomicpos_T left, int querystart, int
 /* querystart (typically 0) and queryend (typically querylength) are exclusive */
 /* sequences may have had lower case characters marked */
 static int
-trim_right_end (Compress_T query_compress, Genomicpos_T left, int querystart, int queryend,
+trim_right_end (Compress_T query_compress, Univcoord_T left, int querystart, int queryend,
 		int querylength, bool plusp, int genestrand, int trim_mismatch_score) {
   int bestscore, score;
   int trim3, alignlength, pos, prevpos, i;
@@ -1039,7 +1039,7 @@ Substring_equal_p (T substring1, T substring2) {
 
 bool
 Substring_overlap_p (T substring1, T substring2) {
-  Genomicpos_T low1, high1, low2, high2;
+  Univcoord_T low1, high1, low2, high2;
 
   if (substring1->plusp == true) {
     low1 = substring1->alignstart;
@@ -1072,9 +1072,9 @@ Substring_overlap_p (T substring1, T substring2) {
 }
 
 
-Genomicpos_T
+Chrpos_T
 Substring_insert_length (T substring5, T substring3) {
-  Genomicpos_T pos5, pos3;
+  Univcoord_T pos5, pos3;
 
   pos5 = substring5->genomicstart;
   debug3(printf("pos5 %u\n",substring5->genomicstart));
@@ -1678,12 +1678,12 @@ embellish_genomic_sam (char *genomic_diff, char *query, int querystart, int quer
 
 
 T
-Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
-	       Genomicpos_T chrhigh, Genomicpos_T chrlength, Genomicpos_T left,
-	       Genomicpos_T genomicstart, Genomicpos_T genomicend,
+Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
+	       Univcoord_T chrhigh, Chrpos_T chrlength, Univcoord_T left,
+	       Univcoord_T genomicstart, Univcoord_T genomicend,
 	       Compress_T query_compress, Endtype_T start_endtype, Endtype_T end_endtype,
 	       int querystart, int queryend, int querylength,
-	       Genomicpos_T alignstart, Genomicpos_T alignend, int genomiclength,
+	       Univcoord_T alignstart, Univcoord_T alignend, int genomiclength,
 	       int extraleft, int extraright, bool exactp,
 	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength) {
   T new;
@@ -2218,7 +2218,7 @@ Substring_match_length_orig (T this) {
 }
 
 /* Used only by Goby */
-Genomicpos_T
+Chrpos_T
 Substring_genomic_alignment_length (T this) {
   if (this == NULL) {
     return 0U;
@@ -2235,63 +2235,63 @@ Substring_chrnum (T this) {
   return this->chrnum;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_chroffset (T this) {
   return this->chroffset;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_chrhigh (T this) {
   return this->chrhigh;
 }
 
-Genomicpos_T
+Chrpos_T
 Substring_chrlength (T this) {
   return this->chrlength;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_alignstart (T this) {
   return this->alignstart;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_alignend (T this) {
   return this->alignend;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_alignstart_trim (T this) {
   return this->alignstart_trim;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_alignend_trim (T this) {
   return this->alignend_trim;
 }
 
 
-Genomicpos_T
+Univcoord_T
 Substring_genomicstart (T this) {
   return this->genomicstart;
 }
 
-Genomicpos_T
+Univcoord_T
 Substring_genomicend (T this) {
   return this->genomicend;
 }
 
-Genomicpos_T
+Chrpos_T
 Substring_genomiclength (T this) {
   return this->genomiclength;
 }
 
-Genomicpos_T
+Chrpos_T
 Substring_chrstart (T this) {
   return this->genomicstart - this->chroffset;
 }
 
-Genomicpos_T
+Chrpos_T
 Substring_chrend (T this) {
   return this->genomicend - this->chroffset;
 }
@@ -2478,12 +2478,12 @@ Substring_copy (T old) {
 
 T
 Substring_new_donor (int splicesites_i, int splicesites_offset, int donor_pos, int donor_nmismatches,
-		     double donor_prob, Genomicpos_T left, Compress_T query_compress,
+		     double donor_prob, Univcoord_T left, Compress_T query_compress,
 		     int querylength, bool plusp, int genestrand, bool sensep,
-		     Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength) {
+		     Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength) {
   T new;
   int querystart, queryend, extraleft, extraright;
-  Genomicpos_T genomicstart, genomicend, alignstart, alignend;
+  Univcoord_T genomicstart, genomicend, alignstart, alignend;
   Endtype_T start_endtype, end_endtype;
   bool trim_left_p, trim_right_p;
 
@@ -2583,12 +2583,12 @@ Substring_new_donor (int splicesites_i, int splicesites_offset, int donor_pos, i
 
 T
 Substring_new_acceptor (int splicesites_i, int splicesites_offset, int acceptor_pos, int acceptor_nmismatches,
-			double acceptor_prob, Genomicpos_T left, Compress_T query_compress,
+			double acceptor_prob, Univcoord_T left, Compress_T query_compress,
 			int querylength, bool plusp, int genestrand, bool sensep,
-			Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength) {
+			Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength) {
   T new;
   int querystart, queryend, extraleft, extraright;
-  Genomicpos_T genomicstart, genomicend, alignstart, alignend;
+  Univcoord_T genomicstart, genomicend, alignstart, alignend;
   Endtype_T start_endtype, end_endtype;
   bool trim_left_p, trim_right_p;
 
@@ -2690,14 +2690,14 @@ Substring_new_acceptor (int splicesites_i, int splicesites_offset, int acceptor_
 T
 Substring_new_shortexon (int acceptor_splicesites_i, int donor_splicesites_i, int splicesites_offset,
 			 int acceptor_pos, int donor_pos, int nmismatches,
-			 double acceptor_prob, double donor_prob, Genomicpos_T left,
+			 double acceptor_prob, double donor_prob, Univcoord_T left,
 			 Compress_T query_compress, int querylength,
 			 bool plusp, int genestrand, bool sensep,
 			 bool acceptor_ambp, bool donor_ambp,
-			 Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength) {
+			 Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength) {
   T new;
   int querystart, queryend;
-  Genomicpos_T genomicstart, genomicend, alignstart, alignend;
+  Univcoord_T genomicstart, genomicend, alignstart, alignend;
   Endtype_T start_endtype, end_endtype;
 
   if (plusp == true) {
@@ -2958,7 +2958,7 @@ print_snp_labels (FILE *fp, T this, Shortread_T queryseq) {
   char *label, *seq1, *seq2;
   bool allocp, printp = false;
   Interval_T interval;
-  Genomicpos_T position;
+  Chrpos_T position;
 
   if (this->plusp == true) {
     snps = IIT_get_with_divno(&nsnps,snps_iit,
@@ -3053,11 +3053,11 @@ print_snp_labels (FILE *fp, T this, Shortread_T queryseq) {
 
 bool
 Substring_contains_known_splicesite (T this) {
-  Genomicpos_T left;
+  Univcoord_T left;
   bool method2;
   int length;
 #ifdef DEBUG7
-  Genomicpos_T start, end;
+  Chrpos_T start, end;
   bool method1;
 #endif
 
@@ -3106,7 +3106,7 @@ Substring_contains_known_splicesite (T this) {
 /* Has a copy in pair.c */
 static void
 print_splicesite_labels (FILE *fp, T this, int typeint, int chimera_pos, char *tag) {
-  Genomicpos_T splicesitepos;
+  Chrpos_T splicesitepos;
   int *splicesites, nsplicesites, i;
   char *label;
   bool allocp;
@@ -3554,7 +3554,7 @@ Substring_print_deletion_2 (FILE *fp, T substring1, T substring2, int nindels,
 
 /* This logic used in splice part of SAM_print */
 static void
-print_splice_distance (FILE *fp, T donor, T acceptor, Genomicpos_T distance, bool sensep, char *tag) {
+print_splice_distance (FILE *fp, T donor, T acceptor, Chrpos_T distance, bool sensep, char *tag) {
   bool normalp = true;
 
   if (donor == NULL || acceptor == NULL) {
@@ -3600,7 +3600,7 @@ print_splice_distance (FILE *fp, T donor, T acceptor, Genomicpos_T distance, boo
 }
 
 static void
-print_shortexon_splice_distances (FILE *fp, Genomicpos_T distance1, Genomicpos_T distance2) {
+print_shortexon_splice_distances (FILE *fp, Chrpos_T distance1, Chrpos_T distance2) {
   if (distance1 == 0U || distance2 == 0U) {
     /* Skip */
   } else {
@@ -3616,12 +3616,12 @@ print_shortexon_splice_distances (FILE *fp, Genomicpos_T distance1, Genomicpos_T
 
 void
 Substring_print_donor (FILE *fp, T donor, bool sensep, bool invertp, Shortread_T queryseq,
-		       IIT_T chromosome_iit, T acceptor, Genomicpos_T chimera_distance) {
+		       Univ_IIT_T chromosome_iit, T acceptor, Chrpos_T chimera_distance) {
   char *chr, *label_tag, *splice_dist_tag;
   bool allocp;
 
 #ifdef CHECK_KNOWNI
-  Genomicpos_T splicesitepos;
+  Chrpos_T splicesitepos;
   int *splicesites;
   int nsplicesites;
 #endif
@@ -3629,7 +3629,7 @@ Substring_print_donor (FILE *fp, T donor, bool sensep, bool invertp, Shortread_T
   print_genomic(fp,donor,/*deletion*/NULL,/*deletionlength*/0,invertp,queryseq);
 
   fprintf(fp,"\t");
-  chr = IIT_label(chromosome_iit,donor->chrnum,&allocp);
+  chr = Univ_IIT_label(chromosome_iit,donor->chrnum,&allocp);
   print_coordinates(fp,donor,chr,invertp);
 
   /* printf("donor chimera_pos is %d\n",donor->chimera_pos); */
@@ -3701,12 +3701,12 @@ Substring_print_donor (FILE *fp, T donor, bool sensep, bool invertp, Shortread_T
 
 void 
 Substring_print_acceptor (FILE *fp, T acceptor, bool sensep, bool invertp, Shortread_T queryseq, 
-			  IIT_T chromosome_iit, T donor, Genomicpos_T chimera_distance) {
+			  Univ_IIT_T chromosome_iit, T donor, Chrpos_T chimera_distance) {
   char *chr, *label_tag, *splice_dist_tag;
   bool allocp;
 
 #ifdef CHECK_KNOWNI
-  Genomicpos_T splicesitepos;
+  Chrpos_T splicesitepos;
   int *splicesites;
   int nsplicesites;
 #endif
@@ -3714,7 +3714,7 @@ Substring_print_acceptor (FILE *fp, T acceptor, bool sensep, bool invertp, Short
   print_genomic(fp,acceptor,/*deletion*/NULL,/*deletionlength*/0,invertp,queryseq);
 
   fprintf(fp,"\t");
-  chr = IIT_label(chromosome_iit,acceptor->chrnum,&allocp);
+  chr = Univ_IIT_label(chromosome_iit,acceptor->chrnum,&allocp);
   print_coordinates(fp,acceptor,chr,invertp);
 
   /* printf("acceptor chimera_pos is %d\n",acceptor->chimera_pos); */
@@ -3789,12 +3789,12 @@ Substring_print_acceptor (FILE *fp, T acceptor, bool sensep, bool invertp, Short
 
 void
 Substring_print_shortexon (FILE *fp, T shortexon, bool sensep, bool invertp, Shortread_T queryseq,
-			   IIT_T chromosome_iit, Genomicpos_T distance1, Genomicpos_T distance2) {
+			   Univ_IIT_T chromosome_iit, Chrpos_T distance1, Chrpos_T distance2) {
   char *chr;
   bool allocp;
 
 #ifdef CHECK_KNOWNI
-  Genomicpos_T splicesitepos;
+  Chrpos_T splicesitepos;
   int *splicesites;
   int nsplicesites;
 #endif
@@ -3829,7 +3829,7 @@ Substring_print_shortexon (FILE *fp, T shortexon, bool sensep, bool invertp, Sho
 
   fprintf(fp,"\t");
 
-  chr = IIT_label(chromosome_iit,shortexon->chrnum,&allocp);
+  chr = Univ_IIT_label(chromosome_iit,shortexon->chrnum,&allocp);
   print_coordinates(fp,shortexon,chr,invertp);
 
   fprintf(fp,"\t");
@@ -3918,9 +3918,9 @@ Substring_print_shortexon (FILE *fp, T shortexon, bool sensep, bool invertp, Sho
 void
 Substring_print_gmap (FILE *fp, struct Pair_T *pairs, int npairs, int nsegments, bool invertedp,
 		      Endtype_T start_endtype, Endtype_T end_endtype,
-		      Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		      Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		      int querylength, bool watsonp, int cdna_direction, int score,
-		      int insertlength, int pairscore, int mapq_score, IIT_T chromosome_iit) {
+		      int insertlength, int pairscore, int mapq_score, Univ_IIT_T chromosome_iit) {
   Pair_print_gsnap(fp,pairs,npairs,nsegments,invertedp,
 		   start_endtype,end_endtype,chrnum,chroffset,chrhigh,querylength,
 		   watsonp,cdna_direction,score,insertlength,pairscore,mapq_score,
@@ -3936,7 +3936,7 @@ Substring_print_gmap (FILE *fp, struct Pair_T *pairs, int npairs, int nsegments,
 
 Overlap_T
 Substring_gene_overlap (T this, bool favor_multiexon_p) {
-  Genomicpos_T start, end;
+  Chrpos_T start, end;
 
   if (genes_iit == NULL) {
     return false;
@@ -4002,10 +4002,10 @@ Substring_tally (T this, IIT_T tally_iit, int *tally_divint_crosstable) {
   bool alloc_chr_p;
 #endif
   bool allocp;
-  unsigned int chrpos, intervalend;
+  Chrpos_T chrpos, intervalend;
 
   char *chr;
-  Genomicpos_T coordstart, coordend, pos5, pos3;
+  Chrpos_T coordstart, coordend, pos5, pos3;
   int *matches;
   int nmatches, i;
   
@@ -4023,7 +4023,7 @@ Substring_tally (T this, IIT_T tally_iit, int *tally_divint_crosstable) {
   debug(printf("coordstart = %u, coordend = %u\n",coordstart,coordend));
 
 #if 0
-  chr = IIT_label(chromosome_iit,this->chrnum,&alloc_chr_p);
+  chr = Univ_IIT_label(chromosome_iit,this->chrnum,&alloc_chr_p);
 #endif
   matches = IIT_get_with_divno(&nmatches,tally_iit,tally_divint_crosstable[this->chrnum],
 			       coordstart,coordend,/*sortp*/false);
@@ -4074,7 +4074,7 @@ Substring_tally (T this, IIT_T tally_iit, int *tally_divint_crosstable) {
 
 bool
 Substring_runlength_p (T this, IIT_T runlength_iit, int *runlength_divint_crosstable) {
-  Genomicpos_T coordstart, coordend, pos5, pos3;
+  Chrpos_T coordstart, coordend, pos5, pos3;
   
   pos5 = this->alignstart_trim - this->chroffset;
   pos3 = this->alignend_trim - this->chroffset;
@@ -4089,7 +4089,7 @@ Substring_runlength_p (T this, IIT_T runlength_iit, int *runlength_divint_crosst
   coordstart += 1U;		/* Because runlength IIT is 1-based */
   debug(printf("coordstart = %u, coordend = %u\n",coordstart,coordend));
 
-  /* chr = IIT_label(chromosome_iit,this->chrnum,&alloc_chr_p); */
+  /* chr = Univ_IIT_label(chromosome_iit,this->chrnum,&alloc_chr_p); */
   return IIT_exists_with_divno(runlength_iit,runlength_divint_crosstable[this->chrnum],
 				coordstart,coordend);
 }

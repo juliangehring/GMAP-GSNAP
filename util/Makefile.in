@@ -46,7 +46,11 @@ DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
 	$(srcdir)/psl_introns.pl.in $(srcdir)/psl_splicesites.pl.in \
 	$(srcdir)/vcf_iit.pl.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
+	$(top_srcdir)/config/ltoptions.m4 \
+	$(top_srcdir)/config/ltsugar.m4 \
+	$(top_srcdir)/config/ltversion.m4 \
+	$(top_srcdir)/config/lt~obsolete.m4 $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/pagesize.m4 \
 	$(top_srcdir)/config/madvise-flags.m4 \
 	$(top_srcdir)/config/mmap-flags.m4 \
@@ -57,7 +61,10 @@ am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
 	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/popcnt.m4 \
-	$(top_srcdir)/config/asm-bsr.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/config/asm-bsr.m4 \
+	$(top_srcdir)/config/ax_gcc_x86_cpuid.m4 \
+	$(top_srcdir)/config/ax_check_compile_flag.m4 \
+	$(top_srcdir)/config/ax_ext.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -142,6 +149,7 @@ RANLIB = @RANLIB@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
+SIMD_FLAGS = @SIMD_FLAGS@
 STRIP = @STRIP@
 VERSION = @VERSION@
 ZLIB_LIBS = @ZLIB_LIBS@

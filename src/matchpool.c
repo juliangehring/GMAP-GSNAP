@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: matchpool.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: matchpool.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10,6 +10,8 @@ static char rcsid[] = "$Id: matchpool.c 40271 2011-05-28 02:29:18Z twu $";
 #include "comp.h"
 #include "matchdef.h"
 #include "listdef.h"
+#include "univinterval.h"
+
 
 #define CHUNKSIZE 16384
 
@@ -170,7 +172,7 @@ Matchpool_restore (T this) {
 
 List_T
 Matchpool_push (List_T list, T this, int querypos, int querylength, bool forwardp, bool fivep,
-		Genomicpos_T diagonal, IIT_T chromosome_iit) {
+		Univcoord_T diagonal, Univ_IIT_T chromosome_iit) {
   List_T listcell;
   Match_T match;
   List_T p;
@@ -202,8 +204,8 @@ Matchpool_push (List_T list, T this, int querypos, int querylength, bool forward
     match->chrnum = 0;
     match->chrpos = match->position;
   } else {
-    index = IIT_get_one(chromosome_iit,/*divstring*/NULL,match->position,match->position);
-    match->chrpos = match->position - Interval_low(IIT_interval(chromosome_iit,index));
+    index = Univ_IIT_get_one(chromosome_iit,match->position,match->position);
+    match->chrpos = match->position - Univinterval_low(Univ_IIT_interval(chromosome_iit,index));
     match->chrnum = index;
   }
 

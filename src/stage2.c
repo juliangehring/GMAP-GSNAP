@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 89122 2013-03-13 22:21:01Z twu $";
+static char rcsid[] = "$Id: stage2.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -286,7 +286,7 @@ struct Link_T {
   int fwd_pos;
   int fwd_hit;
 #ifdef USE_SUBOPTIMAL_STARTS
-  int fwd_initposition;
+  Chrpos_T fwd_initposition;
   Intlist_T fwd_pos_ties;
   Intlist_T fwd_hit_ties;
 #endif
@@ -402,7 +402,7 @@ Linkmatrix_2d_free (struct Link_T ***links, int length1) {
 #ifdef PMAP
 /* For PMAP, indexsize is in aa */
 static void
-Linkmatrix_print_fwd (struct Link_T **links, unsigned int **mappings, int *npositions,
+Linkmatrix_print_fwd (struct Link_T **links, Chrpos_T **mappings, int *npositions,
 		      char *queryseq_ptr, int indexsize) {
   int i, j, lastpos;
   char *oligo;
@@ -439,7 +439,7 @@ Linkmatrix_print_fwd (struct Link_T **links, unsigned int **mappings, int *nposi
 #else
 
 static void
-Linkmatrix_print_both (struct Link_T **links, unsigned int **mappings, int length1,
+Linkmatrix_print_both (struct Link_T **links, Chrpos_T **mappings, int length1,
 		       int *npositions, char *queryseq_ptr, int indexsize) {
   int i, j;
   char *oligo;
@@ -483,7 +483,7 @@ Linkmatrix_print_both (struct Link_T **links, unsigned int **mappings, int lengt
 #endif
 
 static void
-mappings_dump_R (unsigned int **mappings, int *npositions, int length1,
+mappings_dump_R (Chrpos_T **mappings, int *npositions, int length1,
 		 int **active, int *firstactive, int indexsize, char *varname) {
   int querypos;
   int lastpos, hit;
@@ -525,9 +525,9 @@ mappings_dump_R (unsigned int **mappings, int *npositions, int length1,
     
 
 static void
-best_path_dump_R (struct Link_T **links, unsigned int **mappings,
+best_path_dump_R (struct Link_T **links, Chrpos_T **mappings,
 		  int querypos, int hit, bool fwdp, char *varname) {
-  unsigned int position;
+  Chrpos_T position;
   int prev_querypos, prevhit, save_querypos, savehit;
   bool printp = false;
 
@@ -873,7 +873,7 @@ find_canonical_dinucleotides_hr (int *lastGT, int *lastAG,
 #ifndef PMAP
 				 int *lastCT, int *lastAC,
 #endif
-				 Genomicpos_T genomicstart, bool plusp,
+				 Univcoord_T genomicstart, bool plusp,
 				 int genomiclength) {
 
   Genome_last_donor_positions(lastGT,genomicstart,/*margin5*/3,/*margin3*/3,
@@ -908,7 +908,7 @@ check_canonical_dinucleotides_hr (int *lastGT, int *lastAG,
 #ifndef PMAP
 				  int *lastCT, int *lastAC,
 #endif
-				  Genomicpos_T genomicstart, Genomicpos_T genomicend, bool plusp,
+				  Univcoord_T genomicstart, Univcoord_T genomicend, bool plusp,
 				  int genomiclength) {
 
   int pos;
@@ -1028,11 +1028,11 @@ get_last (int *last_dinucl, int pos) {
 #if 0
 /* Need this procedure because we are skipping some oligomers */
 static bool
-find_shifted_canonical_memoize (int leftpos, int rightpos,
+find_shifted_canonical_memoize (Chrpos_T leftpos, Chrpos_T rightpos,
 				int querydistance, int **last_leftdi, int **last_rightdi,
-				int (*genome_left_position)(int, Genomicpos_T, Genomicpos_T, int, bool),
-				int (*genome_right_position)(int, Genomicpos_T, Genomicpos_T, int, bool),
-				Genomicpos_T genomicstart, Genomicpos_T genomicend, bool plusp,
+				Chrpos_T (*genome_left_position)(Chrpos_T, Chrpos_T, Univcoord_T, Univcoord_T, bool),
+				Chrpos_T (*genome_right_position)(Chrpos_T, Chrpos_T, Univcoord_T, Univcoord_T, bool),
+				Univcoord_T genomicstart, Univcoord_T genomicend, bool plusp,
 				bool skip_repetitive_p) {
   int leftdi, rightdi;
   int shift, leftmiss, rightmiss;
@@ -1054,7 +1054,7 @@ find_shifted_canonical_memoize (int leftpos, int rightpos,
 
   assert(leftpos < rightpos);
   if (skip_repetitive_p == false) {
-    if ((Genomicpos_T) rightpos >= genomicend) {
+    if ((Univcoord_T) rightpos >= genomicend) {
       return false;
     }
 
@@ -1095,7 +1095,7 @@ find_shifted_canonical_memoize (int leftpos, int rightpos,
       /* Shouldn't need to check if leftpos >= 0 and rightpos >= leftpos, in the other two conditions) */
       return false;
 #endif
-    } else if ((Genomicpos_T) rightpos >= genomicend) {
+    } else if ((Univcoord_T) rightpos >= genomicend) {
       return false;
     } else if (leftpos > rightpos) {
       return false;
@@ -1151,19 +1151,20 @@ find_shifted_canonical_memoize (int leftpos, int rightpos,
 
 /* Need this procedure because we are skipping some oligomers */
 static bool
-find_shifted_canonical (Genomicpos_T leftpos, Genomicpos_T rightpos, int querydistance, 
-			Genomicpos_T (*genome_left_position)(Genomicpos_T, Genomicpos_T, Genomicpos_T, Genomicpos_T, bool),
-			Genomicpos_T (*genome_right_position)(Genomicpos_T, Genomicpos_T, Genomicpos_T, Genomicpos_T, bool),
-			Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp, bool skip_repetitive_p) {
-  Genomicpos_T leftdi, rightdi;
-  Genomicpos_T last_leftpos, last_rightpos;
+find_shifted_canonical (Chrpos_T leftpos, Chrpos_T rightpos, int querydistance, 
+			Chrpos_T (*genome_left_position)(Chrpos_T, Chrpos_T, Univcoord_T, Univcoord_T, bool),
+			Chrpos_T (*genome_right_position)(Chrpos_T, Chrpos_T, Univcoord_T, Univcoord_T, bool),
+			Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, bool skip_repetitive_p) {
+  Chrpos_T leftdi, rightdi;
+  Chrpos_T last_leftpos, last_rightpos;
   int shift, leftmiss, rightmiss;
-  Genomicpos_T left_chrbound, right_chrbound;
+  Chrpos_T left_chrbound, right_chrbound;
   
   /* leftpos = prevposition + querydistance + indexsize_nt - 1; */
   /* rightpos = position; */
 
-  debug7(printf("Looking for shifted canonical at leftpos %u to rightpos %u, chrhigh %u\n",leftpos,rightpos,chrhigh));
+  debug7(printf("Looking for shifted canonical at leftpos %u to rightpos %u, chroffset %u, chrhigh %u\n",
+		leftpos,rightpos,chroffset,chrhigh));
 
 #if 0
   /* previously checked against genomiclength */
@@ -1179,25 +1180,20 @@ find_shifted_canonical (Genomicpos_T leftpos, Genomicpos_T rightpos, int querydi
     return false;
   }
 
-  if (leftpos < 100) {
-    left_chrbound = 0;
+  if (leftpos < 103) {
+    left_chrbound = 3;	/* Previously 0, but then can find splice site at beginning of segment */
   } else {
     left_chrbound = leftpos - 100;
   }
 
-  if (rightpos < 100) {
-    right_chrbound = 0;
+  if (rightpos < 103) {
+    right_chrbound = 3;	/* Previously 0, but then can find splice site at beginning of segment */
   } else {
     right_chrbound = rightpos - 100;
   }
 
 #if 0
   if (skip_repetitive_p == false) {
-#if 0    
-    if ((Genomicpos_T) rightpos >= chrterm) {
-      return false;
-    }
-#endif
 
     last_leftpos = (*genome_left_position)(leftpos,left_chrbound,chroffset,chrhigh,plusp);
     last_rightpos = (*genome_right_position)(rightpos,right_chrbound,chroffset,chrhigh,plusp);
@@ -1211,23 +1207,31 @@ find_shifted_canonical (Genomicpos_T leftpos, Genomicpos_T rightpos, int querydi
 
   /* Allow canonical to be to right of match */
   leftpos += SHIFT_EXTRA;
+  if (leftpos > chrhigh - 3) {
+    leftpos = chrhigh - 3;
+  }
   rightpos += SHIFT_EXTRA;
+  if (rightpos > chrhigh - 3) {
+    rightpos = chrhigh - 3;
+  }
   debug7(printf("after shift, leftpos = %u, rightpos = %u\n",leftpos,rightpos));
 
   shift = 0;
   while (shift <= querydistance + SHIFT_EXTRA + SHIFT_EXTRA) {
 
 #if 0
-    if (leftpos < chrinit) {
+    if (leftpos < 0) {
       return false;
     } else if (rightpos < 0) {
       /* Shouldn't need to check if leftpos >= 0 and rightpos >= leftpos, in the other two conditions) */
       return false;
-    } else if ((Genomicpos_T) rightpos >= chrterm) {
+    } else if (rightpos >= chrlength) {
       return false;
     }
 #endif
-    if (leftpos > rightpos) {
+    if (leftpos < 3) {
+      return false;
+    } else if (leftpos > rightpos) {
       return false;
     }
 
@@ -1276,8 +1280,8 @@ find_shifted_canonical (Genomicpos_T leftpos, Genomicpos_T rightpos, int querydi
 /* For PMAP, indexsize is in aa. */
 static void
 score_querypos_general (Link_T currlink, int querypos,
-			int querystart, int queryend, unsigned int position,
-			struct Link_T **links, unsigned int **mappings,
+			int querystart, int queryend, Chrpos_T position,
+			struct Link_T **links, Chrpos_T **mappings,
 			int **active, int *firstactive,
 #ifdef USE_SUBOPTIMAL_STARTS
 			int *fwd_initposition_bestscore, int *fwd_initposition_bestpos, int *fwd_initposition_besthit,
@@ -1296,7 +1300,7 @@ score_querypos_general (Link_T currlink, int querypos,
 			int *lastCT, int *lastAC, 
 #endif
 #endif
-			Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
+			Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 			int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
 			bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p) {
   Link_T prevlink;
@@ -1310,14 +1314,16 @@ score_querypos_general (Link_T currlink, int querypos,
 
   int best_fwd_consecutive = indexsize*NT_PER_MATCH;
   int best_fwd_score = 0, fwd_score;
-  int best_fwd_prevpos = -1, best_fwd_prevhit = -1;
+  int best_fwd_prevpos = -1;	/* querypos */
+  int best_fwd_prevhit = -1;
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
   int best_fwd_rootposition = position;
   /* int best_fwd_rootnlinks = 1; */
 #ifndef PMAP
   int best_rev_consecutive = indexsize*NT_PER_MATCH;
   int best_rev_score = 0, rev_score;
-  int best_rev_prevpos = -1, best_rev_prevhit = -1;
+  int best_rev_prevpos = -1;	/* querypos */
+  int best_rev_prevhit = -1;
   int best_rev_intronnfwd = 0, best_rev_intronnrev = 0, best_rev_intronnunk = 0;
   int best_rev_rootposition = position;
 #ifdef USE_SUBOPTIMAL_STARTS
@@ -1327,7 +1333,7 @@ score_querypos_general (Link_T currlink, int querypos,
 #endif
   bool adjacentp = false, donep;
   int prev_querypos, prevhit;
-  unsigned int prevposition, gendistance;
+  Chrpos_T prevposition, gendistance;
   int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt;
   int leftpos, last_leftpos, rightpos;
   bool canonicalp, last_canonicalp = false;
@@ -2288,7 +2294,7 @@ score_querypos_general (Link_T currlink, int querypos,
 static void
 score_querypos_splicing_no_shifted (Link_T currlink, int querypos, int hit,
 				    int querystart, int queryend, unsigned int position,
-				    struct Link_T **links, unsigned int **mappings,
+				    struct Link_T **links, Chrpos_T **mappings,
 				    int **active, int *firstactive,
 #ifdef USE_SUBOPTIMAL_STARTS
 				    int *fwd_initposition_bestscore, int *fwd_initposition_bestpos, int *fwd_initposition_besthit,
@@ -2312,7 +2318,7 @@ score_querypos_splicing_no_shifted (Link_T currlink, int querypos, int hit,
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
   bool adjacentp = false, donep;
   int prev_querypos, prevhit;
-  unsigned int prevposition, gendistance;
+  Chrpos_T prevposition, gendistance;
   int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt;
   int canonicalsgn;
   int enough_consecutive;
@@ -2971,7 +2977,7 @@ Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int length1, int
 /* Returns celllist */
 /* For PMAP, indexsize is in aa. */
 static Cell_T *
-align_compute_scores (int *ncells, struct Link_T **links, unsigned int **mappings, int *npositions, int totalpositions,
+align_compute_scores (int *ncells, struct Link_T **links, Chrpos_T **mappings, int *npositions, int totalpositions,
 		      bool oned_matrix_p, unsigned int *minactive, unsigned int *maxactive,
 #ifdef USE_SUBOPTIMAL_STARTS
 		      int *fwd_initposition_bestpos, int *fwd_initposition_besthit,
@@ -2979,7 +2985,7 @@ align_compute_scores (int *ncells, struct Link_T **links, unsigned int **mapping
 #endif
 		      int querystart, int queryend, int querylength,
 
-		      Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
+		      Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 
 		      int indexsize, int sufflookback, int nsufflookback, int maxintronlen,
 #ifdef DEBUG9
@@ -3001,7 +3007,7 @@ align_compute_scores (int *ncells, struct Link_T **links, unsigned int **mapping
 #ifdef USE_SUBOPTIMAL_STARTS
   int *fwd_initposition_bestscore, *rev_initposition_bestscore;
 #endif
-  unsigned int position, prevposition;
+  Chrpos_T position, prevposition;
 #if 0
   int *lastGT, *lastAG;
 #ifndef PMAP
@@ -3378,8 +3384,8 @@ static char complCode[128] = COMPLEMENT_LC;
 /* arguments were genomicpos, genomicstart, genomiclength */
 
 static char
-get_genomic_nt (char *g_alt, Genomicpos_T chrpos, Genomicpos_T chroffset,
-		Genomicpos_T chrhigh, bool watsonp) {
+get_genomic_nt (char *g_alt, Chrpos_T chrpos, Univcoord_T chroffset,
+		Univcoord_T chrhigh, bool watsonp) {
   char c2, c2_alt;
 
   if (watsonp) {
@@ -3394,17 +3400,17 @@ get_genomic_nt (char *g_alt, Genomicpos_T chrpos, Genomicpos_T chroffset,
 
 
 static List_T
-traceback_one (int querypos, int hit, struct Link_T **links, Genomicpos_T **mappings,
+traceback_one (int querypos, int hit, struct Link_T **links, Chrpos_T **mappings,
 	       char *queryseq_ptr, char *queryuc_ptr, 
 #ifdef PMAP
-	       Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp,
+	       Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 #endif
 #ifdef DEBUG0
 	       int indexsize,
 #endif	       
 	       Pairpool_T pairpool, bool fwdp) {
   List_T path = NULL;
-  Genomicpos_T position;
+  Chrpos_T position;
   int prev_querypos, prevhit;
   char c2;
 #ifdef PMAP
@@ -3479,16 +3485,16 @@ traceback_one (int querypos, int hit, struct Link_T **links, Genomicpos_T **mapp
 
 
 static List_T
-traceback_one_snps (int querypos, int hit, struct Link_T **links, Genomicpos_T **mappings,
+traceback_one_snps (int querypos, int hit, struct Link_T **links, Chrpos_T **mappings,
 		    char *queryseq_ptr, char *queryuc_ptr, 
 
-		    Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp,
+		    Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 #ifdef DEBUG0
 		    int indexsize,
 #endif
 		    Pairpool_T pairpool, bool fwdp) {
   List_T path = NULL;
-  Genomicpos_T position;
+  Chrpos_T position;
   int prev_querypos, prevhit;
   char c2, c2_alt;
 
@@ -3562,14 +3568,14 @@ traceback_one_snps (int querypos, int hit, struct Link_T **links, Genomicpos_T *
 
 #ifdef USE_SUBOPTIMAL_STARTS
 static List_T
-traceback_ties (List_T path, int querypos, int hit, struct Link_T **links, Genomicpos_T **mappings,
+traceback_ties (List_T path, int querypos, int hit, struct Link_T **links, Chrpos_T **mappings,
 		int *fwd_initposition_bestpos, int *fwd_initposition_besthit,
 		int *rev_initposition_bestpos, int *rev_initposition_besthit,
-		char *queryseq_ptr, Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp,
+		char *queryseq_ptr, Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 		Pairpool_T pairpool, int indexsize, bool fwdp) {
   List_T newpaths = NULL;
   List_T copy;
-  Genomicpos_T position, initposition;
+  Chrpos_T position, initposition;
   Link_T currlink;
   List_T p;
   Intlist_T q, r;
@@ -3677,11 +3683,11 @@ traceback_ties (List_T path, int querypos, int hit, struct Link_T **links, Genom
 
 /* Performs dynamic programming.  For PMAP, indexsize is in aa. */
 static List_T
-align_compute (Genomicpos_T **mappings, int *npositions, int totalpositions,
+align_compute (Chrpos_T **mappings, int *npositions, int totalpositions,
 	       bool oned_matrix_p, unsigned int *minactive, unsigned int *maxactive,
 	       char *queryseq_ptr, char *queryuc_ptr, int querylength, int queryseq_trim_start, int queryseq_trim_end,
 
-	       Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
+	       Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 	       int indexsize, int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool,
 	       bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
 	       bool favor_right_p, int max_nalignments, bool debug_graphic_p) {
@@ -3844,12 +3850,12 @@ convert_to_nucleotides (List_T path,
 #ifndef PMAP
 			char *queryseq_ptr, char *queryuc_ptr, 
 #endif
-			Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp,
+			Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 			int query_offset, Pairpool_T pairpool, int indexsize_nt) {
   List_T pairs = NULL, pairptr;
   Pair_T pair;
   int querypos, lastquerypos, queryjump, genomejump, fill, default_fill;
-  Genomicpos_T genomepos, lastgenomepos;
+  int genomepos, lastgenomepos;
   char c, c_alt;
 
   debug5(printf("Beginning convert_to_nucleotides with %d pairs\n",List_length(path)));
@@ -4079,7 +4085,7 @@ convert_to_nucleotides_snps (List_T path,
 #ifndef PMAP
 			     char *queryseq_ptr, char *queryuc_ptr, 
 #endif
-			     Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp,
+			     Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 			     int query_offset, Pairpool_T pairpool, int indexsize_nt) {
   List_T pairs = NULL, pairptr;
   Pair_T pair;
@@ -4314,15 +4320,15 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 #ifdef PMAP
 	     char *genomicuc_ptr,
 #endif
-	     Genomicpos_T chrstart, Genomicpos_T chrend,
-	     Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp,
+	     Chrpos_T chrstart, Chrpos_T chrend,
+	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 	     int genestrand, Oligoindex_T *oligoindices, int noligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp) {
   int ncovered;
   int source;
   int indexsize;
   Oligoindex_T oligoindex;
-  unsigned int **mappings;
+  Chrpos_T **mappings;
   bool *coveredp, oned_matrix_p;
   int *npositions, totalpositions;
   double pct_coverage;
@@ -4334,7 +4340,7 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
   Diag_T diag;
 #endif
 #ifdef EXTRACT_GENOMICSEG
-  int *counts;
+  Count_T *counts;
 #endif
 
   if (debug_graphic_p == true) {
@@ -4344,7 +4350,7 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
   }
 
   coveredp = (bool *) CALLOC(querylength,sizeof(bool));
-  mappings = (unsigned int **) CALLOC(querylength,sizeof(unsigned int *));
+  mappings = (Chrpos_T **) CALLOC(querylength,sizeof(Chrpos_T *));
   npositions = (int *) CALLOC(querylength,sizeof(int));
   totalpositions = 0;
   maxnconsecutive = 0;
@@ -4424,8 +4430,8 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 #ifdef PMAP
 		char *genomicuc_ptr,
 #endif
-		Genomicpos_T chrstart, Genomicpos_T chrend,
-		Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp, int genestrand,
+		Chrpos_T chrstart, Chrpos_T chrend,
+		Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
 		int maxintronlen, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
@@ -4434,7 +4440,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
   List_T all_pairs = NULL, all_paths, path, pairs, p;
   int indexsize, indexsize_nt;
   Oligoindex_T oligoindex;
-  Genomicpos_T **mappings;
+  Chrpos_T **mappings;
   bool *coveredp, oned_matrix_p;
   int source;
   int *npositions, totalpositions;
@@ -4453,7 +4459,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 #endif
 
 #ifdef EXTRACT_GENOMICSEG
-  int *counts;
+  Count_T *counts;
 #endif
 
   debug(printf("Entered Stage2_compute with chrstart %u and chrend %u\n",chrstart,chrend));
@@ -4467,7 +4473,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
   }
 
   coveredp = (bool *) CALLOC(querylength,sizeof(bool));
-  mappings = (Genomicpos_T **) CALLOC(querylength,sizeof(Genomicpos_T *));
+  mappings = (Chrpos_T **) CALLOC(querylength,sizeof(Chrpos_T *));
   npositions = (int *) CALLOC(querylength,sizeof(int));
   totalpositions = 0;
   maxnconsecutive = 0;
@@ -4658,8 +4664,8 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 #ifdef PMAP
 		    char *genomicuc_ptr,
 #endif
-		    Genomicpos_T chrstart, Genomicpos_T chrend,
-		    Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp, int genestrand,
+		    Chrpos_T chrstart, Chrpos_T chrend,
+		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 
 		    Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
 		    Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,

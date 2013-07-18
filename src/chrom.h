@@ -1,8 +1,9 @@
-/* $Id: chrom.h 77346 2012-10-20 02:43:12Z twu $ */
+/* $Id: chrom.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef CHROM_INCLUDED
 #define CHROM_INCLUDED
 #include "bool.h"
 #include "genomicpos.h"
+#include "types.h"
 
 #define T Chrom_T
 typedef struct T *T;
@@ -14,7 +15,7 @@ Chrom_string (T this);
 extern bool
 Chrom_circularp (T this);
 extern T
-Chrom_from_string (char *string, char *mitochondrial_string, unsigned int order, bool circularp);
+Chrom_from_string (char *string, char *mitochondrial_string, Univcoord_T order, bool circularp);
 
 extern int
 Chrom_cmp_alpha (T a, T b);

@@ -1,4 +1,4 @@
-/* $Id: iitdef.h 48991 2011-10-04 17:56:02Z twu $ */
+/* $Id: iitdef.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -20,7 +20,7 @@
 #define IIT_LATEST_VERSION 5
 
 
-/* version 1 starts with nintervals */
+/* version 1 starts with nintervals (now handled separately as a Univ_IIT_T) */
 /* version 2 starts with 0, then version number.  Also adds sign to each interval.  */
 /* version 3 allows for multiple divs */
 /* version 4 has label and annot pointers being 8-byte long unsigned ints */
@@ -35,7 +35,7 @@ typedef enum {NO_SORT, ALPHA_SORT, NUMERIC_ALPHA_SORT, CHROM_SORT} Sorttype_T;
 
 typedef struct FNode_T *FNode_T;
 struct FNode_T {
-  unsigned int value;
+  Chrpos_T value;
   int a;
   int b;
   int leftindex;
@@ -61,7 +61,7 @@ struct T {
 
   int divsort;			/* Really Sorttype_T */
   int ndivs;
-  unsigned int *divpointers;
+  UINT4 *divpointers;
   char *divstrings;
 
   int total_nintervals;
@@ -78,10 +78,10 @@ struct T {
   struct FNode_T **nodes;	/* Per div */
   struct Interval_T **intervals; /* Per div */
 
-  unsigned int *typepointers;
+  UINT4 *typepointers;
   char *typestrings;
 
-  unsigned int *fieldpointers;
+  UINT4 *fieldpointers;
   char *fieldstrings;
 
   off_t labelorder_offset;
@@ -105,13 +105,13 @@ struct T {
   char *annot_mmap;
 
   int *labelorder;
-  unsigned int *labelpointers;
+  UINT4 *labelpointers;
 #ifdef HAVE_64_BIT
   UINT8 *labelpointers8;
 #endif
   char *labels;
 
-  unsigned int *annotpointers;
+  UINT4 *annotpointers;
 #ifdef HAVE_64_BIT
   UINT8 *annotpointers8;
 #endif

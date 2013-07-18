@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 90984 2013-04-01 19:43:13Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -64,16 +64,16 @@ static char rcsid[] = "$Id: splicetrie.c 90984 2013-04-01 19:43:13Z twu $";
 
 
 #ifdef GSNAP
-static UINT4 *splicecomp;
+static Genomecomp_T *splicecomp;
 #endif
-static Genomicpos_T *splicesites;
-static UINT4 *splicefrags_ref;
-static UINT4 *splicefrags_alt;
+static Univcoord_T *splicesites;
+static Genomecomp_T *splicefrags_ref;
+static Genomecomp_T *splicefrags_alt;
 
-static unsigned int *trieoffsets_obs;
-static unsigned int *triecontents_obs;
-static unsigned int *trieoffsets_max;
-static unsigned int *triecontents_max;
+static Trieoffset_T *trieoffsets_obs;
+static Triecontent_T *triecontents_obs;
+static Trieoffset_T *trieoffsets_max;
+static Triecontent_T *triecontents_max;
 
 static bool snpp;
 static bool amb_closest_p;
@@ -84,11 +84,11 @@ static bool amb_clip_p;
 void
 Splicetrie_setup (
 #ifdef GSNAP
-		  UINT4 *splicecomp_in,
+		  Genomecomp_T *splicecomp_in,
 #endif
-		  Genomicpos_T *splicesites_in, UINT4 *splicefrags_ref_in, UINT4 *splicefrags_alt_in,
-		  unsigned int *trieoffsets_obs_in, unsigned int *triecontents_obs_in,
-		  unsigned int *trieoffsets_max_in, unsigned int *triecontents_max_in,
+		  Univcoord_T *splicesites_in, Genomecomp_T *splicefrags_ref_in, Genomecomp_T *splicefrags_alt_in,
+		  Trieoffset_T *trieoffsets_obs_in, Triecontent_T *triecontents_obs_in,
+		  Trieoffset_T *trieoffsets_max_in, Triecontent_T *triecontents_max_in,
 		  bool snpp_in, bool amb_closest_p_in, bool amb_clip_p_in, int min_shortend_in) {
 
 #ifdef GSNAP
@@ -115,10 +115,11 @@ Splicetrie_setup (
 #ifdef GSNAP
 /* Modified from count_mismatches_limit */
 bool
-Splicetrie_splicesite_p (Genomicpos_T left, int pos5, int pos3) {
-  Genomicpos_T startdiscard, enddiscard, startblocki, endblocki;
-  UINT4 *endblock, *ptr;
-  UINT4 splicesitep;
+Splicetrie_splicesite_p (Univcoord_T left, int pos5, int pos3) {
+  int startdiscard, enddiscard;
+  Univcoord_T startblocki, endblocki;
+  Genomecomp_T *endblock, *ptr;
+  Genomecomp_T splicesitep;
 
   startblocki = (left+pos5)/32U;
   endblocki = (left+pos3)/32U;
@@ -231,7 +232,7 @@ Splicetrie_splicesite_p (Genomicpos_T left, int pos5, int pos3) {
 #ifdef USE_2BYTE_RELOFFSETS
 static void
 get_offsets (int *offseta, int *offsetc, int *offsetg, int *offsett,
-	     unsigned int offsets1, unsigned int offsets2) {
+	     Trieoffset_T offsets1, Trieoffset_T offsets2) {
 
   *offsetc = (int) (offsets1 & 0xffff);
   *offseta = (int) ((offsets1 >>= 16) & 0xffff);
@@ -244,25 +245,11 @@ get_offsets (int *offseta, int *offsetc, int *offsetg, int *offsett,
 #endif
 
 
-#if 0
-static void
-make_reverse_buffered (char *reverse, char *sequence, unsigned int length) {
-  int i, j;
-
-  for (i = length-1, j = 0; i >= 0; i--, j++) {
-    reverse[j] = sequence[i];
-  }
-  reverse[length] = '\0';
-  return;
-}
-#endif
-
-
 /* Modified from Splicetrie_dump in splicetrie_build.c */
 static int
-splicetrie_size (unsigned int *triestart) {
+splicetrie_size (Triecontent_T *triestart) {
   int size;
-  unsigned int leaf;
+  Triecontent_T leaf;
   int nleaves;
   int offseta, offsetc, offsetg, offsett;
 
@@ -304,17 +291,17 @@ splicetrie_size (unsigned int *triestart) {
 
 
 static List_T
-solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
-		List_T best_pairs, unsigned int *triestart,
-		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
+		List_T best_pairs, Triecontent_T *triestart,
+		Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high,
 		       
 		int *finalscore, int *nmatches, int *nmismatches,
 		int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		Univcoord_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
 		int splicelength, int contlength, Splicetype_T far_splicetype,
-		Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		Univcoord_T chroffset, Univcoord_T chrhigh,
 		int *dynprogindex, Dynprog_T dynprog, 
 		char *revsequence1, char *revsequenceuc1,
 		int length1, int length2, int revoffset1, int revoffset2,
@@ -323,9 +310,10 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 #endif
 		int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		int extraband_end, double defect_rate) {
-  unsigned int leaf;
+  Triecontent_T leaf;
   int nleaves, i;
-  Genomicpos_T splicecoord, shortest_intron_length = -1U, intron_length;
+  Univcoord_T splicecoord;
+  Chrpos_T shortest_intron_length = -1U, intron_length;
   int offseta, offsetc, offsetg, offsett;
   int spliceoffset2_anchor, spliceoffset2_far;
 
@@ -336,9 +324,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
   if (single_leaf_p(leaf = triestart[0])) {
     splicecoord = splicesites[leaf];
     debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
-    if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
+    if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high &&
+	Dynprog_make_splicejunction_5(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp) == true) {
       debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-      Dynprog_make_splicejunction_5(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
       debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
 		    length1,length2,chroffset,splicecoord));
       if (watsonp) {
@@ -389,7 +377,7 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 
       } else if (miss_score == *threshold_miss_score + obsmax_penalty
 #if 0
-		 && Uintlist_find(*coords,splicecoord) == false
+		 && Genomicposlist_find(*coords,splicecoord) == false
 #endif
 		 ) {
 	if (amb_closest_p == false) {
@@ -435,9 +423,9 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
       leaf = triestart[i];
       splicecoord = splicesites[leaf];
       debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
-      if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
+      if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high &&
+	  Dynprog_make_splicejunction_5(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp) == true) {
 	debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-	Dynprog_make_splicejunction_5(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
 	debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
 		      length1,length2,chroffset,splicecoord));
 	if (watsonp) {
@@ -487,7 +475,7 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	} else if (miss_score == *threshold_miss_score + obsmax_penalty
 #if 0
 		   /* Filter for duplicates later */
-		   && Uintlist_find(*coords,splicecoord) == false
+		   && Genomicposlist_find(*coords,splicecoord) == false
 #endif
 		   ) {
 	  if (amb_closest_p == false) {
@@ -601,17 +589,17 @@ solve_end5_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 
 
 static List_T
-solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
-		List_T best_pairs, unsigned int *triestart,
-		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
+		List_T best_pairs, Triecontent_T *triestart,
+		Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high,
 
 		int *finalscore, int *nmatches, int *nmismatches,
 		int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		Univcoord_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
 		int splicelength, int contlength, Splicetype_T far_splicetype,
-		Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		Univcoord_T chroffset, Univcoord_T chrhigh,
 		int *dynprogindex, Dynprog_T dynprog, 
 		char *sequence1, char *sequenceuc1,
 		int length1, int length2, int offset1, int offset2,
@@ -620,9 +608,10 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 #endif
 		int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		int extraband_end, double defect_rate) {
-  unsigned int leaf;
+  Triecontent_T leaf;
   int nleaves, i;
-  Genomicpos_T splicecoord, shortest_intron_length = -1U, intron_length;
+  Univcoord_T splicecoord;
+  Chrpos_T shortest_intron_length = -1U, intron_length;
   int offseta, offsetc, offsetg, offsett;
   int spliceoffset2_anchor, spliceoffset2_far;
 
@@ -633,9 +622,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
   if (single_leaf_p(leaf = triestart[0])) {
     splicecoord = splicesites[leaf];
     debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
-    if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
+    if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high &&
+	Dynprog_make_splicejunction_3(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp) == true) {
       debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-      Dynprog_make_splicejunction_3(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
       debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
 		    length1,length2,chroffset,splicecoord));
       if (watsonp) {
@@ -685,7 +674,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 
       } else if (miss_score == *threshold_miss_score + obsmax_penalty
 #if 0
-		 && Uintlist_find(*coords,splicecoord) == false
+		 && Genomicposlist_find(*coords,splicecoord) == false
 #endif
 		 ) {
 	if (amb_closest_p == false) {
@@ -730,9 +719,9 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
       leaf = triestart[i];
       splicecoord = splicesites[leaf];
       debug7(printf("Checking leaf %d at %u: ",(int) leaf,splicecoord));
-      if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high) {
+      if (splicecoord >= knownsplice_limit_low && splicecoord <= knownsplice_limit_high &&
+	  Dynprog_make_splicejunction_3(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp) == true) {
 	debug7(printf("intron length %d, ",splicecoord - anchor_splicesite));
-	Dynprog_make_splicejunction_3(splicejunction,splicejunction_alt,splicecoord,splicelength,contlength,far_splicetype,watsonp);
 	debug7(printf("length1 = %d, length2 = %d, chroffset = %u, splicecoord = %u\n",
 		      length1,length2,chroffset,splicecoord));
 	if (watsonp) {
@@ -781,7 +770,7 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 	  *(*coordsptr)++ = splicecoord;
 	} else if (miss_score == *threshold_miss_score + obsmax_penalty
 #if 0
-		   && Uintlist_find(*coords,splicecoord) == false
+		   && Genomicposlist_find(*coords,splicecoord) == false
 #endif
 		   ) {
 	  if (amb_closest_p == false) {
@@ -894,16 +883,16 @@ solve_end3_aux (Genomicpos_T **coordsptr, Genomicpos_T *coords,
 }
 
 List_T
-Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned int *trieoffsets, int j,
-		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+Splicetrie_solve_end5 (List_T best_pairs, Triecontent_T *triecontents, Trieoffset_T *trieoffsets, int j,
+		       Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high,
 
 		       int *finalscore, int *nmatches, int *nmismatches,
 		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		       Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		       Univcoord_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
 		       int splicelength, int contlength, Splicetype_T far_splicetype,
-		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Univcoord_T chroffset, Univcoord_T chrhigh,
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *revsequence1, char *revsequenceuc1,
 		       int length1, int length2, int revoffset1, int revoffset2,
@@ -912,7 +901,7 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
 #endif
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate) {
-  Genomicpos_T *coordsptr, *coords, splicecoord0;
+  Univcoord_T *coordsptr, *coords, splicecoord0;
   unsigned int *triestart;
   int size, i;
 
@@ -927,7 +916,7 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
   if ((size = splicetrie_size(triestart)) == 0) {
     return best_pairs;
   } else {
-    coordsptr = coords = (Genomicpos_T *) CALLOC(size,sizeof(Genomicpos_T));
+    coordsptr = coords = (Univcoord_T *) CALLOC(size,sizeof(Univcoord_T));
 
     best_pairs = solve_end5_aux(&coordsptr,coords,best_pairs,triestart,
 				knownsplice_limit_low,knownsplice_limit_high,
@@ -965,16 +954,16 @@ Splicetrie_solve_end5 (List_T best_pairs, unsigned int *triecontents, unsigned i
 
 
 List_T
-Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned int *trieoffsets, int j,
-		       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high,
+Splicetrie_solve_end3 (List_T best_pairs, Triecontent_T *triecontents, Trieoffset_T *trieoffsets, int j,
+		       Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high,
 
 		       int *finalscore, int *nmatches, int *nmismatches,
 		       int *nopens, int *nindels, bool *knownsplicep, int *ambig_end_length,
 		       int *threshold_miss_score, int obsmax_penalty, int perfect_score,
 
-		       Genomicpos_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
+		       Univcoord_T anchor_splicesite, char *splicejunction, char *splicejunction_alt,
 		       int splicelength, int contlength, Splicetype_T far_splicetype,
-		       Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		       Univcoord_T chroffset, Univcoord_T chrhigh,
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *sequence1, char *sequenceuc1,
 		       int length1, int length2, int offset1, int offset2,
@@ -983,7 +972,7 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned i
 #endif
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate) {
-  Genomicpos_T *coordsptr, *coords, splicecoord0;
+  Univcoord_T *coordsptr, *coords, splicecoord0;
   unsigned int *triestart;
   int size, i;
 
@@ -998,7 +987,7 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned i
   if ((size = splicetrie_size(triestart)) == 0) {
     return best_pairs;
   } else {
-    coordsptr = coords = (Genomicpos_T *) CALLOC(size,sizeof(Genomicpos_T));
+    coordsptr = coords = (Univcoord_T *) CALLOC(size,sizeof(Univcoord_T));
 
     best_pairs = solve_end3_aux(&coordsptr,coords,best_pairs,triestart,
 				knownsplice_limit_low,knownsplice_limit_high,
@@ -1039,15 +1028,16 @@ Splicetrie_solve_end3 (List_T best_pairs, unsigned int *triecontents, unsigned i
 #ifdef GSNAP
 #ifdef END_KNOWNSPLICING_SHORTCUT
 
-static Uintlist_T
-dump_left_aux (int *best_nmismatches, Uintlist_T coords, unsigned int *triecontents,
+static Genomicposlist_T
+dump_left_aux (int *best_nmismatches, Genomicposlist_T coords, Triecontent_T *triecontents,
 	       char *queryptr, Compress_T query_compress,
 	       int pos5, int pos3, bool plusp, int nmismatches, int charpos,
-	       Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high) {
-  Genomicpos_T leaf, segment_left;
+	       Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high) {
+  Triecontent_T leaf;
+  Univcoord_T segment_left;
   int nleaves, i;
-  Genomicpos_T position;
-  UINT4 query_shifted, flags, mask;
+  Univcoord_T position;
+  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
 
@@ -1081,12 +1071,12 @@ dump_left_aux (int *best_nmismatches, Uintlist_T coords, unsigned int *trieconte
 	debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	*best_nmismatches = nmismatches;
-	Uintlist_free(&coords);
-	return Uintlist_push(NULL,position);
+	Genomicposlist_free(&coords);
+	return Genomicposlist_push(NULL,position);
       } else if (nmismatches == *best_nmismatches) {
 	debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	return Uintlist_push(coords,position);
+	return Genomicposlist_push(coords,position);
       } else {
 	return coords;
       }
@@ -1097,12 +1087,12 @@ dump_left_aux (int *best_nmismatches, Uintlist_T coords, unsigned int *trieconte
 	debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	*best_nmismatches = nmismatches;
-	Uintlist_free(&coords);
-	return Uintlist_push(NULL,position);
+	Genomicposlist_free(&coords);
+	return Genomicposlist_push(NULL,position);
       } else if (nmismatches == *best_nmismatches) {
 	debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	return Uintlist_push(coords,position);
+	return Genomicposlist_push(coords,position);
       } else {
 	return coords;
       }
@@ -1133,12 +1123,12 @@ dump_left_aux (int *best_nmismatches, Uintlist_T coords, unsigned int *trieconte
 	  debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	  *best_nmismatches = nmismatches;
-	  Uintlist_free(&coords);
-	  coords = Uintlist_push(NULL,position);
+	  Genomicposlist_free(&coords);
+	  coords = Genomicposlist_push(NULL,position);
 	} else if (nmismatches == *best_nmismatches) {
 	  debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	  coords = Uintlist_push(coords,position);
+	  coords = Genomicposlist_push(coords,position);
 	}
       
       } else {
@@ -1147,12 +1137,12 @@ dump_left_aux (int *best_nmismatches, Uintlist_T coords, unsigned int *trieconte
 	  debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	  *best_nmismatches = nmismatches;
-	  Uintlist_free(&coords);
-	  coords = Uintlist_push(NULL,position);
+	  Genomicposlist_free(&coords);
+	  coords = Genomicposlist_push(NULL,position);
 	} else if (nmismatches == *best_nmismatches) {
 	  debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	  coords = Uintlist_push(coords,position);
+	  coords = Genomicposlist_push(coords,position);
 	}
       }
     }
@@ -1206,26 +1196,12 @@ dump_left_aux (int *best_nmismatches, Uintlist_T coords, unsigned int *trieconte
 }
 
 
-static int
-uint_compare (const void *a, const void *b) {
-  unsigned int x = * (unsigned int *) a;
-  unsigned int y = * (unsigned int *) b;
-
-  if (x < y) {
-    return -1;
-  } else if (y < x) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
-
-Uintlist_T
-Splicetrie_dump_coords_left (int *best_nmismatches, unsigned int *triestart, int pos5, int pos3,
+Genomicposlist_T
+Splicetrie_dump_coords_left (int *best_nmismatches, Triecontent_T *triestart, int pos5, int pos3,
 			     Compress_T query_compress, char *queryptr, bool plusp,
-			     Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high) {
-  Uintlist_T coords;
-  unsigned int *array, lastvalue;
+			     Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high) {
+  Genomicposlist_T coords;
+  Univcoord_T *array, lastvalue;
   int n, k;
 
   debug3(printf("Splicetrie_dump_coords_left called at pos5 %d, pos3 %d with query %s\n",
@@ -1234,7 +1210,7 @@ Splicetrie_dump_coords_left (int *best_nmismatches, unsigned int *triestart, int
 
   if (pos5 >= pos3) {
     debug3(printf("Splicetrie_dump_coords_left returning NULL, because pos5 >= pos3\n"));
-    return (Uintlist_T) NULL;
+    return (Genomicposlist_T) NULL;
   } else {
     *best_nmismatches = pos3 - pos5;
   }
@@ -1246,41 +1222,42 @@ Splicetrie_dump_coords_left (int *best_nmismatches, unsigned int *triestart, int
 
   assert(*best_nmismatches >= 0);
 
-  if (Uintlist_length(coords) > 1 && snpp == true) {
-    array = Uintlist_to_array(&n,coords);
-    qsort(array,n,sizeof(unsigned int),uint_compare);
-    Uintlist_free(&coords);
+  if (Genomicposlist_length(coords) > 1 && snpp == true) {
+    array = Genomicposlist_to_array(&n,coords);
+    qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
+    Genomicposlist_free(&coords);
 
-    coords = (Uintlist_T) NULL;
-    coords = Uintlist_push(coords,array[0]);
+    coords = (Genomicposlist_T) NULL;
+    coords = Genomicposlist_push(coords,array[0]);
     lastvalue = array[0];
     for (k = 1; k < n; k++) {
       if (array[k] == lastvalue) {
 	/* Skip */
       } else {
-	coords = Uintlist_push(coords,array[k]);
+	coords = Genomicposlist_push(coords,array[k]);
 	lastvalue = array[k];
       }
     }
     FREE(array);
   }
 
-  debug3(printf("Splicetrie_dump_left returning %s\n",Uintlist_to_string(coords)));
+  debug3(printf("Splicetrie_dump_left returning %s\n",Genomicposlist_to_string(coords)));
   return coords;
 }
 
 
 
 
-static Uintlist_T
-dump_right_aux (int *best_nmismatches, Uintlist_T coords,
-		unsigned int *triecontents, char *queryptr, Compress_T query_compress,
+static Genomicposlist_T
+dump_right_aux (int *best_nmismatches, Genomicposlist_T coords,
+		Triecontent_T *triecontents, char *queryptr, Compress_T query_compress,
 		int pos5, int pos3, bool plusp, int nmismatches, int charpos,
-		Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high) {
-  Genomicpos_T leaf, segment_left;
+		Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high) {
+  Triecontent_T leaf;
+  Univcoord_T segment_left;
   int nleaves, i;
-  Genomicpos_T position;
-  UINT4 query_shifted, flags, mask;
+  Univcoord_T position;
+  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
 
@@ -1314,12 +1291,12 @@ dump_right_aux (int *best_nmismatches, Uintlist_T coords,
 	debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	*best_nmismatches = nmismatches;
-	Uintlist_free(&coords);
-	return Uintlist_push(NULL,position);
+	Genomicposlist_free(&coords);
+	return Genomicposlist_push(NULL,position);
       } else if (nmismatches == *best_nmismatches) {
 	debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	return Uintlist_push(coords,position);
+	return Genomicposlist_push(coords,position);
       } else {
 	return coords;
       }
@@ -1330,12 +1307,12 @@ dump_right_aux (int *best_nmismatches, Uintlist_T coords,
 	debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	*best_nmismatches = nmismatches;
-	Uintlist_free(&coords);
-	return Uintlist_push(NULL,position);
+	Genomicposlist_free(&coords);
+	return Genomicposlist_push(NULL,position);
       } else if (nmismatches == *best_nmismatches) {
 	debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 		      nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	return Uintlist_push(coords,position);
+	return Genomicposlist_push(coords,position);
       } else {
 	return coords;
       }
@@ -1366,12 +1343,12 @@ dump_right_aux (int *best_nmismatches, Uintlist_T coords,
 	  debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	  *best_nmismatches = nmismatches;
-	  Uintlist_free(&coords);
-	  coords = Uintlist_push(NULL,position);
+	  Genomicposlist_free(&coords);
+	  coords = Genomicposlist_push(NULL,position);
 	} else if (nmismatches == *best_nmismatches) {
 	  debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	  coords = Uintlist_push(coords,position);
+	  coords = Genomicposlist_push(coords,position);
 	}
       
       } else {
@@ -1380,12 +1357,12 @@ dump_right_aux (int *best_nmismatches, Uintlist_T coords,
 	  debug3(printf("  nmismatches %d < best_nmismatches %d => setting splicesites_i to be %d (new best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
 	  *best_nmismatches = nmismatches;
-	  Uintlist_free(&coords);
-	  coords = Uintlist_push(NULL,position);
+	  Genomicposlist_free(&coords);
+	  coords = Genomicposlist_push(NULL,position);
 	} else if (nmismatches == *best_nmismatches) {
 	  debug3(printf("  nmismatches %d == best_nmismatches %d => pushing leaf %d (same best_nmismatches %d)\n",
 			nmismatches,*best_nmismatches,(int) leaf,nmismatches));
-	  coords = Uintlist_push(coords,position);
+	  coords = Genomicposlist_push(coords,position);
 	}
       }
     }
@@ -1439,11 +1416,11 @@ dump_right_aux (int *best_nmismatches, Uintlist_T coords,
 }
 
 
-Uintlist_T
-Splicetrie_dump_coords_right (int *best_nmismatches, unsigned int *triestart, int pos5, int pos3,
+Genomicposlist_T
+Splicetrie_dump_coords_right (int *best_nmismatches, Triecontent_T *triestart, int pos5, int pos3,
 			      Compress_T query_compress, char *queryptr, bool plusp,
-			      Genomicpos_T knownsplice_limit_low, Genomicpos_T knownsplice_limit_high) {
-  Uintlist_T coords;
+			      Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high) {
+  Genomicposlist_T coords;
   unsigned int *array, lastvalue;
   int n, k;
 
@@ -1453,7 +1430,7 @@ Splicetrie_dump_coords_right (int *best_nmismatches, unsigned int *triestart, in
 
   if (pos5 >= pos3) {
     debug3(printf("Splicetrie_dump_coords_right returning NULL, because pos5 >= pos3\n"));
-    return (Uintlist_T) NULL;
+    return (Genomicposlist_T) NULL;
   } else {
     *best_nmismatches = pos3 - pos5;
   }
@@ -1465,26 +1442,26 @@ Splicetrie_dump_coords_right (int *best_nmismatches, unsigned int *triestart, in
 
   assert(*best_nmismatches >= 0);
 
-  if (Uintlist_length(coords) > 1 && snpp == true) {
-    array = Uintlist_to_array(&n,coords);
-    qsort(array,n,sizeof(unsigned int),uint_compare);
-    Uintlist_free(&coords);
+  if (Genomicposlist_length(coords) > 1 && snpp == true) {
+    array = Genomicposlist_to_array(&n,coords);
+    qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
+    Genomicposlist_free(&coords);
 
-    coords = (Uintlist_T) NULL;
-    coords = Uintlist_push(coords,array[0]);
+    coords = (Genomicposlist_T) NULL;
+    coords = Genomicposlist_push(coords,array[0]);
     lastvalue = array[0];
     for (k = 1; k < n; k++) {
       if (array[k] == lastvalue) {
 	/* Skip */
       } else {
-	coords = Uintlist_push(coords,array[k]);
+	coords = Genomicposlist_push(coords,array[k]);
 	lastvalue = array[k];
       }
     }
     FREE(array);
   }
 
-  debug3(printf("Splicetrie_dump_right returning %s\n",Uintlist_to_string(coords)));
+  debug3(printf("Splicetrie_dump_right returning %s\n",Genomicposlist_to_string(coords)));
   return coords;
 }
 
@@ -1501,12 +1478,13 @@ Splicetrie_dump_coords_right (int *best_nmismatches, unsigned int *triestart, in
 
 static Intlist_T
 search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splicesites_i,
-	     unsigned int *triecontents, char *queryptr, Compress_T query_compress,
+	     Triecontent_T *triecontents, char *queryptr, Compress_T query_compress,
 	     int pos5, int pos3, bool plusp, int genestrand, bool collect_all_p,
-	     int max_mismatches_allowed, int nmismatches, int charpos, Genomicpos_T limit_low) {
-  Genomicpos_T leaf, segment_left, position;
+	     int max_mismatches_allowed, int nmismatches, int charpos, Univcoord_T limit_low) {
+  Triecontent_T leaf;
+  Univcoord_T segment_left, position;
   int nleaves, i;
-  UINT4 query_shifted, flags, mask;
+  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
   
@@ -1714,12 +1692,13 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
 
 static Intlist_T
 search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splicesites_i,
-	      unsigned int *triecontents, char *queryptr, Compress_T query_compress,
+	      Triecontent_T *triecontents, char *queryptr, Compress_T query_compress,
 	      int pos5, int pos3, bool plusp, int genestrand, bool collect_all_p,
-	      int max_mismatches_allowed, int nmismatches, int charpos, Genomicpos_T limit_high) {
-  Genomicpos_T leaf, segment_left, position;
+	      int max_mismatches_allowed, int nmismatches, int charpos, Univcoord_T limit_high) {
+  Triecontent_T leaf;
+  Univcoord_T segment_left, position;
   int nleaves, i;
-  UINT4 query_shifted, flags, mask;
+  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
   
@@ -1931,7 +1910,7 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
 
 Intlist_T
 Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
-		      Genomicpos_T origleft, int pos5, int pos3, Genomicpos_T chroffset,
+		      Univcoord_T origleft, int pos5, int pos3, Univcoord_T chroffset,
 		      Compress_T query_compress, char *queryptr, int querylength,
 		      int max_mismatches_allowed, bool plusp, int genestrand,
 		      bool collect_all_p) {
@@ -1941,7 +1920,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 #if 0
   unsigned int *triebranch_obs = NULL, *triebranch_max = NULL;
 #endif
-  unsigned int *triestart_obs, *triestart_max;
+  Triecontent_T *triestart_obs, *triestart_max;
   int best_nmismatches_obs, best_nmismatches_max, nmismatches_int, nmismatches;
   int obsmax_penalty;
 #ifdef LOOSE_ALLOWANCE
@@ -2128,7 +2107,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 
 Intlist_T
 Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
-		       Genomicpos_T origleft, int pos5, int pos3, Genomicpos_T chrhigh,
+		       Univcoord_T origleft, int pos5, int pos3, Univcoord_T chrhigh,
 		       Compress_T query_compress, char *queryptr, int max_mismatches_allowed,
 		       bool plusp, int genestrand, bool collect_all_p) {
   Intlist_T splicesites_i = NULL, p, q;
@@ -2137,7 +2116,7 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
 #if 0
   unsigned int *triebranch_obs = NULL, *triebranch_max = NULL;
 #endif
-  unsigned int *triestart_obs, *triestart_max;
+  Triecontent_T *triestart_obs, *triestart_max;
   int best_nmismatches_obs, best_nmismatches_max, nmismatches_int, nmismatches;
   int obsmax_penalty;
 #ifdef LOOSE_ALLOWANCE

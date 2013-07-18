@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: tableint.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: tableint.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -124,7 +124,7 @@ Tableint_map (T table,
 	   void (*apply)(const void *key, int *value, void *cl),
 	   void *cl) {
   int i;
-  unsigned stamp;
+  unsigned int stamp;
   struct binding *p;
 
   assert(table);

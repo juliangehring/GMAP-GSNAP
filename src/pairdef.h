@@ -1,4 +1,4 @@
-/* $Id: pairdef.h 82069 2012-12-19 21:42:40Z twu $ */
+/* $Id: pairdef.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
@@ -9,7 +9,7 @@ typedef enum {GOOD,BAD} State_T;
 #define T Pair_T
 struct T {
   int querypos;
-  Genomicpos_T genomepos;
+  Chrpos_T genomepos;
   int refquerypos;
   int aapos;
 

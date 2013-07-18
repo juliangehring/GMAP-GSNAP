@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: interval.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: interval.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,7 +19,7 @@ static char rcsid[] = "$Id: interval.c 40271 2011-05-28 02:29:18Z twu $";
 #define T Interval_T
 
 T
-Interval_new (unsigned int low, unsigned int high, int type) {
+Interval_new (Chrpos_T low, Chrpos_T high, int type) {
   T new = (T) MALLOC(sizeof(*new));
 
   if (low < high) {
@@ -64,18 +64,18 @@ Interval_print (T this) {
   return;
 }
 
-unsigned int
+Chrpos_T
 Interval_low (T this) {
   return this->low;
 }
 
-unsigned int
+Chrpos_T
 Interval_high (T this) {
   return this->high;
 }
 
 void
-Interval_store_length (T this, unsigned int length) {
+Interval_store_length (T this, Chrpos_T length) {
   this->high = this->low - 1 + length;
   return;
 }
@@ -85,7 +85,7 @@ Interval_sign (T this) {
   return this->sign;
 }
 
-unsigned int
+Chrpos_T
 Interval_length (T this) {
   return this->high - this->low + 1;
 }
@@ -96,13 +96,13 @@ Interval_type (T this) {
 }
 
 /* Have to subtract 1 because intervals array is zero-based */
-unsigned int
+Chrpos_T
 Interval_array_low (struct T *intervals, int index) {
   return intervals[index-1].low;
 }
 
 /* Have to subtract 1 because intervals array is zero-based */
-unsigned int
+Chrpos_T
 Interval_array_high (struct T *intervals, int index) {
   return intervals[index-1].high;
 }
@@ -110,9 +110,9 @@ Interval_array_high (struct T *intervals, int index) {
 
 /* Have to subtract 1 because intervals array is zero-based */
 bool
-Interval_is_contained (unsigned int x, struct T *intervals, int index) {
-  unsigned int low = intervals[index-1].low;
-  unsigned int high = intervals[index-1].high;
+Interval_is_contained (Chrpos_T x, struct T *intervals, int index) {
+  Chrpos_T low = intervals[index-1].low;
+  Chrpos_T high = intervals[index-1].high;
 
   if (low <= x && x <= high) {
     return true;
@@ -123,9 +123,9 @@ Interval_is_contained (unsigned int x, struct T *intervals, int index) {
 
 /* Have to subtract 1 because intervals array is zero-based */
 bool
-Interval_overlap_p (unsigned int x, unsigned int y, struct T *intervals, int index) {
-  unsigned int low = intervals[index-1].low;
-  unsigned int high = intervals[index-1].high;
+Interval_overlap_p (Chrpos_T x, Chrpos_T y, struct T *intervals, int index) {
+  Chrpos_T low = intervals[index-1].low;
+  Chrpos_T high = intervals[index-1].high;
 
   if (x <= high && y >= low) {
     return true;
@@ -149,8 +149,8 @@ sigma_compare (const void *i, const void *j) {
   int x = * (int *) i;
   int y = * (int *) j;
 
-  unsigned int a = current_intervals[x-1].low;
-  unsigned int b = current_intervals[y-1].low;
+  Chrpos_T a = current_intervals[x-1].low;
+  Chrpos_T b = current_intervals[y-1].low;
 
   if (a < b) {
     return -1;
@@ -167,8 +167,8 @@ omega_compare (const void *i, const void *j) {
   int x = * (int *) i;
   int y = * (int *) j;
 
-  unsigned int a = current_intervals[x-1].high;
-  unsigned int b = current_intervals[y-1].high;
+  Chrpos_T a = current_intervals[x-1].high;
+  Chrpos_T b = current_intervals[y-1].high;
 
   if (a < b) {
     return -1;

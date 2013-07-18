@@ -1,13 +1,15 @@
-/* $Id: samprint.h 87096 2013-02-22 21:04:02Z twu $ */
+/* $Id: samprint.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef SAMPRINT_INCLUDED
 #define SAMPRINT_INCLUDED
 
 #include <stdio.h>
 #include "stage3hr.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "shortread.h"
 #include "resulthr.h"
 #include "genomicpos.h"
+#include "types.h"
 #include "substring.h"
 #include "bool.h"
 
@@ -15,7 +17,7 @@ extern void
 SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in, bool sam_multiple_primaries_p_in,
 	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in);
 
-extern Genomicpos_T
+extern Chrpos_T
 SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
 		    Substring_T substring_low, int querylength);
 
@@ -25,22 +27,22 @@ SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,
 		  int absmq_score, int first_absmq, bool invertp, bool invert_mate_p);
 
 extern void
-SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc,
-		     IIT_T chromosome_iit, Resulttype_T resulttype, bool first_read_p,
-		     int npaths_mate, Genomicpos_T mate_chrpos,
+SAM_print_nomapping (FILE *fp, Shortread_T queryseq, Stage3end_T mate, char *acc1, char *acc2,
+		     Univ_IIT_T chromosome_iit, Resulttype_T resulttype, bool first_read_p,
+		     int npaths_mate, Chrpos_T mate_chrpos,
 		     int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p);
 
 extern void
-SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc, int pathnum, int npaths,
-	   int absmq_score, int first_absmq, int second_absmq, int mapq_score, IIT_T chromosome_iit, Shortread_T queryseq,
-	   Shortread_T queryseq2, int pairedlength, Genomicpos_T chrpos, Genomicpos_T mate_chrpos,
-	   int hardclip_low, int hardclip_high, Resulttype_T resulttype, bool first_read_p,
+SAM_print (FILE *fp, Stage3end_T this, Stage3end_T mate, char *acc1, char *acc2, int pathnum, int npaths,
+	   int absmq_score, int first_absmq, int second_absmq, int mapq_score, Univ_IIT_T chromosome_iit, Shortread_T queryseq,
+	   Shortread_T queryseq2, int pairedlength, Chrpos_T chrpos, Chrpos_T mate_chrpos,
+	   int clipdir, int hardclip_low, int hardclip_high, Resulttype_T resulttype, bool first_read_p,
 	   int npaths_mate, int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
 	   bool merge_samechr_p);
 
 extern void
 SAM_print_paired (Result_T result, Resulttype_T resulttype,
-		  IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
+		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  bool invert_first_p, bool invert_second_p,
 		  bool nofailsp, bool failsonlyp, bool fails_as_input_p,
 		  bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,

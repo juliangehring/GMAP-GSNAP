@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrsubset.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: chrsubset.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -30,14 +30,14 @@ struct T {
 
 
 T
-Chrsubset_make (Chrnum_T chrnum, IIT_T chromosome_iit) {
+Chrsubset_make (Chrnum_T chrnum, Univ_IIT_T chromosome_iit) {
   T new = (T) MALLOC(sizeof(*new));
   int nchromosomes, i;
 
   new->name = NULL;
   new->nincluded = 1;
 
-  nchromosomes = IIT_total_nintervals(chromosome_iit);
+  nchromosomes = Univ_IIT_total_nintervals(chromosome_iit);
   new->includep = (bool *) CALLOC(nchromosomes,sizeof(bool));
   new->includep[chrnum] = true;
 
@@ -63,14 +63,14 @@ Chrsubset_print (T this) {
 }
 
 void
-Chrsubset_print_chromosomes (T this, IIT_T chromosome_iit) {
+Chrsubset_print_chromosomes (T this, Univ_IIT_T chromosome_iit) {
   int i;
   bool firstp = true, allocp;
   char *label;
 
-  for (i = 0; i < IIT_total_nintervals(chromosome_iit); i++) {
+  for (i = 0; i < Univ_IIT_total_nintervals(chromosome_iit); i++) {
     if (this == NULL || this->includep[i] == true) {
-      label = IIT_label(chromosome_iit,i+1,&allocp);
+      label = Univ_IIT_label(chromosome_iit,i+1,&allocp);
       if (firstp == true) {
 	printf("%s",label);
 	firstp = false;
@@ -92,9 +92,9 @@ Chrsubset_name (T this) {
 }
 
 int
-Chrsubset_nincluded (T this, IIT_T chromosome_iit) {
+Chrsubset_nincluded (T this, Univ_IIT_T chromosome_iit) {
   if (this == NULL) {
-    return IIT_total_nintervals(chromosome_iit);
+    return Univ_IIT_total_nintervals(chromosome_iit);
   } else {
     return this->nincluded;
   }
@@ -103,10 +103,10 @@ Chrsubset_nincluded (T this, IIT_T chromosome_iit) {
 
 /* Assumes that this != NULL.  Should call this routine with "if (!chrsubset or Chrsubset_includep()..." */
 bool
-Chrsubset_includep (T this, Genomicpos_T position, IIT_T chromosome_iit) {
+Chrsubset_includep (T this, Univcoord_T position, Univ_IIT_T chromosome_iit) {
   int index;
 
-  index = IIT_get_one(chromosome_iit,/*divstring*/NULL,position,position);
+  index = Univ_IIT_get_one(chromosome_iit,position,position);
   return this->includep[index-1];
 }
 
@@ -133,11 +133,11 @@ Chrsubset_oldindex (T this, int index) {
 
 #if 0
 unsigned int *
-Chrsubset_transitions (int **signs, int *nedges, T this, IIT_T chromosome_iit) {
+Chrsubset_transitions (int **signs, int *nedges, T this, Univ_IIT_T chromosome_iit) {
   if (this == NULL) {
-    return IIT_transitions(&(*signs),&(*nedges),chromosome_iit);
+    return Univ_IIT_transitions(&(*signs),&(*nedges),chromosome_iit);
   } else {
-    return IIT_transitions_subset(&(*signs),&(*nedges),chromosome_iit,this->oldindices,this->nincluded);
+    return Univ_IIT_transitions_subset(&(*signs),&(*nedges),chromosome_iit,this->oldindices,this->nincluded);
   }
 }
 #endif
@@ -214,11 +214,11 @@ skip_list (FILE *fp, char *filename, char *subsetname) {
 
 /*
 static bool *
-include_all (IIT_T chromosome_iit) {
+include_all (Univ_IIT_T chromosome_iit) {
   bool *includep;
   int nchromosomes, i;
 
-  nchromosomes = IIT_total_nintervals(chromosome_iit);
+  nchromosomes = Univ_IIT_total_nintervals(chromosome_iit);
   includep = (bool *) CALLOC(nchromosomes,sizeof(bool));
   for (i = 0; i < nchromosomes; i++) {
     includep[i] = true;
@@ -256,13 +256,13 @@ get_next_token (char **string) {
 
 
 static bool *
-process_inclusions (char *string, IIT_T chromosome_iit) {
+process_inclusions (char *string, Univ_IIT_T chromosome_iit) {
   bool *includep;
   int nchromosomes, index, i;
   char *chrstring;
 
   /* Default is to exclude */
-  nchromosomes = IIT_total_nintervals(chromosome_iit);
+  nchromosomes = Univ_IIT_total_nintervals(chromosome_iit);
   includep = (bool *) CALLOC(nchromosomes,sizeof(bool));
   for (i = 0; i < nchromosomes; i++) {
     includep[i] = false;
@@ -270,7 +270,7 @@ process_inclusions (char *string, IIT_T chromosome_iit) {
 
   while ((chrstring = get_next_token(&string)) != NULL) {
     debug(printf("Token is %s\n",chrstring));
-    index = IIT_find_one(chromosome_iit,chrstring);
+    index = Univ_IIT_find_one(chromosome_iit,chrstring);
     includep[index-1] = true;
     FREE(chrstring);
   }
@@ -278,13 +278,13 @@ process_inclusions (char *string, IIT_T chromosome_iit) {
 }
 
 static bool *
-process_exclusions (char *string, IIT_T chromosome_iit) {
+process_exclusions (char *string, Univ_IIT_T chromosome_iit) {
   bool *includep;
   int nchromosomes, index, i;
   char *chrstring;
 
   /* Default is to include */
-  nchromosomes = IIT_total_nintervals(chromosome_iit);
+  nchromosomes = Univ_IIT_total_nintervals(chromosome_iit);
   includep = (bool *) CALLOC(nchromosomes,sizeof(bool));
   for (i = 0; i < nchromosomes; i++) {
     includep[i] = true;
@@ -292,7 +292,7 @@ process_exclusions (char *string, IIT_T chromosome_iit) {
 
   while ((chrstring = get_next_token(&string)) != NULL) {
     debug(printf("Token is %s\n",chrstring));
-    index = IIT_find_one(chromosome_iit,chrstring);
+    index = Univ_IIT_find_one(chromosome_iit,chrstring);
     includep[index-1] = false;
     FREE(chrstring);
   }
@@ -301,7 +301,7 @@ process_exclusions (char *string, IIT_T chromosome_iit) {
 
 
 static bool *
-process_list (FILE *fp, char *filename, char *subsetname, IIT_T chromosome_iit) {
+process_list (FILE *fp, char *filename, char *subsetname, Univ_IIT_T chromosome_iit) {
   char Buffer[BUFSIZE], *p;
 
   if (fgets(Buffer,BUFSIZE,fp) == NULL) {
@@ -383,22 +383,22 @@ compute_old_indices (bool *includep, int nincluded, int nchromosomes) {
 
 
 T
-Chrsubset_new_single (Chrnum_T chrnum, IIT_T chromosome_iit) {
+Chrsubset_new_single (Chrnum_T chrnum, Univ_IIT_T chromosome_iit) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->name = Chrnum_to_string(chrnum,chromosome_iit);
-  new->includep = (bool *) CALLOC(IIT_total_nintervals(chromosome_iit),sizeof(bool));
+  new->includep = (bool *) CALLOC(Univ_IIT_total_nintervals(chromosome_iit),sizeof(bool));
   new->includep[chrnum-1] = true;
   new->nincluded = 1;
-  new->newindices = compute_new_indices(new->includep,IIT_total_nintervals(chromosome_iit));
-  new->oldindices = compute_old_indices(new->includep,new->nincluded,IIT_total_nintervals(chromosome_iit));
+  new->newindices = compute_new_indices(new->includep,Univ_IIT_total_nintervals(chromosome_iit));
+  new->oldindices = compute_old_indices(new->includep,new->nincluded,Univ_IIT_total_nintervals(chromosome_iit));
   return new;
 }
 
 
 T
 Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot, 
-		char *user_chrsubsetname, IIT_T chromosome_iit) {
+		char *user_chrsubsetname, Univ_IIT_T chromosome_iit) {
   T new = NULL;
   FILE *fp;
   char *filename, *subsetname;
@@ -441,9 +441,9 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
       new = (T) MALLOC(sizeof(*new));
       new->name = subsetname;
       new->includep = includep;
-      new->nincluded = compute_nincluded(includep,IIT_total_nintervals(chromosome_iit));
-      new->newindices = compute_new_indices(includep,IIT_total_nintervals(chromosome_iit));
-      new->oldindices = compute_old_indices(includep,new->nincluded,IIT_total_nintervals(chromosome_iit));
+      new->nincluded = compute_nincluded(includep,Univ_IIT_total_nintervals(chromosome_iit));
+      new->newindices = compute_new_indices(includep,Univ_IIT_total_nintervals(chromosome_iit));
+      new->oldindices = compute_old_indices(includep,new->nincluded,Univ_IIT_total_nintervals(chromosome_iit));
     }
 
     fclose(fp);
@@ -468,9 +468,9 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
       new = (T) MALLOC(sizeof(*new));
       new->name = subsetname;
       new->includep = includep;
-      new->nincluded = compute_nincluded(includep,IIT_total_nintervals(chromosome_iit));
-      new->newindices = compute_new_indices(includep,IIT_total_nintervals(chromosome_iit));
-      new->oldindices = compute_old_indices(includep,new->nincluded,IIT_total_nintervals(chromosome_iit));
+      new->nincluded = compute_nincluded(includep,Univ_IIT_total_nintervals(chromosome_iit));
+      new->newindices = compute_new_indices(includep,Univ_IIT_total_nintervals(chromosome_iit));
+      new->oldindices = compute_old_indices(includep,new->nincluded,Univ_IIT_total_nintervals(chromosome_iit));
     }
     fclose(fp);
   }
@@ -478,7 +478,7 @@ Chrsubset_read (char *user_chrsubsetfile, char *genomesubdir, char *fileroot,
 
   debug(
 	if (new != NULL) {
-	  for (i = 0; i < IIT_total_nintervals(chromosome_iit); i++) {
+	  for (i = 0; i < Univ_IIT_total_nintervals(chromosome_iit); i++) {
 	    printf(" %d: %d\n",i,new->includep[i]);
 	  }
 	}

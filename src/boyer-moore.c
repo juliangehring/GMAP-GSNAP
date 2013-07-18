@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c 79302 2012-11-15 23:55:58Z twu $";
+static char rcsid[] = "$Id: boyer-moore.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -206,6 +206,7 @@ precompute_good_suffix_shift (char *query, int querylen) {
 static int *
 precompute_suffix (char *query, int querylen) {
   int *suffix;
+  /* Note: initialization of f not necessary, since i < g in first iteration */
   int f, g, i;
 
   suffix = (int *) CALLOC(querylen,sizeof(int));
@@ -359,8 +360,8 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 static char complCode[128] = COMPLEMENT_LC;
 
 static char
-get_genomic_nt (char *g_alt, Genomicpos_T genomicpos,
-		Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp) {
+get_genomic_nt (char *g_alt, int genomicpos,
+		Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp) {
   char c2, c2_alt;
 
   if (watsonp) {
@@ -392,7 +393,7 @@ get_genomic_nt (char *g_alt, Genomicpos_T genomicpos,
 
 Intlist_T
 BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
-	       Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp) {
+	       Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp) {
 #ifndef STANDALONE
   Intlist_T hits = NULL;
 #endif

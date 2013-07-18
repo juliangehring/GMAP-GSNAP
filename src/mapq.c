@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mapq.c 55735 2012-01-11 22:38:10Z twu $";
+static char rcsid[] = "$Id: mapq.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -150,7 +150,7 @@ check_badchar (char c) {
 
 
 double
-MAPQ_loglik (Compress_T query_compress, Genomicpos_T left, int querystart, int queryend,
+MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int queryend,
 	     int querylength, char *quality_string, bool plusp, int genestrand) {
   double loglik = 0.0;
   int Q;

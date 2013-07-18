@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c 57664 2012-02-14 20:03:03Z twu $";
+static char rcsid[] = "$Id: oligo.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1556,7 +1556,7 @@ Oligo_one_nt (Storedoligomer_T oligo, int oligosize) {
    positions is allocated by system malloc() */
 /* No longer seems to be called by GMAP either */
 int
-Oligo_lookup (Genomicpos_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo) {
+Oligo_lookup (Univcoord_T **positions, Indexdb_T indexdb, Storedoligomer_T storedoligo) {
   int nentries;
   debug(char *nt);
   debug1(int i);
@@ -1943,7 +1943,7 @@ Cell_compare (const void *a, const void *b) {
 #define BINARY_FOLDDIFF 16
 
 static int
-binary_search (int lowi, int highi, Storedoligomer_T *oligos, Genomicpos_T goal) {
+binary_search (int lowi, int highi, Storedoligomer_T *oligos, Storedoligomer_T goal) {
   bool foundp = false;
   int middlei;
 

@@ -1,19 +1,21 @@
-/* $Id: interval.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: interval.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
 #include "bool.h"
+#include "genomicpos.h"
+#include "types.h"
 
 #define T Interval_T
 typedef struct T *T;
 struct T {
-  unsigned int low;		/* low <= high */
-  unsigned int high;
+  Chrpos_T low;		/* low <= high */
+  Chrpos_T high;
   int sign;
   int type;
 };
 
 extern T
-Interval_new (unsigned int low, unsigned int high, int type);
+Interval_new (Chrpos_T low, Chrpos_T high, int type);
 extern T
 Interval_copy (T old);
 extern void
@@ -21,28 +23,28 @@ Interval_free (T *old);
 extern void
 Interval_print (T this);
 
-extern unsigned int
+extern Chrpos_T
 Interval_low (T this);
-extern unsigned int
+extern Chrpos_T
 Interval_high (T this);
 extern void
-Interval_store_length (T this, unsigned int length);
+Interval_store_length (T this, Chrpos_T length);
 extern int
 Interval_sign (T this);
-extern unsigned int
+extern Chrpos_T
 Interval_length (T this);
 extern int
 Interval_type (T this);
 
-extern unsigned int
+extern Chrpos_T
 Interval_array_low (struct T *intervals, int index);
-extern unsigned int
+extern Chrpos_T
 Interval_array_high (struct T *intervals, int index);
 
 extern bool
-Interval_is_contained (unsigned int x, struct T *intervals, int index);
+Interval_is_contained (Chrpos_T x, struct T *intervals, int index);
 extern bool
-Interval_overlap_p (unsigned int x, unsigned int y, struct T *intervals, int index);
+Interval_overlap_p (Chrpos_T x, Chrpos_T y, struct T *intervals, int index);
 
 extern void
 Interval_qsort_by_sigma (int *table, int i, int j, struct T *intervals);

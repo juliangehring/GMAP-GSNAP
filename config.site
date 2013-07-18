@@ -39,13 +39,46 @@
 ## with_gmapdb=/path/to/gmapdb
 
 
-## Optional zlib support (needed only for reading gzip files).  By
-## default, the configure program will try to see if you have a
+## Popcnt support.  By default, the configure program will test your computer
+## for popcnt and related commands (for fast bit counting), and if so, enable those
+## commands to speed up the program.  If you plan to configure the package
+## on one computer and then run the programs on another computer, you may
+## need to disable this feature.  To disable the feature, specify --disable-popcnt
+## or uncomment the line below and change the answer to "disable_popcnt".
+##
+## enable_popcnt
+
+
+## SIMD support.  By default, the configure program will test your
+## computer for SIMD commands (e.g., Intel SSE commands), and if so,
+## enable those commands to speed up the program.  If you plan to
+## configure the package on one computer and then run the programs on
+## another computer, you may need to disable this feature.  To disable
+## all SIMD support, specify --disable-simd or uncomment the line
+## below and change the answer to "disable_simd".  Or you may disable
+## individual types of SIMD commands, as listed below.
+##
+## enable_simd
+## enable_sse2
+## enable_sse4.1
+
+
+## Optional zlib support (needed only for reading gzip-compressed files).  By
+## default, the configure program will test to see if you have a
 ## working zlib library and if so, enable the feature.  If you want to
 ## disable the feature, specify --disable-zlib or uncomment the line
 ## below and change the answer to "disable_zlib".
 ##
 ## enable_zlib
+
+
+## Optional bzlib support (needed only for reading bzip2-compressed files).  By
+## default, the configure program will test to see if you have a
+## working bzlib library and if so, enable the feature.  If you want to
+## disable the feature, specify --disable-bzlib or uncomment the line
+## below and change the answer to "disable_bzlib".
+##
+## enable_bzlib
 
 
 ## The command for the C compiler.  If unspecified, the GNU configure

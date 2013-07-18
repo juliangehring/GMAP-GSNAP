@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 82071 2012-12-19 21:43:45Z twu $";
+static char rcsid[] = "$Id: stage1.c 101789 2013-07-17 14:56:20Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -89,7 +89,7 @@ static char rcsid[] = "$Id: stage1.c 82071 2012-12-19 21:43:45Z twu $";
 /* Debugging of scanning for 24-mers */
 #ifdef DEBUG
 #define debug(x) x
-static IIT_T global_chromosome_iit;
+static Univ_IIT_T global_chromosome_iit;
 static char *queryuc_ptr;
 #else
 #define debug(x)
@@ -168,15 +168,15 @@ static char *queryuc_ptr;
 
 
 #ifdef PMAP
-static int index1part_aa;
+static Width_T index1part_aa;
 static int leftreadshift;
-static Genomicpos_T maxextension;
-static Genomicpos_T maxtotallen_bound;
+static Chrpos_T maxextension;
+static Chrpos_T maxtotallen_bound;
 static int min_extra_end;
 static int circular_typeint;
 
 void
-Stage1_setup (int index1part_aa_in, Genomicpos_T maxextension_in, Genomicpos_T maxtotallen_bound_in,
+Stage1_setup (Width_T index1part_aa_in, Chrpos_T maxextension_in, Chrpos_T maxtotallen_bound_in,
 	      int min_extra_end_in, int circular_typeint_in) {
   index1part_aa = index1part_aa_in;
   leftreadshift = 32 - 2*index1part_aa_in; /* chars are shifted into left of a 32 bit word */
@@ -188,16 +188,16 @@ Stage1_setup (int index1part_aa_in, Genomicpos_T maxextension_in, Genomicpos_T m
 }
 
 #else
-static int index1part;
+static Width_T index1part;
 static int leftreadshift;
-static Genomicpos_T maxextension;
-static Genomicpos_T maxtotallen_bound;
+static Chrpos_T maxextension;
+static Chrpos_T maxtotallen_bound;
 static int min_extra_end;
 static Storedoligomer_T oligobase_mask;
 static int circular_typeint;
 
 void
-Stage1_setup (int index1part_in, Genomicpos_T maxextension_in, Genomicpos_T maxtotallen_bound_in,
+Stage1_setup (Width_T index1part_in, Chrpos_T maxextension_in, Chrpos_T maxtotallen_bound_in,
 	      int min_extra_end_in, int circular_typeint_in) {
   index1part = index1part_in;
   leftreadshift = 32 - 2*index1part_in; /* chars are shifted into left of a 32 bit word */
@@ -221,14 +221,14 @@ struct T {
   int querylength;
   int maxentries;
 
-  int oligosize;
+  Width_T oligosize;
 
   Block_T block5;
   Block_T block3;
   List_T matches5;
   List_T matches3;
-  Genomicpos_T **plus_positions;
-  Genomicpos_T **minus_positions;
+  Univcoord_T **plus_positions;
+  Univcoord_T **minus_positions;
   int *plus_npositions;
   int *minus_npositions;
   bool *plus_matchedp;		/* For identify_matches */
@@ -333,8 +333,8 @@ Stage1_new (Sequence_T queryuc, int maxtotallen, int maxentries) {
   new->matches5 = NULL;
   new->matches3 = NULL;
 
-  new->plus_positions = (Genomicpos_T **) CALLOC(new->querylength,sizeof(Genomicpos_T *));
-  new->minus_positions = (Genomicpos_T **) CALLOC(new->querylength,sizeof(Genomicpos_T *));
+  new->plus_positions = (Univcoord_T **) CALLOC(new->querylength,sizeof(Univcoord_T *));
+  new->minus_positions = (Univcoord_T **) CALLOC(new->querylength,sizeof(Univcoord_T *));
   new->plus_npositions = (int *) CALLOC(new->querylength,sizeof(int));
   new->minus_npositions = (int *) CALLOC(new->querylength,sizeof(int));
   new->processedp = (bool *) CALLOC(new->querylength,sizeof(bool));
@@ -403,7 +403,7 @@ Stage1_free (T *old) {
 /* This procedure is called a lot.  Replacing calls to Match_chrnum and so on with direct calls to Match_T object */
 static bool
 connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
-  Genomicpos_T position5, position3;
+  Univcoord_T position5, position3;
   int querypos5, querypos3, exonlen;
   bool forwardp5, forwardp3;
 
@@ -430,7 +430,7 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
       if (position3 > position5) {
 	/* intronlen = position3 - position5 - exonlen; -- Don't subtract into a signed int */
 	/* The check below is equivalent to intronlen > maxtotallen */
-	if (position3 > (Genomicpos_T) maxtotallen + position5 + (Genomicpos_T) exonlen) {
+	if (position3 > (Univcoord_T) maxtotallen + position5 + (Univcoord_T) exonlen) {
 	  debug5(printf("No, intron too long (%u > %u + %u + %u)\n\n",
 			position3,maxtotallen,position5,exonlen));
 	  return false;
@@ -438,7 +438,7 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
       } else {
 	/* intronlen = position5 - position3 - exonlen; -- Don't subtract into a signed int */
 	/* The check below is equivalent to intronlen > maxtotallen */
-	if (position5 > (Genomicpos_T) maxtotallen + position3 + (Genomicpos_T) exonlen) {
+	if (position5 > (Univcoord_T) maxtotallen + position3 + (Univcoord_T) exonlen) {
 	  debug5(printf("No, intron too long (%u > %u + %u + %u)\n\n",
 			position5,maxtotallen,position3,exonlen));
 	  return false;
@@ -475,13 +475,13 @@ connectable_p (Match_T match5, Match_T match3, int maxtotallen) {
 /* This procedure is called a lot.  Replacing calls to Match_npairings and so on with direct calls to Match_T object */
 /* Updates a list of Stage1_T objects */
 static List_T
-pair_up (bool *foundpairp, List_T gregionlist, int matchsize, int oligosize,
+pair_up (bool *foundpairp, List_T gregionlist, Width_T matchsize, Width_T oligosize,
 	 List_T newmatches5, List_T newmatches3, List_T matches5, List_T matches3,
-	 int genestrand, IIT_T chromosome_iit, int querylength,
+	 int genestrand, Univ_IIT_T chromosome_iit, int querylength,
 	 int maxtotallen, int trimstart, int trimend, int trimlength) {
   List_T p, q, s, new_gregions = NULL;
   Match_T match5, match3;
-  int matchinterval;
+  Width_T matchinterval;
 #ifdef DEBUG
   Gregion_T gregion;
 #endif
@@ -620,16 +620,16 @@ repetitivep (Storedoligomer_T oligo, int oligosize) {
 
 
 static List_T
-identify_singles (int *nnew, bool *overflowp, List_T matches, int merstart, Genomicpos_T positionadj,
-		  int querylength, Genomicpos_T *positions, int npositions, 
+identify_singles (int *nnew, bool *overflowp, List_T matches, int merstart, Univcoord_T positionadj,
+		  int querylength, Univcoord_T *positions, int npositions, 
 #ifdef DEBUG
-		  int matchsize,
+		  Width_T matchsize,
 #endif
-		  IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
+		  Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
 		  bool forwardp, bool fivep, int maxentries) {
   List_T newmatches = NULL, p;
   Match_T match;
-  Genomicpos_T position;
+  Univcoord_T position;
   int i = 0, nentries = 0;
   bool donep = false;
   double weight;
@@ -694,7 +694,7 @@ identify_singles (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
 
 
 static int
-binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) {
+binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   bool foundp = false;
   int middlei;
 
@@ -735,17 +735,17 @@ binary_search (int lowi, int highi, Genomicpos_T *positions, Genomicpos_T goal) 
  * positions1 are in order.  They are assumed not to have duplicates, which
  * are removed by Indexdb_write_positions and Indexdb_read. */
 static List_T
-identify_doubles (int *nnew, bool *overflowp, List_T matches, int merstart, Genomicpos_T positionadj,
-		  int querylength, Genomicpos_T *positions0, int npositions0, 
-		  Genomicpos_T *positions1, int npositions1,
+identify_doubles (int *nnew, bool *overflowp, List_T matches, int merstart, Univcoord_T positionadj,
+		  int querylength, Univcoord_T *positions0, int npositions0, 
+		  Univcoord_T *positions1, int npositions1,
 #ifdef DEBUG
-		  int matchsize,
+		  Width_T matchsize,
 #endif
-		  IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
+		  Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
 		  bool forwardp, bool fivep, int maxentries) {
   List_T newmatches = NULL, p;
   Match_T match;
-  Genomicpos_T expected0, position0, expected1, position1;
+  Univcoord_T expected0, position0, expected1, position1;
   int i = 0, j = 0, nentries = 0;
   bool donep = false;
   double weight;
@@ -897,18 +897,18 @@ identify_doubles (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
  * not to have duplicates, which are removed by
  * Indexdb_write_positions and Indexdb_read. */
 static List_T
-identify_triples (int *nnew, bool *overflowp, List_T matches, int merstart, Genomicpos_T positionadj,
-		  int querylength, Genomicpos_T *positions0, int npositions0, 
-		  Genomicpos_T *positions1, int npositions1, Genomicpos_T *positions2, int npositions2,
+identify_triples (int *nnew, bool *overflowp, List_T matches, int merstart, Univcoord_T positionadj,
+		  int querylength, Univcoord_T *positions0, int npositions0, 
+		  Univcoord_T *positions1, int npositions1, Univcoord_T *positions2, int npositions2,
 #ifdef DEBUG
-		  int matchsize,
+		  Width_T matchsize,
 #endif
-		  int expecteddist1, int expecteddist2, IIT_T chromosome_iit, 
+		  int expecteddist1, int expecteddist2, Univ_IIT_T chromosome_iit, 
 		  Chrsubset_T chrsubset, Matchpool_T matchpool,
 		  bool forwardp, bool fivep, int maxentries) {
   List_T newmatches = NULL, p;
   Match_T match;
-  Genomicpos_T position0, expected1, position1, expected2, position2;
+  Univcoord_T position0, expected1, position1, expected2, position2;
   int i = 0, j = 0, k = 0, nentries = 0;
   int low2, middle2, high2;
   bool donep = false, foundp;
@@ -1073,16 +1073,16 @@ identify_triples (int *nnew, bool *overflowp, List_T matches, int merstart, Geno
 
 static List_T
 identify_matches (int *nnew, bool *overflowp, List_T matches, int querypos, int querylength,
-		  int oligosize, int matchinterval,
-		  Genomicpos_T **plus_positions, int *plus_npositions,
-		  Genomicpos_T **minus_positions, int *minus_npositions, 
-		  IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
+		  Width_T oligosize, Width_T matchinterval,
+		  Univcoord_T **plus_positions, int *plus_npositions,
+		  Univcoord_T **minus_positions, int *minus_npositions, 
+		  Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
 		  bool forwardp, bool fivep, int maxentries) {
   int prevpos, middlepos;
-  int merstart, pos0, pos1;
-  Genomicpos_T **positions, positionadj = 0U;
+  int pos0, pos1;
+  Univcoord_T **positions, positionadj = 0U;
   int *npositions;
-  int matchsize;
+  Width_T matchsize, merstart;
 
 #ifdef PMAP
   matchsize = matchinterval + index1part_aa;
@@ -1161,15 +1161,15 @@ identify_matches (int *nnew, bool *overflowp, List_T matches, int querypos, int 
 
 /* Need to change these procedures from n*m to n+m */
 static List_T
-find_5prime_matches (int *nnew, List_T matches5, T this, int matchsize,
-		     Genomicpos_T **plus_positions, int *plus_npositions,
-		     Genomicpos_T **minus_positions, int *minus_npositions,
-		     IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
+find_5prime_matches (int *nnew, List_T matches5, T this, Width_T matchsize,
+		     Univcoord_T **plus_positions, int *plus_npositions,
+		     Univcoord_T **minus_positions, int *minus_npositions,
+		     Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
 		     int querystart, int querylength, int maxentries, bool pairedp) {
-  int merstart;			/* Note: negative values must be allowed */
+  Width_T merstart;	   /* Note: negative values must be allowed */
   int nnewplus = 0, nnewminus = 0;
   bool overflowp;
-  int matchinterval, matchinterval_nt;
+  Width_T matchinterval, matchinterval_nt;
 
 #ifdef PMAP
   matchinterval = matchsize - index1part_aa;
@@ -1217,15 +1217,15 @@ find_5prime_matches (int *nnew, List_T matches5, T this, int matchsize,
 }
 
 static List_T
-find_3prime_matches (int *nnew, List_T matches3, T this, int matchsize,
-		     Genomicpos_T **plus_positions, int *plus_npositions,
-		     Genomicpos_T **minus_positions, int *minus_npositions,
-		     IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
+find_3prime_matches (int *nnew, List_T matches3, T this, Width_T matchsize,
+		     Univcoord_T **plus_positions, int *plus_npositions,
+		     Univcoord_T **minus_positions, int *minus_npositions,
+		     Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
 		     int queryend, int querylength, int maxentries, bool pairedp) {
-  int merstart;
+  Width_T merstart;
   int nnewplus = 0, nnewminus = 0;
   bool overflowp;
-  int matchinterval, matchinterval_nt;
+  Width_T matchinterval, matchinterval_nt;
 
 #ifdef PMAP
   matchinterval = matchsize - index1part_aa;
@@ -1320,9 +1320,9 @@ check_fraction_paired (List_T matches5, List_T matches3) {
 */
 
 static List_T
-stutter (List_T gregionlist, T this, int matchsize,
+stutter (List_T gregionlist, T this, Width_T matchsize,
 	 Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int genestrand,
-	 IIT_T chromosome_iit, Chrsubset_T chrsubset, 
+	 Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, 
 	 Matchpool_T matchpool, int stutterhits) {
   List_T newmatches5 = NULL, newmatches3 = NULL;
   int stutterdist5 = 0, stutterdist3 = 0, maxbases, start5, start3;
@@ -1431,9 +1431,9 @@ stutter (List_T gregionlist, T this, int matchsize,
 
 /* Tries to find matches on the 5' end to unpaired hits from the 3' end */
 static List_T
-fill_in_5 (List_T gregionlist, T this, int matchsize, List_T dangling3,
+fill_in_5 (List_T gregionlist, T this, Width_T matchsize, List_T dangling3,
 	   Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int genestrand,
-	   IIT_T chromosome_iit, Chrsubset_T chrsubset, 
+	   Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, 
 	   Matchpool_T matchpool) {
   List_T newmatches5 = NULL;
   int fillindist5 = 0, maxbases, start5;
@@ -1503,9 +1503,9 @@ fill_in_5 (List_T gregionlist, T this, int matchsize, List_T dangling3,
 
 /* Tries to find matches on the 5' end to unpaired hits from the 3' end */
 static List_T
-fill_in_3 (List_T gregionlist, T this, int matchsize, List_T dangling5, 
+fill_in_3 (List_T gregionlist, T this, Width_T matchsize, List_T dangling5, 
 	   Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int genestrand,
-	   IIT_T chromosome_iit, Chrsubset_T chrsubset,
+	   Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset,
 	   Matchpool_T matchpool) {
   List_T newmatches3 = NULL;
   int fillindist3 = 0, maxbases, start3;
@@ -1641,10 +1641,10 @@ sample (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int nskip) {
 #endif
 
 
-static Genomicpos_T *
+static Univcoord_T *
 find_range (int **querypositions, int *ninrange, int starti, int endi,
-	    Genomicpos_T **positions, int *npositions, Genomicpos_T leftbound, Genomicpos_T rightbound) {
-  Genomicpos_T *range;
+	    Univcoord_T **positions, int *npositions, Univcoord_T leftbound, Univcoord_T rightbound) {
+  Univcoord_T *range;
   int i;
   int querypos;
 
@@ -1664,10 +1664,10 @@ find_range (int **querypositions, int *ninrange, int starti, int endi,
 
   if (*ninrange == 0) {
     *querypositions = (int *) NULL;
-    return (Genomicpos_T *) NULL;
+    return (Univcoord_T *) NULL;
   } else {
-    *querypositions = (int *) CALLOC(*ninrange,sizeof(Genomicpos_T));
-    range = (Genomicpos_T *) CALLOC(*ninrange,sizeof(Genomicpos_T));
+    *querypositions = (int *) CALLOC(*ninrange,sizeof(int));
+    range = (Univcoord_T *) CALLOC(*ninrange,sizeof(Univcoord_T));
   }
 
   *ninrange = 0;
@@ -1685,12 +1685,12 @@ find_range (int **querypositions, int *ninrange, int starti, int endi,
 }
 
 static void
-find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
+find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
 		 Gregion_T gregion, bool continuousp) {
   int *querypositions, querystart, queryend, ninrange, i, j, lastj;
-  Genomicpos_T *range, leftbound, rightbound, best_start, best_end, expectedi, expectedj;
+  Univcoord_T *range, leftbound, rightbound, best_start, best_end, expectedi, expectedj;
   int best_concentration, concentration;
-  Genomicpos_T maxintronlen5, maxintronlen3;
+  Chrpos_T maxintronlen5, maxintronlen3;
 #ifdef DEBUG2
   int best_querystart, best_queryend;
 #endif
@@ -1887,9 +1887,9 @@ find_extensions (Genomicpos_T *extension5, Genomicpos_T *extension3, T this,
 
 
 static List_T
-find_first_pair (bool *foundpairp, List_T gregionlist, T this, int matchsize,
+find_first_pair (bool *foundpairp, List_T gregionlist, T this, Width_T matchsize,
 		 Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int genestrand,
-		 IIT_T chromosome_iit, Chrsubset_T chrsubset,
+		 Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset,
 		 Matchpool_T matchpool, int maxattempts) {
   List_T newmatches5 = NULL, newmatches3 = NULL;
   bool donep = false;
@@ -1908,9 +1908,7 @@ find_first_pair (bool *foundpairp, List_T gregionlist, T this, int matchsize,
 
   *foundpairp = false;
   while (!donep && (*foundpairp) == false) {
-    if (nblocks5 >= maxattempts && nblocks3 >= maxattempts) {
-      donep = true;
-    } else if (n5hits <= n3hits && nblocks5 < maxattempts) {
+    if (n5hits <= n3hits) {
       if (Block_next(this->block5) == false) {
 	donep = true;
       } else {
@@ -1957,7 +1955,7 @@ find_first_pair (bool *foundpairp, List_T gregionlist, T this, int matchsize,
 	  newmatches5 = NULL;
 	}
       }
-
+    
     } else {
       if (Block_next(this->block3) == false) {
 	donep = true;
@@ -2247,7 +2245,7 @@ identify_repeated_oligos (T this, int oligobase, int querylength) {
 
 #if 0
 static void
-check_old_new (Genomicpos_T *old_positions, int old_npositions, Genomicpos_T *new_positions, int new_npositions) {
+check_old_new (Univcoord_T *old_positions, int old_npositions, Univcoord_T *new_positions, int new_npositions) {
   int i;
 
   if (new_npositions != old_npositions) {
@@ -2441,12 +2439,12 @@ typedef struct Batch_T *Batch_T;
 struct Batch_T {
   int querypos;
   int ndiagonals;
-  Genomicpos_T diagonal;
-  Genomicpos_T *diagonals;
+  Univcoord_T diagonal;
+  Univcoord_T *diagonals;
 };
 
 static void
-Batch_init (Batch_T batch, int querypos, Genomicpos_T *diagonals, int ndiagonals) {
+Batch_init (Batch_T batch, int querypos, Univcoord_T *diagonals, int ndiagonals) {
 
   batch->querypos = querypos;
   batch->diagonals = diagonals;
@@ -2460,7 +2458,7 @@ Batch_init (Batch_T batch, int querypos, Genomicpos_T *diagonals, int ndiagonals
 static void
 min_heap_insert (Batch_T *heap, int *heapsize, Batch_T batch) {
   int querypos, i;
-  Genomicpos_T diagonal;
+  Univcoord_T diagonal;
 
   /* debug0(printf("Inserting into heap: diagonal %u at querypos %d\n",diagonal,querypos)); */
 
@@ -2482,7 +2480,7 @@ min_heap_insert (Batch_T *heap, int *heapsize, Batch_T batch) {
 /* A diagonal segment */
 typedef struct Segment_T *Segment_T;
 struct Segment_T {
-  Genomicpos_T diagonal;
+  Univcoord_T diagonal;
   int chrnum;
   int querypos5;
   int querypos3;
@@ -2495,14 +2493,14 @@ struct Segment_T {
 
 /* Reduces diagonals to handle small indels */
 static void
-collapse_diagonals (Genomicpos_T **diagonals, int *ndiagonals, 
+collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals, 
 		    Storedoligomer_T *oligos, int oligobase, int querylength) {
   Batch_T batch, *heap, sentinel;
   struct Batch_T sentinel_struct, *batchpool;
   int maxsegments, heapsize = 0, i;
   int parenti, smallesti, righti;
   int querypos;
-  Genomicpos_T diagonal, base_diagonal, last_diagonal;
+  Univcoord_T diagonal, base_diagonal, last_diagonal;
 #ifdef DEBUG6
   int j;
 #endif
@@ -2538,7 +2536,7 @@ collapse_diagonals (Genomicpos_T **diagonals, int *ndiagonals,
 
   /* Set up rest of heap */
   sentinel_struct.querypos = querylength; /* infinity */
-  sentinel_struct.diagonal = (Genomicpos_T) -1; /* infinity */
+  sentinel_struct.diagonal = (Univcoord_T) -1; /* infinity */
   sentinel = &sentinel_struct;
   for (i = heapsize+1; i <= 2*heapsize+1; i++) {
     heap[i] = sentinel;
@@ -2641,7 +2639,7 @@ collapse_diagonals (Genomicpos_T **diagonals, int *ndiagonals,
 
 
 static struct Segment_T *
-find_segments (int *nsegments, Genomicpos_T **diagonals, int *ndiagonals, 
+find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals, 
 	       Storedoligomer_T *oligos, int oligobase, int querylength,
 	       int threshold_score, bool plusp) {
   struct Segment_T *segments, *ptr;
@@ -2650,7 +2648,7 @@ find_segments (int *nsegments, Genomicpos_T **diagonals, int *ndiagonals,
   int maxsegments, heapsize = 0, i;
   int parenti, smallesti, righti;
   int querypos, last_querypos;
-  Genomicpos_T diagonal, last_diagonal;
+  Univcoord_T diagonal, last_diagonal;
   int *ordered;
 #ifdef DEBUG6
   int j;
@@ -2691,7 +2689,7 @@ find_segments (int *nsegments, Genomicpos_T **diagonals, int *ndiagonals,
 
   /* Set up rest of heap */
   sentinel_struct.querypos = querylength; /* infinity */
-  sentinel_struct.diagonal = (Genomicpos_T) -1; /* infinity */
+  sentinel_struct.diagonal = (Univcoord_T) -1; /* infinity */
   sentinel = &sentinel_struct;
   for (i = heapsize+1; i <= 2*heapsize+1; i++) {
     heap[i] = sentinel;
@@ -2880,7 +2878,7 @@ compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxex
   struct Segment_T *segmentj;
   int k, j, i, *besti;
   int medianj;
-  Genomicpos_T diagonalj, intronlength;
+  Univcoord_T diagonalj, intronlength;
 
   if (nsegments == 0) {
     *prev = (int **) NULL;
@@ -3264,11 +3262,11 @@ find_best_scores_nonstranded (int **nthbest, int **plus_scores_fwd, int plus_nsc
 static List_T
 find_good_paths (List_T gregionlist, int nexons, int *prev, int *scores, 
 		 struct Segment_T *segments, int nsegments, int threshold_score,
-		 IIT_T chromosome_iit, int querylength,
+		 Univ_IIT_T chromosome_iit, int querylength,
 		 int trimstart, int trimend, bool plusp, int genestrand) {
   int bestj, besti;
   int querystart, queryend;
-  Genomicpos_T genomicstart, genomicend;
+  Univcoord_T genomicstart, genomicend;
 
   debug9(printf("Starting find_good_paths with %d segments and threshold_score %d\n",nsegments,threshold_score));
 
@@ -3347,13 +3345,13 @@ find_good_paths (List_T gregionlist, int nexons, int *prev, int *scores,
 
 static List_T
 scan_ends (List_T oldlist, T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int genestrand,
-	   IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
+	   Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset, Matchpool_T matchpool,
 	   int stutterhits, Diagnostic_T diagnostic, bool iteratep) {
   List_T newlist = NULL;
   double dangling5_pct, dangling3_pct;
   List_T dangling5, dangling3;
   bool foundpairp = false, loopp = true;
-  int matchsize;
+  Width_T matchsize;
   int maxattempts = MAX_ATTEMPTS_UNIT;
 
   debug(printf("Starting scan_ends\n"));
@@ -3482,14 +3480,15 @@ sufficient_gregion_p (List_T gregionlist) {
 
 List_T
 Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
-		int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
+		int indexdb_size_threshold, Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset,
 		Matchpool_T matchpool, int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch,
 		int nbest) {
   List_T gregionlist = NULL, p, q;
   T this = NULL;
-  int trimlength, trimstart, trimend, matchsize, maxentries, i;
-  Genomicpos_T maxtotallen;
-  Genomicpos_T extension5, extension3;
+  int trimlength, trimstart, trimend, maxentries, i;
+  Width_T matchsize;
+  Chrpos_T maxtotallen;
+  Univcoord_T extension5, extension3;
   Gregion_T gregion;
 
   struct Segment_T *plus_segments = NULL, *minus_segments = NULL;
@@ -3771,15 +3770,16 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
 List_T
 Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 			    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
-			    int indexdb_size_threshold, IIT_T chromosome_iit, Chrsubset_T chrsubset,
+			    int indexdb_size_threshold, Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset,
 			    Matchpool_T matchpool, int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch,
 			    int nbest) {
   List_T gregionlist = NULL, p, q;
   T this_fwd = NULL, this_rev = NULL;
   Sequence_T queryrc;
-  int trimlength, trimstart, trimend, matchsize, maxentries, i;
-  Genomicpos_T maxtotallen;
-  Genomicpos_T extension5, extension3;
+  int trimlength, trimstart, trimend, maxentries, i;
+  Width_T matchsize;
+  Chrpos_T maxtotallen;
+  Univcoord_T extension5, extension3;
   Gregion_T gregion;
 
   struct Segment_T *plus_segments_fwd = NULL, *minus_segments_fwd = NULL, *plus_segments_rev = NULL, *minus_segments_rev = NULL;

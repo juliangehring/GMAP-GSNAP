@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intron.c 82064 2012-12-19 21:35:15Z twu $";
+static char rcsid[] = "$Id: intron.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -21,8 +21,8 @@ Intron_type (char left1, char left2, char right2, char right1,
 #ifdef INTRON_HELP
 	     , IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 	     int donor_typeint, int acceptor_typeint, Chrnum_T chrnum,
-	     Genomicpos_T leftgenomepos, Genomicpos_T rightgenomepos,
-	     Genomicpos_T chrpos, bool watsonp, int genomiclength
+	     Chrpos_T leftgenomepos, Chrpos_T rightgenomepos,
+	     Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 #endif
 	     ) {
   int introntype, leftdi, rightdi;
@@ -46,9 +46,9 @@ Intron_type (char left1, char left2, char right2, char right1,
   } else if (cdna_direction > 0) {
     if (watsonp) {
       debug(printf("cdna_direction %d, watsonp %d, looking for donor at %u..%u, sign +1\n",
-		   cdna_direction,watsonp,chrpos+leftgenomepos,chrpos+leftgenomepos+1U));
+		   cdna_direction,watsonp,chroffset+leftgenomepos,chroffset+leftgenomepos+1U));
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+leftgenomepos,chrpos+leftgenomepos+1U,
+					     chroffset+leftgenomepos,chroffset+leftgenomepos+1U,
 					     donor_typeint,/*sign*/+1) == true) {
 	leftdi = LEFT_GT;
       } else {
@@ -56,10 +56,9 @@ Intron_type (char left1, char left2, char right2, char right1,
       }
     } else {
       debug(printf("cdna_direction %d, watsonp %d, looking for donor at %u..%u, sign -1\n",
-		   cdna_direction,watsonp,chrpos+(genomiclength-1)-leftgenomepos,
-		   chrpos+(genomiclength-1)-leftgenomepos+1U));
+		   cdna_direction,watsonp,chrhigh-leftgenomepos,chrhigh-leftgenomepos+1U));
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+(genomiclength-1)-leftgenomepos,chrpos+(genomiclength-1)-leftgenomepos+1U,
+					     chrhigh-leftgenomepos,chrhigh-leftgenomepos+1U,
 					     donor_typeint,/*sign*/-1) == true) {
 	leftdi = LEFT_GT;
       } else {
@@ -69,9 +68,9 @@ Intron_type (char left1, char left2, char right2, char right1,
   } else if (cdna_direction < 0) {
     if (watsonp) {
       debug(printf("cdna_direction %d, watsonp %d, looking for acceptor at %u..%u, sign -1\n",
-		   cdna_direction,watsonp,chrpos+leftgenomepos,chrpos+leftgenomepos+1U));
+		   cdna_direction,watsonp,chroffset+leftgenomepos,chroffset+leftgenomepos+1U));
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+leftgenomepos,chrpos+leftgenomepos+1U,
+					     chroffset+leftgenomepos,chroffset+leftgenomepos+1U,
 					     acceptor_typeint,/*sign*/-1) == true) {
 	leftdi = LEFT_CT;
       } else {
@@ -79,11 +78,9 @@ Intron_type (char left1, char left2, char right2, char right1,
       }
     } else {
       debug(printf("cdna_direction %d, watsonp %d, looking for acceptor at %u..%u, sign +1\n",
-		   cdna_direction,watsonp,chrpos+(genomiclength-1)-leftgenomepos,
-		   chrpos+(genomiclength-1)-leftgenomepos+1U));
+		   cdna_direction,watsonp,chrhigh-leftgenomepos,chrhigh-leftgenomepos+1U));
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+(genomiclength-1)-leftgenomepos,
-					     chrpos+(genomiclength-1)-leftgenomepos+1U,
+					     chrhigh-leftgenomepos,chrhigh-leftgenomepos+1U,
 					     acceptor_typeint,/*sign*/+1) == true) {
 	leftdi = LEFT_CT;
       } else {
@@ -114,7 +111,7 @@ Intron_type (char left1, char left2, char right2, char right1,
   } else if (cdna_direction > 0) {
     if (watsonp) {
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+rightgenomepos,chrpos+rightgenomepos+1U,
+					     chroffset+rightgenomepos,chroffset+rightgenomepos+1U,
 					     acceptor_typeint,/*sign*/+1) == true) {
 	rightdi = RIGHT_AG;
       } else {
@@ -122,8 +119,7 @@ Intron_type (char left1, char left2, char right2, char right1,
       }
     } else {
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+(genomiclength-1)-rightgenomepos,
-					     chrpos+(genomiclength-1)-rightgenomepos+1U,
+					     chrhigh-rightgenomepos,chrhigh-rightgenomepos+1U,
 					     acceptor_typeint,/*sign*/-1) == true) {
 	rightdi = RIGHT_AG;
       } else {
@@ -133,7 +129,7 @@ Intron_type (char left1, char left2, char right2, char right1,
   } else if (cdna_direction < 0) {
     if (watsonp) {
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+rightgenomepos,chrpos+rightgenomepos+1U,
+					     chroffset+rightgenomepos,chroffset+rightgenomepos+1U,
 					     donor_typeint,/*sign*/-1) == true) {
 	rightdi = RIGHT_AC;
       } else {
@@ -141,8 +137,7 @@ Intron_type (char left1, char left2, char right2, char right1,
       }
     } else {
       if (IIT_exists_with_divno_typed_signed(splicesites_iit,splicesites_divint_crosstable[chrnum],
-					     chrpos+(genomiclength-1)-rightgenomepos,
-					     chrpos+(genomiclength-1)-rightgenomepos+1U,
+					     chrhigh-rightgenomepos,chrhigh-rightgenomepos+1U,
 					     donor_typeint,/*sign*/-1) == true) {
 	rightdi = RIGHT_AC;
       } else {

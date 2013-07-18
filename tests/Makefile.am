@@ -28,8 +28,9 @@ distclean-local:
 
 okay:
 	../src/gmap -A -g ss.chr17test ss.her2 > align.test.ok
-	./fa_coords -o coords.chr17test ss.chr17test
-	./gmap_setup -D . -d chr17test ss.chr17test && make -f Makefile.chr17test coords && make -f Makefile.chr17test gmapdb
+#	./fa_coords -o coords.chr17test ss.chr17test
+#	./gmap_setup -D . -d chr17test ss.chr17test && make -f Makefile.chr17test coords && make -f Makefile.chr17test gmapdb
+	./gmap_build -D . -d chr17test ss.chr17test
 	../src/gmap -D . -d chr17test ss.her2 > map.test.ok
 	mv -f coords.chr17test coords1.test.ok
 	mv -f chr17test.genomecomp setup.genomecomp.ok

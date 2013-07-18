@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 83596 2013-01-16 23:01:47Z twu $";
+static char rcsid[] = "$Id: snpindex.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -61,8 +61,10 @@ static char rcsid[] = "$Id: snpindex.c 83596 2013-01-16 23:01:47Z twu $";
 #include "chrnum.h"
 #include "genome.h"
 #include "datadir.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "indexdb.h"
+#include "indexdb-write.h"
 #include "getopt.h"
 
 
@@ -273,11 +275,12 @@ Labeled_interval_cmp (const void *a, const void *b) {
 
 
 static int
-process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positions,
+process_snp_block (int *nwarnings, Positionsptr_T *offsets, UINT4 *positions4, UINT8 *positions8,
 		   Labeled_interval_T *intervals, int nintervals,
-		   Genomicpos_T chroffset, Genome_T genome,
-		   UINT4 *snp_blocks, int divno, char *divstring, int intervali,
-		   IIT_T snps_iit, IIT_T chromosome_iit, int index1part) {
+		   Univcoord_T chroffset, Genome_T genome,
+		   Genomecomp_T *snp_blocks, int divno, char *divstring, int intervali,
+		   IIT_T snps_iit, Univ_IIT_T chromosome_iit, int index1part,
+		   bool coord_values_8p) {
   int nerrors = 0;
   bool *snpp;
   char *refstring;
@@ -289,8 +292,9 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
   int index, length;
   int nsnps, stringi, starti, shift, i, k;
   char *snptype, *label, refnt, altnt;
-  unsigned int ptr;
-  Genomicpos_T snpposition, startposition, endposition, first_snppos, last_snppos, position, chrpos;
+  Univcoord_T ptr;
+  Univcoord_T snpposition, startposition, endposition, first_snppos, last_snppos, position;
+  Chrpos_T chrpos;
   Chrnum_T chrnum;
   Interval_T interval;
   int nunknowns;
@@ -299,7 +303,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
   Uintlist_T oligomers, newoligomers, p;
   Storedoligomer_T oligo;
 #ifdef WORDS_BIGENDIAN
-  UINT4 high, low, flags;
+  Genomecomp_T high, low, flags;
 #endif
 
 
@@ -499,7 +503,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
       }
       if (nsnps == 0) {
 	/* no snps */
-	/* fprintf(stderr,"\nNo snps at position %u, %s:%u",position,divstring,Interval_low(interval)); */
+	/* fprintf(stderr,"\nNo snps at position %lu, %s:%u",position,divstring,Interval_low(interval)); */
       } else if (nsnps > 4) {
 	/* too many snps */
       } else if (badcharp == true) {
@@ -546,7 +550,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 	  oligo = Uintlist_head(p);
 	  nt = shortoligo_nt(oligo,index1part);
 	  if (samep(nt,&(refstring[starti]),index1part) == true) {
-	    fprintf(stderr,"Storing oligomer %s that is the same as the reference at %u (%s:%u)\n",
+	    fprintf(stderr,"Storing oligomer %s that is the same as the reference at %lu (%s:%u)\n",
 		    nt,position,divstring,chrpos+1U);
 	    abort();
 	  }
@@ -555,23 +559,35 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 #endif	
 
 	/* Ignore the first element in oligomers, which is all reference */
-	if (positions == NULL) {
+	if (positions4 == NULL && positions8 == NULL) {
 	  /* writing offsets */
 	  for (p = Uintlist_next(oligomers); p != NULL; p = Uintlist_next(p)) {
 	    oligo = Uintlist_head(p);
 	    offsets[oligo + 1U] += 1;
 	    debug1(nt = shortoligo_nt(oligo,index1part);
-		   printf("Storing %s at %u (%s:%u)\n",nt,position,divstring,chrpos+1U);
+		   printf("Storing %s at %lu (%s:%u)\n",nt,position,divstring,chrpos+1U);
 		   FREE(nt));
 	  }
+
 	} else {
 	  /* writing positions */
-	  for (p = Uintlist_next(oligomers); p != NULL; p = Uintlist_next(p)) {
-	    oligo = Uintlist_head(p);
-	    positions[offsets[oligo]++] = position;
-	    debug1(nt = shortoligo_nt(oligo,index1part);
-		   printf("Storing %s at %u (%s:%u)\n",nt,position,divstring,chrpos+1U);
-		   FREE(nt));
+	  if (coord_values_8p == true) {
+	    for (p = Uintlist_next(oligomers); p != NULL; p = Uintlist_next(p)) {
+	      oligo = Uintlist_head(p);
+	      positions8[offsets[oligo]++] = position;
+	      debug1(nt = shortoligo_nt(oligo,index1part);
+		     printf("Storing %s at %lu (%s:%u)\n",nt,position,divstring,chrpos+1U);
+		     FREE(nt));
+	    }
+	    
+	  } else {
+	    for (p = Uintlist_next(oligomers); p != NULL; p = Uintlist_next(p)) {
+	      oligo = Uintlist_head(p);
+	      positions4[offsets[oligo]++] = (UINT4) position;
+	      debug1(nt = shortoligo_nt(oligo,index1part);
+		     printf("Storing %s at %lu (%s:%u)\n",nt,position,divstring,chrpos+1U);
+		     FREE(nt));
+	    }
 	  }
 	}
 	Uintlist_free(&oligomers);
@@ -588,7 +604,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, Genomicpos_T *positi
 
 
 static Positionsptr_T *
-compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *snp_blocks,
+compute_offsets (IIT_T snps_iit, Univ_IIT_T chromosome_iit, Genome_T genome, Genomecomp_T *snp_blocks,
 		 Oligospace_T oligospace, int index1part) {
   Positionsptr_T *offsets;
 
@@ -599,7 +615,8 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
   Oligospace_T oligoi;
   char *divstring;
   Chrnum_T chrnum;
-  Genomicpos_T chroffset, chrlength;
+  Univcoord_T chroffset;
+  Chrpos_T chrlength;
   int nwarnings = 0;
 
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
@@ -607,16 +624,16 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
   for (divno = 1; divno < snps_iit->ndivs; divno++) {
     divstring = IIT_divstring(snps_iit,divno);
     fprintf(stderr,"Processing offsets for chromosome %s...",divstring);
-    if ((chrnum = IIT_find_one(chromosome_iit,divstring)) <= 0) {
+    if ((chrnum = Univ_IIT_find_one(chromosome_iit,divstring)) <= 0) {
       fprintf(stderr,"not found in chromosome iit\n");
     } else {
       nerrors = 0;
       fprintf(stderr,"has %d snps...",IIT_nintervals(snps_iit,divno));
-      chroffset = IIT_interval_low(chromosome_iit,chrnum);
-      chrlength = IIT_interval_length(chromosome_iit,chrnum);
+      chroffset = Univ_IIT_interval_low(chromosome_iit,chrnum);
+      chrlength = Univ_IIT_interval_length(chromosome_iit,chrnum);
       nintervals = IIT_nintervals(snps_iit,divno);
 
-      if (IIT_interval_type(chromosome_iit,chrnum) == circular_typeint) {
+      if (Univ_IIT_interval_type(chromosome_iit,chrnum) == circular_typeint) {
 	fprintf(stderr,"and is circular...");
 	nintervals_alias = 2*nintervals;
 	intervals = (Labeled_interval_T *) CALLOC(nintervals_alias,sizeof(Labeled_interval_T));
@@ -650,9 +667,11 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
 	while (j < nintervals_alias && Interval_low(intervals[j]->interval) < Interval_low(intervals[j-1]->interval) + index1part) {
 	  j++;
 	}
-	nerrors += process_snp_block(&nwarnings,offsets,/*positions*/NULL,&(intervals[i]),/*nintervals*/j-i,
+	nerrors += process_snp_block(&nwarnings,offsets,/*positions4*/NULL,/*positions8*/NULL,
+				     &(intervals[i]),/*nintervals*/j-i,
 				     chroffset,genome,snp_blocks,
-				     divno,divstring,/*intervali*/i,snps_iit,chromosome_iit,index1part);
+				     divno,divstring,/*intervali*/i,snps_iit,chromosome_iit,index1part,
+				     /*coord_values_8p (irrelevant)*/false);
 	i = j;
       }
 
@@ -681,10 +700,11 @@ compute_offsets (IIT_T snps_iit, IIT_T chromosome_iit, Genome_T genome, UINT4 *s
 }
 
 
-static Genomicpos_T *
-compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit,
-		   Genome_T genome, Oligospace_T oligospace) {
-  Genomicpos_T *positions;
+static void *
+compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, Univ_IIT_T chromosome_iit,
+		   Genome_T genome, Oligospace_T oligospace, bool coord_values_8p) {
+  UINT4 *positions4 = NULL;
+  UINT8 *positions8 = NULL;
 
   Labeled_interval_T *intervals;
   int origindex;
@@ -693,7 +713,8 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
   Oligospace_T oligoi;
   char *divstring;
   Chrnum_T chrnum;
-  Genomicpos_T chroffset, chrlength;
+  Univcoord_T chroffset;
+  Chrpos_T chrlength;
   Positionsptr_T *pointers, totalcounts, block_start, block_end, npositions;
   int nwarnings = 0;
 
@@ -702,14 +723,25 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
     fprintf(stderr,"Something is wrong with the offsets.  Total counts is zero.\n");
     fprintf(stderr,"Do the chromosomes in the IIT file match those in the genome?\n");
     fprintf(stderr,"Here are known chromosomes in the genome: ");
-    IIT_dump_labels(stderr,chromosome_iit);
+    Univ_IIT_dump_labels(stderr,chromosome_iit);
     fprintf(stderr,"Here are chromosomes in the SNPs IIT file: ");
     IIT_dump_divstrings(stderr,snps_iit);
     exit(9);
+  } else if (coord_values_8p == true) {
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",totalcounts,(int) sizeof(UINT8));
+    positions4 = (UINT4 *) NULL;
+    positions8 = (UINT8 *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(UINT8));
+    if (positions8 == NULL) {
+      fprintf(stderr,"failed.  Need a computer with sufficient memory.\n");
+      exit(9);
+    } else {
+      fprintf(stderr,"done\n");
+    }
   } else {
-    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",totalcounts,(int) sizeof(Genomicpos_T));
-    positions = (Genomicpos_T *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(Genomicpos_T));
-    if (positions == NULL) {
+    fprintf(stderr,"Trying to allocate %u*%d bytes of memory...",totalcounts,(int) sizeof(UINT4));
+    positions8 = (UINT8 *) NULL;
+    positions4 = (UINT4 *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(UINT4));
+    if (positions4 == NULL) {
       fprintf(stderr,"failed.  Need a computer with sufficient memory.\n");
       exit(9);
     } else {
@@ -726,15 +758,15 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
   for (divno = 1; divno < snps_iit->ndivs; divno++) {
     divstring = IIT_divstring(snps_iit,divno);
     fprintf(stderr,"Processing positions for chromosome %s...",divstring);
-    if ((chrnum = IIT_find_one(chromosome_iit,divstring)) <= 0) {
+    if ((chrnum = Univ_IIT_find_one(chromosome_iit,divstring)) <= 0) {
       fprintf(stderr,"not found in chromosome iit\n");
     } else {
       fprintf(stderr,"has %d snps...",IIT_nintervals(snps_iit,divno));
-      chroffset = IIT_interval_low(chromosome_iit,chrnum);
-      chrlength = IIT_interval_length(chromosome_iit,chrnum);
+      chroffset = Univ_IIT_interval_low(chromosome_iit,chrnum);
+      chrlength = Univ_IIT_interval_length(chromosome_iit,chrnum);
       nintervals = IIT_nintervals(snps_iit,divno);
 
-      if (IIT_interval_type(chromosome_iit,chrnum) == circular_typeint) {
+      if (Univ_IIT_interval_type(chromosome_iit,chrnum) == circular_typeint) {
 	fprintf(stderr,"and is circular...");
 	nintervals_alias = 2*nintervals;
 	intervals = (Labeled_interval_T *) CALLOC(nintervals_alias,sizeof(Labeled_interval_T));
@@ -768,9 +800,11 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
 	while (j < nintervals_alias && Interval_low(intervals[j]->interval) < Interval_low(intervals[j-1]->interval) + index1part) {
 	  j++;
 	}
-	process_snp_block(&nwarnings,/*offsets*/pointers,positions,&(intervals[i]),/*nintervals*/j-i,
+	process_snp_block(&nwarnings,/*offsets*/pointers,positions4,positions8,
+			  &(intervals[i]),/*nintervals*/j-i,
 			  chroffset,genome,/*snp_blocks*/NULL,
-			  divno,divstring,/*intervali*/i,snps_iit,chromosome_iit,index1part);
+			  divno,divstring,/*intervali*/i,snps_iit,chromosome_iit,index1part,
+			  coord_values_8p);
 	i = j;
       }
 
@@ -789,25 +823,108 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, IIT_T chromosome_iit
   FREE(pointers);
 
   /* Sort positions in each block */
-  for (oligoi = 0; oligoi < oligospace; oligoi++) {
-    block_start = offsets[oligoi];
-    block_end = offsets[oligoi+1];
-    if ((npositions = block_end - block_start) > 1) {
-      qsort(&(positions[block_start]),npositions,sizeof(Genomicpos_T),Genomicpos_compare);
+  if (coord_values_8p == true) {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+      block_start = offsets[oligoi];
+      block_end = offsets[oligoi+1];
+      if ((npositions = block_end - block_start) > 1) {
+	qsort(&(positions8[block_start]),npositions,sizeof(UINT8),UINT8_compare);
+      }
     }
+    return positions8;
+  } else {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+      block_start = offsets[oligoi];
+      block_end = offsets[oligoi+1];
+      if ((npositions = block_end - block_start) > 1) {
+	qsort(&(positions4[block_start]),npositions,sizeof(UINT4),UINT4_compare);
+      }
+    }
+    return positions4;
   }
-
-  return positions;
 }
 
 
 static void
-merge_positions (FILE *positions_fp, Genomicpos_T *start1, Genomicpos_T *end1,
-		 Genomicpos_T *start2, Genomicpos_T *end2, Storedoligomer_T oligo, int index1part) {
-  Genomicpos_T *ptr1 = start1, *ptr2 = start2;
+merge_positions8 (FILE *positions_fp, UINT8 *start1, UINT8 *end1,
+		  UINT8 *start2, UINT8 *end2, Storedoligomer_T oligo, int index1part) {
+  UINT8 *ptr1 = start1, *ptr2 = start2;
   char *nt;
 #ifdef WORDS_BIGENDIAN
-  Genomicpos_T position2;
+  UINT8 position2;
+#endif
+
+  while (ptr1 < end1 && ptr2 < end2) {
+#ifdef WORDS_BIGENDIAN
+    position2 = Bigendian_convert_uint8(*ptr2);
+    if (*ptr1 < position2) {
+      FWRITE_UINT8(*ptr1,positions_fp);
+      ptr1++;
+    } else if (position2 < *ptr1) {
+      FWRITE_UINT8(position2,positions_fp);
+      ptr2++;
+    } else {
+      nt = shortoligo_nt(oligo,index1part);
+      fprintf(stderr,"Problem: saw duplicate positions %u in oligo %s\n",*ptr1,nt);
+      FREE(nt);
+      abort();
+      /*
+      FWRITE_UINT8(*ptr1,positions_fp);
+      ptr1++;
+      ptr2++;
+      */
+    }
+
+#else
+
+    if (*ptr1 < *ptr2) {
+      FWRITE_UINT8(*ptr1,positions_fp);
+      ptr1++;
+    } else if (*ptr2 < *ptr1) {
+      FWRITE_UINT8(*ptr2,positions_fp);
+      ptr2++;
+    } else {
+      nt = shortoligo_nt(oligo,index1part);
+      fprintf(stderr,"Problem: saw duplicate positions %lu in oligo %s\n",*ptr1,nt);
+      FREE(nt);
+      abort();
+      /*
+      FWRITE_UINT8(*ptr1,positions_fp);
+      ptr1++;
+      ptr2++;
+      */
+    }
+#endif
+  }
+
+  while (ptr1 < end1) {
+    FWRITE_UINT8(*ptr1,positions_fp);
+    ptr1++;
+  }
+
+#ifdef WORDS_BIGENDIAN
+  while (ptr2 < end2) {
+    FWRITE_UINT8(Bigendian_convert_uint8(*ptr2),positions_fp);
+    ptr2++;
+  }
+#else
+  while (ptr2 < end2) {
+    FWRITE_UINT8(*ptr2,positions_fp);
+    ptr2++;
+  }
+#endif
+
+  return;
+}
+
+
+static void
+merge_positions4 (FILE *positions_fp, UINT4 *start1, UINT4 *end1,
+		  UINT4 *start2, UINT4 *end2, Storedoligomer_T oligo, int index1part) {
+  UINT4 *ptr1 = start1, *ptr2 = start2;
+  char *nt;
+#ifdef WORDS_BIGENDIAN
+  UINT4 position2;
 #endif
 
   while (ptr1 < end1 && ptr2 < end2) {
@@ -881,19 +998,23 @@ merge_positions (FILE *positions_fp, Genomicpos_T *start1, Genomicpos_T *end1,
 int
 main (int argc, char *argv[]) {
   char *sourcedir = NULL, *destdir = NULL, *mapdir = NULL;
-  IIT_T chromosome_iit, snps_iit;
+  Univ_IIT_T chromosome_iit;
+  IIT_T snps_iit;
   Genome_T genome;
   Positionsptr_T *offsets, *snp_offsets, *ref_offsets;
 #ifdef EXTRA_ALLOCATION
   Positionsptr_T npositions;
 #endif
-  Genomicpos_T *snp_positions, *ref_positions, nblocks;
-  UINT4 *snp_blocks;
+  UINT8 *snp_positions8, *ref_positions8;
+  UINT4 *snp_positions4, *ref_positions4;
+  Univcoord_T nblocks;
+  Genomecomp_T *snp_blocks;
   Oligospace_T oligospace, oligoi;
 #ifndef HAVE_MMAP
   double seconds;
 #endif
 
+  bool coord_values_8p;
   char *filename, *filename1, *filename2;
   char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
     *gammaptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
@@ -902,7 +1023,7 @@ main (int argc, char *argv[]) {
   int ref_positions_fd;
   size_t ref_positions_len;
 #ifdef WORDS_BIGENDIAN
-  unsigned int offset1, offset2;
+  Positionsptr_T offset1, offset2;
 #endif
 
   int opt;
@@ -999,18 +1120,17 @@ main (int argc, char *argv[]) {
   filename = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 			    strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
   sprintf(filename,"%s/%s.chromosome.iit",sourcedir,fileroot);
-  if ((chromosome_iit = IIT_read(filename,/*name*/NULL,/*readonlyp*/true,
-				 /*divread*/READ_ALL,/*divstring*/NULL,/*add_iit_p*/false,
-				 /*labels_read_p*/true)) == NULL) {
+  if ((chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
     fprintf(stderr,"IIT file %s is not valid\n",filename);
     exit(9);
   } else {
-    circular_typeint = IIT_typeint(chromosome_iit,"circular");
+    circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular");
   }
   FREE(filename);
+  coord_values_8p = Univ_IIT_coord_values_8p(chromosome_iit);
 
   fprintf(stderr,"Chromosomes in the genome: ");
-  IIT_dump_labels(stderr,chromosome_iit);
+  Univ_IIT_dump_labels(stderr,chromosome_iit);
   fprintf(stderr,"Chromosomes in the SNPs IIT file: ");
   IIT_dump_divstrings(stderr,snps_iit);
 
@@ -1019,9 +1139,9 @@ main (int argc, char *argv[]) {
 
   /* Copy genome */
   nblocks = Genome_totallength(genome)/32U;
-  snp_blocks = (UINT4 *) CALLOC(nblocks*3,sizeof(UINT4));
-  fprintf(stderr,"Allocating %u*3*%lu bytes for compressed genome\n",nblocks,sizeof(UINT4));
-  memcpy(snp_blocks,Genome_blocks(genome),nblocks*3*sizeof(UINT4));
+  snp_blocks = (Genomecomp_T *) CALLOC(nblocks*3,sizeof(Genomecomp_T));
+  fprintf(stderr,"Allocating %lu*3*%lu bytes for compressed genome\n",nblocks,sizeof(Genomecomp_T));
+  memcpy(snp_blocks,Genome_blocks(genome),nblocks*3*sizeof(Genomecomp_T));
 
   /* Prepare for write */
   if (user_destdir == NULL) {
@@ -1064,7 +1184,11 @@ main (int argc, char *argv[]) {
 
   /* Compute positions */
   show_warnings_p = false;	/* Already shown in compute_offsets */
-  snp_positions = compute_positions(snp_offsets,snps_iit,chromosome_iit,genome,oligospace);
+  if (coord_values_8p == true) {
+    snp_positions8 = compute_positions(snp_offsets,snps_iit,chromosome_iit,genome,oligospace,/*coord_values_8p*/true);
+  } else {
+    snp_positions4 = compute_positions(snp_offsets,snps_iit,chromosome_iit,genome,oligospace,/*coord_values_8p*/false);
+  }
 
 
   /* Read reference offsets and update */
@@ -1136,11 +1260,21 @@ main (int argc, char *argv[]) {
   }
 
 #ifdef HAVE_MMAP
-  ref_positions = (Genomicpos_T *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					       positions_filename,sizeof(Genomicpos_T),/*randomp*/false);
+  if (coord_values_8p == true) {
+    ref_positions8 = (UINT8 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
+					   positions_filename,sizeof(UINT8),/*randomp*/false);
+  } else {
+    ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
+					   positions_filename,sizeof(UINT4),/*randomp*/false);
+  }
 #else
-  ref_positions = (Genomicpos_T *) Access_allocated(&ref_positions_len,&seconds,
-						    positions_filename,sizeof(Genomicpos_T));
+  if (coord_values_8p == true) {
+    ref_positions8 = (UINT8 *) Access_allocated(&ref_positions_len,&seconds,
+						positions_filename,sizeof(UINT8));
+  } else {
+    ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_len,&seconds,
+						positions_filename,sizeof(UINT4));
+  }
 #endif
 
 
@@ -1158,36 +1292,63 @@ main (int argc, char *argv[]) {
   ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
 #endif
 
-  for (oligoi = 0; oligoi < oligospace; oligoi++) {
-
+  if (coord_values_8p == true) {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
 #ifdef WORDS_BIGENDIAN
-    offset1 = Bigendian_convert_uint(ref_offsets[oligoi]);
-    offset2 = Bigendian_convert_uint(ref_offsets[oligoi+1]);
-    merge_positions(positions_fp,&(snp_positions[snp_offsets[oligoi]]),&(snp_positions[snp_offsets[oligoi+1]]),
-		    &(ref_positions[offset1]),&(ref_positions[offset2]),oligoi,index1part);
+      offset1 = Bigendian_convert_uint(ref_offsets[oligoi]);
+      offset2 = Bigendian_convert_uint(ref_offsets[oligoi+1]);
+      merge_positions8(positions_fp,&(snp_positions8[snp_offsets[oligoi]]),&(snp_positions8[snp_offsets[oligoi+1]]),
+		       &(ref_positions8[offset1]),&(ref_positions8[offset2]),oligoi,index1part);
 #else
-    merge_positions(positions_fp,&(snp_positions[snp_offsets[oligoi]]),&(snp_positions[snp_offsets[oligoi+1]]),
-		    &(ref_positions[ref_offsets[oligoi]]),&(ref_positions[ref_offsets[oligoi+1]]),oligoi,index1part);
+      merge_positions8(positions_fp,&(snp_positions8[snp_offsets[oligoi]]),&(snp_positions8[snp_offsets[oligoi+1]]),
+		       &(ref_positions8[ref_offsets[oligoi]]),&(ref_positions8[ref_offsets[oligoi+1]]),oligoi,index1part);
 #endif
+    }
+  } else {
+    for (oligoi = 0; oligoi < oligospace; oligoi++) {
+#ifdef WORDS_BIGENDIAN
+      offset1 = Bigendian_convert_uint(ref_offsets[oligoi]);
+      offset2 = Bigendian_convert_uint(ref_offsets[oligoi+1]);
+      merge_positions4(positions_fp,&(snp_positions4[snp_offsets[oligoi]]),&(snp_positions4[snp_offsets[oligoi+1]]),
+		       &(ref_positions4[offset1]),&(ref_positions4[offset2]),oligoi,index1part);
+#else
+      merge_positions4(positions_fp,&(snp_positions4[snp_offsets[oligoi]]),&(snp_positions4[snp_offsets[oligoi+1]]),
+		       &(ref_positions4[ref_offsets[oligoi]]),&(ref_positions4[ref_offsets[oligoi+1]]),oligoi,index1part);
+#endif
+    }
   }
+
+
   FREE(ref_offsets);
   fclose(positions_fp);
 
 
   /* Clean up */
 #ifdef HAVE_MMAP
-  munmap((void *) ref_positions,ref_positions_len);
+  if (coord_values_8p == true) {
+    munmap((void *) ref_positions8,ref_positions_len);
+  } else {
+    munmap((void *) ref_positions4,ref_positions_len);
+  }
   close(ref_positions_fd);
 #else
-  FREE(ref_positions);
+  if (coord_values_8p == true) {
+    FREE(ref_positions8);
+  } else {
+    FREE(ref_positions4);
+  }
 #endif
 
 
-  FREE(snp_positions);
+  if (coord_values_8p == true) {
+    FREE(snp_positions8);
+  } else {
+    FREE(snp_positions4);
+  }
   FREE(snp_offsets);
 
   Genome_free(&genome);
-  IIT_free(&chromosome_iit);
+  Univ_IIT_free(&chromosome_iit);
   IIT_free(&snps_iit);
 
   FREE(positions_filename);

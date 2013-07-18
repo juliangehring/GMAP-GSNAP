@@ -39,7 +39,11 @@ DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	config/config.sub config/depcomp config/install-sh \
 	config/ltmain.sh config/missing
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
+	$(top_srcdir)/config/ltoptions.m4 \
+	$(top_srcdir)/config/ltsugar.m4 \
+	$(top_srcdir)/config/ltversion.m4 \
+	$(top_srcdir)/config/lt~obsolete.m4 $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/pagesize.m4 \
 	$(top_srcdir)/config/madvise-flags.m4 \
 	$(top_srcdir)/config/mmap-flags.m4 \
@@ -50,7 +54,10 @@ am__aclocal_m4_deps = $(top_srcdir)/acinclude.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
 	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/popcnt.m4 \
-	$(top_srcdir)/config/asm-bsr.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/config/asm-bsr.m4 \
+	$(top_srcdir)/config/ax_gcc_x86_cpuid.m4 \
+	$(top_srcdir)/config/ax_check_compile_flag.m4 \
+	$(top_srcdir)/config/ax_ext.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
@@ -151,6 +158,7 @@ RANLIB = @RANLIB@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
+SIMD_FLAGS = @SIMD_FLAGS@
 STRIP = @STRIP@
 VERSION = @VERSION@
 ZLIB_LIBS = @ZLIB_LIBS@
@@ -214,7 +222,7 @@ top_srcdir = @top_srcdir@
 SUBDIRS = src util tests
 EXTRA_DIST = VERSION config.site
 CLEANFILES = so_locations
-ACLOCAL_AMFLAGS = -I m4
+ACLOCAL_AMFLAGS = -I config
 all: all-recursive
 
 .SUFFIXES:

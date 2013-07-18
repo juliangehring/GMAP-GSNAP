@@ -1,39 +1,40 @@
-/* $Id: uintlist.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: uintlist.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef UINTLIST_INCLUDED
 #define UINTLIST_INCLUDED
+#include "types.h"
 #include "bool.h"
 
 #define T Uintlist_T
 typedef struct T *T;
 
 extern T 
-Uintlist_push (T list, unsigned int x);
+Uintlist_push (T list, UINT4 x);
 extern T 
-Uintlist_pop (T list, unsigned int *x);
-extern unsigned int 
+Uintlist_pop (T list, UINT4 *x);
+extern UINT4 
 Uintlist_head (T list);
 extern T 
 Uintlist_next (T list);
 extern void 
-Uintlist_head_set (T list, unsigned int x);
+Uintlist_head_set (T list, UINT4 x);
 extern void 
 Uintlist_free (T *list);
 extern T 
 Uintlist_reverse (T list);
 extern int 
 Uintlist_length (T list);
-extern unsigned int *
+extern UINT4 *
 Uintlist_to_array (int *n, T list);
 extern T 
 Uintlist_copy (T list);
 extern T 
 Uintlist_append (T list, T tail);
-extern unsigned int 
+extern UINT4 
 Uintlist_last_value (T this);
-extern unsigned int 
+extern UINT4 
 Uintlist_index (T this, int index);
 extern bool
-Uintlist_find (T this, unsigned int value);
+Uintlist_find (T this, UINT4 value);
 extern char *
 Uintlist_to_string (T this);
 #undef T

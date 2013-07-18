@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genomicpos.c 56964 2012-02-02 17:57:52Z twu $";
+static char rcsid[] = "$Id: genomicpos.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,7 +20,7 @@ static char rcsid[] = "$Id: genomicpos.c 56964 2012-02-02 17:57:52Z twu $";
 #define BUFSIZE 100
 
 char *
-Genomicpos_commafmt (size_t N) {
+Genomicpos_commafmt (Univcoord_T N) {
   char *string, *buffer;
   int len, posn = 1;
   char *ptr, *start;
@@ -53,9 +53,52 @@ Genomicpos_commafmt (size_t N) {
 
 
 int
-Genomicpos_compare (const void *a, const void *b) {
-  Genomicpos_T x = * (Genomicpos_T *) a;
-  Genomicpos_T y = * (Genomicpos_T *) b;
+UINT8_compare (const void *a, const void *b) {
+  UINT8 x = * (UINT8 *) a;
+  UINT8 y = * (UINT8 *) b;
+
+  if (x < y) {
+    return -1;
+  } else if (y < x) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int
+UINT4_compare (const void *a, const void *b) {
+  UINT4 x = * (UINT4 *) a;
+  UINT4 y = * (UINT4 *) b;
+
+  if (x < y) {
+    return -1;
+  } else if (y < x) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+
+int
+Univcoord_compare (const void *a, const void *b) {
+  Univcoord_T x = * (Univcoord_T *) a;
+  Univcoord_T y = * (Univcoord_T *) b;
+
+  if (x < y) {
+    return -1;
+  } else if (y < x) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int
+Chrpos_compare (const void *a, const void *b) {
+  Chrpos_T x = * (Chrpos_T *) a;
+  Chrpos_T y = * (Chrpos_T *) b;
 
   if (x < y) {
     return -1;

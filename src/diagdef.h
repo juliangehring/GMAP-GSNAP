@@ -1,11 +1,11 @@
-/* $Id: diagdef.h 79302 2012-11-15 23:55:58Z twu $ */
+/* $Id: diagdef.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef DIAGDEF_INCLUDED
 #define DIAGDEF_INCLUDED
 #include "bool.h"
 
 #define T Diag_T
 struct T {
-  Genomicpos_T diagonal;
+  Chrpos_T diagonal;
   int querystart;
   int queryend;
   int nconsecutive;

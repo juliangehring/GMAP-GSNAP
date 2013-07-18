@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c 91468 2013-04-04 21:25:32Z twu $";
+static char rcsid[] = "$Id: iit-write.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -37,13 +37,12 @@ static char rcsid[] = "$Id: iit-write.c 91468 2013-04-04 21:25:32Z twu $";
 typedef struct Node_T *Node_T;
 struct Node_T {
   int index;
-  unsigned int value;
+  Chrpos_T value;
   int a;
   int b;
   Node_T left;
   Node_T right;
 };
-
 
 static Node_T
 Node_new () {
@@ -65,34 +64,13 @@ Node_gc (Node_T *old) {
 }
 
 
-#if 0
-static FNode_T
-FNode_new (unsigned int value, int a, int b, int leftindex, int rightindex) {
-  FNode_T new = (FNode_T) MALLOC(sizeof(*new));
-
-  new->value = value;
-  new->a = a;
-  new->b = b;
-  new->leftindex = leftindex;
-  new->rightindex = rightindex;
-  return new;
-}
-
-static void
-FNode_free (FNode_T *old) {
-  FREE(*old);
-  return;
-}
-#endif
-
-
 #define T IIT_T
 
 
 /************************************************************************/
 
 static int 
-is_right_split (int i, int j, int r, unsigned int value, int *sigmas, 
+is_right_split (int i, int j, int r, Chrpos_T value, int *sigmas, 
 		struct Interval_T *intervals) {
   int iota, lambda;
 
@@ -106,7 +84,7 @@ is_right_split (int i, int j, int r, unsigned int value, int *sigmas,
 }  
 
 static bool
-is_sorted (int array[], int i, int j, unsigned int (*endpoint)(), struct Interval_T *intervals) {
+is_sorted (int array[], int i, int j, Chrpos_T (*endpoint)(), struct Interval_T *intervals) {
   int lambda;
 
   for (lambda = i; lambda <= j - 1; lambda++) {
@@ -176,10 +154,10 @@ Node_is_valid_output (Node_T node, int i, int j, int *sigmas, int *omegas,
 /* Refinement of node_make().
    Select proper value and split off "right of" triangles. */
 static void 
-node_select (int *index, unsigned int *value, int i, int j, 
+node_select (int *index, Chrpos_T *value, int i, int j, 
 	     int *sigmas, int *omegas, struct Interval_T *intervals) {
   int r = j - (j - i) / 3;
-  unsigned int k = Interval_array_low(intervals,sigmas[r]);
+  Chrpos_T k = Interval_array_low(intervals,sigmas[r]);
 
   while ((r < j) && (Interval_array_low(intervals,sigmas[r + 1]) == k)) {
     r ++;
@@ -378,6 +356,8 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  *   annot_pointer_size: sizeof(int) [in version >= 5]
  *
  *   total_nintervals: sizeof(int)  [so maximum is 2 billion]
+ *      If >= 0, then using 4-byte quantities (unsigned int) for interval coordinates
+ *      If < 0, then using 8-byte quantities for interval coordinates (generally only used for v1)
  *   ntypes: sizeof(int)
  *   nfields: sizeof(int)  [in version >= 2]
  *
@@ -388,7 +368,7 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  *   cum_nnodes: (ndivs+1)*sizeof(int) [in version >= 3]
  *
  *   divsort: sizeof(int) [in version >= 3: 0 = none, 1 = alpha, 2 = chrom]
- *   divpointers: (ndivs+1)*sizeof(unsigned int)  [in version >= 3]
+ *   divpointers: (ndivs+1)*sizeof(UINT4)  [in version >= 3]
  *   divs: ndivs*(variable length strings, including '\0')  [in version >= 3]
  *
  *   for each div (recall that in version < 3, ndivs = 1):
@@ -398,19 +378,20 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  *     omegas: (nintervals[div]+1)*sizeof(int)
  *     nodes: nnodes[div]*sizeof(struct FNode_T)
  *
- *   intervals: total_nintervals[div]*sizeof(struct Interval_T)  [3 ints in version 1; 4 ints in version >= 2]
+ *   intervals: total_nintervals[div]*sizeof(struct Interval_T)
+ *      [3 ints in version 1; 4 ints or longs in version >= 2, depending on whether total_nintervals > 0]
  *
- *   typepointers: (ntypes+1)*sizeof(unsigned int)
+ *   typepointers: (ntypes+1)*sizeof(UINT4)
  *   types: ntypes*(variable length strings, including '\0')
  *
- *   fieldpointers: (nfields+1)*sizeof(unsigned int)  [in version >= 2]
+ *   fieldpointers: (nfields+1)*sizeof(UINT4)  [in version >= 2]
  *   fields: nfields*(variable length strings, including '\0')  [in version >= 2]
  *
  *   labelorder: total_nintervals*sizeof(int);
- *   labelpointers: (total_nintervals+1)*sizeof(unsigned int)  [changes to long unsigned int in v4 or if label_pointer_size = 8 in v5]
+ *   labelpointers: (total_nintervals+1)*sizeof(UINT4)  [changes to long unsigned int in v4 or if label_pointer_size = 8 in v5]
  *   labels: total_nintervals*(variable length strings, including '\0')
  *
- *   annotpointers: (total_nintervals+1)*sizeof(unsigned int)  [changes to long unsigned int in v4 or if annot_pointer_size = 8 in v5]
+ *   annotpointers: (total_nintervals+1)*sizeof(UINT4)  [changes to long unsigned int in v4 or if annot_pointer_size = 8 in v5]
  *   annotations: total_nintervals*(variable length strings, including '\0')
  *
  *   Note: labels and annotations are organized by division, so we can
@@ -572,14 +553,13 @@ IIT_write_div_header (FILE *fp, int total_nintervals, int ntypes, int nfields, i
 		      bool label_pointers_8p, bool annot_pointers_8p) {
   int new_format_indicator = 0, label_pointer_size, annot_pointer_size;
   int divno;
-  unsigned int pointer = 0U;
+  UINT4 pointer = 0U;
   List_T p;
   char *divstring;
 
-  if (version >= 2) {
-    FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
-    FWRITE_INT(version,fp);
-  }
+  assert(version >= 2);
+  FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
+  FWRITE_INT(version,fp);
 
   if (version >= 5) {
     if (label_pointers_8p == false) {
@@ -598,9 +578,7 @@ IIT_write_div_header (FILE *fp, int total_nintervals, int ntypes, int nfields, i
 
   FWRITE_INT(total_nintervals,fp);
   FWRITE_INT(ntypes,fp);
-  if (version >= 2) {
-    FWRITE_INT(nfields,fp);
-  }
+  FWRITE_INT(nfields,fp);
 
   if (version >= 3) {
     FWRITE_INT(ndivs,fp);
@@ -630,7 +608,7 @@ IIT_write_div_header (FILE *fp, int total_nintervals, int ntypes, int nfields, i
     FWRITE_UINT(pointer,fp);
     for (p = divlist; p != NULL; p = List_next(p)) {
       divstring = (char *) List_head(p);
-      pointer += (unsigned int) strlen(divstring)+1U;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(divstring)+1U;	/* Add count for '\0' */
       FWRITE_UINT(pointer,fp);
     }
 
@@ -650,7 +628,7 @@ IIT_create_div_header (T new, int total_nintervals, int ntypes, int nfields, int
 		       int *nintervals, int *nnodes, int *cum_nintervals, int *cum_nnodes, 
 		       List_T divlist, Sorttype_T divsort, int version) {
   int divno;
-  unsigned int pointer = 0U;
+  UINT4 pointer = 0U;
   List_T p;
   char *divstring;
   int stringlen, k;
@@ -683,13 +661,13 @@ IIT_create_div_header (T new, int total_nintervals, int ntypes, int nfields, int
 
   new->divsort = divsort;
 
-  new->divpointers = (unsigned int *) CALLOC(new->ndivs+1,sizeof(unsigned int));
+  new->divpointers = (UINT4 *) CALLOC(new->ndivs+1,sizeof(UINT4));
   /* Create div pointers */
   k = 0;  
   new->divpointers[k++] = pointer = 0U;
   for (p = divlist; p != NULL; p = List_next(p)) {
     divstring = (char *) List_head(p);
-    pointer += (unsigned int) strlen(divstring)+1U;	/* Add count for '\0' */
+    pointer += (UINT4) strlen(divstring)+1U;	/* Add count for '\0' */
     new->divpointers[k++] = pointer;
   }
 
@@ -715,25 +693,24 @@ IIT_write_one_div (FILE *fp, Node_T root, int *alphas, int *betas, int *sigmas, 
   int i;
 #endif
 
-  if (version >= 2) {
-    FWRITE_INTS(alphas,nintervals + 1,fp);
-    FWRITE_INTS(betas,nintervals + 1,fp);
+  assert(version >= 2);
+  FWRITE_INTS(alphas,nintervals + 1,fp);
+  FWRITE_INTS(betas,nintervals + 1,fp);
 
-    debug(
-	  printf("alphas:");
-	  for (i = 0; i < nintervals + 1; i++) {
-	    printf(" %d",alphas[i]);
-	  }
-	  printf("\n");
+  debug(
+	printf("alphas:");
+	for (i = 0; i < nintervals + 1; i++) {
+	  printf(" %d",alphas[i]);
+	}
+	printf("\n");
 
-	  printf("betas:");
-	  for (i = 0; i < nintervals + 1; i++) {
-	    printf(" %d",betas[i]);
-	  }
-	  printf("\n");
-	  );
+	printf("betas:");
+	for (i = 0; i < nintervals + 1; i++) {
+	  printf(" %d",betas[i]);
+	}
+	printf("\n");
+	);
 
-  }
   FWRITE_INTS(sigmas,nintervals + 1,fp);
   FWRITE_INTS(omegas,nintervals + 1,fp);
 
@@ -806,7 +783,7 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
 #ifdef HAVE_64_BIT
   UINT8 pointer8 = 0LU;
 #endif
-  unsigned int pointer = 0U;
+  UINT4 pointer = 0U;
   int *labelorder;
   char *divstring, *typestring, *fieldstring, *label, *annot;
 
@@ -817,6 +794,7 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
   }
 #endif
 
+  assert(version >= 2);
   for (d = divlist; d != NULL; d = List_next(d)) {
     divstring = (char *) List_head(d);
     intervallist = (List_T) Table_get(intervaltable,(void *) divstring);
@@ -824,9 +802,7 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
       interval = (Interval_T) List_head(p);
       FWRITE_UINT(interval->low,fp);
       FWRITE_UINT(interval->high,fp);
-      if (version >= 2) {
-	FWRITE_INT(interval->sign,fp);
-      }
+      FWRITE_INT(interval->sign,fp);
       FWRITE_INT(interval->type,fp);
     }
   }
@@ -839,7 +815,7 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
     if (typestring == NULL) {
       abort();			/* Even type 0 has an empty string */
     } else {
-      pointer += (unsigned int) strlen(typestring)+1U;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(typestring)+1U;	/* Add count for '\0' */
       FWRITE_UINT(pointer,fp);
     }
   }
@@ -850,21 +826,19 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
     FWRITE_CHARS(typestring,strlen(typestring)+1,fp); /* Write '\0' */
   }      
 
-  if (version >= 2) {
-    /* Write field pointers */
-    pointer = 0U;
+  /* Write field pointers */
+  pointer = 0U;
+  FWRITE_UINT(pointer,fp);
+  for (p = fieldlist; p != NULL; p = List_next(p)) {
+    fieldstring = (char *) List_head(p);
+    pointer += (UINT4) strlen(fieldstring)+1U;	/* Add count for '\0' */
     FWRITE_UINT(pointer,fp);
-    for (p = fieldlist; p != NULL; p = List_next(p)) {
-      fieldstring = (char *) List_head(p);
-      pointer += (unsigned int) strlen(fieldstring)+1U;	/* Add count for '\0' */
-      FWRITE_UINT(pointer,fp);
-    }
+  }
 
-    /* Write fields */
-    for (p = fieldlist; p != NULL; p = List_next(p)) {
-      fieldstring = (char *) List_head(p);
-      FWRITE_CHARS(fieldstring,strlen(fieldstring)+1,fp); /* Write '\0' */
-    }
+  /* Write fields */
+  for (p = fieldlist; p != NULL; p = List_next(p)) {
+    fieldstring = (char *) List_head(p);
+    FWRITE_CHARS(fieldstring,strlen(fieldstring)+1,fp); /* Write '\0' */
   }
 
   /* Write labelorder */
@@ -896,11 +870,11 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
 	pointer8 += (UINT8) strlen(label)+1LU;	/* Add count for '\0' */
 	FWRITE_UINT8(pointer8,fp);
       } else {
-	pointer += (unsigned int) strlen(label)+1U;	/* Add count for '\0' */
+	pointer += (UINT4) strlen(label)+1U;	/* Add count for '\0' */
 	FWRITE_UINT(pointer,fp);
       }
 #else
-      pointer += (unsigned int) strlen(label)+1U;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(label)+1U;	/* Add count for '\0' */
       FWRITE_UINT(pointer,fp);
 #endif
     }
@@ -940,11 +914,11 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
 	pointer8 += (UINT8) strlen(annot)+1LU;	/* Add count for '\0' */
 	FWRITE_UINT8(pointer8,fp);
       } else {
-	pointer += (unsigned int) strlen(annot)+1;	/* Add count for '\0' */
+	pointer += (UINT4) strlen(annot)+1;	/* Add count for '\0' */
 	FWRITE_UINT(pointer,fp);
       }
 #else
-      pointer += (unsigned int) strlen(annot)+1;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(annot)+1;	/* Add count for '\0' */
       FWRITE_UINT(pointer,fp);
 #endif
     }
@@ -970,7 +944,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
 		       int *cum_nintervals, int total_nintervals) {
   List_T intervallist, labellist, datalist, d, p;
   Interval_T interval;
-  unsigned int pointer = 0U;
+  UINT4 pointer = 0U;
   char *divstring, *typestring, *fieldstring, *label;
   int stringlen;
   int divno, k;
@@ -998,7 +972,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
 
 
   /* Create type pointers */
-  new->typepointers = (unsigned int *) CALLOC(new->ntypes+1,sizeof(unsigned int));
+  new->typepointers = (UINT4 *) CALLOC(new->ntypes+1,sizeof(UINT4));
   k = 0;
   new->typepointers[k++] = pointer = 0U;
   for (p = typelist; p != NULL; p = List_next(p)) {
@@ -1006,7 +980,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
     if (typestring == NULL) {
       abort();			/* Even type 0 has an empty string */
     } else {
-      pointer += (unsigned int) strlen(typestring)+1U;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(typestring)+1U;	/* Add count for '\0' */
       new->typepointers[k++] = pointer;
     }
   }
@@ -1025,7 +999,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
 
 
   /* Create field pointers */
-  new->fieldpointers = (unsigned int *) CALLOC(new->nfields+1,sizeof(unsigned int));
+  new->fieldpointers = (UINT4 *) CALLOC(new->nfields+1,sizeof(UINT4));
   k = 0;
   new->fieldpointers[k++] = pointer = 0U;
   for (p = fieldlist; p != NULL; p = List_next(p)) {
@@ -1033,7 +1007,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
     if (fieldstring == NULL) {
       abort();			/* Even type 0 has an empty string */
     } else {
-      pointer += (unsigned int) strlen(fieldstring)+1U;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(fieldstring)+1U;	/* Add count for '\0' */
       new->fieldpointers[k++] = pointer;
     }
   }
@@ -1055,7 +1029,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
   new->labelorder = get_labelorder(divlist,labeltable,cum_nintervals,total_nintervals);
 
   /* Create label pointers */
-  new->labelpointers = (unsigned int *) CALLOC(new->total_nintervals+1,sizeof(unsigned int));
+  new->labelpointers = (UINT4 *) CALLOC(new->total_nintervals+1,sizeof(UINT4));
   k = 0;
   new->labelpointers[k++] = pointer = 0U;
   for (d = divlist; d != NULL; d = List_next(d)) {
@@ -1063,7 +1037,7 @@ IIT_create_div_footer (T new, List_T divlist, List_T typelist, List_T fieldlist,
     labellist = (List_T) Table_get(labeltable,(void *) divstring);
     for (p = labellist; p != NULL; p = List_next(p)) {
       label = (char *) List_head(p);
-      pointer += (unsigned int) strlen(label)+1U;	/* Add count for '\0' */
+      pointer += (UINT4) strlen(label)+1U;	/* Add count for '\0' */
       new->labelpointers[k++] = pointer;
     }
   }
@@ -1128,25 +1102,21 @@ IIT_output_direct (char *iitfile, T this, int version) {
     exit(9);
   }
 
-  if (version >= 2) {
-    FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
-    FWRITE_INT(version,fp);
-  }
+  assert(version >= 2);
+  FWRITE_INT(new_format_indicator,fp); /* Indicates new format, since nintervals > 0 */
+  FWRITE_INT(version,fp);
+
   FWRITE_INT(this->nintervals,fp);
   FWRITE_INT(this->ntypes,fp);
-  if (version < 2) {
-    this->nfields = 0;
-  } else {
-    FWRITE_INT(this->nfields,fp);
-  }
+  FWRITE_INT(this->nfields,fp);
   FWRITE_INT(this->nnodes,fp);
-  if (version >= 2) {
-    if (this->alphas == NULL) {
-      compute_flanking(this);
-    }
-    FWRITE_INTS(this->alphas,this->nintervals + 1,fp);
-    FWRITE_INTS(this->betas,this->nintervals + 1,fp);
+
+  if (this->alphas == NULL) {
+    compute_flanking(this);
   }
+  FWRITE_INTS(this->alphas,this->nintervals + 1,fp);
+  FWRITE_INTS(this->betas,this->nintervals + 1,fp);
+
   FWRITE_INTS(this->sigmas,this->nintervals + 1,fp);
   FWRITE_INTS(this->omegas,this->nintervals + 1,fp);
 
@@ -1163,9 +1133,7 @@ IIT_output_direct (char *iitfile, T this, int version) {
   for (i = 0; i < this->nintervals; i++) {
     FWRITE_UINT(this->intervals[i].low,fp);
     FWRITE_UINT(this->intervals[i].high,fp);
-    if (version >= 2) {
-      FWRITE_INT(this->intervals[i].sign,fp);
-    }
+    FWRITE_INT(this->intervals[i].sign,fp);
     FWRITE_INT(this->intervals[i].type,fp);
   }
 
@@ -1180,15 +1148,13 @@ IIT_output_direct (char *iitfile, T this, int version) {
     FWRITE_CHARS(this->typestrings,stringlen,fp);
   }
 
-  if (version >= 2) {
-    /* Write fields directly */
-    for (i = 0; i < this->nfields+1; i++) {
-      FWRITE_UINT(this->fieldpointers[i],fp);
-    }
-    stringlen = this->fieldpointers[this->nfields];
-    if (stringlen > 0) {
-      FWRITE_CHARS(this->fieldstrings,stringlen,fp);
-    }
+  /* Write fields directly */
+  for (i = 0; i < this->nfields+1; i++) {
+    FWRITE_UINT(this->fieldpointers[i],fp);
+  }
+  stringlen = this->fieldpointers[this->nfields];
+  if (stringlen > 0) {
+    FWRITE_CHARS(this->fieldstrings,stringlen,fp);
   }
 
   /* Write labelorder */
@@ -1286,8 +1252,8 @@ IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Tab
 
     fprintf(stderr,"Writing IIT file header information...");
     IIT_write_div_header(fp,total_nintervals,List_length(typelist),List_length(fieldlist),
-			  ndivs,nintervals,nnodes,cum_nintervals,cum_nnodes,divlist,divsort,version,
-			  label_pointers_8p,annot_pointers_8p);
+			 ndivs,nintervals,nnodes,cum_nintervals,cum_nnodes,divlist,divsort,version,
+			 label_pointers_8p,annot_pointers_8p);
     fprintf(stderr,"done\n");
 
     for (d = divlist, divno = 0; d != NULL; d = List_next(d), divno++) {

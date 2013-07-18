@@ -1,22 +1,22 @@
 #ifndef MAXENT_HR_INCLUDED
 #define MAXENT_HR_INCLUDED
-#include "types.h"
 #include "genomicpos.h"
+#include "types.h"
 
 extern void
-Maxent_hr_setup (UINT4 *ref_blocks_in, UINT4 *snp_blocks_in);
+Maxent_hr_setup (Genomecomp_T *ref_blocks_in, Genomecomp_T *snp_blocks_in);
 
 extern double
-Maxent_hr_donor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset);
+Maxent_hr_donor_prob (Univcoord_T splice_pos, Univcoord_T chroffset);
 
 extern double
-Maxent_hr_acceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset);
+Maxent_hr_acceptor_prob (Univcoord_T splice_pos, Univcoord_T chroffset);
 
 extern double
-Maxent_hr_antidonor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset);
+Maxent_hr_antidonor_prob (Univcoord_T splice_pos, Univcoord_T chroffset);
 
 extern double
-Maxent_hr_antiacceptor_prob (Genomicpos_T splice_pos, Genomicpos_T chroffset);
+Maxent_hr_antiacceptor_prob (Univcoord_T splice_pos, Univcoord_T chroffset);
 
 #endif
 

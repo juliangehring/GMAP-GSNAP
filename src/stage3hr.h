@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 91632 2013-04-05 21:58:36Z twu $ */
+/* $Id: stage3hr.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -8,6 +8,7 @@
 #include "chrnum.h"
 #include "genomicpos.h"
 #include "intlist.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "shortread.h"
 #include "genome.h"
@@ -53,21 +54,21 @@ extern Chrnum_T
 Stage3end_chrnum (T this);
 extern Chrnum_T
 Stage3end_effective_chrnum (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Stage3end_chroffset (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Stage3end_chrhigh (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Stage3end_chrlength (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Stage3end_genomicstart (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Stage3end_genomicend (T this);
 extern int
 Stage3end_query_alignment_length (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Stage3end_genomic_alignment_length (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Stage3end_chrpos_low_trim (T this);
 extern int
 Stage3end_mapq_score (T this);
@@ -143,11 +144,11 @@ extern struct Pair_T *
 Stage3end_pairarray (T this);
 extern int
 Stage3end_npairs (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Stage3end_distance (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Stage3end_shortexon_acceptor_distance (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Stage3end_shortexon_donor_distance (T this);
 extern int
 Stage3end_sensedir (T this);
@@ -175,9 +176,9 @@ extern bool
 Stage3end_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query_compress_rev);
 
 extern bool
-Stage3end_genomicbound_from_start (Genomicpos_T *genomicbound, T this, int overlap, Genomicpos_T chroffset);
+Stage3end_genomicbound_from_start (Univcoord_T *genomicbound, T this, int overlap, Univcoord_T chroffset);
 extern bool
-Stage3end_genomicbound_from_end (Genomicpos_T *genomicbound, T this, int overlap, Genomicpos_T chroffset);
+Stage3end_genomicbound_from_end (Univcoord_T *genomicbound, T this, int overlap, Univcoord_T chroffset);
 
 extern void
 Stage3end_free (T *old);
@@ -195,12 +196,14 @@ extern int
 Stage3pair_mapq_score (Stage3pair_T this);
 extern int
 Stage3pair_absmq_score (Stage3pair_T this);
-extern Genomicpos_T
+
+
+extern Chrpos_T
 Stage3pair_pairlength (Stage3pair_T this);
 extern int
 Stage3pair_nmatches (Stage3pair_T this);
 extern int
-Stage3pair_overlap (Stage3pair_T this);
+Stage3pair_overlap (int *hardclip5, int *hardclip3, Stage3pair_T this);
 extern void
 Stage3pair_set_private5p (Stage3pair_T this);
 extern void
@@ -217,34 +220,34 @@ extern T
 Stage3end_copy (T old);
 
 extern T
-Stage3end_new_exact (int *found_score, Genomicpos_T left, int genomiclength, Compress_T query_compress,
-		     bool plusp, int genestrand, Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
-		     Genomicpos_T chrlength);
+Stage3end_new_exact (int *found_score, Univcoord_T left, int genomiclength, Compress_T query_compress,
+		     bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
+		     Chrpos_T chrlength);
 extern T
-Stage3end_new_substitution (int *found_score, int nmismatches, Genomicpos_T left,
+Stage3end_new_substitution (int *found_score, int nmismatches, Univcoord_T left,
 			    int genomiclength, Compress_T query_compress,
-			    bool plusp, int genestrand, Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
-			    Genomicpos_T chrlength);
+			    bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
+			    Chrpos_T chrlength);
 extern T
 Stage3end_new_insertion (int *found_score, int nindels, int indel_pos, int nmismatches1, int nmismatches2,
-			 Genomicpos_T left, int genomiclength, Compress_T query_compress,
-			 int querylength, bool plusp, int genestrand, Chrnum_T chrnum, Genomicpos_T chroffset,
-			 Genomicpos_T chrhigh, Genomicpos_T chrlength, int indel_penalty);
+			 Univcoord_T left, int genomiclength, Compress_T query_compress,
+			 int querylength, bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset,
+			 Univcoord_T chrhigh, Chrpos_T chrlength, int indel_penalty);
 extern T
 Stage3end_new_deletion (int *found_score, int nindels, int indel_pos, int nmismatches1, int nmismatches2,
-			Genomicpos_T left, int genomiclength, Compress_T query_compress,
-			int querylength, bool plusp, int genestrand, Chrnum_T chrnum, Genomicpos_T chroffset,
-			Genomicpos_T chrhigh, Genomicpos_T chrlength, int indel_penalty);
+			Univcoord_T left, int genomiclength, Compress_T query_compress,
+			int querylength, bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset,
+			Univcoord_T chrhigh, Chrpos_T chrlength, int indel_penalty);
 
 extern T
-Stage3end_new_terminal (int querystart, int queryend, Genomicpos_T left, Compress_T query_compress,
+Stage3end_new_terminal (int querystart, int queryend, Univcoord_T left, Compress_T query_compress,
 			int querylength, bool plusp, int genestrand,
 			Endtype_T start_endtype, Endtype_T end_endtype,
-			Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength,
+			Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
 			int max_mismatches_allowed);
 extern T
 Stage3end_new_splice (int *found_score, int donor_nmismatches, int acceptor_nmismatches,
-		      Substring_T donor, Substring_T acceptor, Genomicpos_T distance,
+		      Substring_T donor, Substring_T acceptor, Chrpos_T distance,
 		      bool shortdistancep, int splicing_penalty, int querylength,
 		      int amb_nmatches, Intlist_T ambi_left, Intlist_T ambi_right,
 		      Intlist_T amb_nmismatches_left, Intlist_T amb_nmismatches_right,
@@ -252,7 +255,7 @@ Stage3end_new_splice (int *found_score, int donor_nmismatches, int acceptor_nmis
 		      bool first_read_p, int sensedir);
 extern T
 Stage3end_new_shortexon (int *found_score, Substring_T donor, Substring_T acceptor, Substring_T shortexon,
-			 Genomicpos_T acceptor_distance, Genomicpos_T donor_distance,
+			 Chrpos_T acceptor_distance, Chrpos_T donor_distance,
 			 int amb_nmatches_donor, int amb_nmatches_acceptor,
 			 Intlist_T ambi_left, Intlist_T ambi_right,
 			 Intlist_T amb_nmismatches_left, Intlist_T amb_nmismatches_right,
@@ -265,8 +268,8 @@ Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
 		    double min_splice_prob, struct Pair_T *pairarray, int npairs,
 		    int nsegments, int nintrons, int nindelbreaks,
-		    Genomicpos_T left, int genomiclength, bool plusp, int genestrand, int querylength,
-		    Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength,
+		    Univcoord_T left, int genomiclength, bool plusp, int genestrand, int querylength,
+		    Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
 		    int cdna_direction, int sensedir);
 
 extern List_T
@@ -314,7 +317,7 @@ Stage3_determine_pairtype (T hit5, T hit3);
 /* If hit5 and hit3 are not NULL, then we know this is part of a pair */
 extern void
 Stage3end_print (FILE *fp, T this, int score,
-		 IIT_T chromosome_iit, Shortread_T queryseq,
+		 Univ_IIT_T chromosome_iit, Shortread_T queryseq,
 		 bool invertp, T hit5, T hit3, int pairedlength, int pairscore,
 		 Pairtype_T pairtype, int mapq_score);
 
@@ -329,7 +332,7 @@ Stage3pair_circularp (Stage3pair_T this);
 
 extern void
 Stage3pair_print (Result_T result, Resulttype_T resulttype,
-		  IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
+		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  int maxpaths, bool quiet_if_excessive_p,
 		  bool nofailsp, bool failsonlyp,
 		  bool fails_as_input_p, bool fastq_format_p, int quality_shift,
@@ -344,7 +347,7 @@ Stage3pair_print (Result_T result, Resulttype_T resulttype,
 		  FILE *fp_concordant_transloc, FILE *fp_concordant_mult);
 
 extern Stage3pair_T
-Stage3pair_new (T hit5, T hit3, Genomicpos_T *splicesites,
+Stage3pair_new (T hit5, T hit3, Univcoord_T *splicesites,
 		Compress_T query5_compress_fwd, Compress_T query5_compress_rev,
 		Compress_T query3_compress_fwd, Compress_T query3_compress_rev,
 		int genestrand, Pairtype_T pairtype, int splicing_penalty,
@@ -384,7 +387,7 @@ Stage3_pair_up_concordant (bool *abort_pairing_p, int *found_score, int *nconcor
 			   List_T hitpairs, List_T *hitarray5, int narray5, List_T *hitarray3, int narray3,
 			   List_T terminals5, List_T terminals3,
 			   int cutoff_level_5, int cutoff_level_3, int subopt_levels,
-			   Genomicpos_T *splicesites,
+			   Univcoord_T *splicesites,
 			   Compress_T query5_compress_fwd, Compress_T query5_compress_rev,
 			   Compress_T query3_compress_fwd, Compress_T query3_compress_rev,
 			   int querylength5, int querylength3, int maxpairedpaths,

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: parserange.c 68086 2012-07-04 04:03:51Z twu $";
+static char rcsid[] = "$Id: parserange.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,8 +11,10 @@ static char rcsid[] = "$Id: parserange.c 68086 2012-07-04 04:03:51Z twu $";
 #include <ctype.h>		/* For isdigit */
 
 #include "mem.h"
-#include "iit-read.h"
+#include "univinterval.h"
 #include "interval.h"
+#include "iit-read-univ.h"
+#include "iit-read.h"
 
 
 #ifdef DEBUG
@@ -23,8 +25,31 @@ static char rcsid[] = "$Id: parserange.c 68086 2012-07-04 04:03:51Z twu $";
 
 
 /* Note that isnumber is a function in ctype.h on some systems */
-static bool
-isnumberp (unsigned int *result, char *string) {
+bool
+Parserange_iscoordp (Univcoord_T *result, char *string) {
+  char *p = string;
+
+  *result = 0U;
+  if (*p == '\0') {
+    /* Empty string */
+    return false;
+  } else {
+    while (*p != '\0') {
+      if (*p == ',') {
+	/* Skip commas */
+      } else if (!isdigit((int) *p)) {
+	return false;
+      } else {
+	*result = (*result) * 10 + (*p - '0');
+      }
+      p++;
+    }
+    return true;
+  }
+}
+
+bool
+Parserange_islengthp (Chrpos_T *result, char *string) {
   char *p = string;
 
   *result = 0U;
@@ -47,11 +72,11 @@ isnumberp (unsigned int *result, char *string) {
 }
 
 /* Returns coordinates as zero-based */
-static bool
-isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) {
+bool
+Parserange_israngep (Univcoord_T *left, Chrpos_T *length, bool *revcomp, char *string) {
   bool result;
   char *copy, *startstring, *endstring;
-  unsigned int start, end;
+  Univcoord_T start, end;
 
   copy = (char *) CALLOC(strlen(string)+1,sizeof(char));
   strcpy(copy,string);
@@ -59,7 +84,7 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
   if (index(copy,'.')) {
     startstring = strtok(copy,"..");
     endstring = strtok(NULL,"..");
-    if (!isnumberp(&start,startstring) || !isnumberp(&end,endstring)) {
+    if (!Parserange_iscoordp(&start,startstring) || !Parserange_iscoordp(&end,endstring)) {
       result = false;
     } else if (start <= end) {
       *length = end - start + 1;
@@ -78,14 +103,14 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
   } else if (index(copy,'+')) {
     startstring = strtok(copy,"+");
     endstring = strtok(NULL,"+");
-    if (!isnumberp(&start,startstring)) {
+    if (!Parserange_iscoordp(&start,startstring)) {
       result = false;
-    } else if (endstring[0] == '-' && isnumberp(&(*length),&(endstring[1]))) {
+    } else if (endstring[0] == '-' && Parserange_islengthp(&(*length),&(endstring[1]))) {
       *left = start - (*length);
       *revcomp = true;
       debug(printf("(-) "));
       result = true;
-    } else if (!isnumberp(&(*length),endstring)) {
+    } else if (!Parserange_islengthp(&(*length),endstring)) {
       result = false;
     } else {
       *left = start - 1;
@@ -98,7 +123,7 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
     /* Old notation */
     startstring = strtok(copy,"--");
     endstring = strtok(NULL,"--");
-    if (!isnumberp(&start,startstring) || !isnumberp(&end,endstring)) {
+    if (!Parserange_iscoordp(&start,startstring) || !Parserange_iscoordp(&end,endstring)) {
       result = false;
     } else if (start <= end) {
       *length = end - start + 1;
@@ -118,7 +143,7 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
   } else if (index(copy,'-')) {
     startstring = strtok(copy,"-");
     endstring = strtok(NULL,"-");
-    if (!isnumberp(&start,startstring) || !isnumberp(&end,endstring)) {
+    if (!Parserange_iscoordp(&start,startstring) || !Parserange_iscoordp(&end,endstring)) {
       result = false;
     } else if (end > start - 1) {
       result = false;
@@ -142,28 +167,28 @@ isrange (unsigned int *left, unsigned int *length, bool *revcomp, char *string) 
 /* Retrieval functions */
 
 static int
-translate_chromosomepos_universal (unsigned int *genomicstart, unsigned int *genomiclength, 
-				   char *chromosome, unsigned int left, unsigned int length,
-				   IIT_T chromosome_iit) {
+translate_chromosomepos_universal (Univcoord_T *genomicstart, Chrpos_T *genomiclength, 
+				   char *chromosome, Univcoord_T left, Chrpos_T length,
+				   Univ_IIT_T chromosome_iit) {
   int rc = 1, index;
-  Interval_T interval;
+  Univinterval_T interval;
 #ifdef DEBUG
   bool allocp;
 #endif
   
-  if ((index = IIT_find_linear(chromosome_iit,chromosome)) >= 0) {
+  if ((index = Univ_IIT_find_linear(chromosome_iit,chromosome)) >= 0) {
     debug(printf("chromosome %s => index %d\n",chromosome,index));
-    interval = IIT_interval(chromosome_iit,index);
+    interval = Univ_IIT_interval(chromosome_iit,index);
     debug(printf("  => label %s with interval low %u\n",
-		 IIT_label(chromosome_iit,index,&allocp),Interval_low(interval)));
-    *genomicstart = Interval_low(interval)+left;
-    if (*genomicstart < Interval_low(interval)) {
-      fprintf(stderr,"%u + %u = %u (exceeds a 32-bit unsigned int)\n",
-	      Interval_low(interval),left,*genomicstart);
+		 Univ_IIT_label(chromosome_iit,index,&allocp),Interval_low(interval)));
+    *genomicstart = Univinterval_low(interval)+left;
+    if (*genomicstart < Univinterval_low(interval)) {
+      fprintf(stderr,"%lu + %lu = %lu (exceeds a 32-bit unsigned int)\n",
+	      Univinterval_low(interval),left,*genomicstart);
       exit(9);
     }
     if (length == 0) {
-      *genomiclength = Interval_length(interval)-left;
+      *genomiclength = Univinterval_length(interval)	/* - left (Why?) */; 
     } else {
       *genomiclength = length;
     }
@@ -175,17 +200,17 @@ translate_chromosomepos_universal (unsigned int *genomicstart, unsigned int *gen
 
 
 static int
-translate_chromosomepos_segment (unsigned int *segmentstart, unsigned int *segmentlength, 
-				 char *chromosome, unsigned int left, unsigned int length,
-				 IIT_T chromosome_iit) {
+translate_chromosomepos_segment (Univcoord_T *segmentstart, Chrpos_T *segmentlength, 
+				 char *chromosome, Univcoord_T left, Chrpos_T length,
+				 Univ_IIT_T chromosome_iit) {
   int rc = 1, index;
-  Interval_T interval;
+  Univinterval_T interval;
   
-  if ((index = IIT_find_linear(chromosome_iit,chromosome)) >= 0) {
-    interval = IIT_interval(chromosome_iit,index);
+  if ((index = Univ_IIT_find_linear(chromosome_iit,chromosome)) >= 0) {
+    interval = Univ_IIT_interval(chromosome_iit,index);
     *segmentstart = left;
     if (length == 0) {
-      *segmentlength = Interval_length(interval)-left;
+      *segmentlength = Univinterval_length(interval) /* - left (Why?) */;
     } else {
       *segmentlength = length;
     }
@@ -197,16 +222,16 @@ translate_chromosomepos_segment (unsigned int *segmentstart, unsigned int *segme
 
 
 static int
-translate_contig (unsigned int *genomicstart, unsigned int *genomiclength,
-		  char *contig, unsigned int left, unsigned int length, IIT_T contig_iit) {
+translate_contig (Univcoord_T *genomicstart, Chrpos_T *genomiclength,
+		  char *contig, Univcoord_T left, Chrpos_T length, Univ_IIT_T contig_iit) {
   int rc = 1, index;
-  Interval_T interval;
+  Univinterval_T interval;
   
-  if ((index = IIT_find_one(contig_iit,contig)) >= 0) {
-    interval = IIT_interval(contig_iit,index);
-    *genomicstart = Interval_low(interval)+left;
+  if ((index = Univ_IIT_find_one(contig_iit,contig)) >= 0) {
+    interval = Univ_IIT_interval(contig_iit,index);
+    *genomicstart = Univinterval_low(interval)+left;
     if (length == 0) {
-      *genomiclength = Interval_length(interval)-left;
+      *genomiclength = Univinterval_length(interval) /* - left (Why?) */;
     } else {
       *genomiclength = length;
     }
@@ -219,37 +244,36 @@ translate_contig (unsigned int *genomicstart, unsigned int *genomiclength,
 
 /* Assumes position is 0-based */
 static char *
-convert_to_chrpos (unsigned int *chrpos, char *genomesubdir, char *fileroot, unsigned int position) {
+convert_to_chrpos (Chrpos_T *chrpos, char *genomesubdir, char *fileroot, Univcoord_T position) {
   char *chromosome, *filename;
-  IIT_T chromosome_iit;
+  Univ_IIT_T chromosome_iit;
   
   filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".chromosome.iit")+1,sizeof(char));
   sprintf(filename,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-  if ((chromosome_iit = IIT_read(filename,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-				 /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true)) == NULL) {
+  if ((chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
     fprintf(stderr,"Can't read IIT file %s\n",filename);
     exit(9);
   }
   FREE(filename);
 
   /* Subtract 1 to make 0-based */
-  chromosome = IIT_string_from_position(&(*chrpos),position-1U,chromosome_iit);
+  chromosome = Univ_IIT_string_from_position(&(*chrpos),position-1U,chromosome_iit);
   *chrpos += 1U;		/* Bring back to 1-based */
-  IIT_free(&chromosome_iit);
+  Univ_IIT_free(&chromosome_iit);
 
   return chromosome;
 }
 
 /* Assumes position is 0-based */
 static char *
-convert_to_chrpos_iit (unsigned int *chrpos, IIT_T chromosome_iit, unsigned int position) {
+convert_to_chrpos_iit (Chrpos_T *chrpos, Univ_IIT_T chromosome_iit, Univcoord_T position) {
   char *chromosome;
   
   /* Subtract 1 to make 0-based */
-  chromosome = IIT_string_from_position(&(*chrpos),position-1U,chromosome_iit);
+  chromosome = Univ_IIT_string_from_position(&(*chrpos),position-1U,chromosome_iit);
   *chrpos += 1U;		/* Bring back to 1-based */
-  IIT_free(&chromosome_iit);
+  Univ_IIT_free(&chromosome_iit);
 
   return chromosome;
 }
@@ -273,10 +297,11 @@ find_div (int *div_strlen, char *string, int sep) {
 
 
 bool
-Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coordend, bool *revcomp,
+Parserange_query (char **divstring, Univcoord_T *coordstart, Univcoord_T *coordend, bool *revcomp,
 		  char *query, char *filename) {
   char *coords;
-  unsigned int result, left, length;
+  Univcoord_T result, left;
+  Chrpos_T length;
   int div_strlen;
   IIT_T iit;
   
@@ -313,12 +338,12 @@ Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coor
 	IIT_free(&iit);
       }
       return true;
-    } else if (isnumberp(&result,coords)) {
+    } else if (Parserange_iscoordp(&result,coords)) {
       debug(printf("  and coords %s as a number\n",coords));
       *coordstart = result;
       *coordend = result;
       return true;
-    } else if (isrange(&left,&length,&(*revcomp),coords)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
       debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		   coords,left,length,*revcomp));
       *coordstart = left + 1;	/* Because isrange is 0-based */
@@ -334,12 +359,12 @@ Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coor
     /* No div.  Query must be a number, range, or label */
 
     debug(printf("Parsed query %s without a div ",query));
-    if (isnumberp(&result,query)) {
+    if (Parserange_iscoordp(&result,query)) {
       debug(printf("number\n"));
       *coordstart = result;
       *coordend = result;
       return true;
-    } else if (isrange(&left,&length,&(*revcomp),query)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),query)) {
       debug(printf("range\n"));
       *coordstart = left + 1;	/* Because isrange is 0-based */
       *coordend = left + length;
@@ -355,14 +380,15 @@ Parserange_query (char **divstring, unsigned int *coordstart, unsigned int *coor
 
 bool
 Parserange_universal (char **div, bool *revcomp,
-		      Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
-		      Genomicpos_T *chrstart, Genomicpos_T *chrend,
-		      Genomicpos_T *chroffset, Genomicpos_T *chrlength,
+		      Univcoord_T *genomicstart, Chrpos_T *genomiclength,
+		      Chrpos_T *chrstart, Chrpos_T *chrend,
+		      Univcoord_T *chroffset, Chrpos_T *chrlength,
 		      char *query, char *genomesubdir, char *fileroot) {
   char *coords, *filename;
-  Genomicpos_T result, left, length;
-  IIT_T chromosome_iit, contig_iit;
-  Interval_T interval;
+  Univcoord_T result, left;
+  Chrpos_T length;
+  Univ_IIT_T chromosome_iit, contig_iit;
+  Univinterval_T interval;
   int theindex;
   int rc;
   
@@ -385,18 +411,17 @@ Parserange_universal (char **div, bool *revcomp,
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(filename,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-    chromosome_iit = IIT_read(filename,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-			      /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
+    chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false);
     FREE(filename);
 
     debug(printf("Interpreting segment %s as a chromosome\n",*div));
     if (coords == NULL) {
       debug(printf("  entire chromosome\n"));
       rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left=0,length=0,chromosome_iit);
-    } else if (isnumberp(&result,coords)) {
+    } else if (Parserange_iscoordp(&result,coords)) {
       debug(printf("  and coords %s as a number\n",coords));
       rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,chromosome_iit);
-    } else if (isrange(&left,&length,&(*revcomp),coords)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
       debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		   coords,left,length,*revcomp));
       rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left,length,chromosome_iit);
@@ -411,16 +436,16 @@ Parserange_universal (char **div, bool *revcomp,
     *chrstart += 1U;		/* Make 1-based */
 
     /* Get chromosomal information */
-    if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
+    if ((theindex = Univ_IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
       /* exit(9); */
     } else {
-      interval = IIT_interval(chromosome_iit,theindex);
-      *chroffset = Interval_low(interval);
-      *chrlength = Interval_length(interval);
+      interval = Univ_IIT_interval(chromosome_iit,theindex);
+      *chroffset = Univinterval_low(interval);
+      *chrlength = Univinterval_length(interval);
     }
 
-    IIT_free(&chromosome_iit);
+    Univ_IIT_free(&chromosome_iit);
 
 #if 0
     /* Contig IIT's are of type 1, which require some work to compute
@@ -438,10 +463,10 @@ Parserange_universal (char **div, bool *revcomp,
       if (coords == NULL) {
 	debug(printf("  entire contig\n"));
 	rc = translate_contig_universal(&(*genomicstart),&(*genomiclength),*div,left=0,length=0,chromosome_iit);
-      } else if (isnumberp(&result,coords)) {
+      } else if (Parserange_iscoordp(&result,coords)) {
 	debug(printf("  and coords %s as a number\n",coords));
 	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,contig_iit);
-      } else if (isrange(&left,&length,&(*revcomp),coords)) {
+      } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
 	debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		     coords,left,length,*revcomp));
 	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left,length,contig_iit);
@@ -466,12 +491,12 @@ Parserange_universal (char **div, bool *revcomp,
     *chrstart = *chroffset = *chrlength = 0;
 
     debug(printf("Parsed query %s as atomic ",query));
-    if (isnumberp(&result,query)) {
+    if (Parserange_iscoordp(&result,query)) {
       debug(printf("number\n"));
       *genomicstart = result-1;
       *genomiclength = 1;
 
-    } else if (isrange(&left,&length,&(*revcomp),query)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),query)) {
       debug(printf("range\n"));
       *genomicstart = left;
       *genomiclength = length;
@@ -501,19 +526,18 @@ Parserange_universal (char **div, bool *revcomp,
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(filename,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-    chromosome_iit = IIT_read(filename,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
-			      /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
+    chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false);
     FREE(filename);
 
-    if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
+    if ((theindex = Univ_IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
-      IIT_free(&chromosome_iit);
+      Univ_IIT_free(&chromosome_iit);
       return false;
     } else {
-      interval = IIT_interval(chromosome_iit,theindex);
-      *chroffset = Interval_low(interval);
-      *chrlength = Interval_length(interval);
-      IIT_free(&chromosome_iit);
+      interval = Univ_IIT_interval(chromosome_iit,theindex);
+      *chroffset = Univinterval_low(interval);
+      *chrlength = Univinterval_length(interval);
+      Univ_IIT_free(&chromosome_iit);
       return true;
     }
   }
@@ -522,13 +546,14 @@ Parserange_universal (char **div, bool *revcomp,
 
 bool
 Parserange_universal_iit (char **div, bool *revcomp,
-			  Genomicpos_T *genomicstart, Genomicpos_T *genomiclength,
-			  Genomicpos_T *chrstart, Genomicpos_T *chrend,
-			  Genomicpos_T *chroffset, Genomicpos_T *chrlength,
-			  char *query, IIT_T chromosome_iit, IIT_T contig_iit) {
+			  Univcoord_T *genomicstart, Chrpos_T *genomiclength,
+			  Chrpos_T *chrstart, Chrpos_T *chrend,
+			  Univcoord_T *chroffset, Chrpos_T *chrlength,
+			  char *query, Univ_IIT_T chromosome_iit, Univ_IIT_T contig_iit) {
   char *coords;
-  Genomicpos_T result, left, length;
-  Interval_T interval;
+  Univcoord_T result, left;
+  Chrpos_T length;
+  Univinterval_T interval;
   int theindex;
   int rc;
   
@@ -552,10 +577,10 @@ Parserange_universal_iit (char **div, bool *revcomp,
     if (coords == NULL) {
       debug(printf("  entire chromosome\n"));
       rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left=0,length=0,chromosome_iit);
-    } else if (isnumberp(&result,coords)) {
+    } else if (Parserange_iscoordp(&result,coords)) {
       debug(printf("  and coords %s as a number\n",coords));
       rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,chromosome_iit);
-    } else if (isrange(&left,&length,&(*revcomp),coords)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
       debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		   coords,left,length,*revcomp));
       rc = translate_chromosomepos_universal(&(*genomicstart),&(*genomiclength),*div,left,length,chromosome_iit);
@@ -570,22 +595,25 @@ Parserange_universal_iit (char **div, bool *revcomp,
     *chrstart += 1U;		/* Make 1-based */
 
     /* Get chromosomal information */
-    if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
+    if ((theindex = Univ_IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
       /* exit(9); */
     } else {
-      interval = IIT_interval(chromosome_iit,theindex);
-      *chroffset = Interval_low(interval);
-      *chrlength = Interval_length(interval);
+      interval = Univ_IIT_interval(chromosome_iit,theindex);
+      *chroffset = Univinterval_low(interval);
+      *chrlength = Univinterval_length(interval);
     }
 
     if (rc != 0) {
       /* Try contig */
       debug(printf("Interpreting segment %s as a contig\n",*div));
-      if (isnumberp(&result,coords)) {
+      if (coords == NULL) {
+	debug(printf("  entire contig\n"));
+	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left=0,length=0,contig_iit);
+      } else if (Parserange_iscoordp(&result,coords)) {
 	debug(printf("  and coords %s as a number\n",coords));
 	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left=result-1,length=1,contig_iit);
-      } else if (isrange(&left,&length,&(*revcomp),coords)) {
+      } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
 	debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		     coords,left,length,*revcomp));
 	rc = translate_contig(&(*genomicstart),&(*genomiclength),*div,left,length,contig_iit);
@@ -607,12 +635,12 @@ Parserange_universal_iit (char **div, bool *revcomp,
     *chrstart = *chroffset = *chrlength = 0;
 
     debug(printf("Parsed query %s as atomic ",query));
-    if (isnumberp(&result,query)) {
+    if (Parserange_iscoordp(&result,query)) {
       debug(printf("number\n"));
       *genomicstart = result-1;
       *genomiclength = 1;
 
-    } else if (isrange(&left,&length,&(*revcomp),query)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),query)) {
       debug(printf("range\n"));
       *genomicstart = left;
       *genomiclength = length;
@@ -632,13 +660,13 @@ Parserange_universal_iit (char **div, bool *revcomp,
     *chrstart += 1U;		/* Make 1-based */
 
     /* Try chromosome first */
-    if ((theindex = IIT_find_one(chromosome_iit,*div)) < 0) {
+    if ((theindex = Univ_IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
       return false;
     } else {
-      interval = IIT_interval(chromosome_iit,theindex);
-      *chroffset = Interval_low(interval);
-      *chrlength = Interval_length(interval);
+      interval = Univ_IIT_interval(chromosome_iit,theindex);
+      *chroffset = Univinterval_low(interval);
+      *chrlength = Univinterval_length(interval);
       return true;
     }
   }
@@ -647,10 +675,11 @@ Parserange_universal_iit (char **div, bool *revcomp,
 
 
 bool
-Parserange_simple (char **div, bool *revcomp, Genomicpos_T *chrstart, Genomicpos_T *chrend,
+Parserange_simple (char **div, bool *revcomp, Chrpos_T *chrstart, Chrpos_T *chrend,
 		   char *query) {
   char *coords;
-  Genomicpos_T result, left, length;
+  Univcoord_T result, left;
+  Chrpos_T length;
   
   *revcomp = false;
   if (index(query,':')) {
@@ -671,11 +700,11 @@ Parserange_simple (char **div, bool *revcomp, Genomicpos_T *chrstart, Genomicpos
     if (coords == NULL) {
       fprintf(stderr,"Need region after ':'\n");
       return false;
-    } else if (isnumberp(&result,coords)) {
+    } else if (Parserange_iscoordp(&result,coords)) {
       debug(printf("  and coords %s as a number\n",coords));
       left = result - 1;	/* Make 0-based */
       length = 1;
-    } else if (isrange(&left,&length,&(*revcomp),coords)) {
+    } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
       debug(printf("  and coords %s as a range starting at %u with length %u and revcomp = %d\n",
 		   coords,left,length,*revcomp));
     } else {

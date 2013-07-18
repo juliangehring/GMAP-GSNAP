@@ -1,21 +1,22 @@
-/* $Id: diag.h 79302 2012-11-15 23:55:58Z twu $ */
+/* $Id: diag.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef DIAG_INCLUDED
 #define DIAG_INCLUDED
 #include "bool.h"
 #include "list.h"
 #include "genomicpos.h"
+#include "types.h"
 
 #define T Diag_T
 typedef struct T *T;
 
 #ifndef USE_DIAGPOOL
 extern T
-Diag_new (Genomicpos_T diagonal, int querystart, int queryend, int nconsecutive);
+Diag_new (Chrpos_T diagonal, int querystart, int queryend, int nconsecutive);
 extern void
 Diag_free (T *old);
 #endif
 
-extern Genomicpos_T
+extern Chrpos_T
 Diag_diagonal (T this);
 extern int
 Diag_querystart (T this);
@@ -40,10 +41,10 @@ Diag_print_segments (List_T diagonals, char *queryseq_ptr, char *genomicseg_ptr)
 extern void
 Diag_range (int *start, int *end, List_T diagonals, int querylength);
 extern int
-Diag_compute_bounds (Genomicpos_T *minactive, Genomicpos_T *maxactive, List_T diagonals,
+Diag_compute_bounds (Chrpos_T *minactive, Chrpos_T *maxactive, List_T diagonals,
 		     int querylength, bool debug_graphic_p,
-		     Genomicpos_T chrstart, Genomicpos_T chrend,
-		     Genomicpos_T chroffset, Genomicpos_T chrhigh, bool plusp);
+		     Chrpos_T chrstart, Chrpos_T chrend,
+		     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp);
 
 #undef T
 #endif

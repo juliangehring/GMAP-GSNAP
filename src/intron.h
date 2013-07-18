@@ -1,4 +1,4 @@
-/* $Id: intron.h 77638 2012-10-26 00:15:24Z twu $ */
+/* $Id: intron.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef INTRON_INCLUDED
 #define INTRON_INCLUDED
 #include "bool.h"
@@ -41,8 +41,8 @@ Intron_type (char left1, char left2, char right2, char right1,
 #ifdef INTRON_HELP
 	     , IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 	     int donor_typeint, int acceptor_typeint, Chrnum_T chrnum,
-	     Genomicpos_T leftgenomepos, Genomicpos_T rightgenomepos,
-	     Genomicpos_T chrpos, bool watsonp, int genomiclength
+	     Chrpos_T leftgenomepos, Chrpos_T rightgenomepos,
+	     Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
 #endif
 );
 extern char *

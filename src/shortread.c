@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 90425 2013-03-27 16:27:35Z twu $";
+static char rcsid[] = "$Id: shortread.c 98808 2013-06-18 22:16:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -290,14 +290,18 @@ static int acc_fieldi_start = 0;
 static int acc_fieldi_end = 0;
 static bool force_single_end_p = false;
 static bool filter_chastity_p = true;
+static bool allow_paired_end_mismatch_p = false;
 
 void
 Shortread_setup (int acc_fieldi_start_in, int acc_fieldi_end_in,
-		 bool force_single_end_p_in, bool filter_chastity_p_in) {
+		 bool force_single_end_p_in, bool filter_chastity_p_in,
+		 bool allow_paired_end_mismatch_p_in) {
   acc_fieldi_start = acc_fieldi_start_in;
   acc_fieldi_end = acc_fieldi_end_in;
   force_single_end_p = force_single_end_p_in;
   filter_chastity_p = filter_chastity_p_in;
+  allow_paired_end_mismatch_p = allow_paired_end_mismatch_p_in;
+
   return;
 }
 
@@ -2578,13 +2582,19 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
       } else {
-	strip_illumina_acc_ending(queryseq1->acc,acc);
-	if (strcmp(queryseq1->acc,acc)) {
-	  fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,acc);
-	  exit(9);
-	} else {
-	  FREE_IN(acc);
+	if (allow_paired_end_mismatch_p == true) {
+	  /* Do not strip endings, and keep second accession */
 	  FREE_IN(restofheader);
+	} else {
+	  strip_illumina_acc_ending(queryseq1->acc,acc);
+	  if (strcmp(queryseq1->acc,acc)) {
+	    fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,acc);
+	    exit(9);
+	  } else {
+	    FREE_IN(acc);
+	    FREE_IN(restofheader);
+	    acc = (char *) NULL;
+	  }
 	}
 	nextchar2 = fgetc(*input2);
 	if ((fulllength = input_oneline(&nextchar2,&(Read2[0]),*input2,acc,
@@ -2595,7 +2605,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
+	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
 				       /*quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	} else {
@@ -2609,7 +2619,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
+	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
 					 Quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false);
 
@@ -2732,13 +2742,19 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
       } else {
-	strip_illumina_acc_ending(queryseq1->acc,acc);
-	if (strcmp(queryseq1->acc,acc)) {
-	  fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,acc);
-	  exit(9);
-	} else {
-	  FREE_IN(acc);
+	if (allow_paired_end_mismatch_p == true) {
+	  /* Do not strip endings, and keep second accession */
 	  FREE_IN(restofheader);
+	} else {
+	  strip_illumina_acc_ending(queryseq1->acc,acc);
+	  if (strcmp(queryseq1->acc,acc)) {
+	    fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,acc);
+	    exit(9);
+	  } else {
+	    FREE_IN(acc);
+	    FREE_IN(restofheader);
+	    acc = (char *) NULL;
+	  }
 	}
 	nextchar2 = gzgetc(*input2);
 	if ((fulllength = input_oneline_gzip(&nextchar2,&(Read2[0]),*input2,acc,
@@ -2749,7 +2765,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
+	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
 				       /*quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	} else {
@@ -2763,7 +2779,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
+	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
 					 Quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false);
 	  }
@@ -2874,13 +2890,19 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
       } else {
-	strip_illumina_acc_ending(queryseq1->acc,acc);
-	if (strcmp(queryseq1->acc,acc)) {
-	  fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,acc);
-	  exit(9);
-	} else {
-	  FREE_IN(acc);
+	if (allow_paired_end_mismatch_p == true) {
+	  /* Do not strip endings, and keep second accession */
 	  FREE_IN(restofheader);
+	} else {
+	  strip_illumina_acc_ending(queryseq1->acc,acc);
+	  if (strcmp(queryseq1->acc,acc)) {
+	    fprintf(stderr,"Paired-end accessions %s and %s do not match\n",queryseq1->acc,acc);
+	    exit(9);
+	  } else {
+	    FREE_IN(acc);
+	    FREE_IN(restofheader);
+	    acc = (char *) NULL;
+	  }
 	}
 	nextchar2 = bzgetc(*input2);
 	if ((fulllength = input_oneline_bzip2(&nextchar2,&(Read2[0]),*input2,acc,
@@ -2891,7 +2913,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
+	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
 				       /*quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false);
 	} else {
@@ -2905,7 +2927,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength,
+	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
 					 Quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false);
 	  }
@@ -2921,12 +2943,18 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 
 /* Calling procedure needs to print the initial ">", if desired */
 void
-Shortread_print_header (FILE *fp, T this) {
+Shortread_print_header (FILE *fp, T queryseq1, T queryseq2) {
 
-  if (this->restofheader == NULL || this->restofheader[0] == '\0') {
-    fprintf(fp,"%s",this->acc);
+  if (queryseq2 == NULL || queryseq2->acc == NULL) {
+    fprintf(fp,"%s",queryseq1->acc);
   } else {
-    fprintf(fp,"%s %s",this->acc,this->restofheader);
+    fprintf(fp,"%s,%s",queryseq1->acc,queryseq2->acc);
+  }
+
+  if (queryseq1->restofheader == NULL || queryseq1->restofheader[0] == '\0') {
+    /* Don't print restofheader */
+  } else {
+    fprintf(fp," %s",queryseq1->restofheader);
   }
 
   fprintf(fp,"\n");
@@ -2938,7 +2966,7 @@ Shortread_print_header (FILE *fp, T this) {
 void
 Shortread_print_query_singleend_fasta (FILE *fp, T queryseq) {
   fprintf(fp,">");
-  Shortread_print_header(fp,queryseq);
+  Shortread_print_header(fp,queryseq,/*queryseq2*/NULL);
   /* fprintf(fp,"\n"); -- included in header */
   Shortread_print_oneline(fp,queryseq);
   fprintf(fp,"\n");
@@ -2949,7 +2977,7 @@ Shortread_print_query_singleend_fasta (FILE *fp, T queryseq) {
 void
 Shortread_print_query_singleend_fastq (FILE *fp, T queryseq) {
   fprintf(fp,"@");
-  Shortread_print_header(fp,queryseq);
+  Shortread_print_header(fp,queryseq,/*queryseq2*/NULL);
   /* fprintf(fp,"\n"); -- included in header */
   Shortread_print_oneline(fp,queryseq);
   fprintf(fp,"\n");
@@ -2968,7 +2996,7 @@ void
 Shortread_print_query_pairedend_fasta (FILE *fp, T queryseq1, T queryseq2,
 				       bool invert_first_p, bool invert_second_p) {
   fprintf(fp,">");
-  Shortread_print_header(fp,queryseq1);
+  Shortread_print_header(fp,queryseq1,queryseq2);
   /* fprintf(fp,"\n"); -- included in header */
 
   if (invert_first_p == true) {
@@ -2995,7 +3023,11 @@ void
 Shortread_print_query_pairedend_fastq (FILE *fp1, FILE *fp2, T queryseq1, T queryseq2,
 				      bool invert_first_p, bool invert_second_p) {
   /* First end */
-  fprintf(fp1,"@%s/1\n",queryseq1->acc);
+  if (queryseq2->acc == NULL) {
+    fprintf(fp1,"@%s/1\n",queryseq1->acc);
+  } else {
+    fprintf(fp2,"@%s\n",queryseq1->acc); /* Allowing paired-end name mismatch */
+  }
 
   if (invert_first_p == true) {
     Shortread_print_oneline_revcomp(fp1,queryseq1);
@@ -3018,7 +3050,11 @@ Shortread_print_query_pairedend_fastq (FILE *fp1, FILE *fp2, T queryseq1, T quer
   }
 
   /* Second end */
-  fprintf(fp2,"@%s/2\n",queryseq1->acc); /* Acc stored only for first end, not second end */
+  if (queryseq2->acc == NULL) {
+    fprintf(fp2,"@%s/2\n",queryseq1->acc); /* Acc stored only for first end, not second end */
+  } else {
+    fprintf(fp2,"@%s\n",queryseq2->acc); /* Allowing paired-end name mismatch */
+  }
 
   if (invert_second_p == true) {
     Shortread_print_oneline_revcomp(fp2,queryseq2);
@@ -3094,7 +3130,7 @@ void
 Shortread_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high) {
   int i;
 
-  for (i = this->fulllength - 1 - hardclip_high; i >= hardclip_low; --i) {
+  for (i = this->fulllength - 1 - hardclip_low; i >= hardclip_high; --i) {
     fprintf(fp,"%c",complCode[(int) this->contents[i]]);
   }
 
@@ -3186,7 +3222,7 @@ Shortread_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardcli
   if (this->quality == NULL) {
     fprintf(fp,"*");
   } else {
-    for (i = this->fulllength - 1 - hardclip_high; i >= hardclip_low; --i) {
+    for (i = this->fulllength - 1 - hardclip_low; i >= hardclip_high; --i) {
       if ((c = this->quality[i] + shift) <= 32) {
 	fprintf(stderr,"Warning: With a quality-print-shift of %d, QC score %c becomes non-printable.  May need to specify --quality-protocol or --quality-print-shift\n",
 		shift,this->quality[i]);
@@ -3197,7 +3233,7 @@ Shortread_print_quality_revcomp (FILE *fp, T this, int hardclip_low, int hardcli
     }
 
     if (show_chopped_p == true) {
-      assert(hardclip_low == 0);
+      /* assert(hardclip_low == 0); */
       for (i = this->choplength - 1; i >= 0; i--) {
 	if ((c = this->chop_quality[i] + shift) <= 32) {
 	  fprintf(stderr,"Warning: With a quality-print-shift of %d, QC score %c becomes non-printable.  May need to specify --quality-protocol or --quality-print-shift\n",

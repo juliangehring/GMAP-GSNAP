@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 92688 2013-04-12 23:28:15Z twu $";
+static char rcsid[] = "$Id: pair.c 99755 2013-06-27 21:19:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -139,7 +139,7 @@ Pair_querypos (T this) {
   return this->querypos;
 }
 
-int
+Chrpos_T
 Pair_genomepos (T this) {
   return this->genomepos;
 }
@@ -195,9 +195,9 @@ Pair_print_ends (List_T pairs) {
 
 void
 Pair_set_genomepos (struct Pair_T *pairarray, int npairs,
-		    Genomicpos_T chroffset, Genomicpos_T chrhigh, bool watsonp) {
+		    Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp) {
   int i;
-  Genomicpos_T chraliaslength;
+  Chrpos_T chraliaslength;
 
   if (watsonp == true) {
     /* No need to adjust, since we are using chromosomal coordinates already */
@@ -214,11 +214,11 @@ Pair_set_genomepos (struct Pair_T *pairarray, int npairs,
 #if 0
 /* Don't change list, just pairarray */
 void
-Pair_set_genomepos_list (List_T pairs, Genomicpos_T chroffset,
-			 Genomicpos_T chrhigh, bool watsonp) {
+Pair_set_genomepos_list (List_T pairs, Univcoord_T chroffset,
+			 Univcoord_T chrhigh, bool watsonp) {
   List_T p;
   T pair;
-  Genomicpos_T chraliaslength;
+  Chrpos_T chraliaslength;
 
   if (watsonp == true) {
     /* No need to adjust, since we are using chromosomal coordinates already */
@@ -502,7 +502,7 @@ print_alignment (FILE *fp, struct T *ptr, int n, int npairs, bool diagnosticp,
 
 static void
 print_genomic_sequence (FILE *fp, struct T *ptr, int n, int npairs,
-			char *chrstring, Genomicpos_T chroffset,
+			char *chrstring, Univcoord_T chroffset,
 			int margin, int wraplength) {
   struct T *this;
   int i;
@@ -529,7 +529,7 @@ print_genomic_sequence (FILE *fp, struct T *ptr, int n, int npairs,
 
 static void
 print_genomicalt_sequence (FILE *fp, struct T *ptr, int n, int npairs,
-			   char *chrstring, Genomicpos_T chroffset,
+			   char *chrstring, Univcoord_T chroffset,
 			   int margin, int wraplength) {
   struct T *this;
   int i;
@@ -559,7 +559,7 @@ print_genomicalt_sequence (FILE *fp, struct T *ptr, int n, int npairs,
 
 static int
 compute_margin (struct T *start, struct T *end, char *chrstring,
-		Genomicpos_T chroffset) {
+		Univcoord_T chroffset) {
   int margin;
   char Buffer[100];
 
@@ -627,6 +627,7 @@ invert_and_revcomp_path (struct T *old, int npairs) {
     memcpy(&(new[j]),&(old[i]),sizeof(struct T));
     new[j].cdna = complCode[(int) old[i].cdna];
     new[j].genome = complCode[(int) old[i].genome];
+    new[j].genomealt = complCode[(int) old[i].genomealt];
     new[j].comp = complCode[(int) old[i].comp];
   }
   return new;
@@ -644,6 +645,7 @@ invert_and_revcomp_path_and_coords (struct T *old, int npairs, int querylength) 
     new[j].querypos = (querylength - 1) - old[i].querypos;
     new[j].cdna = complCode[(int) old[i].cdna];
     new[j].genome = complCode[(int) old[i].genome];
+    new[j].genomealt = complCode[(int) old[i].genomealt];
     new[j].comp = complCode[(int) old[i].comp];
   }
   return new;
@@ -656,7 +658,7 @@ add_intronlengths (struct T *pairs, int npairs) {
   int space, margin, i, j, k, gapstart;
   char intronstring[20], cdnabreak[20], genomicbreak[20], comp;
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   i = 0;
   while (i < npairs) {
@@ -676,7 +678,11 @@ add_intronlengths (struct T *pairs, int npairs) {
 
       if (comp == DUALBREAK_COMP || comp == EXTRAEXON_COMP) {
 	sprintf(cdnabreak,"%d",abs(this->querypos - last_querypos)-1);
-	sprintf(genomicbreak,"%d",abs(this->genomepos - last_genomepos)-1);
+	if (this->genomepos < last_genomepos) {
+	  sprintf(genomicbreak,"%d",last_genomepos - this->genomepos - 1);
+	} else {
+	  sprintf(genomicbreak,"%d",this->genomepos - last_genomepos - 1);
+	}
 
 	margin = (space - strlen(cdnabreak))/2;
 	j = gapstart;
@@ -702,7 +708,11 @@ add_intronlengths (struct T *pairs, int npairs) {
 	}
 
       } else {			/* Intron */
-	sprintf(intronstring,"%d",abs(this->genomepos - last_genomepos)-1);
+	if (this->genomepos < last_genomepos) {
+	  sprintf(intronstring,"%d",last_genomepos - this->genomepos - 1);
+	} else {
+	  sprintf(intronstring,"%d",this->genomepos - last_genomepos - 1);
+	}
 	margin = (space - strlen(intronstring))/2;
 	j = gapstart;
 	while (margin > 0) {
@@ -923,7 +933,7 @@ Pair_print_continuous_byexon (FILE *fp, struct T *pairs, int npairs, bool watson
 
 void
 Pair_print_alignment (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
-		      Genomicpos_T chroffset, IIT_T chromosome_iit, bool watsonp,
+		      Univcoord_T chroffset, Univ_IIT_T chromosome_iit, bool watsonp,
 		      bool diagnosticp, int invertmode, bool nointronlenp,
 		      int wraplength) {
   struct T *save = NULL, *ptr;
@@ -992,8 +1002,8 @@ Pair_print_alignment (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 
 void
 Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
-			Genomicpos_T chroffset, IIT_T chromosome_iit, bool referencealignp, 
-			IIT_T altstrain_iit, char *strain, IIT_T contig_iit, char *dbversion,
+			Univcoord_T chroffset, Univ_IIT_T chromosome_iit, bool referencealignp, 
+			IIT_T altstrain_iit, char *strain, Univ_IIT_T contig_iit, char *dbversion,
 			int querylength_given, int skiplength, int trim_start, int trim_end,
 			int nexons, int matches, int unknowns, int mismatches, 
 			int qopens, int qindels, int topens, int tindels, int goodness,
@@ -1004,7 +1014,8 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
 			double stage3_defectrate) {
   int querypos1, querypos2, den;
   double fracidentity, coverage, trimmed_coverage;
-  Genomicpos_T position1, position2, chrpos1, chrpos2;
+  Univcoord_T position1, position2;
+  Chrpos_T chrpos1, chrpos2;
   char *refstrain, *comma1, *comma2, *chr;
 
   querypos1 = start->querypos;
@@ -1177,7 +1188,7 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
 
 void
 Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
-			Genomicpos_T chroffset, IIT_T chromosome_iit,
+			Univcoord_T chroffset, Univ_IIT_T chromosome_iit,
 			bool watsonp, int invertmode) {
   T this;
   struct T *save = NULL;
@@ -1373,7 +1384,7 @@ Pair_dump_array (struct T *pairs, int npairs, bool zerobasedp) {
 }  
 
 
-Genomicpos_T
+Chrpos_T
 Pair_genomicpos (struct T *pairs, int npairs, int querypos, bool headp) {
   struct T *this;
   int i;
@@ -1460,7 +1471,8 @@ void
 Pair_check_list (List_T pairs) {
   T this;
   List_T p;
-  int prev_querypos, prev_genomepos;
+  int prev_querypos;
+  Chrpos_T prev_genomepos;
 
   if (pairs == NULL) {
     return;
@@ -1494,7 +1506,8 @@ bool
 Pair_check_array (struct T *pairs, int npairs) {
   bool result = false;
   struct T *this;
-  int prev_querypos, prev_genomepos;
+  int prev_querypos;
+  Chrpos_T prev_genomepos;
   int i;
 
   if (npairs == 0) {
@@ -1562,12 +1575,13 @@ make_complement_inplace (char *sequence, unsigned int length) {
 
 
 static double
-donor_score (Genomicpos_T genomicpos, Genomicpos_T chroffset, bool revcomp, Genome_T genome, IIT_T chromosome_iit) {
-  Genomicpos_T left;
+donor_score (Univcoord_T genomicpos, Univcoord_T chroffset, bool revcomp, Genome_T genome,
+	     Univ_IIT_T chromosome_iit) {
+  Univcoord_T left;
   Chrnum_T chrnum;
   int nunknowns;
   char gbuffer[MAXENT_MAXLENGTH];
-  UINT4 *genome_blocks;
+  Genomecomp_T *genome_blocks;
 
   if (revcomp == false) {
     if ((genome_blocks = Genome_blocks(genome)) != NULL) {
@@ -1603,12 +1617,13 @@ donor_score (Genomicpos_T genomicpos, Genomicpos_T chroffset, bool revcomp, Geno
 
 
 static double
-acceptor_score (Genomicpos_T genomicpos, Genomicpos_T chroffset, bool revcomp, Genome_T genome, IIT_T chromosome_iit) {
-  Genomicpos_T left;
+acceptor_score (Univcoord_T genomicpos, Univcoord_T chroffset, bool revcomp, Genome_T genome,
+		Univ_IIT_T chromosome_iit) {
+  Univcoord_T left;
   Chrnum_T chrnum;
   int nunknowns;
   char gbuffer[MAXENT_MAXLENGTH];
-  UINT4 *genome_blocks;
+  Genomecomp_T *genome_blocks;
 
   if (revcomp == false) {
     /* sense on plus strand, or antisense on minus strand */
@@ -1656,16 +1671,16 @@ unknown_base (char c) {
     
 void
 Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
-			Genomicpos_T chroffset, Genome_T genome, IIT_T chromosome_iit,
+			Univcoord_T chroffset, Genome_T genome, Univ_IIT_T chromosome_iit,
 			bool watsonp, int cdna_direction, bool genomefirstp, int invertmode) {
   bool in_exon = false;
   struct T *save = NULL, *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend, intron_start, intron_end;
+  Chrpos_T exon_genomestart = -1U, exon_genomeend, intron_start, intron_end;
   int num = 0, den = 0, i;
   char *chrstring = NULL;
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
 
   if (watsonp == true) {
@@ -1949,8 +1964,8 @@ push_token (List_T tokens, char *token) {
 /* Definition of GFF3 format is at http://song.sourceforge.net/gff3.shtml */
 
 static void
-print_gff3_gene (FILE *fp, int pathnum, char *sourcename, char *accession, char *chrstring, Genomicpos_T start_genomepos, 
-		 Genomicpos_T end_genomepos, bool watsonp, int cdna_direction) {
+print_gff3_gene (FILE *fp, int pathnum, char *sourcename, char *accession, char *chrstring, Chrpos_T start_genomepos, 
+		 Chrpos_T end_genomepos, bool watsonp, int cdna_direction) {
 
   fprintf(fp,"%s\t",chrstring);	/* 1: seqid */
   fprintf(fp,"%s\t",sourcename);	/* 2: source */
@@ -1987,11 +2002,13 @@ print_gff3_gene (FILE *fp, int pathnum, char *sourcename, char *accession, char 
 }
 
 static void
-print_gff3_mrna (FILE *fp, int pathnum, char *sourcename, char *accession, char *chrstring, Genomicpos_T start_genomepos, 
-		 Genomicpos_T end_genomepos, int querylength_given, int skiplength,
+print_gff3_mrna (FILE *fp, int pathnum, T start, T end,
+		 char *sourcename, char *accession, char *chrstring, Chrpos_T start_genomepos, 
+		 Chrpos_T end_genomepos, int querylength_given, int skiplength,
 		 int matches, int mismatches, int qindels, int tindels, 
 		 bool watsonp, int cdna_direction) {
   int den;
+  int querypos1, querypos2;
   double coverage, fracidentity;
 
   fprintf(fp,"%s\t",chrstring);	/* 1: seqid */
@@ -2025,10 +2042,17 @@ print_gff3_mrna (FILE *fp, int pathnum, char *sourcename, char *accession, char 
   fprintf(fp,"ID=%s.mrna%d;Name=%s;Parent=%s.path%d;",
 	 accession,pathnum,accession,accession,pathnum);
 
+  querypos1 = start->querypos;
+  querypos2 = end->querypos;
+
 #ifdef PMAP
-    coverage = (double) (matches + mismatches + qindels)/(double) (3*(querylength_given + skiplength));
+  coverage = (double) (querypos2 - querypos1 + 1)/(double) (3*(querylength_given + skiplength));
+  /* Can have coverage greater than given querylength because of added '*' at end */
+  if (coverage > 1.0) {
+    coverage = 1.0;
+  }
 #else
-    coverage = (double) (matches + mismatches + qindels)/(double) (querylength_given + skiplength);
+  coverage = (double) (querypos2 - querypos1 + 1)/(double) (querylength_given + skiplength);
 #endif
   fprintf(fp,"coverage=%.1f;",((double) rint(1000.0*coverage))/10.0);
 
@@ -2047,7 +2071,7 @@ print_gff3_mrna (FILE *fp, int pathnum, char *sourcename, char *accession, char 
 
 static void
 print_gff3_exon (FILE *fp, int exonno, int pathnum, char *sourcename, char *accession, char *chrstring,
-		 Genomicpos_T exon_genomestart, Genomicpos_T exon_genomeend,
+		 int exon_genomestart, int exon_genomeend,
 		 int exon_querystart, int exon_queryend, bool watsonp, int cdna_direction,
 		 int pctidentity) {
 
@@ -2092,7 +2116,7 @@ print_gff3_exon (FILE *fp, int exonno, int pathnum, char *sourcename, char *acce
 
 static void
 print_gff3_cds (FILE *fp, int cdsno, int pathnum, char *sourcename, char *accession, char *chrstring,
-		Genomicpos_T cds_genomestart, Genomicpos_T cds_genomeend,
+		int cds_genomestart, int cds_genomeend,
 		int cds_querystart, int cds_queryend, bool watsonp, int cdna_direction,
 		int pctidentity, int cds_phase) {
 
@@ -2138,7 +2162,7 @@ print_gff3_cds (FILE *fp, int cdsno, int pathnum, char *sourcename, char *access
 
 static void
 print_gff3_cdna_match (FILE *fp, int pathnum, char *sourcename, char *accession, char *chrstring,
-		       Genomicpos_T exon_genomestart, Genomicpos_T exon_genomeend,
+		       int exon_genomestart, int exon_genomeend,
 		       int exon_querystart, int exon_queryend, bool watsonp,
 		       int pctidentity, List_T tokens) {
   
@@ -2184,14 +2208,16 @@ strand_char (int strand) {
 
 
 static void
-print_gff3_est_match (FILE *fp, int pathnum, char *sourcename, char *accession, char *chrstring,
-		      Genomicpos_T exon_genomestart, Genomicpos_T exon_genomeend,
+print_gff3_est_match (FILE *fp, int pathnum, T start, T end,
+		      char *sourcename, char *accession, char *chrstring,
+		      int exon_genomestart, int exon_genomeend,
 		      int exon_querystart, int exon_queryend,
 		      int querylength_given, int skiplength, int matches, int mismatches, int qindels, int tindels,
 		      bool watsonp, int cdna_direction, int pctidentity, List_T tokens) {
   int feature_strand, target_strand;
   double coverage, fracidentity;
   int den;
+  int querypos1, querypos2;
 
   fprintf(fp,"%s\t",chrstring);	/* 1: seqid */
   fprintf(fp,"%s\t",sourcename);	/* 2: source */
@@ -2217,10 +2243,17 @@ print_gff3_est_match (FILE *fp, int pathnum, char *sourcename, char *accession, 
       strand_char(target_strand));
   print_tokens_gff3(fp,tokens);
 
+  querypos1 = start->querypos;
+  querypos2 = end->querypos;
+
 #ifdef PMAP
-  coverage = (double) (matches + mismatches + qindels)/(double) (3*(querylength_given + skiplength));
+  coverage = (double) (querypos2 - querypos1 + 1)/(double) (3*(querylength_given + skiplength));
+  /* Can have coverage greater than given querylength because of added '*' at end */
+  if (coverage > 1.0) {
+    coverage = 1.0;
+  }
 #else
-  coverage = (double) (matches + mismatches + qindels)/(double) (querylength_given + skiplength);
+  coverage = (double) (querypos2 - querypos1 + 1)/(double) (querylength_given + skiplength);
 #endif
   fprintf(fp,";coverage=%.1f",((double) rint(1000.0*coverage))/10.0);
 
@@ -2236,14 +2269,15 @@ print_gff3_est_match (FILE *fp, int pathnum, char *sourcename, char *accession, 
 
 
 static void
-print_gff3_exons_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, char *sourcename, char *accession, char *chrstring,
+print_gff3_exons_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, T start, T end,
+			  char *sourcename, char *accession, char *chrstring,
 			  int querylength_given, int skiplength, int matches, int mismatches,
 			  int qindels, int tindels, bool watsonp, int cdna_direction,
 			  bool gff_introns_p, bool gff_gene_format_p, bool gff_estmatch_format_p) {
   bool in_exon = false;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend, intron_start, intron_end;
+  Chrpos_T exon_genomestart = -1, exon_genomeend, intron_start, intron_end;
   int pctidentity, num = 0, den = 0, exonno = 0, i;
   int Mlength = 0, Ilength = 0, Dlength = 0;
   List_T tokens = NULL;
@@ -2253,7 +2287,7 @@ print_gff3_exons_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, ch
 #endif
   int estmatch_querystart, estmatch_queryend, estmatch_genomestart, estmatch_genomeend;
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   ptr = pairs;
   for (i = 0; i < npairs; i++) {
@@ -2446,7 +2480,7 @@ print_gff3_exons_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, ch
       if (watsonp) {
 	tokens = List_reverse(tokens);
       }
-      print_gff3_est_match(fp,pathnum,sourcename,accession,chrstring,
+      print_gff3_est_match(fp,pathnum,start,end,sourcename,accession,chrstring,
 			   estmatch_genomestart,estmatch_genomeend,
 			   estmatch_querystart,estmatch_queryend,
 			   querylength_given,skiplength,matches,mismatches,qindels,tindels,
@@ -2469,14 +2503,14 @@ print_gff3_exons_backward (FILE *fp, struct T *pairs, int npairs, int pathnum, c
   bool in_exon = false;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T exon_genomestart = -1, exon_genomeend;
   int pctidentity, num = 0, den = 0, exonno = 0, i;
 #if 0
   int intronno = 0;
-  Genomicpos_T intron_start, intron_end;
+  Chrpos_T intron_start, intron_end;
 #endif
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   ptr = &(pairs[npairs-1]);
   for (i = npairs-1; i >= 0; i--) {
@@ -2572,13 +2606,13 @@ print_gff3_cdss_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, cha
   bool in_cds = false;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend, exon_phase;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T exon_genomestart = -1, exon_genomeend;
   int pctidentity, num = 0, den = 0, cdsno = 0;
 #if 0
-  Genomicpos_T intron_start, intron_end;
+  Chrpos_T intron_start, intron_end;
 #endif
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   ptr = pairs;
   while (ptr < &(pairs[npairs])) {
@@ -2671,13 +2705,13 @@ print_gff3_cdss_backward (FILE *fp, struct T *pairs, int npairs, int pathnum, ch
   bool in_cds = false;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend, exon_phase;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T exon_genomestart = -1, exon_genomeend;
   int pctidentity, num = 0, den = 0, cdsno = 0;
 #if 0
-  Genomicpos_T intron_start, intron_end;
+  Chrpos_T intron_start, intron_end;
 #endif
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
 
   ptr = &(pairs[npairs-1]);
@@ -2769,13 +2803,13 @@ print_gff3_cdss_backward (FILE *fp, struct T *pairs, int npairs, int pathnum, ch
 
 void
 Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *accession, 
-		 T start, T end, Chrnum_T chrnum, IIT_T chromosome_iit, Sequence_T usersegment,
+		 T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		 int translation_end,
 		 int querylength_given, int skiplength, int matches, int mismatches, 
 		 int qindels, int tindels, bool watsonp, int cdna_direction,
 		 bool gff_gene_format_p, bool gff_estmatch_format_p, char *sourcename) {
   char *chrstring = NULL;
-  Genomicpos_T chrpos1, chrpos2;
+  Chrpos_T chrpos1, chrpos2;
 
   if (chrnum == 0) {
     chrstring = Sequence_accession(usersegment);
@@ -2792,12 +2826,12 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
     chrpos2 = end->genomepos;
 
     print_gff3_gene(fp,pathnum,sourcename,accession,chrstring,chrpos1+1,chrpos2+1,watsonp,cdna_direction);
-    print_gff3_mrna(fp,pathnum,sourcename,accession,chrstring,chrpos1+1,chrpos2+1,
+    print_gff3_mrna(fp,pathnum,start,end,sourcename,accession,chrstring,chrpos1+1,chrpos2+1,
 		    querylength_given,skiplength,matches,mismatches,qindels,tindels,
 		    watsonp,cdna_direction);
 
     if (cdna_direction >= 0) {
-      print_gff3_exons_forward(fp,pairs,npairs,pathnum,sourcename,accession,chrstring,
+      print_gff3_exons_forward(fp,pairs,npairs,pathnum,start,end,sourcename,accession,chrstring,
 			       querylength_given,skiplength,matches,mismatches,qindels,tindels,
 			       watsonp,cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/true,
 			       /*gff_estmatch_format_p*/false);
@@ -2816,7 +2850,7 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 
     fprintf(fp,"###\n");		/* Terminates gene format */
   } else {
-    print_gff3_exons_forward(fp,pairs,npairs,pathnum,sourcename,accession,chrstring,
+    print_gff3_exons_forward(fp,pairs,npairs,pathnum,start,end,sourcename,accession,chrstring,
 			     querylength_given,skiplength,matches,mismatches,qindels,tindels,
 			     watsonp,cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/false,
 			     gff_estmatch_format_p);
@@ -2831,7 +2865,7 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 
 
 int
-Pair_circularpos (struct T *pairs, int npairs, Genomicpos_T chrlength, bool plusp, int querylength) {
+Pair_circularpos (struct T *pairs, int npairs, Chrpos_T chrlength, bool plusp, int querylength) {
   int i;
   struct T *ptr;
 
@@ -2871,7 +2905,7 @@ Pair_circularpos (struct T *pairs, int npairs, Genomicpos_T chrlength, bool plus
 
 /* Based on procedure in substring.c */
 static void
-print_splicesite_labels (FILE *fp, Chrnum_T chrnum, Genomicpos_T splicesitepos,
+print_splicesite_labels (FILE *fp, Chrnum_T chrnum, Chrpos_T splicesitepos,
 			 char *tag, IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 			 int typeint) {
   int *splicesites, nsplicesites, i;
@@ -2910,16 +2944,16 @@ print_splicesite_labels (FILE *fp, Chrnum_T chrnum, Genomicpos_T splicesitepos,
 
 static void
 print_endtypes (FILE *fp,
-		Endtype_T endtype1, int ntrim1, int nindels1, Genomicpos_T prev_splice_dist,
-		Endtype_T endtype2, int ntrim2, int nindels2, Genomicpos_T splice_dist,
+		Endtype_T endtype1, int ntrim1, int nindels1, Chrpos_T prev_splice_dist,
+		Endtype_T endtype2, int ntrim2, int nindels2, Chrpos_T splice_dist,
 		int nmatches, int nmismatches_refdiff, int nmismatches_bothdiff,
-		Chrnum_T chrnum, Genomicpos_T chroffset,
-		Genomicpos_T exon_genomestart, Genomicpos_T exon_genomeend,
+		Chrnum_T chrnum, Univcoord_T chroffset,
+		int exon_genomestart, int exon_genomeend,
 		bool watsonp, int cdna_direction,
 		IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 		int donor_typeint, int acceptor_typeint) {
   double prob;
-  Genomicpos_T prev_splicesitepos = 0, splicesitepos = 0;
+  int prev_splicesitepos = 0, splicesitepos = 0;
   int typeint1, typeint2;
 
   if (endtype1 == END) {
@@ -3121,19 +3155,21 @@ print_pair_info (FILE *fp, int insertlength, int pairscore, Pairtype_T pairtype)
 void
 Pair_print_gsnap (FILE *fp, struct T *pairs_querydir, int npairs, int nsegments, bool invertedp,
 		  Endtype_T start_endtype, Endtype_T end_endtype,
-		  Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		  Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		  int querylength, bool watsonp, int cdna_direction, int score,
 		  int insertlength, int pairscore, int mapq_score,
-		  IIT_T chromosome_iit, IIT_T splicesites_iit,
+		  Univ_IIT_T chromosome_iit, IIT_T splicesites_iit,
 		  int *splicesites_divint_crosstable, int donor_typeint, int acceptor_typeint) {
   bool in_exon = true;
   struct T *pairs, *ptr, *ptr0, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend;
-  Genomicpos_T exon_genomestart = -1, exon_genomeend;
+  Chrpos_T exon_genomestart = -1U, exon_genomeend;
   int querypos, nmismatches_refdiff, nmismatches_bothdiff, nmatches,
     ntrim_start, ntrim_end, indel_pos, nindels, prev_nindels, i;
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U, splice_dist = 0U, prev_splice_dist, splicesitepos, prev_splicesitepos, pos;
+  Chrpos_T last_genomepos = -1U;
+  Univcoord_T pos;
+  Chrpos_T splice_dist = 0U, prev_splice_dist, splicesitepos, prev_splicesitepos;
   char *chr, strand, c, c_alt;
   Endtype_T endtype, prev_endtype;
   bool allocp, firstp = true;
@@ -3148,7 +3184,7 @@ Pair_print_gsnap (FILE *fp, struct T *pairs_querydir, int npairs, int nsegments,
   }
 
 
-  chr = IIT_label(chromosome_iit,chrnum,&allocp);
+  chr = Univ_IIT_label(chromosome_iit,chrnum,&allocp);
   if (watsonp == true) {
     strand = '+';
   } else {
@@ -3555,9 +3591,8 @@ Pair_print_gsnap (FILE *fp, struct T *pairs_querydir, int npairs, int nsegments,
 /* Modified from print_endtypes */
 static void
 splice_site_probs (double *sense_prob, double *antisense_prob,
-		   bool prev_splicesitep, bool splicesitep, Genomicpos_T chroffset,
-		   Genomicpos_T exon_genomestart, Genomicpos_T exon_genomeend,
-		   bool watsonp) {
+		   bool prev_splicesitep, bool splicesitep, Univcoord_T chroffset,
+		   int exon_genomestart, int exon_genomeend, bool watsonp) {
 
   if (prev_splicesitep == true) {
     if (watsonp == true) {
@@ -3591,13 +3626,13 @@ splice_site_probs (double *sense_prob, double *antisense_prob,
 /* Modified from Pair_print_gsnap */
 int
 Pair_guess_cdna_direction_array (int *sensedir, struct T *pairs_querydir, int npairs, bool invertedp,
-				 Genomicpos_T chroffset, bool watsonp) {
+				 Univcoord_T chroffset, bool watsonp) {
   double sense_prob = 0.0, antisense_prob = 0.0;
   bool in_exon = true;
   struct T *pairs, *ptr, *this = NULL;
   int i;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T last_genomepos = -1U;
   bool splicesitep, prev_splicesitep;
 
 
@@ -3734,11 +3769,12 @@ Pair_guess_cdna_direction_array (int *sensedir, struct T *pairs_querydir, int np
 }
 
 
+#if 0
 static char
-get_genomic_nt_array (char *g_alt, Genomicpos_T genomicpos, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+get_genomic_nt_array (char *g_alt, int genomicpos, Univcoord_T chroffset, Univcoord_T chrhigh,
 		      bool watsonp) {
   char c2, c2_alt;
-  Genomicpos_T pos;
+  Univcoord_T pos;
 
   if (watsonp) {
     if ((pos = chroffset + genomicpos) < chroffset) { /* Must be <, and not <=, or dynamic programming will fail */
@@ -3768,6 +3804,7 @@ get_genomic_nt_array (char *g_alt, Genomicpos_T genomicpos, Genomicpos_T chroffs
     return complCode[(int) c2];
   }
 }
+#endif
 
 
 void
@@ -4036,16 +4073,16 @@ sensedir_from_cdna_direction (int cdna_direction) {
 /* Derived from print_gff3_cdna_match */
 /* Assumes pairarray has been hard clipped already */
 static void
-print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
+print_sam_line (FILE *fp, bool firstp, char *acc1, char *acc2, char *chrstring,
 		bool watsonp, int cdna_direction, List_T cigar_tokens, List_T md_tokens,
 		int nmismatches_refdiff, int nmismatches_bothdiff, int nindels,
 		bool intronp, char *queryseq_ptr, char *quality_string,
 		int hardclip_low, int hardclip_high, int querylength, Chimera_T chimera, int quality_shift,
 		int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, unsigned int flag,
-		Genomicpos_T chrpos,
+		Chrpos_T chrpos,
 #ifdef GSNAP
 		Resulttype_T resulttype, int pair_mapq_score, int end_mapq_score,
-		char *mate_chrstring, Genomicpos_T mate_chrpos, int mate_cdna_direction, int pairedlength,
+		char *mate_chrstring, Chrpos_T mate_chrpos, int mate_cdna_direction, int pairedlength,
 #else
 		int mapq_score, struct T *pairarray, int npairs,
 #endif
@@ -4053,7 +4090,11 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
   int sensedir;
 
   /* 1. QNAME or Accession */
-  fprintf(fp,"%s\t",accession);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s\t",acc1);
+  } else {
+    fprintf(fp,"%s,%s\t",acc1,acc2);
+  }
 
   /* 2. Flags */
   fprintf(fp,"%u\t",flag);
@@ -4225,7 +4266,7 @@ print_sam_line (FILE *fp, bool firstp, char *accession, char *chrstring,
 
 
 void
-Pair_alias_circular (struct T *pairs, int npairs, Genomicpos_T chrlength) {
+Pair_alias_circular (struct T *pairs, int npairs, Chrpos_T chrlength) {
   int i;
   struct T *ptr;
 
@@ -4242,7 +4283,7 @@ Pair_alias_circular (struct T *pairs, int npairs, Genomicpos_T chrlength) {
 }
 
 void
-Pair_unalias_circular (struct T *pairs, int npairs, Genomicpos_T chrlength) {
+Pair_unalias_circular (struct T *pairs, int npairs, Chrpos_T chrlength) {
   int i;
   struct T *ptr;
 
@@ -4421,11 +4462,11 @@ compute_cigar (bool *intronp, int *hardclip_low, int *hardclip_high, struct T *p
   bool in_exon = false, deletionp;
   struct T *ptr, *prev, *this = NULL;
   int exon_querystart = -1, exon_queryend = -1;
-  Genomicpos_T exon_genomestart = -1, exon_genomeend, genome_gap;
-  Genomicpos_T intron_start, intron_end;
+  Chrpos_T exon_genomestart = -1, exon_genomeend, genome_gap;
+  Chrpos_T intron_start, intron_end;
   int query_gap;
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
   int i;
 
   /* *chimera_hardclip_low = *chimera_hardclip_high = 0; */
@@ -5044,9 +5085,12 @@ compute_md_string (int *nmismatches_refdiff, int *nmismatches_bothdiff, int *nin
 	state = IN_MATCHES;
 
       } else if (type == 'N') {
+#if 0
+	/* Ignore deletion adjacent to intron, to avoid double ^^ */
 	if (state == IN_DELETION) {
 	  md_tokens = push_token(md_tokens,"^");
 	}
+#endif
 
 	while (k < npairs && pairs[k].gapp == true) {
 	  k++;
@@ -5104,15 +5148,15 @@ compute_md_string (int *nmismatches_refdiff, int *nmismatches_bothdiff, int *nin
 
 void
 Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
-		char *accession, Chrnum_T chrnum, IIT_T chromosome_iit, Sequence_T usersegment,
+		char *acc1, char *acc2, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		char *queryseq_ptr, char *quality_string,
 		int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
 		int quality_shift, bool firstp, int pathnum, int npaths,
-		int absmq_score, int first_absmq, int second_absmq, Genomicpos_T chrpos,
+		int absmq_score, int first_absmq, int second_absmq, Chrpos_T chrpos,
 #ifdef GSNAP
 		Resulttype_T resulttype, unsigned int flag, int pair_mapq_score, int end_mapq_score,
-		Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum, Genomicpos_T mate_chrpos,
+		Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum, Chrpos_T mate_chrpos,
 		int mate_cdna_direction, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
@@ -5199,7 +5243,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
   md_tokens = compute_md_string(&nmismatches_refdiff,&nmismatches_bothdiff,&nindels,
 				clipped_pairs,clipped_npairs,watsonp,cigar_tokens);
 
-  print_sam_line(fp,firstp,accession,chrstring,
+  print_sam_line(fp,firstp,acc1,acc2,chrstring,
 		 watsonp,cdna_direction,cigar_tokens,md_tokens,
 		 nmismatches_refdiff,nmismatches_bothdiff,nindels,
 		 intronp,queryseq_ptr,quality_string,hardclip_low,hardclip_high,
@@ -5231,7 +5275,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 
 
 void
-Pair_print_sam_nomapping (FILE *fp, char *accession, char *queryseq_ptr,
+Pair_print_sam_nomapping (FILE *fp, char *acc1, char *acc2, char *queryseq_ptr,
 			  char *quality_string, int querylength, int quality_shift,
 			  bool firstp, bool sam_paired_p, char *sam_read_group_id) {
   unsigned int flag;
@@ -5242,7 +5286,11 @@ Pair_print_sam_nomapping (FILE *fp, char *accession, char *queryseq_ptr,
 #endif
 
   /* 1. QNAME */
-  fprintf(fp,"%s",accession);
+  if (acc2 == NULL) {
+    fprintf(fp,"%s",acc1);
+  } else {
+    fprintf(fp,"%s,%s",acc1,acc2);
+  }
   
   /* 2. FLAG */
   flag = compute_sam_flag_nomate(/*pathnum*/0,/*npaths*/0,firstp,/*watsonp*/true,sam_paired_p);
@@ -5289,12 +5337,12 @@ Pair_print_sam_nomapping (FILE *fp, char *accession, char *queryseq_ptr,
 
 
 Uintlist_T
-Pair_exonbounds (struct T *pairs, int npairs, Genomicpos_T chroffset) {
+Pair_exonbounds (struct T *pairs, int npairs, Univcoord_T chroffset) {
   Uintlist_T exonbounds = NULL;
   struct T *ptr, *prev, *this = NULL;
   bool in_exon = false;
   int i;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   ptr = pairs;
   for (i = 0; i < npairs; i++) {
@@ -5338,7 +5386,7 @@ count_psl_blocks_nt (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tSta
   struct T *ptr = pairs_directional, *prev, *this = NULL;
   bool in_block = false;
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   for (i = 0; i < npairs; i++) {
     prev = this;
@@ -5407,7 +5455,7 @@ count_psl_blocks_nt (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tSta
 
 static int
 count_psl_blocks_pro (Intlist_T *blockSizes, Intlist_T *qStarts, Uintlist_T *tStarts, struct T *pairs_directional,
-		      int npairs, bool watsonp, Genomicpos_T chrlength) {
+		      int npairs, bool watsonp, Chrpos_T chrlength) {
   int nblocks = 0, i;
   int naminoacids = 0;
   int block_querystart;
@@ -5588,10 +5636,10 @@ count_matches_pro (int *matches, int *mismatches, int *unknowns,
 void
 Pair_print_pslformat_nt (FILE *fp, struct T *pairs, int npairs, T start, T end,
 			 Sequence_T queryseq, Chrnum_T chrnum,
-			 IIT_T chromosome_iit, Sequence_T usersegment,
+			 Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 			 int matches, int unknowns, int mismatches, 
 			 bool watsonp) {
-  Genomicpos_T chrpos1, chrpos2;
+  Chrpos_T chrpos1, chrpos2;
   struct T *pairs_directional = NULL;
   Intlist_T blockSizes = NULL, qStarts = NULL, p;
   Uintlist_T tStarts = NULL, q;
@@ -5678,9 +5726,10 @@ Pair_print_pslformat_nt (FILE *fp, struct T *pairs, int npairs, T start, T end,
 void
 Pair_print_pslformat_pro (FILE *fp, struct T *pairs, int npairs, T start, T end,
 			  Sequence_T queryseq, Chrnum_T chrnum,
-			  IIT_T chromosome_iit, Sequence_T usersegment,
+			  Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 			  bool watsonp, int cdna_direction) {
-  Genomicpos_T chrpos1, chrpos2, chrlength;
+  Chrpos_T chrpos1, chrpos2;
+  Chrpos_T chrlength;
   Intlist_T blockSizes = NULL, qStarts = NULL, p;
   Uintlist_T tStarts = NULL, q;
   int nblocks, matches = 0, mismatches = 0, unknowns = 0;
@@ -6777,25 +6826,26 @@ void
 Pair_print_compressed (FILE *fp, int pathnum, int npaths, T start, T end, Sequence_T queryseq, char *dbversion,
 		       Sequence_T usersegment, int nexons, double fracidentity,
 		       struct T *pairs, int npairs, Chrnum_T chrnum,
-		       Genomicpos_T chroffset, IIT_T chromosome_iit, int querylength_given,
+		       Univcoord_T chroffset, Univ_IIT_T chromosome_iit, int querylength_given,
 		       int skiplength, int trim_start, int trim_end, bool checksump,
 		       int chimerapos, int chimeraequivpos, double donor_prob, double acceptor_prob,
 		       int chimera_cdna_direction, char *strain, bool watsonp, int cdna_direction) {
-  Genomicpos_T chrpos1, chrpos2, position1, position2;
+  Chrpos_T chrpos1, chrpos2;
+  Univcoord_T position1, position2;
 
   bool in_exon = false;
   List_T tokens = NULL;
   struct T *ptr = pairs, *prev, *this = NULL;
   int querypos1, querypos2;
   int exon_querystart = -1, exon_queryend;
-  Genomicpos_T exon_genomestart = -1, exon_genomeend, intron_start, intron_end;
+  Chrpos_T exon_genomestart = -1, exon_genomeend, intron_start, intron_end;
   int num = 0, den = 0, runlength = 0, i;
   int print_dinucleotide_p;
   char token[10], donor[3], acceptor[3], *chr;
   double coverage;
   /* double trimmed_coverage; */
   int last_querypos = -1;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   donor[0] = donor[1] = donor[2] = '\0';
   acceptor[0] = acceptor[1] = acceptor[2] = '\0';
@@ -7078,9 +7128,9 @@ Pair_print_compressed (FILE *fp, int pathnum, int npaths, T start, T end, Sequen
 
 void
 Pair_print_iit_map (FILE *fp, Sequence_T queryseq, char *accession,
-		    T start, T end, Chrnum_T chrnum, IIT_T chromosome_iit) {
+		    T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit) {
   char *chrstring = NULL;
-  Genomicpos_T chrpos1, chrpos2;
+  Chrpos_T chrpos1, chrpos2;
 
   if (chrnum == 0) {
     chrstring = "";
@@ -7104,14 +7154,14 @@ Pair_print_iit_map (FILE *fp, Sequence_T queryseq, char *accession,
 
 void
 Pair_print_iit_exon_map (FILE *fp, struct T *pairs, int npairs, Sequence_T queryseq, char *accession,
-			 T start, T end, Chrnum_T chrnum, IIT_T chromosome_iit) {
+			 T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit) {
   int i;
   bool in_exon = false;
   struct T *ptr = pairs, *prev, *this = NULL;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T exon_genomestart = -1, exon_genomeend;
   char *chrstring = NULL;
-  Genomicpos_T chrpos1, chrpos2;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T chrpos1, chrpos2;
+  Chrpos_T last_genomepos = -1U;
 
   if (chrnum == 0) {
     chrstring = "";
@@ -7165,13 +7215,13 @@ Pair_print_iit_exon_map (FILE *fp, struct T *pairs, int npairs, Sequence_T query
 
 void
 Pair_print_splicesites (FILE *fp, struct T *pairs, int npairs, char *accession,
-			int nexons, Chrnum_T chrnum, IIT_T chromosome_iit, bool watsonp) {
+			int nexons, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, bool watsonp) {
   int exoni = 0, i;
   bool in_exon = false;
   struct T *ptr = pairs, *prev, *this = NULL;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T exon_genomestart = -1U, exon_genomeend;
   char *chrstring = NULL;
-  Genomicpos_T last_genomepos = -1U, intron_length;
+  Chrpos_T last_genomepos = -1U, intron_length;
 
   if (chrnum == 0) {
     chrstring = "";
@@ -7234,13 +7284,13 @@ Pair_print_splicesites (FILE *fp, struct T *pairs, int npairs, char *accession,
 
 void
 Pair_print_introns (FILE *fp, struct T *pairs, int npairs, char *accession,
-		    int nexons, Chrnum_T chrnum, IIT_T chromosome_iit) {
+		    int nexons, Chrnum_T chrnum, Univ_IIT_T chromosome_iit) {
   int exoni = 0, i;
   bool in_exon = false;
   struct T *ptr = pairs, *prev, *this = NULL;
-  Genomicpos_T exon_genomestart = -1U, exon_genomeend;
+  Chrpos_T exon_genomestart = -1, exon_genomeend;
   char *chrstring = NULL;
-  Genomicpos_T last_genomepos = -1U;
+  Chrpos_T last_genomepos = -1U;
 
   if (chrnum == 0) {
     chrstring = "";
@@ -7288,9 +7338,9 @@ Pair_print_introns (FILE *fp, struct T *pairs, int npairs, char *accession,
 
 
 /* goal_start < goal_end */
-Genomicpos_T
+int
 Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pairarray,
-			      Genomicpos_T goal_start, Genomicpos_T goal_end) {
+			      Chrpos_T goal_start, Chrpos_T goal_end) {
   int middlei;
 
   debug10(printf("entered binary search_ascending with lowi=%d, highi=%d, goal=%u..%u\n",
@@ -7338,9 +7388,9 @@ Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pair
 }
 
 /* goal_start > goal_end */
-Genomicpos_T
+int
 Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pairarray,
-			       Genomicpos_T goal_start, Genomicpos_T goal_end) {
+			       Chrpos_T goal_start, Chrpos_T goal_end) {
   int middlei;
 
   debug10(printf("entered binary search_descending with lowi=%d, highi=%d, goal=%u..%u\n",
@@ -7390,7 +7440,7 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 
 #ifndef PMAP
 
-Genomicpos_T
+Chrpos_T
 Pair_genomicpos_low (int *hardclip_low, int *hardclip_high, struct T *pairarray, int npairs,
 		     int querylength, bool watsonp) {
   struct T *clipped_pairs;
@@ -7411,7 +7461,7 @@ Pair_genomicpos_low (int *hardclip_low, int *hardclip_high, struct T *pairarray,
 #endif
 
 
-Genomicpos_T
+Chrpos_T
 Pairarray_genomicbound_from_start (struct T *pairarray, int npairs, int overlap) {
   int i;
   struct T pair;
@@ -7429,7 +7479,7 @@ Pairarray_genomicbound_from_start (struct T *pairarray, int npairs, int overlap)
   return pair.genomepos;
 }
 
-Genomicpos_T
+Chrpos_T
 Pairarray_genomicbound_from_end (struct T *pairarray, int npairs, int overlap) {
   int i;
   struct T pair;
@@ -7659,7 +7709,7 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
       }
     }
 
-    debug8(printf("pairi %d, querypos %d, genomepos %d, comp %c: Trim right score %d, trim_right %d, protectedp %d\n",
+    debug8(printf("pairi %d, querypos %d, genomepos %u, comp %c: Trim right score %d, trim_right %d, protectedp %d\n",
 		  pairi,this->querypos,this->genomepos,this->comp,score,trim_right,this->protectedp));
   }
 
@@ -7721,7 +7771,7 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
       }
     }
 
-    debug8(printf("pairi %d, querypos %d, genomepos %d, comp %c: Trim left score %d, trim_left %d, protectedp %d\n",
+    debug8(printf("pairi %d, querypos %d, genomepos %u, comp %c: Trim left score %d, trim_left %d, protectedp %d\n",
 		  pairi,this->querypos,this->genomepos,this->comp,score,trim_left,this->protectedp));
   }
 
@@ -7838,7 +7888,7 @@ Pair_gene_overlap (struct T *ptr /* = pairarray */, int npairs, IIT_T genes_iit,
   struct T *this = NULL;
   bool in_exon = false;
   int i;
-  Genomicpos_T low, high, exon_genomestart, exon_genomeend, last_genomepos = -1U;
+  Chrpos_T low, high, exon_genomestart, exon_genomeend, last_genomepos = -1U;
   bool foundp = false;
   Overlap_T overlap;
 

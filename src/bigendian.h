@@ -1,4 +1,4 @@
-/* $Id: bigendian.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: bigendian.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef BIGENDIAN_INCLUDED
 #define BIGENDIAN_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -20,19 +20,19 @@ Bigendian_fread_int (int *value, FILE *fp);
 extern size_t
 Bigendian_fread_ints (int *array, int n, FILE *fp);
 
-extern unsigned int
-Bigendian_convert_uint (unsigned int littleendian);
+extern UINT4
+Bigendian_convert_uint (UINT4 littleendian);
 extern size_t
-Bigendian_fwrite_uint (unsigned int value, FILE *fp);
+Bigendian_fwrite_uint (UINT4 value, FILE *fp);
 extern void
-Bigendian_write_uint (unsigned int value, int fd);
+Bigendian_write_uint (UINT4 value, int fd);
 extern size_t
-Bigendian_fwrite_uints (unsigned int *array, int n, FILE *fp);
+Bigendian_fwrite_uints (UINT4 *array, int n, FILE *fp);
 extern size_t
-Bigendian_fread_uint (unsigned int *value, FILE *fp);
+Bigendian_fread_uint (UINT4 *value, FILE *fp);
 extern size_t
-Bigendian_fread_uints (unsigned int *array, int n, FILE *fp);
-extern unsigned int
+Bigendian_fread_uints (UINT4 *array, int n, FILE *fp);
+extern UINT4
 Bigendian_fileio_read_uint (int fd);
 
 
@@ -64,6 +64,7 @@ Bigendian_fileio_read_uint8 (int fd);
 #define FWRITE_INT(x,fp) Bigendian_fwrite_int(x,fp)
 #define FWRITE_UINT(x,fp) Bigendian_fwrite_uint(x,fp)
 #define WRITE_UINT(x,fd) Bigendian_write_uint(x,fd)
+#define WRITE_UINT8(x,fd) Bigendian_write_uin8t(x,fd)
 #define FWRITE_INTS(a,n,fp) Bigendian_fwrite_ints(a,n,fp)
 #define FWRITE_UINTS(a,n,fp) Bigendian_fwrite_uints(a,n,fp)
 #ifdef HAVE_64_BIT

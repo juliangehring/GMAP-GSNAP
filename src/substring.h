@@ -1,14 +1,16 @@
-/* $Id: substring.h 91335 2013-04-03 19:39:36Z twu $ */
+/* $Id: substring.h 99737 2013-06-27 19:33:03Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
 #include <stdio.h>
 #include "mode.h"
 #include "genomicpos.h"
+#include "types.h"
 #include "chrnum.h"
 #include "shortread.h"
 #include "genome.h"
 #include "compress.h"
+#include "iit-read-univ.h"
 #include "iit-read.h"
 #include "bool.h"
 #include "pairdef.h"
@@ -36,12 +38,12 @@ extern void
 Substring_unalias_circular (T this);
 
 extern T
-Substring_new (int nmismatches_whole, Chrnum_T chrnum, Genomicpos_T chroffset,
-	       Genomicpos_T chrhigh, Genomicpos_T chrlength,
-	       Genomicpos_T left, Genomicpos_T genomicstart, Genomicpos_T genomicend,
+Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
+	       Univcoord_T chrhigh, Chrpos_T chrlength,
+	       Univcoord_T left, Univcoord_T genomicstart, Univcoord_T genomicend,
 	       Compress_T query_compress, Endtype_T start_endtype, Endtype_T end_endtype,
 	       int querystart, int queryend, int querylength,
-	       Genomicpos_T alignstart, Genomicpos_T alignend, int genomiclength,
+	       Univcoord_T alignstart, Univcoord_T alignend, int genomiclength,
 	       int extraleft, int extraright, bool exactp,
 	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength);
 
@@ -66,7 +68,7 @@ extern int
 Substring_compare (T substring1, T substring2);
 extern bool
 Substring_overlap_p (T substring1, T substring2);
-extern Genomicpos_T
+extern Chrpos_T
 Substring_insert_length (T substring5, T substring3);
 
 extern int
@@ -126,35 +128,35 @@ extern int
 Substring_match_length (T this);
 extern int
 Substring_match_length_orig (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Substring_genomic_alignment_length (T this);
 
 extern Chrnum_T
 Substring_chrnum (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_chroffset (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_chrhigh (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Substring_chrlength (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_alignstart (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_alignend (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_alignstart_trim (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_alignend_trim (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_genomicstart (T this);
-extern Genomicpos_T
+extern Univcoord_T
 Substring_genomicend (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Substring_genomiclength (T this);
 
-extern Genomicpos_T
+extern Chrpos_T
 Substring_chrstart (T this);
-extern Genomicpos_T
+extern Chrpos_T
 Substring_chrend (T this);
 
 extern double
@@ -184,22 +186,22 @@ Substring_copy (T old);
 
 extern T
 Substring_new_donor (int splicesites_i, int splicesites_offset, int donor_pos, int donor_nmismatches,
-		     double donor_prob, Genomicpos_T left, Compress_T query_compress,
+		     double donor_prob, Univcoord_T left, Compress_T query_compress,
 		     int querylength, bool plusp, int genestrand, bool sensep,
-		     Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength);
+		     Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength);
 extern T
 Substring_new_acceptor (int splicesites_i, int splicesites_offset, int acceptor_pos, int acceptor_nmismatches,
-			double acceptor_prob, Genomicpos_T left, Compress_T query_compress,
+			double acceptor_prob, Univcoord_T left, Compress_T query_compress,
 			int querylength, bool plusp, int genestrand, bool sensep,
-			Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength);
+			Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength);
 extern T
 Substring_new_shortexon (int acceptor_splicesites_i, int donor_splicesites_i, int splicesites_offset,
 			 int acceptor_pos, int donor_pos, int nmismatches,
-			 double acceptor_prob, double donor_prob, Genomicpos_T left,
+			 double acceptor_prob, double donor_prob, Univcoord_T left,
 			 Compress_T query_compress, int querylength,
 			 bool plusp, int genestrand, bool sensep,
 			 bool acceptor_ambp, bool donor_ambp,
-			 Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh, Genomicpos_T chrlength);
+			 Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength);
 
 extern List_T
 Substring_sort_chimera_halves (List_T hitlist, bool ascendingp);
@@ -223,20 +225,20 @@ Substring_print_deletion_2 (FILE *fp, T substring1, T substring2, int nindels,
 			    Shortread_T queryseq, char *chr, bool invertp);
 extern void
 Substring_print_donor (FILE *fp, T donor, bool sensep, bool invertp, Shortread_T queryseq,
-		       IIT_T chromosome_iit, T acceptor, Genomicpos_T chimera_distance);
+		       Univ_IIT_T chromosome_iit, T acceptor, Chrpos_T chimera_distance);
 extern void 
 Substring_print_acceptor (FILE *fp, T acceptor, bool sensep, bool invertp, Shortread_T queryseq,
-			  IIT_T chromosome_iit, T donor, Genomicpos_T chimera_distance);
+			  Univ_IIT_T chromosome_iit, T donor, Chrpos_T chimera_distance);
 extern void
 Substring_print_shortexon (FILE *fp, T shortexon, bool sensep, bool invertp, Shortread_T queryseq,
-			   IIT_T chromosome_iit, Genomicpos_T distance1, Genomicpos_T distance2);
+			   Univ_IIT_T chromosome_iit, Chrpos_T distance1, Chrpos_T distance2);
 
 extern void
 Substring_print_gmap (FILE *fp, struct Pair_T *pairs, int npairs, int nsegments, bool invertedp,
 		      Endtype_T start_endtype, Endtype_T end_endtype,
-		      Chrnum_T chrnum, Genomicpos_T chroffset, Genomicpos_T chrhigh,
+		      Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		      int querylength, bool watsonp, int cdna_direction, int score,
-		      int insertlength, int pairscore, int mapq_score, IIT_T chromosome_iit);
+		      int insertlength, int pairscore, int mapq_score, Univ_IIT_T chromosome_iit);
 
 extern bool
 Substring_contains_known_splicesite (T this);
@@ -253,11 +255,11 @@ Substring_runlength_p (T this, IIT_T runlength_iit, int *runlength_divint_crosst
 
 #ifdef USE_OLD_MAXENT
 extern void
-Substring_assign_donor_prob (T donor, Genome_T genome, IIT_T chromosome_iit);
+Substring_assign_donor_prob (T donor, Genome_T genome, Univ_IIT_T chromosome_iit);
 extern void
-Substring_assign_acceptor_prob (T acceptor, Genome_T genome, IIT_T chromosome_iit);
+Substring_assign_acceptor_prob (T acceptor, Genome_T genome, Univ_IIT_T chromosome_iit);
 extern void
-Substring_assign_shortexon_prob (T shortexon, Genome_T genome, IIT_T chromosome_iit);
+Substring_assign_shortexon_prob (T shortexon, Genome_T genome, Univ_IIT_T chromosome_iit);
 #else
 extern void
 Substring_assign_donor_prob (T donor);

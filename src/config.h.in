@@ -3,8 +3,15 @@
 /* Define if building universal (internal helper macro) */
 #undef AC_APPLE_UNIVERSAL_BUILD
 
+/* Define to 1 if you support Altivec instructions */
+#undef HAVE_ALTIVEC
+
 /* Define to 1 if bsr command is available in assembly */
 #undef HAVE_ASM_BSR
+
+/* Define to 1 inf you support AVX (Advanced Vector Extensions) instructions
+   */
+#undef HAVE_AVX
 
 /* Define to 1 if __builtin_clz works. */
 #undef HAVE_BUILTIN_CLZ
@@ -97,6 +104,9 @@
 /* Define to 1 if MAP_VARIABLE available for mmap. */
 #undef HAVE_MMAP_MAP_VARIABLE
 
+/* Define to 1 if you support mmx instructions */
+#undef HAVE_MMX
+
 /* Define to 1 if you have the `munmap' function. */
 #undef HAVE_MUNMAP
 
@@ -114,6 +124,29 @@
 
 /* Define to 1 if you have the `sigaction' function. */
 #undef HAVE_SIGACTION
+
+/* Define to 1 if you support SSE (Streaming SIMD Extensions) instructions */
+#undef HAVE_SSE
+
+/* Define to 1 if you support SSE2 (Streaming SIMD Extensions 2) instructions
+   */
+#undef HAVE_SSE2
+
+/* Define to 1 if you support SSE3 (Streaming SIMD Extensions 3) instructions
+   */
+#undef HAVE_SSE3
+
+/* Define to 1 if you support SSE4.1 (Streaming SIMD Extensions 4.1)
+   instructions */
+#undef HAVE_SSE4_1
+
+/* Define to 1 if you support SSE4.2 (Streaming SIMD Extensions 4.2)
+   instructions */
+#undef HAVE_SSE4_2
+
+/* Define to 1 if you support SSSE3 (Supplemental Streaming SIMD Extensions 3)
+   instructions */
+#undef HAVE_SSSE3
 
 /* Define to 1 if you have the `stat64' function. */
 #undef HAVE_STAT64

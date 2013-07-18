@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 78503 2012-11-06 21:31:24Z twu $";
+static char rcsid[] = "$Id: access.c 99737 2013-06-27 19:33:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -180,11 +180,12 @@ Access_fileio_rw (char *filename) {
 
 
 #ifndef WORDS_BIGENDIAN
-static unsigned int
+/* Needed as a test on Macintosh machines */
+static UINT4
 first_nonzero (int *i, char *filename) {
   size_t len;
   FILE *fp;
-  unsigned int value = 0;
+  UINT4 value = 0;
   void *p;
 
   len = (size_t) Access_filesize(filename);
@@ -195,7 +196,7 @@ first_nonzero (int *i, char *filename) {
   } else {
     *i = 0;
     p = (void *) &value;
-    while ((size_t) *i < len && fread(p,sizeof(unsigned int),1,fp) > 0 &&
+    while ((size_t) *i < len && fread(p,sizeof(UINT4),1,fp) > 0 &&
 	   value == 0) {
       *i += 1;
     }
@@ -217,7 +218,7 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   void *memory;
   FILE *fp;
   Stopwatch_T stopwatch;
-  unsigned int value;
+  UINT4 value;
   void *p;
   int i;
 
@@ -230,26 +231,36 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
 
   Stopwatch_start(stopwatch = Stopwatch_new());
   memory = (void *) MALLOC(*len);
-  FREAD_UINTS(memory,(*len)/eltsize,fp);
+  if (eltsize == 4) {
+    FREAD_UINTS(memory,(*len)/eltsize,fp);
+  } else if (eltsize == 8) {
+    FREAD_UINT8S(memory,(*len)/eltsize,fp);
+  } else {
+    fprintf(stderr,"Access_allocated called with an element size of %d, which is not handled\n",(int) eltsize);
+    exit(9);
+  }
   fclose(fp);
 
 #ifndef WORDS_BIGENDIAN
-  value = first_nonzero(&i,filename);
-  if (i >= 0 && ((unsigned int *) memory)[i] != value) {
-    fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)...reading file in smaller batches...");
-    fp = FOPEN_READ_BINARY(filename);
+  if (eltsize == 4) {
+    /* Test if Macintosh fread failure occurs.  Not sure if this occurs on 64-bit Macs. */
+    value = first_nonzero(&i,filename);
+    if (i >= 0 && ((UINT4 *) memory)[i] != value) {
+      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)...reading file in smaller batches...");
+      fp = FOPEN_READ_BINARY(filename);
 
-    for (i = 0; i < (int) ((*len)/eltsize); i += FREAD_BATCH) {
-      p = (void *) &(((unsigned int *) memory)[i]);
-      fread(p,sizeof(unsigned int),FREAD_BATCH,fp);
+      for (i = 0; i < (int) ((*len)/eltsize); i += FREAD_BATCH) {
+	p = (void *) &(((UINT4 *) memory)[i]);
+	fread(p,sizeof(UINT4),FREAD_BATCH,fp);
+      }
+
+      if (i < (int) (*len)/eltsize) {
+	p = (void *) &(((UINT4 *) memory)[i]);
+	fread(p,sizeof(UINT4),(*len)/eltsize - i,fp);
+      }
+
+      fclose(fp);
     }
-
-    if (i < (int) (*len)/eltsize) {
-      p = (void *) &(((unsigned int *) memory)[i]);
-      fread(p,sizeof(unsigned int),(*len)/eltsize - i,fp);
-    }
-
-    fclose(fp);
   }
 #endif
 

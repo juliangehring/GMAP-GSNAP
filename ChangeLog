@@ -1,3 +1,376 @@
+2013-07-17  twu
+
+    * stage1.c: Merged changes from trunk to restore decision of which side to
+      advance based on number of hits
+
+2013-07-16  twu
+
+    * gregion.c: Turned off debugging
+
+    * gff3_genes.pl.in, gff3_introns.pl.in, gff3_splicesites.pl.in: Merged
+      changes from trunk
+
+    * oligoindex_hr.c, stage3.c: Merged changes from trunk to capture last
+      oligomers of sequence and chimeras exactly
+
+    * gregion.c: Merged changes from trunk to handle case where extentstart goes
+      past genomic position 0
+
+    * sequence.c: Merged changes from trunk to modify definition of
+      Sequence_trimlength
+
+    * stage1.c: Merged changes from trunk to allow arbitrarily long scanning of
+      ends to find first pair
+
+2013-07-15  twu
+
+    * VERSION: Updated version number
+
+    * gff3_genes.pl.in, gff3_introns.pl.in, gff3_splicesites.pl.in: Merged
+      changes from trunk to handle GFF3 files without gene lines
+
+    * iit_store.c: Merged change from trunk to make iit_store work on versions >
+      1
+
+2013-07-11  twu
+
+    * samprint.c: Fixed sides of hardclipping for circular alignments
+
+    * public-2013-06-27: Created public release 2013-06-27
+
+2013-06-27  twu
+
+    * types.h: Added comment
+
+    * stage1.c: Using Width_T type
+
+    * spanningelt.c, spanningelt.h: Using Width_T types
+
+    * pair.c, pair.h: Changed types for binary search to be Chrpos_T
+
+    * indexdbdef.h: Using Width_T and Blocksize_T types
+
+    * indexdb.c, indexdb.h: Using Width_T and Blocksize_T types
+
+    * indexdb-write.c: Resolved compiler warnings about signed/unsigned
+      comparisons
+
+    * gsnap.c: Using Width_T type
+
+    * gmap.c: Using Width_T type
+
+    * genome_hr.c, genome_hr.h: Using Blocksize_T type for offsetscomp_blocksize
+
+    * block.c, block.h: Using Width_T type for oligosize
+
+    * types.h: Added Width_T and Blocksize_t types
+
+    * Makefile.gsnaptoo.am, README, access.c, alphabet.c, alphabet.h, atoi.c,
+      atoiindex.c, bigendian.c, bigendian.h, block.c, block.h, boyer-moore.c,
+      boyer-moore.h, chimera.c, chimera.h, chrnum.c, chrnum.h, chrom.c, chrom.h,
+      chrsubset.c, chrsubset.h, cmet.c, cmetindex.c, compress.c, compress.h,
+      configure.ac, diag.c, diag.h, diagdef.h, dynprog.c, dynprog.h, gdiag.c,
+      genome-write.c, genome-write.h, genome.c, genome.h, genome_hr.c,
+      genome_hr.h, genomicpos.c, genomicpos.h, genuncompress.c, get-genome.c,
+      gmap.c, gmapindex.c, goby.c, goby.h, gregion.c, gregion.h, gsnap.c,
+      gsnap_tally.c, iit-read-univ.c, iit-read-univ.h, iit-read.c, iit-read.h,
+      iit-write-univ.c, iit-write-univ.h, iit-write.c, iit_dump.c, iit_get.c,
+      iit_store.c, iitdef.h, iittest.iit.ok, indexdb-write.c, indexdb-write.h,
+      indexdb.c, indexdb.h, indexdb_hr.c, indexdb_hr.h, indexdbdef.h,
+      interval.c, interval.h, intron.c, intron.h, littleendian.c,
+      littleendian.h, mapq.c, mapq.h, match.c, match.h, matchdef.h, matchpool.c,
+      matchpool.h, maxent_hr.c, maxent_hr.h, oligo.c, oligo.h, oligoindex.c,
+      oligoindex.h, oligoindex_hr.c, oligoindex_hr.h, oligop.c, oligop.h,
+      outbuffer.c, outbuffer.h, pair.c, pair.h, pairdef.h, parserange.c,
+      parserange.h, samprint.c, samprint.h, segmentpos.c, segmentpos.h,
+      snpindex.c, spanningelt.c, spanningelt.h, splicetrie.c, splicetrie.h,
+      splicetrie_build.c, splicetrie_build.h, src, stage1.c, stage1.h,
+      stage1hr.c, stage1hr.h, stage2.c, stage2.h, stage3.c, stage3.h,
+      stage3hr.c, stage3hr.h, substring.c, substring.h, tableint.c, tableuint.c,
+      tableuint.h, tableuint8.c, tableuint8.h, trunk, types.h, uint8list.c,
+      uint8list.h, uintlist.c, uintlist.h, uniqscan.c, univinterval.c,
+      univinterval.h, util: Reintegrated changes from
+      branches/2012-02-14-biggenomes to handle large genomes
+
+    * index.html: Updated comments for latest version
+
+    * dynprog.c, oligoindex.c, oligoindex.h, oligoindex_hr.c, src, stage2.c,
+      trunk, util: Merged revisions 99648 to 99702 from
+      branches/2013-06-25-simd-8 to use unsigned chars for counts, and 8-bit
+      SIMD instructions for allocate_positions
+
+    * stage3.c: Removed assertion that c != g when filling in a single bp gap,
+      which can occur with overabundant oligomers, such as poly-A
+
+    * VERSION, index.html: Updated version number
+
+    * ax_ext.m4, boyer-moore.c, config.site, config.site.rescomp.tst,
+      configure.ac, dynprog.c, gmap.c, gsnap.c, src, stage3hr.c, trunk, util:
+      Merged revisions 99462 to 99647 from branches/2013-06-25-simd-8 to allow
+      for dynamic programming with 8-bit chars when SSE4.1 is available
+
+    * stage3.c: Allowing insert_gapholders to fill in single mismatches, rather
+      than inserting a gap.  Fixed peel_rightward and peel_leftward, so the
+      extrapeel step does not remove gaps.
+
+    * stage3hr.c: Fixed issues with wrong queryseq sequence for second end being
+      printed in standard GSNAP output
+
+2013-06-26  twu
+
+    * VERSION, index.html: Updated version number
+
+    * dynprog.c: Further check to make sure traceback_local does not give rise
+      to negative querypos coordinates.
+
+2013-06-25  twu
+
+    * dynprog.c: Distinguishing between NEG_INFINITY and NEG_INFINITY_DISPLAY
+
+    * dynprog.c: Made traceback_local code follow that for traceback
+
+    * VERSION, index.html: Updated version number
+
+    * dynprog.c: Fixed bug in traceback_local where r is negative
+
+2013-06-18  twu
+
+    * VERSION, index.html: Updated version number
+
+    * stage3.c: Using new interface to Pair_print_sam, which requires two
+      accessions
+
+    * gsnap.c, outbuffer.c, pair.c, pair.h, samprint.c, samprint.h, shortread.c,
+      shortread.h, stage3hr.c: Added flag --allow-pe-name-mismatch
+
+    * oligoindex_hr.c: Fixed faulty cmpgt statement based on 16-bit quantities,
+      instead of 32-bit quantities
+
+2013-06-14  twu
+
+    * dynprog.c: Removed unnecessary initialization for SIMD code
+
+    * trunk, util: Merged revisions 98458 to 98523 from
+      branches/2013-06-13-sort-not-merge to speed up update of chromosome bounds
+      in identify_all_segments
+
+    * VERSION: Removed newline from file
+
+    * gsnap.c, iit-read.c, iit-read.h, src, stage1hr.c, stage1hr.h: Merged
+      revisions 98458 to 98523 from branches/2013-06-13-sort-not-merge to speed
+      up update of chromosome bounds in identify_all_segments
+
+    * VERSION, config.site.rescomp.tst, index.html: Updated version number
+
+    * gmap.c, gsnap.c, indexdb.c, src, stage1hr.c, trunk, util: Merged revisions
+      98429 to 98457 from branches/2013-06-13-sort-not-merge to add code for
+      qsort, although code not used
+
+2013-06-13  twu
+
+    * config.site.rescomp.prd: Removed -g flag from production CFLAGS
+
+    * config.site.rescomp.prd, dynprog.c, index.html, src, trunk, util: Merged
+      revisions 97749 to 98423 from branches/2013-06-05-dynprog-sse to use SIMD
+      instructions for dynamic programming procedures
+
+2013-06-12  twu
+
+    * dynprog.c: Fixed an unassigned value for rlo.  Fixed code in
+      make_splicejunction_3 where the standard splicejunction was reverse
+      complemented, but not splicejunction_alt.
+
+2013-06-10  twu
+
+    * oligoindex_hr.c: Using compile-time constants to clarify code
+
+    * gmap.c, gsnap.c: Added run-time check of compiler assumptions
+
+    * dynprog.c: Fixes to debugging code.  Slightly more efficient
+      initialization.
+
+2013-06-08  twu
+
+    * oligoindex_hr.c: Computing skips of empty counts to increase speed of
+      allocate_positions
+
+    * oligoindex_hr.c: Using a convert instruction instead of a store
+      instruction to compute the final sum in allocate_positions.
+
+    * oligoindex_hr.c: In allocate_positions, using SIMD commands to check when
+      positions need to be computed
+
+    * gsnap.c: Turning off terminal alignments by default for DNA-Seq alignment.
+      Added "all" option for --gmap-mode.
+
+2013-06-07  twu
+
+    * Makefile.am, config.site.rescomp.prd, config.site.rescomp.tst, dynprog.c,
+      pair.c, src, trunk, util: Merged revisions 97750 to 97963 from
+      branches/2013-06-05-dynprog-sse for a faster and better implementation of
+      dynamic programming procedures
+
+    * indexdb.c: Removed forced writing of positions by chunks for debugging
+
+    * Makefile.dna.am, Makefile.gsnaptoo.am: Removed PTHREAD_CFLAGS from LDFLAGS
+      and moved SIMD_FLAGS to CFLAGS
+
+    * config.site: Added sections for bzlib, simd, and popcnt
+
+    * gmap.c: Moved free of usersegment to end, after we decide whether we need
+      to free genome_blocks
+
+    * configure.ac: Moved check for SIMD to be close to that for check for
+      popcnt
+
+    * VERSION: Updated version number
+
+    * configure.ac: Added flags --enable-simd and --disable-simd to control
+      check for SIMD features
+
+    * indexdb.c: Added a second attempt to write positions file in chunks if the
+      first write fails.  Added a sanity check in reading in a genomic index
+      that the positions file has the expected size.
+
+2013-06-05  twu
+
+    * configure.ac: Fixed comment
+
+    * ax_ext.m4: Changed comment lines for config.h to be standard definitions
+      of 1
+
+    * Makefile.dna.am, Makefile.gsnaptoo.am: Added SIMD_FLAGS
+
+    * gmap.c, gsnap.c: Added available SIMD functions to --version output
+
+    * indexdb.c: Added check that positions file has the expected size
+
+    * oligoindex.c, oligoindex.h, oligoindex_hr.c: Using SIMD functions for
+      allocate_positions
+
+    * acinclude.m4, configure.ac: Added check for SIMD support
+
+    * ax_ext.m4: Fixed spelling errors
+
+    * ax_check_compile_flag.m4: Initial import into SVN
+
+    * ax_gcc_x86_cpuid.m4: Initial import into SVN
+
+    * ax_ext.m4: Initial import into SVN
+
+    * dynprog.c: Created separate source code for jump late and jump early
+      conditions
+
+2013-05-28  twu
+
+    * pair.c: Fixed bug in final revcomp of sequence, where genomealt was not
+      being complemented
+
+2013-05-22  twu
+
+    * archive.html: Storing version 2013-03-31 into archive
+
+    * index.html: Updated for version 2013-05-09
+
+    * iit_get.c: No longer printing total, when getting queries from stdin
+
+    * parserange.c: Handling a case where interpreting query as a contig, and
+      the result is NULL
+
+    * pair.c: Fixed computation of coverage for GFF output
+
+2013-05-17  michafla
+
+    * Makefile.am, bootstrap.dna, bootstrap.gmaponly, bootstrap.gsnaptoo,
+      bootstrap.pmaptoo, bootstrap.three, configure.ac: Port from release: use
+      only 'config' for m4 macros
+
+2013-05-09  twu
+
+    * dynprog.c, dynprog.h, splicetrie.c: In making splice junctions, checking
+      for junctions that go to the left of genomic position 0.
+
+2013-05-08  twu
+
+    * samprint.c: Fixed SAM output for translocations, affected by changes to
+      hardclipping
+
+2013-05-07  twu
+
+    * stage2.c: In find_shifted_canonical, checking for leftpos and rightpos
+      that exceed chrhigh
+
+2013-05-06  twu
+
+    * uniqscan.c: Using new interface to Stage1_single_read
+
+    * gsnap.c, stage1hr.c, stage1hr.h, uniqscan.c: Passing
+      min_distantsplicing_end_matches and min_distantsplicing_identity to
+      Stage1hr_setup.  Made GSNAP more sensitive to shorter reads, such as 50
+      bp.
+
+    * stage3.c: Removed line that is not reached.
+
+2013-05-03  twu
+
+    * gmap.c: Added comment in --help output about chimeric alignments being an
+      exception to the filtering options
+
+    * stage3.c, stage3.h: Added functions Stage3_recompute_coverage and
+      Stage3_passes_filter
+
+    * gmap.c: Added options --min-trimmed-coverage and --min-identity
+
+    * stage2.c: Further check to make sure splice site does not occur in first 3
+      bp of segment in find_shifted_canonical
+
+2013-05-02  twu
+
+    * stage2.c: In find_shifted_canonical, preventing discovery of splice sites
+      in first 3 bp of segment
+
+    * index.html: Made changes for version 2013-03-31 (v5)
+
+    * gmap.c: Checking value of Stage3_merge_chimera before creating chimera and
+      running merge_left_and_right_transloc.
+
+    * stage3.c, stage3.h: Stage3_merge_chimera checks for pairs on left and
+      right being non-NULL, and returns a bool
+
+    * pairpool.c: Fixed Pairpool_clip_bounded so it handles the case where the
+      list is NULL.
+
+2013-04-30  twu
+
+    * get-genome.c: Added --exact flag
+
+    * stage3hr.c: Removed exclusions in Stage3pair_overlap that prevented tails
+      from being hard clipped.
+
+    * shortread.c: Fixed hard clipping of reads and quality strings to match new
+      definitions of hardclip_low and hardclip_high
+
+2013-04-27  twu
+
+    * iit_get.c: Added --exact option
+
+    * chimera.c: Adding range of chimeric overlap in XT SAM field
+
+    * outbuffer.c: Using new interface to SAM_print
+
+    * stage3hr.h: Revised Stage3pair_overlap to return hardclip5, hardclip3, and
+      clipdir.
+
+    * stage3hr.c: Revised Stage3pair_overlap to return hardclip5, hardclip3, and
+      clipdir.
+
+    * samprint.h: Added clipdir as a parameter to SAM_print
+
+    * samprint.c: Handling clipping of overlaps when the low end of the first
+      read and the high end of the second read should be clipped.  This is
+      indicated by clipdir of -1, and occurs when the insert length is so short
+      that the two reads have passed each other.
+
 2013-04-12  twu
 
     * pair.c, pair.h, samprint.c: Providing effective_chrnum of mate to

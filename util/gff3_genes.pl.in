@@ -17,7 +17,7 @@ while (defined($line = <>)) {
 	@fields = split /\t/,$line;
 
 	if ($fields[2] eq "gene") {
-	    if ($#exons > 0) {
+	    if ($#exons >= 0) {
 		# Handle last mRNA of previous gene
 		if ($strand eq "+") {
 		    ($start,$end) = get_gene_bounds_plus(\@exons);
@@ -37,7 +37,7 @@ while (defined($line = <>)) {
 	    @exons = ();
 	    
 	} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
-	    if ($#exons > 0) {
+	    if ($#exons >= 0) {
 		if ($strand eq "+") {
 		    ($start,$end) = get_gene_bounds_plus(\@exons);
 		    printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;
@@ -53,15 +53,24 @@ while (defined($line = <>)) {
 
 	    ($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
 	    $strand = $fields[6];
+	    
+	    # For GFF3 files without a gene line
+	    if (!defined($gene_name) || $gene_name !~ /\S/) {
+		$gene_name = $last_transcript_id;
+	    }
+	    if (!defined($chr) || $chr !~ /\S/) {
+		$chr = $fields[0];
+	    }
+
 	    @exons = ();
 
-	} elsif ($fields[2] eq "exon") {
+	} elsif ($fields[2] eq "exon" || $fields[2] eq "CDS") {
 	    push @exons,"$fields[3] $fields[4]";
 	}
     }
 }
 
-if ($#exons > 0) {
+if ($#exons >= 0) {
     if ($strand eq "+") {
 	($start,$end) = get_gene_bounds_plus(\@exons);
 	printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;

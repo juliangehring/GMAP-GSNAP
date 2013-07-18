@@ -1,4 +1,4 @@
-/* $Id: block.h 64017 2012-05-14 22:35:15Z twu $ */
+/* $Id: block.h 99748 2013-06-27 21:01:48Z twu $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
 #include "bool.h"
@@ -16,7 +16,7 @@ extern int
 Block_querypos (T this);
 
 #ifdef PMAP
-unsigned int
+extern Storedoligomer_T
 Block_aaindex (T this);
 #else
 extern Storedoligomer_T
@@ -36,7 +36,7 @@ extern void
 Block_reset_ends (T this);
 
 extern T
-Block_new (cDNAEnd_T cdnaend, int oligosize,
+Block_new (cDNAEnd_T cdnaend, Width_T oligosize,
 #ifndef PMAP
 	   int leftreadshift,
 #endif
@@ -51,8 +51,8 @@ extern bool
 Block_skipto (T this, int querypos);
 
 extern int
-Block_process_oligo (Genomicpos_T **fwdpositions, int *nfwdhits, 
-		     Genomicpos_T **revpositions, int *nrevhits,
+Block_process_oligo (Univcoord_T **fwdpositions, int *nfwdhits, 
+		     Univcoord_T **revpositions, int *nrevhits,
 		     T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev);
 
 #undef T

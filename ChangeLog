@@ -1,3 +1,37 @@
+2013-07-20  twu
+
+    * public-2013-06-27: Merged changes from trunk
+
+    * setup1.test.in, tests: Merged changes from trunk
+
+    * VERSION: Updated version number
+
+    * iit-write-univ.c: Fixed message
+
+    * gsnap.c: Fixed help string
+
+    * types.h: Prefer to use unsigned long long for UINT8
+
+2013-07-19  twu
+
+    * stage1hr.c: Changed single-end statement for terminals to look like
+      paired-end statement
+
+    * gsnap.c: Turned default for --terminal-threshold back to 2 for DNA-Seq
+      alignments, since terminal alignments are needed for some GMAP alignments
+
+    * iit-write.c: Including types.h just to make sure we have it
+
+    * iit-write-univ.c: Added message about coordinate sizes
+
+    * stage1hr.c: Keeping lowprob splices unless dominated by other splices
+
+    * gsnap.c, stage3hr.c, stage3hr.h, uniqscan.c: Merged changes from trunk to
+      improve usage of insertlength, outerlength, and splice probabilities to
+      resolve difficult cases
+
+    * dynprog.c: Added memory fences between SIMD and non-SIMD code
+
 2013-07-17  twu
 
     * stage1.c: Merged changes from trunk to restore decision of which side to

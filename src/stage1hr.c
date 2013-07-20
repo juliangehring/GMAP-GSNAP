@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 102151 2013-07-19 23:48:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -12344,6 +12344,7 @@ complete_set_singlesplicing (int *found_score, Floors_T floors,
 			     bool subs_or_indels_p) {
   List_T localsplicing = NULL, lowprob = NULL, p;
   Stage3end_T hit;
+  int worst_nmatches;
 
   debug(printf("Starting complete_set_singlesplicing with %d mismatches allowed\n",max_mismatches_allowed));
 
@@ -12372,9 +12373,22 @@ complete_set_singlesplicing (int *found_score, Floors_T floors,
   if (localsplicing == NULL) {
     return lowprob;
   } else {
+    worst_nmatches = querylength;
+    for (p = localsplicing; p != NULL; p = List_next(p)) {
+      hit = (Stage3end_T) List_head(p);
+      if (Stage3end_nmatches(hit) < worst_nmatches) {
+	worst_nmatches = Stage3end_nmatches(hit);
+      }
+    }
     for (p = lowprob; p != NULL; p = List_next(p)) {
       hit = (Stage3end_T) List_head(p);
-      Stage3end_free(&hit);
+      if (Stage3end_nmatches(hit) < worst_nmatches) {
+	/* Dominated by both nmatches and probability */
+	Stage3end_free(&hit);
+      } else {
+	/* Has worse probability but more matches, so keep */
+	localsplicing = List_push(localsplicing,(void *) hit);
+      }
     }
     List_free(&lowprob);
 
@@ -12394,6 +12408,7 @@ complete_set_doublesplicing (int *found_score, Floors_T floors,
 			     bool first_read_p, int genestrand, bool subs_or_indels_p) {
   List_T localsplicing = NULL, lowprob = NULL, p;
   Stage3end_T hit;
+  int worst_nmatches;
   
   debug(printf("Starting complete_set_doublesplicing with %d mismatches allowed\n",
 	       max_mismatches_allowed));
@@ -12421,9 +12436,22 @@ complete_set_doublesplicing (int *found_score, Floors_T floors,
   if (localsplicing == NULL) {
     return lowprob;
   } else {
+    worst_nmatches = querylength;
+    for (p = localsplicing; p != NULL; p = List_next(p)) {
+      hit = (Stage3end_T) List_head(p);
+      if (Stage3end_nmatches(hit) < worst_nmatches) {
+	worst_nmatches = Stage3end_nmatches(hit);
+      }
+    }
     for (p = lowprob; p != NULL; p = List_next(p)) {
       hit = (Stage3end_T) List_head(p);
-      Stage3end_free(&hit);
+      if (Stage3end_nmatches(hit) < worst_nmatches) {
+	/* Dominated by both nmatches and probability */
+	Stage3end_free(&hit);
+      } else {
+	/* Has worse probability but more matches, so keep */
+	localsplicing = List_push(localsplicing,(void *) hit);
+      }
     }
     List_free(&lowprob);
 
@@ -13903,9 +13931,7 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
   /* 10.  Terminals */
   /* Previously did not find terminals if (subs || indels || good_gmap_hits || singlesplicing || doublesplicing || shortendsplicing || distantsplicing) */
 
-  if (done_level < terminal_threshold) {
-    /* Don't find terminals */
-  } else {
+  if (done_level >= terminal_threshold) {
     max_mismatches_allowed = done_level;
     debug(printf("*** Stage 10.  Terminals up to %d mismatches ***\n",max_mismatches_allowed));
     if (floors_computed_p == false) {
@@ -13952,7 +13978,7 @@ align_end (int *cutoff_level, T this, Compress_T query_compress_fwd, Compress_T 
     /* This is done for paired-ends, but should not be necessary for single-end */
     debug13(printf("Before remove overlaps at cutoff level %d: %d hits\n",opt_level,List_length(terminals)));
     terminals = Stage3end_sort_bymatches(Stage3end_remove_overlaps(terminals,/*finalp*/false));
-    debug13(printf("After reemove overlaps: %d\n",List_length(terminals)));
+    debug13(printf("After remove overlaps: %d\n",List_length(terminals)));
 #endif
 
     if (List_length(terminals) <= max_gmap_terminal) {

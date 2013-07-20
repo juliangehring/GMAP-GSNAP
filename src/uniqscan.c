@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 102130 2013-07-19 22:59:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -129,6 +129,8 @@ static Access_mode_T genome_access = USE_ALLOCATE;
 static int pairmax;
 static int pairmax_dna = 1000;
 static int pairmax_rna = 200000;
+static int expected_pairlength = 200;
+static int pairlength_deviation = 100;
 
 
 /* static Masktype_T masktype = MASK_REPETITIVE; */
@@ -1144,7 +1146,7 @@ main (int argc, char *argv[]) {
   Stage3hr_setup(/*invert_first_p*/false,/*invert_second_p*/false,genes_iit,genes_divint_crosstable,
 		 /*tally_iit*/NULL,/*tally_divint_crosstable*/NULL,
 		 /*runlength_iit*/NULL,/*runlength_divint_crosstable*/NULL,
-		 distances_observed_p,pairmax,
+		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_coverage,index1part,index1interval,
 		 novelsplicingp,circularp);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 102130 2013-07-19 22:59:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -175,6 +175,10 @@ static int expected_pairlength;
 static int pairlength_deviation;
 #endif
 
+static int expected_pairlength_low;
+static int expected_pairlength_high;
+static int expected_pairlength_very_high;
+
 static int localsplicing_penalty;
 static int indel_penalty_middle;
 static int antistranded_penalty;
@@ -199,6 +203,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		IIT_T tally_iit_in, int *tally_divint_crosstable_in,
 		IIT_T runlength_iit_in, int *runlength_divint_crosstable_in,
 		bool distances_observed_p, int pairmax_in,
+		Chrpos_T expected_pairlength, Chrpos_T pairlength_deviation,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
 		int gmap_min_nconsecutive_in, int index1part,
@@ -218,6 +223,13 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
   gmap_min_nconsecutive = gmap_min_nconsecutive_in;
 
   pairmax = pairmax_in;
+  if (pairlength_deviation > expected_pairlength) {
+    expected_pairlength_low = 0;
+  } else {
+    expected_pairlength_low = expected_pairlength - pairlength_deviation;
+  }
+  expected_pairlength_high = expected_pairlength + pairlength_deviation;
+  expected_pairlength_very_high = expected_pairlength + 10*pairlength_deviation;
 
   if (distances_observed_p == true) {
     favor_ambiguous_p = false;
@@ -386,6 +398,10 @@ struct Stage3pair_T {
   Univcoord_T low;
   Univcoord_T high;
   int insertlength;
+  int insertlength_expected_sign;	/* 1 if in (expected_pairlength_low, expected_pairlength_high),
+					   0 if in (expected_pairlength_low, expected_pairlength_very_high), and
+					   -1 if < expected_pairlength_low or > expected_pairlength_very_high */
+				   
   Chrpos_T outerlength;
 
   double mapq_loglik;
@@ -2530,7 +2546,6 @@ Stage3end_new_splice (int *found_score, int nmismatches_donor, int nmismatches_a
     }
 #endif
   }
-  debug0(printf("  hittype is %s\n",hittype_string(new->hittype)));
 
   /* printf("Making splice with shortdistancep = %d, donor chrnum %d, and acceptor chrnum %d => chrnum %d\n",
      shortdistancep,Substring_chrnum(donor),Substring_chrnum(acceptor),new->chrnum); */
@@ -2554,6 +2569,8 @@ Stage3end_new_splice (int *found_score, int nmismatches_donor, int nmismatches_a
   } else {
     abort();
   }
+  debug0(printf("  hittype is %s, genomicpos %u..%u\n",
+		hittype_string(new->hittype),new->genomicstart,new->genomicend));
 
   if (new->genomicstart < new->genomicend) {
     new->low = new->genomicstart;
@@ -2809,7 +2826,7 @@ Stage3end_new_splice (int *found_score, int nmismatches_donor, int nmismatches_a
 
   assert(new->substring1 != NULL);
 
-  debug0(printf("Returning new splice %p\n",new));
+  debug0(printf("Returning new splice %p at genomic %u..%u\n",new,new->genomicstart,new->genomicend));
   return new;
 }
 
@@ -3939,6 +3956,20 @@ Stage3end_eval_and_sort (int *npaths, int *first_absmq, int *second_absmq,
 }
 
 
+static int
+insertlength_expected (int insertlength) {
+  if (insertlength < expected_pairlength_low) {
+    return -1;
+  } else if (insertlength > expected_pairlength_very_high) {
+    return -1;
+  } else if (insertlength > expected_pairlength_high) {
+    return 0;
+  } else {
+    return +1;
+  }
+}
+
+
 /* For concordant ends */
 static Chrpos_T
 pair_insert_length (Stage3end_T hit5, Stage3end_T hit3) {
@@ -5050,6 +5081,7 @@ hit_goodness_cmp (bool *equalp, Stage3end_T hit,
 		  int k,
 #endif
 		  Stage3end_T best_hit, bool finalp) {
+  double prob1, prob2;
 
 #ifdef PRE_RESOLVE_MULTIMAPPING
   if (Stage3end_tally(x) > TALLY_RATIO*Stage3end_tally(y)) {
@@ -5152,17 +5184,31 @@ hit_goodness_cmp (bool *equalp, Stage3end_T hit,
     debug7(printf("  => indistinguishable\n"));
     return 0;
 
-  } else if (hit->genomiclength > best_hit->genomiclength) {
-    debug7(printf("  => %d loses by genomiclength\n",k));
-    return -1;
-  } else if (hit->genomiclength < best_hit->genomiclength) {
-    debug7(printf("  => %d wins by genomiclength\n",k));
-    return +1;
-
   } else {
-    debug7(printf("  => equal\n"));
-    *equalp = true;
-    return 0;
+    if (hit->hittype == SPLICE && best_hit->hittype == SPLICE) {
+      prob1 = Substring_chimera_prob(hit->substring_donor) + Substring_chimera_prob(hit->substring_acceptor);
+      prob2 = Substring_chimera_prob(best_hit->substring_donor) + Substring_chimera_prob(best_hit->substring_acceptor);
+      if (prob1 < prob2) {
+	debug7(printf("  => %d loses by splice prob %f vs %f\n",prob1,prob2));
+	return -1;
+      } else if (prob1 > prob2) {
+	debug7(printf("  => %d wins by splice prob %f vs %f\n",prob1,prob2));
+	return +1;
+      }
+    }
+
+    if (hit->genomiclength > best_hit->genomiclength) {
+      debug7(printf("  => %d loses by genomiclength\n",k));
+      return -1;
+    } else if (hit->genomiclength < best_hit->genomiclength) {
+      debug7(printf("  => %d wins by genomiclength\n",k));
+      return +1;
+
+    } else {
+      debug7(printf("  => equal\n"));
+      *equalp = true;
+      return 0;
+    }
   }
 }
 
@@ -7804,7 +7850,7 @@ resolve_inside_ambiguous_splice_minus (int *unresolved_amb_nmatches, T *hit5, T 
 
 static void
 alias_circular (T hit) {
-  int chrlength = hit->chrlength;
+  Chrpos_T chrlength = hit->chrlength;
 
   assert(hit->alias == -1);
   if (hit->hittype == GMAP) {
@@ -7828,7 +7874,7 @@ alias_circular (T hit) {
 
 static void
 unalias_circular (T hit) {
-  int chrlength = hit->chrlength;
+  Chrpos_T chrlength = hit->chrlength;
 
   assert(hit->alias == +1);
   if (hit->hittype == GMAP) {
@@ -7903,6 +7949,7 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
   if (hit5->chrnum == 0 || hit3->chrnum == 0) {
     new->dir = 0;
     new->insertlength = pair_insert_length(hit5,hit3);
+    new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 
   } else if (hit5->hittype == GMAP && hit3->hittype == GMAP) {
     debug10(printf("Got hit5 and hit3 both of type GMAP\n"));
@@ -7911,16 +7958,19 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
     if (hit5->plusp == true && hit3->plusp == true) {
       new->dir = +1;
       new->insertlength = (hit3->genomicstart - hit5->genomicend) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       debug10(printf("plus, no overlap: insert length %d = start3 %lu - end5 %lu + %d + %d\n",
 		     new->insertlength,hit3->genomicstart,hit5->genomicend,querylength5,querylength3));
     } else if (hit5->plusp == false && hit3->plusp == false) {
       new->dir = -1;
       new->insertlength = (hit5->genomicend - hit3->genomicstart) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       debug10(printf("minus, no overlap: insert length %d = end5 %lu - start3 %lu + %d + %d\n",
 		     new->insertlength,hit5->genomicend,hit3->genomicstart,querylength5,querylength3));
     } else {
       new->dir = 0;
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
     }
 
   } else if (hit5->hittype == GMAP) {
@@ -7942,15 +7992,18 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
       if (hit5->genomicend <= hit3->genomicstart) {
 	/* No overlap */
 	new->insertlength = (hit3->genomicstart - hit5->genomicend) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("plus, no overlap: insert length %d = start3 %lu - end5 %lu + %d + %d\n",
 		       new->insertlength,hit3->genomicstart,hit5->genomicend,querylength5,querylength3));
       } else if ((chrpos = overlap3_gmap_plus(&querypos,&chrstart,&chrend,/*hit*/hit3,/*gmap*/hit5)) > 0U) {
 	new->insertlength = /* end3 */ chrend - /* start5 */ (chrpos - querypos);
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("plus, overlap: insert length %d = end3 %lu - start5 (%lu - %d)\n",
 		       new->insertlength,chrend,chrpos,querypos));
       } else {
 	/* Still no overlap */
 	new->insertlength = (hit3->genomicstart - hit5->genomicend) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       }
 
     } else if (hit5->plusp == false && hit3->plusp == false) {
@@ -7970,19 +8023,23 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
       if (hit3->genomicstart <= hit5->genomicend) {
 	/* No overlap */
 	new->insertlength = (hit5->genomicend - hit3->genomicstart) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("minus, no overlap: insert length %d = end5 %lu - start3 %lu + %d + %d\n",
 		       new->insertlength,hit5->genomicend,hit3->genomicstart,querylength5,querylength3));
       } else if ((chrpos = overlap3_gmap_minus(&querypos,&chrstart,&chrend,/*hit*/hit3,/*gmap*/hit5)) > 0U) {
 	new->insertlength = /* start5 */ (chrpos + querypos) - /* end3 */ chrend + 1;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("minus, overlap: insert length %d = start5 (%lu + %d) - end3 %lu + 1\n",
 		       new->insertlength,chrpos,querypos,chrend));
       } else {
 	/* Still no overlap */
 	new->insertlength = (hit5->genomicend - hit3->genomicstart) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       }
     } else {
       new->dir = 0;
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
     }
 
   } else if (hit3->hittype == GMAP) {
@@ -8004,15 +8061,18 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
       if (hit5->genomicend <= hit3->genomicstart) {
 	/* No overlap */
 	new->insertlength = (hit3->genomicstart - hit5->genomicend) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("plus, no overlap: insert length %d = start3 %lu - end5 %lu + %d + %d\n",
 		       new->insertlength,hit3->genomicstart,hit5->genomicend,querylength5,querylength3));
       } else if ((chrpos = overlap5_gmap_plus(&querypos,&chrstart,&chrend,/*hit*/hit5,/*gmap*/hit3)) > 0U) {
 	new->insertlength = /* end3 */ (chrpos - querypos + querylength3) - /* start5 */ chrstart;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("plus, overlap: insert length %d = end3 (%lu - %d + %d) - start5 %lu\n",
 		       new->insertlength,chrpos,querypos,querylength3,chrstart));
       } else {
 	/* Still no overlap */
 	new->insertlength = (hit3->genomicstart - hit5->genomicend) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       }
 
     } else if (hit5->plusp == false && hit3->plusp == false) {
@@ -8031,19 +8091,23 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
       if (hit3->genomicstart <= hit5->genomicend) {
 	/* No overlap */
 	new->insertlength = (hit5->genomicend - hit3->genomicstart) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("minus, no overlap: insert length %d = end5 %lu - start3 %lu + %d + %d\n",
 		       new->insertlength,hit5->genomicend,hit3->genomicstart,querylength5,querylength3));
       } else if ((chrpos = overlap5_gmap_minus(&querypos,&chrstart,&chrend,/*hit*/hit5,/*gmap*/hit3)) > 0U) {
 	new->insertlength = /* start5 */ chrstart - /* end3 */ (chrpos + querypos - querylength3) - 1;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
 	debug10(printf("minus, overlap: insert length %d = start5 %lu - end3 (%lu + %d - %d) - 1\n",
 		       new->insertlength,chrstart,chrpos,querypos,querylength3));
       } else {
 	/* Still no overlap */
 	new->insertlength = (hit5->genomicend - hit3->genomicstart) + querylength5 + querylength3;
+	new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       }
     } else {
       new->dir = 0;
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
     }
 
   } else if (hit5->plusp == true && hit3->plusp == false) {
@@ -8054,10 +8118,13 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
 
     if (hit5->genomicend < hit3->genomicend) {
       new->insertlength = (hit3->genomicend - hit5->genomicend) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
     } else if (hit3->genomicstart < hit5->genomicstart) {
       new->insertlength = (hit5->genomicstart - hit3->genomicstart) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
     } else {
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
     }
 
   } else if (hit5->plusp == false && hit3->plusp == true) {
@@ -8068,10 +8135,13 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
 
     if (hit5->genomicstart < hit3->genomicstart) {
       new->insertlength = (hit3->genomicstart - hit5->genomicstart) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
     } else if (hit3->genomicend < hit5->genomicend) {
       new->insertlength = (hit5->genomicend - hit3->genomicend) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
     } else {
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
     }
 
   } else if (hit5->plusp == true) {
@@ -8090,6 +8160,7 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
     if (hit5->genomicend < hit3->genomicstart) {
       /* No overlap */
       new->insertlength = (hit3->genomicstart - hit5->genomicend) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       debug10(printf("plus, no overlap: insert length %d = start3 %lu - end5 %lu + %d + %d\n",
 		     new->insertlength,hit3->genomicstart,hit5->genomicend,querylength5,querylength3));
 #if 0
@@ -8097,9 +8168,11 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
       /* hit5 subsumes hit3 */
       debug10(printf("plus, subsumption %lu > %lu\n",hit5->genomicend,hit3->genomicend));
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
 #endif
     } else {
       new->insertlength = pair_insert_length(hit5,hit3);
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
     }
 
 
@@ -8119,6 +8192,7 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
     if (hit3->genomicstart < hit5->genomicend) {
       /* No overlap */
       new->insertlength = (hit5->genomicend - hit3->genomicstart) + querylength5 + querylength3;
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
       debug10(printf("minus, no overlap: insert length %d = end5 %lu - start3 %lu + %d + %d\n",
 		     new->insertlength,hit5->genomicend,hit3->genomicstart,querylength5,querylength3));
 #if 0
@@ -8126,9 +8200,11 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
       /* hit3 subsumes hit5 */
       debug10(printf("minus, subsumption %lu > %lu\n",hit3->genomicstart,hit5->genomicstart));
       new->insertlength = 0;
+      new->insertlength_expected_sign = false;
 #endif
     } else {
       new->insertlength = pair_insert_length(hit5,hit3);
+      new->insertlength_expected_sign = insertlength_expected(new->insertlength);
     }
 
   }
@@ -8233,6 +8309,7 @@ Stage3pair_new (T hit5, T hit3,	Univcoord_T *splicesites,
   debug0(printf("Created new pair from %p and %p with private %d, %d\n",hit5,hit3,private5p,private3p));
   debug0(printf("  hittypes %s and %s\n",hittype_string(hit5->hittype),hittype_string(hit3->hittype)));
   debug0(printf("  sensedirs %d and %d\n",hit5->sensedir,hit3->sensedir));
+  debug0(printf("  genomicpos %lu..%lu and %lu..%lu\n",hit5->genomicstart,hit5->genomicend,hit3->genomicstart,hit3->genomicend));
 
   if (hit5->circularpos < 0 && hit3->circularpos < 0) {
     new->circularp = false;
@@ -8808,6 +8885,7 @@ hitpair_goodness_cmp (bool *equalp, Stage3pair_T hitpair,
 		      int k,
 #endif
 		      Stage3pair_T best_hitpair, bool finalp) {
+  double prob1, prob2;
 
 #if 0
   int hitpair_nmatches, best_hitpair_nmatches;
@@ -8973,15 +9051,6 @@ hitpair_goodness_cmp (bool *equalp, Stage3pair_T hitpair,
     debug8(printf(" => %d wins by nchimera_known\n",k));
     return +1;
 
-  } else if (hitpair->outerlength > best_hitpair->outerlength) {
-    /* k is worse */
-    debug8(printf(" => %d loses by outerlength\n",k));
-    return -1;
-  } else if (hitpair->outerlength < best_hitpair->outerlength) {
-    /* k is better */
-    debug8(printf(" => %d wins by outerlength\n",k));
-    return +1;
-
 #if 0
   } else if (hitpair->absdifflength < best_hitpair->absdifflength) {
     /* k is worse */
@@ -9023,32 +9092,121 @@ hitpair_goodness_cmp (bool *equalp, Stage3pair_T hitpair,
 
 #ifdef USE_ABSDIFFLENGTH
     /* If insert length is within deviation of expected pairlength, favor it */
-  } else if (best_hitpair->absdifflength <= (int) pairlength_deviation &&
-	     hitpair->absdifflength > (int) pairlength_deviation) {
+  } else if (best_hitpair->absdifflength <= (Chrpos_T) pairlength_deviation &&
+	     hitpair->absdifflength > (Chrpos_T) pairlength_deviation) {
     /* k is worse */
     debug8(printf(" => %d loses by absdifflength within deviation %d\n",k,pairlength_deviation));
     return -1;
-  } else if (hitpair->absdifflength <= (int) pairlength_deviation &&
-	     best_hitpair->absdifflength > (int) pairlength_deviation) {
+  } else if (hitpair->absdifflength <= (Chrpos_T) pairlength_deviation &&
+	     best_hitpair->absdifflength > (Chrpos_T) pairlength_deviation) {
     /* k is better */
     debug8(printf(" => %d wins by absdifflength within deviation %d\n",k,pairlength_deviation));
     return +1;
 #endif
 
-    /* Otherwise, favor longer insert lengths to give more compact splices */
-  } else if (hitpair->insertlength < best_hitpair->insertlength) {
+    /* Previously favored longer insert lengths to give more compact
+       splices.  However, we now accept splices first that give
+       expected pairlength */
+  } else if (hitpair->insertlength_expected_sign == -1 && best_hitpair->insertlength_expected_sign == +1) {
     /* k is worse */
-    debug8(printf(" => %d loses by insertlength\n",k));
+    debug8(printf(" => %d loses by insertlength_expected_sign\n",k));
     return -1;
-  } else if (hitpair->insertlength > best_hitpair->insertlength) {
+  } else if (hitpair->insertlength_expected_sign == +1 && best_hitpair->insertlength_expected_sign == -1) {
     /* k is better */
-    debug8(printf(" => %d wins by insertlength\n",k));
+    debug8(printf(" => %d wins by insertlength_expected_sign\n",k));
     return +1;
 
+    /* Next we look at splice probability */
   } else {
-    debug8(printf("  => equal\n"));
-    *equalp = true;
-    return 0;
+    if (hitpair->hit5->hittype == SPLICE && best_hitpair->hit5->hittype == SPLICE &&
+	hitpair->hit3->hittype == SPLICE && best_hitpair->hit3->hittype == SPLICE) {
+      debug8(printf(" => dual splice"));
+      prob1 = Substring_chimera_prob(hitpair->hit5->substring_donor) + Substring_chimera_prob(hitpair->hit5->substring_acceptor) +
+	Substring_chimera_prob(hitpair->hit3->substring_donor) + Substring_chimera_prob(hitpair->hit3->substring_acceptor);
+      prob2 = Substring_chimera_prob(best_hitpair->hit5->substring_donor) + Substring_chimera_prob(best_hitpair->hit5->substring_acceptor) +
+	Substring_chimera_prob(best_hitpair->hit3->substring_donor) + Substring_chimera_prob(best_hitpair->hit3->substring_acceptor);
+      if (prob1 + 0.3 < prob2) {
+	/* k is worse */
+	debug8(printf(" => %d loses by dual splice prob %f vs %f\n",k,prob1,prob2));
+	return -1;
+      } else if (prob1 > prob2 + 0.3) {
+	/* k is better */
+	debug8(printf(" => %d wins by dual splice prob %f vs %f\n",k,prob1,prob2));
+	return +1;
+      }
+
+    } else if (hitpair->hit5->hittype == SPLICE && best_hitpair->hit5->hittype == SPLICE) {
+      debug8(printf(" => splice on hit5"));
+      prob1 = Substring_chimera_prob(hitpair->hit5->substring_donor) + Substring_chimera_prob(hitpair->hit5->substring_acceptor);
+      prob2 = Substring_chimera_prob(best_hitpair->hit5->substring_donor) + Substring_chimera_prob(best_hitpair->hit5->substring_acceptor);
+      if (prob1 + 0.3 < prob2) {
+	/* k is worse */
+	debug8(printf(" => %d loses by splice prob %f vs %f\n",k,prob1,prob2));
+	return -1;
+      } else if (prob1 > prob2 + 0.3) {
+	/* k is better */
+	debug8(printf(" => %d wins by splice prob %f vs %f\n",k,prob1,prob2));
+	return +1;
+      }
+
+    } else if (hitpair->hit3->hittype == SPLICE && best_hitpair->hit3->hittype == SPLICE) {
+      debug8(printf(" => splice on hit3"));
+      prob1 = Substring_chimera_prob(hitpair->hit3->substring_donor) + Substring_chimera_prob(hitpair->hit3->substring_acceptor);
+      prob2 = Substring_chimera_prob(best_hitpair->hit3->substring_donor) + Substring_chimera_prob(best_hitpair->hit3->substring_acceptor);
+      if (prob1 + 0.3 < prob2) {
+	/* k is worse */
+	debug8(printf(" => %d loses by splice prob %f vs %f\n",k,prob1,prob2));
+	return -1;
+      } else if (prob1 > prob2 + 0.3) {
+	/* k is better */
+	debug8(printf(" => %d wins by splice prob %f vs %f\n",k,prob1,prob2));
+	return +1;
+      }
+    }
+
+    /* Next, favor shorter outerlengths to give more compact splices or closer pairs */
+    if (hitpair->outerlength > best_hitpair->outerlength) {
+      /* k is worse */
+      debug8(printf(" => %d loses by outerlength\n",k));
+      return -1;
+    } else if (hitpair->outerlength < best_hitpair->outerlength) {
+      /* k is better */
+      debug8(printf(" => %d wins by outerlength\n",k));
+      return +1;
+      
+    } else {
+      if (hitpair->insertlength_expected_sign >= 0 && best_hitpair->insertlength_expected_sign >= 0) {
+	/* Both insert lengths are short, so favor shorter insert length */
+	debug8(printf(" => short insertlengths"));
+	/* Favor shorter insert lengths */
+	if (hitpair->insertlength > best_hitpair->insertlength) {
+	  /* k is worse */
+	  debug8(printf(" => %d loses by insertlength\n",k));
+	  return -1;
+	} else if (hitpair->insertlength < best_hitpair->insertlength) {
+	  /* k is better */
+	  debug8(printf(" => %d wins by insertlength\n",k));
+	  return +1;
+	}
+
+      } else {
+	/* Both insert lengths are long, so favor longer insert length to give more compact splices */
+	debug8(printf(" => long insertlengths"));
+	if (hitpair->insertlength < best_hitpair->insertlength) {
+	  /* k is worse */
+	  debug8(printf(" => %d loses by insertlength\n",k));
+	  return -1;
+	} else if (hitpair->insertlength > best_hitpair->insertlength) {
+	  /* k is better */
+	  debug8(printf(" => %d wins by insertlength\n",k));
+	  return +1;
+	}
+      }
+
+      debug8(printf("  => equal\n"));
+      *equalp = true;
+      return 0;
+    }
   }
 }
 
@@ -10495,7 +10653,7 @@ Stage3pair_sense_consistent_p (List_T hitpairlist) {
 /* Want to unalias plus and alias minus */
 List_T
 Stage3end_linearize_5 (List_T hitlist) {
-  int chrlength;
+  Chrpos_T chrlength;
   T hit;
   List_T p;
 
@@ -10528,7 +10686,7 @@ Stage3end_linearize_5 (List_T hitlist) {
 /* Want to alias plus and unalias minus */
 List_T
 Stage3end_linearize_3 (List_T hitlist) {
-  int chrlength;
+  Chrpos_T chrlength;
   T hit;
   List_T p;
 

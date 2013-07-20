@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: iit-write.c 102134 2013-07-19 23:04:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -25,6 +25,7 @@ static char rcsid[] = "$Id: iit-write.c 99737 2013-06-27 19:33:03Z twu $";
 #include "mem.h"
 #include "fopen.h"
 #include "interval.h"
+#include "types.h"		/* For HAVE_64_BIT and UINT8 */
 
 
 #ifdef DEBUG

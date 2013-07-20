@@ -1,4 +1,4 @@
-/* $Id: types.h 99770 2013-06-27 22:26:58Z twu $ */
+/* $Id: types.h 102168 2013-07-20 00:44:27Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -28,16 +28,17 @@ typedef UINT4 Genomecomp_T;
 /* An 8-byte word */
 /* Oligospace_T needs to hold 1 more than maximum Storedoligomer_T.
    If 8-byte words are not available, then maximum k-mer is 15 */
-#if (SIZEOF_UNSIGNED_LONG == 8)
-#define HAVE_64_BIT
-#define MAXIMUM_KMER 16
-typedef unsigned long UINT8;
-typedef unsigned long Oligospace_T;
-#elif (SIZEOF_UNSIGNED_LONG_LONG == 8)
-#define HAVE_64_BIT
+/* Prefer to use unsigned long long, which should be 8 bytes on all systems */
+#if (SIZEOF_UNSIGNED_LONG_LONG == 8)
+#define HAVE_64_BIT 1
 #define MAXIMUM_KMER 16
 typedef unsigned long long UINT8;
 typedef unsigned long long Oligospace_T;
+#elif (SIZEOF_UNSIGNED_LONG == 8)
+#define HAVE_64_BIT 1
+#define MAXIMUM_KMER 16
+typedef unsigned long UINT8;
+typedef unsigned long Oligospace_T;
 #else
 #define MAXIMUM_KMER 15
 #define OLIGOSPACE_NOT_LONG

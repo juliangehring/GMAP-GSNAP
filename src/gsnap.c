@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 99751 2013-06-27 21:08:45Z twu $";
+static char rcsid[] = "$Id: gsnap.c 102170 2013-07-20 00:47:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -176,6 +176,8 @@ static Access_mode_T genome_access = USE_ALLOCATE;
 static int pairmax;
 static int pairmax_dna = 1000;
 static int pairmax_rna = 200000;
+static int expected_pairlength = 200;
+static int pairlength_deviation = 100;
 
 #ifdef HAVE_PTHREAD
 static pthread_t output_thread_id, *worker_thread_ids;
@@ -391,6 +393,9 @@ static struct option long_options[] = {
   {"expand-offsets", required_argument, 0, 0}, /* expand_offsets_p */
   {"pairmax-dna", required_argument, 0, 0}, /* pairmax_dna */
   {"pairmax-rna", required_argument, 0, 0}, /* pairmax_rna */
+  {"pairexpect", required_argument, 0, 0},  /* expected_pairlength */
+  {"pairdev", required_argument, 0, 0},  /* pairlength_deviation */
+
 #ifdef HAVE_PTHREAD
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
 #endif
@@ -1358,7 +1363,7 @@ main (int argc, char *argv[]) {
 	} else if (!strcmp(optarg,"atoi-nonstranded")) {
 	  mode = ATOI_NONSTRANDED;
 	} else {
-	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi\n");
+	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi-nonstranded\n");
 	  exit(9);
 	}
 
@@ -1386,7 +1391,7 @@ main (int argc, char *argv[]) {
 	runlength_root = optarg;
 
       } else if (!strcmp(long_name,"gmap-mode")) {
-	gmap_mode = 0;
+	gmap_mode = 0;		/* Initialize */
 	string = strtok(optarg,",");
 	if (add_gmap_mode(string) != 0) {
 	  while ((string = strtok(NULL,",")) != NULL && add_gmap_mode(string) != 0) {
@@ -1467,6 +1472,11 @@ main (int argc, char *argv[]) {
 	pairmax_dna = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"pairmax-rna")) {
 	pairmax_rna = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"pairexpect")) {
+	expected_pairlength = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"pairdev")) {
+	pairlength_deviation = atoi(check_valid_int(optarg));
+
       } else if (!strcmp(long_name,"indel-endlength")) {
 	min_indel_end_matches = atoi(check_valid_int(optarg));
 	if (min_indel_end_matches > 14) {
@@ -1860,11 +1870,13 @@ main (int argc, char *argv[]) {
     pairmax = pairmax_dna;
     shortsplicedist = shortsplicedist_known = 0U;
     shortsplicedist_novelend = 0U;
+#if 0
     if (user_terminal_threshold_p == false) {
-      /* terminal alignments don't work well with bisulfite reads */
+      /* terminal_threshold still useful for finding GMAP alignments */
       fprintf(stderr,"--terminal-threshold not specified, so turning off terminal alignments for DNA-Seq reads\n");
       terminal_threshold = 1000;
     }
+#endif
   }
 
   if (shortsplicedist_novelend > shortsplicedist) {
@@ -2589,7 +2601,7 @@ main (int argc, char *argv[]) {
 	       splicesites,min_intronlength,max_deletionlength,output_sam_p);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
-		 distances_observed_p,pairmax,
+		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
 		 circularp);
@@ -2939,15 +2951,16 @@ is still designed to be fast.\n\
   fprintf(stdout,"\
   --terminal-threshold=INT       Threshold for searching for a terminal alignment (from one end of the\n\
                                    read to the best possible position at the other end) (default 2\n\
-                                   for RNA-Seq in standard, atoi-stranded, and atoi-nonstranded mode;\n\
-                                   default 1000 for all DNA-Seq and for RNA-Seq in cmet-stranded and cmet-nonstranded mode).\n\
+                                   for standard, atoi-stranded, and atoi-nonstranded mode;\n\
+                                   default 1000 for cmet-stranded and cmet-nonstranded mode).\n\
                                    For example, if this value is 2, then if GSNAP finds an exact or\n\
                                    1-mismatch alignment, it will not try to find a terminal alignment.\n\
                                    Note that this default value may not be low enough if you want to\n\
                                    obtain terminal alignments for very short reads, although such reads\n\
-                                   probably don't have enough specificity for terminal alignments anyway.\n\
-                                   To turn off terminal alignments, set this to a high value, greater\n\
-                                   than the value for --max-mismatches.\n\
+                                   probably do not have enough specificity for terminal alignments anyway.\n\
+                                   Note also that terminal alignments are needed to help the GMAP algorithm\n\
+                                   find some alignments.  To turn off terminal alignments, set this to a\n\
+                                   high value, greater than the value for --max-mismatches.\n\
   -i, --indel-penalty=INT        Penalty for an indel (default 2).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches.\n\
@@ -3107,6 +3120,10 @@ is still designed to be fast.\n\
   --pairmax-rna=INT              Max total genomic length for RNA-Seq paired reads, or other reads\n\
                                    that could have a splice (default 200000).  Used if -N or -s is specified.\n\
                                    Should probably match the value for -w, --localsplicedist.\n\
+  --pairexpect=INT               Expected paired-end length, used for calling splices in medial part of\n\
+                                   paired-end reads (default 200)\n\
+  --pairdev=INT                  Allowable deviation from expected paired-end length, used for\n\
+                                   calling splices in medial part of paired-end reads (default 100)\n\
 ");
   fprintf(stdout,"\n");
 

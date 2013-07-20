@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: dynprog.c 102110 2013-07-19 22:15:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -149,6 +149,14 @@ static char rcsid[] = "$Id: dynprog.c 99737 2013-06-27 19:33:03Z twu $";
 #else
 #define debug14(x)
 #endif
+
+/* print_vector */
+#ifdef DEBUG15
+#define debug15(x) x
+#else
+#define debug15(x)
+#endif
+
 
 
 
@@ -367,15 +375,11 @@ typedef enum {PAIRED_HIGHQ, PAIRED_MEDQ, PAIRED_LOWQ,
 #define MAXVERTJUMP_LOWQ 1
 
 
-#ifdef HAVE_SSE4_1
 typedef char Score8_T;
 typedef char Direction8_T;
-#endif
 
-#ifdef HAVE_SSE2
 typedef short Score16_T;
 typedef short Direction16_T;
-#endif
 
 typedef short Pairdistance_T;
 
@@ -579,6 +583,8 @@ Matrix8_print (Score8_T **matrix, int rlength, int glength, char *rsequence,
   int i, j;
   char g_alt;
 
+  _mm_lfence();
+
   printf("  ");
   for (j = 0; j <= glength; ++j) {
     if (j == 0) {
@@ -622,6 +628,8 @@ Matrix16_print (Score16_T **matrix, int rlength, int glength, char *rsequence,
 		bool watsonp, bool revp) {
   int i, j;
   char g_alt;
+
+  _mm_lfence();
 
   printf("  ");
   for (j = 0; j <= glength; ++j) {
@@ -887,6 +895,8 @@ Directions8_print (Direction8_T **directions_nogap, Direction8_T **directions_Eg
   int i, j;
   char g_alt;
 
+  _mm_lfence();
+
   printf("  ");
   for (j = 0; j <= glength; ++j) {
     if (j == 0) {
@@ -948,6 +958,8 @@ Directions16_print (Direction16_T **directions_nogap, Direction16_T **directions
 		    bool watsonp, bool revp) {
   int i, j;
   char g_alt;
+
+  _mm_lfence();
 
   printf("  ");
   for (j = 0; j <= glength; ++j) {
@@ -1765,13 +1777,14 @@ get_genomic_seg (Chrpos_T genomicpos, int length, Univcoord_T chroffset,
 #endif
 
 
-#if 0
+#ifdef DEBUG15
 /* For debugging of SIMD procedures*/
 static void
 print_vector_8 (__m128i x, int r, int c, char *label) {
   __m128i a[1];
   Score8_T *s = a;
 
+  _mm_lfence();			/* Needed to print correct values */
   _mm_store_si128(a,x);
   printf("%d,%d %s: %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
 	 r,c,label,s[0],s[1],s[2],s[3],s[4],s[5],s[6],s[7],s[8],s[9],s[10],s[11],s[12],s[13],s[14],s[15]);
@@ -1783,6 +1796,7 @@ print_vector_16 (__m128i x, int r, int c, char *label) {
   __m128i a[1];
   Score16_T *s = a;
 
+  _mm_lfence();			/* Needed to print correct values */
   _mm_store_si128(a,x);
   printf("%d,%d %s: %d %d %d %d %d %d %d %d\n",r,c,label,s[0],s[1],s[2],s[3],s[4],s[5],s[6],s[7]);
   return;
@@ -2961,6 +2975,7 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
       }
 
       /* Perform F loop on entire column */
+      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3127,6 +3142,7 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
       }
 
       /* Perform F loop on entire column */
+      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3159,26 +3175,30 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
     }
   }
 
+#ifdef DEBUG2
+  printf("SIMD\n");
+  Matrix8_print(matrix,rlength,glength,rsequence,gsequence,gsequence_alt,
+		goffset,chroffset,chrhigh,watsonp,revp);
+  Directions8_print(*directions_nogap,*directions_Egap,*directions_Fgap,
+		    rlength,glength,rsequence,gsequence,gsequence_alt,
+		    goffset,chroffset,chrhigh,watsonp,revp);
+#endif
+  
 #ifdef DEBUG14
   matrix_std = compute_scores_standard(&directions_nogap_std,&directions_Egap_std,&directions_Fgap_std,
 				       this,rsequence,gsequence,gsequence_alt,goffset,rlength,glength,
 				       chroffset,chrhigh,watsonp,mismatchtype,
 				       open,extend,lband,uband,jump_late_p,revp);
 
-  debug2(printf("Banded\n"));
-  debug2(Matrix32_print(matrix_std,rlength,glength,rsequence,gsequence,gsequence_alt,
-			goffset,chroffset,chrhigh,watsonp,revp));
-  debug2(Directions32_print(directions_nogap_std,directions_Egap_std,directions_Fgap_std,
-			    rlength,glength,rsequence,gsequence,gsequence_alt,
-			    goffset,chroffset,chrhigh,watsonp,revp));
+#ifdef DEBUG2
+  printf("Banded %s\n",revp ? "rev" : "fwd");
+  Matrix32_print(matrix_std,rlength,glength,rsequence,gsequence,gsequence_alt,
+		 goffset,chroffset,chrhigh,watsonp,revp);
+  Directions32_print(directions_nogap_std,directions_Egap_std,directions_Fgap_std,
+		     rlength,glength,rsequence,gsequence,gsequence_alt,
+		     goffset,chroffset,chrhigh,watsonp,revp);
+#endif
   
-  debug2(printf("SIMD\n"));
-  debug2(Matrix8_print(matrix,rlength,glength,rsequence,gsequence,gsequence_alt,
-		       goffset,chroffset,chrhigh,watsonp,revp));
-  debug2(Directions8_print(*directions_nogap,*directions_Egap,*directions_Fgap,
-			   rlength,glength,rsequence,gsequence,gsequence_alt,
-			   goffset,chroffset,chrhigh,watsonp,revp));
-
   banded_matrix8_compare(matrix,matrix_std,rlength,glength,lband,uband,
 			 rsequence,gsequence,gsequence_alt,
 			 goffset,chroffset,chrhigh,watsonp,revp);
@@ -3428,7 +3448,9 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 	/* Load previous E vector at this point in the query sequence */
 	/* H vector already loaded before loop or at bottom of loop */
 	E_r_gap = _mm_load_si128(&(EE[(r-1)/SIMD_NSHORTS]));
+	debug15(print_vector_16(E_r_gap,r,c,"E_r_gap"));
 	H_nogap_r = _mm_load_si128((__m128i *) &(matrix[c-1][r]));
+	debug15(print_vector_16(H_nogap_r,r,c,"H_nogap_r load"));
 
 	/* EGAP */
 	T1 = _mm_adds_epi16(H_nogap_r, v_open);
@@ -3438,7 +3460,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 
 	E_r_gap = _mm_max_epi16(E_r_gap, T1); /* Compare H + open with vert */
 	E_r_gap = _mm_adds_epi16(E_r_gap, v_extend); /* Compute scores for Egap (vert + open) */
-	/* print_vector_16(E_r_gap,r,c,"E"); */
+	debug15(print_vector_16(E_r_gap,r,c,"E"));
 	if (r + SIMD_NSHORTS > rhigh) {
 	  /* mask last block (e.g., NM_001193336_71_) */
 	  E_r_gap = _mm_min_epi16(E_r_gap, E_mask_bottom); /* To handle band limitation from below */
@@ -3456,17 +3478,19 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 	pairscores_std = _mm_load_si128((__m128i *) &(pairscores_std_ptr[r-1]));
 	pairscores_alt = _mm_load_si128((__m128i *) &(pairscores_alt_ptr[r-1]));
 	H_nogap_r = _mm_adds_epi16(H_nogap_r, _mm_max_epi16(pairscores_std,pairscores_alt));
-	/* print_vector_16(H_nogap_r,r,c,"H"); */
+	debug15(print_vector_16(H_nogap_r,r,c,"H"));
 
 	dir_horiz = _mm_cmplt_epi16(E_r_gap,H_nogap_r); /* E < H */
 	dir_horiz = _mm_andnot_si128(dir_horiz,all_one_bits);	/* E >= H, for jump late */
 	_mm_store_si128((__m128i *) &((*directions_nogap)[c][r]),dir_horiz);
 
 	H_nogap_r = _mm_max_epi16(H_nogap_r, E_r_gap); /* Compare H + pairscores with horiz + extend */
+	debug15(print_vector_16(H_nogap_r,r,c,"H_nogap_r store"));
 	_mm_store_si128((__m128i *) &(score_column[r]), H_nogap_r);
       }
 
       /* Perform F loop on entire column */
+      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3477,7 +3501,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
       for (r = rlo; r <= rhigh; r++) {
 
 	/* FGAP */
-	/* debug2(printf("Fgap at r %d, c %d: c_gap + extend %d vs last_nogap + open + extend %d\n",r,c,c_gap + extend,last_nogap + open + extend)); */
+	debug2(printf("Fgap at r %d, c %d: c_gap + extend %d vs last_nogap + open + extend %d\n",r,c,c_gap + extend,last_nogap + open + extend));
 	if (c_gap /* + extend */ >= (score = last_nogap + open /* + extend */)) {  /* Use >= for jump late */
 	  c_gap += extend;
 	  (*directions_Fgap)[c][r] = VERT;
@@ -3488,7 +3512,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 
 	/* NOGAP */
 	last_nogap = *score_ptr;
-	/* debug2(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap)); */
+	debug2(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap));
 	if (c_gap >= last_nogap) {  /* Use >= for jump late */
 	  last_nogap = c_gap;
 #if 0
@@ -3602,7 +3626,9 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 	/* Load previous E vector at this point in the query sequence */
 	/* H vector already loaded before loop or at bottom of loop */
 	E_r_gap = _mm_load_si128(&(EE[(r-1)/SIMD_NSHORTS]));
+	debug15(print_vector_16(E_r_gap,r,c,"E_r_gap"));
 	H_nogap_r = _mm_load_si128((__m128i *) &(matrix[c-1][r]));
+	debug15(print_vector_16(H_nogap_r,r,c,"H_nogap_r load"));
 
 	/* EGAP */
 	T1 = _mm_adds_epi16(H_nogap_r, v_open);
@@ -3611,7 +3637,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 
 	E_r_gap = _mm_max_epi16(E_r_gap, T1); /* Compare H + open with vert */
 	E_r_gap = _mm_adds_epi16(E_r_gap, v_extend); /* Compute scores for Egap (vert + open) */
-	/* print_vector_16(E_r_gap,r,c,"E"); */
+	debug15(print_vector_16(E_r_gap,r,c,"E"));
 	if (r + SIMD_NSHORTS > rhigh) {
 	  /* mask last block (e.g., NM_001193336_71_) */
 	  E_r_gap = _mm_min_epi16(E_r_gap, E_mask_bottom); /* To handle band limitation from below */
@@ -3629,16 +3655,18 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 	pairscores_std = _mm_load_si128((__m128i *) &(pairscores_std_ptr[r-1]));
 	pairscores_alt = _mm_load_si128((__m128i *) &(pairscores_alt_ptr[r-1]));
 	H_nogap_r = _mm_adds_epi16(H_nogap_r, _mm_max_epi16(pairscores_std,pairscores_alt));
-	/* print_vector_16(H_nogap_r,r,c,"H"); */
+	debug15(print_vector_16(H_nogap_r,r,c,"H"));
 
 	dir_horiz = _mm_cmpgt_epi16(E_r_gap,H_nogap_r); /* E > H, for jump early */
 	_mm_store_si128((__m128i *) &((*directions_nogap)[c][r]),dir_horiz);
 
 	H_nogap_r = _mm_max_epi16(H_nogap_r, E_r_gap); /* Compare H + pairscores with horiz + extend */
+	debug15(print_vector_16(H_nogap_r,r,c,"H_nogap_r store"));
 	_mm_store_si128((__m128i *) &(score_column[r]), H_nogap_r);
       }
 
       /* Perform F loop on entire column */
+      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3649,7 +3677,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
       for (r = rlo; r <= rhigh; r++) {
 
 	/* FGAP */
-	/* debug2(printf("Fgap at r %d, c %d: c_gap + extend %d vs last_nogap + open + extend %d\n",r,c,c_gap + extend,last_nogap + open + extend)); */
+	debug2(printf("Fgap at r %d, c %d: c_gap + extend %d vs last_nogap + open + extend %d\n",r,c,c_gap + extend,last_nogap + open + extend));
 	if (c_gap /* + extend */ > (score = last_nogap + open /* + extend */)) {  /* Use > for jump early */
 	  c_gap += extend;
 	  (*directions_Fgap)[c][r] = VERT;
@@ -3660,7 +3688,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 
 	/* NOGAP */
 	last_nogap = *score_ptr;
-	/* debug2(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap)); */
+	debug2(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap));
 	if (c_gap > last_nogap) {  /* Use > for jump early */
 	  last_nogap = c_gap;
 #if 0
@@ -3676,26 +3704,30 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
     }
   }
 
+#ifdef DEBUG2
+  printf("SIMD\n");
+  Matrix16_print(matrix,rlength,glength,rsequence,gsequence,gsequence_alt,
+		 goffset,chroffset,chrhigh,watsonp,revp);
+  Directions16_print(*directions_nogap,*directions_Egap,*directions_Fgap,
+		     rlength,glength,rsequence,gsequence,gsequence_alt,
+		     goffset,chroffset,chrhigh,watsonp,revp);
+#endif
+
 #ifdef DEBUG14
   matrix_std = compute_scores_standard(&directions_nogap_std,&directions_Egap_std,&directions_Fgap_std,
 				       this,rsequence,gsequence,gsequence_alt,goffset,rlength,glength,
 				       chroffset,chrhigh,watsonp,mismatchtype,
 				       open,extend,lband,uband,jump_late_p,revp);
 
-  debug2(printf("Banded\n"));
-  debug2(Matrix32_print(matrix_std,rlength,glength,rsequence,gsequence,gsequence_alt,
-			goffset,chroffset,chrhigh,watsonp,revp));
-  debug2(Directions32_print(directions_nogap_std,directions_Egap_std,directions_Fgap_std,
-			    rlength,glength,rsequence,gsequence,gsequence_alt,
-			    goffset,chroffset,chrhigh,watsonp,revp));
+#ifdef DEBUG2
+  printf("Banded\n");
+  Matrix32_print(matrix_std,rlength,glength,rsequence,gsequence,gsequence_alt,
+		 goffset,chroffset,chrhigh,watsonp,revp);
+  Directions32_print(directions_nogap_std,directions_Egap_std,directions_Fgap_std,
+		     rlength,glength,rsequence,gsequence,gsequence_alt,
+		     goffset,chroffset,chrhigh,watsonp,revp);
+#endif
   
-  debug2(printf("SIMD\n"));
-  debug2(Matrix16_print(matrix,rlength,glength,rsequence,gsequence,gsequence_alt,
-		      goffset,chroffset,chrhigh,watsonp,revp));
-  debug2(Directions16_print(*directions_nogap,*directions_Egap,*directions_Fgap,
-			    rlength,glength,rsequence,gsequence,gsequence_alt,
-			    goffset,chroffset,chrhigh,watsonp,revp));
-
   banded_matrix16_compare(matrix,matrix_std,rlength,glength,lband,uband,
 			  rsequence,gsequence,gsequence_alt,
 			  goffset,chroffset,chrhigh,watsonp,revp);

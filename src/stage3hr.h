@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: stage3hr.h 102130 2013-07-19 22:59:15Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -37,6 +37,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		IIT_T tally_iit_in, int *tally_divint_crosstable_in,
 		IIT_T runlength_iit_in, int *runlength_divint_crosstable_in,
 		bool distances_observed_p, int pairmax_in,
+		Chrpos_T expected_pairlength, Chrpos_T pairlength_deviation,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
 		int gmap_min_nconsecutive_in, int index1part, int index1interval,

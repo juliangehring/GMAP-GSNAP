@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write-univ.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: iit-write-univ.c 102171 2013-07-20 00:47:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,6 +24,7 @@ static char rcsid[] = "$Id: iit-write-univ.c 99737 2013-06-27 19:33:03Z twu $";
 #include "assert.h"
 #include "mem.h"
 #include "fopen.h"
+#include "types.h"		/* For HAVE_64_BIT and UINT8 */
 #include "univinterval.h"
 
 
@@ -452,10 +453,13 @@ IIT_write_univ_header (FILE *fp, int total_nintervals, int ntypes, int nnodes,
 		       bool coord_values_8p) {
   int neg_total_nintervals;
 
+  /* Writing before ...done */
   if (coord_values_8p == true) {
+    fprintf(stderr,"coordinates require 8 bytes each...");
     neg_total_nintervals = -total_nintervals;
     FWRITE_INT(neg_total_nintervals,fp);
   } else {
+    fprintf(stderr,"coordinates require 4 bytes each...");
     FWRITE_INT(total_nintervals,fp);
   }
   FWRITE_INT(ntypes,fp);

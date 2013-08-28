@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 101727 2013-07-16 23:42:52Z twu $";
+static char rcsid[] = "$Id: stage3.c 105190 2013-08-19 18:47:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -5581,8 +5581,9 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
     /* Do not alter querydp5 or genomedp5 */
   } else {
     rightpair = peeled->first;
-    if (rightpair->gapp == true) {
-      debug(printf("Ran into gap; undoing peel, case 1\n"));
+    while (peeled != NULL && (rightpair->gapp == true || rightpair->comp == INDEL_COMP)) {
+      debug(printf("Ran into gap; undoing peel, case 1, rightpair gapp %d, comp %c\n",
+		   rightpair->gapp,rightpair->comp));
       if (endgappairs != NULL) {
 	path = Pairpool_transfer(path,*endgappairs);
 	*endgappairs = (List_T) NULL;
@@ -5595,14 +5596,16 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
 
       } else {
 	/* Put back 1 */
-	if ((pairptr = peeled) != NULL) {
-	  peeled = Pairpool_pop(peeled,&pair);
-	  path = List_push_existing(path,pairptr);
-	  debug(printf(" Putback [");
-		Pair_dump_one(pair,/*zerobasedp*/true);
-		printf("]"));
-	}
+	/* if ((pairptr = peeled) != NULL) { */
+	pairptr = peeled;
+	peeled = Pairpool_pop(peeled,&pair);
+	path = List_push_existing(path,pairptr);
+	debug(printf(" Putback [");
+	      Pair_dump_one(pair,/*zerobasedp*/true);
+	      printf("]"));
+	  /* } */
 
+#if 0
 	/* Put back 2 */
 	if ((pairptr = peeled) != NULL) {
 	  peeled = Pairpool_pop(peeled,&pair);
@@ -5611,7 +5614,10 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
 		Pair_dump_one(pair,/*zerobasedp*/true);
 		printf("]"));
 	}
+#endif
       }
+
+      rightpair = path->first;
     }
 
     if (path != NULL) {
@@ -5629,7 +5635,7 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
   }
 
   if (endgappairs != NULL) {
-    if (path == NULL || (pair = path->first) == NULL || pair->gapp == false) {
+    if (path == NULL || (pair = path->first) == NULL || (pair->gapp == false && pair->comp != INDEL_COMP)) {
       *endgappairs = NULL;
       *querydp5_medialgap = *querydp5;
       *genomedp5_medialgap = *genomedp5;
@@ -5665,7 +5671,7 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
       }
 
       rightpair = (*endgappairs)->first;
-      if (rightpair->gapp == true) {
+      if (rightpair->gapp == true || rightpair->comp == INDEL_COMP) {
 	debug(printf("Ran into gap; undoing peel, case 2\n"));
 	path = Pairpool_transfer(path,*endgappairs);
 	*endgappairs = (List_T) NULL;
@@ -5711,6 +5717,7 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
     }
   }
 
+  assert(peeled == NULL || path == NULL || ((Pair_T) path->first)->comp != INDEL_COMP);
   debug(
 	if (path == NULL) {
 	  printf(" => Top of path is NULL.");
@@ -5887,8 +5894,9 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
     /* Do not alter querydp3 or genomedp3 */
   } else {
     leftpair = peeled->first;
-    if (leftpair->gapp == true) {
-      debug(printf("Ran into gap; undoing peel, case 3\n"));
+    while (peeled != NULL && (leftpair->gapp == true || leftpair->comp == INDEL_COMP)) {
+      debug(printf("Ran into gap; undoing peel, case 3, leftpair gapp %d, comp %c\n",
+		   leftpair->gapp,leftpair->comp));
       if (endgappairs != NULL) {
 	pairs = Pairpool_transfer(pairs,*endgappairs);
 	*endgappairs = (List_T) NULL;
@@ -5901,14 +5909,16 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
 
       } else {
 	/* Put back 1 */
-	if ((pairptr = peeled) != NULL) {
-	  peeled = Pairpool_pop(peeled,&pair);
-	  pairs = List_push_existing(pairs,pairptr);
-	  debug(printf(" Putback [");
-		Pair_dump_one(pair,/*zerobasedp*/true);
-		printf("]"));
-	}
+	/* if ((pairptr = peeled) != NULL) { */
+	pairptr = peeled;
+	peeled = Pairpool_pop(peeled,&pair);
+	pairs = List_push_existing(pairs,pairptr);
+	debug(printf(" Putback [");
+	      Pair_dump_one(pair,/*zerobasedp*/true);
+	      printf("]"));
+	  /* } */
 
+#if 0
 	/* Put back 2 */
 	if ((pairptr = peeled) != NULL) {
 	  peeled = Pairpool_pop(peeled,&pair);
@@ -5917,7 +5927,10 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
 		Pair_dump_one(pair,/*zerobasedp*/true);
 		printf("]"));
 	}
+#endif
       }
+
+      leftpair = pairs->first;
     }
 
     if (pairs != NULL) {
@@ -5935,7 +5948,7 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
   }
 
   if (endgappairs != NULL) {
-    if (pairs == NULL || (pair = pairs->first) == NULL || pair->gapp == false) {
+    if (pairs == NULL || (pair = pairs->first) == NULL || (pair->gapp == false && pair->comp != INDEL_COMP)) {
       *endgappairs = NULL;
       *querydp3_medialgap = *querydp3;
       *genomedp3_medialgap = *genomedp3;
@@ -5971,7 +5984,7 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
       }
 
       leftpair = (*endgappairs)->first;
-      if (leftpair->gapp == true) {
+      if (leftpair->gapp == true || leftpair->comp == INDEL_COMP) {
 	debug(printf("Ran into gap; undoing peel, case 4\n"));
 	pairs = Pairpool_transfer(pairs,*endgappairs);
 	*endgappairs = (List_T) NULL;
@@ -6017,6 +6030,7 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
     }
   }
 
+  assert(peeled == NULL || pairs == NULL || ((Pair_T) pairs->first)->comp != INDEL_COMP);
   debug(
 	if (pairs == NULL) {
 	  printf(" => Top of pairs is NULL.");
@@ -10109,7 +10123,7 @@ path_compute (double *defect_rate, int *ambig_end_length_5, int *ambig_end_lengt
 			       maxpeelback,maxpeelback_distalmedial,
 			       nullgap,extramaterial_end,extraband_end,
 			       *defect_rate,pairpool,dynprogR,
-			       /*extendp*/true,/*endalign*/QUERYEND_NOGAPS);
+			       /*extendp*/true,/*endalign*/QUERYEND_INDELS);
     }
 
     if (trim3p == true) {
@@ -10132,7 +10146,7 @@ path_compute (double *defect_rate, int *ambig_end_length_5, int *ambig_end_lengt
 			     maxpeelback,maxpeelback_distalmedial,
 			     nullgap,extramaterial_end,extraband_end,
 			     *defect_rate,pairpool,dynprogL,
-			     /*extendp*/true,/*endalign*/QUERYEND_NOGAPS);
+			     /*extendp*/true,/*endalign*/QUERYEND_INDELS);
       pairs = List_reverse(path);
     }
 
@@ -11076,6 +11090,7 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, int *cdna_direction,
   Pair_T end1, start2;
   bool watsonp, connectablep = false;
   Chrpos_T endchrpos1, startchrpos2;
+  int npairs_left, npairs_right, nstart;
   int jumpdiff;
   int cdna_direction_1, cdna_direction_2;
 
@@ -11183,6 +11198,13 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, int *cdna_direction,
       debug10(printf("result: not mergeable\n\n"));
       return false;
     } else {
+      npairs_left = Pairpool_count_bounded(&nstart,firstpart->pairs,0,breakpoint);
+      npairs_right = Pairpool_count_bounded(&nstart,secondpart->pairs,breakpoint,queryntlength);
+      debug10(printf("Predicted after splicing: npairs_left %d, npairs_right %d\n",npairs_left,npairs_right));
+      if (npairs_left == 0 || npairs_right == 0) {
+	return false;
+      }
+
       *queryjump = start2->querypos - end1->querypos - 1;
       debug10(printf("result: mergeable: queryjump = %d - %d - 1 = %d, genomejump = %d\n\n",
 		     start2->querypos,end1->querypos,*queryjump,*genomejump));

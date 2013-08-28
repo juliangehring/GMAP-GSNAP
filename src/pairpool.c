@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 94753 2013-05-02 18:07:51Z twu $";
+static char rcsid[] = "$Id: pairpool.c 104930 2013-08-15 16:08:59Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -605,11 +605,16 @@ Pairpool_clip_bounded (List_T source, int minpos, int maxpos) {
       }
     }
 
-    if (starti < 0) {
-      starti = 0;
-    }
-    if (endi < 0) {
-      endi = i;
+    if (starti < 0 && endi < 0) {
+      /* None of the pairs fall within bounds */
+      return (List_T) NULL;
+    } else {
+      if (starti < 0) {
+	starti = 0;
+      }
+      if (endi < 0) {
+	endi = i;
+      }
     }
 
     p = source;

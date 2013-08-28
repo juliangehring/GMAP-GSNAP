@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: chimera.c 104798 2013-08-14 00:53:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -36,6 +36,13 @@ static char rcsid[] = "$Id: chimera.c 99737 2013-06-27 19:33:03Z twu $";
 #define debug2(x) x
 #else
 #define debug2(x)
+#endif
+
+/* local_join_p and distant_join_p */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
 #endif
 
 
@@ -262,14 +269,114 @@ Chimera_alignment_break (int *newstart, int *newend, Stage3_T stage3, int queryn
 }
 
 
+bool
+Chimera_local_join_p (Stage3_T from, Stage3_T to, int chimera_slop) {
+  debug3(printf("? local_join_p from [%p] %d..%d (%u..%u) -> to [%p] %d..%d (%u..%u) => ",
+		from,Stage3_querystart(from),Stage3_queryend(from),
+		Stage3_chrstart(from),Stage3_chrend(from),
+		to,Stage3_querystart(to),Stage3_queryend(to),
+		Stage3_chrstart(to),Stage3_chrend(to)));
+
+  if (Stage3_chimera_right_p(from) == true) {
+    debug3(printf("false, because from is already part of a chimera on its right\n"));
+    return false;
+    
+  } else if (Stage3_chimera_left_p(to) == true) {
+    debug3(printf("false, because to is already part of a chimera on its left\n"));
+    return false;
+
+  } else if (Stage3_chrnum(from) != Stage3_chrnum(to)) {
+    debug3(printf("false, because different chromosomes\n"));
+    return false;
+
+  } else if (Stage3_watsonp(from) != Stage3_watsonp(to)) {
+    debug3(printf("false, because different strands\n"));
+    return false;
+
+  } else if (Stage3_querystart(from) >= Stage3_querystart(to) &&
+	     Stage3_queryend(from) <= Stage3_queryend(to)) {
+    debug3(printf("false, because from %d..%d is subsumed by to %d..%d\n",
+		  Stage3_querystart(from),Stage3_queryend(from),
+		  Stage3_querystart(to),Stage3_queryend(to)));
+    return false;
+
+  } else if (Stage3_querystart(to) >= Stage3_querystart(from) &&
+	     Stage3_queryend(to) <= Stage3_queryend(from)) {
+    debug3(printf("false, because to %d..%d is subsumed by from %d..%d\n",
+		  Stage3_querystart(to),Stage3_queryend(to),
+		  Stage3_querystart(from),Stage3_queryend(from)));
+    return false;
+
+  } else if (Stage3_queryend(from) - Stage3_querystart(to) <= chimera_slop &&
+	     Stage3_querystart(to) - Stage3_queryend(from) <= chimera_slop) {
+    debug3(printf("true, because %d - %d <= %d and %d - %d <= %d\n",
+		  Stage3_queryend(from),Stage3_querystart(to),chimera_slop,
+		  Stage3_querystart(to),Stage3_queryend(from),chimera_slop));
+    return true;
+
+  } else {
+    debug3(printf(" %d and %d not within chimera_slop %d",
+		  Stage3_queryend(from) - Stage3_querystart(to),Stage3_querystart(to) - Stage3_queryend(from),
+		  chimera_slop));
+    debug3(printf("false\n"));
+    return false;
+  }
+}
+
+
+bool
+Chimera_distant_join_p (Stage3_T from, Stage3_T to, int chimera_slop) {
+  debug3(printf("? chimeric_join_p from %d..%d (%u..%u) -> to %d..%d (%u..%u) => ",
+		Stage3_querystart(from),Stage3_queryend(from),
+		Stage3_chrstart(from),Stage3_chrend(from),
+		Stage3_querystart(to),Stage3_queryend(to),
+		Stage3_chrstart(to),Stage3_chrend(to)));
+
+  if (Stage3_chimera_right_p(from) == true) {
+    debug3(printf("false, because from is already part of a chimera on its right\n"));
+    return false;
+    
+  } else if (Stage3_chimera_left_p(to) == true) {
+    debug3(printf("false, because to is already part of a chimera on its left\n"));
+    return false;
+
+  } else if (Stage3_querystart(from) >= Stage3_querystart(to) &&
+      Stage3_queryend(from) <= Stage3_queryend(to)) {
+    debug3(printf("false, because from %d..%d is subsumed by to %d..%d\n",
+		  Stage3_querystart(from),Stage3_queryend(from),
+		  Stage3_querystart(to),Stage3_queryend(to)));
+    return false;
+  } else if (Stage3_querystart(to) >= Stage3_querystart(from) &&
+	     Stage3_queryend(to) <= Stage3_queryend(from)) {
+    debug3(printf("false, because to %d..%d is subsumed by from %d..%d\n",
+		  Stage3_querystart(to),Stage3_queryend(to),
+		  Stage3_querystart(from),Stage3_queryend(from)));
+    return false;
+  } else if (Stage3_queryend(from) - Stage3_querystart(to) <= chimera_slop &&
+	     Stage3_querystart(to) - Stage3_queryend(from) <= chimera_slop) {
+    debug3(printf("true, because %d - %d <= %d and %d - %d <= %d\n",
+		  Stage3_queryend(from),Stage3_querystart(to),chimera_slop,
+		  Stage3_querystart(to),Stage3_queryend(from),chimera_slop));
+    return true;
+  } else {
+    debug3(printf(" %d and %d not within chimera_slop %d",
+		  Stage3_queryend(from) - Stage3_querystart(to),Stage3_querystart(to) - Stage3_queryend(from),
+		  chimera_slop));
+    debug3(printf("false\n"));
+    return false;
+  }
+}
+
+
 void
 Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chimeraequivpos, int *bestfrom, int *bestto, 
 		  Stage3_T *stage3array_sub1, int npaths_sub1, Stage3_T *stage3array_sub2, int npaths_sub2, 
-		  int queryntlength) {
+		  int queryntlength, int chimera_slop, bool localp) {
   int **matrix_sub1, **matrix_sub2, *from, *to, *bestscoreatpos, i, j, pos, score, 
     bestscore = -1000000;
   bool **gapp_sub1, **gapp_sub2;
-
+  
+  debug3(printf("Chimera_bestpath called\n"));
 
   from = (int *) CALLOC(queryntlength,sizeof(int));
   to = (int *) CALLOC(queryntlength,sizeof(int));
@@ -299,14 +406,19 @@ Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chime
     for (i = 0; i < npaths_sub1; i++) {
       if (gapp_sub1[i][pos] == false) {
 	for (j = 0; j < npaths_sub2; j++) {
-	  if (gapp_sub2[j][pos+1] == false) {
-	    /* Check for the same stage3 object on both lists */
-	    if (stage3array_sub1[i] != stage3array_sub2[j]) {
-	      score = matrix_sub2[j][queryntlength-1] - matrix_sub2[j][pos] + matrix_sub1[i][pos] /* - 0 */;
-	      if (score > bestscoreatpos[pos]) {
-		bestscoreatpos[pos] = score;
-		from[pos] = i;
-		to[pos] = j;
+	  debug3(printf("i %d, j %d\n",i,j));
+	  if (localp == true && Chimera_local_join_p(stage3array_sub1[i],stage3array_sub2[j],chimera_slop) == false) {
+	    /* Not joinable */
+	  } else {
+	    if (gapp_sub2[j][pos+1] == false) {
+	      /* Check for the same stage3 object on both lists */
+	      if (stage3array_sub1[i] != stage3array_sub2[j]) {
+		score = matrix_sub2[j][queryntlength-1] - matrix_sub2[j][pos] + matrix_sub1[i][pos] /* - 0 */;
+		if (score > bestscoreatpos[pos]) {
+		  bestscoreatpos[pos] = score;
+		  from[pos] = i;
+		  to[pos] = j;
+		}
 	      }
 	    }
 	  }

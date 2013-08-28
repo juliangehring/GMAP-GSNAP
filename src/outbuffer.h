@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: outbuffer.h 103703 2013-08-02 23:08:31Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -34,10 +34,12 @@ extern T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp, Univ_IIT_T chromosome_iit,
 	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
+	       int nworkers, bool orderedp,
 	       Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp, bool fails_as_input_p,
 	       bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
 	       int maxpaths_report, bool quiet_if_excessive_p, int quality_shift,
-	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax);
+	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax,
+	       int argc, char **argv, int optind);
 
 #else
 
@@ -51,6 +53,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	       bool sam_headers_p, int quality_shift, bool sam_paired_p,
 	       char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
+	       int nworkers, bool orderedp,
 #endif
 	       bool nofailsp, bool failsonlyp, bool fails_as_input_p, int maxpaths_report, bool quiet_if_excessive_p,
 	       bool map_exons_p, bool map_bothstrands_p, bool print_comment_p, int nflanking,

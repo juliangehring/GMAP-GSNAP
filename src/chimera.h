@@ -1,4 +1,4 @@
-/* $Id: chimera.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: chimera.h 104798 2013-08-14 00:53:57Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -37,10 +37,14 @@ Chimera_print (FILE *fp, T this);
 
 extern int
 Chimera_alignment_break (int *newstart, int *newend, Stage3_T stage3, int queryntlength, double fthreshold);
+extern bool
+Chimera_local_join_p (Stage3_T from, Stage3_T to, int chimera_slop);
+extern bool
+Chimera_distant_join_p (Stage3_T from, Stage3_T to, int chimera_slop);
 extern void
 Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chimeraequivpos, int *bestfrom, int *bestto, 
 		  Stage3_T *stage3array_sub1, int npaths_sub1, Stage3_T *stage3array_sub2, int npaths_sub2, 
-		  int queryntlength);
+		  int queryntlength, int chimera_slop, bool localp);
 extern int
 Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T right_part,
 			 int queryntlength);

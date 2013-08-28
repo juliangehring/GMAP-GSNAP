@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 102170 2013-07-20 00:47:28Z twu $";
+static char rcsid[] = "$Id: gsnap.c 103703 2013-08-02 23:08:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2643,10 +2643,11 @@ main (int argc, char *argv[]) {
 			    chromosome_iit,timingp,
 			    output_sam_p,sam_headers_p,sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
+			    nworkers,orderedp,
 			    gobywriter,nofailsp,failsonlyp,fails_as_input_p,
 			    fastq_format_p,clip_overlap_p,merge_samechr_p,
 			    maxpaths_report,quiet_if_excessive_p,quality_shift,
-			    invert_first_p,invert_second_p,pairmax);
+			    invert_first_p,invert_second_p,pairmax,argc,argv,optind);
 
   Inbuffer_set_outbuffer(inbuffer,outbuffer);
 

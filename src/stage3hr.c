@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3hr.c 102130 2013-07-19 22:59:15Z twu $";
+static char rcsid[] = "$Id: stage3hr.c 104804 2013-08-14 00:57:37Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3191,8 +3191,8 @@ Stage3end_new_terminal (int querystart, int queryend, Univcoord_T left, Compress
   }
   debug0(printf("Recomputing nmismatches_whole as %d\n",nmismatches_whole));
 
-  if (0 && nmismatches_whole > max_mismatches_allowed) {
-    /* This is too dependent on the trimming algorithm */
+  if (nmismatches_whole > max_mismatches_allowed) {
+    /* This may be dependent on the trimming algorithm, but is needed to avoid bad terminal alignments */
     Substring_free(&substring);
     debug0(printf("returning NULL\n"));
     return (T) NULL;

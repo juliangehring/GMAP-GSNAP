@@ -38,7 +38,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h stage3.c stage3.h \
  request.c request.h result.c result.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  chimera.c chimera.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
@@ -81,7 +81,7 @@ GMAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h stage3.c stage3.h \
  request.c request.h result.c result.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  chimera.c chimera.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
@@ -124,7 +124,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  stage1hr.c stage1hr.h \
  request.c request.h resulthr.c resulthr.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gsnap.c
 
@@ -166,7 +166,7 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  stage1hr.c stage1hr.h \
  request.c request.h resulthr.c resulthr.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gsnap.c
 

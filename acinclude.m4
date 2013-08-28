@@ -14,7 +14,6 @@ m4_include([config/expand.m4])
 m4_include([config/perl.m4])
 
 m4_include([config/fopen.m4])
-m4_include([config/popcnt.m4])
 m4_include([config/asm-bsr.m4])
 
 m4_include([config/ax_gcc_x86_cpuid.m4])

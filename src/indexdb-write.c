@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb-write.c 101477 2013-07-15 15:33:07Z twu $";
+static char rcsid[] = "$Id: indexdb-write.c 99752 2013-06-27 21:10:19Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif

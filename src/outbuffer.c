@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 105187 2013-08-19 18:38:05Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,6 +18,7 @@ static char rcsid[] = "$Id: outbuffer.c 99737 2013-06-27 19:33:03Z twu $";
 #include "assert.h"
 #include "bool.h"
 #include "mem.h"
+#include "samheader.h"
 
 #ifdef GSNAP
 #include "shortread.h"
@@ -156,6 +157,11 @@ struct T {
   char *sam_read_group_library;
   char *sam_read_group_platform;
   int quality_shift;
+  int nworkers;
+  bool orderedp;
+  int argc;
+  char **argv;
+  int optind;
 #elif defined PMAP
 
 #else
@@ -166,6 +172,11 @@ struct T {
   char *sam_read_group_library;
   char *sam_read_group_platform;
   int quality_shift;
+  int nworkers;
+  bool orderedp;
+  int argc;
+  char **argv;
+  int optind;
 #endif
 
 #ifdef GSNAP
@@ -311,6 +322,8 @@ sevenway_open_single (T this) {
     FREE(filename);
 
     if (this->output_sam_p == true && this->sam_headers_p == true) {
+      SAM_header_print_HD(this->fp_nomapping_1,this->nworkers,this->orderedp);
+      SAM_header_print_PG(this->fp_nomapping_1,this->argc,this->argv,this->optind);
       Univ_IIT_dump_sam(this->fp_nomapping_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 			this->sam_read_group_library,this->sam_read_group_platform);
     }
@@ -349,12 +362,20 @@ sevenway_open_single (T this) {
   FREE(filename);
 
   if (this->output_sam_p == true && this->sam_headers_p == true) {
+    SAM_header_print_HD(this->fp_unpaired_uniq,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_unpaired_uniq,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_unpaired_uniq,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_unpaired_circular,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_unpaired_circular,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_unpaired_circular,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_unpaired_transloc,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_unpaired_transloc,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_unpaired_transloc,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_unpaired_mult,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_unpaired_mult,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_unpaired_mult,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
   }
@@ -404,6 +425,8 @@ sevenway_open_paired (T this) {
       FREE(filename);
 
       if (this->output_sam_p == true && this->sam_headers_p == true) {
+	SAM_header_print_HD(this->fp_nomapping_1,this->nworkers,this->orderedp);
+	SAM_header_print_PG(this->fp_nomapping_1,this->argc,this->argv,this->optind);
 	Univ_IIT_dump_sam(this->fp_nomapping_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 			  this->sam_read_group_library,this->sam_read_group_platform);
       }
@@ -515,30 +538,56 @@ sevenway_open_paired (T this) {
   FREE(filename);
 
   if (this->output_sam_p == true && this->sam_headers_p == true) {
+    SAM_header_print_HD(this->fp_halfmapping_uniq,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_halfmapping_uniq,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_halfmapping_uniq,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_halfmapping_circular,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_halfmapping_circular,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_halfmapping_circular,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_halfmapping_transloc,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_halfmapping_transloc,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_halfmapping_transloc,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_halfmapping_mult,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_halfmapping_mult,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_halfmapping_mult,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_paired_uniq_circular,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_paired_uniq_circular,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_paired_uniq_circular,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_paired_uniq_inv,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_paired_uniq_inv,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_paired_uniq_inv,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_paired_uniq_scr,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_paired_uniq_scr,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_paired_uniq_scr,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_paired_uniq_long,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_paired_uniq_long,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_paired_uniq_long,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_paired_mult,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_paired_mult,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_paired_mult,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_concordant_uniq,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_concordant_uniq,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_concordant_uniq,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_concordant_circular,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_concordant_circular,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_concordant_circular,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_concordant_transloc,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_concordant_transloc,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_concordant_transloc,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+    SAM_header_print_HD(this->fp_concordant_mult,this->nworkers,this->orderedp);
+    SAM_header_print_PG(this->fp_concordant_mult,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_concordant_mult,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
   }
@@ -755,10 +804,12 @@ T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp, Univ_IIT_T chromosome_iit,
 	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
+	       int nworkers, bool orderedp,
 	       Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp, bool fails_as_input_p,
 	       bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
 	       int maxpaths_report, bool quiet_if_excessive_p, int quality_shift,
-	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax) {
+	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax,
+	       int argc, char **argv, int optind) {
   T new = (T) MALLOC(sizeof(*new));
   FILE *fp_capture = NULL, *fp_ignore = NULL;
 
@@ -794,6 +845,11 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
   new->sam_read_group_name = sam_read_group_name;
   new->sam_read_group_library = sam_read_group_library;
   new->sam_read_group_platform = sam_read_group_platform;
+  new->nworkers = nworkers;
+  new->orderedp = orderedp;
+  new->argc = argc;
+  new->argv = argv;
+  new->optind = optind;
 
   new->gobywriter = gobywriter;
 
@@ -879,6 +935,8 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
       if (fails_as_input_p == true) {
 	/* Don't print chromosomes */
       } else {
+	SAM_header_print_HD(stdout,nworkers,orderedp);
+	SAM_header_print_PG(stdout,argc,argv,optind);
 	Univ_IIT_dump_sam(stdout,chromosome_iit,sam_read_group_id,sam_read_group_name,
 			  sam_read_group_library,sam_read_group_platform);
       }
@@ -900,6 +958,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	       bool sam_headers_p, int quality_shift, bool sam_paired_p,
 	       char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
+	       int nworkers, bool orderedp,
 #endif
 	       bool nofailsp, bool failsonlyp, bool fails_as_input_p, int maxpaths_report, bool quiet_if_excessive_p,
 	       bool map_exons_p, bool map_bothstrands_p, bool print_comment_p, int nflanking,
@@ -946,6 +1005,11 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
   new->sam_read_group_name = sam_read_group_name;
   new->sam_read_group_library = sam_read_group_library;
   new->sam_read_group_platform = sam_read_group_platform;
+  new->nworkers = nworkers;
+  new->orderedp = orderedp;
+  new->argc = argc;
+  new->argv = argv;
+  new->optind = optind;
 #endif
 
   new->nofailsp = nofailsp;
@@ -1012,6 +1076,8 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	dump_sam_usersegment(stdout,usersegment,sam_read_group_id,sam_read_group_name,
 			     sam_read_group_library,sam_read_group_platform);
       } else {
+	SAM_header_print_HD(stdout,nworkers,orderedp);
+	SAM_header_print_PG(stdout,argc,argv,optind);
 	Univ_IIT_dump_sam(stdout,chromosome_iit,sam_read_group_id,sam_read_group_name,
 			  sam_read_group_library,sam_read_group_platform);
       }

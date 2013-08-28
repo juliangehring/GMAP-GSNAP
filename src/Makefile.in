@@ -56,8 +56,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/builtin.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
-	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/popcnt.m4 \
-	$(top_srcdir)/config/asm-bsr.m4 \
+	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/asm-bsr.m4 \
 	$(top_srcdir)/config/ax_gcc_x86_cpuid.m4 \
 	$(top_srcdir)/config/ax_check_compile_flag.m4 \
 	$(top_srcdir)/config/ax_ext.m4 $(top_srcdir)/configure.ac
@@ -158,9 +157,10 @@ am__objects_4 = gmap-except.$(OBJEXT) gmap-assert.$(OBJEXT) \
 	gmap-pbinom.$(OBJEXT) gmap-changepoint.$(OBJEXT) \
 	gmap-stage3.$(OBJEXT) gmap-request.$(OBJEXT) \
 	gmap-result.$(OBJEXT) gmap-inbuffer.$(OBJEXT) \
-	gmap-outbuffer.$(OBJEXT) gmap-chimera.$(OBJEXT) \
-	gmap-datadir.$(OBJEXT) gmap-getopt.$(OBJEXT) \
-	gmap-getopt1.$(OBJEXT) gmap-gmap.$(OBJEXT)
+	gmap-samheader.$(OBJEXT) gmap-outbuffer.$(OBJEXT) \
+	gmap-chimera.$(OBJEXT) gmap-datadir.$(OBJEXT) \
+	gmap-getopt.$(OBJEXT) gmap-getopt1.$(OBJEXT) \
+	gmap-gmap.$(OBJEXT)
 dist_gmap_OBJECTS = $(am__objects_4)
 gmap_OBJECTS = $(dist_gmap_OBJECTS)
 gmap_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
@@ -223,10 +223,10 @@ am__objects_6 = gmapl-except.$(OBJEXT) gmapl-assert.$(OBJEXT) \
 	gmapl-translation.$(OBJEXT) gmapl-pbinom.$(OBJEXT) \
 	gmapl-changepoint.$(OBJEXT) gmapl-stage3.$(OBJEXT) \
 	gmapl-request.$(OBJEXT) gmapl-result.$(OBJEXT) \
-	gmapl-inbuffer.$(OBJEXT) gmapl-outbuffer.$(OBJEXT) \
-	gmapl-chimera.$(OBJEXT) gmapl-datadir.$(OBJEXT) \
-	gmapl-getopt.$(OBJEXT) gmapl-getopt1.$(OBJEXT) \
-	gmapl-gmap.$(OBJEXT)
+	gmapl-inbuffer.$(OBJEXT) gmapl-samheader.$(OBJEXT) \
+	gmapl-outbuffer.$(OBJEXT) gmapl-chimera.$(OBJEXT) \
+	gmapl-datadir.$(OBJEXT) gmapl-getopt.$(OBJEXT) \
+	gmapl-getopt1.$(OBJEXT) gmapl-gmap.$(OBJEXT)
 dist_gmapl_OBJECTS = $(am__objects_6)
 gmapl_OBJECTS = $(dist_gmapl_OBJECTS)
 gmapl_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
@@ -265,9 +265,10 @@ am__objects_7 = gsnap-except.$(OBJEXT) gsnap-assert.$(OBJEXT) \
 	gsnap-stage3.$(OBJEXT) gsnap-splicetrie_build.$(OBJEXT) \
 	gsnap-splicetrie.$(OBJEXT) gsnap-stage1hr.$(OBJEXT) \
 	gsnap-request.$(OBJEXT) gsnap-resulthr.$(OBJEXT) \
-	gsnap-inbuffer.$(OBJEXT) gsnap-outbuffer.$(OBJEXT) \
-	gsnap-datadir.$(OBJEXT) gsnap-getopt.$(OBJEXT) \
-	gsnap-getopt1.$(OBJEXT) gsnap-gsnap.$(OBJEXT)
+	gsnap-inbuffer.$(OBJEXT) gsnap-samheader.$(OBJEXT) \
+	gsnap-outbuffer.$(OBJEXT) gsnap-datadir.$(OBJEXT) \
+	gsnap-getopt.$(OBJEXT) gsnap-getopt1.$(OBJEXT) \
+	gsnap-gsnap.$(OBJEXT)
 dist_gsnap_OBJECTS = $(am__objects_7)
 gsnap_OBJECTS = $(dist_gsnap_OBJECTS)
 gsnap_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
@@ -307,9 +308,9 @@ am__objects_8 = gsnapl-except.$(OBJEXT) gsnapl-assert.$(OBJEXT) \
 	gsnapl-splicetrie_build.$(OBJEXT) gsnapl-splicetrie.$(OBJEXT) \
 	gsnapl-stage1hr.$(OBJEXT) gsnapl-request.$(OBJEXT) \
 	gsnapl-resulthr.$(OBJEXT) gsnapl-inbuffer.$(OBJEXT) \
-	gsnapl-outbuffer.$(OBJEXT) gsnapl-datadir.$(OBJEXT) \
-	gsnapl-getopt.$(OBJEXT) gsnapl-getopt1.$(OBJEXT) \
-	gsnapl-gsnap.$(OBJEXT)
+	gsnapl-samheader.$(OBJEXT) gsnapl-outbuffer.$(OBJEXT) \
+	gsnapl-datadir.$(OBJEXT) gsnapl-getopt.$(OBJEXT) \
+	gsnapl-getopt1.$(OBJEXT) gsnapl-gsnap.$(OBJEXT)
 dist_gsnapl_OBJECTS = $(am__objects_8)
 gsnapl_OBJECTS = $(dist_gsnapl_OBJECTS)
 gsnapl_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
@@ -553,7 +554,6 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
 PERL = @PERL@
-POPCNT_CFLAGS = @POPCNT_CFLAGS@
 PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@
@@ -653,7 +653,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h stage3.c stage3.h \
  request.c request.h result.c result.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  chimera.c chimera.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
@@ -692,7 +692,7 @@ GMAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h stage3.c stage3.h \
  request.c request.h result.c result.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  chimera.c chimera.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
 
@@ -730,7 +730,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  stage1hr.c stage1hr.h \
  request.c request.h resulthr.c resulthr.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gsnap.c
 
@@ -768,7 +768,7 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  stage1hr.c stage1hr.h \
  request.c request.h resulthr.c resulthr.h \
- inbuffer.c inbuffer.h outbuffer.c outbuffer.h \
+ inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gsnap.c
 
@@ -1237,6 +1237,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-reader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-request.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-result.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-samheader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-segmentpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-sequence.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmap-smooth.Po@am__quote@
@@ -1337,6 +1338,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-reader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-request.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-result.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-samheader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-segmentpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-sequence.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gmapl-smooth.Po@am__quote@
@@ -1401,6 +1403,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-reader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-request.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-resulthr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-samheader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-samprint.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-segmentpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnap-sequence.Po@am__quote@
@@ -1469,6 +1472,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-reader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-request.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-resulthr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-samheader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-samprint.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-segmentpos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gsnapl-sequence.Po@am__quote@
@@ -3592,6 +3596,20 @@ gmap-inbuffer.obj: inbuffer.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
 
+gmap-samheader.o: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-samheader.o -MD -MP -MF $(DEPDIR)/gmap-samheader.Tpo -c -o gmap-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-samheader.Tpo $(DEPDIR)/gmap-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gmap-samheader.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+
+gmap-samheader.obj: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-samheader.obj -MD -MP -MF $(DEPDIR)/gmap-samheader.Tpo -c -o gmap-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-samheader.Tpo $(DEPDIR)/gmap-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gmap-samheader.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -c -o gmap-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+
 gmap-outbuffer.o: outbuffer.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmap_CFLAGS) $(CFLAGS) -MT gmap-outbuffer.o -MD -MP -MF $(DEPDIR)/gmap-outbuffer.Tpo -c -o gmap-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmap-outbuffer.Tpo $(DEPDIR)/gmap-outbuffer.Po
@@ -4992,6 +5010,20 @@ gmapl-inbuffer.obj: inbuffer.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapl_CFLAGS) $(CFLAGS) -c -o gmapl-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
 
+gmapl-samheader.o: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapl_CFLAGS) $(CFLAGS) -MT gmapl-samheader.o -MD -MP -MF $(DEPDIR)/gmapl-samheader.Tpo -c -o gmapl-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapl-samheader.Tpo $(DEPDIR)/gmapl-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gmapl-samheader.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapl_CFLAGS) $(CFLAGS) -c -o gmapl-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+
+gmapl-samheader.obj: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapl_CFLAGS) $(CFLAGS) -MT gmapl-samheader.obj -MD -MP -MF $(DEPDIR)/gmapl-samheader.Tpo -c -o gmapl-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapl-samheader.Tpo $(DEPDIR)/gmapl-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gmapl-samheader.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapl_CFLAGS) $(CFLAGS) -c -o gmapl-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+
 gmapl-outbuffer.o: outbuffer.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gmapl_CFLAGS) $(CFLAGS) -MT gmapl-outbuffer.o -MD -MP -MF $(DEPDIR)/gmapl-outbuffer.Tpo -c -o gmapl-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gmapl-outbuffer.Tpo $(DEPDIR)/gmapl-outbuffer.Po
@@ -5958,6 +5990,20 @@ gsnap-inbuffer.obj: inbuffer.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
 
+gsnap-samheader.o: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-samheader.o -MD -MP -MF $(DEPDIR)/gsnap-samheader.Tpo -c -o gsnap-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-samheader.Tpo $(DEPDIR)/gsnap-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gsnap-samheader.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+
+gsnap-samheader.obj: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-samheader.obj -MD -MP -MF $(DEPDIR)/gsnap-samheader.Tpo -c -o gsnap-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-samheader.Tpo $(DEPDIR)/gsnap-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gsnap-samheader.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -c -o gsnap-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+
 gsnap-outbuffer.o: outbuffer.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnap_CFLAGS) $(CFLAGS) -MT gsnap-outbuffer.o -MD -MP -MF $(DEPDIR)/gsnap-outbuffer.Tpo -c -o gsnap-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnap-outbuffer.Tpo $(DEPDIR)/gsnap-outbuffer.Po
@@ -6923,6 +6969,20 @@ gsnapl-inbuffer.obj: inbuffer.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inbuffer.c' object='gsnapl-inbuffer.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnapl_CFLAGS) $(CFLAGS) -c -o gsnapl-inbuffer.obj `if test -f 'inbuffer.c'; then $(CYGPATH_W) 'inbuffer.c'; else $(CYGPATH_W) '$(srcdir)/inbuffer.c'; fi`
+
+gsnapl-samheader.o: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnapl_CFLAGS) $(CFLAGS) -MT gsnapl-samheader.o -MD -MP -MF $(DEPDIR)/gsnapl-samheader.Tpo -c -o gsnapl-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnapl-samheader.Tpo $(DEPDIR)/gsnapl-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gsnapl-samheader.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnapl_CFLAGS) $(CFLAGS) -c -o gsnapl-samheader.o `test -f 'samheader.c' || echo '$(srcdir)/'`samheader.c
+
+gsnapl-samheader.obj: samheader.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnapl_CFLAGS) $(CFLAGS) -MT gsnapl-samheader.obj -MD -MP -MF $(DEPDIR)/gsnapl-samheader.Tpo -c -o gsnapl-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/gsnapl-samheader.Tpo $(DEPDIR)/gsnapl-samheader.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='samheader.c' object='gsnapl-samheader.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnapl_CFLAGS) $(CFLAGS) -c -o gsnapl-samheader.obj `if test -f 'samheader.c'; then $(CYGPATH_W) 'samheader.c'; else $(CYGPATH_W) '$(srcdir)/samheader.c'; fi`
 
 gsnapl-outbuffer.o: outbuffer.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(gsnapl_CFLAGS) $(CFLAGS) -MT gsnapl-outbuffer.o -MD -MP -MF $(DEPDIR)/gsnapl-outbuffer.Tpo -c -o gsnapl-outbuffer.o `test -f 'outbuffer.c' || echo '$(srcdir)/'`outbuffer.c

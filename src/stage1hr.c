@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 102151 2013-07-19 23:48:17Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 104801 2013-08-14 00:55:53Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -12601,8 +12601,10 @@ run_gmap (bool *good_start_p, bool *good_end_p, List_T hits,
 	nsegments = Pair_gsnap_nsegments(&nmismatches_whole,&nindels,&nintrons,&nindelbreaks,
 					 pairarray,npairs);
 	if (watsonp == true) {
-	  start = chroffset + Pair_genomepos(&(pairarray[0])) - Pair_querypos(&(pairarray[0]));
-	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) + (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
+	  start = subtract_bounded(chroffset + Pair_genomepos(&(pairarray[0])),
+				   /*minusterm*/Pair_querypos(&(pairarray[0])),chroffset);
+	  end = add_bounded(chroffset + Pair_genomepos(&(pairarray[npairs-1])),
+			    /*plusterm*/querylength - 1 - Pair_querypos(&(pairarray[npairs-1])),chrhigh);
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
 					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
@@ -12638,8 +12640,10 @@ run_gmap (bool *good_start_p, bool *good_end_p, List_T hits,
 	    }
 	  }
 	} else {
-	  start = chroffset + Pair_genomepos(&(pairarray[0])) + Pair_querypos(&(pairarray[0]));
-	  end = chroffset + Pair_genomepos(&(pairarray[npairs-1])) - (querylength - 1 - Pair_querypos(&(pairarray[npairs-1])));
+	  start = add_bounded(chroffset + Pair_genomepos(&(pairarray[0])),
+			      /*plusterm*/Pair_querypos(&(pairarray[0])),chrhigh);
+	  end = subtract_bounded(chroffset + Pair_genomepos(&(pairarray[npairs-1])),
+				 /*minusterm*/querylength - 1 - Pair_querypos(&(pairarray[npairs-1])),chroffset);
 	  if ((hit = Stage3end_new_gmap(nmismatches_whole,nmatches_posttrim,max_match_length,
 					ambig_end_length_5,ambig_end_length_3,
 					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,

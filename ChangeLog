@@ -1,3 +1,58 @@
+2013-08-19  twu
+
+    * VERSION: Updated version number
+
+    * stage3.c: Changed from QUERYEND_NOGAPS to QUERYEND_INDELS in pass 10 to
+      solve multiple indels
+
+    * stage3.c: Fixed infinite loop in putting back indel pairs in peelback
+      procedures
+
+    * outbuffer.c: Putting HD header before PG
+
+2013-08-16  twu
+
+    * VERSION: Updated version number
+
+    * stage3.c: Changed peelback and peelforward procedures to not leave an
+      indel on the remaining pairs or path
+
+2013-08-15  twu
+
+    * stage3.c: In Stage3_mergeable, checking Pairpool_count_bounded to see if
+      pairs will remain
+
+    * pairpool.c: Pairpool_clip_bounded returns NULL if all pairs are outside
+      the given bounds
+
+2013-08-14  twu
+
+    * public-2013-08-14: Created public release 2013-08-14
+
+    * acinclude.m4, configure.ac: Using ACX_BUILTIN instead of ACX_POPCNT
+
+    * stage3hr.c: Restoring filter where terminal alignments are removed if
+      mismatches in trimmed region is too high.
+
+    * stage1hr.c: In computing genomic bounds for GMAP alignment, truncating at
+      chromosomal boundaries
+
+    * outbuffer.c: Switched order of PG and HD
+
+    * chimera.c, chimera.h, gmap.c: For local chimeric joins, requiring that
+      pieces are locally joinable in Chimera_bestpath
+
+2013-08-08  twu
+
+    * dynprog.c: Removed memory fences and added cache flush needed for opencc
+      compiler with -O3 optimization on AMD computers.
+
+2013-08-02  twu
+
+    * Makefile.gsnaptoo.am, gmap.c, gsnap.c, outbuffer.c, outbuffer.h,
+      samheader.c, samheader.h: Applied patch from trunk -r102893:103701 to add
+      @HD and @PG lines to SAM output
+
 2013-07-20  twu
 
     * public-2013-06-27: Merged changes from trunk

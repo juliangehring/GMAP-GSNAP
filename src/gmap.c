@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 99750 2013-06-27 21:08:12Z twu $";
+static char rcsid[] = "$Id: gmap.c 104798 2013-08-14 00:53:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1490,103 +1490,6 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp, Seq
 
 
 static bool
-local_join_p (Stage3_T from, Stage3_T to) {
-  debug2(printf("? local_join_p from [%p] %d..%d (%u..%u) -> to [%p] %d..%d (%u..%u) => ",
-		from,Stage3_querystart(from),Stage3_queryend(from),
-		Stage3_chrstart(from),Stage3_chrend(from),
-		to,Stage3_querystart(to),Stage3_queryend(to),
-		Stage3_chrstart(to),Stage3_chrend(to)));
-
-  if (Stage3_chimera_right_p(from) == true) {
-    debug2(printf("false, because from is already part of a chimera on its right\n"));
-    return false;
-    
-  } else if (Stage3_chimera_left_p(to) == true) {
-    debug2(printf("false, because to is already part of a chimera on its left\n"));
-    return false;
-
-  } else if (Stage3_chrnum(from) != Stage3_chrnum(to)) {
-    debug2(printf("false, because different chromosomes\n"));
-    return false;
-
-  } else if (Stage3_watsonp(from) != Stage3_watsonp(to)) {
-    debug2(printf("false, because different strands\n"));
-    return false;
-
-  } else if (Stage3_querystart(from) >= Stage3_querystart(to) &&
-	     Stage3_queryend(from) <= Stage3_queryend(to)) {
-    debug2(printf("false, because from %d..%d is subsumed by to %d..%d\n",
-		  Stage3_querystart(from),Stage3_queryend(from),
-		  Stage3_querystart(to),Stage3_queryend(to)));
-    return false;
-
-  } else if (Stage3_querystart(to) >= Stage3_querystart(from) &&
-	     Stage3_queryend(to) <= Stage3_queryend(from)) {
-    debug2(printf("false, because to %d..%d is subsumed by from %d..%d\n",
-		  Stage3_querystart(to),Stage3_queryend(to),
-		  Stage3_querystart(from),Stage3_queryend(from)));
-    return false;
-
-  } else if (Stage3_queryend(from) - Stage3_querystart(to) <= CHIMERA_SLOP &&
-	     Stage3_querystart(to) - Stage3_queryend(from) <= CHIMERA_SLOP) {
-    debug2(printf("true, because %d - %d <= %d and %d - %d <= %d\n",
-		  Stage3_queryend(from),Stage3_querystart(to),CHIMERA_SLOP,
-		  Stage3_querystart(to),Stage3_queryend(from),CHIMERA_SLOP));
-    return true;
-
-  } else {
-    debug2(printf(" %d and %d ",
-		  Stage3_queryend(from) - Stage3_querystart(to),Stage3_querystart(to) - Stage3_queryend(from)));
-    debug2(printf("false\n"));
-    return false;
-  }
-}
-
-
-static bool
-chimeric_join_p (Stage3_T from, Stage3_T to) {
-  debug2(printf("? chimeric_join_p from %d..%d (%u..%u) -> to %d..%d (%u..%u) => ",
-		Stage3_querystart(from),Stage3_queryend(from),
-		Stage3_chrstart(from),Stage3_chrend(from),
-		Stage3_querystart(to),Stage3_queryend(to),
-		Stage3_chrstart(to),Stage3_chrend(to)));
-
-  if (Stage3_chimera_right_p(from) == true) {
-    debug2(printf("false, because from is already part of a chimera on its right\n"));
-    return false;
-    
-  } else if (Stage3_chimera_left_p(to) == true) {
-    debug2(printf("false, because to is already part of a chimera on its left\n"));
-    return false;
-
-  } else if (Stage3_querystart(from) >= Stage3_querystart(to) &&
-      Stage3_queryend(from) <= Stage3_queryend(to)) {
-    debug2(printf("false, because from %d..%d is subsumed by to %d..%d\n",
-		  Stage3_querystart(from),Stage3_queryend(from),
-		  Stage3_querystart(to),Stage3_queryend(to)));
-    return false;
-  } else if (Stage3_querystart(to) >= Stage3_querystart(from) &&
-	     Stage3_queryend(to) <= Stage3_queryend(from)) {
-    debug2(printf("false, because to %d..%d is subsumed by from %d..%d\n",
-		  Stage3_querystart(to),Stage3_queryend(to),
-		  Stage3_querystart(from),Stage3_queryend(from)));
-    return false;
-  } else if (Stage3_queryend(from) - Stage3_querystart(to) <= CHIMERA_SLOP &&
-	     Stage3_querystart(to) - Stage3_queryend(from) <= CHIMERA_SLOP) {
-    debug2(printf("true, because %d - %d <= %d and %d - %d <= %d\n",
-		  Stage3_queryend(from),Stage3_querystart(to),CHIMERA_SLOP,
-		  Stage3_querystart(to),Stage3_queryend(from),CHIMERA_SLOP));
-    return true;
-  } else {
-    debug2(printf(" %d and %d ",
-		  Stage3_queryend(from) - Stage3_querystart(to),Stage3_querystart(to) - Stage3_queryend(from)));
-    debug2(printf("false\n"));
-    return false;
-  }
-}
-
-
-static bool
 middle_piece_local_p (int *querystart, int *queryend,
 		      Chrpos_T *chrstart, Chrpos_T *chrend,
 		      Chrnum_T *chrnum, Univcoord_T *chroffset, Univcoord_T *chrhigh,
@@ -1742,7 +1645,7 @@ local_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
     while (j < npaths && Stage3_querystart(by_querystart[j]) < queryend + CHIMERA_SLOP) {
       to = by_querystart[j];
 
-      if (local_join_p(from,to) == true) {
+      if (Chimera_local_join_p(from,to,CHIMERA_SLOP) == true) {
 	debug2(printf("Found join from %d to %d\n",i,j));
 	Stage3_set_joinable_left(from);
 	Stage3_set_joinable_right(to);
@@ -1798,7 +1701,7 @@ local_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
 
 /* Returns nonjoinable */
 static List_T
-chimera_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1, 
+distant_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1, 
 			Stage3_T **stage3array_sub2, int *npaths_sub2,
 			List_T stage3list) {
   List_T nonjoinable = NULL, p;
@@ -1807,7 +1710,7 @@ chimera_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
   int npaths, i, j, k;
   int queryend;
 
-  debug2(printf("chimera_separate_paths called with list length %d\n",List_length(stage3list)));
+  debug2(printf("distant_separate_paths called with list length %d\n",List_length(stage3list)));
 
   if (stage3list == NULL) {
     *stage3array_sub1 = (Stage3_T *) NULL;
@@ -1846,7 +1749,7 @@ chimera_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
     while (j < npaths && Stage3_querystart(by_querystart[j]) < queryend + CHIMERA_SLOP) {
       to = by_querystart[j];
 
-      if (chimeric_join_p(from,to) == true) {
+      if (Chimera_distant_join_p(from,to,CHIMERA_SLOP) == true) {
 	debug2(printf("Found join from %d to %d\n",i,j));
 	Stage3_set_joinable_left(from);
 	Stage3_set_joinable_right(to);
@@ -2289,7 +2192,7 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   double donor_prob, acceptor_prob;
   char comp;
 
-  bool singlep, dualbreakp;
+  bool singlep, dualbreakp, localp;
   int queryjump;
   int genomejump;
   
@@ -2318,14 +2221,16 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   debug2(printf("Running local_separate_paths\n"));
   nonjoinable = local_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
 				     stage3list);
+  localp = true;
   debug2(printf("local: npaths_sub1 %d, npaths_sub2 %d, nonjoinable %d\n",
 		npaths_sub1,npaths_sub2,List_length(nonjoinable)));
 
   if (npaths_sub1 == 0 && npaths_sub2 == 0) {
     List_free(&nonjoinable);
-    debug2(printf("Running chimera_separate_paths\n"));
-    nonjoinable = chimera_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
+    debug2(printf("Running distant_separate_paths\n"));
+    nonjoinable = distant_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
 					 stage3list);
+    localp = false;
     debug2(printf("chimera: npaths_sub1 %d, npaths_sub2 %d, nonjoinable %d\n",
 		  npaths_sub1,npaths_sub2,List_length(nonjoinable)));
   }
@@ -2396,14 +2301,16 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
       debug2(printf("Running local_separate_paths\n"));
       nonjoinable = local_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
 					 stage3list);
+      localp = true;
       debug2(printf("local: npaths_sub1 %d, npaths_sub2 %d, nonjoinable %d\n",
 		    npaths_sub1,npaths_sub2,List_length(nonjoinable)));
 
       if (npaths_sub1 == 0 && npaths_sub2 == 0) {
 	List_free(&nonjoinable);
-	debug2(printf("Running chimera_separate_paths\n"));
-	nonjoinable = chimera_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
+	debug2(printf("Running distant_separate_paths\n"));
+	nonjoinable = distant_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
 					     stage3list);
+	localp = false;
 	debug2(printf("chimera: npaths_sub1 %d, npaths_sub2 %d, nonjoinable %d\n",
 		      npaths_sub1,npaths_sub2,List_length(nonjoinable)));
       }
@@ -2472,14 +2379,16 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
       debug2(printf("Running local_separate_paths\n"));
       nonjoinable = local_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
 					 stage3list);
+      localp = true;
       debug2(printf("local: npaths_sub1 %d, npaths_sub2 %d, nonjoinable %d\n",
 		    npaths_sub1,npaths_sub2,List_length(nonjoinable)));
 
       if (npaths_sub1 == 0 && npaths_sub2 == 0) {
 	List_free(&nonjoinable);
-	debug2(printf("Running chimera_separate_paths\n"));
-	nonjoinable = chimera_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
+	debug2(printf("Running distant_separate_paths\n"));
+	nonjoinable = distant_separate_paths(&stage3array_sub1,&npaths_sub1,&stage3array_sub2,&npaths_sub2,
 					     stage3list);
+	localp = false;
 	debug2(printf("chimera: npaths_sub1 %d, npaths_sub2 %d, nonjoinable %d\n",
 		      npaths_sub1,npaths_sub2,List_length(nonjoinable)));
       }
@@ -2493,7 +2402,8 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 
   } else {
     Chimera_bestpath(&five_score,&three_score,&chimerapos,&chimeraequivpos,&bestfrom,&bestto,
-		     stage3array_sub1,npaths_sub1,stage3array_sub2,npaths_sub2,queryntlength);
+		     stage3array_sub1,npaths_sub1,stage3array_sub2,npaths_sub2,queryntlength,
+		     CHIMERA_SLOP,localp);
 
     from = stage3array_sub1[bestfrom];
     to = stage3array_sub2[bestto];
@@ -2852,7 +2762,7 @@ check_middle_piece_local (bool *foundp, List_T stage3list, Sequence_T queryseq,
 	      mergeableAp = mergeableBp = false;
 	      while (r != NULL && (mergeableAp == false || mergeableBp == false)) {
 		middle = (Stage3_T) List_head(r);
-		if (local_join_p(from,middle) == true && local_join_p(middle,to) == true) {
+		if (Chimera_local_join_p(from,middle,CHIMERA_SLOP) == true && Chimera_local_join_p(middle,to,CHIMERA_SLOP) == true) {
 		  breakpointA = find_breakpoint(&chimera_cdna_direction_A,&chimeraposA,&chimeraequivposA,&exonexonposA,
 						&compA,&donorA1,&donorA2,&acceptorA2,&acceptorA1,
 						&donor_prob_A,&acceptor_prob_A,from,/*to*/middle,
@@ -2890,7 +2800,7 @@ check_middle_piece_local (bool *foundp, List_T stage3list, Sequence_T queryseq,
 		mergeableAp = mergeableBp = false;
 		while (r != NULL && mergeableAp == false && mergeableBp == false) {
 		  middle = (Stage3_T) List_head(r);
-		  if (local_join_p(from,middle) == true && local_join_p(middle,to) == true) {
+		  if (Chimera_local_join_p(from,middle,CHIMERA_SLOP) == true && Chimera_local_join_p(middle,to,CHIMERA_SLOP) == true) {
 		    breakpointA = find_breakpoint(&chimera_cdna_direction_A,&chimeraposA,&chimeraequivposA,&exonexonposA,
 						  &compA,&donorA1,&donorA2,&acceptorA2,&acceptorA1,
 						  &donor_prob_A,&acceptor_prob_A,from,/*to*/middle,
@@ -3082,7 +2992,7 @@ check_middle_piece_chimera (bool *foundp, List_T stage3list,
       while (r != NULL && mergeableAp == false && mergeableBp == false) {
 	middle = (Stage3_T) List_head(r);
 	if (middle != bestfrom && middle != bestto) {
-	  if (local_join_p(bestfrom,middle) == true) {
+	  if (Chimera_local_join_p(bestfrom,middle,CHIMERA_SLOP) == true) {
 	    breakpointA = find_breakpoint(&chimera_cdna_direction_A,&chimeraposA,&chimeraequivposA,&exonexonposA,
 					  &compA,&donorA1,&donorA2,&acceptorA2,&acceptorA1,
 					  &donor_prob_A,&acceptor_prob_A,bestfrom,/*to*/middle,
@@ -3095,7 +3005,7 @@ check_middle_piece_chimera (bool *foundp, List_T stage3list,
 					   &queryjumpA,&genomejumpA,bestfrom,/*to*/middle,
 					   breakpointA,queryntlength,donor_prob_A,acceptor_prob_A);
 	  }
-	  if (local_join_p(middle,bestto) == true) {
+	  if (Chimera_local_join_p(middle,bestto,CHIMERA_SLOP) == true) {
 	    breakpointB = find_breakpoint(&chimera_cdna_direction_B,&chimeraposB,&chimeraequivposB,&exonexonposB,
 					  &compB,&donorB1,&donorB2,&acceptorB2,&acceptorB1,
 					  &donor_prob_B,&acceptor_prob_B,/*from*/middle,to,
@@ -5300,6 +5210,7 @@ main (int argc, char *argv[]) {
 			    sam_headers_p,quality_shift,sam_paired_p,
 			    sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
+			    nworkers,orderedp,
 #endif
 			    nofailsp,failsonlyp,fails_as_input_p,maxpaths,quiet_if_excessive_p,
 			    map_exons_p,map_bothstrands_p,print_comment_p,nflanking,

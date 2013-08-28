@@ -53,8 +53,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/builtin.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
-	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/popcnt.m4 \
-	$(top_srcdir)/config/asm-bsr.m4 \
+	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/asm-bsr.m4 \
 	$(top_srcdir)/config/ax_gcc_x86_cpuid.m4 \
 	$(top_srcdir)/config/ax_check_compile_flag.m4 \
 	$(top_srcdir)/config/ax_ext.m4 $(top_srcdir)/configure.ac
@@ -150,7 +149,6 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
 PERL = @PERL@
-POPCNT_CFLAGS = @POPCNT_CFLAGS@
 PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@

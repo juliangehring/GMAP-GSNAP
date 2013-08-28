@@ -225,9 +225,6 @@ ACX_FUNC_FOPEN_BINARY
 ACX_FUNC_FOPEN_TEXT
 
 
-ACX_BUILTIN
-ACX_ASM_BSR
-
 AC_MSG_CHECKING(for popcnt feature)
 AC_ARG_ENABLE([popcnt],
               AC_HELP_STRING([--enable-popcnt],
@@ -237,7 +234,7 @@ AC_ARG_ENABLE([popcnt],
 case x"$answer" in
 	xyes)
         AC_MSG_RESULT(enabled)
-	ACX_POPCNT
+	ACX_BUILTIN
 	;;
 	
 	xno)
@@ -246,9 +243,11 @@ case x"$answer" in
 
 	x)
 	AC_MSG_RESULT([not specified so enabled by default])
-	ACX_POPCNT
+	ACX_BUILTIN
 	;;
 esac	
+
+ACX_ASM_BSR
 
 
 AC_MSG_CHECKING(whether sse2 is enabled)

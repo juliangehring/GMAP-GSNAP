@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 102110 2013-07-19 22:15:00Z twu $";
+static char rcsid[] = "$Id: dynprog.c 104140 2013-08-08 03:14:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2807,6 +2807,13 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
     }
   }
 
+  memset((void *) &(pairscores[0][r]),0,(rlength_ceil-r)*sizeof(Score8_T));
+  memset((void *) &(pairscores[1][r]),0,(rlength_ceil-r)*sizeof(Score8_T));
+  memset((void *) &(pairscores[2][r]),0,(rlength_ceil-r)*sizeof(Score8_T));
+  memset((void *) &(pairscores[3][r]),0,(rlength_ceil-r)*sizeof(Score8_T));
+  memset((void *) &(pairscores[4][r]),0,(rlength_ceil-r)*sizeof(Score8_T));
+
+
 
   all_one_bits = _mm_set1_epi8(-1);
 
@@ -2964,6 +2971,7 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
 	pairscores_std = _mm_load_si128((__m128i *) &(pairscores_std_ptr[r-1]));
 	pairscores_alt = _mm_load_si128((__m128i *) &(pairscores_alt_ptr[r-1]));
 	H_nogap_r = _mm_adds_epi8(H_nogap_r, _mm_max_epi8(pairscores_std,pairscores_alt));
+	_mm_clflush(&H_nogap_r); /* Needed for opencc -O3 on AMD */
 	/* print_vector_8(H_nogap_r,r,c,"H"); */
 
 	dir_horiz = _mm_cmplt_epi8(E_r_gap,H_nogap_r); /* E < H */
@@ -2975,7 +2983,6 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
       }
 
       /* Perform F loop on entire column */
-      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3132,6 +3139,7 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
 	pairscores_std = _mm_load_si128((__m128i *) &(pairscores_std_ptr[r-1]));
 	pairscores_alt = _mm_load_si128((__m128i *) &(pairscores_alt_ptr[r-1]));
 	H_nogap_r = _mm_adds_epi8(H_nogap_r, _mm_max_epi8(pairscores_std,pairscores_alt));
+	_mm_clflush(&H_nogap_r); /* Needed for opencc -O3 on AMD */
 	/* print_vector_8(H_nogap_r,r,c,"H"); */
 
 	dir_horiz = _mm_cmpgt_epi8(E_r_gap,H_nogap_r); /* E > H, for jump early */
@@ -3142,7 +3150,6 @@ compute_scores_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directi
       }
 
       /* Perform F loop on entire column */
-      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3326,6 +3333,12 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
     }
   }
 
+  memset((void *) &(pairscores[0][r]),0,(rlength_ceil-r)*sizeof(Score16_T));
+  memset((void *) &(pairscores[1][r]),0,(rlength_ceil-r)*sizeof(Score16_T));
+  memset((void *) &(pairscores[2][r]),0,(rlength_ceil-r)*sizeof(Score16_T));
+  memset((void *) &(pairscores[3][r]),0,(rlength_ceil-r)*sizeof(Score16_T));
+  memset((void *) &(pairscores[4][r]),0,(rlength_ceil-r)*sizeof(Score16_T));
+
 
   all_one_bits = _mm_set1_epi16(-1);
 
@@ -3478,6 +3491,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 	pairscores_std = _mm_load_si128((__m128i *) &(pairscores_std_ptr[r-1]));
 	pairscores_alt = _mm_load_si128((__m128i *) &(pairscores_alt_ptr[r-1]));
 	H_nogap_r = _mm_adds_epi16(H_nogap_r, _mm_max_epi16(pairscores_std,pairscores_alt));
+	_mm_clflush(&H_nogap_r); /* Needed for opencc -O3 on AMD */
 	debug15(print_vector_16(H_nogap_r,r,c,"H"));
 
 	dir_horiz = _mm_cmplt_epi16(E_r_gap,H_nogap_r); /* E < H */
@@ -3490,7 +3504,6 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
       }
 
       /* Perform F loop on entire column */
-      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }
@@ -3655,6 +3668,7 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
 	pairscores_std = _mm_load_si128((__m128i *) &(pairscores_std_ptr[r-1]));
 	pairscores_alt = _mm_load_si128((__m128i *) &(pairscores_alt_ptr[r-1]));
 	H_nogap_r = _mm_adds_epi16(H_nogap_r, _mm_max_epi16(pairscores_std,pairscores_alt));
+	_mm_clflush(&H_nogap_r); /* Needed for opencc -O3 on AMD */
 	debug15(print_vector_16(H_nogap_r,r,c,"H"));
 
 	dir_horiz = _mm_cmpgt_epi16(E_r_gap,H_nogap_r); /* E > H, for jump early */
@@ -3666,7 +3680,6 @@ compute_scores_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***dire
       }
 
       /* Perform F loop on entire column */
-      _mm_lfence();		/* Transition to non-SIMD code */
       if ((rlo = c - uband) < 1) {
 	rlo = 1;
       }

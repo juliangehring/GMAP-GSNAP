@@ -1,4 +1,4 @@
-/* $Id: substring.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: substring.h 109764 2013-10-02 17:13:24Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -70,6 +70,10 @@ extern bool
 Substring_overlap_p (T substring1, T substring2);
 extern Chrpos_T
 Substring_insert_length (T substring5, T substring3);
+extern bool
+Substring_overlap_trimmed_p (T substring1, T substring2);
+Chrpos_T
+Substring_insert_length_trimmed (T substring5, T substring3);
 
 extern int
 Substring_splicesites_i (T this);

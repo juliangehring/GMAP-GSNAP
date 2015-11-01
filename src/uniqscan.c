@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 102130 2013-07-19 22:59:15Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 106814 2013-09-04 22:52:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1149,7 +1149,7 @@ main (int argc, char *argv[]) {
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_coverage,index1part,index1interval,
-		 novelsplicingp,circularp);
+		 novelsplicingp,/*merge_samechr_p*/false,circularp);
 
   uniqueness_scan(from_right_p);
 

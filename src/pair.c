@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 99755 2013-06-27 21:19:12Z twu $";
+static char rcsid[] = "$Id: pair.c 109764 2013-10-02 17:13:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -5150,7 +5150,7 @@ void
 Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *acc1, char *acc2, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		char *queryseq_ptr, char *quality_string,
-		int hardclip5, int hardclip3, int querylength_given,
+		int clipdir, int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
 		int quality_shift, bool firstp, int pathnum, int npaths,
 		int absmq_score, int first_absmq, int second_absmq, Chrpos_T chrpos,
@@ -5205,6 +5205,8 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
   flag = compute_sam_flag_nomate(pathnum,npaths,firstp,watsonp,sam_paired_p);
 #endif
 
+  debug4(printf("Entered Pair_print_sam with clipdir %d, watsonp %d, firstp %d, hardclip5 %d, and hardclip3 %d\n",
+		clipdir,watsonp,firstp,hardclip5,hardclip3));
 
   if (circularp == true) {
     if (watsonp == true) {
@@ -5216,14 +5218,45 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
     }
   } else {
     /* Incoming hardclip5 and hardclip3 are due to overlaps, not chimera */
-    if (firstp == true) {
-      hardclip_low = 0;
-      hardclip_high = hardclip5;
+    if (clipdir >= 0) {
+      if (watsonp == true) {
+	if (firstp == true) {
+	  hardclip_high = hardclip5;
+	  hardclip_low = 0;
+	} else {
+	  hardclip_high = 0;
+	  hardclip_low = hardclip3;
+	}
+      } else {
+	if (firstp == true) {
+	  hardclip_low = hardclip5;
+	  hardclip_high = 0;
+	} else {
+	  hardclip_low = 0;
+	  hardclip_high = hardclip3;
+	}
+      }
     } else {
-      hardclip_low = hardclip3;
-      hardclip_high = 0;
+      if (watsonp == true) {
+	if (firstp == true) {
+	  hardclip_low = hardclip5;
+	  hardclip_high = 0;
+	} else {
+	  hardclip_low = 0;
+	  hardclip_high = hardclip3;
+	}
+      } else {
+	if (firstp == true) {
+	  hardclip_high = hardclip5;
+	  hardclip_low = 0;
+	} else {
+	  hardclip_high = 0;
+	  hardclip_low = hardclip3;
+	}
+      }
     }
   }
+  debug4(printf("hardclip_low %d, hardclip_high %d\n",hardclip_low,hardclip_high));
 
   /* Get CIGAR and intronp for entire read */
   cigar_tokens = compute_cigar(&intronp,&hardclip_low_zero,&hardclip_high_zero,pairs,npairs,querylength_given,
@@ -5231,11 +5264,12 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
   if (hardclip5 == 0 && hardclip3 == 0) {
     clipped_pairs = pairs;
     clipped_npairs = npairs;
-    tokens_free(&cigar_tokens);
   } else {
     clipped_pairs = hardclip_pairs(&clipped_npairs,&hardclip_low,&hardclip_high,
 				   pairs,npairs,querylength_given);
   }
+  tokens_free(&cigar_tokens);
+
   /* Cigar updates hardclip5 and hardclip3 for chimeras */
   cigar_tokens = compute_cigar(&ignore_intronp,&hardclip_low,&hardclip_high,clipped_pairs,clipped_npairs,querylength_given,
 			       watsonp,cdna_direction,chimera_part);
@@ -7441,13 +7475,53 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 #ifndef PMAP
 
 Chrpos_T
-Pair_genomicpos_low (int *hardclip_low, int *hardclip_high, struct T *pairarray, int npairs,
-		     int querylength, bool watsonp) {
+Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
+		     struct T *pairarray, int npairs, int querylength,
+		     bool watsonp, bool firstp) {
   struct T *clipped_pairs;
   int clipped_npairs;
+  int hardclip_low, hardclip_high;
   T pair;
 
-  clipped_pairs = hardclip_pairs(&clipped_npairs,&(*hardclip_low),&(*hardclip_high),
+  if (clipdir >= 0) {
+    if (watsonp == true) {
+      if (firstp == true) {
+	hardclip_high = hardclip5;
+	hardclip_low = 0;
+      } else {
+	hardclip_high = 0;
+	hardclip_low = hardclip3;
+      }
+    } else {
+      if (firstp == true) {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
+    }
+  } else {
+    if (watsonp == true) {
+      if (firstp == true) {
+	hardclip_low = hardclip5;
+	hardclip_high = 0;
+      } else {
+	hardclip_low = 0;
+	hardclip_high = hardclip3;
+      }
+    } else {
+      if (firstp == true) {
+	hardclip_high = hardclip5;
+	hardclip_low = 0;
+      } else {
+	hardclip_high = 0;
+	hardclip_low = hardclip3;
+      }
+    }
+  }
+
+  clipped_pairs = hardclip_pairs(&clipped_npairs,&hardclip_low,&hardclip_high,
 				 pairarray,npairs,querylength);
   if (watsonp == true) {
     pair = &(clipped_pairs[0]);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 98808 2013-06-18 22:16:54Z twu $";
+static char rcsid[] = "$Id: shortread.c 108303 2013-09-18 00:09:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1691,21 +1691,30 @@ Shortread_chop_primers (T queryseq1, T queryseq2) {
   int nmatches, nmismatches;
   int fulllength1 = queryseq1->fulllength;
   int fulllength2 = queryseq2->fulllength;
+  int minlength;
   char *contents1 = queryseq1->contents_uc;
   char *contents2 = queryseq2->contents_uc;
 
   int best_score = 0, score;
   int jstart, j, i;
 
+  if (fulllength1 < fulllength2) {
+    minlength = fulllength1;
+  } else {
+    minlength = fulllength2;
+  }
+
   debug2(printf("jstart must be < %d - %d and < %d - %d\n",
 		fulllength2,PAIRED_ADAPTER_MINLENGTH,fulllength1,PAIRED_ADAPTER_MINLENGTH));
-  for (jstart = 0; jstart < fulllength2 - PAIRED_ADAPTER_MINLENGTH && jstart < fulllength1 - PAIRED_ADAPTER_MINLENGTH; jstart++) {
+  for (jstart = 0; jstart < minlength - PAIRED_ADAPTER_MINLENGTH; jstart++) {
     debug2(printf("jstart = %d\n",jstart));
     i = 0;
     j = jstart;
     nmismatches = 0;
-    while (nmismatches <= PAIRED_ADAPTER_NMISMATCHES_ALLOWED && i < fulllength1 - jstart) {
+    while (nmismatches <= PAIRED_ADAPTER_NMISMATCHES_ALLOWED && i < minlength - jstart) {
       debug2(printf("At i = %d, j = %d, comparing %c and %c\n",i,j,contents1[i],contents2[j]));
+      assert(i < fulllength1);
+      assert(j < fulllength2);
       if (contents1[i] != contents2[j]) {
 	nmismatches++;
       }
@@ -1728,16 +1737,18 @@ Shortread_chop_primers (T queryseq1, T queryseq2) {
     choppedp = true;
     queryseq1->choplength = chop1;
     queryseq1->chop = (char *) CALLOC_IN(chop1+1,sizeof(char));
-    strncpy(queryseq1->chop,&(queryseq1->contents[queryseq1->fulllength - chop1]),chop1);
-    queryseq1->contents[queryseq1->fulllength - chop1] = '\0';
-    queryseq1->contents_uc[queryseq1->fulllength - chop1] = '\0';
+    queryseq1->fulllength -= chop1;
+    fulllength1 = queryseq1->fulllength;
+
+    strncpy(queryseq1->chop,&(queryseq1->contents[fulllength1]),chop1);
+    queryseq1->contents[fulllength1] = '\0';
+    queryseq1->contents_uc[fulllength1] = '\0';
     
     if (queryseq1->quality != NULL) {
       queryseq1->chop_quality = (char *) CALLOC_IN(chop1+1,sizeof(char));
-      strncpy(queryseq1->chop_quality,&(queryseq1->quality[queryseq1->fulllength - chop1]),chop1);
-      queryseq1->quality[queryseq1->fulllength - chop1] = '\0';
+      strncpy(queryseq1->chop_quality,&(queryseq1->quality[fulllength1]),chop1);
+      queryseq1->quality[fulllength1] = '\0';
     }
-    queryseq1->fulllength -= chop1;
 
   }
 
@@ -1768,21 +1779,30 @@ Shortread_find_primers (T queryseq1, T queryseq2) {
   int nmatches, nmismatches;
   int fulllength1 = queryseq1->fulllength;
   int fulllength2 = queryseq2->fulllength;
+  int minlength;
   char *contents1 = queryseq1->contents_uc;
   char *contents2 = queryseq2->contents_uc;
 
   int best_score = 0, score;
   int jstart, j, i;
 
+  if (fulllength1 < fulllength2) {
+    minlength = fulllength1;
+  } else {
+    minlength = fulllength2;
+  }
+
   debug2(printf("jstart must be < %d - %d and < %d - %d\n",
 		fulllength2,PAIRED_ADAPTER_MINLENGTH,fulllength1,PAIRED_ADAPTER_MINLENGTH));
-  for (jstart = 0; jstart < fulllength2 - PAIRED_ADAPTER_MINLENGTH && jstart < fulllength1 - PAIRED_ADAPTER_MINLENGTH; jstart++) {
+  for (jstart = 0; jstart < minlength - PAIRED_ADAPTER_MINLENGTH; jstart++) {
     debug2(printf("jstart = %d\n",jstart));
     i = 0;
     j = jstart;
     nmismatches = 0;
-    while (nmismatches <= PAIRED_ADAPTER_NMISMATCHES_ALLOWED && i < fulllength1 - jstart) {
+    while (nmismatches <= PAIRED_ADAPTER_NMISMATCHES_ALLOWED && i < minlength - jstart) {
       debug2(printf("At i = %d, j = %d, comparing %c and %c\n",i,j,contents1[i],contents2[j]));
+      assert(i < fulllength1);
+      assert(j < fulllength2);
       if (contents1[i] != contents2[j]) {
 	nmismatches++;
       }

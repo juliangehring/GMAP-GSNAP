@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 87978 2013-03-05 17:56:07Z twu $
+# $Id: gmap_build.pl.in 109769 2013-10-02 17:22:03Z twu $
 
 use warnings;	
 
@@ -24,6 +24,7 @@ GetOptions(
 
     'D|dir=s' => \$destdir,	# destination directory
     'd|db=s' => \$dbname,	# genome name
+    'n|names=s' => \$chrnamefile,   # substitute chromosomal names
 
     'M|mdfile=s' => \$mdfile,	# NCBI MD file
 
@@ -61,17 +62,19 @@ if (!defined($dbname)) {
   print_usage();
   die "Must specify genome database name with -d flag.";
 } elsif ($dbname =~ /(\S+)\/(\S+)/) {
-  $dbname = $2;
-  if (defined($destdir) && $destdir =~ /\S/) {
-    $destdir = $destdir . "/" . $1;
-  } else {
-    $destdir = $1;
-  }
+    $dbdir = $1;
+    $dbname = $2;
+    if (defined($destdir) && $destdir =~ /\S/) {
+	$destdir = $destdir . "/" . $dbname;
+    } else {
+	$destdir = $dbdir;
+    }
 }
 
 $dbname =~ s/\/$//;	# In case user gives -d argument with trailing slash
 
 if (!defined($destdir) || $destdir !~ /\S/) {
+    print STDERR "Destination directory not defined with -D flag, so writing to $gmapdb\n";
     $destdir = $gmapdb;
 }
 
@@ -131,6 +134,8 @@ sub create_coords {
     if (defined($mdfile)) {
 	# MD file cannot specify that a chromosome is circular
 	$cmd = "$bindir/md_coords -o $builddir/$dbname.coords $mdfile";
+    } elsif (defined($chrnamefile)) {
+	$cmd = "$bindir/fa_coords $gunzip_flag $circular_flag -n $chrnamefile -o $builddir/$dbname.coords $genome_fasta";
     } else {
 	$cmd = "$bindir/fa_coords $gunzip_flag $circular_flag -o $builddir/$dbname.coords $genome_fasta";
     }
@@ -256,6 +261,12 @@ Usage: gmap_build [options...] -d <genomename> <fasta_files>
 Options:
     -D, --dir=STRING        Destination directory for installation (defaults to gmapdb directory specified at configure time)
     -d, --db=STRING         Genome name
+
+    -n, --names=STRING        Substitute names for chromosomes, provided in a file.  The file should have one line
+                                for each chromosome name to be changed, with the original FASTA name in column 1 and
+                                the desired chromosome name in column 2.  This provides an easy way to change the
+                                names of chromosomes, for example, to add or remove the "chr" prefix.
+
     -T STRING               Temporary build directory
 
     -M, --mdflag=STRING     Use MD file from NCBI for mapping contigs to chromosomal coordinates
@@ -271,7 +282,8 @@ Options:
     -g, --gunzip            Files are gzipped, so need to gunzip each file first
     -w INT                  Wait (sleep) this many seconds after each step (default 2)
 
-    -c, --circular=STRING   Circular chromosomes (separated by a comma)
+    -c, --circular=STRING     Circular chromosomes (either a list of chromosomes separated by a comma, or
+                                a filename containing circular chromosomes, one per line)
 
     -e, --nmessages=INT     Maximum number of messages (warnings, contig reports) to report (default 50)
 TEXT1

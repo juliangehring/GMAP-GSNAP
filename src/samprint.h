@@ -1,4 +1,4 @@
-/* $Id: samprint.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: samprint.h 109764 2013-10-02 17:13:24Z twu $ */
 #ifndef SAMPRINT_INCLUDED
 #define SAMPRINT_INCLUDED
 
@@ -18,8 +18,9 @@ SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in, bool sam_multip
 	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in);
 
 extern Chrpos_T
-SAM_compute_chrpos (int *hardclip_low, int *hardclip_high, Stage3end_T this,
-		    Substring_T substring_low, int querylength);
+SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
+		    int clipdir, int hardclip5, int hardclip3, bool firstp,
+		    Stage3end_T this, Substring_T substring_low, int querylength);
 
 extern unsigned int
 SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,

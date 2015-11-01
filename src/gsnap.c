@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 103703 2013-08-02 23:08:31Z twu $";
+static char rcsid[] = "$Id: gsnap.c 106903 2013-09-05 19:59:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -183,6 +183,8 @@ static int pairlength_deviation = 100;
 static pthread_t output_thread_id, *worker_thread_ids;
 static pthread_key_t global_request_key;
 static int nworkers = 1;	/* (int) sysconf(_SC_NPROCESSORS_ONLN) */
+#else
+static int nworkers = 0;	/* (int) sysconf(_SC_NPROCESSORS_ONLN) */
 #endif
 
 /* static Masktype_T masktype = MASK_REPETITIVE; */
@@ -396,9 +398,7 @@ static struct option long_options[] = {
   {"pairexpect", required_argument, 0, 0},  /* expected_pairlength */
   {"pairdev", required_argument, 0, 0},  /* pairlength_deviation */
 
-#ifdef HAVE_PTHREAD
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
-#endif
   {"adapter-strip", required_argument, 0, 'a'},	/* chop_primers_p */
 
   {"query-unk-mismatch", required_argument, 0, 0}, /* query_unk_mismatch_p */
@@ -979,7 +979,7 @@ single_thread () {
 }
 
 
-
+#ifdef HAVE_PTHREAD
 static void *
 worker_thread (void *data) {
   long int worker_id = (long int) data;
@@ -1103,6 +1103,7 @@ worker_thread (void *data) {
 
   return (void *) NULL;
 }
+#endif
 
 
 static void
@@ -1753,6 +1754,8 @@ main (int argc, char *argv[]) {
 
 #ifdef HAVE_PTHREAD
     case 't': nworkers = atoi(check_valid_int(optarg)); break;
+#else
+    case 't': fprintf(stderr,"This version of GSNAP has pthreads disabled, so ignoring the value of %s for -t\n",optarg); break;
 #endif
 
     case 'A':
@@ -2604,7 +2607,7 @@ main (int argc, char *argv[]) {
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
-		 circularp);
+		 merge_samechr_p,circularp);
   SAM_setup(quiet_if_excessive_p,maxpaths_report,sam_multiple_primaries_p,
 	    force_xs_direction_p,md_lowercase_variant_p,snps_iit);
   Goby_setup(show_refdiff_p);
@@ -3033,6 +3036,10 @@ is still designed to be fast.\n\
 #ifdef HAVE_PTHREAD
   fprintf(stdout,"\
   -t, --nthreads=INT             Number of worker threads\n\
+");
+#else
+  fprintf(stdout,"\
+  -t, --nthreads=INT             Number of worker threads.  Flag is ignored in this version of GSNAP, which has pthreads disabled\n\
 ");
 #endif
 

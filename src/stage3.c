@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 105190 2013-08-19 18:47:42Z twu $";
+static char rcsid[] = "$Id: stage3.c 109775 2013-10-02 17:57:34Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -4539,7 +4539,7 @@ bool
 Stage3_test_bounds (T this, int minpos, int maxpos) {
   int nstart;
 
-  if (Pairpool_count_bounded(&nstart,this->pairs,minpos,maxpos) > 25) {
+  if (Pairpool_count_bounded(&nstart,this->pairs,minpos,maxpos) >= 25) {
     return true;
   } else {
     return false;
@@ -4994,7 +4994,7 @@ Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
     Pair_print_sam(fp,this->pairarray,this->npairs,
 		   Sequence_accession(queryseq),/*acc2*/NULL,this->chrnum,chromosome_iit,usersegment,
 		   Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
-		   /*hardclip5*/0,/*hardclip3*/querylength-this->circularpos,querylength,
+		   /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/querylength-this->circularpos,querylength,
 		   this->watsonp,this->cdna_direction,chimera_part,chimera,
 		   quality_shift,Sequence_firstp(queryseq),
 		   pathnum,npaths,absmq_score,first_absmq,second_absmq,chrpos,
@@ -5003,7 +5003,7 @@ Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
     Pair_print_sam(fp,this->pairarray,this->npairs,
 		   Sequence_accession(queryseq),/*acc2*/NULL,this->chrnum,chromosome_iit,usersegment,
 		   Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
-		   /*hardclip5*/this->circularpos,/*hardclip3*/0,querylength,
+		   /*clipdir*/0,/*hardclip5*/this->circularpos,/*hardclip3*/0,querylength,
 		   this->watsonp,this->cdna_direction,chimera_part,chimera,
 		   quality_shift,Sequence_firstp(queryseq),
 		   pathnum,npaths,absmq_score,first_absmq,second_absmq,/*chrpos*/1,
@@ -5013,7 +5013,7 @@ Stage3_print_sam (FILE *fp, T this, int pathnum, int npaths,
     Pair_print_sam(fp,this->pairarray,this->npairs,
 		   Sequence_accession(queryseq),/*acc2*/NULL,this->chrnum,chromosome_iit,usersegment,
 		   Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
-		   /*hardclip5*/0,/*hardclip3*/0,querylength,
+		   /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,querylength,
 		   this->watsonp,this->cdna_direction,chimera_part,chimera,
 		   quality_shift,Sequence_firstp(queryseq),
 		   pathnum,npaths,absmq_score,first_absmq,second_absmq,chrpos,
@@ -5717,7 +5717,9 @@ peel_leftward (bool *mismatchp, List_T *peeled_path, List_T path, int *querydp5,
     }
   }
 
+#if 0
   assert(peeled == NULL || path == NULL || ((Pair_T) path->first)->comp != INDEL_COMP);
+#endif
   debug(
 	if (path == NULL) {
 	  printf(" => Top of path is NULL.");
@@ -6030,7 +6032,9 @@ peel_rightward (bool *mismatchp, List_T *peeled_pairs, List_T pairs, int *queryd
     }
   }
 
+#if 0
   assert(peeled == NULL || pairs == NULL || ((Pair_T) pairs->first)->comp != INDEL_COMP);
+#endif
   debug(
 	if (pairs == NULL) {
 	  printf(" => Top of pairs is NULL.");
@@ -10654,7 +10658,7 @@ path_trim (double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
   debug3(printf("Entering path_trim with cdna_direction %d and sensedir %d\n",*cdna_direction,*sensedir));
 
 #if 0
-  /* Remove known splices here */
+  /* Remove known splices here.  Doing this step at the very end. */
   path = insert_gapholders(pairs,queryseq_ptr,queryuc_ptr,chroffset,chrhigh,watsonp,pairpool);
   pairs = assign_gap_types(path,*cdna_direction,watsonp,queryseq_ptr,
 			   chrnum,chroffset,chrhigh,pairpool);
@@ -10791,6 +10795,10 @@ path_trim (double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
     debug3(Pair_dump_list(pairs,true));
   }
 
+  /* Need this to prevent errors from comp == ' ' */
+  path = insert_gapholders(pairs,queryseq_ptr,queryuc_ptr,chroffset,chrhigh,watsonp,pairpool);
+  pairs = assign_gap_types(path,*cdna_direction,watsonp,queryseq_ptr,
+			   chrnum,chroffset,chrhigh,pairpool);
 
   debug3(printf("Final result of path_trim: chroffset = %u, cdna_direction %d, sensedir %d\n",
 		chroffset,*cdna_direction,*sensedir));
@@ -11198,10 +11206,12 @@ Stage3_mergeable (bool *singlep, bool *dualbreakp, int *cdna_direction,
       debug10(printf("result: not mergeable\n\n"));
       return false;
     } else {
+      debug10(printf("Calling Pairpool_count_bounded on left for 0..%d\n",breakpoint));
+      debug10(printf("Calling Pairpool_count_bounded on right for %d..%d\n",breakpoint,queryntlength));
       npairs_left = Pairpool_count_bounded(&nstart,firstpart->pairs,0,breakpoint);
       npairs_right = Pairpool_count_bounded(&nstart,secondpart->pairs,breakpoint,queryntlength);
       debug10(printf("Predicted after splicing: npairs_left %d, npairs_right %d\n",npairs_left,npairs_right));
-      if (npairs_left == 0 || npairs_right == 0) {
+      if (npairs_left < 25 || npairs_right < 25) {
 	return false;
       }
 
@@ -11248,6 +11258,8 @@ Stage3_merge_chimera (T this_left, T this_right,
   char *queryseq_ptr, *queryuc_ptr;
 
 
+  debug10(printf("Entering Stage3_merge_chimera\n"));
+
   this_left->pairs = Pairpool_clip_bounded(this_left->pairs,minpos1,maxpos1);
   this_right->pairs = Pairpool_clip_bounded(this_right->pairs,minpos2,maxpos2);
 
@@ -11266,8 +11278,8 @@ Stage3_merge_chimera (T this_left, T this_right,
 
     path = List_reverse(this_left->pairs);
 
-    /* Chimera might not have a single breakpoint */
-    /* path = clean_path_end3_gap_indels (path); */
+    /* To avoid indels at chimeric join, need to clean ends, extend with nogaps, and then clip */
+    path = clean_path_end3_gap_indels(path);
 
     path = build_path_end3(&knownsplicep,&ambig_end_length_3,&ambig_splicetype,
 			   &chop_exon_p,&dynprogindex_minor,path,
@@ -11282,14 +11294,13 @@ Stage3_merge_chimera (T this_left, T this_right,
 			   maxpeelback,maxpeelback_distalmedial,
 			   nullgap,extramaterial_end,extraband_end,
 			   /*defect_rate*/0.0,pairpool,dynprogL,
-			   /*extendp*/true,/*endalign*/BEST_LOCAL);
+			   /*extendp*/true,/*endalign*/QUERYEND_NOGAPS);
 
     this_left->pairs = List_reverse(path);
     this_left->pairs = Pairpool_clip_bounded(this_left->pairs,minpos1,maxpos1);
 
-
-    /* Chimera might not have a single breakpoint */
-    /* this_right->pairs = clean_pairs_end5_gap_indels(this_right->pairs); */
+    /* To avoid indels at chimeric join, need to clean ends, extend with nogaps, and then clip */
+    this_right->pairs = clean_pairs_end5_gap_indels(this_right->pairs);
 
     this_right->pairs = build_pairs_end5(&knownsplicep,&ambig_end_length_5,&ambig_splicetype,
 					 &chop_exon_p,&dynprogindex_minor,this_right->pairs,
@@ -11304,7 +11315,7 @@ Stage3_merge_chimera (T this_left, T this_right,
 					 maxpeelback,maxpeelback_distalmedial,
 					 nullgap,extramaterial_end,extraband_end,
 					 /*defect_rate*/0.0,pairpool,dynprogR,
-					 /*extendp*/true,/*endalign*/BEST_LOCAL);
+					 /*extendp*/true,/*endalign*/QUERYEND_NOGAPS);
     this_right->pairs = Pairpool_clip_bounded(this_right->pairs,minpos2,maxpos2);
 
     if (this_left->pairs == NULL || this_right->pairs == NULL) {
@@ -11342,10 +11353,11 @@ Stage3_extend_right (T this, int goal, int querylength,
   char c, c_upper, g, g_alt, comp;
   bool mismatchp;
 
+#if 0
   debug10(printf("LEFT BEFORE FILL\n"));
   debug10(Pair_dump_list(this->pairs,true));
   debug10(printf("END_LEFT BEFORE FILL\n"));
-
+#endif
 
   path = List_reverse(this->pairs);
   leftpair = (Pair_T) path->first;
@@ -11479,9 +11491,11 @@ Stage3_extend_right (T this, int goal, int querylength,
 
   this->pairs = List_reverse(path);
 
+#if 0
   debug10(printf("LEFT AFTER FILL\n"));
   debug10(Pair_dump_list(this->pairs,true));
   debug10(printf("END_LEFT AFTER FILL\n"));
+#endif
 
   Stage3_free_pairarray(&this);
   this->pairarray = make_pairarray(&this->npairs,&this->pairs,this->cdna_direction,this->sensedir,
@@ -11518,10 +11532,11 @@ Stage3_extend_left (T this, int goal,
   char c, c_upper, g, g_alt, comp;
   bool mismatchp;
 
+#if 0
   debug10(printf("RIGHT BEFORE FILL\n"));
   debug10(Pair_dump_list(this->pairs,true));
   debug10(printf("END_RIGHT BEFORE FILL\n"));
-
+#endif
 
   /* Do not call insert_gapholders */
   pairs = this->pairs;
@@ -11653,9 +11668,11 @@ Stage3_extend_left (T this, int goal,
 
   this->pairs = pairs;
 
+#if 0
   debug10(printf("RIGHT AFTER FILL\n"));
   debug10(Pair_dump_list(this->pairs,true));
   debug10(printf("END_RIGHT AFTER FILL\n"));
+#endif
 
   Stage3_free_pairarray(&this);
   this->pairarray = make_pairarray(&this->npairs,&this->pairs,this->cdna_direction,this->sensedir,
@@ -11711,6 +11728,8 @@ Stage3_merge_local_single (T this_left, T this_right,
   int firstpos, lastpos;
   int dynprogindex_minor = 0;
 
+
+  debug10(printf("Entering Stage3_merge_local_single\n"));
 
   this_left->pairs = Pairpool_clip_bounded(this_left->pairs,minpos1,maxpos1);
   this_right->pairs = Pairpool_clip_bounded(this_right->pairs,minpos2,maxpos2);

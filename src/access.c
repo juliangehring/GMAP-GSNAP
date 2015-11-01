@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: access.c 109235 2013-09-25 23:17:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -182,7 +182,7 @@ Access_fileio_rw (char *filename) {
 #ifndef WORDS_BIGENDIAN
 /* Needed as a test on Macintosh machines */
 static UINT4
-first_nonzero (int *i, char *filename) {
+first_nonzero (size_t *i, char *filename) {
   size_t len;
   FILE *fp;
   UINT4 value = 0;
@@ -220,7 +220,7 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   Stopwatch_T stopwatch;
   UINT4 value;
   void *p;
-  int i;
+  size_t i;
 
   *len = (size_t) Access_filesize(filename);
 
@@ -243,18 +243,18 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
 
 #ifndef WORDS_BIGENDIAN
   if (eltsize == 4) {
-    /* Test if Macintosh fread failure occurs.  Not sure if this occurs on 64-bit Macs. */
+    /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
     value = first_nonzero(&i,filename);
     if (i >= 0 && ((UINT4 *) memory)[i] != value) {
       fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)...reading file in smaller batches...");
       fp = FOPEN_READ_BINARY(filename);
 
-      for (i = 0; i < (int) ((*len)/eltsize); i += FREAD_BATCH) {
+      for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
 	p = (void *) &(((UINT4 *) memory)[i]);
 	fread(p,sizeof(UINT4),FREAD_BATCH,fp);
       }
 
-      if (i < (int) (*len)/eltsize) {
+      if (i < (*len)/eltsize) {
 	p = (void *) &(((UINT4 *) memory)[i]);
 	fread(p,sizeof(UINT4),(*len)/eltsize - i,fp);
       }

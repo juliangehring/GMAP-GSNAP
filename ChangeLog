@@ -1,3 +1,107 @@
+2013-10-02  twu
+
+    * stage3.c: Using new interface to Pair_print_sam
+
+    * fa_coords.pl.in, gmap_build.pl.in: Allowing user to specify a file for
+      circular chromosomes
+
+    * outbuffer.c, pair.c, pair.h, samprint.c, samprint.h, stage3hr.c,
+      substring.c, substring.h: Made numerous changes to fix --clip-overlap,
+      involving trimming and GMAP alignments
+
+2013-10-01  twu
+
+    * VERSION: Updated version number
+
+    * genome_hr.c: For trimming, setting query_unk_mismatch_p to be false
+
+2013-09-30  twu
+
+    * stage1hr.c: Checking for concordant results after GMAP improvement on
+      paired results
+
+    * stage3hr.h: Added functions Stage3pair_concordantp and
+      Stage3pair_filter_nonconcordant
+
+    * stage3hr.c: Fixing Stage3pair_overlap to handle trimming.  Added functions
+      Stage3pair_concordantp and Stage3pair_filter_nonconcordant.
+
+    * samprint.c: Fixed bug in --clip-overlap SAM output where deletion occurs
+      at the clip site.
+
+    * stage3.c: To prevent indels at chimeric join, cleaning the ends, extending
+      with no gaps, and then clipping.
+
+2013-09-27  twu
+
+    * stage3.c: Doing a final run through assign_gap_types at the end of
+      path_trim
+
+2013-09-26  twu
+
+    * stage3.c: Fixed a bug where not all introns were being categorized
+
+2013-09-25  twu
+
+    * VERSION: Updated version number
+
+    * stage1hr.c: Not allowing GMAP splicing on circular chromosomes
+
+    * substring.c: Not allowing translocations to circular chromosomes
+
+    * samprint.c: Fixed SAM flags and mate chrnum for distant splices
+
+    * access.c: Changed memory allocation to handle files greater than 4 GB
+
+    * gmap.c: Fixed behavior of "-n 1" for chimeras
+
+    * pair.c: Allowing hardclips on both ends
+
+    * stage3hr.c: Fixed computation of overlaps when read lengths are unequal
+
+2013-09-18  twu
+
+    * gmap.c, samprint.c, shortread.c, stage3hr.c: Merged changes from trunk
+
+2013-09-12  twu
+
+    * VERSION: Updated version number
+
+    * stage3hr.c: Handling case of negative overlaps (non-overlaps), which give
+      rise to problems with --clip-overlap
+
+    * stage1hr.c: Initializing plus_positions and minus_positions for all
+      querypos
+
+    * gregion.c: In determining overlaps, using chrstart and chrend instead of
+      extentstart and extentend
+
+2013-09-11  twu
+
+    * pair.c: Fixed memory leak under --clip-overlap feature
+
+    * stage3.c: Requiring 25 bp on both sides of a chimeric alignment
+
+2013-09-06  twu
+
+    * stage1hr.c: Fixed add_bounded so the maximum coordinate is (highbound - 1)
+
+2013-09-05  twu
+
+    * gmap.c, gsnap.c: Allowed compilation when pthreads are disabled
+
+2013-09-04  twu
+
+    * VERSION: Updated version number
+
+    * gsnap.c, uniqscan.c: Providing value of merge_samechr_p in Stage3hr_setup
+
+    * stage3hr.c, stage3hr.h: Fixed output bug for the --merge-distant-samechr
+      option, where wrong genomicstart was being used
+
+    * gregion.c: Fixed bug in gregion_overlap_p, where chromosomal coordinates
+      were evaluated instead of universal coordinates
+
 2013-08-19  twu
 
     * VERSION: Updated version number

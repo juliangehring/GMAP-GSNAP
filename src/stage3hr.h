@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 102130 2013-07-19 22:59:15Z twu $ */
+/* $Id: stage3hr.h 109579 2013-09-30 23:14:13Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -41,7 +41,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
 		int gmap_min_nconsecutive_in, int index1part, int index1interval,
-		bool novelsplicingp_in, bool *circularp_in);
+		bool novelsplicingp_in, bool merge_samechr_p_in, bool *circularp_in);
 
 extern Hittype_T
 Stage3end_hittype (T this);
@@ -203,6 +203,10 @@ extern Chrpos_T
 Stage3pair_pairlength (Stage3pair_T this);
 extern int
 Stage3pair_nmatches (Stage3pair_T this);
+extern bool
+Stage3pair_concordantp (List_T hitpairs);
+extern List_T
+Stage3pair_filter_nonconcordant (List_T hitpairs);
 extern int
 Stage3pair_overlap (int *hardclip5, int *hardclip3, Stage3pair_T this);
 extern void

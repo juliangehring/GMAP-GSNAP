@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 105187 2013-08-19 18:38:05Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 109764 2013-10-02 17:13:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1253,8 +1253,9 @@ print_result_sam (T this, Result_T result, Request_T request) {
       /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
 
       stage3 = stage3array[0];
-      chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,stage3,
-				  Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+      chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,
+				  /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,/*first_read_p*/true,
+				  stage3,Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
       if (Stage3end_circularpos(stage3) > 0) {
 	fp = this->fp_unpaired_circular;
       } else {
@@ -1291,8 +1292,9 @@ print_result_sam (T this, Result_T result, Request_T request) {
       for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
 
 	stage3 = stage3array[pathnum-1];
-	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,stage3,
-				    Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,
+				    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,/*first_read_p*/true,
+				    stage3,Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 	SAM_print(this->fp_unpaired_transloc,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 		  /*acc2*/NULL,pathnum,npaths,
 		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
@@ -1326,8 +1328,9 @@ print_result_sam (T this, Result_T result, Request_T request) {
       for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
 
 	stage3 = stage3array[pathnum-1];
-	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,stage3,
-				    Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,
+				    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,/*first_read_p*/true,
+				    stage3,Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
 	SAM_print(this->fp_unpaired_mult,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 		  /*acc2*/NULL,pathnum,npaths,
 		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,

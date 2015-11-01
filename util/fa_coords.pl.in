@@ -13,20 +13,50 @@ undef($opt_E);			# Interpret argument as a command
 undef($opt_g);			# gunzip each file first
 #undef($opt_S);			# Do not order chromosomes
 undef($opt_c);			# Circular chromosomes
+undef($opt_n);			# File with substitute chromosome names
 use Getopt::Std;
-getopts("o:CEgc:");
+getopts("o:CEgc:n:");
 
-# Usage: fa_coords [-o <output>] [-C] [-E] [-g] <fastafiles or command>
+# Usage: fa_coords [-o <output>] [-C] [-E] [-g] [-n <namefile>] <fastafiles or command>
 
 if (defined($circular = $opt_c)) {
-    foreach $chr (split ",",$circular) {
-	$circularp{$chr} = 1;
+    if (-e $circular) {
+	print STDERR "Reading circular chromosomes from the file $circular...";
+	$ncircular = 0;
+	$FP = new IO::File($circular);
+	while (defined($line = <$FP>)) {
+	    ($chr) = $line =~ /(\S+)/;
+	    $circularp{$chr} = 1;
+	    $ncircular++;
+	}
+	close($FP);
+	print STDERR "read $circular chromosomes\n";
+    } else {
+	foreach $chr (split ",",$circular) {
+	    $circularp{$chr} = 1;
+	}
     }
 }
 
 if (!defined($outfile = $opt_o)) {
     $outfile = "coords.txt";
 }
+
+if (defined($opt_n)) {
+    $FP = new IO::File($opt_n) or die "Cannot open file $opt_n";
+    print STDERR "Reading substitute chromosome names from $opt_n\n";
+    while (defined($line = <$FP>)) {
+	chop $line;
+	($oldname,$newname) = split /\t/,$line;
+	if (defined($oldname) && defined($newname) && $newname =~ /\S/) {
+	    $newname{$oldname} = $newname;
+	}
+    }
+    close($FP);
+}
+    
+
+
 
 $flags = "";
 $flags .= "-o $outfile";
@@ -197,11 +227,14 @@ sub parse_fa_files {
 			    $shortp = 0;
 			}
 			if ($chronlyp == 1) {
-			    printf STDOUT ("  Contig %s: concatenated at chromosome end: %s:%d..",
-					   $contig,$chr,$chrpos{$chr});
+			    printf STDOUT ("  Contig %s: concatenated at chromosome end: ",$contig);
 			} else {
-			    printf STDOUT ("  Contig %s: parsed chromosomal coordinates: %s:%d..",
-					   $contig,$chr,$chrpos{$chr});
+			    printf STDOUT ("  Contig %s: parsed chromosomal coordinates: ",$contig);
+			}
+			if (defined($newname{$chr})) {
+			    printf STDOUT ("%s:%d..",$newname{$chr},$chrpos{$chr});
+			} else {
+			    printf STDOUT ("%s:%d..",$chr,$chrpos{$chr});
 			}
 			printf STDOUT ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
 			if (defined($orientation) && $orientation eq "rev") {
@@ -220,10 +253,15 @@ sub parse_fa_files {
 			}
 		    }
 
-		    if (defined($orientation) && $orientation eq "rev") {
-			$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+		    if (defined($newname{$chr})) {
+			$string = sprintf("%s\t%s:",$contig,$newname{$chr});
 		    } else {
-			$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+			$string = sprintf("%s\t%s:",$contig,$chr);
+		    }
+		    if (defined($orientation) && $orientation eq "rev") {
+			$string .= sprintf("%d..%d",$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+		    } else {
+			$string .= sprintf("%d..%d",$chrpos{$chr},$chrpos{$chr}+$seglength-1);
 		    }
 		    if (defined($circularp{$chr})) {
 			$string .= "\tcircular";
@@ -360,11 +398,14 @@ sub parse_fa_files {
 		    $shortp = 0;
 		}
 		if ($chronlyp == 1) {
-		    printf STDOUT ("  Contig %s: concatenated at chromosome end: %s:%d..",
-				   $contig,$chr,$chrpos{$chr});
+		    printf STDOUT ("  Contig %s: concatenated at chromosome end: ",$contig);
 		} else {
-		    printf STDOUT ("  Contig %s: parsed chromosomal coordinates: %s:%d..",
-				   $contig,$chr,$chrpos{$chr});
+		    printf STDOUT ("  Contig %s: parsed chromosomal coordinates: ",$contig);
+		}
+		if (defined($newname{$chr})) {
+		    printf STDOUT ("%s:%d..",$newname{$chr},$chrpos{$chr});
+		} else {
+		    printf STDOUT ("%s:%d..",$chr,$chrpos{$chr});
 		}
 		printf STDOUT ("%d (length = %d nt)",$chrpos{$chr}+$seglength-1,$seglength);
 		if (defined($orientation) && $orientation eq "rev") {
@@ -384,10 +425,15 @@ sub parse_fa_files {
 		}
 	    }
 
-	    if (defined($orientation) && $orientation eq "rev") {
-		$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	    if (defined($newname{$chr})) {
+		$string = sprintf("%s\t%s:",$contig,$newname{$chr});
 	    } else {
-		$string = sprintf("%s\t%s:%d..%d",$contig,$chr,$chrpos{$chr},$chrpos{$chr}+$seglength-1);
+		$string = sprintf("%s\t%s:",$contig,$chr);
+	    }
+	    if (defined($orientation) && $orientation eq "rev") {
+		$string .= sprintf("%d..%d",$chrpos{$chr}+$seglength-1,$chrpos{$chr});
+	    } else {
+		$string .= sprintf("%d..%d",$chrpos{$chr},$chrpos{$chr}+$seglength-1);
 	    }
 	    if (defined($circularp{$chr})) {
 		$string .= "\tcircular";

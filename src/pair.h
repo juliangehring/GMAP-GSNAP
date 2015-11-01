@@ -1,4 +1,4 @@
-/* $Id: pair.h 99755 2013-06-27 21:19:12Z twu $ */
+/* $Id: pair.h 109764 2013-10-02 17:13:24Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -165,7 +165,7 @@ extern void
 Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *acc1, char *acc2, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		char *queryseq_ptr, char *quality_string,
-		int hardclip5, int hardclip3, int querylength_given,
+		int clipdir, int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
 		int quality_shift, bool firstp, int pathnum, int npaths,
 		int absmq_score, int first_absmq, int second_absmq, Chrpos_T chrpos,
@@ -287,8 +287,9 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 			       Chrpos_T goal_start, Chrpos_T goal_end);
 #ifndef PMAP
 extern Chrpos_T
-Pair_genomicpos_low (int *hardclip_low, int *hardclip_high, struct T *pairarray, int npairs,
-		     int querylength, bool watsonp);
+Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
+		     struct T *pairarray, int npairs, int querylength,
+		     bool watsonp, bool firstp);
 #endif
 
 extern Chrpos_T

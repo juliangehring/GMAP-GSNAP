@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 104801 2013-08-14 00:55:53Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 109580 2013-09-30 23:14:34Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -871,7 +871,12 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
   /* Prevents us from processing invalid query 12-mers */
   for (querypos = 0; querypos <= query_lastpos; querypos++) {
     this->plus_retrievedp[querypos] = true;
+    this->plus_positions[querypos] = (Univcoord_T *) NULL;
+    this->plus_npositions[querypos] = 0;
+
     this->minus_retrievedp[querypos] = true;
+    this->minus_positions[querypos] = (Univcoord_T *) NULL;
+    this->minus_npositions[querypos] = 0;
   }
 
   /* Note: leftshifting is done here, rather than in Oligo_lookup */
@@ -12461,7 +12466,7 @@ complete_set_doublesplicing (int *found_score, Floors_T floors,
 
 
 
-#define add_bounded(x,plusterm,highbound) ((x + (plusterm) > highbound) ? highbound : x + (plusterm))
+#define add_bounded(x,plusterm,highbound) ((x + (plusterm) >= highbound) ? (highbound - 1) : x + (plusterm))
 #define subtract_bounded(x,minusterm,lowbound) ((x < lowbound + (minusterm)) ? lowbound : x - (minusterm))
 
 
@@ -12500,6 +12505,8 @@ run_gmap (bool *good_start_p, bool *good_end_p, List_T hits,
   Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
   int ncanonical, nsemicanonical, nnoncanonical;
   double defect_rate;
+  int maxintronlen_bound;
+
 
   debug13(printf("Running GMAP at mappingstart %lu + %d = mappingend %lu, watsonp %d, sense_try %d, querylength %d, limits %u..%u\n",
 		 mappingstart-chroffset,mappingend-mappingstart,mappingend-chroffset,watsonp,sense_try,querylength,
@@ -12526,6 +12533,14 @@ run_gmap (bool *good_start_p, bool *good_end_p, List_T hits,
   }
 #endif
 
+  if (chroffset + chrlength < chrhigh) {
+    debug13(printf("Chromosome is circular because chroffset %u + chrlength %u < chrhigh %u\n",
+		   chroffset,chrlength,chrhigh));
+    maxintronlen_bound = 0;
+  } else {
+    maxintronlen_bound = shortsplicedist;
+  }
+
 
   /* Note: Use nmatches post-trim to decide if the alignment is high
      quality or worth keeping.  But if so, then use nmatches_pretrim
@@ -12542,7 +12557,7 @@ run_gmap (bool *good_start_p, bool *good_end_p, List_T hits,
 
 			     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
 			     pairpool,diagpool,sufflookback,nsufflookback,
-			     /*maxintronlen_bound*/shortsplicedist,/*localp*/true,
+			     maxintronlen_bound,/*localp*/true,
 			     /*skip_repetitive_p*/true,/*use_shifted_canonical_p*/false,
 			     favor_right_p,/*max_nalignments*/MAX_NALIGNMENTS,
 			     /*debug_graphic_p*/false,/*diagnosticp*/false,
@@ -12579,7 +12594,7 @@ run_gmap (bool *good_start_p, bool *good_end_p, List_T hits,
 				    /*stage3debug*/false,/*diagnosticp*/false,/*checkp*/false,
 				    /*do_final_p*/true,sense_try,/*sense_filter*/0,
 				    oligoindices_minor,noligoindices_minor,diagpool,
-				    sufflookback,nsufflookback,/*maxintronlen_bound*/shortsplicedist,
+				    sufflookback,nsufflookback,maxintronlen_bound,
 				    /*close_indels_mode*/+1,paired_favor_mode,zero_offset)) == NULL) {
       debug13(printf("stage3 is NULL\n"));
     } else {
@@ -17401,6 +17416,14 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 					query3_compress_fwd,query3_compress_rev,
 					/*keep_gmap_p*/false,/*finalp*/true);
       result = Stage3pair_resolve_multimapping(result);
+
+      if (Stage3pair_concordantp(result) == true) {
+	debug13(printf("Found remaining concordant solution, so removing non-concordant ones\n"));
+	*final_pairtype = CONCORDANT;
+	result = Stage3pair_filter_nonconcordant(result);
+      } else {
+	*final_pairtype = PAIRED_UNSPECIFIED;
+      }
     }
 
   } else if (*final_pairtype == CONCORDANT_TRANSLOCATIONS) {

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c 101730 2013-07-16 23:57:35Z twu $";
+static char rcsid[] = "$Id: gregion.c 107641 2013-09-12 01:08:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -101,7 +101,7 @@ struct T {
 void
 Gregion_print (T this) {
 
-#if 0
+#if 1
   /* Off for debugging */
   printf(" %d..%d ",this->querystart,this->queryend);
 #endif
@@ -406,15 +406,23 @@ weight_cmp (const void *x, const void *y) {
 /* Not intended for qsort.  Returns 0 when not comparable. */
 static bool
 gregion_overlap_p (T x, T y) {
+  Univcoord_T x_genomicstart, x_genomicend, y_genomicstart, y_genomicend;
 
   if (x->plusp != y->plusp) {
     return false;			/* Different strands */
 
-  } else if (y->extentstart > x->extentend || x->extentstart > y->extentend) {
-    return false;		/* No overlap */
-
   } else {
-    return true;
+    x_genomicstart = x->chroffset + x->chrstart;
+    x_genomicend = x->chroffset + x->chrend;
+    y_genomicstart = y->chroffset + y->chrstart;
+    y_genomicend = y->chroffset + y->chrend;
+
+    if (y_genomicstart > x_genomicend || x_genomicstart > y_genomicend) {
+      return false;		/* No overlap */
+
+    } else {
+      return true;
+    }
   }
 }
 
@@ -460,6 +468,15 @@ Gregion_filter_unique (List_T gregionlist) {
     for (j = i+1; j < n; j++) {
       y = array[j];
       if (gregion_overlap_p(x,y) == true) {
+#ifdef DEBUG
+	printf("Found overlap between these regions:\n");
+	printf("   ");
+	Gregion_print(x);
+	printf("\n");
+	printf("   ");
+	Gregion_print(y);
+	printf("\n");
+#endif
 	eliminate[j] = true;
       }
     }

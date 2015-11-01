@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 104798 2013-08-14 00:53:57Z twu $";
+static char rcsid[] = "$Id: gmap.c 109081 2013-09-25 00:06:29Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -277,6 +277,8 @@ static bool altstrainp = false;
 #ifdef HAVE_PTHREAD
 static pthread_t output_thread_id, *worker_thread_ids;
 static int nworkers = 1;	/* (int) sysconf(_SC_NPROCESSORS_ONLN) */
+#else
+static int nworkers = 0;	/* (int) sysconf(_SC_NPROCESSORS_ONLN) */
 #endif
 #ifndef PMAP
 static bool prune_poor_p = false;
@@ -440,9 +442,8 @@ static struct option long_options[] = {
 #else
   {"localsplicedist", required_argument, 0, 'w'}, /* shortsplicedist */
 #endif
-#ifdef HAVE_PTHREAD
+
   {"nthreads", required_argument, 0, 't'}, /* nworkers */
-#endif
   {"splicingdir", required_argument, 0, 0}, /* user_splicingdir */
   {"nosplicing", no_argument, 0, 0},	    /* novelsplicingp */
   {"use-splicing", required_argument, 0, 's'}, /* splicing_iit, knownsplicingp (was previously altstrainp) */
@@ -2048,7 +2049,7 @@ find_breakpoint (int *cdna_direction, int *chimerapos, int *chimeraequivpos, int
 		 Sequence_T queryseq, Sequence_T queryuc,
 		 int queryntlength, Genome_T genome, Genome_T genomealt,
 		 Univ_IIT_T chromosome_iit, Pairpool_T pairpool) {
-  int breakpoint, leftpos, rightpos;
+  int breakpoint, leftpos, rightpos, midpos;
   int maxpeelback_from, maxpeelback_to;
   int found_cdna_direction, try_cdna_direction;
 
@@ -2084,8 +2085,13 @@ find_breakpoint (int *cdna_direction, int *chimerapos, int *chimeraequivpos, int
     if ((rightpos = Stage3_queryend(from) + 8) >= queryntlength) {
       rightpos = queryntlength - 1;
     }
-    maxpeelback_from = rightpos - Stage3_querystart(to);
-    maxpeelback_to = leftpos - Stage3_queryend(from);
+    midpos = (leftpos+rightpos)/2;
+    /* maxpeelback_from = rightpos - Stage3_querystart(to); */
+    /* maxpeelback_to = Stage3_queryend(from) - leftpos; */
+    maxpeelback_from = rightpos - midpos;
+    maxpeelback_to = midpos - leftpos;
+    debug2(printf("overlap: leftpos %d, rightpos %d, midpos %d, maxpeelback_from %d, maxpeelback_to %d\n",
+		  leftpos,rightpos,midpos,maxpeelback_from,maxpeelback_to));
 #if 0
     if (Stage3_watsonp(from) == true && Stage3_watsonp(to) == true) {
       queryjump = Stage3_queryend(from) - Stage3_querystart(to) - 1;
@@ -2397,8 +2403,9 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   }
 
   *mergedp = false;
+  *chimera = (Chimera_T) NULL;
   if (npaths_sub1 == 0 || npaths_sub2 == 0) {
-    *chimera = (Chimera_T) NULL;
+    /* Skip */
 
   } else {
     Chimera_bestpath(&five_score,&three_score,&chimerapos,&chimeraequivpos,&bestfrom,&bestto,
@@ -2478,24 +2485,26 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 				    maxpeelback,maxpeelback_distalmedial,nullgap,
 				    extramaterial_end,extraband_end,ngap) == true) {
 
-      *chimera = Chimera_new(chimerapos,chimeraequivpos,exonexonpos,chimera_cdna_direction,
-			     donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
-      debug2(printf("Not mergeable -- Merging left and right as a transloc\n"));
-      List_free(&stage3list);
+      /* if maxpaths == 1, then don't want distant chimeras */
+      if (maxpaths != 1) {
+	*chimera = Chimera_new(chimerapos,chimeraequivpos,exonexonpos,chimera_cdna_direction,
+			       donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+	debug2(printf("Not mergeable -- Merging left and right as a transloc\n"));
+	List_free(&stage3list);
 
-      debug2(printf("Before merge_left_and_right_transloc, bestfrom is %p, query %d..%d\n",
-		    from,Stage3_querystart(from),Stage3_queryend(from)));
-      debug2(printf("Before merge_left_and_right_transloc, bestto is %p, query %d..%d\n",
-		    to,Stage3_querystart(to),Stage3_queryend(to)));
+	debug2(printf("Before merge_left_and_right_transloc, bestfrom is %p, query %d..%d\n",
+		      from,Stage3_querystart(from),Stage3_queryend(from)));
+	debug2(printf("Before merge_left_and_right_transloc, bestto is %p, query %d..%d\n",
+		      to,Stage3_querystart(to),Stage3_queryend(to)));
 
-
-      stage3list = merge_left_and_right_transloc(stage3array_sub1,npaths_sub1,bestfrom,
-						 stage3array_sub2,npaths_sub2,bestto,
-						 nonjoinable,breakpoint,queryntlength,
+	stage3list = merge_left_and_right_transloc(stage3array_sub1,npaths_sub1,bestfrom,
+						   stage3array_sub2,npaths_sub2,bestto,
+						   nonjoinable,breakpoint,queryntlength,
 #ifdef PMAP
-						 /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
+						   /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
 #endif
-						 queryseq,queryuc,pairpool,dynprogL,dynprogR,ngap);
+						   queryseq,queryuc,pairpool,dynprogL,dynprogR,ngap);
+      }
     }
 
     FREE(stage3array_sub2);
@@ -3553,6 +3562,7 @@ single_thread () {
 }
 
 
+#ifdef HAVE_PTHREAD
 static void *
 worker_thread (void *data) {
   Oligoindex_T *oligoindices_major, *oligoindices_minor;
@@ -3628,6 +3638,7 @@ worker_thread (void *data) {
 
   return (void *) NULL;
 }
+#endif
 
 
 #if 0
@@ -4327,9 +4338,13 @@ main (int argc, char *argv[]) {
       }
       break;
       /* case 'w': referencefile = optarg; break; */
+
 #ifdef HAVE_PTHREAD
     case 't': nworkers = atoi(check_valid_int(optarg)); break;
+#else
+    case 't': fprintf(stderr,"This version of GMAP has pthreads disabled, so ignoring the value of %s for -t\n",optarg); break;
 #endif
+
     case 's': splicing_file = optarg; knownsplicingp = true; break;
     case 'c': user_chrsubsetname = optarg; break;
     case 'H': minendexon = atoi(check_valid_int(optarg)); break;
@@ -4384,7 +4399,12 @@ main (int argc, char *argv[]) {
       }
       break;
     case '9': checkp = true; diagnosticp = true; break;
-    case 'n': maxpaths = atoi(check_valid_int(optarg)); break;
+    case 'n':
+      maxpaths = atoi(check_valid_int(optarg));
+      if (maxpaths == 1) {
+	fprintf(stderr,"Note: -n 1 will not report chimeric alignments.  If you want a single alignment plus chimeras, use -n 0 instead.\n");
+      }
+      break;
     case 'f':
       if (!strcmp(optarg,"1") || !strcmp(optarg,"psl_nt")) {
 	printtype = PSL_NT;
@@ -5504,6 +5524,10 @@ Input options (must include -d or -g)\n\
     fprintf(stdout,"\
   -t, --nthreads=INT             Number of worker threads\n\
 ");
+#else
+  fprintf(stdout,"\
+  -t, --nthreads=INT             Number of worker threads.  Flag is ignored in this version of GMAP, which has pthreads disabled\n\
+");
 #endif
     fprintf(stdout,"\
   -C, --chrsubsetfile=filename   User-supplied chromosome subset file\n\
@@ -5608,8 +5632,10 @@ Output types\n\
 
     fprintf(stdout,"\
 Output options\n\
-  -n, --npaths=INT               Maximum number of paths to show.  If set to 0,\n \
-                                 prints two paths if chimera detected, else one.\n\
+  -n, --npaths=INT               Maximum number of paths to show (default 5).  If set to 1, GMAP\n\
+                                   will not report chimeric alignments, since those imply\n\
+                                   two paths.  If you want a single alignment plus chimeric\n\
+                                   alignments, then set this to be 0.\n\
   --quiet-if-excessive           If more than maximum number of paths are found,\n\
                                    then nothing is printed.\n\
   --suboptimal-score=INT         Report only paths whose score is within this value of the\n\

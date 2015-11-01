@@ -1,4 +1,4 @@
-/* $Id: iitdef.h 115892 2013-11-20 22:52:31Z twu $ */
+/* $Id: iitdef.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -46,7 +46,9 @@ struct FNode_T {
   int rightindex;
 };
 
+
 #define T IIT_T
+typedef struct T *T;
 struct T {
   char *name;			/* Name of IIT (optional) */
   int version;			

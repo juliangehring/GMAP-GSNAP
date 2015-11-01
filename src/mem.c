@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c 82065 2012-12-19 21:35:44Z twu $";
+static char rcsid[] = "$Id: mem.c 135653 2014-05-09 01:26:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -59,31 +59,31 @@ Mem_trap_check (const char *file, int line) {
 
 #ifdef HAVE_PTHREAD
 static pthread_mutex_t memusage_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_key_t key_memusage; /* Memory that is used by a thread within a query */
-static pthread_key_t key_max_memusage;
-static pthread_key_t key_memusage_keep; /* Memory that is kept by a thread between queries  */
+static pthread_key_t key_memusage_std; /* Standard pool: Memory that is used by a thread within a query */
+static pthread_key_t key_max_memusage_std;
+static pthread_key_t key_memusage_keep; /* Keep pool: Memory that is kept by a thread between queries  */
 static pthread_key_t key_threadname;
 #else
 static char *threadname = "program";
 #endif
 
-static long int memusage = 0;
-static long int max_memusage = 0;
-static long int memusage_in = 0; /* Memory from inbuffer to threads */
-static long int memusage_out = 0; /* Memory from threads to outbuffer */
+static long int memusage_std = 0;
+static long int max_memusage_std = 0;
+static long int memusage_in = 0; /* Input pool: Memory from inbuffer to threads */
+static long int memusage_out = 0; /* Output pool: Memory from threads to outbuffer */
 
 void
 Mem_usage_init () {
 #ifdef HAVE_PTHREAD
-  pthread_key_create(&key_memusage,NULL);
-  pthread_key_create(&key_max_memusage,NULL);
+  pthread_key_create(&key_memusage_std,NULL);
+  pthread_key_create(&key_max_memusage_std,NULL);
   pthread_key_create(&key_memusage_keep,NULL);
   pthread_key_create(&key_threadname,NULL);
-  pthread_setspecific(key_memusage,(void *) 0);
-  pthread_setspecific(key_max_memusage,(void *) 0);
+  pthread_setspecific(key_memusage_std,(void *) 0);
+  pthread_setspecific(key_max_memusage_std,(void *) 0);
 #else
-  memusage = 0;
-  max_memusage = 0;
+  memusage_std = 0;
+  max_memusage_std = 0;
 #endif
 
   memusage_in = 0;
@@ -104,15 +104,15 @@ void
 Mem_usage_reset (long int x) {
 #ifdef HAVE_PTHREAD
   char *threadname;
-  long int memusage;
+  long int memusage_std;
 
   threadname = (char *) pthread_getspecific(key_threadname);
-  memusage = (long int) pthread_getspecific(key_memusage);
-  debug(printf("%ld %s: Reset memusage to %ld\n",memusage,threadname,x));
-  pthread_setspecific(key_max_memusage,(void *) x);
+  memusage_std = (long int) pthread_getspecific(key_memusage_std);
+  debug(printf("%ld %s: Reset memusage to %ld\n",memusage_std,threadname,x));
+  pthread_setspecific(key_memusage_std,(void *) x);
 #else
-  debug(printf("%ld: Reset memusage to %ld\n",memusage,x));
-  memusage = x;
+  debug(printf("%ld: Reset memusage to %ld\n",memusage_std,x));
+  memusage_std = x;
 #endif
 }
 
@@ -120,13 +120,13 @@ void
 Mem_usage_reset_max () {
 #ifdef HAVE_PTHREAD
   char *threadname;
-  long int max_memusage;
+  long int max_memusage_std;
 
   threadname = (char *) pthread_getspecific(key_threadname);
-  max_memusage = (long int) pthread_getspecific(key_max_memusage);
-  pthread_setspecific(key_max_memusage,(void *) 0);
+  max_memusage_std = (long int) pthread_getspecific(key_max_memusage_std);
+  pthread_setspecific(key_max_memusage_std,(void *) 0);
 #else
-  max_memusage = 0;
+  max_memusage_std = 0;
 #endif
 }
 
@@ -134,46 +134,55 @@ void
 Mem_usage_add (long int x) {
 #ifdef HAVE_PTHREAD
   char *threadname;
-  long int memusage;
+  long int memusage_std;
 
   threadname = (char *) pthread_getspecific(key_threadname);
-  memusage = (long int) pthread_getspecific(key_memusage);
-  debug(printf("%ld %s: ",memusage,threadname));
-  memusage += x;
-  pthread_setspecific(key_memusage,(void *) x);
-  debug(printf("Reset memusage to %ld\n",memusage));
+  memusage_std = (long int) pthread_getspecific(key_memusage_std);
+  debug(printf("%ld %s: ",memusage_std,threadname));
+  memusage_std += x;
+  pthread_setspecific(key_memusage_std,(void *) x);
+  debug(printf("Reset memusage to %ld\n",memusage_std));
 #else
-  debug(printf("%ld: ",memusage));
-  memusage += x;
-  debug(printf("Reset memusage to %ld\n",memusage));
+  debug(printf("%ld: ",memusage_std));
+  memusage_std += x;
+  debug(printf("Reset memusage to %ld\n",memusage_std));
 #endif
 }
 
 long int
-Mem_usage_report () {
+Mem_usage_report_std () {
 #ifdef HAVE_PTHREAD
-  return (long int) pthread_getspecific(key_memusage);
+  return (long int) pthread_getspecific(key_memusage_std);
 #else
-  return memusage;
+  return memusage_std;
 #endif
 }
 
 long int
-Mem_max_usage_report () {
+Mem_usage_report_keep () {
 #ifdef HAVE_PTHREAD
-  return (long int) pthread_getspecific(key_max_memusage);
+  return (long int) pthread_getspecific(key_memusage_keep);
 #else
-  return max_memusage;
+  return memusage_keep;
 #endif
 }
 
 long int
-Mem_usage_in_report () {
+Mem_max_usage_report_std () {
+#ifdef HAVE_PTHREAD
+  return (long int) pthread_getspecific(key_max_memusage_std);
+#else
+  return max_memusage_std;
+#endif
+}
+
+long int
+Mem_usage_report_in () {
   return memusage_in;
 }
 
 long int
-Mem_usage_out_report () {
+Mem_usage_report_out () {
   return memusage_out;
 }
 
@@ -220,7 +229,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&memusage_mutex);
-  long int memusage, max_memusage;
+  long int memusage_std, max_memusage_std;
   char *threadname;
 #endif
 #endif
@@ -231,18 +240,18 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 #ifdef MEMUSAGE
 #ifdef HAVE_PTHREAD
   threadname = (char *) pthread_getspecific(key_threadname);
-  memusage = (long int) pthread_getspecific(key_memusage);
-  memusage += nbytes;
-  pthread_setspecific(key_memusage,(void *) memusage);
+  memusage_std = (long int) pthread_getspecific(key_memusage_std);
+  memusage_std += nbytes;
+  pthread_setspecific(key_memusage_std,(void *) memusage_std);
 
-  max_memusage = (long int) pthread_getspecific(key_max_memusage);
-  if (memusage > max_memusage) {
-    pthread_setspecific(key_max_memusage,(void *) memusage);
+  max_memusage_std = (long int) pthread_getspecific(key_max_memusage_std);
+  if (memusage_std > max_memusage_std) {
+    pthread_setspecific(key_max_memusage_std,(void *) memusage_std);
   }
 #else
-  memusage += nbytes;
-  if (memusage > max_memusage) {
-    max_memusage = memusage;
+  memusage_std += nbytes;
+  if (memusage_std > max_memusage_std) {
+    max_memusage_std = memusage_std;
   }
 #endif
   h = hash(ptr,htab);
@@ -254,10 +263,10 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld %s: Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
-	       memusage,threadname,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
+  debug(printf("%ld %s: Allocating %p to %p -- Malloc of %lu bytes in standard pool requested from %s:%d\n",
+	       memusage_std,threadname,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Malloc of %lu bytes in standard pool requested from %s:%d\n",
 	       ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -327,10 +336,10 @@ Mem_alloc_keep (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld %s-keep: Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("%ld %s-keep: Allocating %p to %p -- Malloc of %lu bytes in keep pool requested from %s:%d\n",
 	       memusage_keep,threadname,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Malloc of %lu bytes in keep pool requested from %s:%d\n",
 	       ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -391,10 +400,10 @@ Mem_alloc_in (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld IN: Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("%ld IN: Allocating %p to %p -- Malloc of %lu bytes in input pool requested from %s:%d\n",
 	       memusage_in,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Malloc of %lu bytes in input pool requested from %s:%d\n",
 	       ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -455,10 +464,10 @@ Mem_alloc_out (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld OUT: Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("%ld OUT: Allocating %p to %p -- Malloc of %lu bytes in output pool requested from %s:%d\n",
 	       memusage_out,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Malloc of %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Malloc of %lu bytes in output pool requested from %s:%d\n",
 	       ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -510,7 +519,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&memusage_mutex);
-  long int memusage, max_memusage;
+  long int memusage_std, max_memusage_std;
   char *threadname;
 #endif
 #endif
@@ -543,18 +552,18 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 #ifdef MEMUSAGE
 #ifdef HAVE_PTHREAD
   threadname = (char *) pthread_getspecific(key_threadname);
-  memusage = (long int) pthread_getspecific(key_memusage);
-  memusage += count*nbytes;
-  pthread_setspecific(key_memusage,(void *) memusage);
+  memusage_std = (long int) pthread_getspecific(key_memusage_std);
+  memusage_std += count*nbytes;
+  pthread_setspecific(key_memusage_std,(void *) memusage_std);
 
-  max_memusage = (long int) pthread_getspecific(key_max_memusage);
-  if (memusage > max_memusage) {
-    pthread_setspecific(key_max_memusage,(void *) memusage);
+  max_memusage_std = (long int) pthread_getspecific(key_max_memusage_std);
+  if (memusage_std > max_memusage_std) {
+    pthread_setspecific(key_max_memusage_std,(void *) memusage_std);
   }
 #else
-  memusage += count*nbytes;
-  if (memusage > max_memusage) {
-    max_memusage = memusage;
+  memusage_std += count*nbytes;
+  if (memusage_std > max_memusage_std) {
+    max_memusage_std = memusage_std;
   }
 #endif
   h = hash(ptr,htab);
@@ -566,10 +575,10 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld %s: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
-	       memusage,threadname,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
+  debug(printf("%ld %s: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in standard pool requested from %s:%d\n",
+	       memusage_std,threadname,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in standard pool requested from %s:%d\n",
 	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
@@ -649,10 +658,10 @@ Mem_calloc_keep (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld %s-keep: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("%ld %s-keep: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in keep pool requested from %s:%d\n",
 	       memusage_keep,threadname,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in keep pool requested from %s:%d\n",
 	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
@@ -723,10 +732,10 @@ Mem_calloc_in (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld IN: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("%ld IN: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in input pool requested from %s:%d\n",
 	       memusage_in,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in input pool requested from %s:%d\n",
 	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
@@ -796,10 +805,10 @@ Mem_calloc_out (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug(printf("%ld OUT: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("%ld OUT: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in output pool requested from %s:%d\n",
 	       memusage_out,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes requested from %s:%d\n",
+  debug(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in output pool requested from %s:%d\n",
 	       ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
@@ -830,7 +839,7 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&memusage_mutex);
-  long int memusage;
+  long int memusage_std;
   char *threadname;
 #endif
 #endif
@@ -850,11 +859,11 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 #ifdef MEMUSAGE
 #ifdef HAVE_PTHREAD
   threadname = (char *) pthread_getspecific(key_threadname);
-  memusage = (long int) pthread_getspecific(key_memusage);
-  memusage += count*nbytes;
-  pthread_setspecific(key_memusage,(void *) memusage);
+  memusage_std = (long int) pthread_getspecific(key_memusage_std);
+  memusage_std += count*nbytes;
+  pthread_setspecific(key_memusage_std,(void *) memusage_std);
 #else
-  memusage += count*nbytes;
+  memusage_std += count*nbytes;
 #endif
   h = hash(ptr,htab);
   bp = malloc(sizeof(*bp));
@@ -881,7 +890,7 @@ Mem_free (void *ptr, const char *file, int line) {
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&memusage_mutex);
-  long int memusage;
+  long int memusage_std;
   char *threadname;
 #endif
 #endif
@@ -900,21 +909,21 @@ Mem_free (void *ptr, const char *file, int line) {
       nbytes = bp->size;
 #ifdef HAVE_PTHREAD
       threadname = (char *) pthread_getspecific(key_threadname);
-      memusage = (long int) pthread_getspecific(key_memusage);
-      memusage -= nbytes;
-      pthread_setspecific(key_memusage,(void *) memusage);
+      memusage_std = (long int) pthread_getspecific(key_memusage_std);
+      memusage_std -= nbytes;
+      pthread_setspecific(key_memusage_std,(void *) memusage_std);
 #else
-      memusage -= nbytes;
+      memusage_std -= nbytes;
 #endif
       free(bp);
     }
 #endif
 
 #ifdef MEMUSAGE
-    debug(printf("%ld %s: Freeing %p at %s:%d (%ld bytes)\n",
-		 memusage,threadname,ptr,file,line,nbytes));
+    debug(printf("%ld %s: Freeing %p in standard pool at %s:%d (%ld bytes)\n",
+		 memusage_std,threadname,ptr,file,line,nbytes));
 #else
-    debug(printf("Freeing %p at %s:%d\n",ptr,file,line));
+    debug(printf("Freeing %p in standard pool at %s:%d\n",ptr,file,line));
 #endif
     free(ptr);
   }
@@ -976,10 +985,10 @@ Mem_free_keep (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-    debug(printf("%ld %s-keep: Freeing %p at %s:%d (%ld bytes)\n",
+    debug(printf("%ld %s-keep: Freeing %p in keep pool at %s:%d (%ld bytes)\n",
 		 memusage_keep,threadname,ptr,file,line,nbytes));
 #else
-    debug(printf("Freeing %p at %s:%d\n",ptr,file,line));
+    debug(printf("Freeing %p in keep pool at %s:%d\n",ptr,file,line));
 #endif
     free(ptr);
   }
@@ -1032,10 +1041,10 @@ Mem_free_in (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-    debug(printf("%ld IN: Freeing %p at %s:%d (%ld bytes)\n",
+    debug(printf("%ld IN: Freeing %p in input pool at %s:%d (%ld bytes)\n",
 		 memusage_in,ptr,file,line,nbytes));
 #else
-    debug(printf("Freeing %p at %s:%d\n",ptr,file,line));
+    debug(printf("Freeing %p in input pool at %s:%d\n",ptr,file,line));
 #endif
     free(ptr);
   }
@@ -1087,10 +1096,10 @@ Mem_free_out (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-    debug(printf("%ld OUT: Freeing %p at %s:%d (%ld bytes)\n",
+    debug(printf("%ld OUT: Freeing %p in output pool at %s:%d (%ld bytes)\n",
 		 memusage_out,ptr,file,line,nbytes));
 #else
-    debug(printf("Freeing %p at %s:%d\n",ptr,file,line));
+    debug(printf("Freeing %p in output pool at %s:%d\n",ptr,file,line));
 #endif
     free(ptr);
   }

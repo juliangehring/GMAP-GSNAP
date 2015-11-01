@@ -1,4 +1,4 @@
-/* $Id: mem.h 82065 2012-12-19 21:35:44Z twu $ */
+/* $Id: mem.h 135653 2014-05-09 01:26:58Z twu $ */
 #ifndef MEM_INCLUDED
 #define MEM_INCLUDED
 
@@ -32,13 +32,15 @@ Mem_usage_reset_max ();
 extern void
 Mem_usage_add (long int x);
 extern long int
-Mem_usage_report ();
+Mem_usage_report_std ();
 extern long int
-Mem_max_usage_report ();
+Mem_max_usage_report_std ();
 extern long int
-Mem_usage_in_report ();
+Mem_usage_report_keep ();
 extern long int
-Mem_usage_out_report ();
+Mem_usage_report_in ();
+extern long int
+Mem_usage_report_out ();
 #endif
 
 
@@ -97,6 +99,12 @@ extern void *Mem_resize (void *ptr, size_t nbytes,
 #define FREE_IN(ptr) ((void)(Mem_free((ptr),__FILE__, __LINE__), (ptr) = 0))
 #define FREE_OUT(ptr) ((void)(Mem_free((ptr),__FILE__, __LINE__), (ptr) = 0))
 
+#endif
+
+#ifdef HAVE_ALLOCA
+#define MALLOC_AUTO(nbytes) Mem_alloca((nbytes), __FILE__, __LINE__)
+#define CALLOC_AUTO(count,nbytes)Mem_calloca((count), (nbytes), __FILE__, __LINE__)
+#define FREE_AUTO(ptr)
 #endif
 
 

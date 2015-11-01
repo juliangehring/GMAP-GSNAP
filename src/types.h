@@ -1,4 +1,4 @@
-/* $Id: types.h 122381 2013-12-24 01:22:55Z twu $ */
+/* $Id: types.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -44,10 +44,6 @@ typedef unsigned long Oligospace_T;
 #define OLIGOSPACE_NOT_LONG
 typedef unsigned int Oligospace_T;
 #endif
-
-/* Pointer into compressed offsets file.  Can be UINT4 as long as file
-   has fewer than 4 billion words, which should hold for k <= 16. */
-typedef UINT4 Gammaptr_T;
 
 /* Contents of compressed offsets file.  Storing as UINT4, even for
    large genomes, to reduce zero-padding of bitstreams.  For large
@@ -111,7 +107,6 @@ typedef UINT4 Triecontent_T;
 
 /* For suffix array */
 typedef UINT4 Sarrayptr_T;
-typedef UINT8 BP_size_t;
 
 #endif
 

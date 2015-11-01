@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 128845 2014-02-28 19:15:37Z twu $
+# $Id: gmap_build.pl.in 132978 2014-04-10 22:11:02Z twu $
 
 use warnings;	
 
@@ -33,7 +33,6 @@ GetOptions(
 
     'z|compression=s' => \$compression_types, # compression types
     'k|kmer=s' => \$kmersize, # k-mer size for genomic index (allowed: 16 or less)
-    'b|basesize=s' => \$basesize, # offsetscomp basesize
     'q=s' => \$sampling,	   # sampling interval for genome (default: 3)
 
     's|sort=s' => \$sorting,	# Sorting
@@ -62,31 +61,6 @@ if (!defined($kmersize)) {
     print STDERR "-k flag not specified, so building with default 15-mers\n";
     $kmersize = 15;
 }
-
-if (defined($compression_types)) {
-    foreach $type (split ",",$compression_types) {
-	if ($type eq "none") {
-	    if (!defined($basesize)) {
-		print STDERR "-b flag not specified, but since compression type is none, setting base size to be the k-mer size\n";
-		$basesize = $kmersize;
-	    } elsif ($basesize != $kmersize) {
-		print STDERR "Since compression type is none, setting base size to be the k-mer size\n";
-		$basesize = $kmersize;
-	    }
-	}
-    }
-}
-
-if (!defined($basesize)) {
-    if ($kmersize == 15) {
-	print STDERR "-b flag not specified, so building with default base size of 12\n";
-	$basesize = 12;
-    } else {
-	print STDERR "-k flag specified (not as 15), but not -b, so building with base size == kmer size\n";
-	$basesize = $kmersize;
-    }
-}
-
 
 if (!defined($dbname)) {
     print_usage();
@@ -185,7 +159,7 @@ $genomecompfile = compress_genome($nmessages_flag,$bindir,$dbdir,$dbname,$gmap_p
 
 unshuffle_genome($bindir,$dbdir,$dbname,$genomecompfile);
 
-$index_cmd = "$bindir/gmapindex -b $basesize -k $kmersize -q $sampling $nmessages_flag -d $dbname -F $dbdir -D $dbdir";
+$index_cmd = "$bindir/gmapindex -k $kmersize -q $sampling $nmessages_flag -d $dbname -F $dbdir -D $dbdir";
 
 if (count_index_offsets($index_cmd,$genomecompfile) == 1) {
     $index_cmd .= " -H";
@@ -196,7 +170,7 @@ create_index_offsets($index_cmd,$compression_flag,$genomecompfile);
 create_index_positions($index_cmd,$genomecompfile);
 
 if ($sarrayp == 1) {
-    make_suffix_array($bindir,$dbdir,$dbname);
+    make_enhanced_suffix_array($bindir,$dbdir,$dbname);
 }
 
 # install_db($sarrayp);
@@ -301,7 +275,7 @@ sub unshuffle_genome {
     my ($bindir, $dbdir, $dbname, $genomecompfile) = @_;
     my ($cmd, $rc);
 
-    $cmd = "cat $genomecompfile | $bindir/gmapindex -d $dbname -U > $dbdir/$dbname.genomebits";
+    $cmd = "cat $genomecompfile | $bindir/gmapindex -d $dbname -U > $dbdir/$dbname.genomebits128";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -328,7 +302,7 @@ sub count_index_offsets {
     my $huge_genome_p;
     my ($cmd, $noffsets);
     
-    $cmd = "cat $genomecompfile | $index_cmd -C";
+    $cmd = "cat $genomecompfile | $index_cmd -N";
     print STDERR "Running $cmd\n";
     $noffsets = `$cmd`;
     chop $noffsets;
@@ -369,75 +343,28 @@ sub create_index_positions {
     return;
 }
 
-sub make_suffix_array {
+sub make_enhanced_suffix_array {
     my ($bindir, $dbdir, $dbname) = @_;
     my ($cmd, $rc);
 
+    # Suffix array
     $cmd = "$bindir/gmapindex -d $dbname -F $dbdir -D $dbdir -S";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
     }
     sleep($sleeptime);
-    return;
-}
 
-# No longer necessary
-sub install_db {
-    my ($sarrayp) = @_;
-    my @suffixes = (
-	"chromosome", 
-	"chromosome.iit", 
-	"chrsubset", 
-	"contig", 
-	"contig.iit", 
-	"genomecomp", 
-	"genomebits", 
-	"version");
-    my $suffix;
-    my %symlink;
-
-    if ($sarrayp == 1) {
-	push @suffixes,"sarray";
-	push @suffixes,"saindex";
-	push @suffixes,"salcp";	# No longer generated
-	push @suffixes,"salcpptrs";
-	push @suffixes,"salcpcomp";
+    # LCP and child arrays
+    $cmd = "$bindir/gmapindex -d $dbname -F $dbdir -D $dbdir -L";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
     }
-	
-    if ($kmersize > $basesize) {
-	push @suffixes,sprintf "ref%02d%02d%dbitpackpages",$kmersize-3,$kmersize,$sampling;
-	push @suffixes,sprintf "ref%02d%02d%dbitpackptrs",$kmersize-3,$kmersize,$sampling;
-	push @suffixes,sprintf "ref%02d%02d%dbitpackcomp",$kmersize-3,$kmersize,$sampling;
-	push @suffixes,sprintf "ref%02d%02d%dgammaptrs",$basesize,$kmersize,$sampling;
-	push @suffixes,sprintf "ref%02d%02d%doffsetscomp",$basesize,$kmersize,$sampling;
-    } else {
-	$suffix = sprintf "ref%02d%doffsets",$kmersize,$sampling;
-	push @suffixes,$suffix;
-	
-	# For backward compatibility with versions before 2013-07, which expect to see offsetscomp
-	$symlink{$suffix} = sprintf "ref%02d%02d%doffsetscomp",$kmersize,$kmersize,$sampling;
-    }
-    push @suffixes,sprintf "ref%02d%dpositionsh",$kmersize,$sampling;
-    push @suffixes,sprintf "ref%02d%dpositions",$kmersize,$sampling;
-
-    print STDERR "Copying files to directory $destdir/$dbname\n";
-    system("mkdir -p \"$destdir/$dbname\"");
-    system("mkdir -p \"$destdir/$dbname/$dbname.maps\"");
-    system("chmod 755 \"$destdir/$dbname/$dbname.maps\"");
-    foreach $suffix (@suffixes) {
-	if (-e "$localdir/$dbname.$suffix") {
-	    system("mv \"$localdir/$dbname.$suffix\" \"$destdir/$dbname/$dbname.$suffix\"");
-	    system("chmod 644 \"$destdir/$dbname/$dbname.$suffix\"");
-	    if (defined($symlink{$suffix})) {
-		system("ln -s \"$dbname.$suffix\" \"$destdir/$dbname/$dbname.$symlink{$suffix}\"");
-	    }
-	}
-    }
+    sleep($sleeptime);
 
     return;
 }
-
 
 
 sub print_usage {
@@ -463,14 +390,12 @@ Options:
     -C, --contigs-are-mapped  Find a chromosomal region in each FASTA header line.  Useful for contigs that have been mapped
                                 to chromosomal coordinates.  Ignored if the --mdflag is provided.
 
-    -z, --compression=STRING  Use given compression types (separated by commas; default is bitpack,gamma)
-                                bitpack - optimized for modern computers with SIMD instructions (recommended)
-                                gamma - old implementation.  Needed only for backward compatibility with old versions
-                                all - create all available compression types, currently bitpack and gamma
-                                none - do not compress offset files
+    -z, --compression=STRING  Use given compression types (separated by commas; default is bitpack64)
+                                bitpack64 - optimized for modern computers with SIMD instructions (recommended)
+                                all - create all available compression types, currently bitpack64
+                                none - do not compress offset files (I believe this is no longer supported)
 
-    -k, --kmer=INT            k-mer value for genomic index (allowed: 16 or less, default is 15)
-    -b, --basesize=INT        Basesize for offsetscomp (if kmer chosen and not 15, default is kmer; else default is 12)
+    -k, --kmer=INT            k-mer value for genomic index (allowed: 15 or less, default is 15)
     -q INT                    sampling interval for genomoe (allowed: 1-3, default 3)
 
     -s, --sort=STRING         Sort chromosomes using given method:

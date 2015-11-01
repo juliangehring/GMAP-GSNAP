@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 128289 2014-02-22 01:10:57Z twu $";
+static char rcsid[] = "$Id: samprint.c 136085 2014-05-13 23:00:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2386,6 +2386,9 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
   /* int mate_hardclip_low, mate_hardclip_high; */
   int transloc_hardclip_low, transloc_hardclip_high;
   bool plusp, printp;
+  bool start_ambig, end_ambig;
+  int amb_nmatches_start, amb_nmatches_end;
+
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Substring_plusp(donor);
@@ -2820,6 +2823,40 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
   fprintf(fp,"XS:A:%c",donor_strand);
 #endif
 
+
+
+  /* 12. TAGS: XA */
+  if ((start_ambig = Stage3end_start_ambiguous_p(this)) == true ||
+      (end_ambig = Stage3end_end_ambiguous_p(this)) == true) {
+#if 1
+    amb_nmatches_start = Stage3end_amb_nmatches_start(this);
+    amb_nmatches_end = Stage3end_amb_nmatches_end(this);
+    fprintf(fp,"\t");
+    if (plusp == true) {
+      fprintf(fp,"XA:Z:%d,%d",amb_nmatches_start,amb_nmatches_end);
+    } else {
+      fprintf(fp,"XA:Z:%d,%d",amb_nmatches_end,amb_nmatches_start);
+    }
+#else
+    fprintf(fp,"\t");
+    if (start_ambig == true && end_ambig == true) {
+      fprintf(fp,"XA:Z:T,T");
+    } else if (plusp == true) {
+      if (start_ambig == true) {
+        fprintf(fp,"XA:Z:T,F");
+      } else {
+        fprintf(fp,"XA:Z:F,T");
+      }
+    } else {
+      if (start_ambig == true) {
+        fprintf(fp,"XA:Z:F,T");
+      } else {
+        fprintf(fp,"XA:Z:T,F");
+      }
+    }
+#endif
+  }
+
   /* 12. TAGS: XT */
   if (print_xt_p == true) {
     fprintf(fp,"\t");
@@ -2863,6 +2900,9 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
   /* int mate_hardclip_low, mate_hardclip_high; */
   int transloc_hardclip_low, transloc_hardclip_high;
   bool plusp, printp;
+  bool start_ambig, end_ambig;
+  int amb_nmatches_start, amb_nmatches_end;
+
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Substring_plusp(acceptor);
@@ -3296,6 +3336,38 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
   fprintf(fp,"XS:A:%c",acceptor_strand);
 #endif
 
+  /* 12. TAGS: XA */
+  if ((start_ambig = Stage3end_start_ambiguous_p(this)) == true ||
+      (end_ambig = Stage3end_end_ambiguous_p(this)) == true) {
+#if 1
+    amb_nmatches_start = Stage3end_amb_nmatches_start(this);
+    amb_nmatches_end = Stage3end_amb_nmatches_end(this);
+    fprintf(fp,"\t");
+    if (plusp == true) {
+      fprintf(fp,"XA:Z:%d,%d",amb_nmatches_start,amb_nmatches_end);
+    } else {
+      fprintf(fp,"XA:Z:%d,%d",amb_nmatches_end,amb_nmatches_start);
+    }
+#else
+    fprintf(fp,"\t");
+    if (start_ambig == true && end_ambig == true) {
+      fprintf(fp,"XA:Z:T,T");
+    } else if (plusp == true) {
+      if (start_ambig == true) {
+        fprintf(fp,"XA:Z:T,F");
+      } else {
+        fprintf(fp,"XA:Z:F,T");
+      }
+    } else {
+      if (start_ambig == true) {
+        fprintf(fp,"XA:Z:F,T");
+      } else {
+        fprintf(fp,"XA:Z:T,F");
+      }
+    }
+#endif
+  }
+
   /* 12. TAGS: XT */
   if (print_xt_p == true) {
     fprintf(fp,"\t");
@@ -3704,6 +3776,10 @@ print_localsplice (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
     fprintf(fp,"XS:A:?");
   }
 
+  /* 12. TAGS: XA */
+  assert(Stage3end_start_ambiguous_p(this) == false);
+  assert(Stage3end_end_ambiguous_p(this) == false);
+
   /* 12. TAGS: XC */
   if (circularp == true) {
     fprintf(fp,"\t");
@@ -3743,6 +3819,9 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
   int hardclip_low, hardclip_high;
   /* int mate_hardclip_low, mate_hardclip_high; */
   bool plusp, printp;
+  bool start_ambig, end_ambig;
+  int amb_nmatches_start, amb_nmatches_end;
+
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Stage3end_plusp(shortexon);
@@ -4239,6 +4318,38 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
     fprintf(fp,"XS:A:?");
   }
 
+  /* 12. TAGS: XA */
+  if ((start_ambig = Stage3end_start_ambiguous_p(shortexon)) == true ||
+      (end_ambig = Stage3end_end_ambiguous_p(shortexon)) == true) {
+#if 1
+    amb_nmatches_start = Stage3end_amb_nmatches_start(shortexon);
+    amb_nmatches_end = Stage3end_amb_nmatches_end(shortexon);
+    fprintf(fp,"\t");
+    if (plusp == true) {
+      fprintf(fp,"XA:Z:%d,%d",amb_nmatches_start,amb_nmatches_end);
+    } else {
+      fprintf(fp,"XA:Z:%d,%d",amb_nmatches_end,amb_nmatches_start);
+    }
+#else
+    fprintf(fp,"\t");
+    if (start_ambig == true && end_ambig == true) {
+      fprintf(fp,"XA:Z:T,T");
+    } else if (plusp == true) {
+      if (start_ambig == true) {
+        fprintf(fp,"XA:Z:T,F");
+      } else {
+        fprintf(fp,"XA:Z:F,T");
+      }
+    } else {
+      if (start_ambig == true) {
+        fprintf(fp,"XA:Z:F,T");
+      } else {
+        fprintf(fp,"XA:Z:T,F");
+      }
+    }
+#endif
+  }
+
   /* 12. TAGS: XC */
   if (circularp == true) {
     fprintf(fp,"\t");
@@ -4525,6 +4636,8 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   unsigned int flag;
   int ignore = 0;
   int circularpos, querylength;
+  char donor_strand, acceptor_strand;
+  int sensedir;
 
 
   hittype = Stage3end_hittype(this);
@@ -4619,67 +4732,109 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
     }
 
   } else if (hittype == HALFSPLICE_DONOR) {
+    donor = Stage3end_substring_donor(this);
+
+    /* Code taken from that for XS tag for print_halfdonor and print_halfacceptor */
+    if ((sensedir = Substring_chimera_sensedir(donor)) == SENSE_FORWARD) {
+      if (Substring_plusp(donor) == true) {
+	donor_strand = '+';
+      } else {
+	donor_strand = '-';
+      }
+    } else if (sensedir == SENSE_ANTI) {
+      if (Substring_plusp(donor) == true) {
+	donor_strand = '-';
+      } else {
+	donor_strand = '+';
+      }
+    } else if (force_xs_direction_p == true) {
+      donor_strand = '+';
+    } else {
+      donor_strand = '?';
+    }
+
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_halfdonor(fp,abbrev,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
+      print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/chrpos,chrpos,/*acceptor_chrpos*/-1U,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
-		      /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
+		      donor_strand,/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
-      print_halfdonor(fp,abbrev,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
+      print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/1,/*chrpos*/1,/*acceptor_chrpos*/-1U,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
-		      /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
+		      donor_strand,/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
     } else {
-      print_halfdonor(fp,abbrev,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
+      print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		      /*concordant_chrpos*/chrpos,chrpos,/*acceptor_chrpos*/-1U,mate_chrpos,
 		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
-		      /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
+		      donor_strand,/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/false);
     }
 
   } else if (hittype == HALFSPLICE_ACCEPTOR) {
+    acceptor = Stage3end_substring_acceptor(this);
+
+    /* Code taken from that for XS tag for print_halfdonor and print_halfacceptor */
+    if ((sensedir = Substring_chimera_sensedir(acceptor)) == SENSE_FORWARD) {
+      if (Substring_plusp(acceptor) == true) {
+	acceptor_strand = '+';
+      } else {
+	acceptor_strand = '-';
+      }
+    } else if (sensedir == SENSE_ANTI) {
+      if (Substring_plusp(acceptor) == true) {
+	acceptor_strand = '-';
+      } else {
+	acceptor_strand = '+';
+      }
+    } else if (force_xs_direction_p == true) {
+      acceptor_strand = '+';
+    } else {
+      acceptor_strand = '?';
+    }
+
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
       querylength = Shortread_fulllength(queryseq);
-      print_halfacceptor(fp,abbrev,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
+      print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/chrpos,/*donor_chrpos*/-1U,chrpos,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
-			 /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
+			 /*donor_strand*/'\0',acceptor_strand,/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
-      print_halfacceptor(fp,abbrev,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
+      print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/1,/*donor_chrpos*/-1U,/*chrpos*/1,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
-			 /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
+			 /*donor_strand*/'\0',acceptor_strand,/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
     } else {
-      print_halfacceptor(fp,abbrev,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
+      print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 			 /*concordant_chrpos*/chrpos,/*donor_chrpos*/-1U,chrpos,mate_chrpos,
 			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
-			 /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
+			 /*donor_strand*/'\0',acceptor_strand,/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/false);
     }

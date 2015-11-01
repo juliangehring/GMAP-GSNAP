@@ -82,14 +82,14 @@ extern Intlist_T
 Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 		      Univcoord_T origleft, int pos5, int pos3, Univcoord_T chroffset,
 		      Compress_T query_compress, char *queryptr, int querylength,
-		      int max_mismatches_allowed, bool plusp, int genestrand,
+		      int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p,
 		      bool collect_all_p);
 
 extern Intlist_T
 Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 		       Univcoord_T origleft, int pos5, int pos3, Univcoord_T chrhigh,
 		       Compress_T query_compress, char *queryptr, int max_mismatches_allowed,
-		       bool plusp, int genestrand, bool collect_all_p);
+		       bool plusp, int genestrand, bool first_read_p, bool collect_all_p);
 #endif
 
 #endif

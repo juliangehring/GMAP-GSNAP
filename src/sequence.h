@@ -1,4 +1,4 @@
-/* $Id: sequence.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: sequence.h 132731 2014-04-08 21:19:57Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -85,6 +85,8 @@ Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles
 extern T
 Sequence_read_unlimited (int *nextchar, FILE *input);
 #ifdef PMAP
+extern char
+Sequence_codon_char (char aa, int codonpos);
 extern T
 Sequence_convert_to_nucleotides (T this);
 #endif

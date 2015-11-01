@@ -18,5 +18,6 @@ m4_include([config/asm-bsr.m4])
 m4_include([config/sse2_shift_defect.m4])
 
 m4_include([config/ax_gcc_x86_cpuid.m4])
+m4_include([config/ax_gcc_x86_avx_xgetbv.m4])
 m4_include([config/ax_check_compile_flag.m4])
 m4_include([config/ax_ext.m4])

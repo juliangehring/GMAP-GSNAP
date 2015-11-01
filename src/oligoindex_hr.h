@@ -1,4 +1,4 @@
-/* $Id: oligoindex_hr.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: oligoindex_hr.h 132475 2014-04-06 04:14:11Z twu $ */
 #ifndef OLIGOINDEX_HR_INCLUDED
 #define OLIGOINDEX_HR_INCLUDED
 
@@ -26,29 +26,8 @@ typedef unsigned char Count_T;
 
 #define T Oligoindex_T
 typedef struct T *T;
-struct T {
 
-  int indexsize;
-  Shortoligomer_T mask;
-
-  int diag_lookback;
-  int suffnconsecutive;
-
-  bool query_evaluated_p;
-  Oligospace_T oligospace;
-#ifdef HAVE_SSE2
-  __m128i *inquery_allocated;
-  __m128i *counts_allocated;
-  Count_T *inquery;
-#else
-  bool *inquery;
-#endif
-  Count_T *counts;
-
-  Chrpos_T **positions;
-  Chrpos_T **pointers;
-};
-
+typedef struct Oligoindex_array_T *Oligoindex_array_T;
 
 extern void
 Oligoindex_hr_setup (Genomecomp_T *ref_blocks_in, Mode_T mode_in);
@@ -56,11 +35,16 @@ Oligoindex_hr_setup (Genomecomp_T *ref_blocks_in, Mode_T mode_in);
 extern int
 Oligoindex_indexsize (T this);
 
-extern T *
-Oligoindex_new_major (int *noligoindices);
+extern int
+Oligoindex_array_length (Oligoindex_array_T oligoindices);
+extern T
+Oligoindex_array_elt (Oligoindex_array_T oligoindices, int source);
 
-extern T *
-Oligoindex_new_minor (int *noligoindices);
+extern Oligoindex_array_T
+Oligoindex_array_new_major (int max_querylength, int max_genomiclength);
+
+extern Oligoindex_array_T
+Oligoindex_array_new_minor (int max_querylength, int max_genomiclength);
 
 extern double
 Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *trim_start, int *trim_end,
@@ -73,12 +57,12 @@ Oligoindex_untally (T this, char *queryuc_ptr, int querylength);
 extern void
 Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querylength);
 extern void
-Oligoindex_free_array (T **oligoindices, int noligoindices);
+Oligoindex_array_free(Oligoindex_array_T *old);
 
 extern List_T
 Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, int *npositions,
 			 int *totalpositions, bool *oned_matrix_p, int *maxnconsecutive, 
-			 T this, char *queryuc_ptr, int querylength,
+			 Oligoindex_array_T array, T this, char *queryuc_ptr, int querylength,
 			 Chrpos_T chrstart, Chrpos_T chrend,
 			 Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 			 Diagpool_T diagpool);

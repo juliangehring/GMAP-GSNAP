@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uintlist.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: uintlist.c 136085 2014-05-13 23:00:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -102,6 +102,24 @@ Uintlist_to_array (int *n, T list) {
     list = list->rest;
   }
   return array;
+}
+
+UINT4 *
+Uintlist_to_array_out (int *n, T list) {
+  UINT4 *array;
+  int i;
+
+  *n = Uintlist_length(list);
+  if (*n == 0) {
+    return NULL;
+  } else {
+    array = (UINT4 *) CALLOC_OUT(*n,sizeof(UINT4));
+    for (i = 0; i < *n; i++) {
+      array[i] = list->first;
+      list = list->rest;
+    }
+    return array;
+  }
 }
 
 T

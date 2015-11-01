@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-read.c 132776 2014-04-09 01:03:33Z twu $";
+static char rcsid[] = "$Id: sarray-read.c 136085 2014-05-13 23:00:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,19 +16,17 @@ static char rcsid[] = "$Id: sarray-read.c 132776 2014-04-09 01:03:33Z twu $";
 #include "bool.h"
 #include "assert.h"
 #include "access.h"
+#include "types.h"
 #include "listdef.h"
 #include "list.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 #include "splice.h"
 #include "indel.h"
 #include "stage3hr.h"
+#include "bytecoding.h"
 #include "bitpack64-read.h"
+#include "bitpack64-readtwo.h"
 #include "bitpack64-access.h"
-
-#ifdef USE_CHILD_BP
-#include "bp.h"
-#include "bp-read.h"
-#endif
 
 
 #ifdef HAVE_SSE2
@@ -39,8 +37,9 @@ static char rcsid[] = "$Id: sarray-read.c 132776 2014-04-09 01:03:33Z twu $";
 /* A value of 10000 misses various splices, although they are caught by GSNAP algorithm */
 #define EXCESS_SARRAY_HITS 100000
 #define GUESS_ALLOCATION 10
+#define LOCALSPLICING_SLOP 0.05
 
-#define get_bit(bitvector,i) ((bitvector)[(i)/32] & (1 << ((i)%32)))
+/* #define USE_SEPARATE_BUCKETS 1 */
 
 /* Results of each suffix array search */
 #ifdef DEBUG
@@ -112,6 +111,13 @@ static char rcsid[] = "$Id: sarray-read.c 132776 2014-04-09 01:03:33Z twu $";
 #define debug14(x)
 #endif
 
+/* Compare separate buckets with a single one */
+#ifdef DEBUG15
+#define debug15(x) x
+#else
+#define debug15(x)
+#endif
+
 
 #define T Sarray_T
 struct T {
@@ -120,69 +126,59 @@ struct T {
 
   Univcoord_T *array;
 
-  UINT4 *plcp_ptrs, *plcp_comp;		/* permuted LCP */
+  unsigned char *lcpchilddc;
 
-#ifdef USE_CHILD_BP
-  UINT4 *childbp;		    /* child balanced parentheses */
-  UINT4 *childfc;		    /* first child (array B in CST++) */
-  UINT4 *childs_pages, *childs_ptrs, *childs_comp; /* child select */
-  UINT4 *childr_ptrs, *childr_comp; /* child rank */
-  UINT4 *childx_ptrs, *childx_comp; /* child block excess */
+  UINT4 *lcp_guide;
+  UINT4 *lcp_exceptions;
+  int n_lcp_exceptions;		/* Won't be necessary if we change lcpchilddc to use guide array */
+  /* int lcp_guide_interval; -- Always use 1024 */
+  
+  UINT4 *child_guide;
+  UINT4 *child_exceptions;
+  /* int n_child_exceptions; */
+  int child_guide_interval; /* Always use 1024 */
 
-  UINT4 *pioneerbp;		/* pioneer balanced parentheses */
-  UINT4 *pior_ptrs, *pior_comp;	/* pioneer rank */
-  UINT4 *piom_ptrs, *piom_comp;	/* pioneer matches */
-#else
-  UINT4 *child_ptrs;
-  UINT4 *child_comp;
-  UINT4 *nextp;
-#endif
-
+#if 0
   Sarrayptr_T initindexi[4];	/* For A, C, G, T */
   Sarrayptr_T initindexj[4];	/* For A, C, G, T */
+#endif
 
   int indexsize;
   UINT4 indexspace;		/* 4^indexsize.  Used by sarray_search to detect when we have a poly-T oligo shorter than indexsize */
-  UINT4 *indexi_ptrs, *indexi_comp; /* oligomer lookup into suffix array */
-  UINT4 *indexj_ptrs, *indexj_comp;
-
-  Access_T access;
-
-  int array_fd; size_t array_len;
-  int plcp_ptrs_fd; size_t plcp_ptrs_len; int plcp_comp_fd; size_t plcp_comp_len;
-
-#ifdef USE_CHILD_BP
-  int childbp_fd; size_t childbp_len;
-  int childfc_fd; size_t childfc_len;
-  int childs_pages_fd; size_t childs_pages_len;
-  int childs_ptrs_fd; size_t childs_ptrs_len; int childs_comp_fd; size_t childs_comp_len;
-  int childr_ptrs_fd; size_t childr_ptrs_len; int childr_comp_fd; size_t childr_comp_len;
-  int childx_ptrs_fd; size_t childx_ptrs_len; int childx_comp_fd; size_t childx_comp_len;
-
-  int pioneerbp_fd; size_t pioneerbp_len;
-  int pior_ptrs_fd; size_t pior_ptrs_len; int pior_comp_fd; size_t pior_comp_len;
-  int piom_ptrs_fd; size_t piom_ptrs_len; int piom_comp_fd; size_t piom_comp_len;
+#ifdef DEBUG15
+  UINT4 *indexi_ptrs, *indexi_comp, *indexj_ptrs, *indexj_comp; /* bucket array: oligomer lookup into suffix array */
+  UINT4 *indexij_ptrs, *indexij_comp;
+#elif defined(USE_SEPARATE_BUCKETS)
+  UINT4 *indexi_ptrs, *indexi_comp, *indexj_ptrs, *indexj_comp; /* bucket array: oligomer lookup into suffix array */
 #else
-  int child_ptrs_fd; size_t child_ptrs_len; int child_comp_fd; size_t child_comp_len;
-  int nextp_fd; size_t nextp_len;
+  UINT4 *indexij_ptrs, *indexij_comp;
 #endif
 
+  Access_T sarray_access;
+  Access_T aux_access;
+
+  int array_fd; size_t array_len;
+#ifdef DEBUG15
   int indexi_ptrs_fd; size_t indexi_ptrs_len; int indexi_comp_fd; size_t indexi_comp_len;
   int indexj_ptrs_fd; size_t indexj_ptrs_len; int indexj_comp_fd; size_t indexj_comp_len;
+  int indexij_ptrs_fd; size_t indexij_ptrs_len; int indexij_comp_fd; size_t indexij_comp_len;
+#elif defined(USE_SEPARATE_BUCKETS)
+  int indexi_ptrs_fd; size_t indexi_ptrs_len; int indexi_comp_fd; size_t indexi_comp_len;
+  int indexj_ptrs_fd; size_t indexj_ptrs_len; int indexj_comp_fd; size_t indexj_comp_len;
+#else
+  int indexij_ptrs_fd; size_t indexij_ptrs_len; int indexij_comp_fd; size_t indexij_comp_len;
+#endif
+
+  int lcpchilddc_fd; size_t lcpchilddc_len;
+
+  int lcp_guide_fd; size_t lcp_guide_len;
+  int lcp_exceptions_fd; size_t lcp_exceptions_len;
+
+  int child_guide_fd; size_t child_guide_len;
+  int child_exceptions_fd; size_t child_exceptions_len;
+
 };
 
-
-/* For benchmarking */
-UINT4 *
-Sarray_plcp_ptrs (Sarray_T this) {
-  return this->plcp_ptrs;
-}
-
-/* For benchmarking */
-UINT4 *
-Sarray_plcp_comp (Sarray_T this) {
-  return this->plcp_comp;
-}
 
 /* For benchmarking */
 Univcoord_T
@@ -191,8 +187,13 @@ Sarray_size (Sarray_T this) {
 }
 
 
+static Sarray_T sarray_fwd;
+static Sarray_T sarray_rev;
 static Genome_T genome;
-static Sarray_T sarray;
+
+static char conversion_fwd[128];
+static char conversion_rev[128];
+
 static Univ_IIT_T chromosome_iit;
 static int circular_typeint;
 static int splicing_penalty;
@@ -210,26 +211,30 @@ static Chrpos_T *splicedists;
 static int nsplicesites;
 
 
+#if 0
 /* Simplified from sarray_search_simple in sarray-write.c */
 static void
 sarray_search_char (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char desired_char,
-		    UINT4 *SA, UINT4 n) {
+		    UINT4 *SA, UINT4 n, char *chartable) {
   Sarrayptr_T low, high, mid;
   Univcoord_T pos;
   char c;
-
 
   low = 1;
   high = n + 1;
 
   while (low < high) {
+#if 0
     /* Compute mid for unsigned ints.  Want floor((low+high)/2). */
     mid = low/2 + high/2;
     if (low % 2 == 1 && high % 2 == 1) {
       mid += 1;
     }
+#else
+    mid = low + ((high - low) / 2);
+#endif
     pos = SA[mid];
-    c = Genome_get_char_lex(genome,pos,n);
+    c = Genome_get_char_lex(genome,pos,n,chartable);
     if (desired_char > c) {
       low = mid + 1;
     } else {
@@ -242,13 +247,18 @@ sarray_search_char (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char desired_ch
   low--;
   high = n;
   while (low < high) {
+#if 1
     /* Compute mid for unsigned ints.  Want ceil((low+high)/2). */
     mid = low/2 + high/2;
     if (low % 2 == 1 || high % 2 == 1) {
       mid += 1;
     }
+#else
+    /* This does not work for ceiling */
+    mid = low + ((high - low) / 2);
+#endif
     pos = SA[mid];
-    c = Genome_get_char_lex(genome,pos,n);
+    c = Genome_get_char_lex(genome,pos,n,chartable);
     if (desired_char >= c) {
       low = mid;
     } else {
@@ -259,18 +269,37 @@ sarray_search_char (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char desired_ch
   *finalptr = high;
   return;
 }
+#endif
 
 
 void
-Sarray_setup (T sarray_in, Genome_T genome_in, Univ_IIT_T chromosome_iit_in, int circular_typeint_in,
+Sarray_setup (T sarray_fwd_in, T sarray_rev_in, Genome_T genome_in, Mode_T mode,
+	      Univ_IIT_T chromosome_iit_in, int circular_typeint_in,
 	      Chrpos_T shortsplicedist_in, int splicing_penalty_in,
 	      int max_deletionlength, int max_end_deletions_in,
 	      int max_middle_insertions, int max_end_insertions,
 	      Univcoord_T *splicesites_in, Splicetype_T *splicetypes_in,
 	      Chrpos_T *splicedists_in, int nsplicesites_in) {
+  int i;
 
-  sarray = sarray_in;
+  sarray_fwd = sarray_fwd_in;
+  sarray_rev = sarray_rev_in;
   genome = genome_in;
+
+  for (i = 0; i < 128; i++) {
+    conversion_fwd[i] = i;
+    conversion_rev[i] = i;
+  }
+  if (mode == STANDARD) {
+    /* Don't change conversion */
+  } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
+    conversion_fwd['C'] = 'T';	/* CT */
+    conversion_rev['G'] = 'A';	/* GA */
+  } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+    conversion_fwd['A'] = 'G';	/* AG */
+    conversion_rev['T'] = 'C';	/* TC */
+  }
+
   chromosome_iit = chromosome_iit_in;
   circular_typeint = circular_typeint_in;
   shortsplicedist = shortsplicedist_in;
@@ -295,12 +324,12 @@ Sarray_setup (T sarray_in, Genome_T genome_in, Univ_IIT_T chromosome_iit_in, int
   splicedists = splicedists_in;
   nsplicesites = nsplicesites_in;
 
-  Bitpack64_read_setup();
-
+#if 0
   sarray_search_char(&(sarray->initindexi[0]),&(sarray->initindexj[0]),/*desired_char*/'A',sarray->array,sarray->n);
   sarray_search_char(&(sarray->initindexi[1]),&(sarray->initindexj[1]),/*desired_char*/'C',sarray->array,sarray->n);
   sarray_search_char(&(sarray->initindexi[2]),&(sarray->initindexj[2]),/*desired_char*/'G',sarray->array,sarray->n);
   sarray_search_char(&(sarray->initindexi[3]),&(sarray->initindexj[3]),/*desired_char*/'T',sarray->array,sarray->n);
+#endif
 
 #if 0
   printf("A => %u %u\n",sarray->initindexi[0],sarray->initindexj[0]);
@@ -338,237 +367,201 @@ power (int base, int exponent) {
 }
 
 
-
-
 /* Ignores snps_root */
 T
-Sarray_new (char *dir, char *fileroot, char *snps_root, Access_mode_T access) {
+Sarray_new (char *dir, char *fileroot, char *snps_root, Access_mode_T sarray_access, Access_mode_T aux_access,
+	    Mode_T mode, bool fwdp) {
   T new;
   char *comma1;
   double seconds;
   int npages;
 
   char *sarrayfile;
-  char *plcp_ptrsfile, *plcp_compfile;
-#ifdef USE_CHILD_BP
-  char *childbpfile, *childfcfile, *childs_pagesfile, *childs_ptrsfile, *childs_compfile, *childr_ptrsfile, *childr_compfile;
-  char *childx_ptrsfile, *childx_compfile;
-  char *pioneerbpfile, *pior_ptrsfile, *pior_compfile, *piom_ptrsfile, *piom_compfile;
+  char *lcpchilddcfile;
+  char *lcp_guidefile, *lcp_exceptionsfile;
+  char *child_guidefile, *child_exceptionsfile;
+#ifdef DEBUG15
+  char *indexi_ptrsfile, *indexi_compfile;
+  char *indexj_ptrsfile, *indexj_compfile;
+  char *indexij_ptrsfile, *indexij_compfile;
+#elif defined(USE_SEPARATE_BUCKETS)
+  char *indexi_ptrsfile, *indexi_compfile;
+  char *indexj_ptrsfile, *indexj_compfile;
 #else
-  char *child_ptrsfile, *child_compfile, *nextpfile;
-#endif
-  char *indexi_ptrsfile, *indexi_compfile, *indexj_ptrsfile, *indexj_compfile;
-
-
-  sarrayfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
-  sprintf(sarrayfile,"%s/%s.sarray",dir,fileroot);
-
-  plcp_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saplcpptrs")+1,sizeof(char));
-  sprintf(plcp_ptrsfile,"%s/%s.saplcpptrs",dir,fileroot);
-  plcp_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saplcpcomp")+1,sizeof(char));
-  sprintf(plcp_compfile,"%s/%s.saplcpcomp",dir,fileroot);
-
-#ifdef USE_CHILD_BP
-  childbpfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildbp")+1,sizeof(char));
-  sprintf(childbpfile,"%s/%s.sachildbp",dir,fileroot);
-  childfcfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildfc")+1,sizeof(char));
-  sprintf(childfcfile,"%s/%s.sachildfc",dir,fileroot);
-
-  childs_pagesfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildspages")+1,sizeof(char));
-  sprintf(childs_pagesfile,"%s/%s.sachildspages",dir,fileroot);
-  childs_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildsptrs")+1,sizeof(char));
-  sprintf(childs_ptrsfile,"%s/%s.sachildsptrs",dir,fileroot);
-  childs_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildscomp")+1,sizeof(char));
-  sprintf(childs_compfile,"%s/%s.sachildscomp",dir,fileroot);
-
-  childr_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildrptrs")+1,sizeof(char));
-  sprintf(childr_ptrsfile,"%s/%s.sachildrptrs",dir,fileroot);
-  childr_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildrcomp")+1,sizeof(char));
-  sprintf(childr_compfile,"%s/%s.sachildrcomp",dir,fileroot);
-
-  childx_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildxptrs")+1,sizeof(char));
-  sprintf(childx_ptrsfile,"%s/%s.sachildxptrs",dir,fileroot);
-  childx_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildxcomp")+1,sizeof(char));
-  sprintf(childx_compfile,"%s/%s.sachildxcomp",dir,fileroot);
-
-  pioneerbpfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiobp")+1,sizeof(char));
-  sprintf(pioneerbpfile,"%s/%s.sapiobp",dir,fileroot);
-  pior_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiorptrs")+1,sizeof(char));
-  sprintf(pior_ptrsfile,"%s/%s.sapiorptrs",dir,fileroot);
-  pior_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiorcomp")+1,sizeof(char));
-  sprintf(pior_compfile,"%s/%s.sapiorcomp",dir,fileroot);
-  piom_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiomptrs")+1,sizeof(char));
-  sprintf(piom_ptrsfile,"%s/%s.sapiomptrs",dir,fileroot);
-  piom_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiomcomp")+1,sizeof(char));
-  sprintf(piom_compfile,"%s/%s.sapiomcomp",dir,fileroot);
-#else
-  child_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildptrs")+1,sizeof(char));
-  sprintf(child_ptrsfile,"%s/%s.sachildptrs",dir,fileroot);
-  child_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildcomp")+1,sizeof(char));
-  sprintf(child_compfile,"%s/%s.sachildcomp",dir,fileroot);
-  nextpfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sanextp")+1,sizeof(char));
-  sprintf(nextpfile,"%s/%s.sanextp",dir,fileroot);
+  char *indexij_ptrsfile, *indexij_compfile;
 #endif
 
-  indexi_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexiptrs")+1,sizeof(char));
-  sprintf(indexi_ptrsfile,"%s/%s.saindexiptrs",dir,fileroot);
-  indexi_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexicomp")+1,sizeof(char));
-  sprintf(indexi_compfile,"%s/%s.saindexicomp",dir,fileroot);
-  indexj_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexjptrs")+1,sizeof(char));
-  sprintf(indexj_ptrsfile,"%s/%s.saindexjptrs",dir,fileroot);
-  indexj_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexjcomp")+1,sizeof(char));
-  sprintf(indexj_compfile,"%s/%s.saindexjcomp",dir,fileroot);
+  char *mode_prefix;
 
+  if (mode == STANDARD) {
+    mode_prefix = ".";
+  } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
+    if (fwdp == true) {
+      mode_prefix = ".metct.";
+    } else {
+      mode_prefix = ".metga.";
+    }
+  } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+    if (fwdp == true) {
+      mode_prefix = ".a2iag.";
+    } else {
+      mode_prefix = ".a2itc.";
+    }
+  }
+
+  sarrayfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("sarray")+1,sizeof(char));
+  sprintf(sarrayfile,"%s/%s%ssarray",dir,fileroot,mode_prefix);
+
+  lcpchilddcfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("salcpchilddc")+1,sizeof(char));
+  sprintf(lcpchilddcfile,"%s/%s%ssalcpchilddc",dir,fileroot,mode_prefix);
+
+  lcp_guidefile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("salcpguide1024")+1,sizeof(char));
+  sprintf(lcp_guidefile,"%s/%s%ssalcpguide1024",dir,fileroot,mode_prefix);
+  lcp_exceptionsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("salcpexc")+1,sizeof(char));
+  sprintf(lcp_exceptionsfile,"%s/%s%ssalcpexc",dir,fileroot,mode_prefix);
+
+  child_guidefile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("sachildguide1024")+1,sizeof(char));
+  sprintf(child_guidefile,"%s/%s%ssachildguide1024",dir,fileroot,mode_prefix);
+  child_exceptionsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("sachildexc")+1,sizeof(char));
+  sprintf(child_exceptionsfile,"%s/%s%ssachildexc",dir,fileroot,mode_prefix);
+
+#ifdef DEBUG15
+  indexi_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexi64meta")+1,sizeof(char));
+  sprintf(indexi_ptrsfile,"%s/%s%ssaindexi64meta",dir,fileroot,mode_prefix);
+  indexi_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexi64strm")+1,sizeof(char));
+  sprintf(indexi_compfile,"%s/%s%ssaindexi64strm",dir,fileroot,mode_prefix);
+  indexj_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexj64meta")+1,sizeof(char));
+  sprintf(indexj_ptrsfile,"%s/%s%ssaindexj64meta",dir,fileroot,mode_prefix);
+  indexj_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexj64strm")+1,sizeof(char));
+  sprintf(indexj_compfile,"%s/%s%ssaindexj64strm",dir,fileroot,mode_prefix);
+  indexij_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindex64meta")+1,sizeof(char));
+  sprintf(indexij_ptrsfile,"%s/%s%ssaindex64meta",dir,fileroot,mode_prefix);
+  indexij_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindex64strm")+1,sizeof(char));
+  sprintf(indexij_compfile,"%s/%s%ssaindex64strm",dir,fileroot,mode_prefix);
+#elif defined(USE_SEPARATE_BUCKETS)
+  indexi_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexi64meta")+1,sizeof(char));
+  sprintf(indexi_ptrsfile,"%s/%s%ssaindexi64meta",dir,fileroot,mode_prefix);
+  indexi_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexi64strm")+1,sizeof(char));
+  sprintf(indexi_compfile,"%s/%s%ssaindexi64strm",dir,fileroot,mode_prefix);
+  indexj_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexj64meta")+1,sizeof(char));
+  sprintf(indexj_ptrsfile,"%s/%s%ssaindexj64meta",dir,fileroot,mode_prefix);
+  indexj_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexj64strm")+1,sizeof(char));
+  sprintf(indexj_compfile,"%s/%s%ssaindexj64strm",dir,fileroot,mode_prefix);
+#else
+  indexij_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("saindex64meta")+1,sizeof(char));
+  sprintf(indexij_ptrsfile,"%s/%s%ssaindex64meta",dir,fileroot,mode_prefix);
+  indexij_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("saindex64strm")+1,sizeof(char));
+  sprintf(indexij_compfile,"%s/%s%ssaindex64strm",dir,fileroot,mode_prefix);
+#endif
 
   if (Access_file_exists_p(sarrayfile) == false) {
     fprintf(stderr,"Suffix array index file %s does not exist\n",sarrayfile);
     new = (T) NULL;
 
-  } else if (Access_file_exists_p(plcp_ptrsfile) == false || Access_file_exists_p(plcp_compfile) == false) {
-    fprintf(stderr,"Suffix array plcp file %s does not exist.  The genome may be built using an older suffix array format\n",sarrayfile);
+  } else if (Access_file_exists_p(lcpchilddcfile) == false) {
+    fprintf(stderr,"Enhanced suffix array file %s does not exist.  The genome was built using an obsolete version\n",
+	    lcpchilddcfile);
     new = (T) NULL;
+    exit(9);
 
   } else {
     new = (T) MALLOC(sizeof(*new));
 
-    if (access == USE_MMAP_PRELOAD) {
+    if (sarray_access == USE_MMAP_PRELOAD) {
       fprintf(stderr,"Pre-loading suffix array...");
       new->array = (UINT4 *) Access_mmap_and_preload(&new->array_fd,&new->array_len,&npages,&seconds,sarrayfile,
 						     sizeof(UINT4));
-      new->access = MMAPPED;
+      new->sarray_access = MMAPPED;
       comma1 = Genomicpos_commafmt(new->array_len);
       fprintf(stderr,"done (%s bytes)\n",comma1);
       FREE(comma1);
-    } else if (access == USE_MMAP_ONLY) {
+    } else if (sarray_access == USE_MMAP_ONLY) {
       new->array = (UINT4 *) Access_mmap(&new->array_fd,&new->array_len,sarrayfile,sizeof(UINT4),/*randomp*/true);
-      new->access = MMAPPED;
-    } else if (access == USE_ALLOCATE) {
-      /* Always memory map suffix array, regardless of access */
-      new->array = (UINT4 *) Access_mmap(&new->array_fd,&new->array_len,sarrayfile,sizeof(UINT4),/*randomp*/true);
-      new->access = ALLOCATED;
+      new->sarray_access = MMAPPED;
+    } else if (sarray_access == USE_ALLOCATE) {
+      new->array = (UINT4 *) Access_allocated(&new->array_len,&seconds,sarrayfile,sizeof(UINT4));
+      new->sarray_access = ALLOCATED;
     }
 
     new->n_plus_one = new->array_len/sizeof(UINT4); /* Should be genomiclength + 1*/
     new->n = new->n_plus_one - 1;
 
-    new->indexi_ptrs = (UINT4 *) Access_allocated(&new->indexi_ptrs_len,&seconds,indexi_ptrsfile,sizeof(UINT4));
+#ifdef DEBUG15
     /* 8 is for two DIFFERENTIAL_METAINFO_SIZE words */
-    new->indexsize = 3 + log4(((new->indexi_ptrs_len - 8)/sizeof(UINT4))/ /*DIFFERENTIAL_METAINFO_SIZE*/2);
-    new->indexspace = power(4,new->indexsize);
-
+    new->indexi_ptrs = (UINT4 *) Access_allocated(&new->indexi_ptrs_len,&seconds,indexi_ptrsfile,sizeof(UINT4));
     new->indexi_comp = (UINT4 *) Access_allocated(&new->indexi_comp_len,&seconds,indexi_compfile,sizeof(UINT4));
     new->indexj_ptrs = (UINT4 *) Access_allocated(&new->indexj_ptrs_len,&seconds,indexj_ptrsfile,sizeof(UINT4));
     new->indexj_comp = (UINT4 *) Access_allocated(&new->indexj_comp_len,&seconds,indexj_compfile,sizeof(UINT4));
-
-
-    new->plcp_ptrs = (UINT4 *) Access_allocated(&new->plcp_ptrs_len,&seconds,plcp_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->plcp_comp = (UINT4 *) Access_allocated(&new->plcp_comp_len,&seconds,plcp_compfile,sizeof(UINT4));
-    } else {
-      new->plcp_comp = (UINT4 *) Access_mmap(&new->plcp_comp_fd,&new->plcp_comp_len,plcp_compfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-#ifdef USE_CHILD_BP
-    if (access == USE_ALLOCATE) {
-      new->childbp = (UINT4 *) Access_allocated(&new->childbp_len,&seconds,childbpfile,sizeof(UINT4));
-    } else {
-      new->childbp = (UINT4 *) Access_mmap(&new->childbp_fd,&new->childbp_len,childbpfile,sizeof(UINT4),/*randomp*/true);
-    }
-    
-    /* Always allocate childfc */
-    new->childfc = (UINT4 *) Access_allocated(&new->childfc_len,&seconds,childfcfile,sizeof(UINT4));
-
-    if (Access_file_exists_p(childs_pagesfile) == false) {
-      new->childs_pages = (UINT4 *) NULL;
-    } else {
-      new->childs_pages = (UINT4 *) Access_allocated(&new->childs_pages_len,&seconds,childs_pagesfile,sizeof(UINT4));
-    }
-    new->childs_ptrs = (UINT4 *) Access_allocated(&new->childs_ptrs_len,&seconds,childs_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->childs_comp = (UINT4 *) Access_allocated(&new->childs_comp_len,&seconds,childs_compfile,sizeof(UINT4));
-    } else {
-      new->childs_comp = (UINT4 *) Access_mmap(&new->childs_comp_fd,&new->childs_comp_len,childs_compfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-    new->childr_ptrs = (UINT4 *) Access_allocated(&new->childr_ptrs_len,&seconds,childr_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->childr_comp = (UINT4 *) Access_allocated(&new->childr_comp_len,&seconds,childr_compfile,sizeof(UINT4));
-    } else {
-      new->childr_comp = (UINT4 *) Access_mmap(&new->childr_comp_fd,&new->childr_comp_len,childr_compfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-    new->childx_ptrs = (UINT4 *) Access_allocated(&new->childx_ptrs_len,&seconds,childx_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->childx_comp = (UINT4 *) Access_allocated(&new->childx_comp_len,&seconds,childx_compfile,sizeof(UINT4));
-    } else {
-      new->childx_comp = (UINT4 *) Access_mmap(&new->childx_comp_fd,&new->childx_comp_len,childx_compfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-
-    if (access == USE_ALLOCATE) {
-      new->pioneerbp = (UINT4 *) Access_allocated(&new->pioneerbp_len,&seconds,pioneerbpfile,sizeof(UINT4));
-    } else {
-      new->pioneerbp = (UINT4 *) Access_mmap(&new->pioneerbp_fd,&new->pioneerbp_len,pioneerbpfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-    new->pior_ptrs = (UINT4 *) Access_allocated(&new->pior_ptrs_len,&seconds,pior_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->pior_comp = (UINT4 *) Access_allocated(&new->pior_comp_len,&seconds,pior_compfile,sizeof(UINT4));
-    } else {
-      new->pior_comp = (UINT4 *) Access_mmap(&new->pior_comp_fd,&new->pior_comp_len,pior_compfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-    new->piom_ptrs = (UINT4 *) Access_allocated(&new->piom_ptrs_len,&seconds,piom_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->piom_comp = (UINT4 *) Access_allocated(&new->piom_comp_len,&seconds,piom_compfile,sizeof(UINT4));
-    } else {
-      new->piom_comp = (UINT4 *) Access_mmap(&new->piom_comp_fd,&new->piom_comp_len,piom_compfile,sizeof(UINT4),/*randomp*/true);
-    }
-
-    BP_read_setup(BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
-
+    new->indexij_ptrs = (UINT4 *) Access_allocated(&new->indexij_ptrs_len,&seconds,indexij_ptrsfile,sizeof(UINT4));
+    new->indexij_comp = (UINT4 *) Access_allocated(&new->indexij_comp_len,&seconds,indexij_compfile,sizeof(UINT4));
+    new->indexsize = 3 + log4(((new->indexij_ptrs_len - 8)/sizeof(UINT4)/2)/ /*DIFFERENTIAL_METAINFO_SIZE*/2);
+#elif defined(USE_SEPARATE_BUCKETS)
+    /* 8 is for two DIFFERENTIAL_METAINFO_SIZE words */
+    new->indexi_ptrs = (UINT4 *) Access_allocated(&new->indexi_ptrs_len,&seconds,indexi_ptrsfile,sizeof(UINT4));
+    new->indexi_comp = (UINT4 *) Access_allocated(&new->indexi_comp_len,&seconds,indexi_compfile,sizeof(UINT4));
+    new->indexj_ptrs = (UINT4 *) Access_allocated(&new->indexj_ptrs_len,&seconds,indexj_ptrsfile,sizeof(UINT4));
+    new->indexj_comp = (UINT4 *) Access_allocated(&new->indexj_comp_len,&seconds,indexj_compfile,sizeof(UINT4));
+    new->indexsize = 3 + log4(((new->indexi_ptrs_len - 8)/sizeof(UINT4))/ /*DIFFERENTIAL_METAINFO_SIZE*/2);
 #else
-    new->nextp = (UINT4 *) Access_allocated(&new->nextp_len,&seconds,nextpfile,sizeof(UINT4));
-    
-    new->child_ptrs = (UINT4 *) Access_allocated(&new->child_ptrs_len,&seconds,child_ptrsfile,sizeof(UINT4));
-    if (access == USE_ALLOCATE) {
-      new->child_comp = (UINT4 *) Access_allocated(&new->child_comp_len,&seconds,child_compfile,sizeof(UINT4));
-    } else {
-      new->child_comp = (UINT4 *) Access_mmap(&new->child_comp_fd,&new->child_comp_len,child_compfile,sizeof(UINT4),/*randomp*/true);
-    }
+    /* 8 is for two DIFFERENTIAL_METAINFO_SIZE words */
+    new->indexij_ptrs = (UINT4 *) Access_allocated(&new->indexij_ptrs_len,&seconds,indexij_ptrsfile,sizeof(UINT4));
+    new->indexij_comp = (UINT4 *) Access_allocated(&new->indexij_comp_len,&seconds,indexij_compfile,sizeof(UINT4));
+    new->indexsize = 3 + log4(((new->indexij_ptrs_len - 8)/sizeof(UINT4)/2)/ /*DIFFERENTIAL_METAINFO_SIZE*/2);
 #endif
+    new->indexspace = power(4,new->indexsize);
+
+    if (aux_access == USE_MMAP_PRELOAD) {
+      fprintf(stderr,"Pre-loading LCP/child/DC arrays...");
+      new->lcpchilddc = (unsigned char *) Access_mmap_and_preload(&new->lcpchilddc_fd,&new->lcpchilddc_len,&npages,&seconds,
+								  lcpchilddcfile,sizeof(unsigned char));
+      new->aux_access = MMAPPED;
+      comma1 = Genomicpos_commafmt(new->lcpchilddc_len);
+      fprintf(stderr,"done (%s bytes)\n",comma1);
+      FREE(comma1);
+    } else if (aux_access == USE_MMAP_ONLY) {
+      new->lcpchilddc = (unsigned char *) Access_mmap(&new->lcpchilddc_fd,&new->lcpchilddc_len,lcpchilddcfile,
+						      sizeof(unsigned char),/*randomp*/true);
+      new->aux_access = MMAPPED;
+    } else if (aux_access == USE_ALLOCATE) {
+      new->lcpchilddc = (unsigned char *) Access_allocated(&new->lcpchilddc_len,&seconds,lcpchilddcfile,sizeof(unsigned char));
+      new->aux_access = ALLOCATED;
+    }
+
+    new->lcp_guide = (UINT4 *) Access_allocated(&new->lcp_guide_len,&seconds,lcp_guidefile,sizeof(UINT4));
+    new->lcp_exceptions = (UINT4 *) Access_allocated(&new->lcp_exceptions_len,&seconds,lcp_exceptionsfile,sizeof(UINT4));
+    new->n_lcp_exceptions = new->lcp_exceptions_len/(sizeof(UINT4) + sizeof(UINT4));
+
+    new->child_guide = (UINT4 *) Access_allocated(&new->child_guide_len,&seconds,child_guidefile,sizeof(UINT4));
+    new->child_exceptions = (UINT4 *) Access_allocated(&new->child_exceptions_len,&seconds,child_exceptionsfile,sizeof(UINT4));
+    new->child_guide_interval = 1024;
   }
 
 
-  FREE(indexj_compfile);
-  FREE(indexj_ptrsfile);
+  FREE(child_exceptionsfile);
+  FREE(child_guidefile);
+
+  FREE(lcp_exceptionsfile);
+  FREE(lcp_guidefile);
+
+  FREE(lcpchilddcfile);
+
+#ifdef DEBUG15
   FREE(indexi_compfile);
   FREE(indexi_ptrsfile);
-
-#ifdef USE_CHILD_BP
-  FREE(piom_compfile);
-  FREE(piom_ptrsfile);
-  FREE(pior_compfile);
-  FREE(pior_ptrsfile);
-  FREE(pioneerbpfile);
-
-  FREE(childx_compfile);
-  FREE(childx_ptrsfile);
-  FREE(childr_compfile);
-  FREE(childr_ptrsfile);
-  FREE(childs_compfile);
-  FREE(childs_ptrsfile);
-  FREE(childs_pagesfile);
-  FREE(childfcfile);
-  FREE(childbpfile);
+  FREE(indexj_compfile);
+  FREE(indexj_ptrsfile);
+  FREE(indexij_compfile);
+  FREE(indexij_ptrsfile);
+#elif defined(USE_SEPARATE_BUCKETS)
+  FREE(indexi_compfile);
+  FREE(indexi_ptrsfile);
+  FREE(indexj_compfile);
+  FREE(indexj_ptrsfile);
 #else
-  FREE(nextpfile);
-  FREE(child_compfile);
-  FREE(child_ptrsfile);
+  FREE(indexij_compfile);
+  FREE(indexij_ptrsfile);
 #endif
 
-  FREE(plcp_compfile);
-  FREE(plcp_ptrsfile);
   FREE(sarrayfile);
 
   return new;
@@ -578,53 +571,39 @@ Sarray_new (char *dir, char *fileroot, char *snps_root, Access_mode_T access) {
 void
 Sarray_free (T *old) {
   if (*old) {
+#ifdef DEBUG15
     FREE((*old)->indexi_ptrs);
     FREE((*old)->indexi_comp);
     FREE((*old)->indexj_ptrs);
     FREE((*old)->indexj_comp);
-    FREE((*old)->plcp_ptrs);
-#ifdef USE_CHILD_BP
-    FREE((*old)->childfc);
-    FREE((*old)->childs_pages);
-    FREE((*old)->childs_ptrs);
-    FREE((*old)->childr_ptrs);
-    FREE((*old)->childx_ptrs);
-    FREE((*old)->pior_ptrs);
-    FREE((*old)->piom_ptrs);
+    FREE((*old)->indexij_ptrs);
+    FREE((*old)->indexij_comp);
+#elif defined(USE_SEPARATE_BUCKETS)
+    FREE((*old)->indexi_ptrs);
+    FREE((*old)->indexi_comp);
+    FREE((*old)->indexj_ptrs);
+    FREE((*old)->indexj_comp);
 #else
-    FREE((*old)->child_ptrs);
-    FREE((*old)->nextp);
+    FREE((*old)->indexij_ptrs);
+    FREE((*old)->indexij_comp);
 #endif
+    FREE((*old)->lcp_exceptions);
+    FREE((*old)->lcp_guide);
+    FREE((*old)->child_exceptions);
+    FREE((*old)->child_guide);
 
-    munmap((void *) (*old)->array,(*old)->array_len);
-    close((*old)->array_fd);
+    if ((*old)->aux_access == MMAPPED) {
+      munmap((void *) (*old)->lcpchilddc,(*old)->lcpchilddc_len);
+      close((*old)->lcpchilddc_fd);
+    } else {
+      FREE((*old)->lcpchilddc);
+    }
 
-    if ((*old)->access == ALLOCATED) {
-      FREE((*old)->plcp_comp);
-#ifdef USE_CHILD_BP
-      FREE((*old)->childbp);
-      FREE((*old)->childs_comp);
-      FREE((*old)->childr_comp);
-      FREE((*old)->childx_comp);
-      FREE((*old)->pior_comp);
-      FREE((*old)->piom_comp);
-#endif
-
-    } else if ((*old)->access == MMAPPED) {
-      munmap((void *) (*old)->plcp_comp,(*old)->plcp_comp_len);
-      close((*old)->plcp_comp_fd);
-#ifdef USE_CHILD_BP
-      munmap((void *) (*old)->childs_comp,(*old)->childs_comp_len);
-      munmap((void *) (*old)->childr_comp,(*old)->childr_comp_len);
-      munmap((void *) (*old)->childx_comp,(*old)->childx_comp_len);
-      munmap((void *) (*old)->pior_comp,(*old)->pior_comp_len);
-      munmap((void *) (*old)->piom_comp,(*old)->piom_comp_len);
-      close((*old)->childs_comp_fd);
-      close((*old)->childr_comp_fd);
-      close((*old)->childx_comp_fd);
-      close((*old)->pior_comp_fd);
-      close((*old)->piom_comp_fd);
-#endif
+    if ((*old)->sarray_access == MMAPPED) {
+      munmap((void *) (*old)->array,(*old)->array_len);
+      close((*old)->array_fd);
+    } else {
+      FREE((*old)->array);
     }
 
     FREE(*old);
@@ -652,26 +631,31 @@ sarray_search_init (char *query, int querylength, int queryoffset, Compress_T qu
 
   debug1(printf("sarray_search_init on querylength %d with low %u, high %u\n",querylength,low,high));
   while (low + 1 < high) {
+#if 0
     /* Compute mid for unsigned ints */
     mid = low/2 + high/2;
     if (low % 2 == 1 && high % 2 == 1) {
       mid += 1;
     }
+#else
+    mid = low + ((high - low) / 2);
+#endif
+
     debug1(printf("low %u, high %u => mid %u\n",low,high,mid));
     nmatches_mid =  (nmatches_low < nmatches_high) ? nmatches_low : nmatches_high;
 
     fasti = nmatches_mid +
       (Univcoord_T) Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[mid]-queryoffset,
 							 /*pos5*/queryoffset+nmatches_mid,
-							 /*pos3*/queryoffset+querylength,plusp,/*genestrand*/0);
+							 /*pos3*/queryoffset+querylength,plusp,genestrand,first_read_p);
     pos = sarray->array[mid] + fasti;
-    c = Genome_get_char_lex(genome,pos,sarray->n);
+    c = Genome_get_char_lex(genome,pos,sarray->n,chartable);
 
     if (fasti == (Univcoord_T) querylength || c > query[fasti]) {
       high = mid;
       /* nmatches_high = (sarray->lcp[mid] < nmatches_mid) ? sarray->lcp[mid] : nmatches_mid; */
       sa_mid = sarray->array[mid];
-      lcp_mid = Bitpack64_offsetptr_only(sa_mid,sarray->plcp_ptrs,sarray->plcp_comp) - sa_mid;
+      lcp_mid = Bitpack64_read_one(sa_mid,sarray->plcp_ptrs,sarray->plcp_comp) - sa_mid;
 #ifdef USE_LCP
       if (lcp_mid != sarray->lcp[mid]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -682,7 +666,7 @@ sarray_search_init (char *query, int querylength, int queryoffset, Compress_T qu
       low = mid;
       /* nmatches_low = (sarray->lcp[low] < nmatches_mid) ? sarray->lcp[low] : nmatches_mid; */
       sa_low = sarray->array[low];
-      lcp_low = Bitpack64_offsetptr_only(sa_low,sarray->plcp_ptrs,sarray->plcp_comp) - sa_low;
+      lcp_low = Bitpack64_read_one(sa_low,sarray->plcp_ptrs,sarray->plcp_comp) - sa_low;
 #ifdef USE_LCP
       if (lcp_low != sarray->lcp[low]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -717,26 +701,30 @@ sarray_search_final (char *query, int querylength, int queryoffset, Compress_T q
 
   debug1(printf("sarray_search_final on querylength %d with low %u, high %u\n",querylength,low,high));
   while (low + 1 < high) {
+#if 0
     /* Compute mid for unsigned ints */
     mid = low/2 + high/2;
     if (low % 2 == 1 && high % 2 == 1) {
       mid += 1;
     }
+#else
+    mid = low + ((high - low) / 2);
+#endif
     debug1(printf("low %u, high %u => mid %u\n",low,high,mid));
     nmatches_mid =  (nmatches_low < nmatches_high) ? nmatches_low : nmatches_high;
 
     fasti = nmatches_mid +
       (Univcoord_T) Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[mid]-queryoffset,
 							 /*pos5*/queryoffset+nmatches_mid,
-							 /*pos3*/queryoffset+querylength,plusp,/*genestrand*/0);
+							 /*pos3*/queryoffset+querylength,plusp,genestrand,first_read_p);
     pos = sarray->array[mid] + fasti;
-    c = Genome_get_char_lex(genome,pos,sarray->n);
+    c = Genome_get_char_lex(genome,pos,sarray->n,chartable);
 
     if (fasti == (Univcoord_T) querylength || c < query[fasti]) {
       low = mid;
       /* nmatches_low = (sarray->lcp[low] < nmatches_mid) ? sarray->lcp[low] : nmatches_mid; */
       sa_low = sarray->array[low];
-      lcp_low = Bitpack64_offsetptr_only(sa_low,sarray->plcp_ptrs,sarray->plcp_comp) - sa_low;
+      lcp_low = Bitpack64_read_one(sa_low,sarray->plcp_ptrs,sarray->plcp_comp) - sa_low;
 #ifdef USE_LCP
       if (lcp_low != sarray->lcp[low]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -747,7 +735,7 @@ sarray_search_final (char *query, int querylength, int queryoffset, Compress_T q
       high = mid;
       /* nmatches_high = (sarray->lcp[mid] < nmatches_mid) ? sarray->lcp[mid] : nmatches_mid; */
       sa_mid = sarray->array[mid];
-      lcp_mid = Bitpack64_offsetptr_only(sa_mid,sarray->plcp_ptrs,sarray->plcp_comp) - sa_mid;
+      lcp_mid = Bitpack64_read_one(sa_mid,sarray->plcp_ptrs,sarray->plcp_comp) - sa_mid;
 #ifdef USE_LCP
       if (lcp_mid != sarray->lcp[mid]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -829,177 +817,95 @@ nt_oligo_truncate (char *query, int truncsize, int indexsize, int subst_value) {
 }
 
 
-#ifndef USE_CHILD_BP
 
 /* For child[index+1].up, just calling child[index] */
-#define decode_up(index,child_ptrs,child_comp) index - Bitpack64_access(index,child_ptrs,child_comp)
-#define decode_down(index,child_ptrs,child_comp) Bitpack64_access(index,child_ptrs,child_comp) + index + 1
-#define decode_next(index,child_ptrs,child_comp) Bitpack64_access(index,child_ptrs,child_comp) + index + 1
+#define decode_up(index,child_bytes,child_guide,child_exceptions,child_guide_interval) index - Bytecoding_read_wguide(index,child_bytes,child_guide,child_exceptions,child_guide_interval)
+#define decode_down(index,child_bytes,child_guide,child_exceptions,child_guide_interval) Bytecoding_read_wguide(index,child_bytes,child_guide,child_exceptions,child_guide_interval) + index + 1
+#define decode_next(index,child_bytes,child_guide,child_exceptions,child_guide_interval) Bytecoding_read_wguide(index,child_bytes,child_guide,child_exceptions,child_guide_interval) + index + 1
 
+/*                                      0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F */
+static char discrim_char_before[16] = {'?','$','$','$','$','$','A','A','A','A','C','C','C','G','G','T'};
+static char discrim_char_after[16]  = {'?','A','C','G','T','X','C','G','T','X','G','T','X','T','X','X'};
 
-#if 0
-/* For benchmarking */
-void
-Sarray_traverse_children (Sarrayptr_T i, Sarrayptr_T j, T sarray) {
-  UINT4 up, nextl;
-
-  /* LCP interval */
-  debug1(printf("lcp-interval %u..%u\n",i,j));
-  up = decode_up(j,sarray->child_ptrs,sarray->child_comp);
-  if (i < up && up <= j) {
-    nextl = up;
-    debug1(printf("nextl is up: %d\n",nextl));
-  } else {
-    nextl = decode_down(i,sarray->child_ptrs,sarray->child_comp); /* down */
-    debug1(printf("nextl is down: %d\n",nextl));
-  }
-
-  /* Test for child[i] being down: lcp[child[i]] > lcp[i] */
-  /* Test for child[i] being next_lindex: lcp[child[i]] == lcp[i] */
-  while (get_bit(sarray->nextp,nextl) != 0) {
-    debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
-    nextl = decode_next(nextl,sarray->child_ptrs,sarray->child_comp); /* child[nextl] */
-  }
-
-  return;
-}
-#endif
-
-
-/* Previously did not use this code */
-static bool
-get_child (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_T j, char desired_char,
-	   UINT4 *child_ptrs, UINT4 *child_comp, INT4 *nextp, UINT4 *SA, UINT4 *plcp_ptrs, UINT4 *plcp_comp) {
-  UINT4 up, nextl;
-  Sarrayptr_T sa_nextl;
-  UINT4 lcp_whole;
-  UINT4 pos;
-  char c;
-
-  debug2(printf("Getting children for l-interval from %u to %u, char %c\n",i,j,desired_char));
-
-  /* Test for child[j] being up: lcp[j] > lcp[j+1] */
-
-  up = decode_up(j,child_ptrs,child_comp); /* up: child[j] = childtab[j+1].up */
-  if (i < up && up <= j) {
-    nextl = up;
-  } else {
-    nextl = decode_down(i,child_ptrs,child_comp);	/* down: child[i] */
-  }
-  sa_nextl = SA[nextl];
-  lcp_whole = Bitpack64_offsetptr_only(sa_nextl,plcp_ptrs,plcp_comp) - sa_nextl;
-  debug2(printf("LCP of whole is %u\n",lcp_whole));
-
-  pos = SA[i] + lcp_whole;
-  c = Genome_get_char_lex(genome,pos,sarray->n);
-  if (c > desired_char) {
-    debug2(printf("Returning false\n"));
-    return false;
-  } else if (c == desired_char) {
-    *l = i;
-    *r = nextl - 1;
-    debug2(printf("Child: %u to %u, char %c\n",*l,*r,c));
-    debug2(printf("Returning true\n\n"));
-    return true;
-  } else {
-    /* Skip */
-  }
-  
-  /* Test for child[i] being down: lcp[child[i]] > lcp[i] */
-  /* Test for child[i] being next_lindex: lcp[child[i]] == lcp[i] */
-  while (get_bit(nextp,nextl) != 0) {
-    pos = SA[nextl] + lcp_whole;
-    c = Genome_get_char_lex(genome,pos,sarray->n);
-    if (c > desired_char) {
-      debug2(printf("Returning false\n"));
-      return false;
-    } else if (c == desired_char) {
-      *l = nextl;
-      nextl = decode_next(nextl,child_ptrs,child_comp);  /* child[nextl]; */
-      *r = nextl - 1;
-      debug2(printf("Child: %u to %u, char %c\n",*l,*r,c));
-      debug2(printf("Returning true\n\n"));
-      return true;
-    } else {
-      nextl = decode_next(nextl,child_ptrs,child_comp);  /* child[nextl]; */
-    }
-  }
-
-  pos = SA[nextl] + lcp_whole;
-  c = Genome_get_char_lex(genome,pos,sarray->n);
-  if (c == desired_char) {
-    *l = nextl;
-    *r = j;
-    debug2(printf("Child: %u to %u, char %c\n",*l,*r,c));
-    debug2(printf("Returning true\n\n"));
-    return true;
-  } else {
-    debug2(printf("Returning false\n"));
-    return false;
-  }
-}
-
-
-/* Previously used this code.  Avoids recomputing lcp_whole */
 static bool
 get_child_given_first (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_T j, char desired_char,
-		       UINT4 *child_ptrs, UINT4 *child_comp, UINT4 *nextp, UINT4 *SA, UINT4 lcp_whole, UINT4 nextl) {
-  UINT4 pos;
-  char c;
+		       T sarray, unsigned char *lcpchilddc, UINT4 lcp_whole, UINT4 nextl) {
+  char c1, c2;
 
   debug2(printf("Getting children for l-interval from %u to %u, char %c\n",i,j,desired_char));
 
+#if 0
   /* First child already given */
-  pos = SA[i] + lcp_whole;
-  c = Genome_get_char_lex(genome,pos,sarray->n);
-  if (c > desired_char) {
-    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
-    debug2(printf("1.  Returning false, because %c > desired %c\n",c,desired_char));
+  debug1(printf("lcp-interval %u..%u\n",i,j));
+  up = decode_up(j,sarray->child_bytes,sarray->child_guide,sarray->child_exceptions,sarray->child_guide_interval);
+  if (i < up && up <= j) {
+    nextl = up;
+    debug2(printf("nextl is up: %u\n",nextl));
+  } else {
+    nextl = decode_down(i,sarray->child_bytes,sarray->child_guide,sarray->child_exceptions,sarray->child_guide_interval); /* down */
+    debug2(printf("nextl is down: %u\n",nextl));
+  }
+#endif
+
+  /* Test first child: Use discrim_chars, rather than looking up S[SA[i] + lcp_whole] */
+  c2 = Bytecoding_lcpchilddc_dc(&c1,nextl,lcpchilddc);
+  debug2(printf("First child: %u to %u, discrim chars %c and %c\n",i,nextl-1,c1,c2));
+
+  if (desired_char < c1) {
+    debug2(printf("1.  Returning false, because desired %c < c1 %c\n",desired_char,c1));
     return false;
-  } else if (c == desired_char) {
+  } else if (desired_char == c1) {
     *l = i;
     *r = nextl - 1;
-    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
     debug2(printf("Returning true\n\n"));
     return true;
+  } else if (desired_char < c2) {
+    debug2(printf("1.  Returning false, because desired %c < c2 %c\n",desired_char,c2));
+    return false;
   } else {
-    /* Skip */
-    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+    /* Advance to middle children or final child */
+    debug2(printf("1.  Advancing\n"));
   }
-  
+
   /* Test for child[i] being down: lcp[child[i]] > lcp[i] */
   /* Test for child[i] being next_lindex: lcp[child[i]] == lcp[i] */
-  while (get_bit(nextp,nextl) != 0) {
-    pos = SA[nextl] + lcp_whole;
-    c = Genome_get_char_lex(genome,pos,sarray->n);
-    if (c > desired_char) {
-      debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
-      debug2(printf("2.  Returning false, because %c > desired %c\n",c,desired_char));
-      return false;
-    } else if (c == desired_char) {
+  /* Test middle children */
+  while (nextl < j && Bytecoding_lcpchilddc_lcp_next(nextl,/*bytes*/lcpchilddc,sarray->child_guide,sarray->child_exceptions,
+						     sarray->child_guide_interval,sarray->lcp_exceptions,sarray->n_lcp_exceptions) == lcp_whole) {
+    /* Already tested for desired_char < c2 */
+    if (desired_char == c2) {
       *l = nextl;
-      *r = decode_next(nextl,child_ptrs,child_comp) - 1; /* child[nextl] - 1 */
-      debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
+      *r = Bytecoding_lcpchilddc_child_next(nextl,lcpchilddc,sarray->child_guide,sarray->child_exceptions,
+					    sarray->child_guide_interval) - 1; /* child[nextl] - 1 */
+      debug2(printf("Child: %u to %u, c2 %c\n",nextl,*r,c2));
       debug2(printf("Returning true\n\n"));
       return true;
     } else {
-      debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
-      nextl = decode_next(nextl,child_ptrs,child_comp); /* child[nextl] */
+      debug2(printf("Child: %u",nextl));
+      nextl = Bytecoding_lcpchilddc_child_next(nextl,lcpchilddc,sarray->child_guide,sarray->child_exceptions,
+					       sarray->child_guide_interval); /* child[nextl] */
+      c2 = Bytecoding_lcpchilddc_dc(&c1,nextl,lcpchilddc);
+      debug2(printf(" to %u, discrim chars %c and %c\n",nextl-1,c1,c2));
+
+      if (desired_char < c2) {
+	debug2(printf("M.  Returning false, because desired %c < c2 %c\n",desired_char,c2));
+	return false;
+      } else {
+	debug2(printf("M.  Advancing\n"));
+      }
     }
   }
 
-  debug2(printf("Processing last interval\n"));
-  pos = SA[nextl] + lcp_whole;
-  c = Genome_get_char_lex(genome,pos,sarray->n);
-  if (c == desired_char) {
+  /* Test last child */
+  /* Already tested for desired_char < c2 */
+  debug2(printf("Final child: %u to %u, c2 %c\n",nextl,j,c2));
+  if (desired_char == c2) {
     *l = nextl;
     *r = j;
-    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
     debug2(printf("Returning true\n\n"));
     return true;
   } else {
-    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
-    debug2(printf("3.  Returning false, because %c != desired %c\n",c,desired_char));
+    debug2(printf("3.  Returning false, because desired %c != c2 %c\n",desired_char,c2));
     return false;
   }
 }
@@ -1008,8 +914,9 @@ get_child_given_first (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_
 static UINT4
 find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
 		    Sarrayptr_T i, Sarrayptr_T j, char *query, UINT4 querylength,
-		    int queryoffset, Compress_T query_compress, T sarray, bool plusp) {
-  UINT4 lcp_whole, nextl, up, sa_nextl;
+		    int queryoffset, Compress_T query_compress, T sarray, bool plusp,
+		    int genestrand, bool first_read_p, char conversion[]) {
+  UINT4 lcp_whole, nextl, up;
   UINT4 minlength;
   UINT4 l, r;
 
@@ -1020,24 +927,27 @@ find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
       nmatches +=
 	Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
 					     /*pos5*/queryoffset+nmatches,/*pos3*/queryoffset+querylength,
-					     plusp,/*genestrand*/0);
+					     plusp,genestrand,first_read_p);
       *initptr = i;
       *finalptr = j;
       return nmatches;
 
     } else {
-      /* LCP interval */
+      /* First child */
       debug1(printf("lcp-interval %u..%u\n",i,j));
-      up = decode_up(j,sarray->child_ptrs,sarray->child_comp);
+      up = Bytecoding_lcpchilddc_child_up(j,sarray->lcpchilddc,sarray->child_guide,sarray->child_exceptions,
+					  sarray->child_guide_interval);
       if (i < up && up <= j) {
 	nextl = up;
-	debug1(printf("nextl is up: %u\n",nextl));
+	debug2(printf("nextl is up: %u\n",nextl));
       } else {
-	nextl = decode_down(i,sarray->child_ptrs,sarray->child_comp); /* down */
-	debug1(printf("nextl is down: %u\n",nextl));
+	nextl = Bytecoding_lcpchilddc_child_next(i,sarray->lcpchilddc,sarray->child_guide,sarray->child_exceptions,
+						 sarray->child_guide_interval); /* really down */
+	debug2(printf("nextl is down: %u\n",nextl));
       }
-      sa_nextl = sarray->array[nextl];
-      lcp_whole = Bitpack64_offsetptr_only(sa_nextl,sarray->plcp_ptrs,sarray->plcp_comp) - sa_nextl; /* lcp(i,j) */
+
+      lcp_whole = Bytecoding_lcpchilddc_lcp(nextl,sarray->lcpchilddc,sarray->lcp_exceptions,
+					    sarray->n_lcp_exceptions); /* lcp(i,j) */
       debug1(printf("lcp_whole for %u..%u is %d, compared with nmatches %d\n",i,j,lcp_whole,nmatches));
 
       if (lcp_whole > nmatches) {
@@ -1047,7 +957,7 @@ find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
 	nmatches +=
 	  Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
 					       /*pos5*/queryoffset+nmatches,/*pos3*/queryoffset+minlength,
-					       plusp,/*genestrand*/0);
+					       plusp,genestrand,first_read_p);
 	if (nmatches < minlength) {
 	  *initptr = i;
 	  *finalptr = j;
@@ -1061,10 +971,10 @@ find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
 	}
       }
 	
-      debug1(printf("nmatches is now %d => desired_char is %c\n",nmatches,query[nmatches]));
-      if (get_child_given_first(&l,&r,i,j,/*desired_char*/query[nmatches],
-				sarray->child_ptrs,sarray->child_comp,sarray->nextp,
-				sarray->array,lcp_whole,nextl) == false) {
+      debug1(printf("nmatches is now %d => desired_char is %c => %c\n",
+		    nmatches,query[nmatches],conversion[query[nmatches]]));
+      if (get_child_given_first(&l,&r,i,j,/*desired_char*/conversion[query[nmatches]],
+				sarray,sarray->lcpchilddc,lcp_whole,nextl) == false) {
 	*initptr = i;
 	*finalptr = j;
 	return nmatches;
@@ -1083,7 +993,6 @@ find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
 
 
 
-
 /* Searches using LCP and child arrays.  Should be O(m * |Sigma|),
    where m wis the querylength and |Sigma| is the size of the alphabet
    (4 for DNA) */
@@ -1091,7 +1000,8 @@ find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
 static void
 sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 	       UINT4 *nmatches, char *query, UINT4 querylength, int queryoffset,
-	       Compress_T query_compress, bool plusp) {
+	       Compress_T query_compress, T sarray, bool plusp, int genestrand,
+	       bool first_read_p, char conversion[]) {
   int effective_querylength;	/* length to first N */
   Storedoligomer_T oligo;
   UINT4 l, r;
@@ -1107,7 +1017,7 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
   char Buffer[1000];
 #endif
 
-  debug(printf("sarray_search on %s, querylength %d\n",query,querylength));
+  debug(printf("sarray_search on %s, querylength %d, plusp %d\n",query,querylength,plusp));
 
   /* Find initial lcp-interval */
   effective_querylength = nt_querylength(query,querylength);
@@ -1129,40 +1039,75 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 #else
     /* Try to infer from 12-mer index, but can be tricky when N's are present */
     oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for A*/0);
-    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
-    debug1(printf(" => oligo %08X",oligo));
+#ifdef DEBUG15
+      if ((l = Bitpack64_read_one(oligo*2,sarray->indexij_ptrs,sarray->indexij_comp)) !=
+	  Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp)) {
+	abort();
+      }
+#elif defined(USE_SEPARATE_BUCKETS)
+      l = Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
+#else
+      l = Bitpack64_read_one(oligo*2,sarray->indexij_ptrs,sarray->indexij_comp);
+#endif
+      debug1(printf(" => oligo %08X",oligo));
+    }
 
     /* Because $ < A, we need to check for this case.  Need to back up just 1. */
-    if (l > 1 && sarray->array[l-1] + effective_querylength == sarray->n) {
+    /* Test is SA[l-1] + indexsize - 1 >= n, or SA[l-1] + indexsize > n */
+    debug1(printf("Comparing SA %u + indexsize %d with n %u\n",sarray->array[l-1],sarray->indexsize,sarray->n));
+    if (l > 1 && sarray->array[l-1] + sarray->indexsize > sarray->n) {
       debug1(printf(" (backing up one position for l, because at end of genome)"));
       l--;
     }
 
     /* Add 1 to rollover to next oligo, to handle Ns in genome */
     oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for T*/3) + 1;
+    oligo_prev = oligo - 1;
+
     r = Bitpack64_read_one(oligo*2,sarray->indexij_ptrs,sarray->indexij_comp) - 1;
-    debug1(printf(" => ending oligo %08X => r-value %u\n",oligo,r));
+    r_prev = Bitpack64_offsetptr_only(oligo_prev*2+1,sarray->indexij_ptrs,sarray->indexij_comp);
 
-    /* Potential bug here if N is present.  Could read dc and if .X, back up a certain number */
+    if (r != r_prev) {
+      debug1(printf("r is %u - 1, but r_prev is %u, indicating the presence of N's => Starting from root\n",
+		    r+1,r_prev));
+      l = 1;
+      r = sarray->n;
 
-    if (oligo == sarray->indexspace) {
+    } else if (oligo == sarray->indexspace) {
       /* We have a poly-T, so we cannot determine r.  For example,
 	 TTTTTN has a different r value than TTN. */
       debug1(printf(" but poly-T => 1-letter for T: %u..%u\n",l,r));
+#if 0
       l = sarray->initindexi[3];
       r = sarray->initindexj[3];
       /* Keep nmatches = 0, because there may not be a T in the genome */
+#else
+      l = 1;
+      r = sarray->n;
+#endif
 
     } else {
-      r = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp) - 1;
+#if 0
+      /* Already computed above */
+#ifdef DEBUG15
+      if ((r = Bitpack64_read_one(oligo*2,sarray->indexij_ptrs,sarray->indexij_comp) - 1) !=
+	  Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp) - 1) {
+	abort();
+      }
+#elif defined(USE_SEPARATE_BUCKETS)
+      r = Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp) - 1;
+#else
+      r = Bitpack64_read_one(oligo*2,sarray->indexij_ptrs,sarray->indexij_comp) - 1;
+#endif
+#endif
 
       /* Because $ < A, we need to check for this case.  Need to back up just 1. */
+      /* Test is SA[r] + indexsize - 1 >= n, or SA[r] + indexsize > n */
       debug1(printf(" (checking %u + %d >= %u)",sarray->array[r],effective_querylength,sarray->n));
-      if (r > 0 && sarray->array[r] + effective_querylength >= sarray->n) {
+      if (r > 0 && sarray->array[r] + sarray->indexsize > sarray->n) {
 	debug1(printf(" (backing up one position for r, because at end of genome)"));
 	r--;
       }
-
       debug1(printf(" and %08X => interval %u..%u (effective_querylength %d)",
 		    oligo,l,r,effective_querylength));
 
@@ -1193,8 +1138,26 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 
   } else {
     oligo = nt_oligo(query,sarray->indexsize);
-    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
-    r = Bitpack64_offsetptr_only(oligo,sarray->indexj_ptrs,sarray->indexj_comp);
+#ifdef DEBUG15
+    if ((l = Bitpack64_read_two(&r,oligo*2,sarray->indexij_ptrs,sarray->indexij_comp)) !=
+	Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp)) {
+      abort();
+    } else if (r - 1 != Bitpack64_read_one(oligo,sarray->indexj_ptrs,sarray->indexj_comp)) {
+      printf("For oligo %u, separate buckets give %u and %u, while single bucket gives %u and %u\n",
+	     oligo,
+	     Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp),
+	     Bitpack64_read_one(oligo,sarray->indexj_ptrs,sarray->indexj_comp),
+	     l,r);
+      abort();
+    }
+    r--;			/* Because interleaved writes r+1 to maintain monotonicity */
+#elif defined(USE_SEPARATE_BUCKETS)
+    l = Bitpack64_read_one(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
+    r = Bitpack64_read_one(oligo,sarray->indexj_ptrs,sarray->indexj_comp);
+#else
+    l = Bitpack64_read_two(&r,oligo*2,sarray->indexij_ptrs,sarray->indexij_comp);
+    r--;			/* Because interleaved writes r+1 to maintain monotonicity */
+#endif
     debug1(printf("string %.*s is equal/longer than indexsize %d => oligo %u => interval %u..%u",
 		  querylength,query,sarray->indexsize,oligo,l,r));
     if (l <= r) {
@@ -1228,7 +1191,8 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
     *finalptr = r;
   } else {
     *nmatches = find_longest_match(*nmatches,&(*initptr),&(*finalptr),/*i*/l,/*j*/r,
-				   query,querylength,queryoffset,query_compress,sarray,plusp);
+				   query,querylength,queryoffset,query_compress,sarray,
+				   plusp,genestrand,first_read_p,conversion);
   }
 
   /* Search through suffix tree */
@@ -1251,9 +1215,21 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
   if (*nmatches > 0 && *initptr > 0U) {
     recount = Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[(*initptr)-1]-queryoffset,
 						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
-						   plusp,/*genestrand*/0);
+						   plusp,genestrand,first_read_p);
     printf("%d\t%u\t%u\t",recount,(*initptr)-1,sarray->array[(*initptr)-1] /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)-1],recount+1,Buffer);
+    if (genestrand == +2) {
+      if (plusp != first_read_p) {
+	Genome_fill_buffer_convert_fwd(sarray->array[(*initptr)-1],recount+1,Buffer);
+      } else {
+	Genome_fill_buffer_convert_rev(sarray->array[(*initptr)-1],recount+1,Buffer);
+      }
+    } else {
+      if (plusp == first_read_p) {
+	Genome_fill_buffer_convert_fwd(sarray->array[(*initptr)-1],recount+1,Buffer);
+      } else {
+	Genome_fill_buffer_convert_rev(sarray->array[(*initptr)-1],recount+1,Buffer);
+      }
+    }
     printf("%s\n",Buffer);
     if (recount >= *nmatches) {
       printf("querylength is %d\n",querylength);
@@ -1270,10 +1246,21 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
     hit = sarray->array[(*initptr)+k];
     recount = Genome_consecutive_matches_rightward(query_compress,/*left*/hit-queryoffset,
 						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
-						   plusp,/*genestrand*/0);
+						   plusp,genestrand,first_read_p);
     printf("%d\t%u\t%u\t",recount,(*initptr)+k,hit /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)+k],recount+1,Buffer);
-    
+    if (genestrand == +2) {
+      if (plusp != first_read_p) {
+	Genome_fill_buffer_convert_fwd(sarray->array[(*initptr)+k],recount+1,Buffer);
+      } else {
+	Genome_fill_buffer_convert_rev(sarray->array[(*initptr)+k],recount+1,Buffer);
+      }
+    } else {
+      if (plusp == first_read_p) {
+	Genome_fill_buffer_convert_fwd(sarray->array[(*initptr)+k],recount+1,Buffer);
+      } else {
+	Genome_fill_buffer_convert_rev(sarray->array[(*initptr)+k],recount+1,Buffer);
+      }
+    }
     printf("%s\n",Buffer);
     if (recount != *nmatches) {
       printf("querylength is %d\n",querylength);
@@ -1286,13 +1273,25 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 
 
   /* After */
-  if (*nmatches > 0) {
+  if (*nmatches > 0 && sarray->array[(*finalptr)+1] > 0U) {
     printf("\n");
     recount = Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[(*finalptr)+1]-queryoffset,
 						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
-						   plusp,/*genestrand*/0);
+						   plusp,genestrand,first_read_p);
     printf("%d\t%u\t%u\t",recount,(*finalptr)+1,sarray->array[(*finalptr)+1] /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*finalptr)+1],recount+1,Buffer);
+    if (genestrand == +2) {
+      if (plusp != first_read_p) {
+	Genome_fill_buffer_convert_fwd(sarray->array[(*finalptr)+1],recount+1,Buffer);
+      } else {
+	Genome_fill_buffer_convert_rev(sarray->array[(*finalptr)+1],recount+1,Buffer);
+      }
+    } else {
+      if (plusp == first_read_p) {
+	Genome_fill_buffer_convert_fwd(sarray->array[(*finalptr)+1],recount+1,Buffer);
+      } else {
+	Genome_fill_buffer_convert_rev(sarray->array[(*finalptr)+1],recount+1,Buffer);
+      }
+    }
     printf("%s\n",Buffer);
     if (recount >= *nmatches) {
       printf("querylength is %d\n",querylength);
@@ -1304,478 +1303,13 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 
   if (failp == true) {
     /* Can happen because $ ranks below 0 */
+    /* Can also happen with CMET or ATOI, since genome128_hr procedures find genome-to-query mismatches */
     abort();
   }
 #endif
 
   return;
 }
-
-#else
-
-#if 0
-/* For benchmarking */
-void
-Sarray_traverse_children (Sarrayptr_T i, Sarrayptr_T j, T sarray) {
-  UINT4 nextl, nsv_i;
-  BP_size_t selecti, initw;
-  BP_size_t w, b, x;
-
-  /* First child */
-  /* Compute NSV(i) (next smallest value) */
-  selecti = BP_select(i,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
-		      HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
-  w = BP_find_closeparen(selecti,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			 sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-  nsv_i = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE) /*+1*/;
-  debug2(printf("NSV(i)-1 = %u, compared with j %u\n",nsv_i,j));
-
-  /* Check for <= and not ==, because of $ at end of genome */
-  /* Compare against j, and not j+1, because we computed NSV(i) - 1 */
-  if (nsv_i <= j) {
-    /* First child: case 1 */
-    initw = w-1;
-    w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			  sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-    nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-    debug2(printf("First child, case 1: %u\n",nextl));
-  } else {
-    /* First child: case 2 */
-    w = BP_select(j+1,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
-		  HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
-    initw = w-1;
-    w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			  sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-    nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-    debug2(printf("First child, case 2: %u\n",nextl));
-  }
-
-
-  debug2(printf("Requesting rank_close of %llu",w));
-  b = BP_rank_close(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-  debug2(printf("  Got %u\n",b));
-
-  debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
-		w-1,get_bit(sarray->childbp,w-1),b-1,get_bit(sarray->childfc,b-1)));
-  w--;
-  b--;
-
-  while (get_bit(sarray->childbp,w) == close_paren && get_bit(sarray->childfc,b) == 0) {
-    debug2(printf("Child: %u",nextl));
-    x = BP_find_openparen(w,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			  sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-    nextl = BP_rank_open(x,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-    debug2(printf(" to %u, char %c\n",nextl-1,c));
-
-    w--;
-    b--;
-    debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
-		  w,get_bit(sarray->childbp,w),b,get_bit(sarray->childfc,b)));
-  }
-
-  return;
-}
-#endif
-
-
-static bool
-get_child_given_first (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_T j, char desired_char,
-		       T sarray, UINT4 lcp_whole, UINT4 nextl, BP_size_t initw) {
-  UINT4 pos;
-  char c;
-  BP_size_t w, b, x;
-#if 0
-  BP_size_t v;
-#endif
-
-
-  debug2(printf("Getting children for l-interval from %u to %u, char %c, lcp_whole = %d\n",
-		i,j,desired_char,lcp_whole));
-
-  /* First interval already given */
-  pos = sarray->array[i] + lcp_whole;
-  c = Genome_get_char_lex(genome,pos,sarray->n);
-  if (c > desired_char) {
-    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
-    debug2(printf("1.  Returning false, because %c > desired %c\n",c,desired_char));
-    return false;
-  } else if (c == desired_char) {
-    *l = i;
-    *r = nextl - 1;
-    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
-    debug2(printf("Returning true\n\n"));
-    return true;
-  } else {
-    /* Skip */
-    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
-  }
-
-  /* Use first child info */
-#if 0
-  debug2(printf("Requesting select of nextl %u\n",nextl));
-  v = BP_select(nextl,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
-		HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
-  debug2(printf("  Got %llu\n",v));
-
-  debug2(printf("Requesting close paren of %llu",v));
-  w = BP_find_closeparen(v,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			 sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-  debug2(printf("  Got %llu\n",w));
-  assert(w == initw);
-#else
-  w = initw;
-#endif
-
-  debug2(printf("Requesting rank_close of %llu",w));
-  b = BP_rank_close(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-  debug2(printf("  Got %u\n",b));
-
-  debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
-		w-1,get_bit(sarray->childbp,w-1),b-1,get_bit(sarray->childfc,b-1)));
-  w--;
-  b--;
-
-  while (get_bit(sarray->childbp,w) == close_paren && get_bit(sarray->childfc,b) == 0) {
-    /* Test l-interval */
-    pos = sarray->array[nextl] + lcp_whole;
-    c = Genome_get_char_lex(genome,pos,sarray->n);
-    if (c > desired_char) {
-      debug2(printf("Child: %u to (nextl), char %c\n",nextl,c));
-      debug2(printf("2.  Returning false, because %c > desired %c\n",c,desired_char));
-      return false;
-    } else if (c == desired_char) {
-      *l = nextl;
-      x = BP_find_openparen(w,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			    sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-      *r = BP_rank_open(x,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE) - 1; /* nextl - 1 */
-      debug2(printf("Child: %u to %u, char %c\n",nextl,*r,c));
-      debug2(printf("Returning true\n\n"));
-      return true;
-    } else {
-      debug2(printf("Child: %u",nextl));
-      x = BP_find_openparen(w,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			    sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-      nextl = BP_rank_open(x,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-      debug2(printf(" to %u, char %c\n",nextl-1,c));
-
-      w--;
-      b--;
-      debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
-		    w,get_bit(sarray->childbp,w),b,get_bit(sarray->childfc,b)));
-    }
-  }
-
-  /* Last interval */
-  debug2(printf("Processing last interval\n"));
-  pos = sarray->array[nextl] + lcp_whole;
-  c = Genome_get_char_lex(genome,pos,sarray->n);
-  if (c == desired_char) {
-    *l = nextl;
-    *r = j;
-    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
-    debug2(printf("Returning true\n\n"));
-    return true;
-  } else {
-    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
-    debug2(printf("3.  Returning false, because %c != desired %c\n",c,desired_char));
-    return false;
-  }
-
-
-}
-
-
-/* Searches using LCP and BP arrays.  Should be O(m * |Sigma|),
-   where m wis the querylength and |Sigma| is the size of the alphabet
-   (4 for DNA) */
-/* query is a substring of the original, starting with queryoffset */
-static void
-sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
-	       UINT4 *nmatches, char *query, UINT4 querylength, int queryoffset,
-	       Compress_T query_compress, bool plusp) {
-  int effective_querylength;	/* length to first N */
-  Storedoligomer_T oligo;
-
-  UINT4 sa_i, sa_j_plus_one, sa_nextl;
-  int lcp_i, lcp_j_plus_one, lcp_whole;
-  UINT4 minlength;
-  bool next_interval_p;
-  UINT4 i, j;
-  UINT4 l, r, nextl, nsv_i;
-  BP_size_t selecti, v, w, initw;
-
-
-#ifdef DEBUG
-  int k = 0;
-  UINT4 recount;
-  char Buffer[1000];
-  Univcoord_T hit;
-  bool failp;
-#elif defined(DEBUG1)
-  char Buffer[1000];
-#endif
-
-  debug(printf("sarray_search on %s, querylength %d\n",query,querylength));
-
-  /* Find initial lcp-interval */
-  effective_querylength = nt_querylength(query,querylength);
-
-  *nmatches = 0;
-  if (effective_querylength == 0) {
-    *initptr = *finalptr = 0;
-    *successp = false;
-    return;
-
-  } else if (effective_querylength < sarray->indexsize) {
-    debug1(printf("string %.*s is shorter than indexsize",querylength,query));
-
-    oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for A*/0);
-    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
-    debug1(printf(" => oligo %08X",oligo));
-
-    /* Because $ < A, we need to check for this case.  Need to back up just 1. */
-    if (l > 1 && sarray->array[l-1] + effective_querylength == sarray->n) {
-      debug1(printf(" (backing up one position, because at end of genome)"));
-      l--;
-    }
-
-    /* Add 1 to rollover to next oligo, to handle Ns in genome */
-    oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for T*/3) + 1;
-    if (oligo == sarray->indexspace) {
-      /* We have a poly-T, so we cannot determine r.  For example,
-	 TTTTTN has a different r value than TTN. */
-      debug1(printf(" but poly-T => 1-letter for T: %u..%u\n",l,r));
-      l = sarray->initindexi[3];
-      r = sarray->initindexj[3];
-      /* Keep nmatches = 0, because there may not be a T in the genome */
-
-    } else {
-      r = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp) - 1;
-
-      /* Because $ < A, we need to check for this case.  Need to back up just 1. */
-      debug1(printf(" (checking %u + %d >= %u)",sarray->array[r],effective_querylength,sarray->n));
-      if (r > 0 && sarray->array[r] + effective_querylength >= sarray->n) {
-	debug1(printf(" (backing up one position, because at end of genome)"));
-	r--;
-      }
-
-      debug1(printf(" and %08X => interval %u..%u (effective_querylength %d)",
-		    oligo,l,r,effective_querylength));
-
-      if (l <= r) {
-	/* Keep nmatches = 0, since we don't know the value yet */
-	debug1(printf(" (good)\n"));
-      } else {
-#if 0
-	/* Did not find a match using saindex, so resort to one letter */
-	switch (query[0]) {
-	case 'A': l = sarray->initindexi[0]; r = sarray->initindexj[0]; break;
-	case 'C': l = sarray->initindexi[1]; r = sarray->initindexj[1]; break;
-	case 'G': l = sarray->initindexi[2]; r = sarray->initindexj[2]; break;
-	case 'T': l = sarray->initindexi[3]; r = sarray->initindexj[3]; break;
-	default: l = 1; r = 0;
-	}
-	debug1(printf(" (bad) => 1-letter from %c: %u..%u\n",query[0],l,r));
-#else
-	/* The entire lcp-interval [1,sarray->n] should also work without initindex */
-	l = 1;
-	r = sarray->n;
-	debug1(printf(" (bad) => entire lcp-interval: %u..%u\n",l,r));
-#endif
-      }
-    }
-
-  } else {
-    oligo = nt_oligo(query,sarray->indexsize);
-    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
-    r = Bitpack64_offsetptr_only(oligo,sarray->indexj_ptrs,sarray->indexj_comp);
-    debug1(printf("string %.*s is equal/longer than indexsize %d => oligo %u => interval %u..%u",
-		  querylength,query,sarray->indexsize,oligo,l,r));
-    if (l <= r) {
-      debug1(printf(" (good)\n"));
-      *nmatches = sarray->indexsize;
-      i = l;
-      j = r;
-    } else {
-#if 0
-      /* Did not find a match using saindex, so resort to one letter */
-      switch (query[0]) {
-      case 'A': l = sarray->initindexi[0]; r = sarray->initindexj[0]; break;
-      case 'C': l = sarray->initindexi[1]; r = sarray->initindexj[1]; break;
-      case 'G': l = sarray->initindexi[2]; r = sarray->initindexj[2]; break;
-      case 'T': l = sarray->initindexi[3]; r = sarray->initindexj[3]; break;
-      default: l = 1; r = 0;
-      }
-      debug1(printf(" (bad) => 1-letter from %c: %u..%u\n",query[0],l,r));
-#else
-      /* The entire lcp-interval [1,sarray->n] should also work without initindex */
-      l = 1;
-      r = sarray->n;
-      debug1(printf(" (bad) => entire lcp-interval: %u..%u\n",l,r));
-#endif
-    }
-  }
-
-  if (l > r) {
-    /* Did not find a match using saindex or one letter */
-    i = l;
-    j = r;
-    next_interval_p = false;
-  } else {
-    next_interval_p = true;
-  }
-
-  /* Search through suffix tree */
-  while (*nmatches < querylength && next_interval_p == true) {
-    i = l;
-    j = r;
-    if (i == j) {
-      /* Singleton interval */
-      *nmatches +=
-	Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
-					     /*pos5*/queryoffset+(*nmatches),/*pos3*/queryoffset+querylength,
-					     plusp,/*genestrand*/0);
-      next_interval_p = false;
-
-    } else {
-      /* LCP interval */
-      debug2(printf("Initial i..j is %u..%u\n",i,j));
-
-      /* First child */
-      /* Compute NSV(i) (next smallest value) */
-      selecti = BP_select(i,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
-			  HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
-      w = BP_find_closeparen(selecti,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			     sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-      nsv_i = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE) /*+1*/;
-      debug2(printf("NSV(i)-1 = %u, compared with j %u\n",nsv_i,j));
-
-      /* Check for <= and not ==, because of $ at end of genome */
-      /* Compare against j, and not j+1, because we computed NSV(i) - 1 */
-      if (nsv_i <= j) {
-	/* First child: case 1 */
-	initw = w-1;
-	w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			      sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-	nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-	debug2(printf("First child, case 1: %u\n",nextl));
-      } else {
-	/* First child: case 2 */
-	w = BP_select(j+1,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
-		      HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
-	initw = w-1;
-	w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
-			      sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
-	nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
-	debug2(printf("First child, case 2: %u\n",nextl));
-      }
-
-      sa_nextl = sarray->array[nextl];
-      lcp_whole = Bitpack64_offsetptr_only(sa_nextl,sarray->plcp_ptrs,sarray->plcp_comp) - sa_nextl; /* lcp(i,j) */
-      /* printf("lcp_whole for %u..%u is %d\n",i,j,lcp_whole); */
-
-      /* Check only up to minlength, so we validate the entire interval */
-      minlength = (lcp_whole < querylength) ? lcp_whole : querylength;
-      *nmatches +=
-	Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
-					     /*pos5*/queryoffset+(*nmatches),/*pos3*/queryoffset+minlength,
-					     plusp,/*genestrand*/0);
-      if (*nmatches < minlength) {
-	next_interval_p = false;
-
-      } else if (*nmatches >= querylength) {
-	debug1(printf("nmatches is now %d >= querylength %d => success\n",*nmatches,querylength));
-	
-      } else {
-	debug1(printf("nmatches is now %d => desired_char is %c\n",*nmatches,query[minlength]));
-	next_interval_p =
-	  get_child_given_first(&l,&r,i,j,/*desired_char*/query[minlength],sarray,lcp_whole,nextl,initw);
-      }
-    }
-  }
-
-  debug(printf("initptr gets %u, finalptr gets %u\n",i,j));
-
-  *initptr = i;
-  *finalptr = j;
-  if (*nmatches < querylength) {
-    *successp = false;
-    debug(printf("%s fail at %d: got %d hits with %d matches:\n",
-		 plusp ? "plus" : "minus",queryoffset,(*finalptr - *initptr + 1),*nmatches));
-  } else {
-    *successp = true;
-    debug(printf("%s success at %d: got %d hits with %d matches:\n",
-		 plusp ? "plus" : "minus",queryoffset,(*finalptr - *initptr + 1),*nmatches));
-  }
-
-#ifdef DEBUG
-  failp = false;
-
-  /* Before */
-  if (*nmatches > 0 && *initptr > 0U) {
-    recount = Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[(*initptr)-1]-queryoffset,
-						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
-						   plusp,/*genestrand*/0);
-    printf("%d\t%u\t%u\t",recount,(*initptr)-1,sarray->array[(*initptr)-1] /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)-1],recount+1,Buffer);
-    printf("%s\n",Buffer);
-    if (recount >= *nmatches) {
-      printf("querylength is %d\n",querylength);
-      printf("false negative: recount %d at %u before init does equal expected nmatches %d\n",
-	     recount,sarray->array[(*initptr)-1],*nmatches);
-      failp = true;
-    }
-  }
-  printf("\n");
-
-
-  /* Hits */
-  for (k = 0; k < (int) (*finalptr - *initptr + 1) && k < 100; k++) {
-    hit = sarray->array[(*initptr)+k];
-    recount = Genome_consecutive_matches_rightward(query_compress,/*left*/hit-queryoffset,
-						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
-						   plusp,/*genestrand*/0);
-    printf("%d\t%u\t%u\t",recount,(*initptr)+k,hit /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)+k],recount+1,Buffer);
-    
-    printf("%s\n",Buffer);
-    if (recount != *nmatches) {
-      printf("querylength is %d\n",querylength);
-      printf("false positive: recount %d at %u does not equal expected nmatches %d\n",
-	     recount,sarray->array[(*initptr)],*nmatches);
-      failp = true;
-    }
-    /* hits[k] = sarray->array[(*initptr)++]; */
-  }
-
-
-  /* After */
-  if (*nmatches > 0) {
-    printf("\n");
-    recount = Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[(*finalptr)+1]-queryoffset,
-						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
-						   plusp,/*genestrand*/0);
-    printf("%d\t%u\t%u\t",recount,(*finalptr)+1,sarray->array[(*finalptr)+1] /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*finalptr)+1],recount+1,Buffer);
-    printf("%s\n",Buffer);
-    if (recount >= *nmatches) {
-      printf("querylength is %d\n",querylength);
-      printf("false negative: recount %d at %u after (*finalptr) does equal expected nmatches %d\n",
-	     recount,sarray->array[(*finalptr)+1],*nmatches);
-      failp = true;
-    }
-  }
-
-  if (failp == true) {
-    /* Can happen because $ ranks below 0 */
-    abort();
-  }
-#endif
-
-  return;
-}
-
-#endif
 
 
 
@@ -2032,7 +1566,7 @@ fill_positions_std (int *npositions, Univcoord_T low_adj, Univcoord_T high_adj,
 
 static void
 Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T low, Univcoord_T high,
-			     Compress_T query_compress, bool plusp, int genestrand) {
+			     Compress_T query_compress, bool plusp, int genestrand, bool first_read_p) {
   Sarrayptr_T ptr, lastptr;
   int nmatches;
   int i;
@@ -2063,7 +1597,7 @@ Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T
 
   if (this->nmatches == 0 || this->finalptr - this->initptr + 1 > EXCESS_SARRAY_HITS) {
     nmatches = Genome_consecutive_matches_rightward(query_compress,/*left*/goal,/*pos5*/this->querystart,
-						    /*pos3*/this->queryend + 1,plusp,genestrand);
+						    /*pos3*/this->queryend + 1,plusp,genestrand,first_read_p);
     debug7(printf("rightward at goal %u from %d to %d shows %d matches (want %d)\n",goal,this->querystart,this->queryend,
 		  nmatches,this->queryend - this->querystart + 1));
     if (nmatches == this->queryend - this->querystart + 1) {
@@ -2095,7 +1629,7 @@ Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T
     high_adj = high + this->querystart;
 
     this->npositions = 0;
-    ptr = this->initptr;      
+    ptr = this->initptr;
 #ifdef HAVE_SSE2
     if (ptr + 3 > this->finalptr) { /* ptr + 4 > (this->finalptr + 1) */
       /* Handle in normal manner */
@@ -2410,8 +1944,8 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
 /* Taken from stage1hr.c identify_multimiss_iter */
 static bool
 extend_rightward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
-		  List_T set, T sarray, Compress_T query_compress,
-		  bool plusp, int genestrand, int best_queryend) {
+		  List_T set, Compress_T query_compress,
+		  T sarray, bool plusp, int genestrand, bool first_read_p, int best_queryend) {
   Elt_T elt;
   Univcoord_T low, high;
 
@@ -2427,7 +1961,7 @@ extend_rightward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
       /* Allow for deletion with higher goal */
       low = subtract_bounded(goal,/*minusterm*/max_insertionlen,chroffset);
       high = add_bounded(goal,/*plusterm*/overall_max_distance,chrhigh);
-      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand);
+      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand,first_read_p);
       debug7(printf("Allow for deletion with higher goal: %d positions\n",elt->npositions));
 
       if (elt->npositions <= 0) {
@@ -2451,7 +1985,7 @@ extend_rightward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
       /* Allow for deletion with lower goal */
       low = subtract_bounded(goal,/*minusterm*/overall_max_distance,chroffset);
       high = add_bounded(goal,/*plusterm*/max_insertionlen,chrhigh);
-      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand);
+      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand,first_read_p);
       debug7(printf("Allow for deletion with lower goal: %d positions\n",elt->npositions));
 
       if (elt->npositions <= 0) {
@@ -2511,8 +2045,9 @@ extend_rightward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 /* Taken from stage1hr.c identify_multimiss_iter */
 static bool
 extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
-		 List_T set, T sarray, char *queryptr, Compress_T query_compress,
-		 bool plusp, int genestrand, int best_querystart, int best_queryend) {
+		 List_T set, char *queryptr, Compress_T query_compress,
+		 T sarray, bool plusp, int genestrand, bool first_read_p, char conversion[],
+		 int best_querystart, int best_queryend) {
   Elt_T elt;
   UINT4 nmatches;
   Sarrayptr_T initptr, finalptr;
@@ -2539,7 +2074,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 
       sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryptr[querypos]),
 		    /*querylength*/(queryend + 1) - querypos,/*queryoffset*/querypos,
-		    query_compress,plusp);
+		    query_compress,sarray,plusp,genestrand,first_read_p,conversion);
       Elt_replace(elt,querypos,nmatches,initptr,finalptr);
       /* set->first = (void *) elt; */
     }
@@ -2552,7 +2087,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
       debug7(printf("Allow for deletion with higher goal: %d positions\n",elt->npositions));
       low = subtract_bounded(goal,/*minusterm*/max_insertionlen,chroffset);
       high = add_bounded(goal,/*plusterm*/overall_max_distance,chrhigh);
-      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand);
+      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand,first_read_p);
       if (elt->npositions <= 0) {
 	/* List is empty, so one more miss seen. */
 	debug7(printf(" positions empty, so not spanning\n"));
@@ -2568,7 +2103,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 	debug7(printf(" advancing\n"));
 	if ((nmatches = Genome_consecutive_matches_leftward(query_compress,/*left*/*elt->positions,
 							    /*pos5*/0,/*pos3*/elt->querystart,
-							    plusp,genestrand)) > 0) {
+							    plusp,genestrand,first_read_p)) > 0) {
 	  debug7(printf(" extending querystart %d leftward by %d matches\n",elt->querystart,nmatches));
 	  elt->querystart -= nmatches;
 	  queryend = elt->querystart - 2;
@@ -2582,7 +2117,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
       debug7(printf("Allow for deletion with lower goal: %d positions\n",elt->npositions));
       low = subtract_bounded(goal,/*minusterm*/overall_max_distance,chroffset);
       high = add_bounded(goal,/*plusterm*/max_insertionlen,chrhigh);
-      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand);
+      Elt_fill_positions_filtered(elt,sarray,goal,low,high,query_compress,plusp,genestrand,first_read_p);
       if (elt->npositions <= 0 && elt->positions == elt->positions_allocated) {
 	/* List is empty, and no previous one exists */
 	debug7(printf(" list is empty and no previous, so not spanning\n"));
@@ -2595,7 +2130,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 	  debug7(printf(" possible deletion, continuing\n"));
 	  if ((nmatches = Genome_consecutive_matches_leftward(query_compress,/*left*/elt->positions[-1],
 							      /*pos5*/0,/*pos3*/elt->querystart,
-							      plusp,genestrand)) > 0) {
+							      plusp,genestrand,first_read_p)) > 0) {
 	    debug7(printf(" extending querystart %d leftward by %d matches\n",elt->querystart,nmatches));
 	    elt->querystart -= nmatches;
 	    queryend = elt->querystart - 2;
@@ -2617,7 +2152,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 	  debug7(printf(" advancing\n"));
 	  if ((nmatches = Genome_consecutive_matches_leftward(query_compress,/*left*/*elt->positions,
 							      /*pos5*/0,/*pos3*/elt->querystart,
-							      plusp,genestrand)) > 0) {
+							      plusp,genestrand,first_read_p)) > 0) {
 	    debug7(printf(" extending querystart %d leftward by %d matches\n",elt->querystart,nmatches));
 	    elt->querystart -= nmatches;
 	    queryend = elt->querystart - 2;
@@ -2634,7 +2169,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 	  debug7(printf(" advancing\n"));
 	  if ((nmatches = Genome_consecutive_matches_leftward(query_compress,/*left*/*elt->positions,
 							      /*pos5*/0,/*pos3*/elt->querystart,
-							      plusp,genestrand)) > 0) {
+							      plusp,genestrand,first_read_p)) > 0) {
 	    debug7(printf(" extending querystart %d leftward by %d matches\n",elt->querystart,nmatches));
 	    elt->querystart -= nmatches;
 	    queryend = elt->querystart - 2;
@@ -2648,7 +2183,7 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 	  debug7(printf(" possible deletion, continuing\n"));
 	  if ((nmatches = Genome_consecutive_matches_leftward(query_compress,/*left*/elt->positions[-1],
 							      /*pos5*/0,/*pos3*/elt->querystart,
-							      plusp,genestrand)) > 0) {
+							      plusp,genestrand,first_read_p)) > 0) {
 	    debug7(printf(" extending querystart %d leftward by %d matches\n",elt->querystart,nmatches));
 	    elt->querystart -= nmatches;
 	    queryend = elt->querystart - 2;
@@ -2671,12 +2206,12 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 
 
 static void
-collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *singlesplicing,
+collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *ambiguous, List_T *singlesplicing,
 		     List_T *doublesplicing, int querystart_same, int queryend_same,
 		     Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		     Chrpos_T chrlength, Univcoord_T goal, 
 		     List_T rightward_set, List_T leftward_set, int querylength, Compress_T query_compress,
-		     bool plusp, int genestrand, int nmisses_allowed, bool first_read_p) {
+		     bool plusp, int genestrand, bool first_read_p, int nmisses_allowed) {
   List_T set, p;
   Stage3end_T hit;
   Elt_T elt;
@@ -2690,8 +2225,15 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
   int query_indel_pos;
 #endif
 
-  List_T lowprob;
-  int nhits;
+  List_T spliceends, lowprob;
+  int nhits, nspliceends, n_good_spliceends;
+  double best_prob, prob;
+  Substring_T donor, acceptor;
+
+  int sensedir;
+  Uintlist_T ambcoords, ambcoords_left, ambcoords_right;
+  Intlist_T amb_knowni, amb_nmismatches, amb_knowni_left, amb_knowni_right, amb_nmismatches_left, amb_nmismatches_right;
+
   int segmenti_donor_knownpos[MAX_READLENGTH+1], segmentj_acceptor_knownpos[MAX_READLENGTH+1],
     segmentj_antidonor_knownpos[MAX_READLENGTH+1], segmenti_antiacceptor_knownpos[MAX_READLENGTH+1];
   int segmenti_donor_knowni[MAX_READLENGTH+1], segmentj_acceptor_knowni[MAX_READLENGTH+1],
@@ -2701,6 +2243,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
   int j, i, n;
   bool segmenti_usedp, segmentj_usedp;
   bool foundp;
+
 
   /* Potential success */
   debug7(printf("  successful candidate found\n"));
@@ -2787,7 +2330,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
     /* sub */
     debug7(printf("  Testing in entire query\n"));
     nmismatches = Genome_count_mismatches_substring(query_compress,left,/*pos5*/0,/*pos3*/querylength,
-						    plusp,genestrand);
+						    plusp,genestrand,first_read_p);
     debug7(printf("nmismatches = %d (vs %d misses allowed)\n",nmismatches,nmisses_allowed));
 
     if (nmismatches > nmisses_allowed) {
@@ -2798,7 +2341,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
       debug(printf("Reporting hit with %d mismatches\n",nmismatches));
       if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					    left,/*genomiclength*/querylength,
-					    query_compress,plusp,genestrand,
+					    query_compress,plusp,genestrand,first_read_p,
 					    chrnum,chroffset,chrhigh,chrlength,
 					    /*sarrayp*/true)) != NULL) {
 	*subs = List_push(*subs,(void *) hit);
@@ -2814,10 +2357,13 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
     array = Uintlist_to_array(&n,difflist);
     qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
     Uintlist_free(&difflist);
+    debug7(printf("Have %d matching diffs\n",n));
 
+    spliceends = (List_T) NULL;
+    lowprob = (List_T) NULL;
     for (i = 0; i < n; i++) {
       left2 = array[i];
-      debug7(printf("diff is at %u, from %d to %d\n",left2,querystart_diff - 1,queryend_diff));
+      debug7(printf("diff %d/%d is at %u, from %d to %d\n",i,n,left2,querystart_diff - 1,queryend_diff));
 
       if (i > 0 && left2 == array[i-1]) {
 	/* Already processed */
@@ -2868,29 +2414,22 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	segmentj_acceptor_knownpos[segmentj_acceptor_nknown] = MAX_READLENGTH;
 	segmentj_antidonor_knownpos[segmentj_antidonor_nknown] = MAX_READLENGTH;
 
-	lowprob = (List_T) NULL;
-	*singlesplicing = Splice_solve_single(&(*found_score),&nhits,*singlesplicing,&lowprob,
-					      &segmenti_usedp,&segmentj_usedp,
-					      /*segmenti_left*/left1,/*segmentj_left*/left2,
-					      chrnum,chroffset,chrhigh,chrlength,
-					      chrnum,chroffset,chrhigh,chrlength,
-					      querylength,query_compress,
-					      segmenti_donor_knownpos,segmentj_acceptor_knownpos,
-					      segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
-					      segmenti_donor_knowni,segmentj_acceptor_knowni,
-					      segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
-					      segmenti_donor_nknown,segmentj_acceptor_nknown,
-					      segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
-					      splicing_penalty,/*max_mismatches_allowed*/1000,
-					      first_read_p,plusp,genestrand,/*subs_or_indels_p*/false,
-					      /*sarrayp*/true);
-	for (p = lowprob; p != NULL; p = List_next(p)) {
-	  debug7(printf("freeing lowprob..."));
-	  hit = (Stage3end_T) List_head(p);
-	  Stage3end_free(&hit);
-	}
-	List_free(&lowprob);
-	debug7(printf("\n"));
+	nspliceends = 0;
+	spliceends = Splice_solve_single(&(*found_score),&nspliceends,spliceends,&lowprob,
+					 &segmenti_usedp,&segmentj_usedp,
+					 /*segmenti_left*/left1,/*segmentj_left*/left2,
+					 chrnum,chroffset,chrhigh,chrlength,
+					 chrnum,chroffset,chrhigh,chrlength,
+					 querylength,query_compress,
+					 segmenti_donor_knownpos,segmentj_acceptor_knownpos,
+					 segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
+					 segmenti_donor_knowni,segmentj_acceptor_knowni,
+					 segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
+					 segmenti_donor_nknown,segmentj_acceptor_nknown,
+					 segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
+					 splicing_penalty,/*max_mismatches_allowed*/1000,
+					 plusp,genestrand,first_read_p,/*subs_or_indels_p*/false,
+					 /*sarrayp*/true);
 
       } else if (left2 > left1) {
 	nindels = left2 - left1;
@@ -2902,9 +2441,9 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	} else {
 #if 0
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos,
-							   plusp,genestrand);
+							   plusp,genestrand,first_read_p);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos,
-							   /*pos3*/querylength,plusp,genestrand);
+							   /*pos3*/querylength,plusp,genestrand,first_read_p);
 	  if (plusp == true) {
 	    query_indel_pos = indel_pos;
 	  } else {
@@ -2913,7 +2452,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  if ((hit = Stage3end_new_deletion(&(*found_score),nindels,query_indel_pos,
 					    nmismatches1,nmismatches2,
 					    left1,/*genomiclength*/querylength+nindels,
-					    query_compress,querylength,plusp,genestrand,
+					    query_compress,querylength,plusp,genestrand,first_read_p,
 					    chrnum,chroffset,chrhigh,chrlength,
 					    /*indel_penalty*/2,/*sarrayp*/true)) != NULL) {
 	    debug7(printf("successful"));
@@ -2923,7 +2462,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  *indels = Indel_solve_middle_deletion(&foundp,&(*found_score),&nhits,*indels,
 						/*left*/left1,chrnum,chroffset,chrhigh,chrlength,
 						/*indels*/-nindels,query_compress,querylength,nmisses_allowed,
-						plusp,genestrand,/*sarray*/true);
+						plusp,genestrand,first_read_p,/*sarray*/true);
 	  debug7(
 		 if (foundp == true) {
 		   printf("successful");
@@ -2941,9 +2480,9 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  debug7(printf("C insertion of %d bp (nmisses allowed %d)...",nindels,nmisses_allowed));
 #if 0
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos-nindels,
-							   plusp,genestrand);
+							   plusp,genestrand,first_read_p);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos+nindels,
-							   /*pos3*/querylength,plusp,genestrand);
+							   /*pos3*/querylength,plusp,genestrand,first_read_p);
 	  if (plusp == true) {
 	    query_indel_pos = indel_pos;
 	  } else {
@@ -2952,7 +2491,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  if ((hit = Stage3end_new_insertion(&(*found_score),nindels,query_indel_pos,
 					     nmismatches1,nmismatches2,
 					     left1,/*genomiclength*/querylength-nindels,
-					     query_compress,querylength,plusp,genestrand,
+					     query_compress,querylength,plusp,genestrand,first_read_p,
 					     chrnum,chroffset,chrhigh,chrlength,
 					     /*indel_penalty*/2,/*sarrayp*/true)) != NULL) {
 	    debug7(printf("successful"));
@@ -2962,7 +2501,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  *indels = Indel_solve_middle_insertion(&foundp,&(*found_score),&nhits,*indels,
 						 /*left*/left1,chrnum,chroffset,chrhigh,chrlength,
 						 /*indels*/+nindels,query_compress,querylength,nmisses_allowed,
-						 plusp,genestrand,/*sarrayp*/true);
+						 plusp,genestrand,first_read_p,/*sarrayp*/true);
 	  debug7(
 		 if (foundp == true) {
 		   printf("successful");
@@ -2974,6 +2513,191 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
       }
     }
 
+    if (spliceends != NULL) {
+      /* nmismatches should be the same for all spliceends, so pick based on prob */
+      best_prob = 0.0;
+      for (p = spliceends; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	debug7(printf("analyzing distance %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((prob = Stage3end_chimera_prob(hit)) > best_prob) {
+	  best_prob = prob;
+	}
+      }
+
+      n_good_spliceends = 0;
+      for (p = spliceends; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	if (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP) {
+	  debug7(printf("accepting distance %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	  n_good_spliceends += 1;
+	}
+      }
+
+      if (n_good_spliceends == 1) {
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  if (Stage3end_chimera_prob(hit) == best_prob) {
+	    debug7(printf("pushing distance %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	    *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    nhits += 1;
+	  } else {
+	    Stage3end_free(&hit);
+	  }
+	}
+	List_free(&spliceends);
+
+      } else {
+	/* Create ambiguous */
+	hit = (Stage3end_T) List_head(spliceends);
+	donor = Stage3end_substring_donor(hit);
+	acceptor = Stage3end_substring_acceptor(hit);
+	sensedir = Stage3end_sensedir(hit);
+
+	ambcoords = (Uintlist_T) NULL;
+	amb_knowni = (Intlist_T) NULL;
+	amb_nmismatches = (Intlist_T) NULL;
+	if (Substring_left_genomicseg(donor) == left1) {
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    acceptor = Stage3end_substring_acceptor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+	  }
+
+	  if (plusp == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  }
+
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),/*nmismatches_acceptor*/0,
+							       donor,/*acceptor*/NULL,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(donor),
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+							       sensedir,/*sarrayp*/true));
+	  Intlist_free(&amb_nmismatches);
+	  Intlist_free(&amb_knowni);
+	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	} else if (Substring_left_genomicseg(acceptor) == left1) {
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    donor = Stage3end_substring_donor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	  }
+
+	  if (plusp == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  }
+
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       /*nmismatches_donor*/0,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+							       /*donor*/NULL,acceptor,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(acceptor),
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+							       sensedir,/*sarrayp*/true));
+	  Intlist_free(&amb_nmismatches);
+	  Intlist_free(&amb_knowni);
+	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	} else {
+	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals left1 %u\n",
+		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),left1);
+	  abort();
+	}
+
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  Stage3end_free(&hit);
+	}
+	List_free(&spliceends);
+      }
+    }
+
+    /* Don't use lowprob in suffix array stage */
+    debug7(printf("freeing lowprobs\n"));
+    for (p = lowprob; p != NULL; p = List_next(p)) {
+      hit = (Stage3end_T) List_head(p);
+      Stage3end_free(&hit);
+    }
+    List_free(&lowprob);
+
     FREE(array);
 
   } else if (querystart_diff == 0 && queryend_same == querylength - 1) {
@@ -2984,10 +2708,13 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
     array = Uintlist_to_array(&n,difflist);
     qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
     Uintlist_free(&difflist);
+    debug7(printf("Have %d matching diffs\n",n));
 
+    spliceends = (List_T) NULL;
+    lowprob = (List_T) NULL;
     for (i = 0; i < n; i++) {
       left1 = array[i];
-      debug7(printf("diff is at %u, from %d to %d\n",left1,querystart_diff,queryend_diff));
+      debug7(printf("diff %d/%d is at %u, from %d to %d\n",i,n,left1,querystart_diff,queryend_diff));
 
       if (i > 0 && left1 == array[i-1]) {
 	/* Already processed */
@@ -3038,29 +2765,22 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	segmentj_acceptor_knownpos[segmentj_acceptor_nknown] = MAX_READLENGTH;
 	segmentj_antidonor_knownpos[segmentj_antidonor_nknown] = MAX_READLENGTH;
 
-	lowprob = (List_T) NULL;
-	*singlesplicing = Splice_solve_single(&(*found_score),&nhits,*singlesplicing,&lowprob,
-					      &segmenti_usedp,&segmentj_usedp,
-					      /*segmenti_left*/left1,/*segmentj_left*/left2,
-					      chrnum,chroffset,chrhigh,chrlength,
-					      chrnum,chroffset,chrhigh,chrlength,
-					      querylength,query_compress,
-					      segmenti_donor_knownpos,segmentj_acceptor_knownpos,
-					      segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
-					      segmenti_donor_knowni,segmentj_acceptor_knowni,
-					      segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
-					      segmenti_donor_nknown,segmentj_acceptor_nknown,
-					      segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
-					      splicing_penalty,/*max_mismatches_allowed*/1000,
-					      first_read_p,plusp,genestrand,/*subs_or_indels_p*/false,
-					      /*sarrayp*/true);
-	for (p = lowprob; p != NULL; p = List_next(p)) {
-	  debug7(printf("freeing lowprob..."));
-	  hit = (Stage3end_T) List_head(p);
-	  Stage3end_free(&hit);
-	}
-	List_free(&lowprob);
-	debug7(printf("\n"));
+	nspliceends = 0;
+	spliceends = Splice_solve_single(&(*found_score),&nspliceends,spliceends,&lowprob,
+					 &segmenti_usedp,&segmentj_usedp,
+					 /*segmenti_left*/left1,/*segmentj_left*/left2,
+					 chrnum,chroffset,chrhigh,chrlength,
+					 chrnum,chroffset,chrhigh,chrlength,
+					 querylength,query_compress,
+					 segmenti_donor_knownpos,segmentj_acceptor_knownpos,
+					 segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
+					 segmenti_donor_knowni,segmentj_acceptor_knowni,
+					 segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
+					 segmenti_donor_nknown,segmentj_acceptor_nknown,
+					 segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
+					 splicing_penalty,/*max_mismatches_allowed*/1000,
+					 plusp,genestrand,first_read_p,/*subs_or_indels_p*/false,
+					 /*sarrayp*/true);
 
       } else if (left2 > left1) {
 	nindels = left2 - left1;
@@ -3072,9 +2792,9 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	} else {
 #if 0
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos,
-							   plusp,genestrand);
+							   plusp,genestrand,first_read_p);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos,
-							   /*pos3*/querylength,plusp,genestrand);
+							   /*pos3*/querylength,plusp,genestrand,first_read_p);
 	  if (plusp == true) {
 	    query_indel_pos = indel_pos;
 	  } else {
@@ -3083,7 +2803,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  if ((hit = Stage3end_new_deletion(&(*found_score),nindels,query_indel_pos,
 					    nmismatches1,nmismatches2,
 					    left1,/*genomiclength*/querylength+nindels,
-					    query_compress,querylength,plusp,genestrand,
+					    query_compress,querylength,plusp,genestrand,first_read_p,
 					    chrnum,chroffset,chrhigh,chrlength,
 					    /*indel_penalty*/2,/*sarrayp*/true)) != NULL) {
 	    debug7(printf("successful"));
@@ -3093,7 +2813,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  *indels = Indel_solve_middle_deletion(&foundp,&(*found_score),&nhits,*indels,
 						/*left*/left1,chrnum,chroffset,chrhigh,chrlength,
 						/*indels*/-nindels,query_compress,querylength,nmisses_allowed,
-						plusp,genestrand,/*sarray*/true);
+						plusp,genestrand,first_read_p,/*sarray*/true);
 	  debug7(
 		 if (foundp == true) {
 		   printf("successful");
@@ -3111,9 +2831,9 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  debug7(printf("C insertion of %d bp (nmisses allowed %d)...",nindels,nmisses_allowed));
 #if 0      
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos-nindels,
-							   plusp,genestrand);
+							   plusp,genestrand,first_read_p);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos+nindels,
-							   /*pos3*/querylength,plusp,genestrand);
+							   /*pos3*/querylength,plusp,genestrand,first_read_p);
 	  if (plusp == true) {
 	    query_indel_pos = indel_pos;
 	  } else {
@@ -3122,7 +2842,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  if ((hit = Stage3end_new_insertion(&(*found_score),nindels,query_indel_pos,
 					     nmismatches1,nmismatches2,
 					     left1,/*genomiclength*/querylength-nindels,
-					     query_compress,querylength,plusp,genestrand,
+					     query_compress,querylength,plusp,genestrand,first_read_p,
 					     chrnum,chroffset,chrhigh,chrlength,
 					     /*indel_penalty*/2,/*sarrayp*/true)) != NULL) {
 	    debug7(printf("successful"));
@@ -3132,7 +2852,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	  *indels = Indel_solve_middle_insertion(&foundp,&(*found_score),&nhits,*indels,
 						 /*left*/left1,chrnum,chroffset,chrhigh,chrlength,
 						 /*indels*/+nindels,query_compress,querylength,nmisses_allowed,
-						 plusp,genestrand,/*sarrayp*/true);
+						 plusp,genestrand,first_read_p,/*sarrayp*/true);
 	  debug7(
 		 if (foundp == true) {
 		   printf("successful");
@@ -3143,6 +2863,191 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	}
       }
     }
+
+    if (spliceends != NULL) {
+      /* nmismatches should be the same for all spliceends, so pick based on prob */
+      best_prob = 0.0;
+      for (p = spliceends; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	debug7(printf("analyzing distance %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((prob = Stage3end_chimera_prob(hit)) > best_prob) {
+	  best_prob = prob;
+	}
+      }
+
+      n_good_spliceends = 0;
+      for (p = spliceends; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	if (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP) {
+	  debug7(printf("accepting distance %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	  n_good_spliceends += 1;
+	}
+      }
+      
+      if (n_good_spliceends == 1) {
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  if (Stage3end_chimera_prob(hit) == best_prob) {
+	    debug7(printf("pushing distance %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	    *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    nhits += 1;
+	  } else {
+	    Stage3end_free(&hit);
+	  }
+	}
+	List_free(&spliceends);
+
+      } else {
+	/* Create ambiguous */
+	hit = (Stage3end_T) List_head(spliceends);
+	donor = Stage3end_substring_donor(hit);
+	acceptor = Stage3end_substring_acceptor(hit);
+	sensedir = Stage3end_sensedir(hit);
+
+	ambcoords = (Uintlist_T) NULL;
+	amb_knowni = (Intlist_T) NULL;
+	amb_nmismatches = (Intlist_T) NULL;
+	if (Substring_left_genomicseg(donor) == left2) {
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    acceptor = Stage3end_substring_acceptor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+	  }
+
+	  if (plusp == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  }
+
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),/*nmismatches_acceptor*/0,
+							       donor,/*acceptor*/NULL,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(donor),
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+							       sensedir,/*sarrayp*/true));
+	  Intlist_free(&amb_nmismatches);
+	  Intlist_free(&amb_knowni);
+	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+	  
+	} else if (Substring_left_genomicseg(acceptor) == left2) {
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    donor = Stage3end_substring_donor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	  }
+
+	  if (plusp == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  }
+
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       /*nmismatches_donor*/0,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+							       /*donor*/NULL,acceptor,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(acceptor),
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+							       sensedir,/*sarrayp*/true));
+	  Intlist_free(&amb_nmismatches);
+	  Intlist_free(&amb_knowni);
+	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	} else {
+	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals left2 %u\n",
+		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),left2);
+	  abort();
+	}
+
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  Stage3end_free(&hit);
+	}
+	List_free(&spliceends);
+      }
+    }
+
+    /* Don't use lowprob in suffix array stage */
+    debug7(printf("freeing lowprobs\n"));
+    for (p = lowprob; p != NULL; p = List_next(p)) {
+      hit = (Stage3end_T) List_head(p);
+      Stage3end_free(&hit);
+    }
+    List_free(&lowprob);
 
     FREE(array);
 
@@ -3155,10 +3060,10 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 
 
 void
-Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *singlesplicing,
+Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *ambiguous, List_T *singlesplicing,
 		      List_T *doublesplicing, char *queryuc_ptr, char *queryrc, int querylength,
 		      Compress_T query_compress_fwd, Compress_T query_compress_rev,
-		      int nmisses_allowed, bool first_read_p) {
+		      int nmisses_allowed, int genestrand, bool first_read_p) {
   List_T plus_set, minus_set, p;
   List_T rightward_set, leftward_set;
   Elt_T best_plus_elt, best_minus_elt, elt, *array;
@@ -3173,21 +3078,49 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
   Chrpos_T chrlength;
   Stage3end_T hit;
   int nmismatches;
+  T plus_sarray, minus_sarray;
+  char *plus_conversion, *minus_conversion;
 
 
   if (nmisses_allowed < 0) {
     nmisses_allowed = 0;
   }
   debug(printf("\nStarting Sarray_search_greedy with querylength %d and indexsize %d and nmisses_allowed %d\n",
-	       querylength,sarray->indexsize,nmisses_allowed));
+	       querylength,sarray_fwd->indexsize,nmisses_allowed));
 
   *found_score = querylength;
 
+  if (genestrand == +2) {
+    if (first_read_p == false) {
+      plus_conversion = conversion_fwd;
+      minus_conversion = conversion_rev;
+      plus_sarray = sarray_fwd;
+      minus_sarray = sarray_rev;
+    } else {
+      plus_conversion = conversion_rev;
+      minus_conversion = conversion_fwd;
+      plus_sarray = sarray_rev;
+      minus_sarray = sarray_fwd;
+    }
+  } else {
+    if (first_read_p == true) {
+      plus_conversion = conversion_fwd;
+      minus_conversion = conversion_rev;
+      plus_sarray = sarray_fwd;
+      minus_sarray = sarray_rev;
+    } else {
+      plus_conversion = conversion_rev;
+      minus_conversion = conversion_fwd;
+      plus_sarray = sarray_rev;
+      minus_sarray = sarray_fwd;
+    }
+  }
+    
   /* Do one plus round */
   plus_querypos = 0;
   sarray_search(&initptr,&finalptr,&successp,&best_plus_nmatches,&(queryuc_ptr[plus_querypos]),
 		querylength - plus_querypos,/*queryoffset*/plus_querypos,
-		query_compress_fwd,/*plusp*/true);
+		query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion);
   best_plus_elt = Elt_new(plus_querypos,best_plus_nmatches,initptr,finalptr);
   plus_querypos += (int) best_plus_nmatches;
   plus_querypos += 1;		/* To skip the presumed mismatch */
@@ -3197,7 +3130,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
   minus_querypos = 0;
   sarray_search(&initptr,&finalptr,&successp,&best_minus_nmatches,&(queryrc[minus_querypos]),
 		querylength - minus_querypos,/*queryoffset*/minus_querypos,
-		query_compress_rev,/*plusp*/false);
+		query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion);
   best_minus_elt = Elt_new(minus_querypos,best_minus_nmatches,initptr,finalptr);
   minus_querypos += (int) best_minus_nmatches;
   minus_querypos += 1;		/* To skip the presumed mismatch */
@@ -3207,18 +3140,19 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     /* See if we have a winner */
     debug(printf("best_plus_nmatches = %d > %d/2, so checking mismatches against %d allowed\n",
 		 best_plus_nmatches,querylength,nmisses_allowed));
-    Elt_fill_positions_all(best_plus_elt,sarray);
+    Elt_fill_positions_all(best_plus_elt,plus_sarray);
     for (i = 0; i < best_plus_elt->npositions; i++) {
       left = best_plus_elt->positions[i];
       /* Should return max_mismatches + 1 if it exceeds the limit */
       if ((nmismatches = Genome_count_mismatches_limit(query_compress_fwd,left,/*pos5*/0,/*pos3*/querylength,
-						       /*max_mismatches*/nmisses_allowed,/*plusp*/true,/*genestrand*/0)) <= nmisses_allowed) {
+						       /*max_mismatches*/nmisses_allowed,
+						       /*plusp*/true,genestrand,first_read_p)) <= nmisses_allowed) {
 	chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	debug(printf("Case 1: New substitution from beginning\n"));
 	if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					      left,/*genomiclength*/querylength,
-					      query_compress_fwd,/*plusp*/true,/*genestrand*/0,
+					      query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
 					      chrnum,chroffset,chrhigh,chrlength,
 					      /*sarrayp*/true)) != NULL) {
 	  *subs = List_push(*subs,(void *) hit);
@@ -3233,21 +3167,22 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     debug(printf("Starting from halfway point on plus\n"));
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryuc_ptr[halfwaypos]),
 		  querylength - halfwaypos,/*queryoffset*/halfwaypos,
-		  query_compress_fwd,/*plusp*/true);
+		  query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion);
     if (nmatches >= querylength - halfwaypos) {
       elt = Elt_new(halfwaypos,nmatches,initptr,finalptr);
-      Elt_fill_positions_all(elt,sarray);
+      Elt_fill_positions_all(elt,plus_sarray);
       for (i = 0; i < elt->npositions; i++) {
 	left = elt->positions[i];
 	/* Should return max_mismatches + 1 if it exceeds the limit */
 	if ((nmismatches = Genome_count_mismatches_limit(query_compress_fwd,left,/*pos5*/0,/*pos3*/querylength,
-							 /*max_mismatches*/nmisses_allowed,/*plusp*/true,/*genestrand*/0)) <= nmisses_allowed) {
+							 /*max_mismatches*/nmisses_allowed,
+							 /*plusp*/true,genestrand,first_read_p)) <= nmisses_allowed) {
 	  chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	  Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	  debug(printf("Case 1: New substitution from middle\n"));
 	  if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 						left,/*genomiclength*/querylength,
-						query_compress_fwd,/*plusp*/true,/*genestrand*/0,
+						query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
 						chrnum,chroffset,chrhigh,chrlength,
 						/*sarrayp*/true)) != NULL) {
 	    *subs = List_push(*subs,(void *) hit);
@@ -3264,18 +3199,19 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     /* See if we have a winner */
     debug(printf("best_minus_nmatches = %d > %d/2, so checking mismatches against %d allowed\n",
 		 best_minus_nmatches,querylength,nmisses_allowed));
-    Elt_fill_positions_all(best_minus_elt,sarray);
+    Elt_fill_positions_all(best_minus_elt,minus_sarray);
     for (i = 0; i < best_minus_elt->npositions; i++) {
       left = best_minus_elt->positions[i];
       /* Should return max_mismatches + 1 if it exceeds the limit */
       if ((nmismatches = Genome_count_mismatches_limit(query_compress_rev,left,/*pos5*/0,/*pos3*/querylength,
-						       /*max_mismatches*/nmisses_allowed,/*plusp*/false,/*genestrand*/0)) <= nmisses_allowed) {
+						       /*max_mismatches*/nmisses_allowed,
+						       /*plusp*/false,genestrand,first_read_p)) <= nmisses_allowed) {
 	chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	debug(printf("Case 2: New substitution from beginning\n"));
 	if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					      left,/*genomiclength*/querylength,
-					      query_compress_rev,/*plusp*/false,/*genestrand*/0,
+					      query_compress_rev,/*plusp*/false,genestrand,first_read_p,
 					      chrnum,chroffset,chrhigh,chrlength,
 					      /*sarrayp*/true)) != NULL) {
 	  *subs = List_push(*subs,(void *) hit);
@@ -3289,21 +3225,22 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     debug(printf("Starting from halfway point on minus\n"));
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryrc[halfwaypos]),
 		  querylength - halfwaypos,/*queryoffset*/halfwaypos,
-		  query_compress_rev,/*plusp*/false);
+		  query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion);
     if (nmatches >= querylength - halfwaypos) {
       elt = Elt_new(halfwaypos,nmatches,initptr,finalptr);
-      Elt_fill_positions_all(elt,sarray);
+      Elt_fill_positions_all(elt,minus_sarray);
       for (i = 0; i < elt->npositions; i++) {
 	left = elt->positions[i];
 	/* Should return max_mismatches + 1 if it exceeds the limit */
 	if ((nmismatches = Genome_count_mismatches_limit(query_compress_rev,left,/*pos5*/0,/*pos3*/querylength,
-							 /*max_mismatches*/nmisses_allowed,/*plusp*/false,/*genestrand*/0)) <= nmisses_allowed) {
+							 /*max_mismatches*/nmisses_allowed,
+							 /*plusp*/false,genestrand,first_read_p)) <= nmisses_allowed) {
 	  chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	  Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	  debug(printf("Case 2: New substitution from middle\n"));
 	  if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 						left,/*genomiclength*/querylength,
-						query_compress_rev,/*plusp*/false,/*genestrand*/0,
+						query_compress_rev,/*plusp*/false,genestrand,first_read_p,
 						chrnum,chroffset,chrhigh,chrlength,
 						/*sarrayp*/true)) != NULL) {
 	    *subs = List_push(*subs,(void *) hit);
@@ -3333,7 +3270,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     /* Extend plus side a second time */
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryuc_ptr[plus_querypos]),
 		  querylength - plus_querypos,/*queryoffset*/plus_querypos,
-		  query_compress_fwd,/*plusp*/true);
+		  query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion);
     elt = Elt_new(plus_querypos,nmatches,initptr,finalptr);
     plus_querypos += nmatches;
     plus_querypos += 1;		/* To skip the presumed mismatch */
@@ -3345,7 +3282,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       plus_set = List_push(NULL,elt);
       if (plus_querypos >= querylength) {
 	chrhigh = 0U;
-	Elt_fill_positions_all(best_plus_elt,sarray);
+	Elt_fill_positions_all(best_plus_elt,plus_sarray);
 	for (i = 0; i < best_plus_elt->npositions; i++) {
 	  left = best_plus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3353,15 +3290,15 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 	    Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	    /* *chrhigh += 1U; */
 	  }
-	  if (extend_rightward(/*goal*/left,chroffset,chrhigh,/*rightward_set*/plus_set,sarray,
-			       query_compress_fwd,/*plusp*/true,/*genestrand*/0,
+	  if (extend_rightward(/*goal*/left,chroffset,chrhigh,/*rightward_set*/plus_set,
+			       query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,
 			       best_plus_elt->queryend) == true) {
-	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*singlesplicing),&(*doublesplicing),
+	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*ambiguous),&(*singlesplicing),&(*doublesplicing),
 				best_plus_elt->querystart,best_plus_elt->queryend,
 				chrnum,chroffset,chrhigh,chrlength,
 				/*goal*/left,/*rightward_set*/plus_set,/*leftward_set*/NULL,
-				querylength,query_compress_fwd,/*plusp*/true,/*genestrand*/0,
-				nmisses_allowed,first_read_p);
+				querylength,query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
+				nmisses_allowed);
 	  }
 	}
       }
@@ -3373,7 +3310,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       best_plus_nmatches = nmatches;
       if (plus_querypos >= querylength) {
 	chrhigh = 0U;
-	Elt_fill_positions_all(best_plus_elt,sarray);
+	Elt_fill_positions_all(best_plus_elt,plus_sarray);
 	for (i = 0; i < best_plus_elt->npositions; i++) {
 	  left = best_plus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3383,19 +3320,19 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 	  }
 	  nmatches = Genome_consecutive_matches_leftward(query_compress_fwd,left,
 							 /*pos5*/0,/*pos3*/best_plus_elt->querystart,
-							 /*plusp*/true,/*genestrand*/0);
+							 /*plusp*/true,genestrand,first_read_p);
 	  debug(printf("Looking at position %u => %d matches leftward\n",left,nmatches));
 	  best_plus_elt->querystart -= nmatches;
-	  if (extend_leftward(/*goal*/left,chroffset,chrhigh,/*leftward_set*/plus_set,sarray,
+	  if (extend_leftward(/*goal*/left,chroffset,chrhigh,/*leftward_set*/plus_set,
 			      /*queryptr*/queryuc_ptr,query_compress_fwd,
-			      /*plusp*/true,/*genestrand*/0,
+			      plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion,
 			      best_plus_elt->querystart,best_plus_elt->queryend) == true) {
-	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*singlesplicing),&(*doublesplicing),
+	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*ambiguous),&(*singlesplicing),&(*doublesplicing),
 				best_plus_elt->querystart,best_plus_elt->queryend,
 				chrnum,chroffset,chrhigh,chrlength,
 				/*goal*/left,/*rightward_set*/NULL,/*leftward_set*/plus_set,
-				querylength,query_compress_fwd,/*plusp*/true,/*genestrand*/0,
-				nmisses_allowed,first_read_p);
+				querylength,query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
+				nmisses_allowed);
 	  }
 	  best_plus_elt->querystart += nmatches;
 	}
@@ -3409,7 +3346,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     /* Extend minus side a second time */
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryrc[minus_querypos]),
 		  querylength - minus_querypos,/*queryoffset*/minus_querypos,
-		  query_compress_rev,/*plusp*/false);
+		  query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion);
     elt = Elt_new(minus_querypos,nmatches,initptr,finalptr);
     minus_querypos += nmatches;
     minus_querypos += 1;		/* To skip the presumed mismatch */
@@ -3421,7 +3358,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       minus_set = List_push(NULL,elt);
       if (minus_querypos >= querylength) {
 	chrhigh = 0U;
-	Elt_fill_positions_all(best_minus_elt,sarray);
+	Elt_fill_positions_all(best_minus_elt,minus_sarray);
 	for (i = 0; i < best_minus_elt->npositions; i++) {
 	  left = best_minus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3429,15 +3366,15 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 	    Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	    /* *chrhigh += 1U; */
 	  }
-	  if (extend_rightward(/*goal*/left,chroffset,chrhigh,/*rightward_set*/minus_set,sarray,
-			       query_compress_rev,/*plusp*/false,/*genestrand*/0,
+	  if (extend_rightward(/*goal*/left,chroffset,chrhigh,/*rightward_set*/minus_set,
+			       query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,
 			       best_minus_elt->queryend) == true) {
-	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*singlesplicing),&(*doublesplicing),
+	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*ambiguous),&(*singlesplicing),&(*doublesplicing),
 				best_minus_elt->querystart,best_minus_elt->queryend,
 				chrnum,chroffset,chrhigh,chrlength,
 				/*goal*/left,/*rightward_set*/minus_set,/*leftward_set*/NULL,
-				querylength,query_compress_rev,/*plusp*/false,/*genestrand*/0,
-				nmisses_allowed,first_read_p);
+				querylength,query_compress_rev,/*plusp*/false,genestrand,first_read_p,
+				nmisses_allowed);
 	  }
 	}
       }
@@ -3449,7 +3386,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       best_minus_nmatches = nmatches;
       if (minus_querypos >= querylength) {
 	chrhigh = 0U;
-	Elt_fill_positions_all(best_minus_elt,sarray);
+	Elt_fill_positions_all(best_minus_elt,minus_sarray);
 	for (i = 0; i < best_minus_elt->npositions; i++) {
 	  left = best_minus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3459,19 +3396,19 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 	  }
 	  nmatches = Genome_consecutive_matches_leftward(query_compress_rev,left,
 							 /*pos5*/0,/*pos3*/best_minus_elt->querystart,
-							 /*plusp*/false,/*genestrand*/0);
+							 /*plusp*/false,genestrand,first_read_p);
 	  debug(printf(" extending bestelt querystart %d leftward by %d matches\n",best_minus_elt->querystart,nmatches));
 	  best_minus_elt->querystart -= nmatches;
-	  if (extend_leftward(/*goal*/left,chroffset,chrhigh,/*leftward_set*/minus_set,sarray,
+	  if (extend_leftward(/*goal*/left,chroffset,chrhigh,/*leftward_set*/minus_set,
 			      /*queryptr*/queryrc,query_compress_rev,
-			      /*plusp*/false,/*genestrand*/0,
+			      minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion,
 			      best_minus_elt->querystart,best_minus_elt->queryend) == true) {
-	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*singlesplicing),&(*doublesplicing),
+	    collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*ambiguous),&(*singlesplicing),&(*doublesplicing),
 				best_minus_elt->querystart,best_minus_elt->queryend,
 				chrnum,chroffset,chrhigh,chrlength,
 				/*goal*/left,/*rightward_set*/NULL,/*leftward_set*/minus_set,
-				querylength,query_compress_rev,/*plusp*/false,/*genestrand*/0,
-				nmisses_allowed,first_read_p);
+				querylength,query_compress_rev,/*plusp*/false,genestrand,first_read_p,
+				nmisses_allowed);
 	  }
 	  best_minus_elt->querystart += nmatches;
 	}
@@ -3510,7 +3447,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       debug(printf("Starting from halfway point on plus\n"));
       sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryuc_ptr[halfwaypos]),
 		    querylength - halfwaypos,/*queryoffset*/halfwaypos,
-		    query_compress_fwd,/*plusp*/true);
+		    query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion);
       elt = Elt_new(halfwaypos,nmatches,initptr,finalptr);
       if (nmatches > best_plus_nmatches) {
 	best_plus_elt = elt;
@@ -3524,7 +3461,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       debug(printf("Starting from halfway point on minus\n"));
       sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryrc[halfwaypos]),
 		    querylength - halfwaypos,/*queryoffset*/halfwaypos,
-		    query_compress_rev,/*plusp*/false);
+		    query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion);
       elt = Elt_new(halfwaypos,nmatches,initptr,finalptr);
       if (nmatches > best_minus_nmatches) {
 	best_minus_elt = elt;
@@ -3541,7 +3478,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
   while (plus_querypos < querylength && plus_niter < nmisses_allowed) {
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryuc_ptr[plus_querypos]),
 		  querylength - plus_querypos,/*queryoffset*/plus_querypos,
-		  query_compress_fwd,/*plusp*/true);
+		  query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion);
     elt = Elt_new(plus_querypos,nmatches,initptr,finalptr);
     plus_set = List_push(plus_set,(void *) elt);
     if (nmatches > best_plus_nmatches) {
@@ -3549,17 +3486,18 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       best_plus_nmatches = nmatches;
 
       /* See if we have a substitution winner */
-      Elt_fill_positions_all(best_plus_elt,sarray);
+      Elt_fill_positions_all(best_plus_elt,plus_sarray);
       for (i = 0; i < best_plus_elt->npositions; i++) {
 	left = best_plus_elt->positions[i];
 	/* Should return max_mismatches + 1 if it exceeds the limit */
 	if ((nmismatches = Genome_count_mismatches_limit(query_compress_fwd,left,/*pos5*/0,/*pos3*/querylength,
-							 /*max_mismatches*/nmisses_allowed,/*plusp*/true,/*genestrand*/0)) <= nmisses_allowed) {
+							 /*max_mismatches*/nmisses_allowed,
+							 /*plusp*/true,genestrand,first_read_p)) <= nmisses_allowed) {
 	  chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	  Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	  if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 						left,/*genomiclength*/querylength,
-						query_compress_fwd,/*plusp*/true,/*genestrand*/0,
+						query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
 						chrnum,chroffset,chrhigh,chrlength,
 						/*sarrayp*/true)) != NULL) {
 	    *subs = List_push(*subs,(void *) hit);
@@ -3577,7 +3515,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
   while (minus_querypos < querylength && minus_niter < nmisses_allowed) {
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryrc[minus_querypos]),
 		  querylength - minus_querypos,/*queryoffset*/minus_querypos,
-		  query_compress_rev,/*plusp*/false);
+		  query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion);
     elt = Elt_new(minus_querypos,nmatches,initptr,finalptr);
     minus_set = List_push(minus_set,(void *) elt);
     if (nmatches > best_minus_nmatches) {
@@ -3585,17 +3523,18 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
       best_minus_nmatches = nmatches;
 
       /* See if we have a substitution winner */
-      Elt_fill_positions_all(best_minus_elt,sarray);
+      Elt_fill_positions_all(best_minus_elt,minus_sarray);
       for (i = 0; i < best_minus_elt->npositions; i++) {
 	left = best_minus_elt->positions[i];
 	/* Should return max_mismatches + 1 if it exceeds the limit */
 	if ((nmismatches = Genome_count_mismatches_limit(query_compress_rev,left,/*pos5*/0,/*pos3*/querylength,
-							 /*max_mismatches*/nmisses_allowed,/*plusp*/false,/*genestrand*/0)) <= nmisses_allowed) {
+							 /*max_mismatches*/nmisses_allowed,
+							 /*plusp*/false,genestrand,first_read_p)) <= nmisses_allowed) {
 	  chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	  Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	  if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 						left,/*genomiclength*/querylength,
-						query_compress_rev,/*plusp*/false,/*genestrand*/0,
+						query_compress_rev,/*plusp*/false,genestrand,first_read_p,
 						chrnum,chroffset,chrhigh,chrlength,
 						/*sarrayp*/true)) != NULL) {
 	    *subs = List_push(*subs,(void *) hit);
@@ -3660,7 +3599,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 
 
     chrhigh = 0U;
-    Elt_fill_positions_all(best_plus_elt,sarray);
+    Elt_fill_positions_all(best_plus_elt,plus_sarray);
     for (i = 0; i < best_plus_elt->npositions; i++) {
       left = best_plus_elt->positions[i];
       if (left > chrhigh) {
@@ -3668,24 +3607,24 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 	Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	/* *chrhigh += 1U; */
       }
-      if (extend_rightward(/*goal*/left,chroffset,chrhigh,rightward_set,sarray,
-			   query_compress_fwd,/*plusp*/true,/*genestrand*/0,
+      if (extend_rightward(/*goal*/left,chroffset,chrhigh,rightward_set,
+			   query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,
 			   best_plus_elt->queryend) == true) {
 	nmatches = Genome_consecutive_matches_leftward(query_compress_fwd,left,
 						       /*pos5*/0,/*pos3*/best_plus_elt->querystart,
-						       /*plusp*/true,/*genestrand*/0);
+						       /*plusp*/true,genestrand,first_read_p);
 	debug(printf(" extending bestelt querystart %d leftward by %d matches\n",best_plus_elt->querystart,nmatches));
 	best_plus_elt->querystart -= nmatches;
-	if (extend_leftward(/*goal*/left,chroffset,chrhigh,leftward_set,sarray,
+	if (extend_leftward(/*goal*/left,chroffset,chrhigh,leftward_set,
 			    /*queryptr*/queryuc_ptr,query_compress_fwd,
-			    /*plusp*/true,/*genestrand*/0,
+			    plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion,
 			    best_plus_elt->querystart,best_plus_elt->queryend) == true) {
-	  collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*singlesplicing),&(*doublesplicing),
+	  collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*ambiguous),&(*singlesplicing),&(*doublesplicing),
 			      best_plus_elt->querystart,best_plus_elt->queryend,
 			      chrnum,chroffset,chrhigh,chrlength,
 			      /*goal*/left,rightward_set,leftward_set,
-			      querylength,query_compress_fwd,/*plusp*/true,/*genestrand*/0,
-			      nmisses_allowed,first_read_p);
+			      querylength,query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
+			      nmisses_allowed);
 	}
 	best_plus_elt->querystart += nmatches;
       }
@@ -3742,7 +3681,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
     }
 
     chrhigh = 0U;
-    Elt_fill_positions_all(best_minus_elt,sarray);
+    Elt_fill_positions_all(best_minus_elt,minus_sarray);
     for (i = 0; i < best_minus_elt->npositions; i++) {
       left = best_minus_elt->positions[i];
       if (left > chrhigh) {
@@ -3750,24 +3689,24 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
 	Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
 	/* *chrhigh += 1U; */
       }
-      if (extend_rightward(/*goal*/left,chroffset,chrhigh,rightward_set,sarray,
-			   query_compress_rev,/*plusp*/false,/*genestrand*/0,
+      if (extend_rightward(/*goal*/left,chroffset,chrhigh,rightward_set,
+			   query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,
 			   best_minus_elt->queryend) == true) {
 	nmatches = Genome_consecutive_matches_leftward(query_compress_rev,left,
 						       /*pos5*/0,/*pos3*/best_minus_elt->querystart,
-						       /*plusp*/false,/*genestrand*/0);
+						       /*plusp*/false,genestrand,first_read_p);
 	debug(printf(" extending bestelt querystart %d leftward by %d matches\n",best_minus_elt->querystart,nmatches));
 	best_minus_elt->querystart -= nmatches;
-	if (extend_leftward(/*goal*/left,chroffset,chrhigh,leftward_set,sarray,
+	if (extend_leftward(/*goal*/left,chroffset,chrhigh,leftward_set,
 			    /*queryptr*/queryrc,query_compress_rev,
-			    /*plusp*/false,/*genestrand*/0,
+			    minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion,
 			    best_minus_elt->querystart,best_minus_elt->queryend) == true) {
-	  collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*singlesplicing),&(*doublesplicing),
+	  collect_elt_matches(&(*found_score),&(*subs),&(*indels),&(*ambiguous),&(*singlesplicing),&(*doublesplicing),
 			      best_minus_elt->querystart,best_minus_elt->queryend,
 			      chrnum,chroffset,chrhigh,chrlength,
 			      /*goal*/left,rightward_set,leftward_set,
-			      querylength,query_compress_rev,/*plusp*/false,/*genestrand*/0,
-			      nmisses_allowed,first_read_p);
+			      querylength,query_compress_rev,/*plusp*/false,genestrand,first_read_p,
+			      nmisses_allowed);
 	}
 	best_minus_elt->querystart += nmatches;
       }

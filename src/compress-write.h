@@ -1,4 +1,4 @@
-/* $Id: compress-write.h 102137 2013-07-19 23:05:33Z twu $ */
+/* $Id: compress-write.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef COMPRESS_WRITE_INCLUDED
 #define COMPRESS_WRITE_INCLUDED
 
@@ -17,6 +17,8 @@ Compress_update_memory (int nbadchars, Genomecomp_T *genomecomp, char *gbuffer, 
 			Univcoord_T endpos);
 extern void
 Compress_unshuffle (FILE *out, FILE *in);
+extern void
+Compress_unshuffle_bits128 (FILE *out, FILE *in);
 extern Genomecomp_T *
 Compress_create_blocks_comp (char *genomicseg, Univcoord_T genomelength);
 extern Genomecomp_T *

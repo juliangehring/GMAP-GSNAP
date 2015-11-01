@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c 64017 2012-05-14 22:35:15Z twu $";
+static char rcsid[] = "$Id: intlist.c 134888 2014-05-01 23:30:38Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -147,6 +147,26 @@ Intlist_to_array (int *n, T list) {
     return array;
   }
 }
+
+
+int *
+Intlist_to_array_out (int *n, T list) {
+  int *array;
+  int i;
+
+  *n = Intlist_length(list);
+  if (*n == 0) {
+    return NULL;
+  } else {
+    array = (int *) CALLOC_OUT(*n,sizeof(int));
+    for (i = 0; i < *n; i++) {
+      array[i] = list->first;
+      list = list->rest;
+    }
+    return array;
+  }
+}
+
 
 char *
 Intlist_to_char_array (int *n, T list) {

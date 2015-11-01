@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 129931 2014-03-13 03:30:02Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 133760 2014-04-20 05:16:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -38,9 +38,62 @@ static char rcsid[] = "$Id: oligoindex_hr.c 129931 2014-03-13 03:30:02Z twu $";
 #define THETADIFF2 20.0
 #define REPOLIGOCOUNT 8
 
-/* A short oligomer, typically 8 nt (but could by 9 or 10 nt),
-   requiring 16 bits or 2 bytes */
+
+struct Genomicdiag_T {
+  int i;
+  int querypos;
+  int best_nconsecutive;
+  int nconsecutive;
+  int best_consecutive_start;
+  int consecutive_start;
+  int best_consecutive_end;
+};
+typedef struct Genomicdiag_T *Genomicdiag_T;
+
 #define T Oligoindex_T
+struct T {
+
+#ifdef PMAP
+  int indexsize_aa;
+  Shortoligomer_T msb;
+#else
+  int indexsize;
+  Shortoligomer_T mask;
+#endif
+
+  int diag_lookback;
+  int suffnconsecutive;
+
+  bool query_evaluated_p;
+  Oligospace_T oligospace;
+#ifdef HAVE_SSE2
+  __m128i *inquery_allocated;
+  __m128i *counts_allocated;
+  Count_T *inquery;
+#else
+  bool *inquery;
+#endif
+  Count_T *counts;
+#ifdef PMAP
+  int *relevant_counts;
+  bool *overabundant;
+#endif
+  Chrpos_T **positions;
+  Chrpos_T **pointers;
+
+};
+
+struct Oligoindex_array_T {
+  T *array;
+  int length;
+
+  /* Permanent storage space to avoid allocating/deallocating memory in Oligoindex_get_mappings */
+  int max_querylength;
+  int max_genomiclength;
+  bool *genomicdiag_init_p;
+  struct Genomicdiag_T *genomicdiag;
+  int *cum_nohits_allocated;
+};
 
 
 #ifdef DEBUG
@@ -8392,13 +8445,23 @@ power (int base, int exponent) {
 
 
 static T
-Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive,
-		Shortoligomer_T mask) {
+Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive
+#ifndef PMAP
+		, Shortoligomer_T mask
+#endif
+		) {
   T new = (T) MALLOC(sizeof(*new));
 
+#ifdef PMAP
+  new->indexsize_aa = indexsize;
+  new->msb = power(NAMINOACIDS_STAGE2,indexsize-1);
+  debug(printf("msb for indexsize %d is %u\n",indexsize,new->msb));
+  new->oligospace = power(NAMINOACIDS_STAGE2,indexsize);
+#else
   new->indexsize = indexsize;
   new->mask = mask;
   new->oligospace = power(4,indexsize);
+#endif
 
   new->diag_lookback = diag_lookback;
   new->suffnconsecutive = suffnconsecutive;
@@ -8423,6 +8486,11 @@ Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive,
 #endif
   memset((void *) new->counts,0,new->oligospace*sizeof(Count_T));
 
+
+#ifdef PMAP
+  new->relevant_counts = (int *) CALLOC(new->oligospace,sizeof(int));
+  new->overabundant = (bool *) CALLOC(new->oligospace,sizeof(bool));
+#endif
   new->positions = (Chrpos_T **) CALLOC(new->oligospace+1,sizeof(Chrpos_T *));
   new->pointers = (Chrpos_T **) CALLOC(new->oligospace,sizeof(Chrpos_T *));
 
@@ -8430,32 +8498,67 @@ Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive,
 }
 
 
-T *
-Oligoindex_new_major (int *noligoindices) {
-  T *oligoindices;
-  int source;
-
-  *noligoindices = NOLIGOINDICES_MAJOR;
-  oligoindices = (T *) CALLOC(NOLIGOINDICES_MAJOR,sizeof(T));
-  for (source = 0; source < NOLIGOINDICES_MAJOR; source++) {
-    oligoindices[source] = Oligoindex_new(indexsizes_major[source],diag_lookbacks_major[source],suffnconsecutives_major[source],masks_major[source]);
-  }
-  
-  return oligoindices;
+int
+Oligoindex_array_length (Oligoindex_array_T oligoindices) {
+  return oligoindices->length;
 }
 
-T *
-Oligoindex_new_minor (int *noligoindices) {
-  T *oligoindices;
-  int source;
+T
+Oligoindex_array_elt (Oligoindex_array_T oligoindices, int source) {
+  return oligoindices->array[source];
+}
 
-  *noligoindices = NOLIGOINDICES_MINOR;
-  oligoindices = (T *) CALLOC(NOLIGOINDICES_MINOR,sizeof(T));
-  for (source = 0; source < NOLIGOINDICES_MINOR; source++) {
-    oligoindices[source] = Oligoindex_new(indexsizes_minor[source],diag_lookbacks_minor[source],suffnconsecutives_minor[source],masks_minor[source]);
+
+Oligoindex_array_T
+Oligoindex_array_new_major (int max_querylength, int max_genomiclength) {
+  Oligoindex_array_T new = (Oligoindex_array_T) MALLOC(sizeof(*new));
+  int source;
+  int max_indexsize = 0;
+
+  new->length = NOLIGOINDICES_MAJOR;
+  new->array = (T *) CALLOC(NOLIGOINDICES_MAJOR,sizeof(T));
+  for (source = 0; source < NOLIGOINDICES_MAJOR; source++) {
+    new->array[source] = Oligoindex_new(indexsizes_major[source],diag_lookbacks_major[source],
+					suffnconsecutives_major[source],masks_major[source]);
+    if (indexsizes_major[source] > max_indexsize) {
+      max_indexsize = indexsizes_major[source];
+    }
   }
   
-  return oligoindices;
+  /* Allocate storage space for Oligoindex_get_mappings */
+  new->max_querylength = max_querylength;
+  new->max_genomiclength = max_genomiclength;
+  new->genomicdiag_init_p = (bool *) MALLOC((max_querylength+max_genomiclength+1) * sizeof(bool));
+  new->genomicdiag = (struct Genomicdiag_T *) MALLOC((max_querylength+max_genomiclength+1) * sizeof(struct Genomicdiag_T));
+  new->cum_nohits_allocated = (int *) MALLOC((max_querylength+max_indexsize+1) * sizeof(int));
+
+  return new;
+}
+
+Oligoindex_array_T
+Oligoindex_array_new_minor (int max_querylength, int max_genomiclength) {
+  Oligoindex_array_T new = (Oligoindex_array_T) MALLOC(sizeof(*new));
+  int source;
+  int max_indexsize = 0;
+
+  new->length = NOLIGOINDICES_MINOR;
+  new->array = (T *) CALLOC(NOLIGOINDICES_MINOR,sizeof(T));
+  for (source = 0; source < NOLIGOINDICES_MINOR; source++) {
+    new->array[source] = Oligoindex_new(indexsizes_minor[source],diag_lookbacks_minor[source],
+					suffnconsecutives_minor[source],masks_minor[source]);
+    if (indexsizes_minor[source] > max_indexsize) {
+      max_indexsize = indexsizes_minor[source];
+    }
+  }
+  
+  /* Allocate storage space for Oligoindex_get_mappings */
+  new->max_querylength = max_querylength;
+  new->max_genomiclength = max_genomiclength;
+  new->genomicdiag_init_p = (bool *) MALLOC((max_querylength+max_genomiclength+1) * sizeof(bool));
+  new->genomicdiag = (struct Genomicdiag_T *) MALLOC((max_querylength+max_genomiclength+1) * sizeof(struct Genomicdiag_T));
+  new->cum_nohits_allocated = (int *) MALLOC((max_querylength+max_indexsize+1) * sizeof(int));
+
+  return new;
 }
 
 
@@ -18120,24 +18223,6 @@ store_positions (Chrpos_T **pointers, bool *overabundant,
 }
 #endif
 
-#ifdef DEBUG9
-static void
-dump_positions (Chrpos_T **positions, Count_T *counts, int oligospace, int indexsize) {
-  int i;
-  char *nt;
-
-  for (i = 0; i < oligospace; i++) {
-    nt = shortoligo_nt(i,indexsize);
-    if (counts[i] >= 1) {
-      printf("Oligo %s => %d entries: %u...%u\n",
-	     nt,counts[i],positions[i][0],positions[i][counts[i]-1]);
-    }
-    FREE(nt);
-  }
-
-  return;
-}
-#endif
 
 
 
@@ -18371,13 +18456,18 @@ Oligoindex_free (T *old) {
 }
 
 void
-Oligoindex_free_array (T **oligoindices, int noligoindices) {
+Oligoindex_array_free (Oligoindex_array_T *old) {
   int source;
 
-  for (source = 0; source < noligoindices; source++) {
-    Oligoindex_free(&((*oligoindices)[source]));
+  FREE((*old)->cum_nohits_allocated);
+  FREE((*old)->genomicdiag);
+  FREE((*old)->genomicdiag_init_p);
+
+  for (source = 0; source < (*old)->length; source++) {
+    Oligoindex_free(&((*old)->array[source]));
   }
-  FREE(*oligoindices);
+  FREE((*old)->array);
+  FREE(*old);
   return;
 }
 
@@ -18431,26 +18521,13 @@ consecutivep (int prev_querypos, unsigned int *prev_mappings, int prev_nhits,
 #endif
 
 
-struct Genomicdiag_T {
-  int i;
-  int querypos;
-  int best_nconsecutive;
-  int nconsecutive;
-  int best_consecutive_start;
-  int consecutive_start;
-  int best_consecutive_end;
-};
-typedef struct Genomicdiag_T *Genomicdiag_T;
-
-
-
 /* Third, retrieves appropriate oligo information for a given querypos and
    copies it to that querypos */
 /* Note: Be careful on totalpositions, because nhits may be < 0 */
 List_T
 Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, int *npositions,
 			 int *totalpositions, bool *oned_matrix_p, int *maxnconsecutive, 
-			 T this, char *queryuc_ptr, int querylength,
+			 Oligoindex_array_T array, T this, char *queryuc_ptr, int querylength,
 			 Chrpos_T chrstart, Chrpos_T chrend,
 			 Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 			 Diagpool_T diagpool) {
@@ -18487,12 +18564,27 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
     chrinit = (chrhigh - chroffset) - chrend;
   }
 
-  /* Needs to be CALLOC, since we depend on the value being false as a signal that genomicdiag[diagi] should be initialized */
-  genomicdiag_init_p = (bool *) CALLOC(querylength+genomiclength+1,sizeof(bool));
-  genomicdiag = (struct Genomicdiag_T *) MALLOC((querylength+genomiclength+1) * sizeof(struct Genomicdiag_T));
-
+  if (querylength + genomiclength > array->max_querylength + array->max_genomiclength) {
+    /* Cannot use pre-allocated storage */
+    /* Needs to be CALLOC, since we depend on the value being false as a signal that genomicdiag[diagi] should be initialized */
+    genomicdiag_init_p = (bool *) CALLOC(querylength+genomiclength+1,sizeof(bool));
+    genomicdiag = (struct Genomicdiag_T *) MALLOC((querylength+genomiclength+1) * sizeof(struct Genomicdiag_T));
+  } else {
+    /* Use pre-allocated storage */
+    genomicdiag_init_p = array->genomicdiag_init_p;
+    memset(genomicdiag_init_p,(int) false,(querylength+genomiclength+1)*sizeof(bool));
+    genomicdiag = array->genomicdiag;
+    memset(genomicdiag,0,(querylength+genomiclength+1)*sizeof(struct Genomicdiag_T));
+  }
+    
   /* We have cum_nohits_allocated, so cum_nohits[-indexsize] to cum_nohits[-1] are allowed and equal to 0 */
-  cum_nohits_allocated = (int *) CALLOC(querylength+indexsize+1,sizeof(int));
+  if (querylength > array->max_querylength) {
+    /* Cannot use pre-allocated storage */
+    cum_nohits_allocated = (int *) CALLOC(querylength+indexsize+1,sizeof(int));
+  } else {
+    cum_nohits_allocated = array->cum_nohits_allocated;
+    memset(cum_nohits_allocated,0,(querylength+indexsize+1)*sizeof(int));
+  }
   cum_nohits = &(cum_nohits_allocated[indexsize+1]);
 
 
@@ -18597,7 +18689,9 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
     }
   }
 
-  FREE(cum_nohits_allocated);
+  if (querylength > array->max_querylength) {
+    FREE(cum_nohits_allocated);
+  }
 
   while (good_genomicdiags != NULL) {
     good_genomicdiags = List_pop(good_genomicdiags,&item);
@@ -18617,8 +18711,10 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
 
   }
 
-  FREE(genomicdiag_init_p);
-  FREE(genomicdiag);
+  if (querylength + genomiclength > array->max_querylength + array->max_genomiclength) {
+    FREE(genomicdiag);
+    FREE(genomicdiag_init_p);
+  }
 
   return diagonals;
 }

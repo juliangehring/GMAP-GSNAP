@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 121509 2013-12-13 21:56:56Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 133760 2014-04-20 05:16:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,8 +13,9 @@ static char rcsid[] = "$Id: splicetrie.c 121509 2013-12-13 21:56:56Z twu $";
 #include "mem.h"
 #include "iitdef.h"
 #include "interval.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 #include "splicetrie_build.h"	/* For single_leaf_p and multiple_leaf_p macros */
+#include "dynprog_end.h"
 
 
 #if 0
@@ -1415,7 +1416,7 @@ Splicetrie_dump_coords_right (int *best_nmismatches, Triecontent_T *triestart, i
 static Intlist_T
 search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splicesites_i,
 	     Triecontent_T *triecontents, char *queryptr, Compress_T query_compress,
-	     int pos5, int pos3, bool plusp, int genestrand, bool collect_all_p,
+	     int pos5, int pos3, bool plusp, int genestrand, bool first_read_p, bool collect_all_p,
 	     int max_mismatches_allowed, int nmismatches, int charpos, Univcoord_T limit_low) {
   Triecontent_T leaf;
   Univcoord_T segment_left, position;
@@ -1449,7 +1450,7 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
 	/* Can happen in search for short middle exon */
 	segment_left = splicesites[leaf] - pos3;
 	nmismatches =
-	  Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand);
+	  Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand,first_read_p);
       }
 
       debug2(printf("Found leaf %u at %u, but still have characters to check against Genome: %.*s => %d mismatches\n",
@@ -1521,7 +1522,7 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
 	  /* Can happen in search for short middle exon */
 	  segment_left = splicesites[leaf] - pos3;
 	  nmismatches =
-	    Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand);
+	    Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand,first_read_p);
 	}
 
 	debug2(printf("Found leaf %u at %u => %d mismatches\n",leaf,position,nmismatches));
@@ -1593,28 +1594,28 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
     if (offseta > 0) {
       splicesites_i = search_left(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				  &(triecontents[-offseta]),queryptr,query_compress,
-				  pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				  pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				  nmismatches+(c != '\0' && c != 'A'),charpos-1,limit_low);
     }
       
     if (offsetc > 0) {
       splicesites_i = search_left(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				  &(triecontents[-offsetc]),queryptr,query_compress,
-				  pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				  pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				  nmismatches+(c != '\0' && c != 'C'),charpos-1,limit_low);
     }
 
     if (offsetg > 0) {
       splicesites_i = search_left(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				  &(triecontents[-offsetg]),queryptr,query_compress,
-				  pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				  pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				  nmismatches+(c != '\0' && c != 'G'),charpos-1,limit_low);
     }
 
     if (offsett > 0) {
       splicesites_i = search_left(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				  &(triecontents[-offsett]),queryptr,query_compress,
-				  pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				  pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				  nmismatches+(c != '\0' && c != 'T'),charpos-1,limit_low);
     }
 
@@ -1626,7 +1627,7 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
 static Intlist_T
 search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splicesites_i,
 	      Triecontent_T *triecontents, char *queryptr, Compress_T query_compress,
-	      int pos5, int pos3, bool plusp, int genestrand, bool collect_all_p,
+	      int pos5, int pos3, bool plusp, int genestrand, bool first_read_p, bool collect_all_p,
 	      int max_mismatches_allowed, int nmismatches, int charpos, Univcoord_T limit_high) {
   Triecontent_T leaf;
   Univcoord_T segment_left, position;
@@ -1660,7 +1661,7 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
 	/* Can happen in search for short middle exon */
 	segment_left = splicesites[leaf] - pos5;
 	nmismatches =
-	  Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand);
+	  Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand,first_read_p);
       }
 
       debug2(printf("Found leaf %u at %u => %d mismatches\n",leaf,position,nmismatches));
@@ -1731,7 +1732,7 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
 	  /* Can happen in search for short middle exon */
 	  segment_left = splicesites[leaf] - pos5;
 	  nmismatches =
-	    Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand);
+	    Genome_count_mismatches_substring(query_compress,segment_left,pos5,pos3,plusp,genestrand,first_read_p);
 	}
 
 	debug2(printf("Found leaf %u at %u => %d mismatches\n",leaf,position,nmismatches));
@@ -1803,28 +1804,28 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
     if (offseta > 0) {
       splicesites_i = search_right(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				   &(triecontents[-offseta]),queryptr,query_compress,
-				   pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				   pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				   nmismatches+(c != '\0' && c != 'A'),charpos+1,limit_high);
     }
       
     if (offsetc > 0) {
       splicesites_i = search_right(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				   &(triecontents[-offsetc]),queryptr,query_compress,
-				   pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				   pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				   nmismatches+(c != '\0' && c != 'C'),charpos+1,limit_high);
     }
 
     if (offsetg > 0) {
       splicesites_i = search_right(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				   &(triecontents[-offsetg]),queryptr,query_compress,
-				   pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				   pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				   nmismatches+(c != '\0' && c != 'G'),charpos+1,limit_high);
     }
 
     if (offsett > 0) {
       splicesites_i = search_right(&(*best_nmismatches),&(*nmismatches_list),splicesites_i,
 				   &(triecontents[-offsett]),queryptr,query_compress,
-				   pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				   pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				   nmismatches+(c != '\0' && c != 'T'),charpos+1,limit_high);
     }
 
@@ -1842,7 +1843,7 @@ Intlist_T
 Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 		      Univcoord_T origleft, int pos5, int pos3, Univcoord_T chroffset,
 		      Compress_T query_compress, char *queryptr, int querylength,
-		      int max_mismatches_allowed, bool plusp, int genestrand,
+		      int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p,
 		      bool collect_all_p) {
   Intlist_T splicesites_i = NULL, p, q;
   int closesti;
@@ -1886,7 +1887,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
   }
 
   nmismatches_int =
-    Genome_count_mismatches_substring(query_compress,origleft,pos3,spliceregion,plusp,genestrand);
+    Genome_count_mismatches_substring(query_compress,origleft,pos3,spliceregion,plusp,genestrand,first_read_p);
   debug2(printf("  internal at %u => %d nmismatches/%d\n",
 		origleft,nmismatches_int,SPLICE_REGION));
   if (nmismatches_int > SPLICE_REGION_MISMATCHES) {
@@ -1939,7 +1940,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 
     splicesites_i = search_left(&best_nmismatches_obs,&(*nmismatches_list),/*splicesites_i*/NULL,
 				triestart_obs,queryptr,query_compress,
-				pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				/*nmismatches*/0,/*charpos*/pos3,/*limit_low*/chroffset+pos3-1);
     /* *penalty = 0; */
     *best_nmismatches = best_nmismatches_obs;
@@ -1962,7 +1963,7 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 
     splicesites_i = search_left(&best_nmismatches_max,&(*nmismatches_list),splicesites_i,
 				triestart_max,queryptr,query_compress,
-				pos5,pos3,plusp,genestrand,collect_all_p,
+				pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,
 				/*max_mismatches_allowed*/best_nmismatches_obs - obsmax_penalty,
 				/*nmismatches*/0,/*charpos*/pos3,/*limit_low*/chroffset+pos3-1);
     debug2(printf("best_nmismatches_obs = %d, best_nmismatches_max = %d\n",
@@ -2039,7 +2040,7 @@ Intlist_T
 Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 		       Univcoord_T origleft, int pos5, int pos3, Univcoord_T chrhigh,
 		       Compress_T query_compress, char *queryptr, int max_mismatches_allowed,
-		       bool plusp, int genestrand, bool collect_all_p) {
+		       bool plusp, int genestrand, bool first_read_p, bool collect_all_p) {
   Intlist_T splicesites_i = NULL, p, q;
   int closesti;
   int spliceregion;
@@ -2083,7 +2084,7 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
   }
 
   nmismatches_int = 
-    Genome_count_mismatches_substring(query_compress,origleft,spliceregion,pos5,plusp,genestrand);
+    Genome_count_mismatches_substring(query_compress,origleft,spliceregion,pos5,plusp,genestrand,first_read_p);
   debug2(printf("  internal at %u => %d nmismatches/%d\n",
 		origleft,nmismatches_int,SPLICE_REGION));
   if (nmismatches_int > SPLICE_REGION_MISMATCHES) {
@@ -2136,7 +2137,7 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
 
     splicesites_i = search_right(&best_nmismatches_obs,&(*nmismatches_list),/*splicesites_i*/NULL,
 				 triestart_obs,queryptr,query_compress,
-				 pos5,pos3,plusp,genestrand,collect_all_p,max_mismatches_allowed,
+				 pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,max_mismatches_allowed,
 				 /*nmismatches*/0,/*charpos*/pos5-1,/*limit_high*/chrhigh+pos5-pos3);
     /* *penalty = 0; */
     *best_nmismatches = best_nmismatches_obs;
@@ -2159,7 +2160,7 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
 
     splicesites_i = search_right(&best_nmismatches_max,&(*nmismatches_list),splicesites_i,
 				 triestart_max,queryptr,query_compress,
-				 pos5,pos3,plusp,genestrand,collect_all_p,
+				 pos5,pos3,plusp,genestrand,first_read_p,collect_all_p,
 				 /*max_mismatches_allowed*/best_nmismatches_obs - obsmax_penalty,
 				 /*nmismatches*/0,/*charpos*/pos5-1,/*limit_high*/chrhigh+pos5-pos3);
     debug2(printf("best_nmismatches_obs = %d, best_nmismatches_max = %d\n",

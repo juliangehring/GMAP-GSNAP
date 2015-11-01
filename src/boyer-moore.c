@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c 111029 2013-10-11 23:25:53Z twu $";
+static char rcsid[] = "$Id: boyer-moore.c 132025 2014-04-01 18:53:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -472,6 +472,9 @@ BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
 int *
 BoyerMoore_bad_char_shift (char *query, int querylen) {
   int *bad_char_shift;
+#ifdef DEBUG
+  int i;
+#endif
 
   if (query_okay(query,querylen)) {
     bad_char_shift = precompute_bad_char_shift(query,querylen);

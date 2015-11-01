@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome_sites.c 116711 2013-11-27 19:44:44Z twu $";
+static char rcsid[] = "$Id: genome_sites.c 132144 2014-04-02 16:02:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,7 +9,7 @@ static char rcsid[] = "$Id: genome_sites.c 116711 2013-11-27 19:44:44Z twu $";
 # define memmove(d,s,n) bcopy((s),(d),(n))
 #endif
 
-#include "genome_hr.h"
+#include "genome_sites.h"
 
 #include <stdio.h>
 #include <stddef.h>
@@ -26038,7 +26038,7 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 #ifdef DEBUG3A
 					     chroffset,
 #endif
-					     donor_gt_bits,/*splicepos_offset*/-1)) == -1) {
+					     donor_gt_bits,/*splicepos_offset*/-1)) == (Univcoord_T) -1) {
     return false;
   } else {
     donorpos += 1U;		/* Shift coordinates to match input */
@@ -26050,7 +26050,7 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 #ifdef DEBUG3A
 						chroffset,
 #endif
-						acceptor_bits,/*splicepos_offset*/2)) == -1) {
+						acceptor_bits,/*splicepos_offset*/2)) == (Univcoord_T) -1) {
     return false;
   } else {
     acceptor_shift = acceptor_rightbound - acceptorpos; 
@@ -26069,7 +26069,7 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 #ifdef DEBUG3A
 						   chroffset,
 #endif
-						   donor_gt_bits,/*splicepos_offset*/-1)) == -1) {
+						   donor_gt_bits,/*splicepos_offset*/-1)) == (Univcoord_T) -1) {
 	  return false;
 	} else {
 	  donorpos += 1U;		/* Shift coordinates to match input */
@@ -26081,7 +26081,7 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 #ifdef DEBUG3A
 						      chroffset,
 #endif
-						      acceptor_bits,/*splicepos_offset*/2)) == -1) {
+						      acceptor_bits,/*splicepos_offset*/2)) == (Univcoord_T) -1) {
 	  return false;
 	} else {
 	  acceptor_shift = acceptor_rightbound - acceptorpos;
@@ -26094,7 +26094,7 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 #ifdef DEBUG3A
 						 chroffset,
 #endif
-						 donor_gt_bits,/*splicepos_offset*/-1)) == -1) {
+						 donor_gt_bits,/*splicepos_offset*/-1)) == (Univcoord_T) -1) {
 	return false;
       } else {
 	donorpos += 1U;		/* Shift coordinates to match input */
@@ -26106,7 +26106,7 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 #ifdef DEBUG3A
 						    chroffset,
 #endif
-						    acceptor_bits,/*splicepos_offset*/2)) == -1) {
+						    acceptor_bits,/*splicepos_offset*/2)) == (Univcoord_T) -1) {
 	return false;
       } else {
 	acceptor_shift = acceptor_rightbound - acceptorpos;
@@ -26129,7 +26129,7 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 #ifdef DEBUG3A
 					     chroffset,
 #endif
-					     antidonor_ac_bits,/*splicepos_offset*/2)) == -1) {
+					     antidonor_ac_bits,/*splicepos_offset*/2)) == (Univcoord_T) -1) {
     return false;
   } else {
     donor_shift = donor_rightbound - donorpos;
@@ -26140,7 +26140,7 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 #ifdef DEBUG3A
 						chroffset,
 #endif
-						antiacceptor_bits,/*splicepos_offset*/-1)) == -1) {
+						antiacceptor_bits,/*splicepos_offset*/-1)) == (Univcoord_T) -1) {
     return false;
   } else {
     acceptorpos += 1U;		/* Shift coordinates to match input */
@@ -26160,7 +26160,7 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 #ifdef DEBUG3A
 						   chroffset,
 #endif
-						   antidonor_ac_bits,/*splicepos_offset*/2)) == -1) {
+						   antidonor_ac_bits,/*splicepos_offset*/2)) == (Univcoord_T) -1) {
 	  return false;
 	} else {
 	  donor_shift = donor_rightbound - donorpos;
@@ -26171,7 +26171,7 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 #ifdef DEBUG3A
 						      chroffset,
 #endif
-						      antiacceptor_bits,/*splicepos_offset*/-1)) == -1) {
+						      antiacceptor_bits,/*splicepos_offset*/-1)) == (Univcoord_T) -1) {
 	  return false;
 	} else {
 	  acceptorpos += 1U;	/* Shift coordinates to match input */
@@ -26185,7 +26185,7 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 #ifdef DEBUG3A
 						 chroffset,
 #endif
-						 antidonor_ac_bits,/*splicepos_offset*/2)) == -1) {
+						 antidonor_ac_bits,/*splicepos_offset*/2)) == (Univcoord_T) -1) {
 	return false;
       } else {
 	donor_shift = donor_rightbound - donorpos;
@@ -26196,7 +26196,7 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 #ifdef DEBUG3A
 						    chroffset,
 #endif
-						    antiacceptor_bits,/*splicepos_offset*/-1)) == -1) {
+						    antiacceptor_bits,/*splicepos_offset*/-1)) == (Univcoord_T) -1) {
 	return false;
       } else {
 	acceptorpos += 1U;	/* Shift coordinates to match input */

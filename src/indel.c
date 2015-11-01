@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indel.c 125308 2014-01-31 22:52:08Z twu $";
+static char rcsid[] = "$Id: indel.c 133760 2014-04-20 05:16:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,7 +7,7 @@ static char rcsid[] = "$Id: indel.c 125308 2014-01-31 22:52:08Z twu $";
 
 #include "assert.h"
 #include "mem.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 #include "stage3hr.h"
 
 
@@ -38,7 +38,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
 			      Univcoord_T chrhigh, Chrpos_T chrlength,
 			      int indels, Compress_T query_compress,
 			      int querylength, int max_mismatches_allowed,
-			      bool plusp, int genestrand, bool sarrayp) {
+			      bool plusp, int genestrand, bool first_read_p, bool sarrayp) {
 #ifdef DEBUG2
   int i;
   char gbuffer[MAX_READLENGTH+1];
@@ -66,7 +66,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
   /* No need to check chromosome bounds */
   nmismatches_left = Genome_mismatches_left(mismatch_positions_left,max_mismatches_allowed,
 					    query_compress,left+indels,/*pos5*/0,/*pos3*/querylength,
-					    plusp,genestrand);
+					    plusp,genestrand,first_read_p);
   debug2(
 	 printf("%d mismatches on left at:",nmismatches_left);
 	 for (i = 0; i <= nmismatches_left; i++) {
@@ -79,7 +79,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
   /* No need to check chromosome bounds */
   nmismatches_right = Genome_mismatches_right(mismatch_positions_right,max_mismatches_allowed,
 					      query_compress,left,/*pos5*/0,/*pos3*/querylength,
-					      plusp,genestrand);
+					      plusp,genestrand,first_read_p);
   debug2(
 	 printf("%d mismatches on right at:",nmismatches_right);
 	 for (i = 0; i <= nmismatches_right; i++) {
@@ -167,7 +167,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
     if ((hit = Stage3end_new_insertion(&(*found_score),indels,query_indel_pos,
 				       nmismatches1,nmismatches2,
 				       /*left*/left+indels,/*genomiclength*/querylength-indels,
-				       query_compress,querylength,plusp,genestrand,
+				       query_compress,querylength,plusp,genestrand,first_read_p,
 				       chrnum,chroffset,chrhigh,chrlength,
 				       indel_penalty_middle,sarrayp)) != NULL) {
       debug2(printf("successful insertion with %d=%d+%d mismatches and indel_pos at %d\n",
@@ -191,7 +191,7 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
 			     Univcoord_T chrhigh, Chrpos_T chrlength,
 			     int indels, Compress_T query_compress,
 			     int querylength, int max_mismatches_allowed,
-			     bool plusp, int genestrand, bool sarrayp) {
+			     bool plusp, int genestrand, bool first_read_p, bool sarrayp) {
 #ifdef DEBUG2
   int i;
   char *gbuffer;
@@ -221,7 +221,7 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
   /* No need to check chromosome bounds */
   nmismatches_left = Genome_mismatches_left(mismatch_positions_left,max_mismatches_allowed,
 					    query_compress,left,/*pos5*/0,/*pos3*/querylength,
-					    plusp,genestrand);
+					    plusp,genestrand,first_read_p);
 
   debug2(
 	 printf("%d mismatches on left at:",nmismatches_left);
@@ -234,7 +234,7 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
   /* No need to check chromosome bounds */
   nmismatches_right = Genome_mismatches_right(mismatch_positions_right,max_mismatches_allowed,
 					      query_compress,left-indels,/*pos5*/0,/*pos3*/querylength,
-					      plusp,genestrand);
+					      plusp,genestrand,first_read_p);
 
   debug2(
 	 printf("%d mismatches on right at:",nmismatches_right);
@@ -322,7 +322,7 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
     if ((hit = Stage3end_new_deletion(&(*found_score),-indels,query_indel_pos,
 				      nmismatches1,nmismatches2,
 				      left,/*genomiclength*/querylength-indels,
-				      query_compress,querylength,plusp,genestrand,
+				      query_compress,querylength,plusp,genestrand,first_read_p,
 				      chrnum,chroffset,chrhigh,chrlength,
 				      indel_penalty_middle,sarrayp)) != NULL) {
       debug2(printf("successful middle deletion with %d=%d+%d mismatches and indel_pos at %d and nindels %d\n",

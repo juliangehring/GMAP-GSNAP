@@ -1,4 +1,4 @@
-/* $Id: substring.h 131817 2014-03-28 23:19:42Z twu $ */
+/* $Id: substring.h 136085 2014-05-13 23:00:04Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -45,7 +45,8 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
 	       int querystart, int queryend, int querylength,
 	       Univcoord_T alignstart, Univcoord_T alignend, int genomiclength,
 	       int extraleft, int extraright, bool exactp,
-	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength);
+	       bool plusp, int genestrand, bool first_read_p,
+	       bool trim_left_p, bool trim_right_p, int minlength);
 
 extern float
 Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string, bool trim_terminals_p);
@@ -75,17 +76,21 @@ Substring_overlap_point_trimmed_p (T substring, Univcoord_T endpos);
 extern bool
 Substring_overlap_segment_trimmed_p (T substring1, T substring2);
 
+extern Univcoord_T
+Substring_splicecoord (T this);
 extern int
-Substring_splicesites_i (T this);
-extern int
-Substring_splicesites_i_A (T this);
-extern int
-Substring_splicesites_i_D (T this);
+Substring_splicesites_knowni (T this);
+extern Univcoord_T
+Substring_splicecoord_A (T this);
+extern Univcoord_T
+Substring_splicecoord_D (T this);
 
 extern bool
 Substring_plusp (T this);
 extern int
 Substring_genestrand (T this);
+extern bool
+Substring_first_read_p (T this);
 extern char *
 Substring_genomic_bothdiff (T this);
 extern char *
@@ -154,6 +159,8 @@ Substring_alignstart_trim (T this);
 extern Univcoord_T
 Substring_alignend_trim (T this);
 extern Univcoord_T
+Substring_left_genomicseg (T this);
+extern Univcoord_T
 Substring_genomicstart (T this);
 extern Univcoord_T
 Substring_genomicend (T this);
@@ -191,21 +198,21 @@ extern T
 Substring_copy (T old);
 
 extern T
-Substring_new_donor (int splicesites_i, int splicesites_offset, int donor_pos, int donor_nmismatches,
+Substring_new_donor (Univcoord_T donor_coord, int donor_knowni, int donor_pos, int donor_nmismatches,
 		     double donor_prob, Univcoord_T left, Compress_T query_compress,
-		     int querylength, bool plusp, int genestrand, bool sensep,
+		     int querylength, bool plusp, int genestrand, bool first_read_p, bool sensep,
 		     Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength);
 extern T
-Substring_new_acceptor (int splicesites_i, int splicesites_offset, int acceptor_pos, int acceptor_nmismatches,
+Substring_new_acceptor (Univcoord_T acceptor_coord, int acceptor_knowni, int acceptor_pos, int acceptor_nmismatches,
 			double acceptor_prob, Univcoord_T left, Compress_T query_compress,
-			int querylength, bool plusp, int genestrand, bool sensep,
+			int querylength, bool plusp, int genestrand, bool first_read_p, bool sensep,
 			Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength);
 extern T
-Substring_new_shortexon (int acceptor_splicesites_i, int donor_splicesites_i, int splicesites_offset,
+Substring_new_shortexon (Univcoord_T acceptor_coord, int acceptor_knowni, Univcoord_T donor_coord, int donor_knowni,
 			 int acceptor_pos, int donor_pos, int nmismatches,
 			 double acceptor_prob, double donor_prob, Univcoord_T left,
 			 Compress_T query_compress, int querylength,
-			 bool plusp, int genestrand, bool sensep,
+			 bool plusp, int genestrand, bool first_read_p, bool sensep,
 			 bool acceptor_ambp, bool donor_ambp,
 			 Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength);
 

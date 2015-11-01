@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read-univ.c 115433 2013-11-18 18:24:33Z twu $";
+static char rcsid[] = "$Id: iit-read-univ.c 133835 2014-04-21 21:36:02Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -90,9 +90,11 @@ static char rcsid[] = "$Id: iit-read-univ.c 115433 2013-11-18 18:24:33Z twu $";
 #endif
 
 
-
-typedef struct FNode_T *FNode_T;
-struct FNode_T {
+/* Cannot use version in iitdef.h, because that uses Chrpos_T for the
+   value, and utility functions need to have Univcoord_T (or UINT8 if
+   available). */
+typedef struct Univ_FNode_T *Univ_FNode_T;
+struct Univ_FNode_T {
   Univcoord_T value;
   int a;
   int b;
@@ -119,7 +121,7 @@ struct T {
   int *sigmas;			/* Ordering for IIT */
   int *omegas;			/* Ordering for IIT */
 
-  struct FNode_T *nodes;
+  struct Univ_FNode_T *nodes;
   struct Univinterval_T *intervals;
 
   UINT4 *typepointers;
@@ -584,9 +586,12 @@ Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_gro
   Univinterval_T interval;
   char *label;
   bool allocp;
+  int circular_typeint;
 
   if (this == NULL) {
     return;
+  } else {
+    circular_typeint = Univ_IIT_typeint(this,"circular");
   }
 
   for (i = 0; i < this->total_nintervals; i++) {
@@ -600,6 +605,9 @@ Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_gro
     /* endpos = startpos + Univinterval_length(interval) - 1U; */
 
     fprintf(fp,"\tLN:%u",Univinterval_length(interval));
+    if (Univinterval_type(interval) == circular_typeint) {
+      fprintf(fp,"\ttp:circular");
+    }
     fprintf(fp,"\n");
 
     index++;
@@ -829,9 +837,9 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
 
   debug(printf("nnodes: %d\n",new->nnodes));
   if (new->nnodes == 0) {
-    new->nodes = (struct FNode_T *) NULL;
+    new->nodes = (struct Univ_FNode_T *) NULL;
   } else {
-    new->nodes = (struct FNode_T *) CALLOC(new->nnodes,sizeof(struct FNode_T));
+    new->nodes = (struct Univ_FNode_T *) CALLOC(new->nnodes,sizeof(struct Univ_FNode_T));
 #ifdef WORDS_BIGENDIAN
     if (new->coord_values_8p == true) {
       for (i = 0; i < new->nnodes; i++) {
@@ -856,7 +864,7 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
 #else
     if (new->coord_values_8p == true) {
 #if 1
-      offset += sizeof(struct FNode_T)*fread(new->nodes,sizeof(struct FNode_T),new->nnodes,fp);
+      offset += sizeof(struct Univ_FNode_T)*fread(new->nodes,sizeof(struct Univ_FNode_T),new->nnodes,fp);
 #else
       for (i = 0; i < new->nnodes; i++) {
 	FREAD_UINT8(&(new->nodes[i].value),fp);
@@ -1252,7 +1260,7 @@ Univ_IIT_read (char *filename, bool readonlyp, bool add_iit_p) {
       return NULL;
     }
   } else if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
-    /* fprintf(stderr,"Cannot open IIT file %s\n",filename); */
+    fprintf(stderr,"Cannot open IIT file %s\n",filename);
     return NULL;
   }
 
@@ -1486,7 +1494,7 @@ Univ_IIT_debug (char *filename) {
 static void 
 fnode_query_aux (int *min, int *max, T this, int nodeindex, Univcoord_T x) {
   int lambda;
-  FNode_T node;
+  Univ_FNode_T node;
 
   if (nodeindex == -1) {
     return;

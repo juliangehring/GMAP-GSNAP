@@ -1,4 +1,4 @@
-/* $Id: indexdb.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: indexdb.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -7,7 +7,7 @@
 #include "mode.h"
 #include "genomicpos.h"
 #include "bool.h"
-#include "iit-read.h"
+#include "iitdef.h"
 #include "indexdbdef.h"
 
 #ifdef PMAP
@@ -86,32 +86,19 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
 				      char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
 				      Width_T required_interval, bool offsets_only_p);
 extern Filenames_T
-Indexdb_get_filenames_bitpack64 (
-#ifdef PMAP
-				 Alphabet_T *alphabet, Alphabet_T required_alphabet,
-#endif
-				 Width_T *basesize, Width_T *index1part, Width_T *index1interval,
-				 char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
-				 Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
-				 bool offsets_only_p);
-extern Filenames_T
-Indexdb_get_filenames_gamma (
-#ifdef PMAP
-			     Alphabet_T *alphabet, Alphabet_T required_alphabet,
-#endif
-			     Width_T *basesize, Width_T *index1part, Width_T *index1interval,
-			     char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
-			     Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
-			     bool offsets_only_p);
+Indexdb_get_filenames_bitpack (Width_T *index1part, Width_T *index1interval,
+			       char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+			       Width_T required_index1part, Width_T required_interval,
+			       Blocksize_T blocksize, bool offsets_only_p);
 
 extern Filenames_T
 Indexdb_get_filenames (int *compression_type,
 #ifdef PMAP
 		       Alphabet_T *alphabet, Alphabet_T required_alphabet,
 #endif
-		       Width_T *basesize, Width_T *index1part, Width_T *index1interval, char *genomesubdir,
+		       Width_T *index1part, Width_T *index1interval, char *genomesubdir,
 		       char *fileroot, char *idx_filesuffix, char *snps_root,
-		       Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
+		       Width_T required_index1part, Width_T required_interval,
 		       bool offsets_only_p);
 
 extern Univcoord_T *
@@ -121,42 +108,33 @@ Indexdb_count_one_shift (T this, Storedoligomer_T subst, int nadjacent);
 
 
 extern Positionsptr_T *
-Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, 
+Indexdb_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, 
 #ifdef PMAP
 			      int alphabet_size, Width_T index1part_aa
 #else
-			      Width_T offsetscomp_basesize , Width_T index1part
+			      Width_T index1part
 #endif
 			      );
 
 #if defined(HAVE_64_BIT) && defined(UTILITYP)
 extern Hugepositionsptr_T *
-Indexdb_offsets_from_bitpack_huge (char *bitpackpagesfile, char *bitpackptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
+Indexdb_offsets_from_bitpack_huge (char *bitpackpagesfile, char *offsetsmetafile, char *offsetsstrmfile,
 #ifdef PMAP
-				   , int alphabet_size, Width_T index1part_aa
+				   int alphabet_size, Width_T index1part_aa
 #else
-				   , Width_T index1part
+				   Width_T index1part
 #endif
 				   );
 #endif
 
-extern Positionsptr_T *
-Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
-#ifdef PMAP
-			     , int alphabet_size, Width_T index1part_aa
-#else
-			     , Width_T index1part
-#endif
-			     );
-
 extern T
-Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1interval,
+Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 		    char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
 #ifdef PMAP
 		    Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
 #endif
-		    Width_T required_basesize, Width_T required_index1part, Width_T required_interval, bool expand_offsets_p,
-		    Access_mode_T offsetscomp_access, Access_mode_T positions_access);
+		    Width_T required_index1part, Width_T required_interval, bool expand_offsets_p,
+		    Access_mode_T offsetsstrm_access, Access_mode_T positions_access);
 #ifndef UTILITYP
 extern T
 Indexdb_new_segment (char *genomicseg,

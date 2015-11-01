@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb-write.c 127628 2014-02-18 19:45:01Z twu $";
+static char rcsid[] = "$Id: indexdb-write.c 132144 2014-04-02 16:02:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -58,7 +58,6 @@ static char rcsid[] = "$Id: indexdb-write.c 127628 2014-02-18 19:45:01Z twu $";
 #include "genomicpos.h"
 #include "bool.h"
 #include "indexdbdef.h"
-#include "genome_hr.h"		/* For read_gammas procedures */
 #include "iit-read-univ.h"
 #include "indexdb.h"
 #include "popcount.h"
@@ -66,6 +65,8 @@ static char rcsid[] = "$Id: indexdb-write.c 127628 2014-02-18 19:45:01Z twu $";
 #include "bitpack64-read.h"
 #include "bitpack64-write.h"
 
+
+#define MAX_BITPACK_BLOCKSIZE 64
 
 /* Another MONITOR_INTERVAL is in compress.c */
 #define MONITOR_INTERVAL 100000000 /* 100 million nt */
@@ -87,13 +88,6 @@ static char rcsid[] = "$Id: indexdb-write.c 127628 2014-02-18 19:45:01Z twu $";
 #define debug1(x) x
 #else
 #define debug1(x)
-#endif
-
-/* Gammas */
-#ifdef DEBUG3
-#define debug3(x) x
-#else
-#define debug3(x)
 #endif
 
 
@@ -119,159 +113,13 @@ power (int base, int exponent) {
 }
 
 
-/************************************************************************
- *   Elias gamma representation
- ************************************************************************/
-
-/* ctr is 32 at high bit and 1 at low bit */
-static int
-write_gamma (FILE *offsetscomp_fp, Offsetscomp_T *offsets_buffer, int offsets_buffer_size, int *offsets_buffer_i,
-	     unsigned int *nwritten, Offsetscomp_T *buffer, int ctr, Offsetscomp_T gamma) {
-  int length;
-  Positionsptr_T nn;
-  
-  debug(printf("Entering write_gamma with gamma %u, ctr %d\n",gamma,ctr));
-
-  gamma += 1;			/* To allow 0 to be represented */
-
-  /* Compute length */
-  length = 1;
-  nn = 2;
-  while (nn <= gamma) {
-    length += 2;
-    nn += nn;
-  }
-  debug(printf("gamma is %u (%08X), length is %u\n",gamma,gamma,length));
-
-
-  /* Update buffer and write */
-  while (length > ctr) {
-    if (length - ctr < 32) {
-      *buffer |= (gamma >> (length - ctr));
-    }
-    debug(printf("writing gamma %08X\n",*buffer));
-    offsets_buffer[(*offsets_buffer_i)++] = *buffer;
-    if (*offsets_buffer_i == offsets_buffer_size) {
-      FWRITE_UINTS(offsets_buffer,offsets_buffer_size,offsetscomp_fp);
-      *offsets_buffer_i = 0;
-    }
-    *nwritten += 1;
-    length -= ctr;
-    ctr = 32;
-    *buffer = 0U;
-  }
-  
-  debug(printf("  shifting gamma left by %d\n",ctr - length));
-  *buffer |= (gamma << (ctr - length));
-  debug(printf("  buffer is %08X\n",*buffer));
-  ctr -= length;
-
-  debug(printf("  returning ctr %d\n",ctr));
-  return ctr;
-}
-
-
-void
-Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetsfile, Positionsptr_T *offsets,
-			 Oligospace_T oligospace, Blocksize_T blocksize) {
-  FILE *offsets_fp;
-  FILE *gammaptrs_fp, *offsetscomp_fp;
-  Gammaptr_T *gammaptrs;
-  int gammaptri;
-  Blocksize_T j;
-  Oligospace_T oligoi;
-
-  Offsetscomp_T *offsets_buffer;
-  int offsets_buffer_size = OFFSETS_BUFFER_SIZE;
-  int offsets_buffer_i;
-
-  Offsetscomp_T buffer;			/* gammabuffer */
-  int ctr;
-  Gammaptr_T nwritten;
-
-
-  if (blocksize == 1) {
-    /* Don't write gammaptrs.  Write offsetscomp in a single command. */
-    if ((offsets_fp = FOPEN_WRITE_BINARY(offsetsfile)) == NULL) {
-      fprintf(stderr,"Can't write to file %s\n",offsetsfile);
-      exit(9);
-    } else {
-      FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
-    }
-
-  } else {
-    gammaptrs = (Gammaptr_T *) CALLOC(oligospace/blocksize+1,sizeof(Gammaptr_T));
-    gammaptri = 0;
-
-    if ((offsetscomp_fp = FOPEN_WRITE_BINARY(offsetsfile)) == NULL) {
-      fprintf(stderr,"Can't write to file %s\n",offsetsfile);
-      exit(9);
-    }
-    offsets_buffer = (Offsetscomp_T *) CALLOC(offsets_buffer_size,sizeof(Offsetscomp_T));
-    offsets_buffer_i = 0;
-
-    nwritten = 0U;
-    for (oligoi = 0; oligoi < oligospace; oligoi += blocksize) {
-      gammaptrs[gammaptri++] = nwritten;
-
-      offsets_buffer[offsets_buffer_i++] = offsets[oligoi];
-      if (offsets_buffer_i == offsets_buffer_size) {
-	FWRITE_UINTS(offsets_buffer,offsets_buffer_size,offsetscomp_fp);
-	offsets_buffer_i = 0;
-      }
-      nwritten += 1;
-
-      if (blocksize > 1) {
-	buffer = 0U;
-	ctr = 32;
-	for (j = 1; j < blocksize; j++) {
-	  ctr = write_gamma(offsetscomp_fp,offsets_buffer,offsets_buffer_size,&offsets_buffer_i,
-			    &nwritten,&buffer,ctr,offsets[oligoi+j]-offsets[oligoi+j-1]);
-	}
-	debug(printf("writing gamma %08X\n",buffer));
-	offsets_buffer[offsets_buffer_i++] = buffer;
-	if (offsets_buffer_i == offsets_buffer_size) {
-	  FWRITE_UINTS(offsets_buffer,offsets_buffer_size,offsetscomp_fp);
-	  offsets_buffer_i = 0;
-	}
-	nwritten += 1;
-      }
-    }
-
-
-    /* Final entries for i == oligospace */
-    gammaptrs[gammaptri++] = nwritten;
-    if ((gammaptrs_fp = FOPEN_WRITE_BINARY(gammaptrsfile)) == NULL) {
-      fprintf(stderr,"Can't write to file %s\n",gammaptrsfile);
-      exit(9);
-    } else {
-      FWRITE_UINTS(gammaptrs,gammaptri,gammaptrs_fp);
-      FREE(gammaptrs);
-      fclose(gammaptrs_fp);
-    }
-    
-    offsets_buffer[offsets_buffer_i++] = offsets[oligoi];
-    if (offsets_buffer_i > 0) {
-      FWRITE_UINTS(offsets_buffer,offsets_buffer_i,offsetscomp_fp);
-      offsets_buffer_i = 0;
-    }
-    FREE(offsets_buffer);
-    fclose(offsetscomp_fp);
-    nwritten += 1;
-
-  }
-
-  return;
-}
-
-
 #if 0
 static void
-check_bitpackptrs (char *bitpackptrsfile, char *offsetscompfile,
-		   Oligospace_T oligospace, Blocksize_T offsetscomp_blocksize) {
-  UINT4 *bitpackptrs, *offsetscomp, *info;
-  int bitpackptrs_fd, offsetscomp_fd;
-  size_t bitpackptrs_len, offsetscomp_len;
+check_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
+	       Oligospace_T oligospace, Blocksize_T blocksize) {
+  UINT4 *offsetsmeta, *offsetsstrm, *info;
+  int offsetsmeta_fd, offsetsstrm_fd;
+  size_t offsetsmeta_len, offsetsstrm_len;
   UINT4 *blockptr;
   Oligospace_T oligo;
   int packsize;
@@ -280,16 +128,16 @@ check_bitpackptrs (char *bitpackptrsfile, char *offsetscompfile,
 #endif
 
 #ifdef HAVE_MMAP
-  bitpackptrs = (UINT4 *) Access_mmap(&bitpackptrs_fd,&bitpackptrs_len,bitpackptrsfile,sizeof(UINT4),/*randomp*/false);
-  offsetscomp = (UINT4 *) Access_mmap(&offsetscomp_fd,&offsetscomp_len,offsetscompfile,sizeof(UINT4),/*randomp*/false);
+  offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
+  offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-  bitpackptrs = (UINT4 *) Access_allocated(&bitpackptrs_len,&seconds,bitpackptrsfile,sizeof(UINT4));
-  offsetscomp = (UINT4 *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(UINT4));
+  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
+  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
 #endif
 
-  for (oligo = 0; oligo < oligospace; oligo += offsetscomp_blocksize) {
-    info = &(bitpackptrs[oligo/offsetscomp_blocksize * METAINFO_SIZE]);
-    blockptr = &(offsetscomp[info[0]]);
+  for (oligo = 0; oligo < oligospace; oligo += blocksize) {
+    info = &(offsetsmeta[oligo/blocksize * METAINFO_SIZE]);
+    blockptr = &(offsetsstrm[info[0]]);
     packsize = (info[2] - info[0])/2;
     if (packsize > 32) {
       fprintf(stderr,"Error:\n");
@@ -302,11 +150,11 @@ check_bitpackptrs (char *bitpackptrsfile, char *offsetscompfile,
   }
 
 #ifdef HAVE_MMAP
-  munmap((void *) offsetscomp,offsetscomp_len);
-  munmap((void *) bitpackptrs,bitpackptrs_len);
+  munmap((void *) offsetsstrm,offsetsstrm_len);
+  munmap((void *) offsetsmeta,offsetsmeta_len);
 #else
-  FREE(offsetscomp);
-  FREE(bitpackptrs);
+  FREE(offsetsstrm);
+  FREE(offsetsmeta);
 #endif
 
   return;
@@ -316,13 +164,13 @@ check_bitpackptrs (char *bitpackptrsfile, char *offsetscompfile,
 
 #ifndef PMAP
 static void
-check_offsets_from_bitpack (char *bitpackptrsfile, char *bitpackcompfile, Positionsptr_T *offsets,
+check_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, Positionsptr_T *offsets,
 			    Oligospace_T oligospace, Blocksize_T blocksize) {
-  UINT4 *bitpackptrs;
-  UINT4 *bitpackcomp;
-  Positionsptr_T offsets64[65];
-  int bitpackptrs_fd, bitpackcomp_fd;
-  size_t bitpackptrs_len, bitpackcomp_len;
+  UINT4 *offsetsmeta;
+  UINT4 *offsetsstrm;
+  Positionsptr_T offsets_decoded[MAX_BITPACK_BLOCKSIZE+1];
+  int offsetsmeta_fd, offsetsstrm_fd;
+  size_t offsetsmeta_len, offsetsstrm_len;
   Oligospace_T oligoi, i;
 #ifndef HAVE_MMAP
   double seconds;
@@ -330,298 +178,97 @@ check_offsets_from_bitpack (char *bitpackptrsfile, char *bitpackcompfile, Positi
 
 
 #ifdef HAVE_MMAP
-  bitpackptrs = (UINT4 *) Access_mmap(&bitpackptrs_fd,&bitpackptrs_len,bitpackptrsfile,sizeof(UINT4),/*randomp*/false);
-  bitpackcomp = (UINT4 *) Access_mmap(&bitpackcomp_fd,&bitpackcomp_len,bitpackcompfile,sizeof(UINT4),/*randomp*/false);
+  offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
+  offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-  bitpackptrs = (UINT4 *) Access_allocated(&bitpackptrs_len,&seconds,bitpackptrsfile,sizeof(UINT4));
-  bitpackcomp = (UINT4 *) Access_allocated(&bitpackcomp_len,&seconds,bitpackcompfile,sizeof(UINT4));
+  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
+  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
 #endif
-
-  Bitpack64_read_setup();
 
   for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
-    Bitpack64_block_offsets(offsets64,oligoi,bitpackptrs,bitpackcomp);
-    for (i = 0; i <= 64; i++) {
-      if (offsets64[i] != offsets[oligoi+i]) {
+    Bitpack64_block_offsets(offsets_decoded,oligoi,offsetsmeta,offsetsstrm);
+    for (i = 0; i <= blocksize; i++) {
+      if (offsets_decoded[i] != offsets[oligoi+i]) {
 #ifdef OLIGOSPACE_NOT_LONG
-	fprintf(stderr,"\nProblem with bitpack at oligo %u+%u = %u: uncompressed %u != expected %u.  Your compiler may be defective.  Please inform twu@gene.com",
-		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
+	fprintf(stderr,"Problem with bitpack at oligo %u+%u = %u: %u != %u.  Please inform twu@gene.com\n",
+		oligoi,i,oligoi+i,offsets_decoded[i],offsets[oligoi+i]);
 #else
-	fprintf(stderr,"\nProblem with bitpack at oligo %lu+%lu = %lu: uncompressed %u != expected %u.  Your compiler may be defective.  Please inform twu@gene.com",
-		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
-#endif
-      }
-    }
-  }
-
-#ifdef HAVE_MMAP
-  munmap((void *) bitpackcomp,bitpackcomp_len);
-  munmap((void *) bitpackptrs,bitpackptrs_len);
-#else
-  FREE(bitpackcomp);
-  FREE(bitpackptrs);
-#endif
-
-  return;
-}
-#endif
-
-
-#ifndef PMAP
-static void
-check_offsets_from_bitpack_huge (char *bitpackpagesfile, char *bitpackptrsfile, char *bitpackcompfile,
-				 Hugepositionsptr_T *offsets, Oligospace_T oligospace, Blocksize_T blocksize) {
-  UINT4 *bitpackpages;
-  UINT4 *bitpackptrs;
-  UINT4 *bitpackcomp;
-  Hugepositionsptr_T offsets64[65];
-  int bitpackptrs_fd, bitpackcomp_fd;
-  size_t bitpackpages_len, bitpackptrs_len, bitpackcomp_len;
-  Oligospace_T oligoi, i;
-  double seconds;
-
-
-  bitpackpages = (UINT4 *) Access_allocated(&bitpackpages_len,&seconds,bitpackpagesfile,sizeof(UINT4));
-#ifdef HAVE_MMAP
-  bitpackptrs = (UINT4 *) Access_mmap(&bitpackptrs_fd,&bitpackptrs_len,bitpackptrsfile,sizeof(UINT4),/*randomp*/false);
-  bitpackcomp = (UINT4 *) Access_mmap(&bitpackcomp_fd,&bitpackcomp_len,bitpackcompfile,sizeof(UINT4),/*randomp*/false);
-#else
-  bitpackptrs = (UINT4 *) Access_allocated(&bitpackptrs_len,&seconds,bitpackptrsfile,sizeof(UINT4));
-  bitpackcomp = (UINT4 *) Access_allocated(&bitpackcomp_len,&seconds,bitpackcompfile,sizeof(UINT4));
-#endif
-
-  Bitpack64_read_setup();
-
-  for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
-    Bitpack64_block_offsets_huge(offsets64,oligoi,bitpackpages,bitpackptrs,bitpackcomp);
-    for (i = 0; i <= 64; i++) {
-      if (offsets64[i] != offsets[oligoi+i]) {
-#ifdef OLIGOSPACE_NOT_LONG
-	fprintf(stderr,"\nProblem with bitpack at oligo %u+%u = %u: uncompressed %lu != expected %lu.  Your compiler may be defective.  Please inform twu@gene.com\n",
-		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
-#else
-	fprintf(stderr,"\nProblem with bitpack at oligo %lu+%lu = %lu: uncompressed %lu != expected %lu.  Your compiler may be defective.  Please inform twu@gene.com\n",
-		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
-#endif
-      }
-    }
-  }
-
-#ifdef HAVE_MMAP
-  munmap((void *) bitpackcomp,bitpackcomp_len);
-  munmap((void *) bitpackptrs,bitpackptrs_len);
-#else
-  FREE(bitpackcomp);
-  FREE(bitpackptrs);
-#endif
-  FREE(bitpackpages);
-
-  return;
-}
-#endif
-
-
-
-#if 0
-void
-Indexdb_convert_gammas (char *gammaptrsfile, char *offsetscompfile, FILE *offsets_fp,
-#ifdef PMAP
-			int alphabet_size, Width_T index1part_aa,
-#else
-			Width_T index1part,
-#endif
-			Blocksize_T blocksize) {
-  int gammaptrs_fd, offsetscomp_fd;
-  Positionsptr_T *offsets = NULL, totalcounts;
-  Blocksize_T j;
-  Oligospace_T oligospace, oligoi;
-
-  UINT4 buffer;
-  int ctr;
-  UINT4 nwritten;
-
-#ifdef PMAP
-  oligospace = power(alphabet_size,index1part_aa);
-#else
-  oligospace = power(4,index1part);
-#endif
-
-  offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
-  FREAD_UINTS(offsets,oligospace+1,offsets_fp);
-  totalcounts = offsets[oligospace];
-  if (totalcounts == 0) {
-    fprintf(stderr,"Something is wrong with the offsets file.  Total counts is zero.\n");
-    exit(9);
-  }
-
-  gammaptrs_fd = Access_fileio_rw(gammaptrsfile);
-  offsetscomp_fd = Access_fileio_rw(offsetscompfile);
-
-  nwritten = 0U;
-  for (oligoi = 0; oligoi < oligospace; oligoi += blocksize) {
-    WRITE_UINT(nwritten,gammaptrs_fd);
-
-    WRITE_UINT(offsets[oligoi],offsetscomp_fd);
-    nwritten += 1;
-
-    buffer = 0U;
-    ctr = 32;
-    for (j = 1; j < blocksize; j++) {
-      ctr = write_gamma(offsetscomp_fp,offsets_buffer,offsets_buffer_size,&offsets_buffer_i,
-			&nwritten,&buffer,ctr,offsets[oligoi+j]-offsets[oligoi+j-1]);
-    }
-    debug3(printf("writing gamma %08X\n",buffer));
-    WRITE_UINT(buffer,offsetscomp_fd);
-    nwritten += 1;
-  }
-
-  WRITE_UINT(offsets[oligoi],offsetscomp_fd);
-  nwritten += 1;
-  WRITE_UINT(nwritten,gammaptrs_fd);
-
-  close(offsetscomp_fd);
-  close(gammaptrs_fd);
-
-  FREE(offsets);
-  return;
-}
-#endif
-
-
-
-static void
-check_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Positionsptr_T *offsets,
-			   Oligospace_T oligospace, Blocksize_T blocksize) {
-  Gammaptr_T *gammaptrs;
-  Offsetscomp_T *offsetscomp;
-  int gammaptrs_fd, offsetscomp_fd;
-  size_t gammaptrs_len, offsetscomp_len;
-  Oligospace_T oligoi, oligok;
-  int j, p;
-#ifndef HAVE_MMAP
-  double seconds;
-#endif
-
-  Positionsptr_T *ptr, cum;
-  int ctr;
-
-
-#ifdef HAVE_MMAP
-  gammaptrs = (Gammaptr_T *) Access_mmap(&gammaptrs_fd,&gammaptrs_len,gammaptrsfile,sizeof(Gammaptr_T),/*randomp*/false);
-  offsetscomp = (Offsetscomp_T *) Access_mmap(&offsetscomp_fd,&offsetscomp_len,offsetscompfile,sizeof(Offsetscomp_T),/*randomp*/false);
-#else
-  gammaptrs = (Gammaptr_T *) Access_allocated(&gammaptrs_len,&seconds,gammaptrsfile,sizeof(Gammaptr_T));
-  offsetscomp = (Offsetscomp_T *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(Offsetscomp_T));
-#endif
-
-  ptr = offsetscomp;
-  oligok = 0UL;
-  p = 0;
-
-  for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
-#ifdef HAVE_MMAP
-#ifdef WORDS_BIGENDIAN
-    cum = Bigendian_convert_uint(*ptr++);
-#else
-    cum = *ptr++;
-#endif
-#else
-    cum = *ptr++;
-#endif
-
-    if (offsetscomp[gammaptrs[p++]] != cum) {
-#ifdef OLIGOSPACE_NOT_LONG
-      fprintf(stderr,"Problem with gammaptrs at oligo %u: %u != %u.  Please inform twu@gene.com\n",
-	      oligok,offsetscomp[gammaptrs[p-1]],cum);
-#else
-      fprintf(stderr,"Problem with gammaptrs at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
-	      oligok,offsetscomp[gammaptrs[p-1]],cum);
-#endif
-      exit(9);
-    }
-
-    if (offsets[oligok++] != cum) {
-#ifdef OLIGOSPACE_NOT_LONG
-      fprintf(stderr,"Problem with offsetscomp at oligo %u: %u != %u.  Please inform twu@gene.com\n",
-	      oligok-1U,offsets[oligok-1],cum);
-#else
-      fprintf(stderr,"Problem with offsetscomp at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
-	      oligok-1UL,offsets[oligok-1],cum);
-#endif
-      exit(9);
-    }
-
-    ctr = 0;
-    for (j = 1; j < blocksize; j++) {
-#ifdef HAVE_MMAP
-#ifdef WORDS_BIGENDIAN
-      ctr = Genome_read_gamma_bigendian(&ptr,ctr,&cum);
-#else
-      ctr = Genome_read_gamma(&ptr,ctr,&cum);
-#endif
-#else
-      ctr = Genome_read_gamma(&ptr,ctr,&cum);
-#endif
-
-      if (offsets[oligok++] != cum) {
-#ifdef OLIGOSPACE_NOT_LONG
-	fprintf(stderr,"Problem with offsetscomp at oligo %u: %u != %u.  Please inform twu@gene.com\n",
-		oligok-1U,offsets[oligok-1],cum);
-#else
-	fprintf(stderr,"Problem with offsetscomp at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
-		oligok-1UL,offsets[oligok-1],cum);
+	fprintf(stderr,"Problem with bitpack at oligo %lu+%lu = %lu: %u != %u.  Please inform twu@gene.com\n",
+		oligoi,i,oligoi+i,offsets_decoded[i],offsets[oligoi+i]);
 #endif
 	exit(9);
       }
     }
-    if (ctr > 0) {
-      ptr++;			/* Done with last gamma byte */
-    }
   }
+
 
 
 #ifdef HAVE_MMAP
-#ifdef WORDS_BIGENDIAN
-  cum = Bigendian_convert_uint(*ptr++);
+  munmap((void *) offsetsstrm,offsetsstrm_len);
+  munmap((void *) offsetsmeta,offsetsmeta_len);
 #else
-  cum = *ptr++;
-#endif
-#else
-  cum = *ptr++;
-#endif
-
-  if (offsetscomp[gammaptrs[p]] != cum) {
-#ifdef OLIGOSPACE_NOT_LONG
-    fprintf(stderr,"Problem with gammaptrs at oligo %u: %u != %u.  Please inform twu@gene.com\n",
-	    oligok,offsetscomp[gammaptrs[p-1]],cum);
-#else
-    fprintf(stderr,"Problem with gammaptrs at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
-	    oligok,offsetscomp[gammaptrs[p-1]],cum);
-#endif
-    exit(9);
-  }
-    
-  if (offsets[oligok] != cum) {
-#ifdef OLIGOSPACE_NOT_LONG
-    fprintf(stderr,"Problem with offsetscomp at oligo %u: %u != %u.  Please inform twu@gene.com\n",
-	    oligok,offsets[oligok],*ptr);
-#else
-    fprintf(stderr,"Problem with offsetscomp at oligo %lu: %u != %u.  Please inform twu@gene.com\n",
-	    oligok,offsets[oligok],*ptr);
-#endif
-    exit(9);
-  }
-
-#ifdef HAVE_MMAP
-  munmap((void *) offsetscomp,offsetscomp_len);
-  munmap((void *) gammaptrs,gammaptrs_len);
-#else
-  FREE(offsetscomp);
-  FREE(gammaptrs);
+  FREE(offsetsstrm);
+  FREE(offsetsmeta);
 #endif
 
   return;
 }
+#endif
+
+
+#ifndef PMAP
+static void
+check_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile, char *offsetsstrmfile,
+				 Hugepositionsptr_T *offsets, Oligospace_T oligospace, Blocksize_T blocksize) {
+  UINT4 *offsetspages;
+  UINT4 *offsetsmeta;
+  UINT4 *offsetsstrm;
+  Hugepositionsptr_T offsets64[65];
+  int offsetsmeta_fd, offsetsstrm_fd;
+  size_t offsetspages_len, offsetsmeta_len, offsetsstrm_len;
+  Oligospace_T oligoi, i;
+  double seconds;
+
+
+  offsetspages = (UINT4 *) Access_allocated(&offsetspages_len,&seconds,offsetspagesfile,sizeof(UINT4));
+#ifdef HAVE_MMAP
+  offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
+  offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
+#else
+  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
+  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
+#endif
+
+  for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
+    Bitpack64_block_offsets_huge(offsets64,oligoi,offsetspages,offsetsmeta,offsetsstrm);
+    for (i = 0; i <= 64; i++) {
+      if (offsets64[i] != offsets[oligoi+i]) {
+#ifdef OLIGOSPACE_NOT_LONG
+	fprintf(stderr,"\nProblem with bitpack64 at oligo %u+%u = %u: uncompressed %lu != expected %lu.  Your compiler may be defective.  Please inform twu@gene.com\n",
+		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
+#else
+	fprintf(stderr,"\nProblem with bitpack64 at oligo %lu+%lu = %lu: uncompressed %lu != expected %lu.  Your compiler may be defective.  Please inform twu@gene.com\n",
+		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
+#endif
+      }
+    }
+  }
+
+#ifdef HAVE_MMAP
+  munmap((void *) offsetsstrm,offsetsstrm_len);
+  munmap((void *) offsetsmeta,offsetsmeta_len);
+#else
+  FREE(offsetsstrm);
+  FREE(offsetsmeta);
+#endif
+  FREE(offsetspages);
+
+  return;
+}
+#endif
+
+
+
 
 
 #ifdef HAVE_64_BIT
@@ -798,7 +445,6 @@ Indexdb_count_offsets (FILE *sequence_fp, Univ_IIT_T chromosome_iit,
 
 void
 Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Univ_IIT_T chromosome_iit,
-		       Width_T offsetscomp_basesize,
 #ifdef PMAP
 		       Alphabet_T alphabet, Width_T index1part_aa, bool watsonp,
 #else
@@ -828,14 +474,12 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 #else
   int between_counter = 0, in_counter = 0;
   Storedoligomer_T oligo = 0U, masked, mask;
-  int bitpack_basesize;
 #endif
 #ifdef DEBUG1
   char *aa;
 #endif
 
-  int gamma_basesize;
-  int offsetscomp_blocksize;
+  int blocksize;
   int circular_typeint;
 
   if (mask_lowercase_p == false) {
@@ -1074,7 +718,7 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 #endif
 
   if (compression_types == NO_COMPRESSION) {
-    /* New convention.  Previously this was called offsetscomp.  Will
+    /* New convention.  Previously this was called offsetsstrm.  Will
        need to create a symbolic link for backward compatibility */
     offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				      strlen(".")+strlen(filesuffix)+
@@ -1100,97 +744,35 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
     FREE(offsetsfile);
 
   } else {
-    if (compression_types & GAMMA_COMPRESSION) {
-      gamma_basesize = offsetscomp_basesize;
-#ifdef PMAP
-      offsetscomp_blocksize = power(alphabet_size,index1part_aa - gamma_basesize);
-#else
-      offsetscomp_blocksize = power(4,index1part - gamma_basesize);
-#endif
-
-      pointersfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				     strlen(".")+strlen(filesuffix)+
-				     /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				     strlen("gammaptrs")+1,sizeof(char));
-#ifdef PMAP
-      sprintf(pointersfile,"%s/%s.%s.%s%d%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,
-	      gamma_basesize,index1part_aa,interval_char,"gammaptrs");
-#else
-      sprintf(pointersfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,gamma_basesize,index1part,interval_char,"gammaptrs");
-#endif
-	
-      offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(filesuffix)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen("offsetscomp")+1,sizeof(char));
-#ifdef PMAP
-      sprintf(offsetsfile,"%s/%s.%s.%s%d%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,
-	      gamma_basesize,index1part_aa,interval_char,"offsetscomp");
-#else
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,gamma_basesize,index1part,interval_char,"offsetscomp");
-#endif
-
-
-#ifdef OLIGOSPACE_NOT_LONG
-      fprintf(stderr,"Writing %u offsets compressed via gammas to file with total of %u k-mers...",oligospace+1U,offsets[oligospace]);
-#else
-      fprintf(stderr,"Writing %lu offsets compressed via gammas to file with total of %u k-mers...",oligospace+1UL,offsets[oligospace]);
-#endif
-
-      Indexdb_write_gammaptrs(pointersfile,offsetsfile,offsets,oligospace,offsetscomp_blocksize);
-      if (offsetscomp_blocksize > 1) {
-	fprintf(stderr,"Checking gammas...");
-	check_offsets_from_gammas(pointersfile,offsetsfile,offsets,oligospace,offsetscomp_blocksize);
-	fprintf(stderr,"done\n");
-      }
-
-      FREE(offsetsfile);
-      FREE(pointersfile);
-    }
-
     if (compression_types & BITPACK64_COMPRESSION) {
-#ifdef PMAP
-#else
-      bitpack_basesize = index1part - 3;
-      offsetscomp_blocksize = power(4,index1part - offsetscomp_basesize);
-      if (offsetscomp_basesize != bitpack_basesize) {
-	fprintf(stderr,"For bitpack compression, basesize must be 3 less than blocksize.  Changing requested basesize to %d\n",
-		bitpack_basesize);
-      }
-#endif
-
       pointersfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				     strlen(".")+strlen(filesuffix)+
-				     /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				     strlen("bitpackptrs")+1,sizeof(char));
+				     /*for kmer*/2+/*for interval char*/1+
+				     strlen("offsets64meta")+1,sizeof(char));
 #ifdef PMAP
       sprintf(pointersfile,"%s/%s.%s.%s%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"bitpackptrs");
+	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"offsets64meta");
 #else
-      sprintf(pointersfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,bitpack_basesize,index1part,interval_char,"bitpackptrs");
+      sprintf(pointersfile,"%s/%s.%s%02d%c%s",
+	      destdir,fileroot,filesuffix,index1part,interval_char,"offsets64meta");
 #endif
 	
       offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(filesuffix)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen("bitpackcomp")+1,sizeof(char));
+				    strlen(".")+strlen(filesuffix)+
+				    /*for kmer*/2+/*for interval char*/1+
+				    strlen("offsets64strm")+1,sizeof(char));
 #ifdef PMAP
       sprintf(offsetsfile,"%s/%s.%s.%s%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"bitpackcomp");
+	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"offsets64strm");
 #else
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,bitpack_basesize,index1part,interval_char,"bitpackcomp");
+      sprintf(offsetsfile,"%s/%s.%s%02d%c%s",
+	      destdir,fileroot,filesuffix,index1part,interval_char,"offsets64strm");
 #endif
 
 #ifdef OLIGOSPACE_NOT_LONG
-      fprintf(stderr,"Writing %u offsets compressed via bitpack to file with total of %u k-mers...",oligospace+1U,offsets[oligospace]);
+      fprintf(stderr,"Writing %u offsets compressed via bitpack64 to file with total of %u k-mers...",oligospace+1U,offsets[oligospace]);
 #else
-      fprintf(stderr,"Writing %lu offsets compressed via bitpack to file with total of %u k-mers...",oligospace+1UL,offsets[oligospace]);
+      fprintf(stderr,"Writing %lu offsets compressed via bitpack64 to file with total of %u k-mers...",oligospace+1UL,offsets[oligospace]);
 #endif
 
       Bitpack64_write_differential(pointersfile,offsetsfile,offsets,oligospace);
@@ -1199,9 +781,9 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 #else
       if (offsets[oligospace] == 0) {
 	/* Don't check bitpack, which will crash on an empty file */
-      } else if (offsetscomp_blocksize > 1) {
+      } else {
 	fprintf(stderr,"Checking bitpack...");
-	check_offsets_from_bitpack(pointersfile,offsetsfile,offsets,oligospace,offsetscomp_blocksize);
+	check_offsets_from_bitpack(pointersfile,offsetsfile,offsets,oligospace,/*blocksize*/64);
       }
       fprintf(stderr,"done\n");
 #endif
@@ -1220,7 +802,6 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 #ifdef HAVE_64_BIT
 void
 Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp, Univ_IIT_T chromosome_iit,
-			    Width_T offsetscomp_basesize,
 #ifdef PMAP
 			    Alphabet_T alphabet, Width_T index1part_aa, bool watsonp,
 #else
@@ -1254,8 +835,7 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
   char *aa;
 #endif
 
-  int bitpack_basesize;
-  int offsetscomp_blocksize;
+  int blocksize;
   int circular_typeint;
 
   if (mask_lowercase_p == false) {
@@ -1497,59 +1077,46 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
     abort();
 
   } else {
-    if (compression_types & GAMMA_COMPRESSION) {
-      /* Don't need to make huge genomes backwards compatible */
-      fprintf(stderr,"Not supporting gamma compression on huge genomes\n");
-      abort();
-    }
-
     if (compression_types & BITPACK64_COMPRESSION) {
 #ifdef PMAP
-      bitpack_basesize = index1part_aa - 3;
-      offsetscomp_blocksize = power(alphabet_size,index1part_aa - offsetscomp_basesize);
+      /* blocksize = power(alphabet_size,index1part_aa - offsetsstrm_basesize); */
 #else
-      bitpack_basesize = index1part - 3;
-      offsetscomp_blocksize = power(4,index1part - offsetscomp_basesize);
+      blocksize = 64; /* power(4,index1part - offsetsstrm_basesize); */
 #endif
-      if (offsetscomp_basesize != bitpack_basesize) {
-	fprintf(stderr,"For bitpack compression, basesize must be 3 less than blocksize.  Changing requested basesize to %d\n",
-		bitpack_basesize);
-      }
-
       pagesfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				  strlen(".")+strlen(filesuffix)+
-				  /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				  strlen("bitpackpages")+1,sizeof(char));
+				  /*for kmer*/2+/*for interval char*/1+
+				  strlen("offsets64pages")+1,sizeof(char));
 #ifdef PMAP
       sprintf(pagesfile,"%s/%s.%s.%s%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"bitpackpages");
+	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"offsets64pages");
 #else
-      sprintf(pagesfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,bitpack_basesize,index1part,interval_char,"bitpackpages");
+      sprintf(pagesfile,"%s/%s.%s%02d%c%s",
+	      destdir,fileroot,filesuffix,index1part,interval_char,"offsets64pages");
 #endif
 
       pointersfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 				     strlen(".")+strlen(filesuffix)+
-				     /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				     strlen("bitpackptrs")+1,sizeof(char));
+				     /*for kmer*/2+/*for interval char*/1+
+				     strlen("offsets64meta")+1,sizeof(char));
 #ifdef PMAP
       sprintf(pointersfile,"%s/%s.%s.%s%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"bitpackptrs");
+	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"offsets64meta");
 #else
-      sprintf(pointersfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,bitpack_basesize,index1part,interval_char,"bitpackptrs");
+      sprintf(pointersfile,"%s/%s.%s%02d%c%s",
+	      destdir,fileroot,filesuffix,index1part,interval_char,"offsets64meta");
 #endif
 	
       offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(filesuffix)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen("bitpackcomp")+1,sizeof(char));
+				    strlen(".")+strlen(filesuffix)+
+				    /*for kmer*/2+/*for interval char*/1+
+				    strlen("offsets64strm")+1,sizeof(char));
 #ifdef PMAP
       sprintf(offsetsfile,"%s/%s.%s.%s%d%c%s",
-	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"bitpackcomp");
+	      destdir,fileroot,Alphabet_string(alphabet),filesuffix,index1part_aa,interval_char,"offsets64strm");
 #else
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,filesuffix,bitpack_basesize,index1part,interval_char,"bitpackcomp");
+      sprintf(offsetsfile,"%s/%s.%s%02d%c%s",
+	      destdir,fileroot,filesuffix,index1part,interval_char,"offsets64strm");
 #endif
 
 #ifdef OLIGOSPACE_NOT_LONG
@@ -1562,9 +1129,9 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
 #ifndef PMAP
       if (offsets[oligospace] == 0) {
 	/* Don't check bitpack, which will crash on an empty file */
-      } else if (offsetscomp_blocksize > 1) {
+      } else {
 	fprintf(stderr,"Checking bitpack...");
-	check_offsets_from_bitpack_huge(pagesfile,pointersfile,offsetsfile,offsets,oligospace,offsetscomp_blocksize);
+	check_offsets_from_bitpack_huge(pagesfile,pointersfile,offsetsfile,offsets,oligospace,/*blocksize*/64);
       }
       fprintf(stderr,"done\n");
 #endif
@@ -2397,7 +1964,7 @@ compute_positions_in_memory_huge (UINT4 *positions4, unsigned char *positions8_h
 
 void
 Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char *pointersfile, char *offsetsfile,
-			 FILE *sequence_fp, Univ_IIT_T chromosome_iit, int offsetscomp_basesize,
+			 FILE *sequence_fp, Univ_IIT_T chromosome_iit,
 #ifdef PMAP
 			 Alphabet_T alphabet, int index1part_aa, bool watsonp,
 #else
@@ -2414,11 +1981,11 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
   UINT4 *positions8_low;
   Oligospace_T oligospace;
   off_t filesize;
-  size_t offsetscomp_len;
+  size_t offsetsstrm_len;
   double seconds;
 #ifdef PMAP
   int alphabet_size;
-  int offsetscomp_fd;
+  int offsetsstrm_fd;
 #endif
 
 
@@ -2427,20 +1994,15 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
   alphabet_size = Alphabet_get_size(alphabet);
   if (compression_type == BITPACK64_COMPRESSION) {
     offsets = Indexdb_offsets_from_bitpack(pointersfile,offsetsfile,alphabet_size,index1part_aa);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    offsets = Indexdb_offsets_from_gammas(pointersfile,offsetsfile,offsetscomp_basesize,
-					  alphabet_size,index1part_aa);
   } else {
-    offsets = (UINT4 *) Access_allocated(&offsetscomp_len,&seconds,offsetsfile,sizeof(UINT4));
+    offsets = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsfile,sizeof(UINT4));
   }
   oligospace = power(alphabet_size,index1part_aa);
 #else
   if (compression_type == BITPACK64_COMPRESSION) {
-    offsets = Indexdb_offsets_from_bitpack(pointersfile,offsetsfile,offsetscomp_basesize,index1part);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    offsets = Indexdb_offsets_from_gammas(pointersfile,offsetsfile,offsetscomp_basesize,index1part);
+    offsets = Indexdb_offsets_from_bitpack(pointersfile,offsetsfile,index1part);
   } else {
-    offsets = (UINT4 *) Access_allocated(&offsetscomp_len,&seconds,offsetsfile,sizeof(UINT4));
+    offsets = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsfile,sizeof(UINT4));
   }
   oligospace = power(4,index1part);
 #endif
@@ -2654,7 +2216,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 void
 Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 			      char *pagesfile, char *pointersfile, char *offsetsfile,
-			      FILE *sequence_fp, Univ_IIT_T chromosome_iit, int offsetscomp_basesize,
+			      FILE *sequence_fp, Univ_IIT_T chromosome_iit,
 #ifdef PMAP
 			      Alphabet_T alphabet, int index1part_aa, bool watsonp,
 #else
@@ -2677,19 +2239,12 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 
 #ifdef PMAP
   alphabet_size = Alphabet_get_size(alphabet);
-  offsets = Indexdb_offsets_from_gammas(pointersfile,offsetsfile,offsetscomp_basesize,
-					alphabet_size,index1part_aa);
   oligospace = power(alphabet_size,index1part_aa);
 #else
   if (compression_type == BITPACK64_COMPRESSION) {
-    offsets = Indexdb_offsets_from_bitpack_huge(pagesfile,pointersfile,offsetsfile,offsetscomp_basesize,index1part);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    fprintf(stderr,"Not supporting gamma compression on huge genomes\n");
-    /* offsets = Indexdb_offsets_from_gammas(pointersfile,offsetsfile,offsetscomp_basesize,index1part); */
-    return;
+    offsets = Indexdb_offsets_from_bitpack_huge(pagesfile,pointersfile,offsetsfile,index1part);
   } else {
     fprintf(stderr,"Not supporting non-compression on huge genomes\n");
-    /* offsets = Indexdb_offsets_from_gammas(pointersfile,offsetsfile,offsetscomp_basesize,index1part); */
     return;
   }
   oligospace = power(4,index1part);

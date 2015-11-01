@@ -1,4 +1,4 @@
-/* $Id: pairpool.h 107637 2013-09-12 01:07:15Z twu $ */
+/* $Id: pairpool.h 132712 2014-04-08 20:29:38Z twu $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 
@@ -56,6 +56,18 @@ extern List_T
 Pairpool_join_end5 (List_T pairs_orig, List_T end5_path_orig, Pairpool_T pairpool,
 		    bool copy_end_p);
 
+extern List_T
+Pairpool_add_queryskip (List_T pairs, int r, int c, int dist, char *querysequence,
+			int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp, int dynprogindex);
+extern List_T
+Pairpool_add_genomeskip (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
+			 char *genomesequence, char *genomesequenceuc,
+			 int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
+			 Univcoord_T chroffset, Univcoord_T chrhigh,
+			 int cdna_direction, bool watsonp, int dynprogindex, bool use_genomicseg_p);
+
+extern List_T
+Pairpool_compact_copy (List_T list, T dest);
 
 #undef T
 #endif

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 115430 2013-11-18 18:19:36Z twu $";
+static char rcsid[] = "$Id: shortread.c 132022 2014-04-01 18:39:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -546,8 +546,12 @@ strip_illumina_acc_ending (char *acc1, char *acc2) {
       q++;
     }
 
-    /* Handle old style Illumina data that ends in ":0" or ":1" */
-    if (p[-2] == ':' &&	q[-2] == ':' && p[-1] == q[-1]) {
+    if (p[-2] == ';' && q[-2] == ';') {
+      /* Handle Casava data that ends in ";1" */
+      p -= 2;
+      q -= 2;
+    } else if (p[-2] == ':' &&	q[-2] == ':' && p[-1] == q[-1]) {
+      /* Handle old style Illumina data that ends in ":0" or ":1" */
       p -= 2;
       q -= 2;
     }
@@ -2638,11 +2642,11 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
       } else {
-	if (allow_paired_end_mismatch_p == true) {
+	if (skipp == true) {
+	  /* Do not check endings */
+	} else if (allow_paired_end_mismatch_p == true) {
 	  /* Do not strip endings, and keep second accession */
 	  FREE_IN(restofheader);
-	} else if (skipp == true) {
-	  /* Do not check endings */
 	} else {
 	  strip_illumina_acc_ending(queryseq1->acc,acc);
 	  if (strcmp(queryseq1->acc,acc)) {
@@ -2800,11 +2804,11 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
       } else {
-	if (allow_paired_end_mismatch_p == true) {
+	if (skipp == true) {
+	  /* Do not check endings */
+	} else if (allow_paired_end_mismatch_p == true) {
 	  /* Do not strip endings, and keep second accession */
 	  FREE_IN(restofheader);
-	} else if (skipp == true) {
-	  /* Do not check endings */
 	} else {
 	  strip_illumina_acc_ending(queryseq1->acc,acc);
 	  if (strcmp(queryseq1->acc,acc)) {
@@ -2950,11 +2954,11 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	/* File ends after >.  Don't process, but loop again */
 	nextchar2 = EOF;
       } else {
-	if (allow_paired_end_mismatch_p == true) {
+	if (skipp == true) {
+	  /* Do not check endings */
+	} else if (allow_paired_end_mismatch_p == true) {
 	  /* Do not strip endings, and keep second accession */
 	  FREE_IN(restofheader);
-	} else if (skipp == true) {
-	  /* Do not check endings */
 	} else {
 	  strip_illumina_acc_ending(queryseq1->acc,acc);
 	  if (strcmp(queryseq1->acc,acc)) {

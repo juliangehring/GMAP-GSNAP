@@ -1,11 +1,439 @@
+2014-05-27  twu
+
+    * dynprog_simd.c: Implemented replacement for _mm_min_epi8 for non-SSE4.1
+      systems
+
+2014-05-24  twu
+
+    * dynprog_end.c, dynprog_simd.c: Applied revisions 137142 and 137143 from
+      trunk to use computed lband and uband in find_best_endpoint procedures,
+      and to prevent horizontal or vertical jumps into the empty triangle
+
+    * public-2014-05-15: Created release branch for public version 2014-05-15
+
+2014-05-15  twu
+
+    * stage3.c: Removed revisions of coordinates near indels, which is not
+      needed any more with the latest dynamic programming procedures
+
+2014-05-14  twu
+
+    * VERSION, index.html: Updated version number
+
+    * dynprog_simd.c: For systems with SSE2 but not SSE4.1, subtracting 128 from
+      pairscore in F loop of Dynprog_simd_8, and from initial column in
+      Dynprog_simd_8_lower, to obtain correct results
+
+    * dynprog_genome.c: Removed debugging statements
+
+    * dynprog_genome.c: Fixed an uninitialized variable, best_prob
+
+2014-05-13  twu
+
+    * Makefile.gsnaptoo.am, README, bytecoding.c, samprint.c, sarray-read.c,
+      sarray-read.h, splice.c, splice.h, src, stage1hr.c, stage3hr.c,
+      stage3hr.h, substring.c, substring.h, trunk, uint8list.c, uint8list.h,
+      uintlist.c, uintlist.h: Merged revisions 135802 through 136084 from
+      branches/2014-05-09-novel-ambiguous to consolidate ambiguous splices to
+      save on memory usage and to consider them as a single concordant alignment
+
+    * pairpool.c: Not advancing coordinate at start of Pairpool_add_queryskip
+      and Pairpool_add_genomeskip
+
+2014-05-09  twu
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst, index.html,
+      sarray-read.c, splice.c, splice.h, src, stage1hr.c, stage3hr.c,
+      stage3hr.h, substring.c, substring.h, trunk: Merged revisions 135797
+      through 135801 from branches/2014-05-09-novel-ambiguous to save state
+      before implementing novel ambiguous positions
+
+    * gsnap.c: Improved output for MEMUSAGE
+
+    * dynprog_simd.c: Speeding up traceback for upper and lower triangles, to
+      take advantage of the fact that the main diagonal is filled with DIAGs.
+
+    * sarray-read.c, stage1hr.c, stage3hr.c, stage3hr.h: Grouping multiple
+      splice segments connected to a given splice site, and selecting the best
+      among these.  If multiple best choices are found, creating an ambiguous
+      splice.
+
+    * dynprog_simd.c: In traceback procedures, added check after each indel to
+      see if we are in row 0 or column 0, and if so, not to trust the value in
+      directions_nogap.
+
+    * splicetrie_build.c: Fixed comparison with MAX_SITES_ALLOCATED for
+      intron-level splicing files
+
+    * gsnap.c: Setting POOL_FREE_INTERVAL to be 1
+
+    * gsnap.c, outbuffer.c: Using new interface to memusage routines
+
+    * mem.c, mem.h: Changed variable names for memusage.  Added memusage report
+      for keep pool.
+
+    * dynprog_simd.c: Fixed bug with infinite loop at row 1 or column 1, leading
+      to error in memory allocation for pairpool
+
+    * dynprog_simd.c, pairpool.c: Adding 1 to r and c only on final indel
+
+2014-05-08  twu
+
+    * pairpool.c: When adding indel (queryskip or genomeskip), not advancing
+      coordinate by 1, since that can cross over chromosomal bounds
+
+2014-05-07  twu
+
+    * VERSION: Updated version number
+
+    * Makefile.gsnaptoo.am, cellpool.c, cellpool.h, gmap.c, smooth.c,
+      stage1hr.c, stage1hr.h, stage2.c, stage2.h, stage3.c, stage3.h,
+      uniqscan.c: Added Cellpool_T object to handle allocations of Cell_T in
+      stage 2
+
+    * gsnap.c: Calling Pairpool_reset, Diagpool_reset, and Cellpool_reset before
+      processing each request.  Previously, this memory was not being freed
+      until the end of the process.
+
+    * splicestringpool.c: Changed memory procedures to use standard pool instead
+      of keep pool
+
+    * dynprog_simd.c: Fixed saturation bug in F loop when trying to add
+      pairscore.  Setting E and H so non-diag directions are placed in row 0 and
+      column 0.  At end of traceback procedures, adding final indel to (0,0).
+
+    * stage3.c: Having make_pairarray_merge return a boolean to indicate success
+      or failure.  Trying to use the old pairarray in case of failure.
+
+    * gmap.c, gsnap.c, uniqscan.c: Using new interface to Splicetrie_retrieve
+      procedures, using Splicestringpool_T object
+
+    * Makefile.gsnaptoo.am, splicestringpool.c, splicestringpool.h,
+      splicetrie_build.c, splicetrie_build.h: Using Splicestringpool_T object to
+      reduce number of memory allocations for Splicestring_T objects.  Using
+      local array for sites to also reduce number of memory allocations.
+
+    * splicetrie_build.c: Allocating struct Interval_T when copies are needed,
+      to reduce the number of calls to allocate memory.  Allocating triecontents
+      as an array instead of uintlist, also to reduce the number of calls to
+      allocate memory.
+
+    * interval.c, interval.h: Allocating struct Interval_T when copies are
+      needed, to reduce the number of calls to allocate memory
+
+2014-05-06  twu
+
+    * dynprog.h: Added definitions of POS_INFINITY_8 and POS_INFINITY_16
+
+    * pair.c: Returning correct type of NULL
+
+    * dynprog_cdna.c, dynprog_genome.c: Fixed potential memory leak with
+      SNP-tolerant alignment
+
+    * genome.c: If glength == 0, Genome_get_segment_blocks now returns NULL
+
+    * stage3.c: Changed condition for not running Dynprog_single_gap from
+      (queryjump < 0 || genomejump < 0) to (queryjump <= 0 || genomejump <= 0)
+
+2014-05-05  twu
+
+    * stage1hr.c: Checking for anomalous splice (samechr splice) before trying
+      to compute mapping position from distal end
+
+    * compress.c: Bypassing SSSE3 version of Compress_shift when
+      DEFECTIVE_SSE2_COMPILER is true
+
+2014-05-02  twu
+
+    * ax_ext.m4: Not allowing AVX unless immintrin.h is present
+
+    * indexdb.c: Freeing offsetspages for large genomes
+
+    * gsnap.c: For MEMUSAGE, changing pool free interval to be 1
+
+    * dynprog.c: Freeing nt_to_int_array
+
+    * dynprog_simd.c: Simplified traceback procedures
+
+2014-05-01  twu
+
+    * stopwatch.c: Removed comment
+
+    * stage3hr.c: Allocating ambi and amb_nmismatches into output memory pool
+
+    * stage1hr.c: Limiting the number of terminals
+
+    * mem.c: Fixed memusage_reset procedure and revised debugging messages to
+      print pool type
+
+    * intlist.c, intlist.h: Implemented Intlist_to_array_out
+
+    * compress.c, compress.h: Implemented SSSE3 procedure and fixed bug in SSE2
+      procedure for Compress_shift
+
+    * genome128_hr.c: Fixed block_diff_snp procedure to perform the complete
+      calculation for query, ref, and alt sequences.
+
+    * genome.c: Fixed Genome_get_segment_blocks_left and _right to provide
+      correct alternate genomic segment
+
+    * dynprog_simd.c: Setting values along bands to be DIAG to avoid going out
+      of bounds. Revised loops for gaps in traceback procedures.  Compensating
+      for open value in comparing E vs H for dir_horiz and dir_vert.  Using
+      nt_to_int_array. Improved debugging print procedures.
+
+    * dynprog.c, dynprog.h: Introduced nt_to_int_array.  Setting score for
+      AMBIGUOUS to be 0, and setting N-N to be that score.
+
+2014-04-24  twu
+
+    * ax_ext.m4: Removing -mavx and -mavx2 compiler flags for now.  Being added
+      to Mac OS X Mavericks, where they are causing problems.
+
+    * stopwatch.c: Added macro for specifying POSIX C time
+
+    * stage3hr.c: Allowing pair_insert_length_trimmed to handle non-concordant
+      paired ends
+
+    * genome128_hr.c: Implemented code for defective SSE2 compilers that cannot
+      handle shifts with a non-immediate scalar
+
+    * samprint.c: Fixed printing of XS for half-donor and half-acceptor reads
+
+2014-04-21  twu
+
+    * iit-read-univ.c: Printing tp:circular for circular chromosomes
+
+    * stage3.c: Using new interface to Pair_circularpos
+
+    * stage3hr.c: Computing insertlength properly for circular chromosomes when
+      ends have different aliases.  Handling duplicates of aliases better.
+
+    * pair.c, pair.h: Computing alias correctly in Pair_circularpos
+
+    * pair.c: Fixed bug when Pair_trim_ends is called when pairs is NULL
+
+2014-04-20  twu
+
+    * Makefile.gsnaptoo.am, atoiindex.c, cmetindex.c, genome.c, genome.h,
+      genome128_hr.c, genome128_hr.h, gmapindex.c, gsnap.c, indel.c, indel.h,
+      indexdb.c, mapq.c, mapq.h, oligo.c, oligoindex_hr.c, sarray-read.c,
+      sarray-read.h, sarray-write.c, sarray-write.h, splice.c, splice.h,
+      splicetrie.c, splicetrie.h, src, stage1hr.c, stage1hr.h, stage3hr.c,
+      stage3hr.h, substring.c, substring.h, trunk: Merged revisions 133654
+      through 133759 from branches/2014-04-18-cmet-atoi-suffix-arrays to fix
+      CMET and ATOI procedures
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst: Updated version
+      number
+
+    * index.html: Updated for version 2014-04-17
+
+    * stage3.c: Fixed uninitialized variable
+
+2014-04-17  twu
+
+    * indexdb.c: Creating correct bitpack filenames when snps_root is given
+
+    * snpindex.c: Handling the case when an IIT file is not provided on the
+      command-line, and installation is not needed
+
+2014-04-10  twu
+
+    * gmap_build.pl.in: Fixed documentation for compression types
+
+    * dynprog_simd.c, dynprog_simd.h, dynprog_single.c: Added traceback
+      procedure for Score16_T variables
+
+    * snpindex.c: Creating genomebits128 format instead of genomebits format
+
 2014-04-09  twu
 
-    * sarray-read.c: No longer trying to infer lcp-interval from 12-mer index
-      for short oligos, which can cause a fatal error
+    * sarray-read.c: Made changes in code (commented out) to try to infer
+      lcp-intervals for short oligomers from 12-mer index, but still has some
+      bugs
+
+    * archive.html, index.html: Made changes for version 2014-04-08 and
+      2013-03-28.v2
+
+    * VERSION: Updated version number
+
+    * gmap.c: Removed unnecessary const
+
+    * stage2.c: Applying maxintronlen in deciding whether to create a grand
+      lookback
+
+2014-04-08  twu
+
+    * pairpool.c: Fixed bug in Pairpool_compact_copy
+
+    * stage3.c: Removed debugging statement
+
+    * Makefile.gsnaptoo.am, dynprog.c, dynprog.h, dynprog_cdna.c,
+      dynprog_cdna.h, dynprog_end.c, dynprog_end.h, dynprog_genome.c,
+      dynprog_genome.h, dynprog_simd.c, dynprog_simd.h, dynprog_single.c,
+      dynprog_single.h, gmap.c, gsnap.c, sarray-read.c, sequence.c, sequence.h,
+      splicetrie.c, src, stage3.c, stage3.h, trunk, uniqscan.c, util: Merged
+      --reintegrate branches/2014-04-04-dynprog-shift to change dynprog_end
+      routines to use upper/lower algorithm without F loops
+
+    * index.html: Updated for version 2014-04-06
+
+    * pairpool.c, pairpool.h: Implemented Pairpool_compact_copy
+
+    * oligoindex_hr.c: Freeing storage memory in Oligoindex_array_T object
+
+    * stage1.c: Checking extensions to make sure they fall within
+      --max_totallength
+
+    * chimera.c, chimera.h, gmap.c, stage3.c, stage3.h: Checking chimeras to see
+      that they satisfy --min-trimmed-coverage and --min-identity filters
+
+    * mem.c: Turned off DEBUG macro
+
+    * iit-read-univ.c: Restored warning message when IIT file cannot be read
+
+    * gmapindex.c, sarray-write.c, sarray-write.h: Implemented
+      Sarray_child_uncompress
+
+    * gmap.c: No longer proceeding to align if Stage2_scan yields max_ncovered
+      of less than 10% of the querylength.
+
+    * genome128_hr.c: Made additional changes to avoid _mm_extract_ps on
+      non-SSE4.1 systems
 
 2014-04-07  twu
 
-    * public-2014-03-28: Created branch for public release 2014-03-28
+    * sarray-read.c: When effective querylength is less than bucket indexsize,
+      no longer trying to infer lcp-interval from bucket array, but just
+      starting from entire lcp-interval.
+
+2014-04-06  twu
+
+    * gmap.c, gsnap.c, uniqscan.c: Checking for valid float values between 0.0
+      and 1.0
+
+    * dynprog_genome.c, splicetrie.c: Fixed headers for dynprog routines
+
+    * dynprog_single.c: Using a variable in the F loop to see if H needs to be
+      reloaded
+
+    * oligoindex_hr.c: Allocating storage for Oligoindex_array_T
+
+    * Makefile.gsnaptoo.am, dynprog.c, dynprog.h, dynprog_genome.c,
+      dynprog_genome.h, dynprog_single.c, dynprog_single.h, gmap.c, gsnap.c,
+      pairpool.c, pairpool.h, src, stage3.c, stage3.h, trunk, uniqscan.c, util:
+      erge reintegrated branches/2014-04-04-dynprog-shift to use new SIMD
+      routines that are row-first and reduce use of F loops
+
+    * util: Removed property changes
+
+    * src: Removed property changes
+
+    * VERSION: Updated version number
+
+    * gmap.c, gsnap.c, oligoindex_hr.c, oligoindex_hr.h, stage1hr.c, stage1hr.h,
+      stage2.c, stage2.h, stage3.c, stage3.h, uniqscan.c: Created a separate
+      Oligoindex_array_T object, which also holds storage
+
+    * configure.ac: Added AC_FUNC_ALLOCA
+
+    * mem.h: Added hooks for memory allocation using alloca
+
+    * bitpack64-readtwo.c: Added missing #endif
+
+    * indexdb.c: Fixed type of offsets from UINT4 back to Positionsptr_T
+
+    * iit-read-univ.c: aking Univ_FNode_T struct separate from FNode_T struct
+
+    * gmapindex.c: Checking genomelength before trying to create suffix array or
+      LCP/child/DC arrays
+
+    * bitpack64-readtwo.c: Fixed bug where not enough 128-bit registers were
+      provided for large genomes
+
+    * bitpack64-read.c: Eliminated an extra addition from computing offset in
+      large genomes
+
+2014-04-03  twu
+
+    * uniqscan.c: Using new interface to Oligoindex_new routines
+
+    * index.html: Updated for 2014-04-01 version
+
+    * archive.html: oved 2014-03-28 and earlier versions to archive
+
+    * acinclude.m4, ax_ext.m4, ax_gcc_x86_avx_xgetbv.m4: Updated ax_ext.m4 and
+      added ax_gcc_x86_avx_xgetbv
+
+    * uniqscan.c: Using new interface to Stage3_setup
+
+    * stage3.c, stage3.h: Providing min_end_indel_matches to end trimming
+      procedures
+
+    * sarray-read.c, sarray-read.h: Added separate access control for lcpchilddc
+
+    * oligoindex_hr.c, oligoindex_hr.h: Allocating dedicated space needed for
+      Oligoindex_get_mappings, to avoid memory allocation/deallocation
+
+    * gsnap.c: Using new interface to Oligoindex_new routines, Stage3_setup, and
+      Sarray_new
+
+    * gmap.c: Using new interface to Oligoindex_new routines and Stage3_setup
+
+    * genome128_hr.c: Provided alternative to _mm_extract_ps, which also
+      requires SSE4.1
+
+    * dynprog.c: odified debugging statements
+
+2014-04-02  twu
+
+    * ax_ext.m4: Adding warning messages when immintrin.h is not found and could
+      be used
+
+    * ax_ext.m4: Checking for immintrin.h before allowing popcnt, lzcnt, or bmi1
+
+    * ax_ext.m4: Improved warning messages
+
+    * Makefile.gsnaptoo.am, VERSION, atoiindex.c, ax_ext.m4, bitpack64-access.c,
+      bitpack64-read.c, bitpack64-read.h, bitpack64-readtwo.c,
+      bitpack64-readtwo.h, bitpack64-serial-read.c, bitpack64-serial-read.h,
+      bitpack64-serial-write.c, bitpack64-serial-write.h, bitpack64-write.c,
+      bitpack64-write.h, bytecoding.c, bytecoding.h, cmetindex.c,
+      compress-write.c, compress-write.h, compress.c, compress.h, compress128.c,
+      config.site.rescomp.prd, config.site.rescomp.tst, dynprog.c,
+      genome-write.c, genome-write.h, genome.c, genome128-write.c,
+      genome128-write.h, genome128_hr.c, genome128_hr.h, genome_hr.c,
+      genome_hr.h, genome_sites.c, gmap.c, gmap_build.pl.in, gmapindex.c,
+      gsnap.c, iit-read-univ.c, iit-read.h, iit-write-univ.h, iit-write.h,
+      iitdef.h, indel.c, indexdb-write.c, indexdb-write.h, indexdb.c, indexdb.h,
+      indexdb_hr.c, indexdbdef.h, mapq.c, sarray-read.c, sarray-read.h,
+      sarray-write.c, sarray-write.h, snpindex.c, splice.c, splicetrie.c,
+      splicetrie_build.c, src, stage1hr.c, stage2.c, stage3.c, stage3hr.c,
+      substring.c, trunk, types.h, uniqscan.c, util: ajor change.  Merged
+      revisions 131573 to 132142 from branches/2014-03-26-bitpack-esa to use
+      genomebits128 format, bp64-columnar, and enhanced suffix arrays
+
+    * VERSION: Updated version number
+
+    * index.html: Revised for latest version
+
+    * stage3hr.c: Not using number of introns to determine equivalence in
+      hit_equiv_cmp and hitpair_equiv_cmp
+
+    * genome_sites.c: Resolved comparison between unsigned and signed values for
+      -1
+
+2014-04-01  twu
+
+    * boyer-moore.c, dynprog.c, stage3.c: Implemented changes to restore finding
+      microexons
+
+    * shortread.c: Handling Casava reads ending in ";1".  Fixed problem where -q
+      and --allow-pe-name-mismatch together caused a fatal bug.
+
+    * genome_hr.c: Changed debugging output for splice fragments to print
+      unsigned shorts
 
 2014-03-28  twu
 

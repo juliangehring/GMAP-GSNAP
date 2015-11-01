@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-access.c 121509 2013-12-13 21:56:56Z twu $";
+static char rcsid[] = "$Id: bitpack64-access.c 132144 2014-04-02 16:02:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2075,19 +2075,19 @@ Bitpack64_access (UINT4 position, UINT4 *ptrs, UINT4 *comp) {
 
   info = &(ptrs[position/BLOCKSIZE * DIRECT_METAINFO_SIZE]);
   start = info[0];
-  bitpack = (UINT4 *) &(comp[start]);
-  nwritten = info[1] - start;
+  bitpack = (UINT4 *) &(comp[start*4]);
+  nwritten = info[1] - start;	/* In 128-bit registers */
 
   remainder = position % BLOCKSIZE;
-  index = nwritten*4 + remainder % 16;
+  index = nwritten*16 + remainder % 16;
   row = (remainder / 16) * (packsize / 2);   /* Complexity of this calculation makes horizontal format slower */
 
 #ifdef DEBUG
-  packsize = nwritten/2;
+  packsize = nwritten*2;
   printf("Entered Bitpack64_access with position %u, packsize %d, remainder %d, row %d, index %d\n",
 	 position,packsize,remainder,row,index);
   printf("bitpack:\n");
-  for (i = 0; i < nwritten; i += 4) {
+  for (i = 0; i < nwritten*4; i += 4) {
     printf("%08X %08X %08X %08X\n",bitpack[i],bitpack[i+1],bitpack[i+2],bitpack[i+3]);
   }
   printf("\n");
@@ -2110,19 +2110,19 @@ Bitpack64_access (UINT4 position, UINT4 *ptrs, UINT4 *comp) {
 
   info = &(ptrs[position/BLOCKSIZE * DIRECT_METAINFO_SIZE]);
   start = info[0];
-  bitpack = (UINT4 *) &(comp[start]);
-  nwritten = info[1] - start;
+  bitpack = (UINT4 *) &(comp[start*4]);
+  nwritten = info[1] - start;	/* In 128-bit registers */
 
   remainder = position % BLOCKSIZE;
-  index = nwritten*4 + remainder/4;
+  index = nwritten*16 + remainder/4;
   column = remainder % 4;
 
 #ifdef DEBUG
-  packsize = nwritten/2;
+  packsize = nwritten*2;
   printf("Entered Bitpack64_access with position %u, packsize %d, remainder %d, column %d, index %d\n",
 	 position,packsize,remainder,column,index);
   printf("bitpack:\n");
-  for (i = 0; i < nwritten; i += 4) {
+  for (i = 0; i < nwritten*4; i += 4) {
     printf("%08X %08X %08X %08X\n",bitpack[i],bitpack[i+1],bitpack[i+2],bitpack[i+3]);
   }
   printf("\n");
@@ -2132,3 +2132,4 @@ Bitpack64_access (UINT4 position, UINT4 *ptrs, UINT4 *comp) {
 }
 
 #endif
+

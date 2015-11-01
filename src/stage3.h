@@ -1,4 +1,4 @@
-/* $Id: stage3.h 128881 2014-03-01 02:20:30Z twu $ */
+/* $Id: stage3.h 135447 2014-05-07 22:25:45Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -15,6 +15,8 @@ typedef struct Stage3_T *Stage3_T;
 #include "stage2.h"
 #include "pairdef.h"
 #include "pairpool.h"
+#include "diagpool.h"
+#include "cellpool.h"
 #include "splicetrie.h"
 #include "splicetrie_build.h"	/* For Splicetype_T */
 #include "dynprog.h"
@@ -53,7 +55,7 @@ Stage3_setup (bool splicingp_in, bool novelsplicingp_in, bool require_splicedir_
 	      IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 	      int donor_typeint_in, int acceptor_typeint_in,
 	      Univcoord_T *splicesites_in,
-	      int min_intronlength_in, int max_deletionlength_in,
+	      int min_intronlength_in, int max_deletionlength_in, int min_indel_end_matches_in,
 	      bool output_sam_p_in, bool homopolymerp_in, Stage3debug_T stage3debug_in);
 
 extern bool
@@ -138,6 +140,8 @@ Stage3_chimeric_goodness (int *matches1, int *matches2, T part1, T part2, int br
 
 extern bool
 Stage3_passes_filter (T this, double min_trimmed_coverage, double min_identity);
+extern bool
+Stage3_passes_filter_chimera (Chimera_T chimera, double min_trimmed_coverage, double min_identity);
 extern int
 Stage3_cmp (const void *a, const void *b);
 extern Chrpos_T
@@ -297,7 +301,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir,
 		Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		int ngap, bool diagnosticp, bool checkp,
 		bool do_final_p, int sense_try, int sense_filter,
-		Oligoindex_T *oligoindices_minor, int noligoindices_minor, Diagpool_T diagpool,
+		Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool,
 		int sufflookback, int nsufflookback, int maxintronlen, int close_indels_mode,
 		int paired_favor_mode, int zero_offset);
 
@@ -321,8 +325,7 @@ extern bool
 Stage3_merge_chimera (T this_left, T this_right,
 		      int minpos1, int maxpos1, int minpos2, int maxpos2,
 		      char *queryseq_ptr, char *queryuc_ptr, Pairpool_T pairpool, 
-		      Dynprog_T dynprogL, Dynprog_T dynprogR,
-		      int maxpeelback, int maxpeelback_distalmedial,
+		      Dynprog_T dynprogL, Dynprog_T dynprogR, int maxpeelback, int maxpeelback_distalmedial,
 		      int nullgap, int extramaterial_end, int extraband_end, int ngap);
 extern void
 Stage3_extend_right (T this, int goal, int querylength,
@@ -344,7 +347,7 @@ Stage3_merge_local (T this_left, T this_right,
 		    Sequence_T queryseq, char *queryseq_ptr, char *queryuc_ptr,
 		    Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    int maxpeelback, int nullgap,
-		    Oligoindex_T *oligoindices_minor, int noligoindices_minor, Diagpool_T diagpool,
+		    Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool,
 		    int sufflookback, int nsufflookback, int maxintronlen_bound,
 		    int extramaterial_paired, int extraband_paired, int extraband_single, int ngap,
 		    int paired_favor_mode, int zero_offset);

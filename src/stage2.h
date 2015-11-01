@@ -1,4 +1,4 @@
-/* $Id: stage2.h 128119 2014-02-20 22:07:04Z twu $ */
+/* $Id: stage2.h 135447 2014-05-07 22:25:45Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 
@@ -8,6 +8,7 @@ typedef struct Stage2_T *Stage2_T;
 #include "list.h"
 #include "pairpool.h"
 #include "diagpool.h"
+#include "cellpool.h"
 #include "stopwatch.h"
 #include "mode.h"
 #ifdef PMAP
@@ -39,7 +40,7 @@ extern int
 Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 	     Chrpos_T chrstart, Chrpos_T chrend,
 	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-	     int genestrand, Oligoindex_T *oligoindices, int noligoindices,
+	     int genestrand, Oligoindex_array_T oligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp);
 
 extern List_T
@@ -47,9 +48,9 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,
 		Chrpos_T chrstart, Chrpos_T chrend,
 		Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
-		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
-		Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
-		int maxintronlen, bool localp, bool skip_repetitive_p,
+		Oligoindex_array_T oligoindices, double proceed_pctcoverage,
+		Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
+		int sufflookback, int nsufflookback, int maxintronlen, bool localp, bool skip_repetitive_p,
 		bool favor_right_p, int max_nalignments, bool debug_graphic_p, bool diagnosticp,
 		Stopwatch_T stopwatch, bool diag_debug);
 
@@ -59,10 +60,10 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 		    Chrpos_T chrstart, Chrpos_T chrend,
 		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 
-		    Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
-		    Pairpool_T pairpool, Diagpool_T diagpool, int sufflookback, int nsufflookback,
-		    int maxintronlen, bool localp, bool skip_repetitive_p, bool use_shifted_canonical_p,
-		    bool favor_right_p, bool debug_graphic_p, bool diagnosticp);
+		    Oligoindex_array_T oligoindices, double proceed_pctcoverage,
+		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
+		    int sufflookback, int nsufflookback, int maxintronlen, bool localp, bool skip_repetitive_p,
+		    bool use_shifted_canonical_p, bool favor_right_p, bool debug_graphic_p, bool diagnosticp);
 #undef T
 #endif
 

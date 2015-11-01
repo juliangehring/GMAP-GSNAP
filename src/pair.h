@@ -1,4 +1,4 @@
-/* $Id: pair.h 128289 2014-02-22 01:10:57Z twu $ */
+/* $Id: pair.h 133832 2014-04-21 21:34:20Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -153,7 +153,7 @@ Pair_gsnap_nsegments (int *total_nmismatches, int *total_nindels, int *nintrons,
 
 
 extern int
-Pair_circularpos (struct T *pairs, int npairs, Chrpos_T chrlength, bool plusp, int querylength);
+Pair_circularpos (int *alias, struct T *pairs, int npairs, Chrpos_T chrlength, bool plusp, int querylength);
 extern void
 Pair_alias_circular (struct T *pairs, int npairs, Chrpos_T chrlength);
 extern void

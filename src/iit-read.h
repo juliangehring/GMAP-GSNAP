@@ -1,4 +1,4 @@
-/* $Id: iit-read.h 115892 2013-11-20 22:52:31Z twu $ */
+/* $Id: iit-read.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -7,6 +7,8 @@
 #include "list.h"
 #include "interval.h"
 #include "types.h"
+#include "iitdef.h"
+
 
 typedef enum {READ_ALL, READ_ONE, READ_NONE} Divread_T;
 /* READ_NONE is useful if we want to obtain an interval by name,
@@ -14,12 +16,7 @@ typedef enum {READ_ALL, READ_ONE, READ_NONE} Divread_T;
 
 typedef enum {NO_KNOWN_GENE, KNOWN_GENE, KNOWN_GENE_MULTIEXON} Overlap_T;
 
-
 #define T IIT_T
-#ifndef IIT_TYPEDEF
-#define IIT_TYPEDEF
-typedef struct T *T;
-#endif
 
 extern bool
 IIT_universalp (char *filename, bool add_iit_p);

@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: indexdbdef.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 
@@ -15,8 +15,7 @@
 
 /* Compression types */
 #define NO_COMPRESSION 0
-#define GAMMA_COMPRESSION 1
-#define BITPACK64_COMPRESSION 2
+#define BITPACK64_COMPRESSION 1
 
 
 #define T Indexdb_T
@@ -29,22 +28,20 @@ struct T {
   int compression_type;
   Width_T index1part;
   Width_T index1interval;
-  Width_T offsetscomp_basesize;		/* e.g., 12 */
-  Blocksize_T offsetscomp_blocksize;	/* e.g., 64 = 4^(15-12) */
+  Blocksize_T blocksize;	/* e.g., 64 = 4^(15-12) */
 
 #ifdef LARGE_GENOMES
   UINT4 *offsetspages;
 #endif
 
-  /* Access_T gammaptrs_access; -- Always ALLOCATED */ 
-  int gammaptrs_fd;
-  size_t gammaptrs_len;
-  Gammaptr_T *gammaptrs;
+  int offsetsmeta_fd;
+  size_t offsetsmeta_len;
+  UINT4 *offsetsmeta;
 
-  Access_T offsetscomp_access;
-  int offsetscomp_fd;
-  size_t offsetscomp_len;
-  Offsetscomp_T *offsetscomp;
+  Access_T offsetsstrm_access;
+  int offsetsstrm_fd;
+  size_t offsetsstrm_len;
+  UINT4 *offsetsstrm;
 
   Access_T positions_access;
 #ifdef LARGE_GENOMES

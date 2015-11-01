@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 121509 2013-12-13 21:56:56Z twu $";
+static char rcsid[] = "$Id: genome.c 135233 2014-05-06 15:53:51Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -162,17 +162,18 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, Genometype_T ge
     } else if (genometype == GENOME_BITS) {
       if (snps_root != NULL) {
 	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				   strlen(".genomebits.")+strlen(snps_root)+1,sizeof(char));
-	sprintf(filename,"%s/%s.genomebits.%s",genomesubdir,fileroot,snps_root);
+				   strlen(".genomebits128.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits128.%s",genomesubdir,fileroot,snps_root);
       } else {
 	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				   strlen(".genomebits")+1,sizeof(char));
-	sprintf(filename,"%s/%s.genomebits",genomesubdir,fileroot);
+				   strlen(".genomebits128")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits128",genomesubdir,fileroot);
       }
       if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Detected old version of genome index: genomebits file not available, so using genomecomp file, which will be slower\n");
+	fprintf(stderr,"Detected old version of genome index: genomebits128 file not available.  This version of GSNAP is not backwards compatible.\n");
 	FREE(filename);
 	FREE(new);
+	exit(9);
 	return (T) NULL;
       }
 
@@ -390,6 +391,7 @@ genomecomp_read_current (T this) {
 
 static char DEFAULT_CHARS[4] = {'A','C','G','T'};
 static char DEFAULT_FLAGS[4] = {'N','N','N','N'};
+static char X_FLAGS[4] =       {'X','X','X','X'};
 #ifdef EXTRACT_GENOMICSEG
 static char A_FLAGS[4] =       {'A','A','A','A'};
 #endif
@@ -9068,6 +9070,7 @@ Genome_uncompress_mmap (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startp
 
 
 /* Correct procedure should look at alt high/low and normal flags, and substitute N based on normal flags */
+/* May not handle wildcard positions correctly.  A wildcard occurs if ref == alt && ref_flag == 0 && alt_flag == 1 */
 static void
 uncompress_mmap_snps_subst (char *gbuffer1, Genomecomp_T *refblocks, Genomecomp_T *altblocks, Univcoord_T startpos, 
 			    Univcoord_T endpos) {
@@ -9370,10 +9373,9 @@ uncompress_mmap_snps_only (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T sta
 #endif
 
 #define LOW_TWO_BITS 0x3;
-static char CHARTABLE[4] = {'A','C','G','T'};
 
 static char
-uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos, char flagchar) {
+uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos, char flagchar, char chartable[]) {
   Univcoord_T ptr;
   Genomecomp_T high, low, flags;
   int bit, c;
@@ -9399,7 +9401,7 @@ uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos, char flagchar) {
     low = blocks[ptr+1];
 #endif
     c = (low >> (bit+bit)) & LOW_TWO_BITS;
-    return CHARTABLE[c];
+    return chartable[c];
 
   } else {
 #ifdef WORDS_BIGENDIAN
@@ -9408,10 +9410,12 @@ uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos, char flagchar) {
     high = blocks[ptr];
 #endif
     c = (high >> (bit+bit-32)) & LOW_TWO_BITS;
-    return CHARTABLE[c];
+    return chartable[c];
   }
 }
   
+
+static char CHARTABLE[4] = {'A','C','G','T'};
 
 static char
 uncompress_one_char_ignore_flags (Genomecomp_T *blocks, Univcoord_T pos) {
@@ -10106,6 +10110,183 @@ uncompress_mmap_int_string (unsigned char *gbuffer, Genomecomp_T *blocks, Univco
 }
 
 
+static void
+uncompress_mmap_int_string_convert (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+				    Univcoord_T endpos, unsigned char *conversion) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  int startdiscard, enddiscard, i;
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+
+    if (startdiscard < 16) {
+#ifdef WORDS_BIGENDIAN
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+      low = blocks[ptr+1];
+#endif
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard && startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (low & 0x03)];
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    if (enddiscard >= 16) {
+      startdiscard -= 16;
+      enddiscard -= 16;
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+#else
+      high = blocks[ptr];
+#endif
+      high >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (high & 0x03)];
+	}
+	high >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (low & 0x03)];
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    startdiscard -= 16;
+    high >>= (startdiscard+startdiscard);
+    while (startdiscard < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = conversion[(int) (high & 0x03)];
+      }
+      high >>= 2;
+      flags >>= 1;
+      startdiscard++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      for (i = 0; i < 16; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (low & 0x03)];
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (high & 0x03)];
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+
+      /* printf("Block %d assigned up to %d\n",ptr,k); */
+      ptr += 3;
+    }
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    i = 0;
+    while (i < enddiscard && i < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = conversion[(int) (low & 0x03)];
+      }
+      low >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    while (i < enddiscard) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = conversion[(int) (high & 0x03)];
+      }
+      high >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+  }
+
+#if 0
+  for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+    if (gbuffer[k] > 3) {
+      printf("startpos = %u, endpos = %u, k = %d\n",startpos,endpos,k);
+      printf("startblock %u, endblock %u\n",startblock,endblock);
+      for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+	printf("%u %d %d\n",ptr,k,gbuffer[k]);
+      }
+      abort();
+    }
+  }
+#endif
+
+  return;
+}
+
+
 /************************************************************************
  *   Usage procedures
  ************************************************************************/
@@ -10119,6 +10300,10 @@ static Genomecomp_T *genomealt_blocks;	/* Can be equal to genome_blocks, but not
 static Mode_T mode;
 static int circular_typeint = -1;
 
+static unsigned char *fwd_conversion;
+static unsigned char *rev_conversion;
+
+
 void
 Genome_setup (T genome_in, T genomealt_in, Mode_T mode_in, int circular_typeint_in) {
   genome = genome_in;
@@ -10131,6 +10316,16 @@ Genome_setup (T genome_in, T genomealt_in, Mode_T mode_in, int circular_typeint_
     genomealt_blocks = genomealt->blocks;
   }
   mode = mode_in;
+  if (mode == STANDARD) {
+    fwd_conversion = "ACGT";
+    rev_conversion = "ACGT";
+  } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
+    fwd_conversion = "ATGT";
+    rev_conversion = "ACAT";
+  } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+    fwd_conversion = "GCGT";
+    rev_conversion = "ACGC";
+  }
   circular_typeint = circular_typeint_in;
   return;
 }
@@ -10279,7 +10474,7 @@ Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, 
 
 
 void
-Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer1) {
   int delta, i;
   
 #if 0
@@ -10347,6 +10542,29 @@ Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, char *gbuf
 
   debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
 
+  return;
+}
+
+
+void
+Genome_fill_buffer_convert_fwd (Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  
+  if (length > 0) {
+    assert(left + length >= left);
+    uncompress_mmap_bitbybit(gbuffer1,genome_blocks,left,left+length,fwd_conversion,X_FLAGS);
+  }
+  gbuffer1[length] = '\0';
+  return;
+}
+
+void
+Genome_fill_buffer_convert_rev (Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  
+  if (length > 0) {
+    assert(left + length >= left);
+    uncompress_mmap_bitbybit(gbuffer1,genome_blocks,left,left+length,rev_conversion,X_FLAGS);
+  }
+  gbuffer1[length] = '\0';
   return;
 }
 
@@ -10505,7 +10723,8 @@ Genome_fill_buffer_nucleotides (T this, Univcoord_T left, Chrpos_T length, unsig
 
 
 void
-Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer) {
+Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer,
+			       unsigned char *conversion) {
   
   if (length == 0) {
     return;
@@ -10546,8 +10765,10 @@ Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsign
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->read_mutex);
 #endif
-    } else {
+    } else if (conversion == NULL) {
       uncompress_mmap_int_string(gbuffer,this->blocks,left,left+length);
+    } else {
+      uncompress_mmap_int_string_convert(gbuffer,this->blocks,left,left+length,conversion);
     }
   }
 
@@ -10599,7 +10820,7 @@ Genome_get_char (T this, Univcoord_T left) {
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
-      c = uncompress_one_char(this->blocks,left,/*flagchar*/'N');
+      c = uncompress_one_char(this->blocks,left,/*flagchar*/'N',CHARTABLE);
 #ifdef EXTRACT_GENOMICSEG
       Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+1);
       assert(c == gbuffer1[0]);
@@ -10614,7 +10835,7 @@ Genome_get_char (T this, Univcoord_T left) {
 
 /* Removed checks for uncompressed genome and fileio access */
 char
-Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength) {
+Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength, char chartable[]) {
 #ifdef EXTRACT_GENOMICSEG
   char c;
   char gbuffer1[1];
@@ -10631,7 +10852,7 @@ Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength) {
     return c;
 #else
     /* Want 'X', because in building suffix array, the encoding was A(0), C(1), G(2), T(3), N(4) */
-    return uncompress_one_char(this->blocks,left,/*flagchar*/'X');
+    return uncompress_one_char(this->blocks,left,/*flagchar*/'X',chartable);
 #endif
   }
 }
@@ -10649,7 +10870,7 @@ Genome_get_char_blocks (char *charalt, Univcoord_T left) {
   /* assert(left < 4000000000U); */
 
   /* printf("Genome_get_char_blocks called with left = %u\n",left); */
-  if ((c = uncompress_one_char(genome_blocks,left,/*flagchar*/'N')) == 'N') {
+  if ((c = uncompress_one_char(genome_blocks,left,/*flagchar*/'N',CHARTABLE)) == 'N') {
     *charalt = c;
   } else {
     *charalt = uncompress_one_char_ignore_flags(genomealt_blocks,left);
@@ -10669,8 +10890,12 @@ Genome_get_segment_blocks_right (char **segmentalt, Univcoord_T left, Chrpos_T l
   char *segment;
   Chrpos_T out_of_bounds, i;
 
-  if (left >= chrhigh) {
+  if (length == 0) {
+    *segmentalt = (char *) NULL;
+    return (char *) NULL;
+  } else if (left >= chrhigh) {
     /* All out of bounds */
+    *segmentalt = (char *) NULL;
     return (char *) NULL;
   } else if (left + length >= chrhigh) {
     segment = (char *) MALLOC((length+1) * sizeof(char));
@@ -10697,7 +10922,7 @@ Genome_get_segment_blocks_right (char **segmentalt, Univcoord_T left, Chrpos_T l
     for (i = length - 1; i >= length - out_of_bounds; i--) {
       (*segmentalt)[i] = '*';
     }
-    Genome_uncompress_mmap(*segmentalt,genomealt_blocks,left,left+length-out_of_bounds);
+    uncompress_mmap_snps_subst(*segmentalt,genome_blocks,genomealt_blocks,left,left+length-out_of_bounds);
     if (revcomp == true) {
       make_complement_inplace(*segmentalt,length);
     }
@@ -10714,7 +10939,11 @@ Genome_get_segment_blocks_left (char **segmentalt, Univcoord_T left, Chrpos_T le
   Chrpos_T out_of_bounds, i;
 
 
-  if (left < chroffset) {
+  if (length == 0) {
+    *segmentalt = (char *) NULL;
+    return (char *) NULL;
+  } else if (left < chroffset) {
+    *segmentalt = (char *) NULL;
     return (char *) NULL;
   } else if (left < chroffset + length) {
     segment = (char *) MALLOC((length+1) * sizeof(char));
@@ -10740,7 +10969,7 @@ Genome_get_segment_blocks_left (char **segmentalt, Univcoord_T left, Chrpos_T le
     for (i = 0; i < out_of_bounds; i++) {
       (*segmentalt)[i] = '*';
     }
-    Genome_uncompress_mmap(&((*segmentalt)[out_of_bounds]),genomealt_blocks,left-length+out_of_bounds,left);
+    uncompress_mmap_snps_subst(&((*segmentalt)[out_of_bounds]),genome_blocks,genomealt_blocks,left-length+out_of_bounds,left);
     if (revcomp == true) {
       make_complement_inplace(*segmentalt,length);
     }

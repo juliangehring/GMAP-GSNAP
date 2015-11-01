@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: atoiindex.c 121509 2013-12-13 21:56:56Z twu $";
+static char rcsid[] = "$Id: atoiindex.c 133760 2014-04-20 05:16:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -49,6 +49,7 @@ static char rcsid[] = "$Id: atoiindex.c 121509 2013-12-13 21:56:56Z twu $";
 #include "fopen.h"
 #include "access.h"
 #include "types.h"		/* For Positionsptr_T, Oligospace_T, and Storedoligomer_T */
+#include "mode.h"
 
 #include "atoi.h"
 
@@ -57,6 +58,10 @@ static char rcsid[] = "$Id: atoiindex.c 121509 2013-12-13 21:56:56Z twu $";
 #include "iit-read-univ.h"
 #include "indexdb.h"
 #include "indexdb-write.h"
+#include "genome.h"
+#include "genome128_hr.h"
+#include "bytecoding.h"
+#include "sarray-write.h"
 #include "bitpack64-write.h"
 #include "datadir.h"
 #include "getopt.h"
@@ -78,13 +83,12 @@ static char *user_destdir = NULL;
 static char *dbroot = NULL;
 static char *dbversion = NULL;
 static int compression_type;
-static int offsetscomp_basesize = 12;
-static int required_basesize = 0;
 static int index1part = 15;
 static int required_index1part = 0;
 static int index1interval;
 static int required_interval = 0;
 
+static bool build_suffix_array_p = true;
 static char *snps_root = NULL;
 
 
@@ -92,7 +96,6 @@ static struct option long_options[] = {
   /* Input options */
   {"sourcedir", required_argument, 0, 'F'},	/* user_sourcedir */
   {"destdir", required_argument, 0, 'D'},	/* user_destdir */
-  {"basesize", required_argument, 0, 'b'}, /* required_basesize */
   {"kmer", required_argument, 0, 'k'}, /* required_index1part */
   {"sampling", required_argument, 0, 'q'}, /* required_interval */
   {"db", required_argument, 0, 'd'}, /* dbroot */
@@ -305,6 +308,11 @@ sort_8mers (unsigned char *positions8_high, UINT4 *positions8_low, Positionsptr_
 }
 
 
+/*                                       G  C  G  T */
+static unsigned char ag_conversion[4] = {2, 1, 2, 3};
+static char AG_CHARTABLE[4] = {'G','C','G','T'};
+
+
 static void
 compute_ag (char *pointers_filename, char *offsets_filename,
 	    FILE *positions_high_fp, FILE *positions_low_fp, Positionsptr_T *oldoffsets,
@@ -495,24 +503,14 @@ compute_ag (char *pointers_filename, char *offsets_filename,
   fprintf(stderr,"done\n");
 
   if (snps_root == NULL) {
-#ifdef PRE_GAMMAS
-    FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
-#else
     if (compression_type == BITPACK64_COMPRESSION) {
       Bitpack64_write_differential(/*ptrsfile*/pointers_filename,/*compfile*/offsets_filename,offsets,oligospace);
-    } else if (compression_type == GAMMA_COMPRESSION) {
-      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,offsets,oligospace,
-			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
     } else {
       abort();
     }
-#endif
   } else {
     if (compression_type == BITPACK64_COMPRESSION) {
       Bitpack64_write_differential(/*ptrsfile*/pointers_filename,/*compfile*/offsets_filename,snpoffsets,oligospace);
-    } else if (compression_type == GAMMA_COMPRESSION) {
-      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,snpoffsets,oligospace,
-			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
     } else {
       abort();
     }
@@ -529,6 +527,11 @@ compute_ag (char *pointers_filename, char *offsets_filename,
 
   return;
 }
+
+
+/*                                       A  C  G  C */
+static unsigned char tc_conversion[4] = {0, 1, 2, 1};
+static char TC_CHARTABLE[4] = {'A','C','G','C'};
 
 static void
 compute_tc (char *pointers_filename, char *offsets_filename,
@@ -721,24 +724,14 @@ compute_tc (char *pointers_filename, char *offsets_filename,
   fprintf(stderr,"done\n");
 
   if (snps_root == NULL) {
-#ifdef PRE_GAMMAS
-    FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
-#else
     if (compression_type == BITPACK64_COMPRESSION) {
       Bitpack64_write_differential(/*ptrsfile*/pointers_filename,/*compfile*/offsets_filename,offsets,oligospace);
-    } else if (compression_type == GAMMA_COMPRESSION) {
-      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,offsets,oligospace,
-			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
     } else {
       abort();
     }
-#endif
   } else {
     if (compression_type == BITPACK64_COMPRESSION) {
       Bitpack64_write_differential(/*ptrsfile*/pointers_filename,/*compfile*/offsets_filename,snpoffsets,oligospace);
-    } else if (compression_type == GAMMA_COMPRESSION) {
-      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,snpoffsets,oligospace,
-			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
     } else {
       abort();
     }
@@ -777,6 +770,27 @@ main (int argc, char *argv[]) {
   Oligospace_T oligospace;
   bool coord_values_8p;
 
+  /* For suffix array */
+  Univcoord_T genomelength;
+  char *sarrayfile, *lcpexcfile, *lcpguidefile;
+  char *childexcfile, *childguidefile;
+  char *lcpchilddcfile;
+  char *indexijptrsfile, *indexijcompfile;
+  Genome_T genomecomp, genomebits;
+  unsigned char *gbuffer;
+  UINT4 *SA, *lcp, *child;
+  UINT4 nbytes;
+
+  unsigned char *discrim_chars;
+  unsigned char *lcp_bytes;
+  UINT4 *lcp_guide, *lcp_exceptions;
+  int n_lcp_exceptions;
+
+  int sa_fd;
+  size_t sa_len, lcpguide_len, lcpexc_len;
+  double seconds;
+
+
   FILE *positions_high_fp, *positions_low_fp;
   int ref_positions_high_fd, ref_positions_low_fd;
   size_t ref_positions_high_len, ref_positions_low_len;
@@ -790,7 +804,7 @@ main (int argc, char *argv[]) {
   int long_option_index = 0;
   const char *long_name;
 
-  while ((opt = getopt_long(argc,argv,"F:D:d:b:k:q:v:",
+  while ((opt = getopt_long(argc,argv,"F:D:d:k:q:v:",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 0: 
@@ -811,7 +825,6 @@ main (int argc, char *argv[]) {
     case 'F': user_sourcedir = optarg; break;
     case 'D': user_destdir = optarg; break;
     case 'd': dbroot = optarg; break;
-    case 'b': required_basesize = atoi(optarg); break;
     case 'k': required_index1part = atoi(optarg); break;
     case 'q': required_interval = atoi(optarg); break;
     case 'v': snps_root = optarg; break;
@@ -840,13 +853,14 @@ main (int argc, char *argv[]) {
   } else {
     coord_values_8p = Univ_IIT_coord_values_8p(chromosome_iit);
   }
+  genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
   Univ_IIT_free(&chromosome_iit);
   FREE(filename);
 
 
-  filenames = Indexdb_get_filenames(&compression_type,&offsetscomp_basesize,&index1part,&index1interval,
+  filenames = Indexdb_get_filenames(&compression_type,&index1part,&index1interval,
 				    sourcedir,fileroot,IDX_FILESUFFIX,snps_root,
-				    required_basesize,required_index1part,required_interval,
+				    required_index1part,required_interval,
 				    /*offsets_only_p*/false);
 
   mask = ~(~0UL << 2*index1part);
@@ -854,9 +868,7 @@ main (int argc, char *argv[]) {
 
   /* Read offsets */
   if (compression_type == BITPACK64_COMPRESSION) {
-    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
-  } else if (compression_type == BITPACK64_COMPRESSION) {
-    ref_offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,index1part);
   } else {
     abort();
   }
@@ -922,13 +934,9 @@ main (int argc, char *argv[]) {
   }
   fprintf(stderr,"Writing atoi index files to %s\n",destdir);
 
-  if (index1part == offsetscomp_basesize) {
-    new_pointers_filename = (char *) NULL;
-  } else {
-    new_pointers_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					     strlen(".")+strlen("a2iag")+strlen(filenames->pointers_index1info_ptr)+1,sizeof(char));
-    sprintf(new_pointers_filename,"%s/%s.%s%s",destdir,fileroot,"a2iag",filenames->pointers_index1info_ptr);
-  }
+  new_pointers_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					  strlen(".")+strlen("a2iag")+strlen(filenames->pointers_index1info_ptr)+1,sizeof(char));
+  sprintf(new_pointers_filename,"%s/%s.%s%s",destdir,fileroot,"a2iag",filenames->pointers_index1info_ptr);
 
   new_offsets_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".")+strlen("a2iag")+strlen(filenames->offsets_index1info_ptr)+1,sizeof(char));
@@ -958,6 +966,104 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Compute and write AG files */
+  if (build_suffix_array_p == true) {
+    fprintf(stderr,"Building suffix array for AG\n");
+    sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.sarray")+1,sizeof(char));
+    sprintf(sarrayfile,"%s/%s.a2iag.sarray",destdir,fileroot);
+    genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+    gbuffer = (unsigned char *) CALLOC(genomelength+1,sizeof(unsigned char));
+    Genome_fill_buffer_int_string(genomecomp,/*left*/0,/*length*/genomelength,gbuffer,ag_conversion);
+    gbuffer[genomelength] = 0;	/* Tried N/X, but SACA_K fails */
+    Sarray_write_array_from_genome(sarrayfile,gbuffer,genomelength);
+
+    /* Bucket array */
+    indexijptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.saindex64meta")+1,sizeof(char));
+    sprintf(indexijptrsfile,"%s/%s.a2iag.saindex64meta",destdir,fileroot);
+    indexijcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.saindex64strm")+1,sizeof(char));
+    sprintf(indexijcompfile,"%s/%s.a2iag.saindex64strm",destdir,fileroot);
+    Sarray_write_index_interleaved(indexijptrsfile,indexijcompfile,
+				   sarrayfile,genomecomp,genomelength,/*compressp*/true,AG_CHARTABLE);
+    FREE(indexijcompfile);
+    FREE(indexijptrsfile);
+
+    SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
+    FREE(sarrayfile);
+
+#if 0
+    /* Not needed if we already have gbuffer */
+    /* Required for computing LCP, but uses non-SIMD instructions */
+    genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+    Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
+		    /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
+		    /*mode*/ATOI_STRANDED);
+#endif
+
+    lcp = Sarray_compute_lcp_from_genome(SA,gbuffer,/*n*/genomelength);
+    FREE(gbuffer);
+#if 0
+    Genome_free(&genomebits);
+#endif
+
+    /* Write lcp exceptions/guide, but return lcp_bytes */
+    lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpexc")+1,sizeof(char));
+    sprintf(lcpexcfile,"%s/%s.a2iag.salcpexc",destdir,fileroot);
+    lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpguide1024")+1,sizeof(char));
+    sprintf(lcpguidefile,"%s/%s.a2iag.salcpguide1024",destdir,fileroot);
+
+    lcp_bytes = Bytecoding_write_exceptions_only(lcpexcfile,lcpguidefile,lcp,genomelength,/*guide_interval*/1024);
+
+    FREE(lcpguidefile);
+    FREE(lcpexcfile);
+
+    FREE(lcp);			/* Use lcp_bytes, which are more memory-efficient than lcp */
+
+
+    /* DC array */
+    /* Assume we have lcp_bytes already in memory.  Don't need to use guide for speed. */
+    lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpguide1024")+1,sizeof(char));
+    sprintf(lcpguidefile,"%s/%s.a2iag.salcpguide1024",destdir,fileroot);
+    lcp_guide = (UINT4 *) Access_allocated(&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4));
+    FREE(lcpguidefile);
+
+    lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpexc")+1,sizeof(char));
+    sprintf(lcpexcfile,"%s/%s.a2iag.salcpexc",destdir,fileroot);
+    lcp_exceptions = (UINT4 *) Access_allocated(&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4));
+    n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
+    FREE(lcpexcfile);
+
+    /* Compute discriminating chars (DC) array */
+    discrim_chars = Sarray_discriminating_chars(&nbytes,SA,genomecomp,lcp_bytes,lcp_guide,
+						lcp_exceptions,/*guide_interval*/1024,/*n*/genomelength,
+						AG_CHARTABLE);
+    munmap((void *) SA,sa_len);
+    close(sa_fd);
+
+    fprintf(stderr,"Building child array\n");
+    /* Compute child array (relative values) */
+    child = Sarray_compute_child(lcp_bytes,lcp_guide,lcp_exceptions,/*n*/genomelength);
+    FREE(lcp_exceptions);
+    FREE(lcp_guide);
+
+    /* Write combined lcpchilddc file */
+    lcpchilddcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpchilddc")+1,sizeof(char));
+    sprintf(lcpchilddcfile,"%s/%s.a2iag.salcpchilddc",destdir,fileroot);
+    childexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.sachildexc")+1,sizeof(char));
+    sprintf(childexcfile,"%s/%s.a2iag.sachildexc",destdir,fileroot);
+    childguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.sachildguide1024")+1,sizeof(char));
+    sprintf(childguidefile,"%s/%s.a2iag.sachildguide1024",destdir,fileroot);
+    Bytecoding_write_lcpchilddc(lcpchilddcfile,childexcfile,childguidefile,child,
+				discrim_chars,lcp_bytes,genomelength,/*guide_interval*/1024);
+    FREE(childguidefile);
+    FREE(childexcfile);
+    FREE(lcpchilddcfile);
+    
+    FREE(child);
+    FREE(discrim_chars);
+    FREE(lcp_bytes);
+  }
+
   compute_ag(new_pointers_filename,new_offsets_filename,
 	     positions_high_fp,positions_low_fp,ref_offsets,ref_positions8,ref_positions4,
 	     oligospace,mask,coord_values_8p);
@@ -966,19 +1072,13 @@ main (int argc, char *argv[]) {
   }
   fclose(positions_low_fp);
   FREE(new_offsets_filename);
-  if (index1part != offsetscomp_basesize) {
-    FREE(new_pointers_filename);
-  }
+  FREE(new_pointers_filename);
 
 
   /* Open TC output files */
-  if (index1part == offsetscomp_basesize) {
-    new_pointers_filename = (char *) NULL;
-  } else {
-    new_pointers_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					     strlen(".")+strlen("a2itc")+strlen(filenames->pointers_index1info_ptr)+1,sizeof(char));
-    sprintf(new_pointers_filename,"%s/%s.%s%s",destdir,fileroot,"a2itc",filenames->pointers_index1info_ptr);
-  }
+  new_pointers_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					  strlen(".")+strlen("a2itc")+strlen(filenames->pointers_index1info_ptr)+1,sizeof(char));
+  sprintf(new_pointers_filename,"%s/%s.%s%s",destdir,fileroot,"a2itc",filenames->pointers_index1info_ptr);
 
   new_offsets_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
 			     strlen(".")+strlen("a2itc")+strlen(filenames->offsets_index1info_ptr)+1,sizeof(char));
@@ -1008,6 +1108,105 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Compute and write TC files */
+  if (build_suffix_array_p == true) {
+    fprintf(stderr,"Building suffix array for TC\n");
+    sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.sarray")+1,sizeof(char));
+    sprintf(sarrayfile,"%s/%s.a2itc.sarray",destdir,fileroot);
+    /* Already have genomecomp open */
+    gbuffer = (unsigned char *) CALLOC(genomelength+1,sizeof(unsigned char));
+    Genome_fill_buffer_int_string(genomecomp,/*left*/0,/*length*/genomelength,gbuffer,tc_conversion);
+    gbuffer[genomelength] = 0;	/* Tried N/X, but SACA_K fails */
+    Sarray_write_array_from_genome(sarrayfile,gbuffer,genomelength);
+
+    /* Bucket array */
+    indexijptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.saindex64meta")+1,sizeof(char));
+    sprintf(indexijptrsfile,"%s/%s.a2itc.saindex64meta",destdir,fileroot);
+    indexijcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.saindex64strm")+1,sizeof(char));
+    sprintf(indexijcompfile,"%s/%s.a2itc.saindex64strm",destdir,fileroot);
+    Sarray_write_index_interleaved(indexijptrsfile,indexijcompfile,
+				   sarrayfile,genomecomp,genomelength,/*compressp*/true,TC_CHARTABLE);
+    FREE(indexijcompfile);
+    FREE(indexijptrsfile);
+
+    SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
+    FREE(sarrayfile);
+
+#if 0
+    /* Not needed if we already have gbuffer */
+    /* Required for computing LCP, but uses non-SIMD instructions */
+    genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+    Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
+		    /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
+		    /*mode*/ATOI_STRANDED);
+#endif
+
+    lcp = Sarray_compute_lcp_from_genome(SA,gbuffer,/*n*/genomelength);
+    FREE(gbuffer);
+#if 0
+    Genome_free(&genomebits);
+#endif
+
+    /* Write lcp exceptions/guide, but return lcp_bytes */
+    lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpexc")+1,sizeof(char));
+    sprintf(lcpexcfile,"%s/%s.a2itc.salcpexc",destdir,fileroot);
+    lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpguide1024")+1,sizeof(char));
+    sprintf(lcpguidefile,"%s/%s.a2itc.salcpguide1024",destdir,fileroot);
+
+    lcp_bytes = Bytecoding_write_exceptions_only(lcpexcfile,lcpguidefile,lcp,genomelength,/*guide_interval*/1024);
+
+    FREE(lcpguidefile);
+    FREE(lcpexcfile);
+
+    FREE(lcp);			/* Use lcp_bytes, which are more memory-efficient than lcp */
+
+
+    /* DC array */
+    /* Assume we have lcp_bytes already in memory.  Don't need to use guide for speed. */
+    lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpguide1024")+1,sizeof(char));
+    sprintf(lcpguidefile,"%s/%s.a2itc.salcpguide1024",destdir,fileroot);
+    lcp_guide = (UINT4 *) Access_allocated(&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4));
+    FREE(lcpguidefile);
+
+    lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpexc")+1,sizeof(char));
+    sprintf(lcpexcfile,"%s/%s.a2itc.salcpexc",destdir,fileroot);
+    lcp_exceptions = (UINT4 *) Access_allocated(&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4));
+    n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
+    FREE(lcpexcfile);
+
+    /* Compute discriminating chars (DC) array */
+    discrim_chars = Sarray_discriminating_chars(&nbytes,SA,genomecomp,lcp_bytes,lcp_guide,
+						lcp_exceptions,/*guide_interval*/1024,/*n*/genomelength,
+						TC_CHARTABLE);
+    munmap((void *) SA,sa_len);
+    close(sa_fd);
+
+    fprintf(stderr,"Building child array\n");
+    /* Compute child array (relative values) */
+    child = Sarray_compute_child(lcp_bytes,lcp_guide,lcp_exceptions,/*n*/genomelength);
+    FREE(lcp_exceptions);
+    FREE(lcp_guide);
+
+    /* Write combined lcpchilddc file */
+    lcpchilddcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpchilddc")+1,sizeof(char));
+    sprintf(lcpchilddcfile,"%s/%s.a2itc.salcpchilddc",destdir,fileroot);
+    childexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.sachildexc")+1,sizeof(char));
+    sprintf(childexcfile,"%s/%s.a2itc.sachildexc",destdir,fileroot);
+    childguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.sachildguide1024")+1,sizeof(char));
+    sprintf(childguidefile,"%s/%s.a2itc.sachildguide1024",destdir,fileroot);
+    Bytecoding_write_lcpchilddc(lcpchilddcfile,childexcfile,childguidefile,child,
+				discrim_chars,lcp_bytes,genomelength,/*guide_interval*/1024);
+    FREE(childguidefile);
+    FREE(childexcfile);
+    FREE(lcpchilddcfile);
+    
+    FREE(child);
+    FREE(discrim_chars);
+    FREE(lcp_bytes);
+
+    Genome_free(&genomecomp);
+  }
+
   compute_tc(new_pointers_filename,new_offsets_filename,
 	     positions_high_fp,positions_low_fp,ref_offsets,ref_positions8,ref_positions4,
 	     oligospace,mask,coord_values_8p);
@@ -1016,9 +1215,7 @@ main (int argc, char *argv[]) {
   }
   fclose(positions_low_fp);
   FREE(new_offsets_filename);
-  if (index1part != offsetscomp_basesize) {
-    FREE(new_pointers_filename);
-  }
+  FREE(new_pointers_filename);
 
 
 
@@ -1066,9 +1263,6 @@ Usage: atoiindex [OPTIONS...] -d <genome>\n\
   -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less).\n\
                                    If not specified, the program will find the highest available\n\
                                    kmer size in the genome database\n\
-  -b, --basesize=INT             Base size to use in genome database.  If not specified, the program\n\
-                                   will find the highest available base size in the genome database\n\
-                                   within selected k-mer size\n\
   -q, --sampling=INT             Sampling to use in genome database.  If not specified, the program\n\
                                    will find the smallest available sampling value in the genome database\n\
                                    within selected basesize and k-mer size\n\

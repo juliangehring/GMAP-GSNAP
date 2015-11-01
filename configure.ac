@@ -175,6 +175,7 @@ AC_CHECK_SIZEOF(off_t)
 #AC_FUNC_REALLOC -- Causes use of rpl_realloc
 #AC_FUNC_CLOSEDIR_VOID -- We are checking return value
 
+AC_FUNC_ALLOCA
 AC_FUNC_FSEEKO
 
 #AC_FUNC_MMAP        # Checks only private fixed mapping of already-mapped memory

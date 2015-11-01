@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 131818 2014-03-28 23:20:33Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 132144 2014-04-02 16:02:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,8 +15,9 @@ static char rcsid[] = "$Id: indexdb_hr.c 131818 2014-03-28 23:20:33Z twu $";
 
 #include "indexdb_hr.h"
 #include "indexdbdef.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 #include "bitpack64-read.h"
+#include "bitpack64-readtwo.h"
 
 
 #ifdef WORDS_BIGENDIAN
@@ -653,19 +654,12 @@ point_one_shift (int *nentries, unsigned char **positions_high, T this, Storedol
 #ifdef WORDS_BIGENDIAN
     abort();
 #else
-    ptr0 = this->offsetscomp[subst];
-    end0 = this->offsetscomp[subst+1];
+    ptr0 = this->offsetsstrm[subst];
+    end0 = this->offsetsstrm[subst+1];
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr_huge(&end0,subst,this->offsetspages,this->gammaptrs,this->offsetscomp);
-
-  } else if (this->compression_type == GAMMA_COMPRESSION) {
-#ifdef WORDS_BIGENDIAN
-    abort();
-#else
-    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-#endif
+    ptr0 = Bitpack64_read_two_huge(&end0,subst,this->offsetspages,this->offsetsmeta,this->offsetsstrm);
   }
 
 
@@ -708,31 +702,20 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = this->offsetscomp[subst];
-      end0 = this->offsetscomp[subst+1];
+    if (this->offsetsstrm_access == ALLOCATED) {
+      ptr0 = this->offsetsstrm[subst];
+      end0 = this->offsetsstrm[subst+1];
     } else {
-      ptr0 = Bigendian_convert_uint(this->offsetscomp[subst]);
-      end0 = Bigendian_convert_uint(this->offsetscomp[subst+1]);
+      ptr0 = Bigendian_convert_uint(this->offsetsstrm[subst]);
+      end0 = Bigendian_convert_uint(this->offsetsstrm[subst+1]);
     }
 #else
-    ptr0 = this->offsetscomp[subst];
-    end0 = this->offsetscomp[subst+1];
+    ptr0 = this->offsetsstrm[subst];
+    end0 = this->offsetsstrm[subst+1];
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,subst,this->gammaptrs,this->offsetscomp);
-
-  } else if (this->compression_type == GAMMA_COMPRESSION) {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-    }
-#else
-    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-#endif
+    ptr0 = Bitpack64_read_two(&end0,subst,this->offsetsmeta,this->offsetsstrm);
   }
 
 
@@ -825,21 +808,21 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = this->offsetscomp[subst];
-      end0 = this->offsetscomp[subst+nadjacent];
+    if (this->offsetsstrm_access == ALLOCATED) {
+      ptr0 = this->offsetsstrm[subst];
+      end0 = this->offsetsstrm[subst+nadjacent];
     } else {
-      ptr0 = Bigendian_convert_uint(this->offsetscomp[subst]);
-      end0 = Bigendian_convert_uint(this->offsetscomp[subst+nadjacent]);
+      ptr0 = Bigendian_convert_uint(this->offsetsstrm[subst]);
+      end0 = Bigendian_convert_uint(this->offsetsstrm[subst+nadjacent]);
     }
 #else
-    ptr0 = this->offsetscomp[subst];
-    end0 = this->offsetscomp[subst+nadjacent];
+    ptr0 = this->offsetsstrm[subst];
+    end0 = this->offsetsstrm[subst+nadjacent];
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr_only_huge(subst,this->offsetspages,this->gammaptrs,this->offsetscomp);
-    end0 = Bitpack64_offsetptr_only_huge(subst+nadjacent,this->offsetspages,this->gammaptrs,this->offsetscomp);
+    ptr0 = Bitpack64_read_one_huge(subst,this->offsetspages,this->offsetsmeta,this->offsetsstrm);
+    end0 = Bitpack64_read_one_huge(subst+nadjacent,this->offsetspages,this->offsetsmeta,this->offsetsstrm);
 
   } else {
     abort();
@@ -858,35 +841,21 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = this->offsetscomp[subst];
-      end0 = this->offsetscomp[subst+nadjacent];
+    if (this->offsetsstrm_access == ALLOCATED) {
+      ptr0 = this->offsetsstrm[subst];
+      end0 = this->offsetsstrm[subst+nadjacent];
     } else {
-      ptr0 = Bigendian_convert_uint(this->offsetscomp[subst]);
-      end0 = Bigendian_convert_uint(this->offsetscomp[subst+nadjacent]);
+      ptr0 = Bigendian_convert_uint(this->offsetsstrm[subst]);
+      end0 = Bigendian_convert_uint(this->offsetsstrm[subst+nadjacent]);
     }
 #else
-    ptr0 = this->offsetscomp[subst];
-    end0 = this->offsetscomp[subst+nadjacent];
+    ptr0 = this->offsetsstrm[subst];
+    end0 = this->offsetsstrm[subst+nadjacent];
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr_only(subst,this->gammaptrs,this->offsetscomp);
-    end0 = Bitpack64_offsetptr_only(subst+nadjacent,this->gammaptrs,this->offsetscomp);
-
-  } else if (this->compression_type == GAMMA_COMPRESSION) {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-      end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-    } else {
-      ptr0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-      end0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-    }
-#else
-    ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-    end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-#endif
+    ptr0 = Bitpack64_read_one(subst,this->offsetsmeta,this->offsetsstrm);
+    end0 = Bitpack64_read_one(subst+nadjacent,this->offsetsmeta,this->offsetsstrm);
 
   } else {
     abort();
@@ -1867,36 +1836,25 @@ Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = this->offsetscomp[oligo];
-      end0 = this->offsetscomp[oligo+1];
+    if (this->offsetsstrm_access == ALLOCATED) {
+      ptr0 = this->offsetsstrm[oligo];
+      end0 = this->offsetsstrm[oligo+1];
     } else {
-      ptr0 = Bigendian_convert_uint(this->offsetscomp[oligo]);
-      end0 = Bigendian_convert_uint(this->offsetscomp[oligo+1]);
+      ptr0 = Bigendian_convert_uint(this->offsetsstrm[oligo]);
+      end0 = Bigendian_convert_uint(this->offsetsstrm[oligo+1]);
     }
 #else
-    ptr0 = this->offsetscomp[oligo];
-    end0 = this->offsetscomp[oligo+1];
+    ptr0 = this->offsetsstrm[oligo];
+    end0 = this->offsetsstrm[oligo+1];
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
 #ifdef LARGE_GENOMES
-    ptr0 = Bitpack64_offsetptr_huge(&end0,oligo,this->offsetspages,this->gammaptrs,this->offsetscomp);
+    ptr0 = Bitpack64_read_two_huge(&end0,oligo,this->offsetspages,this->offsetsmeta,this->offsetsstrm);
 #else
-    ptr0 = Bitpack64_offsetptr(&end0,oligo,this->gammaptrs,this->offsetscomp);
+    ptr0 = Bitpack64_read_two(&end0,oligo,this->offsetsmeta,this->offsetsstrm);
 #endif
 
-  } else if (this->compression_type == GAMMA_COMPRESSION) {
-#ifdef WORDS_BIGENDIAN
-    if (this->offsetscomp_access == ALLOCATED) {
-      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    } else {
-      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-    }
-#else
-    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-#endif
-    
   } else {
     abort();
   }

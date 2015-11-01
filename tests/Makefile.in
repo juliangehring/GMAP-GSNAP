@@ -54,6 +54,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/asm-bsr.m4 \
 	$(top_srcdir)/config/sse2_shift_defect.m4 \
 	$(top_srcdir)/config/ax_gcc_x86_cpuid.m4 \
+	$(top_srcdir)/config/ax_gcc_x86_avx_xgetbv.m4 \
 	$(top_srcdir)/config/ax_check_compile_flag.m4 \
 	$(top_srcdir)/config/ax_ext.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
@@ -65,6 +66,7 @@ SOURCES =
 DIST_SOURCES =
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
+ALLOCA = @ALLOCA@
 AMTAR = @AMTAR@
 AR = @AR@
 AUTOCONF = @AUTOCONF@

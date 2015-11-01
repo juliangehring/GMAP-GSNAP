@@ -1,4 +1,4 @@
-/* $Id: indel.h 125308 2014-01-31 22:52:08Z twu $ */
+/* $Id: indel.h 133760 2014-04-20 05:16:56Z twu $ */
 #ifndef INDEL_INCLUDED
 #define INDEL_INCLUDED
 #include "bool.h"
@@ -16,7 +16,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
 			      Univcoord_T chrhigh, Chrpos_T chrlength,
 			      int indels, Compress_T query_compress,
 			      int querylength, int max_mismatches_allowed,
-			      bool plusp, int genestrand, bool sarrayp);
+			      bool plusp, int genestrand, bool first_read_p, bool sarrayp);
 
 extern List_T
 Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T hits,
@@ -24,7 +24,7 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
 			     Univcoord_T chrhigh, Chrpos_T chrlength,
 			     int indels, Compress_T query_compress,
 			     int querylength, int max_mismatches_allowed,
-			     bool plusp, int genestrand, bool sarrayp);
+			     bool plusp, int genestrand, bool first_read_p, bool sarrayp);
 
 #endif
 

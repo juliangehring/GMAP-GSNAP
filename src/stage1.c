@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 129930 2014-03-13 03:29:20Z twu $";
+static char rcsid[] = "$Id: stage1.c 132710 2014-04-08 20:28:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1693,7 +1693,7 @@ find_range (int **querypositions, int *ninrange, int starti, int endi,
 
 static void
 find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
-		 Gregion_T gregion, bool continuousp) {
+		 Gregion_T gregion, Chrpos_T maxtotallen, bool continuousp) {
   int *querypositions, querystart, queryend, ninrange, i, j, lastj;
   Univcoord_T *range, leftbound, rightbound, best_start, best_end, expectedi, expectedj;
   int best_concentration, concentration;
@@ -1741,23 +1741,27 @@ find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
     for (i = 0; i < ninrange; i++) {
       debug2(printf("Looking at range %d = %u@%d (distance = %u)\n",
 		    i,range[i],querypositions[i],Gregion_genomicstart(gregion)-range[i]));
-      concentration = 1;
-      lastj = i;
-      for (j = i+1; j < ninrange; j++) {
-	debug2(printf("  %u@%d",range[j],querypositions[j]));
-	expectedj = range[i] + querypositions[j] - querypositions[i];
-	if (range[j] + 20 > expectedj && range[j] < expectedj + 20) {
-	  concentration++;
-	  lastj = j;
-	  debug2(printf("*"));
+      if (Gregion_genomicstart(gregion) > range[i] + maxtotallen) {
+	debug2(printf("  => Too far away, so skipping\n"));
+      } else {
+	concentration = 1;
+	lastj = i;
+	for (j = i+1; j < ninrange; j++) {
+	  debug2(printf("  %u@%d",range[j],querypositions[j]));
+	  expectedj = range[i] + querypositions[j] - querypositions[i];
+	  if (range[j] + 20 > expectedj && range[j] < expectedj + 20) {
+	    concentration++;
+	    lastj = j;
+	    debug2(printf("*"));
+	  }
 	}
-      }
-      debug2(printf("\nConcentration is %d\n\n",concentration));
-      if (concentration > best_concentration || 
-	  (concentration == best_concentration && range[i] > best_start)) {
-	best_concentration = concentration;
-	best_start = range[i];
-	debug2(best_querystart = querypositions[i]);
+	debug2(printf("\nConcentration is %d\n\n",concentration));
+	if (concentration > best_concentration || 
+	    (concentration == best_concentration && range[i] > best_start)) {
+	  best_concentration = concentration;
+	  best_start = range[i];
+	  debug2(best_querystart = querypositions[i]);
+	}
       }
     }
     FREE(querypositions);
@@ -1778,23 +1782,27 @@ find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
     for (i = 0; i < ninrange; i++) {
       debug2(printf("Looking at range %d = %u@%d (distance = %u)\n",
 		    i,range[i],querypositions[i],range[i]-Gregion_genomicend(gregion)));
-      concentration = 1;
-      lastj = i;
-      for (j = i+1; j < ninrange; j++) {
-	debug2(printf("  %u@%d",range[j],querypositions[j]));
-	expectedi = range[j] + querypositions[j] - querypositions[i];
+      if (range[i] > Gregion_genomicend(gregion) + maxtotallen) {
+	debug2(printf("  => Too far away, so skipping\n"));
+      } else {
+	concentration = 1;
+	lastj = i;
+	for (j = i+1; j < ninrange; j++) {
+	  debug2(printf("  %u@%d",range[j],querypositions[j]));
+	  expectedi = range[j] + querypositions[j] - querypositions[i];
 	if (range[i] + 20 > expectedi && range[i] < expectedi + 20) {
 	  concentration++;
 	  lastj = j;
 	  debug2(printf("*"));
 	}
-      }
-      debug2(printf("\nConcentration is %d\n\n",concentration));
-      if (concentration > best_concentration ||
+	}
+	debug2(printf("\nConcentration is %d\n\n",concentration));
+	if (concentration > best_concentration ||
 	  (concentration == best_concentration && range[i] < best_start)) {
-	best_concentration = concentration;
-	best_start = range[i];
-	debug2(best_querystart = querypositions[i]);
+	  best_concentration = concentration;
+	  best_start = range[i];
+	  debug2(best_querystart = querypositions[i]);
+	}
       }
     }
     FREE(querypositions);
@@ -1819,23 +1827,27 @@ find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
     for (i = 0; i < ninrange; i++) {
       debug2(printf("Looking at range %d = %u@%d (distance = %u)\n",
 		    i,range[i],querypositions[i],range[i]-Gregion_genomicend(gregion)));
-      concentration = 1;
-      lastj = i;
-      for (j = i+1; j < ninrange; j++) {
-	debug2(printf("  %u@%d",range[j],querypositions[j]));
-	expectedj = range[i] + querypositions[j] - querypositions[i];
-	if (range[j] + 20 > expectedj && range[j] < expectedj + 20) {
-	  concentration++;
-	  lastj = j;
-	  debug2(printf("*"));
+      if (range[i] > Gregion_genomicend(gregion) + maxtotallen) {
+	debug2(printf("  => Too far away, so skipping\n"));
+      } else {
+	concentration = 1;
+	lastj = i;
+	for (j = i+1; j < ninrange; j++) {
+	  debug2(printf("  %u@%d",range[j],querypositions[j]));
+	  expectedj = range[i] + querypositions[j] - querypositions[i];
+	  if (range[j] + 20 > expectedj && range[j] < expectedj + 20) {
+	    concentration++;
+	    lastj = j;
+	    debug2(printf("*"));
+	  }
 	}
-      }
-      debug2(printf("\nConcentration is %d\n\n",concentration));
-      if (concentration > best_concentration ||
-	  (concentration == best_concentration && range[lastj] < best_end)) {
-	best_concentration = concentration;
-	best_end = range[lastj];
-	debug2(best_queryend = querypositions[lastj]);
+	debug2(printf("\nConcentration is %d\n\n",concentration));
+	if (concentration > best_concentration ||
+	    (concentration == best_concentration && range[lastj] < best_end)) {
+	  best_concentration = concentration;
+	  best_end = range[lastj];
+	  debug2(best_queryend = querypositions[lastj]);
+	}
       }
     }
     FREE(querypositions);
@@ -1860,23 +1872,27 @@ find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
     for (i = 0; i < ninrange; i++) {
       debug2(printf("Looking at range %d = %u@%d (distance = %u)\n",
 		    i,range[i],querypositions[i],Gregion_genomicstart(gregion)-range[i]));
-      concentration = 1;
-      lastj = i;
-      for (j = i+1; j < ninrange; j++) {
-	debug2(printf("  %u@%d",range[j],querypositions[j]));
-	expectedi = range[j] + querypositions[j] - querypositions[i];
-	if (range[i] + 20 > expectedi && range[i] < expectedi + 20) {
-	  concentration++;
-	  lastj = j;
-	  debug2(printf("*"));
+      if (Gregion_genomicstart(gregion) > range[i] + maxtotallen) {
+	debug2(printf("  => Too far away, so skipping\n"));
+      } else {
+	concentration = 1;
+	lastj = i;
+	for (j = i+1; j < ninrange; j++) {
+	  debug2(printf("  %u@%d",range[j],querypositions[j]));
+	  expectedi = range[j] + querypositions[j] - querypositions[i];
+	  if (range[i] + 20 > expectedi && range[i] < expectedi + 20) {
+	    concentration++;
+	    lastj = j;
+	    debug2(printf("*"));
+	  }
 	}
-      }
-      debug2(printf("\nConcentration is %d\n\n",concentration));
-      if (concentration > best_concentration ||
-	  (concentration == best_concentration && range[lastj] > best_end)) {
-	best_concentration = concentration;
-	best_end = range[lastj];
-	debug2(best_queryend = querypositions[lastj]);
+	debug2(printf("\nConcentration is %d\n\n",concentration));
+	if (concentration > best_concentration ||
+	    (concentration == best_concentration && range[lastj] > best_end)) {
+	  best_concentration = concentration;
+	  best_end = range[lastj];
+	  debug2(best_queryend = querypositions[lastj]);
+	}
       }
     }
     FREE(querypositions);
@@ -3704,7 +3720,7 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
     gregion = (Gregion_T) List_head(p);
     if (Gregion_extendedp(gregion) == false) {
       /* Need to extend, otherwise we won't align NM_003360 */
-      find_extensions(&extension5,&extension3,this,gregion,/*continuousp*/false);
+      find_extensions(&extension5,&extension3,this,gregion,this->maxtotallen,/*continuousp*/false);
       Gregion_extend(gregion,extension5,extension3,this->querylength,min_extra_end);
     }
   }
@@ -4150,10 +4166,10 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
     if (Gregion_extendedp(gregion) == false) {
       /* Need to extend, otherwise we won't align NM_003360 */
       if (Gregion_genestrand(gregion) > 0) {
-	find_extensions(&extension5,&extension3,this_fwd,gregion,/*continuousp*/false);
+	find_extensions(&extension5,&extension3,this_fwd,gregion,this_fwd->maxtotallen,/*continuousp*/false);
 	Gregion_extend(gregion,extension5,extension3,this_fwd->querylength,min_extra_end);
       } else {
-	find_extensions(&extension5,&extension3,this_rev,gregion,/*continuousp*/false);
+	find_extensions(&extension5,&extension3,this_rev,gregion,this_rev->maxtotallen,/*continuousp*/false);
 	Gregion_extend(gregion,extension5,extension3,this_rev->querylength,min_extra_end);
       }
     }

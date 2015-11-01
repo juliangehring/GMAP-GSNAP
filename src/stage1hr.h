@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: stage1hr.h 135447 2014-05-07 22:25:45Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -53,15 +53,14 @@ Stage1_free (T *old, int querylength);
 
 extern Stage3end_T *
 Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
-		    Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
+		    Shortread_T queryseq, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
 		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
 		    double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-		    Oligoindex_T *oligoindices_major, int noligoindices_major,
-		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		    Pairpool_T pairpool, Diagpool_T diagpool,
+		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    bool keep_floors_p);
 
@@ -70,15 +69,14 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 		    Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, int *second_absmq5,
 		    Stage3end_T **stage3array3, int *nhits3, int *first_absmq3, int *second_absmq3,
 		    Shortread_T queryseq5, Shortread_T queryseq3,
-		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
+		    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int indexdb_size_threshold,
 		    Genome_T genome, Floors_T *floors_array,
 		    double usermax_level_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-		    Oligoindex_T *oligoindices_major, int noligoindices_major,
-		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		    Pairpool_T pairpool, Diagpool_T diagpool,
+		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    Chrpos_T pairmax, bool keep_floors_p);
 

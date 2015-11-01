@@ -1,4 +1,4 @@
-/* $Id: chimera.h 131549 2014-03-26 20:03:36Z twu $ */
+/* $Id: chimera.h 132706 2014-04-08 20:02:26Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -13,6 +13,10 @@ typedef struct Chimera_T *Chimera_T;
 
 #define T Chimera_T
 
+extern Stage3_T
+Chimera_left_part (T this);
+extern Stage3_T
+Chimera_right_part (T this);
 extern int 
 Chimera_pos (T this);
 extern int
@@ -27,7 +31,8 @@ extern double
 Chimera_acceptor_prob (T this);
 
 extern T
-Chimera_new (int chimerapos, int chimeraequivpos, int exonexonpos, int cdna_direction,
+Chimera_new (Stage3_T from, Stage3_T to, int chimerapos, int chimeraequivpos,
+	     int exonexonpos, int cdna_direction,
 	     char donor1, char donor2, char acceptor2, char acceptor1,
 	     bool donor_watsonp, bool acceptor_watsonp,
 	     double donor_prob, double acceptor_prob);

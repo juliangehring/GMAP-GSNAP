@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 121509 2013-12-13 21:56:56Z twu $";
+static char rcsid[] = "$Id: snpindex.c 133555 2014-04-17 23:06:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -97,8 +97,6 @@ static char *user_sourcedir = NULL;
 static char *user_destdir = NULL;
 static char *dbroot = NULL;
 static char *fileroot = NULL;
-static int offsetscomp_basesize = 12;
-static int required_basesize = 0;
 static int index1part = 15;
 static int required_index1part = 0;
 static int index1interval = 3;
@@ -116,7 +114,6 @@ static struct option long_options[] = {
   /* Input options */
   {"sourcedir", required_argument, 0, 'D'},	/* user_sourcedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
-  {"basesize", required_argument, 0, 'b'}, /* required_basesize */
   {"kmer", required_argument, 0, 'k'},	   /* required_index1part */
   {"sampling", required_argument, 0, 'q'},  /* required_interval */
   {"destdir", required_argument, 0, 'V'},	/* user_destdir */
@@ -1054,7 +1051,7 @@ main (int argc, char *argv[]) {
   int long_option_index = 0;
   const char *long_name;
 
-  while ((opt = getopt_long(argc,argv,"D:d:b:k:q:V:v:w:",
+  while ((opt = getopt_long(argc,argv,"D:d:k:q:V:v:w:",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 0: 
@@ -1074,7 +1071,6 @@ main (int argc, char *argv[]) {
 
     case 'D': user_sourcedir = optarg; break;
     case 'd': dbroot = optarg; break;
-    case 'b': required_basesize = atoi(optarg); break;
     case 'k': required_index1part = atoi(optarg); break;
     case 'q': required_interval = atoi(optarg); break;
     case 'V': user_destdir = optarg; break;
@@ -1134,7 +1130,7 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"done\n");
     }
     FREE(filename);
-    /* FREE(mapdir); -- Freed at end of program */
+    FREE(mapdir);
   }
 
 
@@ -1178,9 +1174,9 @@ main (int argc, char *argv[]) {
   }
 
 
-  filenames = Indexdb_get_filenames(&compression_type,&offsetscomp_basesize,&index1part,&index1interval,
+  filenames = Indexdb_get_filenames(&compression_type,&index1part,&index1interval,
 				    sourcedir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-				    required_basesize,required_index1part,required_interval,
+				    required_index1part,required_interval,
 				    /*offsets_only_p*/false);
 
   /* Compute offsets and write genomecomp */
@@ -1209,14 +1205,14 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-			     strlen(".genomebits.")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename,"%s/%s.genomebits.%s",destdir,fileroot,snps_root);
+			     strlen(".genomebits128.")+strlen(snps_root)+1,sizeof(char));
+  sprintf(filename,"%s/%s.genomebits128.%s",destdir,fileroot,snps_root);
   if ((genomebits_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing genome\n",filename);
     exit(9);
   }
   fprintf(stderr,"Writing filename %s...",filename);
-  Compress_unshuffle(/*out*/genomebits_fp,/*in*/genome_fp);
+  Compress_unshuffle_bits128(/*out*/genomebits_fp,/*in*/genome_fp);
   fclose(genomebits_fp);
   fclose(genome_fp);
   FREE(filename);
@@ -1234,9 +1230,7 @@ main (int argc, char *argv[]) {
   /* Read reference offsets and update */
 #ifdef EXTRA_ALLOCATION
   if (compression_type == BITPACK64_COMPRESSION) {
-    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    ref_offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,index1part);
   } else {
     abort();
   }
@@ -1255,9 +1249,7 @@ main (int argc, char *argv[]) {
 #else
   /* This version saves on one allocation of oligospace * sizeof(Positionsptr_T) */
   if (compression_type == BITPACK64_COMPRESSION) {
-    offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+    offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,index1part);
   } else {
     abort();
   }
@@ -1290,18 +1282,11 @@ main (int argc, char *argv[]) {
 
 
   fprintf(stderr,"Writing %lu offsets with %u total positions\n",oligospace+1,offsets[oligospace]);
-#ifdef PRE_GAMMAS
-  FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
-#else
   if (compression_type == BITPACK64_COMPRESSION) {
     Bitpack64_write_differential(/*ptrsfile*/filename1,/*compfile*/filename2,offsets,oligospace);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    Indexdb_write_gammaptrs(filename1,filename2,offsets,oligospace,
-			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
   } else {
     abort();
   }
-#endif
   FREE(filename2);
   if (filename1 != NULL) {
     FREE(filename1);
@@ -1386,9 +1371,7 @@ main (int argc, char *argv[]) {
   fprintf(stderr,"Merging snp positions with reference positions\n");
 #ifndef EXTRA_ALLOCATION
   if (compression_type == BITPACK64_COMPRESSION) {
-    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
-  } else if (compression_type == GAMMA_COMPRESSION) {
-    ref_offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,index1part);
   } else {
     abort();
   }
@@ -1458,42 +1441,13 @@ main (int argc, char *argv[]) {
   Filenames_free(&filenames);
 
 
-  /* Message about installing IIT file */
-  if (!strcmp(destdir,sourcedir)) {
-    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+ strlen(fileroot) + strlen(".maps/") +
-			       strlen(snps_root)+strlen(".iit")+1,sizeof(char));
-    sprintf(filename,"%s/%s.maps/%s.iit",destdir,fileroot,snps_root);
-  } else {
-    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+
-			       strlen(snps_root)+strlen(".iit")+1,sizeof(char));
-    sprintf(filename,"%s/%s.iit",destdir,snps_root);
-  }
-
-  FREE(dbversion);
-  FREE(fileroot);
-  FREE(sourcedir);
-
-
-  fprintf(stderr,"SNP genome indices created.\n");
-  if (Access_file_exists_p(filename) == true) {
-    if (Access_file_equal(filename,argv[1]) == false) {
-      fprintf(stderr,"IIT file already present as %s, but it is different from the given file %s\n",
-	      filename,argv[1]);
-      fprintf(stderr,"Please copy file %s as %s\n",argv[1],filename);
-    } else {
-      fprintf(stderr,"IIT file already present as %s, and it is the same as given file %s\n",
-	      filename,argv[1]);
-    }
-
-  } else if (argc > 1) {
-    fprintf(stderr,"Now installing IIT file %s as %s...",
-	    argv[1],filename);
-    Access_file_copy(/*dest*/filename,/*source*/argv[1]);
-    fprintf(stderr,"done\n");
-
-  } else {
-    fprintf(stderr,"Now copying IIT file from %s/%s.iit to %s...",
-	    mapdir,snps_root,filename);
+  if (argc <= 1) {
+    /* Program called using -v flag only.  No need to install. */
+    /* fprintf(stderr,"IIT file already present in .maps directory\n"); */
+#if 0
+    /* Old code used for copying IIT file to .maps directory */
+    /* To use this code, cannot free mapdir earlier */
+    fprintf(stderr,"Now copying IIT file from %s/%s.iit to %s...",mapdir,snps_root,filename);
     filename1 = (char *) CALLOC(strlen(mapdir)+strlen("/")+
 				strlen(snps_root)+strlen(".iit")+1,sizeof(char));
     sprintf(filename1,"%s/%s.iit",mapdir,snps_root);
@@ -1501,9 +1455,44 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"done\n");
     FREE(filename1);
     FREE(mapdir);
+#endif
+
+  } else {
+    /* Install IIT file */
+    if (!strcmp(destdir,sourcedir)) {
+      filename = (char *) CALLOC(strlen(destdir)+strlen("/")+ strlen(fileroot) + strlen(".maps/") +
+				 strlen(snps_root)+strlen(".iit")+1,sizeof(char));
+      sprintf(filename,"%s/%s.maps/%s.iit",destdir,fileroot,snps_root);
+    } else {
+      filename = (char *) CALLOC(strlen(destdir)+strlen("/")+
+				 strlen(snps_root)+strlen(".iit")+1,sizeof(char));
+      sprintf(filename,"%s/%s.iit",destdir,snps_root);
+    }
+
+    fprintf(stderr,"SNP genome indices created.\n");
+    if (Access_file_exists_p(filename) == true) {
+      if (Access_file_equal(filename,argv[1]) == false) {
+	fprintf(stderr,"IIT file already present as %s, but it is different from the given file %s\n",
+		filename,argv[1]);
+	fprintf(stderr,"Please copy file %s as %s\n",argv[1],filename);
+      } else {
+	fprintf(stderr,"IIT file already present as %s, and it is the same as given file %s\n",
+		filename,argv[1]);
+      }
+
+    } else {
+      fprintf(stderr,"Now installing IIT file %s as %s...",
+	      argv[1],filename);
+      Access_file_copy(/*dest*/filename,/*source*/argv[1]);
+      fprintf(stderr,"done\n");
+    }
+
+    FREE(filename);
   }
 
-  FREE(filename);
+  FREE(dbversion);
+  FREE(fileroot);
+  FREE(sourcedir);
 
   return 0;
 }
@@ -1529,12 +1518,9 @@ for <genome>.\n\
   -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less).\n\
                                    If not specified, the program will find the highest available\n\
                                    kmer size in the genome database\n\
-  -b, --basesize=INT             Base size to use in genome database.  If not specified, the program\n\
-                                   will find the highest available base size in the genome database\n\
-                                   within selected k-mer size\n\
   -q, --sampling=INT             Sampling to use in genome database.  If not specified, the program\n\
                                    will find the smallest available sampling value in the genome database\n\
-                                   within selected basesize and k-mer size\n\
+                                   within selected k-mer size\n\
   -V, --destdir=directory        Directory where to write SNP index files (default is\n\
                                    GMAP genome directory specified at compile time)\n\
   -v, --snpsdb=STRING            Name of SNP database\n\

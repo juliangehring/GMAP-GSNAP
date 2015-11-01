@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 101271 2013-07-12 02:44:39Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 135656 2014-05-09 01:47:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,7 +13,6 @@ static char rcsid[] = "$Id: splicetrie_build.c 101271 2013-07-12 02:44:39Z twu $
 #include "mem.h"
 #include "iitdef.h"
 #include "interval.h"
-#include "genome_hr.h"
 
 
 #define MININTRONLEN 9
@@ -278,21 +277,13 @@ unshuffle16 (bool *saw_n_p, char *buffer) {
 }
 
 
-
-typedef struct Splicestring_T *Splicestring_T;
-struct Splicestring_T {
-  Genomecomp_T string;
-  Genomecomp_T splicesite;
-  Genomecomp_T splicesite_i;
-};
-
-
+#if 0
+/* Replaced by procedures in splicestringpool.c */
 static void
 Splicestring_free (Splicestring_T *old) {
   FREE(*old);
   return;
 }
-
 
 void
 Splicestring_gc (List_T *splicestrings, int nsplicesites) {
@@ -312,7 +303,6 @@ Splicestring_gc (List_T *splicestrings, int nsplicesites) {
   return;
 }
 
-
 static Splicestring_T
 Splicestring_new (Genomecomp_T string, Genomecomp_T splicesite, int splicesite_i) {
   Splicestring_T new = (Splicestring_T) MALLOC(sizeof(*new));
@@ -322,6 +312,7 @@ Splicestring_new (Genomecomp_T string, Genomecomp_T splicesite, int splicesite_i
   new->splicesite_i = (Genomecomp_T) splicesite_i;
   return new;
 }
+#endif
 
 static int
 Splicestring_cmp (const void *a, const void *b) {
@@ -343,7 +334,8 @@ Splicestring_cmp (const void *a, const void *b) {
 
 
 static List_T
-allelic_combinations (Genomecomp_T refstring, Genomecomp_T altstring, Genomecomp_T splicesite, int splicesite_i) {
+allelic_combinations (Genomecomp_T refstring, Genomecomp_T altstring, Genomecomp_T splicesite, int splicesite_i,
+		      Splicestringpool_T splicestringpool) {
   List_T splicestrings = NULL;
   Uintlist_T combinations, newcombinations, temp, p;
   int refc, altc;
@@ -374,7 +366,8 @@ allelic_combinations (Genomecomp_T refstring, Genomecomp_T altstring, Genomecomp
   }
 
   for (p = combinations; p != NULL; p = Uintlist_next(p)) {
-    splicestrings = List_push(splicestrings,(void *) Splicestring_new(Uintlist_head(p),splicesite,splicesite_i));
+    splicestrings = Splicestringpool_push(splicestrings,splicestringpool,
+					  Uintlist_head(p),splicesite,splicesite_i);
   }
 
   Uintlist_free(&combinations);
@@ -396,7 +389,8 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 				     List_T **splicestrings, Genomecomp_T **splicefrags_ref, Genomecomp_T **splicefrags_alt,
 				     int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
 				     int donor_typeint, int acceptor_typeint, Univ_IIT_T chromosome_iit,
-				     Genome_T genome, Genome_T genomealt, Chrpos_T shortsplicedist) {
+				     Genome_T genome, Genome_T genomealt, Chrpos_T shortsplicedist,
+				     Splicestringpool_T splicestringpool) {
   Univcoord_T *splicesites, chroffset, chrhigh, position;
   Chrpos_T chrlength, chrpos;
   Univcoord_T last_donor, last_antidonor, last_acceptor, last_antiacceptor;
@@ -407,6 +401,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
   int divno, nsplicesites1, i, k;
   Chrnum_T chrnum;
   Interval_T *intervals, interval;
+  struct Interval_T *interval_structs;
   char gbuffer_ref[17], gbuffer_alt[17], *chr;
   char *restofheader, *annot;
   bool firstp = true, saw_n_p, allocp, alloc_header_p;
@@ -456,7 +451,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	last_donor = last_antidonor = last_acceptor = last_antiacceptor = 0U;
 	for (i = 0; i < nsplicesites1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_low(intervals[i]);
+	  chrpos = Interval_low(interval);
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -531,6 +526,9 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
     *splicefrags_alt = (Genomecomp_T *) CALLOC(*nsplicesites,sizeof(Genomecomp_T));
   }
 
+  /* Use interval_structs instead of intervals, because we want to
+     copy information and avoid creating many Interval_T objects */
+
   k = 0;
   for (chrnum = 1; chrnum <= Univ_IIT_total_nintervals(chromosome_iit); chrnum++) {
     if ((divno = splicing_divint_crosstable[chrnum]) > 0) {
@@ -539,11 +537,11 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
       splicesites1 = IIT_get_with_divno(&nsplicesites1,splicing_iit,divno,
 					0U,chrlength-1U,/*sortp*/false);
       if (nsplicesites1 > 0) {
-	intervals = (Interval_T *) CALLOC(nsplicesites1,sizeof(Interval_T));
+	interval_structs = (struct Interval_T *) CALLOC(nsplicesites1,sizeof(struct Interval_T));
 	for (i = 0; i < nsplicesites1; i++) {
 	  /* intervals[i] = &(splicing_iit->intervals[divno][i]); */
 	  /* Copy so we can store distance information in Interval_high */
-	  intervals[i] = Interval_copy(&(splicing_iit->intervals[divno][i]));
+	  Interval_copy_existing(&(interval_structs[i]),&(splicing_iit->intervals[divno][i]));
 	  if (*distances_observed_p == false) {
 	    /* No, want to have essentially zero distance */
 	    /* Interval_store_length(intervals[i],shortsplicedist); */
@@ -559,9 +557,9 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	      exit(9);
 	    } else if (distance > (int) shortsplicedist) {
 	      ntoolong++;
-	      Interval_store_length(intervals[i],distance + SPLICEDIST_EXTRA);  /* Previously stored shortsplicedist */
+	      Interval_store_length(&(interval_structs[i]),distance + SPLICEDIST_EXTRA);  /* Previously stored shortsplicedist */
 	    } else {
-	      Interval_store_length(intervals[i],distance + SPLICEDIST_EXTRA);
+	      Interval_store_length(&(interval_structs[i]),distance + SPLICEDIST_EXTRA);
 	    }
 	    if (alloc_header_p == true) {
 	      FREE(restofheader);
@@ -569,12 +567,12 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	  }
 	}
 
-	qsort(intervals,nsplicesites1,sizeof(Interval_T),Interval_cmp_low);
+	qsort(interval_structs,nsplicesites1,sizeof(struct Interval_T),Interval_cmp_low_struct);
 
 	last_donor = last_antidonor = last_acceptor = last_antiacceptor = 0U;
 	for (i = 0; i < nsplicesites1; i++) {
-	  interval = intervals[i];
-	  chrpos = Interval_low(intervals[i]);
+	  interval = &(interval_structs[i]);
+	  chrpos = Interval_low(interval);
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -620,10 +618,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 		  if (allocp) FREE(chr);
 
 		} else if (genomealt) {
-		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		  k++;
 		} else {
-		  (*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		  (*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		  k++;
 		}
 	      }
@@ -660,10 +658,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 			  chr,chrpos);
 		  if (allocp) FREE(chr);
 		} else if (genomealt) {
-		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		  k++;
 		} else {
-		  (*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		  (*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		  k++;
 		}
 	      }
@@ -702,10 +700,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 			  chr,chrpos);
 		  if (allocp) FREE(chr);
 		} else if (genomealt) {
-		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		  k++;
 		} else {
-		  (*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		  (*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		  k++;
 		}
 	      }
@@ -742,10 +740,10 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 			  chr,chrpos);
 		  if (allocp) FREE(chr);
 		} else if (genomealt) {
-		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		  (*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		  k++;
 		} else {
-		  (*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		  (*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		  k++;
 		}
 	      }
@@ -754,10 +752,7 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 	  }
 	}
 
-	for (i = 0; i < nsplicesites1; i++) {
-	  Interval_free(&(intervals[i]));
-	}
-	FREE(intervals);
+	FREE(interval_structs);
 	FREE(splicesites1);
       }
     }
@@ -813,7 +808,8 @@ Splicetrie_retrieve_via_introns (
 				 Splicetype_T **splicetypes, Chrpos_T **splicedists,
 				 List_T **splicestrings, Genomecomp_T **splicefrags_ref, Genomecomp_T **splicefrags_alt,
 				 int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
-				 Univ_IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt) {
+				 Univ_IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt,
+				 Splicestringpool_T splicestringpool) {
   Univcoord_T *splicesites, chroffset, chrhigh, position;
   Chrpos_T chrlength, chrpos;
   Univcoord_T last_donor, last_antidonor, last_acceptor, last_antiacceptor;
@@ -854,7 +850,7 @@ Splicetrie_retrieve_via_introns (
 	last_donor = last_antiacceptor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_low(intervals[i]);
+	  chrpos = Interval_low(interval);
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -880,7 +876,7 @@ Splicetrie_retrieve_via_introns (
 	last_acceptor = last_antidonor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_high(intervals[i]) - INTRON_HIGH_TO_LOW;
+	  chrpos = Interval_high(interval) - INTRON_HIGH_TO_LOW;
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -943,6 +939,7 @@ Splicetrie_retrieve_via_introns (
     *splicefrags_alt = (Genomecomp_T *) CALLOC(*nsplicesites,sizeof(Genomecomp_T));
   }
 
+
   k = 0;
   for (chrnum = 1; chrnum <= Univ_IIT_total_nintervals(chromosome_iit); chrnum++) {
     if ((divno = splicing_divint_crosstable[chrnum]) > 0) {
@@ -959,7 +956,7 @@ Splicetrie_retrieve_via_introns (
 	last_donor = last_antiacceptor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_low(intervals[i]);
+	  chrpos = Interval_low(interval);
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -1003,10 +1000,10 @@ Splicetrie_retrieve_via_introns (
 			chr,chrpos);
 		if (allocp) FREE(chr);
 	      } else if (genomealt) {
-		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		k++;
 	      } else {
-		(*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		(*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		k++;
 	      }
 	    }
@@ -1043,10 +1040,10 @@ Splicetrie_retrieve_via_introns (
 			chr,chrpos);
 		if (allocp) FREE(chr);
 	      } else if (genomealt) {
-		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		k++;
 	      } else {
-		(*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		(*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		k++;
 	      }
 	    }
@@ -1058,7 +1055,7 @@ Splicetrie_retrieve_via_introns (
 	last_acceptor = last_antidonor = 0U;
 	for (i = 0; i < nintrons1; i++) {
 	  interval = intervals[i];
-	  chrpos = Interval_high(intervals[i]) - INTRON_HIGH_TO_LOW;
+	  chrpos = Interval_high(interval) - INTRON_HIGH_TO_LOW;
 	  position = chrpos + chroffset;
 
 	  if (position >= chrhigh) {
@@ -1102,10 +1099,10 @@ Splicetrie_retrieve_via_introns (
 			chr,chrpos);
 		if (allocp) FREE(chr);
 	      } else if (genomealt) {
-		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		k++;
 	      } else {
-		(*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		(*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		k++;
 	      }
 	    }
@@ -1142,10 +1139,10 @@ Splicetrie_retrieve_via_introns (
 			chr,chrpos);
 		if (allocp) FREE(chr);
 	      } else if (genomealt) {
-		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k);
+		(*splicestrings)[k] = allelic_combinations(refstring,altstring,position,k,splicestringpool);
 		k++;
 	      } else {
-		(*splicestrings)[k] = List_push(NULL,(void *) Splicestring_new(refstring,position,k));
+		(*splicestrings)[k] = Splicestringpool_push(NULL,splicestringpool,refstring,position,k);
 		k++;
 	      }
 	    }
@@ -1385,12 +1382,74 @@ Trie_new (Splicestring_T *sites, int nsites, int charpos) {
 #endif
 
 
+/* Based on original Trie_output_new, which used repeated calls to Uintlist_push */
+static int
+Trie_output_size (int size, Splicestring_T *sites, int nsites, int charpos) {
+  int i, k;
+  unsigned int posa, posc, posg, post;
+  int na, nc, ng, nt;
+
+  if (nsites == 0) {
+    debug0(printf("nsites == 0, so not adding anything\n"));
+
+  } else if (nsites == 1) {
+    debug0(printf("nsites == 1, so adding 1\n"));
+    size += 1;
+    
+  } else if (charpos >= 16) {
+    if (nsites > MAX_DUPLICATES) {
+      fprintf(stderr,"Warning: Splicetrie exceeded max duplicates value of %d\n",MAX_DUPLICATES);
+    } else {
+      size += 1;
+
+      for (i = 0; i < nsites; i++) {
+	debug0(printf(" %d",sites[i]->splicesite_i));
+	size += 1;
+      }
+      debug0(printf("\n"));
+    }
+      
+  } else {
+    na = nc = ng = nt = 0;
+    for (i = 0; i < nsites; i++) {
+      switch ((sites[i]->string >> (30 - 2*charpos)) & 0x03) {
+      case RIGHT_A: na++; break;
+      case RIGHT_C: nc++; break;
+      case RIGHT_G: ng++; break;
+      case RIGHT_T: nt++; break;
+      default: abort();
+      }
+    }
+    debug0(printf("%d A, %d C, %d G, %d T\n",na,nc,ng,nt));
+
+    k = 0;
+    size = Trie_output_size(size,&(sites[k]),na,charpos+1);
+
+    k += na;
+    size = Trie_output_size(size,&(sites[k]),nc,charpos+1);
+
+    k += nc;
+    size = Trie_output_size(size,&(sites[k]),ng,charpos+1);
+
+    k += ng;
+    size = Trie_output_size(size,&(sites[k]),nt,charpos+1);
+    /* k += nt; */
+
+    size += 5;
+  }
+
+  return size;
+}
+
+
+
+#ifdef USE_LIST
 /* Combination of Trie_new and Trie_output */
 /* Note that when *ptr = NULL_POINTER, we do not need to advance
    nprinted, because no entry is made into triecontents_list */
 static Uintlist_T
-Trie_output_new (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list,
-		 Splicestring_T *sites, int nsites, int charpos) {
+Trie_output_list (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list,
+		  Splicestring_T *sites, int nsites, int charpos) {
   int i, k;
   unsigned int posa, posc, posg, post;
   int na, nc, ng, nt;
@@ -1436,16 +1495,16 @@ Trie_output_new (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list,
     debug0(printf("%d A, %d C, %d G, %d T\n",na,nc,ng,nt));
 
     k = 0;
-    triecontents_list = Trie_output_new(&posa,&(*nprinted),triecontents_list,
+    triecontents_list = Trie_output_list(&posa,&(*nprinted),triecontents_list,
 					&(sites[k]),na,charpos+1);
     k += na;
-    triecontents_list = Trie_output_new(&posc,&(*nprinted),triecontents_list,
+    triecontents_list = Trie_output_list(&posc,&(*nprinted),triecontents_list,
 					&(sites[k]),nc,charpos+1);
     k += nc;
-    triecontents_list = Trie_output_new(&posg,&(*nprinted),triecontents_list,
+    triecontents_list = Trie_output_list(&posg,&(*nprinted),triecontents_list,
 					&(sites[k]),ng,charpos+1);
     k += ng;
-    triecontents_list = Trie_output_new(&post,&(*nprinted),triecontents_list,
+    triecontents_list = Trie_output_list(&post,&(*nprinted),triecontents_list,
 					&(sites[k]),nt,charpos+1);
     /* k += nt; */
 
@@ -1477,6 +1536,99 @@ Trie_output_new (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list,
 
   return triecontents_list;
 }
+
+#else
+
+/* ptr is for offsets */
+static unsigned int *
+Trie_output_array (unsigned int *ptr, int *nprinted, unsigned int *contents,
+		   Splicestring_T *sites, int nsites, int charpos) {
+  int i, k;
+  unsigned int posa, posc, posg, post;
+  int na, nc, ng, nt;
+
+  if (nsites == 0) {
+    debug0(printf("nsites == 0, so NULL\n"));
+    *ptr = NULL_POINTER;
+
+  } else if (nsites == 1) {
+    debug0(printf("nsites == 1, so pushing %d\n",sites[0]->splicesite_i));
+    *ptr = *nprinted;
+    *contents++ = sites[0]->splicesite_i;
+    *nprinted += 1;
+    
+  } else if (charpos >= 16) {
+    if (nsites > MAX_DUPLICATES) {
+      fprintf(stderr,"Warning: Splicetrie exceeded max duplicates value of %d\n",MAX_DUPLICATES);
+      *ptr = NULL_POINTER;
+    } else {
+      *ptr = *nprinted;
+
+      *contents++ = (Triecontent_T) (-nsites);
+      *nprinted += 1;
+      for (i = 0; i < nsites; i++) {
+	debug0(printf(" %d",sites[i]->splicesite_i));
+	*contents++ = sites[i]->splicesite_i;
+	*nprinted += 1;
+      }
+      debug0(printf("\n"));
+    }
+      
+  } else {
+    na = nc = ng = nt = 0;
+    for (i = 0; i < nsites; i++) {
+      switch ((sites[i]->string >> (30 - 2*charpos)) & 0x03) {
+      case RIGHT_A: na++; break;
+      case RIGHT_C: nc++; break;
+      case RIGHT_G: ng++; break;
+      case RIGHT_T: nt++; break;
+      default: abort();
+      }
+    }
+    debug0(printf("%d A, %d C, %d G, %d T\n",na,nc,ng,nt));
+
+    k = 0;
+    contents = Trie_output_array(&posa,&(*nprinted),contents,&(sites[k]),na,charpos+1);
+
+    k += na;
+    contents = Trie_output_array(&posc,&(*nprinted),contents,&(sites[k]),nc,charpos+1);
+
+    k += nc;
+    contents = Trie_output_array(&posg,&(*nprinted),contents,&(sites[k]),ng,charpos+1);
+
+    k += ng;
+    contents = Trie_output_array(&post,&(*nprinted),contents,&(sites[k]),nt,charpos+1);
+    /* k += nt; */
+
+    *ptr = *nprinted;
+    *contents++ = INTERNAL_NODE;
+
+    if (posa == NULL_POINTER) {
+      *contents++ = EMPTY_POINTER;
+    } else {
+      *contents++ = *ptr - posa;
+    }
+    if (posc == NULL_POINTER) {
+      *contents++ = EMPTY_POINTER;
+    } else {
+      *contents++ = *ptr - posc;
+    }
+    if (posg == NULL_POINTER) {
+      *contents++ = EMPTY_POINTER;
+    } else {
+      *contents++ = *ptr - posg;
+    }
+    if (post == NULL_POINTER) {
+      *contents++ = EMPTY_POINTER;
+    } else {
+      *contents++ = *ptr - post;
+    }
+    *nprinted += 5;
+  }
+
+  return contents;
+}
+#endif
 
 
 #if 0
@@ -1560,8 +1712,16 @@ Trie_print_compact (int *ptr, FILE *fp, Trie_T trie, int nprinted) {
 #endif
 
 
+#ifdef USE_2BYTE_RELOFFSETS
+#define TRIE_EMPTY_SIZE 3
+#else
+#define TRIE_EMPTY_SIZE 5
+#endif
+
+
+#ifdef USE_LIST
 static Uintlist_T
-Trie_output_empty (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list) {
+Trie_output_empty_list (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_list) {
   *ptr = (unsigned int) *nprinted;
   triecontents_list = Uintlist_push(triecontents_list,INTERNAL_NODE);
 #ifdef USE_2BYTE_RELOFFSETS
@@ -1577,6 +1737,27 @@ Trie_output_empty (unsigned int *ptr, int *nprinted, Uintlist_T triecontents_lis
 #endif
   return triecontents_list;
 }
+
+#else
+static unsigned int *
+Trie_output_empty_array (unsigned int *ptr, int *nprinted, unsigned int *contents) {
+  *ptr = (unsigned int) *nprinted;
+  *contents++ = INTERNAL_NODE;
+#ifdef USE_2BYTE_RELOFFSETS
+  *contents++ = EMPTY_POINTER;
+  *contents++ = EMPTY_POINTER;
+  *nprinted += 3;
+#else
+  *contents++ = EMPTY_POINTER;
+  *contents++ = EMPTY_POINTER;
+  *contents++ = EMPTY_POINTER;
+  *contents++ = EMPTY_POINTER;
+  *nprinted += 5;
+#endif
+  return contents;
+}
+
+#endif
 
 
 #if 0
@@ -1879,17 +2060,358 @@ Splicetrie_npartners (int **nsplicepartners_skip, int **nsplicepartners_obs, int
 }
 
 
+#define MAX_SITES_ALLOCATED 1000
+
+static void
+build_via_splicesites_size (int *trie_obs_size, int *trie_max_size,
+			    int *nsplicepartners_skip, int *nsplicepartners_obs, int *nsplicepartners_max,
+			    Splicetype_T *splicetypes, List_T *splicestrings, int nsplicesites,
+			    bool distances_observed_p) {
+  List_T p;
+  int nsites, j, j1;
+  Splicestring_T *sites, sites_allocated[MAX_SITES_ALLOCATED];
+  int npartners;
+
+  for (j = 0; j < nsplicesites; j++) {
+    switch (splicetypes[j]) {
+    case DONOR:
+      j1 = j + 1 + nsplicepartners_skip[j];
+
+      if (distances_observed_p) {
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#if 0
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  (*trie_obs_size) += TRIE_EMPTY_SIZE;
+#endif
+
+	} else {
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
+	  nsites = 0;
+	  while (nsites < nsplicepartners_obs[j]) {
+	    if (splicetypes[j1] == ACCEPTOR) {
+	      for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+		sites[nsites++] = (Splicestring_T) List_head(p);
+	      }
+	    }
+	    j1++;
+	  }
+	  assert(nsites == nsplicepartners_obs[j]);
+	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						  sites,nsites,/*charpos*/0);
+#else
+	  *trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
+	}
+      }
+
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#if 0
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	(*trie_max_size) += TRIE_EMPTY_SIZE;
+#endif
+
+      } else {
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
+	nsites = 0;
+	while (nsites < nsplicepartners_max[j]) {
+	  if (splicetypes[j1] == ACCEPTOR) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	  }
+	  j1++;
+	}
+	assert(nsites == nsplicepartners_max[j]);
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+						sites,nsites,/*charpos*/0);
+#else
+	*trie_max_size = Trie_output_size(*trie_max_size,sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
+      }
+
+      break;
+
+    case ACCEPTOR:
+
+      j1 = j - 1 - nsplicepartners_skip[j];
+
+      if (distances_observed_p) {
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#if 0
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  (*trie_obs_size) += TRIE_EMPTY_SIZE;
+#endif
+
+	} else {
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
+	  nsites = 0;
+	  while (nsites < nsplicepartners_obs[j]) {
+	    if (splicetypes[j1] == DONOR) {
+	      for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+		sites[nsites++] = (Splicestring_T) List_head(p);
+	      }
+	    }
+	    j1--;
+	  }
+	  assert(nsites == nsplicepartners_obs[j]);
+	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						  sites,nsites,/*charpos*/0);
+#else
+	  *trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
+	}
+      }
+
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#if 0
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	(*trie_max_size) += TRIE_EMPTY_SIZE;
+#endif
+
+      } else {
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
+	nsites = 0;
+	while (nsites < nsplicepartners_max[j]) {
+	  if (splicetypes[j1] == DONOR) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	  }
+	  j1--;
+	}
+	assert(nsites == nsplicepartners_max[j]);
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+						sites,nsites,/*charpos*/0);
+#else
+	*trie_max_size = Trie_output_size(*trie_max_size,sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
+      }
+
+      break;
+
+    case ANTIDONOR:
+
+      j1 = j - 1 - nsplicepartners_skip[j];
+
+      if (distances_observed_p) {
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#if 0
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  (*trie_obs_size) += TRIE_EMPTY_SIZE;
+#endif
+
+	} else {
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated)[0];
+	  }
+	  nsites = 0;
+	  while (nsites < nsplicepartners_obs[j]) {
+	    if (splicetypes[j1] == ANTIACCEPTOR) {
+	      for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+		sites[nsites++] = (Splicestring_T) List_head(p);
+	      }
+	    }
+	    j1--;
+	  }
+	  assert(nsites == nsplicepartners_obs[j]);
+	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						  sites,nsites,/*charpos*/0);
+#else
+	  *trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
+	}
+      }
+
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#if 0
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	(*trie_max_size) += TRIE_EMPTY_SIZE;
+#endif
+
+      } else {
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
+	nsites = 0;
+	while (nsites < nsplicepartners_max[j]) {
+	  if (splicetypes[j1] == ANTIACCEPTOR) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	  }
+	  j1--;
+	}
+	assert(nsites == nsplicepartners_max[j]);
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+						sites,nsites,/*charpos*/0);
+#else
+	*trie_max_size = Trie_output_size(*trie_max_size,sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
+      }
+
+      break;
+
+    case ANTIACCEPTOR:
+
+      j1 = j + 1 + nsplicepartners_skip[j];
+
+      if (distances_observed_p) {
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#if 0
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  (*trie_obs_size) += TRIE_EMPTY_SIZE;
+#endif
+
+	} else {
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
+	  nsites = 0;
+	  while (nsites < nsplicepartners_obs[j]) {
+	    if (splicetypes[j1] == ANTIDONOR) {
+	      for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+		sites[nsites++] = (Splicestring_T) List_head(p);
+	      }
+	    }
+	    j1++;
+	  }
+	  assert(nsites == nsplicepartners_obs[j]);
+	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						  sites,nsites,/*charpos*/0);
+#else
+	  *trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
+	}
+      }
+
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#if 0
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	(*trie_max_size) += TRIE_EMPTY_SIZE;
+#endif
+
+      } else {
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
+	nsites = 0;
+	while (nsites < nsplicepartners_max[j]) {
+	  if (splicetypes[j1] == ANTIDONOR) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	  }
+	  j1++;
+	}
+	assert(nsites == nsplicepartners_max[j]);
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+						sites,nsites,/*charpos*/0);
+#else
+	*trie_max_size = Trie_output_size(*trie_max_size,sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
+      }
+
+      break;
+
+    default:
+      fprintf(stderr,"Unexpected splicetype %d\n",splicetypes[j]);
+      abort();
+    }
+  }
+
+  return;
+}
+
+
 
 void
 Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T **trieoffsets_obs,
 				  Triecontent_T **triecontents_max, Trieoffset_T **trieoffsets_max,
 				  int *nsplicepartners_skip, int *nsplicepartners_obs, int *nsplicepartners_max,
 				  Splicetype_T *splicetypes, List_T *splicestrings, int nsplicesites) {
+#ifdef USE_LIST
   Uintlist_T triecontents_obs_list = NULL, triecontents_max_list = NULL;
+#else
+  unsigned int *triecontents_obs_ptr, *triecontents_max_ptr;
+#endif
   List_T p;
   int nsites, j, j1;
-  Splicestring_T *sites;
+  Splicestring_T *sites, sites_allocated[MAX_SITES_ALLOCATED];
+  int npartners;
   int nprinted_obs = 0, nprinted_max = 0;
+  int trie_obs_size = 0, trie_max_size = 0;
   bool distances_observed_p;
 
   if (nsplicepartners_obs == NULL) {
@@ -1904,6 +2426,19 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
     *trieoffsets_obs = (Trieoffset_T *) NULL;
   }
   *trieoffsets_max = (Trieoffset_T *) CALLOC(nsplicesites,sizeof(Trieoffset_T));
+
+  build_via_splicesites_size(&trie_obs_size,&trie_max_size,
+			     nsplicepartners_skip,nsplicepartners_obs,nsplicepartners_max,
+			     splicetypes,splicestrings,nsplicesites,distances_observed_p);
+#ifndef USE_LIST
+  if (distances_observed_p) {
+    triecontents_obs_ptr = *triecontents_obs = (Triecontent_T *) MALLOC(trie_obs_size * sizeof(Triecontent_T));
+  } else {
+    *triecontents_obs = (Triecontent_T *) NULL;
+  }
+  triecontents_max_ptr = *triecontents_max = (Triecontent_T *) MALLOC(trie_max_size * sizeof(Triecontent_T));
+#endif
+
 
   for (j = 0; j < nsplicesites; j++) {
     switch (splicetypes[j]) {
@@ -1920,11 +2455,19 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
       j1 = j + 1 + nsplicepartners_skip[j];
 
       if (distances_observed_p) {
-	if (nsplicepartners_obs[j] == 0) {
-	  triecontents_obs_list = Trie_output_empty(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  triecontents_obs_ptr = Trie_output_empty_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr);
+#endif
 
 	} else {
-	  sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
 	  nsites = 0;
 	  while (nsites < nsplicepartners_obs[j]) {
 	    if (splicetypes[j1] == ACCEPTOR) {
@@ -1937,17 +2480,32 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	  }
 	  assert(nsites == nsplicepartners_obs[j]);
 	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	  triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 						  sites,nsites,/*charpos*/0);
-	  FREE(sites);
+#else
+	  triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+						  sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
 	}
       }
 
-      if (nsplicepartners_max[j] == 0) {
-	triecontents_max_list = Trie_output_empty(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	triecontents_max_ptr = Trie_output_empty_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr);
+#endif
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	while (nsites < nsplicepartners_max[j]) {
 	  if (splicetypes[j1] == ACCEPTOR) {
@@ -1960,9 +2518,16 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	}
 	assert(nsites == nsplicepartners_max[j]);
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_max_list = Trie_output_new(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	triecontents_max_ptr = Trie_output_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr,
+						sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       debug(printf("\n"));
@@ -1981,11 +2546,19 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
       j1 = j - 1 - nsplicepartners_skip[j];
 
       if (distances_observed_p) {
-	if (nsplicepartners_obs[j] == 0) {
-	  triecontents_obs_list = Trie_output_empty(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  triecontents_obs_ptr = Trie_output_empty_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr);
+#endif
 
 	} else {
-	  sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
 	  nsites = 0;
 	  while (nsites < nsplicepartners_obs[j]) {
 	    if (splicetypes[j1] == DONOR) {
@@ -1998,17 +2571,32 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	  }
 	  assert(nsites == nsplicepartners_obs[j]);
 	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	  triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-						  sites,nsites,/*charpos*/0);
-	  FREE(sites);
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+   	                                           sites,nsites,/*charpos*/0);
+#else
+	  triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+	                                           sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
 	}
       }
 
-      if (nsplicepartners_max[j] == 0) {
-	triecontents_max_list = Trie_output_empty(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	triecontents_max_ptr = Trie_output_empty_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr);
+#endif
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	while (nsites < nsplicepartners_max[j]) {
 	  if (splicetypes[j1] == DONOR) {
@@ -2021,9 +2609,16 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	}
 	assert(nsites == nsplicepartners_max[j]);
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_max_list = Trie_output_new(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	triecontents_max_ptr = Trie_output_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr,
+						sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       debug(printf("\n"));
@@ -2042,11 +2637,19 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
       j1 = j - 1 - nsplicepartners_skip[j];
 
       if (distances_observed_p) {
-	if (nsplicepartners_obs[j] == 0) {
-	  triecontents_obs_list = Trie_output_empty(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  triecontents_obs_ptr = Trie_output_empty_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr);
+#endif
 
 	} else {
-	  sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
 	  nsites = 0;
 	  while (nsites < nsplicepartners_obs[j]) {
 	    if (splicetypes[j1] == ANTIACCEPTOR) {
@@ -2059,17 +2662,32 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	  }
 	  assert(nsites == nsplicepartners_obs[j]);
 	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	  triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 						  sites,nsites,/*charpos*/0);
-	  FREE(sites);
+#else
+	  triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+						  sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
 	}
       }
 
-      if (nsplicepartners_max[j] == 0) {
-	triecontents_max_list = Trie_output_empty(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	triecontents_max_ptr = Trie_output_empty_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr);
+#endif
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	while (nsites < nsplicepartners_max[j]) {
 	  if (splicetypes[j1] == ANTIACCEPTOR) {
@@ -2082,9 +2700,16 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	}
 	assert(nsites == nsplicepartners_max[j]);
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_max_list = Trie_output_new(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	triecontents_max_ptr = Trie_output_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr,
+						sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       debug(printf("\n"));
@@ -2103,11 +2728,19 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
       j1 = j + 1 + nsplicepartners_skip[j];
 
       if (distances_observed_p) {
-	if (nsplicepartners_obs[j] == 0) {
-	  triecontents_obs_list = Trie_output_empty(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+	if ((npartners = nsplicepartners_obs[j]) == 0) {
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_empty_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list);
+#else
+	  triecontents_obs_ptr = Trie_output_empty_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr);
+#endif
 
 	} else {
-	  sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	  } else {
+	    sites = &(sites_allocated[0]);
+	  }
 	  nsites = 0;
 	  while (nsites < nsplicepartners_obs[j]) {
 	    if (splicetypes[j1] == ANTIDONOR) {
@@ -2120,17 +2753,32 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	  }
 	  assert(nsites == nsplicepartners_obs[j]);
 	  qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	  triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+#ifdef USE_LIST
+	  triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 						  sites,nsites,/*charpos*/0);
-	  FREE(sites);
+#else
+	  triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+						  sites,nsites,/*charpos*/0);
+#endif
+	  if (npartners > MAX_SITES_ALLOCATED) {
+	    FREE(sites);
+	  }
 	}
       }
 
-      if (nsplicepartners_max[j] == 0) {
-	triecontents_max_list = Trie_output_empty(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+      if ((npartners = nsplicepartners_max[j]) == 0) {
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_empty_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list);
+#else
+	triecontents_max_ptr = Trie_output_empty_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr);
+#endif
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(npartners,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	while (nsites < nsplicepartners_max[j]) {
 	  if (splicetypes[j1] == ANTIDONOR) {
@@ -2143,9 +2791,16 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
 	}
 	assert(nsites == nsplicepartners_max[j]);
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_max_list = Trie_output_new(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
+#ifdef USE_LIST
+	triecontents_max_list = Trie_output_list(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	triecontents_max_ptr = Trie_output_array(&((*trieoffsets_max)[j]),&nprinted_max,triecontents_max_ptr,
+						sites,nsites,/*charpos*/0);
+#endif
+	if (npartners > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       debug(printf("\n"));
@@ -2157,19 +2812,29 @@ Splicetrie_build_via_splicesites (Triecontent_T **triecontents_obs, Trieoffset_T
     }
   }
 
+
+  assert(nprinted_obs == trie_obs_size);
+  assert(nprinted_max == trie_max_size);
+
+
   if (distances_observed_p) {
     fprintf(stderr,"splicetrie_obs has %d entries...",nprinted_obs);
+#ifdef USE_LIST
     triecontents_obs_list = Uintlist_reverse(triecontents_obs_list);
     *triecontents_obs = Uintlist_to_array(&nprinted_obs,triecontents_obs_list);
     Uintlist_free(&triecontents_obs_list);
+#endif
   } else {
     *triecontents_obs = (Triecontent_T *) NULL;
   }
 
+
   fprintf(stderr,"splicetrie_max has %d entries...",nprinted_max);
+#ifdef USE_LIST
   triecontents_max_list = Uintlist_reverse(triecontents_max_list);
   *triecontents_max = Uintlist_to_array(&nprinted_max,triecontents_max_list);
   Uintlist_free(&triecontents_max_list);
+#endif
 
   return;
 }
@@ -2201,342 +2866,261 @@ dump_sites (Splicestring_T *sites, int nsites, Splicetype_T splicetype) {
 
 
 static void
-Splicetrie_build_one (Triecontent_T **triecontents_obs, Trieoffset_T **triestart_obs,
-		      Triecontent_T **triecontents_max, Trieoffset_T **triestart_max,
-		      int *nsplicepartners_skip, int *nsplicepartners_obs, int *nsplicepartners_max, 
-		      int j, Splicetype_T *splicetypes, List_T *splicestrings) {
-  Uintlist_T triecontents_obs_list = NULL, triecontents_max_list = NULL;
+build_via_introns_size (int *trie_obs_size, Univcoord_T *splicesites, Splicetype_T *splicetypes,
+			List_T *splicestrings, int nsplicesites,
+			Univ_IIT_T chromosome_iit, IIT_T splicing_iit, int *splicing_divint_crosstable) {
   List_T p;
-  int nsites, j1;
-  Splicestring_T *sites;
-  int nprinted_obs = 0, nprinted_max = 0;
-  unsigned int ptr_obs, ptr_max;
-  bool distances_observed_p;
-#ifdef DEBUG
-  Splicestring_T splicestring;
-  char gbuffer[17];
+  int nsites, j, j1;
+  Splicestring_T *sites, sites_allocated[MAX_SITES_ALLOCATED];
+  
+  Univcoord_T chroffset, chrhigh;
+  Chrpos_T chrlength;
+  Chrpos_T *coords;
+  int ncoords, k;
+  Chrnum_T chrnum;
+  int divno;
+
+
+  chrhigh = 0U;
+  for (j = 0; j < nsplicesites; j++) {
+    if (splicesites[j] > chrhigh) {
+      chrnum = Univ_IIT_get_one(chromosome_iit,splicesites[j],splicesites[j]);
+      Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,/*circular_typeint*/-1);
+      /* chrhigh += 1U; */
+
+      divno = splicing_divint_crosstable[chrnum];
+      assert(divno > 0);
+    }
+
+    switch (splicetypes[j]) {
+    case DONOR:
+      nsites = 0;
+      coords = IIT_get_highs_for_low(&ncoords,splicing_iit,divno,splicesites[j]-chroffset);
+
+      j1 = j + 1;
+      k = 0;
+      while (j1 < nsplicesites && k < ncoords) {
+	if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
+	  nsites += List_length(splicestrings[j1]);
+	  k++;
+	}
+	j1++;
+      }
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
+
+      if (nsites == 0) {
+#if 0
+	(*trieoffsets_obs)[j] = NULL_POINTER;
 #endif
 
-  if (nsplicepartners_obs == NULL) {
-    distances_observed_p = false;
-  } else {
-    distances_observed_p = true;
-  }
-
-
-  debug(gbuffer[16] = '\0');
-
-  switch (splicetypes[j]) {
-  case DONOR:
-    debug(
-	  if (distances_observed_p == true) {
-	    printf("donor #%d (%d partners obs, %d partners max):",
-		   j,nsplicepartners_obs[j],nsplicepartners_max[j]);
-	  } else {
-	    printf("donor #%d (%d partners max):",
-		   j,nsplicepartners_max[j]);
-	  });
-
-    j1 = j + 1 + nsplicepartners_skip[j];
-
-    if (distances_observed_p) {
-      if (nsplicepartners_obs[j] == 0) {
-	triecontents_obs_list = Trie_output_empty(&ptr_obs,&nprinted_obs,triecontents_obs_list);
-      
       } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
-	while (nsites < nsplicepartners_obs[j]) {
-	  if (splicetypes[j1] == ACCEPTOR) {
+	j1 = j + 1;
+	k = 0;
+	while (j1 < nsplicesites && k < ncoords) {
+	  if (splicetypes[j1] == ACCEPTOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
 	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	      debug(splicestring = (Splicestring_T) List_head(p));
-	      debug(splicefrag_nt_rightward(gbuffer,splicestring->string));
-	      debug(printf(" %d (%s)",j1,gbuffer));
 	      sites[nsites++] = (Splicestring_T) List_head(p);
 	    }
+	    k++;
 	  }
 	  j1++;
 	}
-	assert(nsites == nsplicepartners_obs[j]);
+
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	debug(printf("\n"));
-	debug(dump_sites(sites,nsites,splicetypes[j]));
-
-	triecontents_obs_list = Trie_output_new(&ptr_obs,&nprinted_obs,triecontents_obs_list,
+#if 0
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	*trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
-    }
 
-    if (nsplicepartners_max[j] == 0) {
-      triecontents_max_list = Trie_output_empty(&ptr_max,&nprinted_max,triecontents_max_list);
-      
-    } else {
-      sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
+      FREE(coords);
+      break;
+
+    case ACCEPTOR:
       nsites = 0;
-      while (nsites < nsplicepartners_max[j]) {
-	if (splicetypes[j1] == ACCEPTOR) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    debug(splicestring = (Splicestring_T) List_head(p));
-	    debug(splicefrag_nt_rightward(gbuffer,splicestring->string));
-	    debug(printf(" %d (%s)",j1,gbuffer));
-	    sites[nsites++] = (Splicestring_T) List_head(p);
+      coords = IIT_get_lows_for_high(&ncoords,splicing_iit,divno,splicesites[j] + INTRON_HIGH_TO_LOW - chroffset);
+
+      j1 = j - 1;
+      k = 0;
+      while (j1 >= 0 && k < ncoords) {
+	if (splicetypes[j1] == DONOR && splicesites[j1] == coords[k] + chroffset) {
+	  nsites += List_length(splicestrings[j1]);
+	  k++;
+	}
+	j1--;
+      }
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
+
+      if (nsites == 0) {
+#if 0
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+#endif
+
+      } else {
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
+	nsites = 0;
+	j1 = j - 1;
+	k = 0;
+	while (j1 >= 0 && k < ncoords) {
+	  if (splicetypes[j1] == DONOR && splicesites[j1] == coords[k] + chroffset) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	    k++;
 	  }
+	  j1--;
+	}
+
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						sites,nsites,/*charpos*/0);
+#else
+	*trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
+      }
+
+      FREE(coords);
+      break;
+
+    case ANTIDONOR:
+      nsites = 0;
+      coords = IIT_get_lows_for_high(&ncoords,splicing_iit,divno,splicesites[j] + INTRON_HIGH_TO_LOW - chroffset);
+
+      j1 = j - 1;
+      k = 0;
+      while (j1 >= 0 && k < ncoords) {
+	if (splicetypes[j1] == ANTIACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
+	  nsites += List_length(splicestrings[j1]);
+	  k++;
+	}
+	j1--;
+      }
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
+
+      if (nsites == 0) {
+#if 0
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+#endif
+
+      } else {
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
+	nsites = 0;
+	j1 = j - 1;
+	k = 0;
+	while (j1 >= 0 && k < ncoords) {
+	  if (splicetypes[j1] == ANTIACCEPTOR && splicesites[j1] == coords[k] + chroffset) {
+	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
+	      sites[nsites++] = (Splicestring_T) List_head(p);
+	    }
+	    k++;
+	  }
+	  j1--;
+	}
+
+	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
+#if 0
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						sites,nsites,/*charpos*/0);
+#else
+	*trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
+      }
+
+      FREE(coords);
+      break;
+
+    case ANTIACCEPTOR:
+      nsites = 0;
+      coords = IIT_get_highs_for_low(&ncoords,splicing_iit,divno,splicesites[j]-chroffset);
+
+      j1 = j + 1;
+      k = 0;
+      while (j1 < nsplicesites && k < ncoords) {
+	if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
+	  nsites += List_length(splicestrings[j1]);
+	  k++;
 	}
 	j1++;
       }
-      assert(nsites == nsplicepartners_max[j]);
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      debug(printf("\n"));
-      debug(dump_sites(sites,nsites,splicetypes[j]));
+      /* assertion may not hold if last few introns are invalidated */
+      /* assert(k == ncoords); */
 
-      triecontents_max_list = Trie_output_new(&ptr_max,&nprinted_max,triecontents_max_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-    }
-
-    debug(printf("\n"));
-    break;
-
-  case ACCEPTOR:
-    debug(
-	  if (distances_observed_p == true) {
-	    printf("acceptor #%d (%d partners obs, %d partners max):",
-		   j,nsplicepartners_obs[j],nsplicepartners_max[j]);
-	  } else {
-	    printf("acceptor #%d (%d partners max):",
-		   j,nsplicepartners_max[j]);
-	  });
-
-    j1 = j - 1 - nsplicepartners_skip[j];
-
-    if (distances_observed_p) {
-      if (nsplicepartners_obs[j] == 0) {
-	triecontents_obs_list = Trie_output_empty(&ptr_obs,&nprinted_obs,triecontents_obs_list);
+      if (nsites == 0) {
+#if 0
+	(*trieoffsets_obs)[j] = NULL_POINTER;
+#endif
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
-	while (nsites < nsplicepartners_obs[j]) {
-	  if (splicetypes[j1] == DONOR) {
+	j1 = j + 1;
+	k = 0;
+	while (j1 < nsplicesites && k < ncoords) {
+	  if (splicetypes[j1] == ANTIDONOR && splicesites[j1] == coords[k] - INTRON_HIGH_TO_LOW + chroffset) {
 	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	      debug(splicestring = (Splicestring_T) List_head(p));
-	      debug(splicefrag_nt_leftward(gbuffer,splicestring->string));
-	      debug(printf(" %d (%s)",j1,gbuffer));
 	      sites[nsites++] = (Splicestring_T) List_head(p);
 	    }
-	  }
-	  j1--;
-	}
-	assert(nsites == nsplicepartners_obs[j]);
-	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	debug(printf("\n"));
-	debug(dump_sites(sites,nsites,splicetypes[j]));
-
-	triecontents_obs_list = Trie_output_new(&ptr_obs,&nprinted_obs,triecontents_obs_list,
-						sites,nsites,/*charpos*/0);
-	FREE(sites);
-      }
-    }
-
-    if (nsplicepartners_max[j] == 0) {
-      triecontents_max_list = Trie_output_empty(&ptr_max,&nprinted_max,triecontents_max_list);
-
-    } else {
-      sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
-      nsites = 0;
-      while (nsites < nsplicepartners_max[j]) {
-	if (splicetypes[j1] == DONOR) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    debug(splicestring = (Splicestring_T) List_head(p));
-	    debug(splicefrag_nt_leftward(gbuffer,splicestring->string));
-	    debug(printf(" %d (%s)",j1,gbuffer));
-	    sites[nsites++] = (Splicestring_T) List_head(p);
-	  }
-	}
-	j1--;
-      }
-      assert(nsites == nsplicepartners_max[j]);
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      debug(printf("\n"));
-      debug(dump_sites(sites,nsites,splicetypes[j]));
-
-      triecontents_max_list = Trie_output_new(&ptr_max,&nprinted_max,triecontents_max_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-    }
-
-    debug(printf("\n"));
-    break;
-
-  case ANTIDONOR:
-    debug(
-	  if (distances_observed_p == true) {
-	    printf("antidonor #%d (%d partners obs, %d partners max):",
-		   j,nsplicepartners_obs[j],nsplicepartners_max[j]);
-	  } else {
-	    printf("antidonor #%d (%d partners max):",
-		   j,nsplicepartners_max[j]);
-	  });
-
-    j1 = j - 1 - nsplicepartners_skip[j];
-
-    if (distances_observed_p) {
-      if (nsplicepartners_obs[j] == 0) {
-	triecontents_obs_list = Trie_output_empty(&ptr_obs,&nprinted_obs,triecontents_obs_list);
-
-      } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
-	nsites = 0;
-	while (nsites < nsplicepartners_obs[j]) {
-	  if (splicetypes[j1] == ANTIACCEPTOR) {
-	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	      debug(splicestring = (Splicestring_T) List_head(p));
-	      debug(splicefrag_nt_leftward(gbuffer,splicestring->string));
-	      debug(printf(" %d (%s)",j1,gbuffer));
-	      sites[nsites++] = (Splicestring_T) List_head(p);
-	    }
-	  }
-	  j1--;
-	}
-	assert(nsites = nsplicepartners_obs[j]);
-	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	debug(printf("\n"));
-	debug(dump_sites(sites,nsites,splicetypes[j]));
-
-	triecontents_obs_list = Trie_output_new(&ptr_obs,&nprinted_obs,triecontents_obs_list,
-						sites,nsites,/*charpos*/0);
-	FREE(sites);
-      }
-    }
-
-    if (nsplicepartners_max[j] == 0) {
-      triecontents_max_list = Trie_output_empty(&ptr_max,&nprinted_max,triecontents_max_list);
-
-    } else {
-      sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
-      nsites = 0;
-      while (nsites < nsplicepartners_max[j]) {
-	if (splicetypes[j1] == ANTIACCEPTOR) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    debug(splicestring = (Splicestring_T) List_head(p));
-	    debug(splicefrag_nt_leftward(gbuffer,splicestring->string));
-	    debug(printf(" %d (%s)",j1,gbuffer));
-	    sites[nsites++] = (Splicestring_T) List_head(p);
-	  }
-	}
-	j1--;
-      }
-      assert(nsites = nsplicepartners_max[j]);
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      debug(printf("\n"));
-      debug(dump_sites(sites,nsites,splicetypes[j]));
-
-      triecontents_max_list = Trie_output_new(&ptr_max,&nprinted_max,triecontents_max_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
-    }
-
-    debug(printf("\n"));
-    break;
-
-  case ANTIACCEPTOR:
-    debug(
-	  if (distances_observed_p == true) {
-	    printf("antiacceptor #%d (%d partners obs, %d partners max):",
-		   j,nsplicepartners_obs[j],nsplicepartners_max[j]);
-	  } else {
-	    printf("antiacceptor #%d (%d partners max):",
-		   j,nsplicepartners_max[j]);
-	  });
-
-    j1 = j + 1 + nsplicepartners_skip[j];
-
-    if (distances_observed_p) {
-      if (nsplicepartners_obs[j] == 0) {
-	triecontents_obs_list = Trie_output_empty(&ptr_obs,&nprinted_obs,triecontents_obs_list);
-
-      } else {
-	sites = (Splicestring_T *) CALLOC(nsplicepartners_obs[j],sizeof(Splicestring_T));
-	nsites = 0;
-	while (nsites < nsplicepartners_obs[j]) {
-	  if (splicetypes[j1] == ANTIDONOR) {
-	    for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	      debug(splicestring = (Splicestring_T) List_head(p));
-	      debug(splicefrag_nt_rightward(gbuffer,splicestring->string));
-	      debug(printf(" %d (%s)",j1,gbuffer));
-	      sites[nsites++] = (Splicestring_T) List_head(p);
-	    }
+	    k++;
 	  }
 	  j1++;
 	}
-	assert(nsites = nsplicepartners_obs[j]);
 
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	debug(printf("\n"));
-	debug(dump_sites(sites,nsites,splicetypes[j]));
-
-	triecontents_obs_list = Trie_output_new(&ptr_obs,&nprinted_obs,triecontents_obs_list,
+#if 0
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
-      }
-    }
-
-    if (nsplicepartners_max[j] == 0) {
-      triecontents_max_list = Trie_output_empty(&ptr_max,&nprinted_max,triecontents_max_list);
-
-    } else {
-      sites = (Splicestring_T *) CALLOC(nsplicepartners_max[j],sizeof(Splicestring_T));
-      nsites = 0;
-      while (nsites < nsplicepartners_max[j]) {
-	if (splicetypes[j1] == ANTIDONOR) {
-	  for (p = splicestrings[j1]; p != NULL; p = List_next(p)) {
-	    debug(splicestring = (Splicestring_T) List_head(p));
-	    debug(splicefrag_nt_rightward(gbuffer,splicestring->string));
-	    debug(printf(" %d (%s)",j1,gbuffer));
-	    sites[nsites++] = (Splicestring_T) List_head(p);
-	  }
+#else
+	*trie_obs_size = Trie_output_size(*trie_obs_size,sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
 	}
-	j1++;
       }
-      assert(nsites = nsplicepartners_max[j]);
 
-      qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-      debug(printf("\n"));
-      debug(dump_sites(sites,nsites,splicetypes[j]));
+      FREE(coords);
+      break;
 
-      triecontents_max_list = Trie_output_new(&ptr_max,&nprinted_max,triecontents_max_list,
-					      sites,nsites,/*charpos*/0);
-      FREE(sites);
+    default: 
+      fprintf(stderr,"Unexpected splicetype %d\n",splicetypes[j]);
+      abort();
     }
-
-    debug(printf("\n"));
-    break;
-
-  default:
-    fprintf(stderr,"Unexpected splicetype %d at splicesites_i %d\n",splicetypes[j],j);
-    abort();
-
   }
-
-  if (distances_observed_p) {
-    triecontents_obs_list = Uintlist_reverse(triecontents_obs_list);
-    *triecontents_obs = Uintlist_to_array(&nprinted_obs,triecontents_obs_list);
-    Uintlist_free(&triecontents_obs_list);
-    *triestart_obs = &((*triecontents_obs)[ptr_obs]);
-  } else {
-    *triecontents_obs = (Triecontent_T *) NULL;
-    *triestart_obs = (Trieoffset_T *) NULL;
-  }
-
-  triecontents_max_list = Uintlist_reverse(triecontents_max_list);
-  *triecontents_max = Uintlist_to_array(&nprinted_max,triecontents_max_list);
-  Uintlist_free(&triecontents_max_list);
-  *triestart_max = &((*triecontents_max)[ptr_max]);
 
   return;
 }
-
 
 
 void
@@ -2544,11 +3128,16 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 			      Univcoord_T *splicesites, Splicetype_T *splicetypes,
 			      List_T *splicestrings, int nsplicesites,
 			      Univ_IIT_T chromosome_iit, IIT_T splicing_iit, int *splicing_divint_crosstable) {
+#ifdef USE_LIST
   Uintlist_T triecontents_obs_list = NULL;
+#else
+  unsigned int *triecontents_obs_ptr;
+#endif
   List_T p;
   int nsites, j, j1;
-  Splicestring_T *sites;
+  Splicestring_T *sites, sites_allocated[MAX_SITES_ALLOCATED];
   int nprinted_obs = 0;
+  int trie_obs_size = 0;
 
   Univcoord_T chroffset, chrhigh;
   Chrpos_T chrlength;
@@ -2559,6 +3148,13 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 
 
   *trieoffsets_obs = (Trieoffset_T *) CALLOC(nsplicesites,sizeof(Trieoffset_T));
+
+  build_via_introns_size(&trie_obs_size,splicesites,splicetypes,splicestrings,nsplicesites,
+			 chromosome_iit,splicing_iit,splicing_divint_crosstable);
+#ifndef USE_LIST
+  triecontents_obs_ptr = *triecontents_obs = (Triecontent_T *) MALLOC(trie_obs_size * sizeof(Triecontent_T));
+#endif
+
 
   chrhigh = 0U;
   for (j = 0; j < nsplicesites; j++) {
@@ -2592,7 +3188,11 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	(*trieoffsets_obs)[j] = NULL_POINTER;
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	j1 = j + 1;
 	k = 0;
@@ -2607,9 +3207,16 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	}
 
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+#ifdef USE_LIST
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 					      sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+					      sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       FREE(coords);
@@ -2635,7 +3242,11 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	(*trieoffsets_obs)[j] = NULL_POINTER;
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	j1 = j - 1;
 	k = 0;
@@ -2650,9 +3261,16 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	}
 
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#ifdef USE_LIST
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						 sites,nsites,/*charpos*/0);
+#else
+	triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+						 sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       FREE(coords);
@@ -2678,7 +3296,11 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	(*trieoffsets_obs)[j] = NULL_POINTER;
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	j1 = j - 1;
 	k = 0;
@@ -2693,9 +3315,16 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	}
 
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+#ifdef USE_LIST
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
 						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#else
+	triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+                                        	 sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       FREE(coords);
@@ -2721,7 +3350,11 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	(*trieoffsets_obs)[j] = NULL_POINTER;
 
       } else {
-	sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  sites = (Splicestring_T *) CALLOC(nsites,sizeof(Splicestring_T));
+	} else {
+	  sites = &(sites_allocated[0]);
+	}
 	nsites = 0;
 	j1 = j + 1;
 	k = 0;
@@ -2736,9 +3369,16 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
 	}
 
 	qsort(sites,nsites,sizeof(Splicestring_T),Splicestring_cmp);
-	triecontents_obs_list = Trie_output_new(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
-						sites,nsites,/*charpos*/0);
-	FREE(sites);
+#ifdef USE_LIST
+	triecontents_obs_list = Trie_output_list(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_list,
+						 sites,nsites,/*charpos*/0);
+#else
+	triecontents_obs_ptr = Trie_output_array(&((*trieoffsets_obs)[j]),&nprinted_obs,triecontents_obs_ptr,
+						 sites,nsites,/*charpos*/0);
+#endif
+	if (nsites > MAX_SITES_ALLOCATED) {
+	  FREE(sites);
+	}
       }
 
       FREE(coords);
@@ -2750,10 +3390,14 @@ Splicetrie_build_via_introns (Triecontent_T **triecontents_obs, Trieoffset_T **t
     }
   }
 
+  assert(nprinted_obs == trie_obs_size);
+
   fprintf(stderr,"splicetrie_obs has %d entries...",nprinted_obs);
+#ifdef USE_LIST
   triecontents_obs_list = Uintlist_reverse(triecontents_obs_list);
   *triecontents_obs = Uintlist_to_array(&nprinted_obs,triecontents_obs_list);
   Uintlist_free(&triecontents_obs_list);
+#endif
 
   return;
 }

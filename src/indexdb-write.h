@@ -1,4 +1,4 @@
-/* $Id: indexdb-write.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: indexdb-write.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef INDEXDB_WRITE_INCLUDED
 #define INDEXDB_WRITE_INCLUDED
 
@@ -19,10 +19,6 @@
 #define POSITIONS_HIGH_FILESUFFIX "positionsh"
 #define POSITIONS_LOW_FILESUFFIX "positions"
 
-extern void
-Indexdb_write_gammaptrs (char *gammaptrsfile, char *offsetscompfile, Positionsptr_T *offsets,
-			 Oligospace_T oligospace, Blocksize_T blocksize);
-
 #ifdef HAVE_64_BIT
 extern UINT8
 Indexdb_count_offsets (FILE *sequence_fp, Univ_IIT_T chromosome_iit,
@@ -36,7 +32,6 @@ Indexdb_count_offsets (FILE *sequence_fp, Univ_IIT_T chromosome_iit,
 
 extern void
 Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Univ_IIT_T chromosome_iit,
-		       Width_T offsetscomp_basesize,
 #ifdef PMAP
 		       Alphabet_T alphabet, Width_T index1part_aa, bool watsonp,
 #else
@@ -47,7 +42,6 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 #ifdef HAVE_64_BIT
 extern void
 Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp, Univ_IIT_T chromosome_iit,
-			    Width_T offsetscomp_basesize,
 #ifdef PMAP
 			    Alphabet_T alphabet, Width_T index1part_aa, bool watsonp,
 #else
@@ -60,7 +54,7 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
 
 extern void
 Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char *pointersfile, char *offsetsfile,
-			 FILE *sequence_fp, Univ_IIT_T chromosome_iit, Width_T offsetscomp_basesize,
+			 FILE *sequence_fp, Univ_IIT_T chromosome_iit,
 #ifdef PMAP
 			 Alphabet_T alphabet, Width_T index1part_aa, bool watsonp,
 #else
@@ -74,7 +68,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 #ifdef HAVE_64_BIT
 extern void
 Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low, char *pagesfile, char *pointersfile, char *offsetsfile,
-			      FILE *sequence_fp, Univ_IIT_T chromosome_iit, int offsetscomp_basesize,
+			      FILE *sequence_fp, Univ_IIT_T chromosome_iit,
 #ifdef PMAP
 			      Alphabet_T alphabet, int index1part_aa, bool watsonp,
 #else

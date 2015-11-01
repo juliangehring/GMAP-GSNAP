@@ -10,6 +10,8 @@ typedef enum {DONOR, ANTIDONOR, ACCEPTOR, ANTIACCEPTOR} Splicetype_T;
 #include "iit-read.h"
 #include "genome.h"
 #include "list.h"
+#include "splicestringpool.h"
+
 
 /* For offsets */
 /* #define USE_2BYTE_RELOFFSETS 1 */
@@ -27,12 +29,8 @@ typedef enum {DONOR, ANTIDONOR, ACCEPTOR, ANTIACCEPTOR} Splicetype_T;
 #define single_leaf_p(x) (x) < DUPLICATE_NODE
 #define multiple_leaf_p(x) (x) < INTERNAL_NODE
 
-
 extern char *
 Splicetype_string (Splicetype_T splicetype);
-
-extern void
-Splicestring_gc (List_T *splicestrings, int nsplicesites);
 
 extern Univcoord_T *
 Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
@@ -43,7 +41,8 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 				     List_T **splicestrings, Genomecomp_T **splicefrags_ref, Genomecomp_T **splicefrags_alt,
 				     int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
 				     int donor_typeint, int acceptor_typeint, Univ_IIT_T chromosome_iit,
-				     Genome_T genome, Genome_T genomealt, Chrpos_T shortsplicedist);
+				     Genome_T genome, Genome_T genomealt, Chrpos_T shortsplicedist,
+				     Splicestringpool_T splicestringpool);
 extern Univcoord_T *
 Splicetrie_retrieve_via_introns (
 #ifdef GSNAP
@@ -52,7 +51,8 @@ Splicetrie_retrieve_via_introns (
 				 Splicetype_T **splicetypes, Chrpos_T **splicedists,
 				 List_T **splicestrings, Genomecomp_T **splicefrags_ref, Genomecomp_T **splicefrags_alt,
 				 int *nsplicesites, IIT_T splicing_iit, int *splicing_divint_crosstable,
-				 Univ_IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt);
+				 Univ_IIT_T chromosome_iit, Genome_T genome, Genome_T genomealt,
+				 Splicestringpool_T splicestringpool);
 extern void
 Splicetrie_npartners (int **nsplicepartners_skip, int **nsplicepartners_obs, int **nsplicepartners_max,
 		      Univcoord_T *splicesites, Splicetype_T *splicetypes,

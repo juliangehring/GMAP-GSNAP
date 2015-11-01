@@ -1,4 +1,4 @@
-/* $Id: genome.h 121509 2013-12-13 21:56:56Z twu $ */
+/* $Id: genome.h 133760 2014-04-20 05:16:56Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 
@@ -41,7 +41,11 @@ extern bool
 Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_T length, char *gbuffer1,
 		    Univ_IIT_T chromosome_iit);
 extern void
-Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, char *gbuffer1);
+Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer1);
+extern void
+Genome_fill_buffer_convert_fwd (Univcoord_T left, Chrpos_T length, char *gbuffer1);
+extern void
+Genome_fill_buffer_convert_rev (Univcoord_T left, Chrpos_T length, char *gbuffer1);
 extern void
 Genome_fill_buffer_blocks (Univcoord_T left, Chrpos_T length, char *gbuffer1);
 extern void
@@ -51,12 +55,13 @@ Genome_fill_buffer_simple_alt (T genome, T genomealt, Univcoord_T left, Chrpos_T
 extern void
 Genome_fill_buffer_nucleotides (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer);
 extern void
-Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer);
+Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer,
+			       unsigned char *conversion);
 extern char
 Genome_get_char (T this, Univcoord_T left);
 /* For searching in a suffix array, where N from end of sequence returns 0, but N internally returns X */
 extern char
-Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength);
+Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength, char chartable[]);
 extern char
 Genome_get_char_blocks (char *charalt, Univcoord_T left);
 extern char *

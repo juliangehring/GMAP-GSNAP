@@ -1,4 +1,4 @@
-/* $Id: iit-write.h 115892 2013-11-20 22:52:31Z twu $ */
+/* $Id: iit-write.h 132144 2014-04-02 16:02:28Z twu $ */
 #ifndef IIT_WRITE_INCLUDED
 #define IIT_WRITE_INCLUDED
 #include "bool.h"
@@ -8,10 +8,6 @@
 #include "iitdef.h"
 
 #define T IIT_T
-#ifndef IIT_TYPEDEF
-#define IIT_TYPEDEF
-typedef struct T *T;
-#endif
 
 extern void
 IIT_output_direct (char *iitfile, T this, int version);

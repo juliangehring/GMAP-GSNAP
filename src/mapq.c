@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mapq.c 102893 2013-07-25 22:11:12Z twu $";
+static char rcsid[] = "$Id: mapq.c 133760 2014-04-20 05:16:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,7 +6,7 @@ static char rcsid[] = "$Id: mapq.c 102893 2013-07-25 22:11:12Z twu $";
 #include "mapq.h"
 #include "bool.h"
 #include "assert.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -151,7 +151,7 @@ check_badchar (char c) {
 
 float
 MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int queryend,
-	     int querylength, char *quality_string, bool plusp, int genestrand) {
+	     int querylength, char *quality_string, bool plusp, int genestrand, bool first_read_p) {
   float loglik = 0.0;
   int Q;
   int querypos;
@@ -179,7 +179,7 @@ MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int qu
 		 querystart,queryend,alignlength));
     nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/alignlength,
 					 query_compress,left,/*pos5*/querystart,/*pos3*/queryend,plusp,
-					 genestrand);
+					 genestrand,first_read_p);
     
     debug(printf("%d mismatches:",nmismatches));
     debug(
@@ -215,7 +215,7 @@ MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int qu
 		 querylength - queryend,querylength - querystart,alignlength));
     nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/alignlength,
 					 query_compress,left,/*pos5*/querylength - queryend,
-					 /*pos3*/querylength - querystart,plusp,genestrand);
+					 /*pos3*/querylength - querystart,plusp,genestrand,first_read_p);
 
     debug(printf("%d mismatches (adjusted for querylength %d):",nmismatches,querylength));
     debug(

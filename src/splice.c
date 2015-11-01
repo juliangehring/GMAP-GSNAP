@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splice.c 131512 2014-03-26 16:27:22Z twu $";
+static char rcsid[] = "$Id: splice.c 136085 2014-05-13 23:00:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,8 +6,9 @@ static char rcsid[] = "$Id: splice.c 131512 2014-03-26 16:27:22Z twu $";
 #include "splice.h"
 
 #include <stdio.h>
+#include "mem.h"
 #include "sense.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 #include "genome_sites.h"
 #include "substring.h"
 #include "maxent.h"
@@ -16,6 +17,7 @@ static char rcsid[] = "$Id: splice.c 131512 2014-03-26 16:27:22Z twu $";
 
 
 #define LOWPROB_SUPPORT 20
+#define LOCALSPLICING_SLOP 0.05
 
 
 /* Splice_solve_single */
@@ -31,6 +33,15 @@ static char rcsid[] = "$Id: splice.c 131512 2014-03-26 16:27:22Z twu $";
 #else
 #define debug2(x)
 #endif
+
+/* Group by segmentj */
+#ifdef DEBUG9
+#define debug9(x) x
+#else
+#define debug9(x)
+#endif
+
+
 
 
 static bool novelsplicingp = true;
@@ -84,8 +95,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 		     int segmenti_donor_nknown, int segmentj_acceptor_nknown,
 		     int segmentj_antidonor_nknown, int segmenti_antiacceptor_nknown,
 		     int splicing_penalty, int max_mismatches_allowed,
-		     bool first_read_p, bool plusp, int genestrand, bool subs_or_indels_p,
-		     bool sarrayp) {
+		     bool plusp, int genestrand, bool first_read_p,
+		     bool subs_or_indels_p, bool sarrayp) {
   Substring_T donor, acceptor;
   int best_splice_pos, splice_pos_start, splice_pos_end, splice_pos, i, j;
   int donor_positions_alloc[MAX_READLENGTH+1], acceptor_positions_alloc[MAX_READLENGTH+1];
@@ -94,6 +105,7 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
   int best_nmismatches, nmismatches;
   int best_segmenti_nmismatches, best_segmentj_nmismatches, segmenti_nmismatches, segmentj_nmismatches;
   int donor_support, acceptor_support;
+  Univcoord_T best_donor_splicecoord, best_acceptor_splicecoord;
   int best_donor_knowni, best_acceptor_knowni;
   double best_prob, best_donor_prob, best_acceptor_prob, probi, probj;
   bool sufficient1p, sufficient2p, orig_plusp, sensep;
@@ -105,7 +117,7 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 
 
   debug1(printf("Splice_solve_single: Getting genome at lefti %u and leftj %u (diff: %d)\n",
-		 segmenti_left,segmentj_left,segmentj_left-segmenti_left));
+		segmenti_left,segmentj_left,segmentj_left-segmenti_left));
 
 #if 0
   int sum, lefti, righti;
@@ -203,28 +215,28 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	j++;
       } else {
 	segmenti_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmenti_left,/*pos5*/0,/*pos3*/splice_pos,
-								 plusp,genestrand);
+								 plusp,genestrand,first_read_p);
 	segmentj_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmentj_left,/*pos5*/splice_pos,/*pos3*/querylength,
-								 plusp,genestrand);
+								 plusp,genestrand,first_read_p);
 	if ((nmismatches = segmenti_nmismatches + segmentj_nmismatches) <= best_nmismatches) {
 	  if (donori_knowni[i] >= 0) {
-	    probi = 1.0;
+	    probi = 1.0; /* Needs to be 1.0 for output */
 	  } else {
 	    probi = Maxent_hr_donor_prob(segmenti_left + splice_pos,segmenti_chroffset);
 	  }
 
 	  if (acceptorj_knowni[j] >= 0) {
-	    probj = 1.0;
+	    probj = 1.0; /* Needs to be 1.0 for output */
 	  } else {
 	    probj = Maxent_hr_acceptor_prob(segmentj_left + splice_pos,segmentj_chroffset);
 	  }
 
 	  debug1(
-		  if (plusp == true) {
-		    printf("plus sense splice_pos  %d, i.donor %f, j.acceptor %f\n",splice_pos,probi,probj);
-		  } else {
-		    printf("minus antisense splice_pos  %d, i.donor %f, j.acceptor %f\n",splice_pos,probi,probj);
-		  });
+		 if (plusp == true) {
+		   printf("plus sense splice_pos  %d, i.donor %f, j.acceptor %f\n",splice_pos,probi,probj);
+		 } else {
+		   printf("minus antisense splice_pos  %d, i.donor %f, j.acceptor %f\n",splice_pos,probi,probj);
+		 });
 
 	  if (nmismatches < best_nmismatches ||
 	      (nmismatches == best_nmismatches && probi + probj > best_prob)) {
@@ -232,6 +244,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	    best_nmismatches = nmismatches;
 	    best_prob = probi + probj;
 
+	    best_donor_splicecoord = segmenti_left + splice_pos;
+	    best_acceptor_splicecoord = segmentj_left + splice_pos;
 	    best_donor_knowni = donori_knowni[i];
 	    best_acceptor_knowni = acceptorj_knowni[j];
 	    best_donor_prob = probi;
@@ -303,28 +317,28 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	j++;
       } else {
 	segmenti_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmenti_left,/*pos5*/0,/*pos3*/splice_pos,
-								 plusp,genestrand);
+								 plusp,genestrand,first_read_p);
 	segmentj_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmentj_left,/*pos5*/splice_pos,/*pos3*/querylength,
-								 plusp,genestrand);
+								 plusp,genestrand,first_read_p);
 	if ((nmismatches = segmenti_nmismatches + segmentj_nmismatches) <= best_nmismatches) {
 	  if (antiacceptori_knowni[i] >= 0) {
-	    probi = 1.0;
+	    probi = 1.0; /* Needs to be 1.0 for output */
 	  } else {
 	    probi = Maxent_hr_antiacceptor_prob(segmenti_left + splice_pos,segmenti_chroffset);
 	  }
 
 	  if (antidonorj_knowni[j] >= 0) {
-	    probj = 1.0;
+	    probj = 1.0; /* Needs to be 1.0 for output */
 	  } else {
 	    probj = Maxent_hr_antidonor_prob(segmentj_left + splice_pos,segmentj_chroffset);
 	  }
 
 	  debug1(
-		  if (plusp == true) {
-		    printf("plus antisense splice_pos  %d, j.donor %f, i.acceptor %f\n",splice_pos,probj,probi);
-		  } else {
-		    printf("minus sense splice_pos  %d, j.donor %f, i.acceptor %f\n",splice_pos,probj,probi);
-		  });
+		 if (plusp == true) {
+		   printf("plus antisense splice_pos  %d, j.donor %f, i.acceptor %f\n",splice_pos,probj,probi);
+		 } else {
+		   printf("minus sense splice_pos  %d, j.donor %f, i.acceptor %f\n",splice_pos,probj,probi);
+		 });
 	  
 	  if (nmismatches < best_nmismatches ||
 	      (nmismatches == best_nmismatches && probi + probj > best_prob)) {
@@ -332,6 +346,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	    best_nmismatches = nmismatches;
 	    best_prob = probi + probj;
 
+	    best_donor_splicecoord = segmentj_left + splice_pos;
+	    best_acceptor_splicecoord = segmenti_left + splice_pos;
 	    best_donor_knowni = antidonorj_knowni[j];
 	    best_acceptor_knowni = antiacceptori_knowni[i];
 	    best_donor_prob = probj;
@@ -348,21 +364,23 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
     }
 
     if (best_prob > 0.0) {
-      debug1(printf("best_prob = %f at splice_pos %d (%d,%d)\n",
-		     best_prob,best_splice_pos,best_donor_knowni,best_acceptor_knowni));
+      debug1(printf("best_prob = %f at splice_pos %d (%u,%u)\n",
+		    best_prob,best_splice_pos,best_donor_splicecoord,best_acceptor_splicecoord));
       if (orig_plusp == true) {
 	/* Originally from plus strand.  No complement. */
 	sensep = (plusp == true) ? true : false;
 	sensedir = (plusp == true) ? SENSE_FORWARD : SENSE_ANTI;
 
-	donor = Substring_new_donor(best_donor_knowni,/*joffset*/0,best_splice_pos,best_segmenti_nmismatches,
+	donor = Substring_new_donor(best_donor_splicecoord,best_donor_knowni,
+				    best_splice_pos,best_segmenti_nmismatches,
 				    best_donor_prob,/*left*/segmenti_left,query_compress,
-				    querylength,plusp,genestrand,sensep,
+				    querylength,plusp,genestrand,first_read_p,sensep,
 				    segmenti_chrnum,segmenti_chroffset,segmenti_chrhigh,segmenti_chrlength);
 
-	acceptor = Substring_new_acceptor(best_acceptor_knowni,/*joffset*/0,best_splice_pos,best_segmentj_nmismatches,
+	acceptor = Substring_new_acceptor(best_acceptor_splicecoord,best_acceptor_knowni,
+					  best_splice_pos,best_segmentj_nmismatches,
 					  best_acceptor_prob,/*left*/segmentj_left,query_compress,
-					  querylength,plusp,genestrand,sensep,
+					  querylength,plusp,genestrand,first_read_p,sensep,
 					  segmentj_chrnum,segmentj_chroffset,segmentj_chrhigh,segmentj_chrlength);
 
 	if (donor == NULL || acceptor == NULL) {
@@ -382,7 +400,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	    return List_push(hits,(void *) Stage3end_new_splice(&(*found_score),best_segmenti_nmismatches,best_segmentj_nmismatches,
 								donor,acceptor,/*distance*/segmentj_left - segmenti_left,
 								/*shortdistancep*/true,splicing_penalty,querylength,
-								/*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								/*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								/*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								/*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								/*copy_donor_p*/false,/*copy_acceptor_p*/false,first_read_p,sensedir,
 								sarrayp));
@@ -399,7 +418,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 				 (void *) Stage3end_new_splice(&(*found_score),best_segmenti_nmismatches,best_segmentj_nmismatches,
 							       donor,acceptor,/*distance*/segmentj_left - segmenti_left,
 							       /*shortdistancep*/true,splicing_penalty,querylength,
-							       /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+							       /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+							       /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 							       /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 							       /*copy_donor_p*/false,/*copy_acceptor_p*/false,first_read_p,sensedir,
 							       sarrayp));
@@ -415,14 +435,16 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	sensep = (plusp == true) ? false : true;
 	sensedir = (plusp == true) ? SENSE_ANTI : SENSE_FORWARD;
 
-	donor = Substring_new_donor(best_donor_knowni,/*joffset*/0,best_splice_pos,best_segmentj_nmismatches,
+	donor = Substring_new_donor(best_donor_splicecoord,best_donor_knowni,
+				    best_splice_pos,best_segmentj_nmismatches,
 				    best_donor_prob,/*left*/segmentj_left,query_compress,
-				    querylength,plusp,genestrand,sensep,
+				    querylength,plusp,genestrand,first_read_p,sensep,
 				    segmentj_chrnum,segmentj_chroffset,segmentj_chrhigh,segmentj_chrlength);
 
-	acceptor = Substring_new_acceptor(best_acceptor_knowni,/*joffset*/0,best_splice_pos,best_segmenti_nmismatches,
+	acceptor = Substring_new_acceptor(best_acceptor_splicecoord,best_acceptor_knowni,
+					  best_splice_pos,best_segmenti_nmismatches,
 					  best_acceptor_prob,/*left*/segmenti_left,query_compress,
-					  querylength,plusp,genestrand,sensep,
+					  querylength,plusp,genestrand,first_read_p,sensep,
 					  segmenti_chrnum,segmenti_chroffset,segmenti_chrhigh,segmenti_chrlength);
 
 	if (donor == NULL || acceptor == NULL) {
@@ -441,7 +463,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	    return List_push(hits,(void *) Stage3end_new_splice(&(*found_score),best_segmentj_nmismatches,best_segmenti_nmismatches,
 								donor,acceptor,/*distance*/segmentj_left - segmenti_left,
 								/*shortdistancep*/true,splicing_penalty,querylength,
-								/*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								/*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								/*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								/*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								/*copy_donor_p*/false,/*copy_acceptor_p*/false,first_read_p,sensedir,
 								sarrayp));
@@ -458,7 +481,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 				 (void *) Stage3end_new_splice(&(*found_score),best_segmentj_nmismatches,best_segmenti_nmismatches,
 							       donor,acceptor,/*distance*/segmentj_left - segmenti_left,
 							       /*shortdistancep*/true,splicing_penalty,querylength,
-							       /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+							       /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+							       /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 							       /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 							       /*copy_donor_p*/false,/*copy_acceptor_p*/false,first_read_p,sensedir,
 							       sarrayp));
@@ -497,7 +521,8 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 		     int *segmentj_antidonor_knowni, int *segmentm_antiacceptor_knowni, int *segmentm_antidonor_knowni, int *segmenti_antiacceptor_knowni,
 		     int segmenti_donor_nknown, int segmentm_acceptor_nknown, int segmentm_donor_nknown, int segmentj_acceptor_nknown,
 		     int segmentj_antidonor_nknown, int segmentm_antiacceptor_nknown, int segmentm_antidonor_nknown, int segmenti_antiacceptor_nknown,
-		     int splicing_penalty, int max_mismatches_allowed, bool plusp, int genestrand, bool subs_or_indels_p, bool sarrayp) {
+		     int splicing_penalty, int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p,
+		     bool subs_or_indels_p, bool sarrayp) {
   Substring_T donor, shortexon, acceptor;
   int best_splice_pos_1, best_splice_pos_2, splice_pos_start, splice_pos_end, splice_pos_1, splice_pos_2;
   int i, a, b, j;
@@ -510,6 +535,7 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
   int best_segmenti_nmismatches, best_segmentm_nmismatches, best_segmentj_nmismatches,
     segmenti_nmismatches, segmentm_nmismatches, segmentj_nmismatches;
   int donor_support, acceptor_support, middle_support;
+  Univcoord_T best_donor1_splicecoord, best_acceptor1_splicecoord, best_donor2_splicecoord, best_acceptor2_splicecoord;
   int best_donor1_knowni, best_acceptor1_knowni, best_donor2_knowni, best_acceptor2_knowni;
   double best_prob, best_donor1_prob, best_acceptor1_prob, best_donor2_prob, best_acceptor2_prob,
     probi, proba, probb, probj;
@@ -525,7 +551,7 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 
 
   debug2(printf("Splice_solve_double: Getting genome at lefti %u, leftm %u, and leftj %u\n",
-		 segmenti_left,segmentm_left,segmentj_left));
+		segmenti_left,segmentm_left,segmentj_left));
 
   splice_pos_start = min_shortend;
   splice_pos_end = querylength - min_shortend; /* ? off by 1, so -l 3 allows only ends of up to 2 */
@@ -655,44 +681,44 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	    j++;
 	  } else {
 	    segmenti_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmenti_left,/*pos5*/0,/*pos3*/splice_pos_1,
-								     plusp,genestrand);
+								     plusp,genestrand,first_read_p);
 	    segmentm_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmentm_left,/*pos5*/splice_pos_1,/*pos3*/splice_pos_2,
-								     plusp,genestrand);
+								     plusp,genestrand,first_read_p);
 	    segmentj_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmentj_left,/*pos5*/splice_pos_2,/*pos3*/querylength,
-								     plusp,genestrand);
+								     plusp,genestrand,first_read_p);
 	    if ((nmismatches = segmenti_nmismatches + segmentm_nmismatches + segmentj_nmismatches) <= best_nmismatches) {
 	      if (donori_knowni[i] >= 0) {
-		probi = 1.0;
+		probi = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		probi = Maxent_hr_donor_prob(segmenti_left + splice_pos_1,segmenti_chroffset);
 	      }
 
 	      if (acceptora_knowni[a] >= 0) {
-		proba = 1.0;
+		proba = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		proba = Maxent_hr_acceptor_prob(segmentm_left + splice_pos_1,segmentm_chroffset);
 	      }
 
 	      if (donorb_knowni[b] >= 0) {
-		probb = 1.0;
+		probb = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		probb = Maxent_hr_donor_prob(segmentm_left + splice_pos_2,segmentm_chroffset);
 	      }
 	      
 	      if (acceptorj_knowni[j] >= 0) {
-		probj = 1.0;
+		probj = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		probj = Maxent_hr_acceptor_prob(segmentj_left + splice_pos_2,segmentj_chroffset);
 	      }
 
 	      debug2(
-		      if (plusp == true) {
-			printf("plus sense splice_pos  %d, %d, i.donor %f, m.acceptor %f, m.donor %f, j.acceptor %f\n",
-			       splice_pos_1,splice_pos_2,probi,proba,probb,probj);
-		      } else {
-			printf("minus antisense splice_pos  %d %d, i.donor %f, m.acceptor %f, m.donor %f, j.acceptor %f\n",
-			       splice_pos_1,splice_pos_2,probi,proba,probb,probj);
-		      });
+		     if (plusp == true) {
+		       printf("plus sense splice_pos  %d, %d, i.donor %f, m.acceptor %f, m.donor %f, j.acceptor %f\n",
+			      splice_pos_1,splice_pos_2,probi,proba,probb,probj);
+		     } else {
+		       printf("minus antisense splice_pos  %d %d, i.donor %f, m.acceptor %f, m.donor %f, j.acceptor %f\n",
+			      splice_pos_1,splice_pos_2,probi,proba,probb,probj);
+		     });
 
 	      if (nmismatches < best_nmismatches ||
 		  (nmismatches == best_nmismatches && probi + proba + probb + probj > best_prob)) {
@@ -700,6 +726,10 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 		best_nmismatches = nmismatches;
 		best_prob = probi + proba + probb + probj;
 
+		best_donor1_splicecoord = segmenti_left + splice_pos_1;
+		best_acceptor1_splicecoord = segmentm_left + splice_pos_1;
+		best_donor2_splicecoord = segmentm_left + splice_pos_2;
+		best_acceptor2_splicecoord = segmentj_left + splice_pos_2;
 		best_donor1_knowni = donori_knowni[i];
 		best_acceptor1_knowni = acceptora_knowni[a];
 		best_donor2_knowni = donorb_knowni[b];
@@ -846,45 +876,45 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	    j++;
 	  } else {
 	    segmenti_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmenti_left,/*pos5*/0,/*pos3*/splice_pos_1,
-								     plusp,genestrand);
+								     plusp,genestrand,first_read_p);
 	    segmentm_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmentm_left,/*pos5*/splice_pos_1,/*pos3*/splice_pos_2,
-								     plusp,genestrand);
+								     plusp,genestrand,first_read_p);
 	    segmentj_nmismatches = Genome_count_mismatches_substring(query_compress,/*left*/segmentj_left,/*pos5*/splice_pos_2,/*pos3*/querylength,
-								     plusp,genestrand);
+								     plusp,genestrand,first_read_p);
 	    
 	    if ((nmismatches = segmenti_nmismatches + segmentm_nmismatches + segmentj_nmismatches) <= best_nmismatches) {
 	      if (antiacceptori_knowni[i] >= 0) {
-		probi = 1.0;
+		probi = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		probi = Maxent_hr_antiacceptor_prob(segmenti_left + splice_pos_1,segmenti_chroffset);
 	      }
 	    
 	      if (antidonora_knowni[a] >= 0) {
-		proba = 1.0;
+		proba = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		proba = Maxent_hr_antidonor_prob(segmentm_left + splice_pos_1,segmentm_chroffset);
 	      }
 
 	      if (antiacceptorb_knowni[b] >= 0) {
-		probb = 1.0;
+		probb = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		probb = Maxent_hr_antiacceptor_prob(segmentm_left + splice_pos_2,segmentm_chroffset);
 	      }
 
 	      if (antidonorj_knowni[j] >= 0) {
-		probj = 1.0;
+		probj = 1.0; /* Needs to be 1.0 for output */
 	      } else {
 		probj = Maxent_hr_antidonor_prob(segmentj_left + splice_pos_2,segmentj_chroffset);
 	      }
 
 	      debug2(
-		      if (plusp == true) {
-			printf("plus antisense splice_pos  %d, %d, i.antiacceptor %f, m.antidonor %f, m.antiacceptor %f, j.antidonor %f\n",
-			       splice_pos_1,splice_pos_2,probi,proba,probb,probj);
-		      } else {
-			printf("minus sense splice_pos  %d, %d, i.antiacceptor %f, m.antidonor %f, m.antiacceptor %f, j.antidonor %f\n",
-			       splice_pos_1,splice_pos_2,probi,proba,probb,probj);
-		      });
+		     if (plusp == true) {
+		       printf("plus antisense splice_pos  %d, %d, i.antiacceptor %f, m.antidonor %f, m.antiacceptor %f, j.antidonor %f\n",
+			      splice_pos_1,splice_pos_2,probi,proba,probb,probj);
+		     } else {
+		       printf("minus sense splice_pos  %d, %d, i.antiacceptor %f, m.antidonor %f, m.antiacceptor %f, j.antidonor %f\n",
+			      splice_pos_1,splice_pos_2,probi,proba,probb,probj);
+		     });
 
 	      if (nmismatches < best_nmismatches ||
 		  (nmismatches == best_nmismatches && probi + proba + probb + probj > best_prob)) {
@@ -892,6 +922,10 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 		best_nmismatches = nmismatches;
 		best_prob = probi + proba + probb + probj;
 
+		best_acceptor1_splicecoord = segmenti_left + splice_pos_1;
+		best_donor1_splicecoord = segmentm_left + splice_pos_1;
+		best_acceptor2_splicecoord = segmentm_left + splice_pos_2;
+		best_donor2_splicecoord = segmentj_left + splice_pos_2;
 		best_acceptor1_knowni = antiacceptori_knowni[i];
 		best_donor1_knowni = antidonora_knowni[a];
 		best_acceptor2_knowni = antiacceptorb_knowni[b];
@@ -925,21 +959,25 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	sensep = (plusp == true) ? true : false;
 	sensedir = (plusp == true) ? SENSE_FORWARD : SENSE_ANTI;
 
-	donor = Substring_new_donor(best_donor1_knowni,/*joffset*/0,best_splice_pos_1,best_segmenti_nmismatches,
+	donor = Substring_new_donor(best_donor1_splicecoord,best_donor1_knowni,
+				    best_splice_pos_1,best_segmenti_nmismatches,
 				    best_donor1_prob,/*left*/segmenti_left,query_compress,
-				    querylength,plusp,genestrand,sensep,
+				    querylength,plusp,genestrand,first_read_p,sensep,
 				    segmenti_chrnum,segmenti_chroffset,segmenti_chrhigh,segmenti_chrlength);
 
-	shortexon = Substring_new_shortexon(best_acceptor1_knowni,best_donor2_knowni,/*joffset*/0,
+	shortexon = Substring_new_shortexon(best_acceptor1_splicecoord,best_acceptor1_knowni,
+					    best_donor2_splicecoord,best_donor2_knowni,
 					    /*acceptor_pos*/best_splice_pos_1,/*donor_pos*/best_splice_pos_2,best_segmentm_nmismatches,
 					    /*acceptor_prob*/best_acceptor1_prob,/*donor_prob*/best_donor2_prob,
 					    /*left*/segmentm_left,query_compress,
-					    querylength,plusp,genestrand,sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
+					    querylength,plusp,genestrand,first_read_p,
+					    sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
 					    segmentm_chrnum,segmentm_chroffset,segmentm_chrhigh,segmentm_chrlength);
 
-	acceptor = Substring_new_acceptor(best_acceptor2_knowni,/*joffset*/0,best_splice_pos_2,best_segmentj_nmismatches,
+	acceptor = Substring_new_acceptor(best_acceptor2_splicecoord,best_acceptor2_knowni,
+					  best_splice_pos_2,best_segmentj_nmismatches,
 					  best_acceptor2_prob,/*left*/segmentj_left,query_compress,
-					  querylength,plusp,genestrand,sensep,
+					  querylength,plusp,genestrand,first_read_p,sensep,
 					  segmentj_chrnum,segmentj_chroffset,segmentj_chrhigh,segmentj_chrlength);
 
 	if (donor == NULL || shortexon == NULL || acceptor == NULL) {
@@ -962,7 +1000,8 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 								   /*acceptor_distance*/segmentm_left - segmenti_left,
 								   /*donor_distance*/segmentj_left - segmentm_left,
 								   /*amb_nmatches_donor*/0,/*amb_nmatches_acceptor*/0,
-								   /*ambi_left*/NULL,/*ambi_right*/NULL,
+								   /*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								   /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								   /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								   /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 								   splicing_penalty,querylength,sensedir,sarrayp));
@@ -981,7 +1020,8 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 								  /*acceptor_distance*/segmentm_left - segmenti_left,
 								  /*donor_distance*/segmentj_left - segmentm_left,
 								  /*amb_nmatches_donor*/0,/*amb_nmatches_acceptor*/0,
-								  /*ambi_left*/NULL,/*ambi_right*/NULL,
+								  /*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								  /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								  /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								  /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 								  splicing_penalty,querylength,sensedir,sarrayp));
@@ -997,21 +1037,24 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	sensep = (plusp == true) ? false : true;
 	sensedir = (plusp == true) ? SENSE_ANTI : SENSE_FORWARD;
 
-	donor = Substring_new_donor(best_donor2_knowni,/*joffset*/0,best_splice_pos_2,best_segmentj_nmismatches,
+	donor = Substring_new_donor(best_donor2_splicecoord,best_donor2_knowni,
+				    best_splice_pos_2,best_segmentj_nmismatches,
 				    best_donor2_prob,/*left*/segmentj_left,query_compress,
-				    querylength,plusp,genestrand,sensep,
+				    querylength,plusp,genestrand,first_read_p,sensep,
 				    segmentj_chrnum,segmentj_chroffset,segmentj_chrhigh,segmentj_chrlength);
 
-	shortexon = Substring_new_shortexon(best_acceptor2_knowni,best_donor1_knowni,/*joffset*/0,
+	shortexon = Substring_new_shortexon(best_acceptor2_splicecoord,best_acceptor2_knowni,
+					    best_donor1_splicecoord,best_donor1_knowni,
 					    /*acceptor_pos*/best_splice_pos_2,/*donor_pos*/best_splice_pos_1,best_segmentm_nmismatches,
 					    /*acceptor_prob*/best_acceptor2_prob,/*donor_prob*/best_donor1_prob,
 					    /*left*/segmentm_left,query_compress,querylength,
-					    plusp,genestrand,sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
+					    plusp,genestrand,first_read_p,sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
 					    segmentm_chrnum,segmentm_chroffset,segmentm_chrhigh,segmentm_chrlength);
 
-	acceptor = Substring_new_acceptor(best_acceptor1_knowni,/*joffset*/0,best_splice_pos_1,best_segmenti_nmismatches,
+	acceptor = Substring_new_acceptor(best_acceptor1_splicecoord,best_acceptor1_knowni,
+					  best_splice_pos_1,best_segmenti_nmismatches,
 					  best_acceptor1_prob,/*left*/segmenti_left,query_compress,
-					  querylength,plusp,genestrand,sensep,
+					  querylength,plusp,genestrand,first_read_p,sensep,
 					  segmenti_chrnum,segmenti_chroffset,segmenti_chrhigh,segmenti_chrlength);
 
 	if (donor == NULL || shortexon == NULL || acceptor == NULL) {
@@ -1034,7 +1077,8 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 								   /*acceptor_distance*/segmentj_left - segmentm_left,
 								   /*donor_distance*/segmentm_left - segmenti_left,
 								   /*amb_nmatches_donor*/0,/*amb_nmatches_acceptor*/0,
-								   /*ambi_left*/NULL,/*ambi_right*/NULL,
+								   /*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								   /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								   /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								   /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 								   splicing_penalty,querylength,sensedir,sarrayp));
@@ -1053,7 +1097,8 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 								  /*acceptor_distance*/segmentj_left - segmentm_left,
 								  /*donor_distance*/segmentm_left - segmenti_left,
 								  /*amb_nmatches_donor*/0,/*amb_nmatches_acceptor*/0,
-								  /*ambi_left*/NULL,/*ambi_right*/NULL,
+								  /*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								  /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								  /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								  /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 								  splicing_penalty,querylength,sensedir,sarrayp));
@@ -1068,6 +1113,514 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
   }
 
   return hits;
+}
+
+
+List_T
+Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambiguous, 
+			  int querylength, bool first_read_p, bool sarrayp) {
+  List_T winners = NULL;
+  Stage3end_T *array, hit;
+  int n, j, i, k;
+  int n_good_spliceends;
+  Univcoord_T segmenti_left;
+  Substring_T donor, acceptor;
+  int best_nmismatches, nmismatches, nmismatches_donor, nmismatches_acceptor;
+  double best_prob, prob;
+
+  int sensedir;
+#ifdef LARGE_GENOMES
+  Uint8list_T ambcoords, ambcoords_left, ambcoords_right;
+#else
+  Uintlist_T ambcoords, ambcoords_left, ambcoords_right;
+#endif
+  Intlist_T amb_knowni, amb_nmismatches, amb_knowni_left, amb_knowni_right, amb_nmismatches_left, amb_nmismatches_right;
+
+  array = (Stage3end_T *) List_to_array_n(&n,localsplicing);
+  qsort(array,n,sizeof(Stage3end_T),Stage3end_chimera_segmenti_cmp);
+  List_free(&localsplicing);
+  
+  j = 0;
+  while (j + 1 < n) {
+    segmenti_left = Stage3end_chimera_segmenti_left(array[j]);
+    k = j + 1;
+    while (k < n && Stage3end_chimera_segmenti_left(array[k]) == segmenti_left) {
+      k++;
+    }
+    /* [j..(k-1)] constitutes a group of splices with the same segmenti */
+    debug9(printf("GROUP from %d to %d\n",j,k-1));
+    for (i = j; i < k; i++) {
+      debug9(printf("%d %u %u\n",i,Stage3end_chimera_segmenti_left(array[i]),Stage3end_chimera_segmentj_left(array[i])));
+    }
+    debug9(printf("\n"));
+
+    if (j == k - 1) {
+      /* Singleton */
+      debug9(printf("Saving hit %d\n",j));
+      winners = List_push(winners,(void *) array[j]);
+
+    } else {
+      best_nmismatches = querylength;
+      for (i = j; i < k; i++) {
+	hit = array[i];
+	debug9(printf("analyzing distance %d, nmismatches %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+		      Substring_chimera_prob(Stage3end_substring_donor(hit)),
+		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	
+	if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	  best_nmismatches = nmismatches;
+	  best_prob = Stage3end_chimera_prob(hit);
+	} else if (nmismatches == best_nmismatches && (prob = Stage3end_chimera_prob(hit)) > best_prob) {
+	  best_prob = prob;
+	}
+      }
+
+      n_good_spliceends = 0;
+      for (i = j; i < k; i++) {
+	hit = array[i];
+	if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+	    (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	  debug9(printf("accepting distance %d, nmismatches %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	  n_good_spliceends += 1;
+	}
+      }
+	
+      if (n_good_spliceends == 1) {
+	for (i = j; i < k; i++) {
+	  hit = array[i];
+	  if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+	      (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	    debug9(printf("pushing distance %d, nmismatches %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	    debug9(printf("Saving hit %d\n",i));
+	    winners = List_push(winners,(void *) hit);
+	  } else {
+	    debug9(printf("Freeing hit %d\n",i));
+	    Stage3end_free(&hit);
+	  }
+	}
+
+      } else {
+	/* Create ambiguous */
+	hit = array[j];
+	donor = Stage3end_substring_donor(hit);
+	acceptor = Stage3end_substring_acceptor(hit);
+	sensedir = Stage3end_sensedir(hit);
+
+	ambcoords = NULL;
+	amb_knowni = (Intlist_T) NULL;
+	amb_nmismatches = (Intlist_T) NULL;
+	if (Substring_left_genomicseg(donor) == segmenti_left) {
+	  for (i = j; i < k; i++) {
+	    hit = array[i];
+	    acceptor = Stage3end_substring_acceptor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+	  }
+
+	  if (Substring_plusp(donor) == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  }
+
+	  nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+							       donor,/*acceptor*/NULL,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(donor) - nmismatches_acceptor,
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+							       sensedir,sarrayp));
+#ifdef LARGE_GENOMES
+	  Uint8list_free(&ambcoords);
+#else
+	  Uintlist_free(&ambcoords);
+#endif
+	  Intlist_free(&amb_knowni);
+	  Intlist_free(&amb_nmismatches);
+	  
+	} else if (Substring_left_genomicseg(acceptor) == segmenti_left) {
+	  for (i = j; i < k; i++) {
+	    hit = array[i];
+	    donor = Stage3end_substring_donor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	  }
+
+	  if (Substring_plusp(acceptor) == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  }
+
+	  nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+							       /*donor*/NULL,acceptor,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(acceptor) - nmismatches_donor,
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+							       sensedir,sarrayp));
+#ifdef LARGE_GENOMES
+	  Uint8list_free(&ambcoords);
+#else
+	  Uintlist_free(&ambcoords);
+#endif
+	  Intlist_free(&amb_knowni);
+	  Intlist_free(&amb_nmismatches);
+	      
+	} else {
+	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals segmenti_left %u\n",
+		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),segmenti_left);
+	  abort();
+	}
+
+	for (i = j; i < k; i++) {
+	  hit = array[i];
+	  debug9(printf("Freeing hit %d\n",i));
+	  Stage3end_free(&hit);
+	}
+      }
+    }
+
+    j = k;
+  }
+
+  if (j < n) {
+    /* Singleton */
+    debug9(printf("Keeping hit %d\n",i));
+    winners = List_push(winners,(void *) array[j]);
+  }
+
+  FREE(array);
+
+  return winners;
+}
+
+
+
+
+List_T
+Splice_group_by_segmentj (int *found_score, List_T localsplicing, List_T *ambiguous, 
+			  int querylength, bool first_read_p, bool sarrayp) {
+  List_T winners = NULL;
+  Stage3end_T *array, hit;
+  int n, j, i, k;
+  int n_good_spliceends;
+  Univcoord_T segmentj_left;
+  Substring_T donor, acceptor;
+  int best_nmismatches, nmismatches, nmismatches_donor, nmismatches_acceptor;
+  double best_prob, prob;
+
+  int sensedir;
+#ifdef LARGE_GENOMES
+  Uint8list_T ambcoords, ambcoords_left, ambcoords_right;
+#else
+  Uintlist_T ambcoords, ambcoords_left, ambcoords_right;
+#endif
+  Intlist_T amb_knowni, amb_nmismatches, amb_knowni_left, amb_knowni_right, amb_nmismatches_left, amb_nmismatches_right;
+
+  array = (Stage3end_T *) List_to_array_n(&n,localsplicing);
+  qsort(array,n,sizeof(Stage3end_T),Stage3end_chimera_segmentj_cmp);
+  List_free(&localsplicing);
+  
+  j = 0;
+  while (j + 1 < n) {
+    segmentj_left = Stage3end_chimera_segmentj_left(array[j]);
+    k = j + 1;
+    while (k < n && Stage3end_chimera_segmentj_left(array[k]) == segmentj_left) {
+      k++;
+    }
+    /* [j..(k-1)] constitutes a group of splices with the same segmentj */
+    debug9(printf("GROUP from %d to %d\n",j,k-1));
+    for (i = j; i < k; i++) {
+      debug9(printf("%d %u %u\n",i,Stage3end_chimera_segmenti_left(array[i]),Stage3end_chimera_segmentj_left(array[i])));
+    }
+    debug9(printf("\n"));
+
+    if (j == k - 1) {
+      /* Singleton */
+      debug9(printf("Saving hit %d\n",j));
+      winners = List_push(winners,(void *) array[j]);
+
+    } else {
+      best_nmismatches = querylength;
+      for (i = j; i < k; i++) {
+	hit = array[i];
+	debug9(printf("analyzing distance %d, nmismatches %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+		      Substring_chimera_prob(Stage3end_substring_donor(hit)),
+		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	  best_nmismatches = nmismatches;
+	  best_prob = Stage3end_chimera_prob(hit);
+	} else if (nmismatches == best_nmismatches && (prob = Stage3end_chimera_prob(hit)) > best_prob) {
+	  best_prob = prob;
+	}
+      }
+
+      n_good_spliceends = 0;
+      for (i = j; i < k; i++) {
+	hit = array[i];
+	if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+	    (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	  debug9(printf("accepting distance %d, nmismatches %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	  n_good_spliceends += 1;
+	}
+      }
+	
+      if (n_good_spliceends == 1) {
+	for (i = j; i < k; i++) {
+	  hit = array[i];
+	  if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+	      (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	    debug9(printf("pushing distance %d, nmismatches %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	    debug9(printf("Saving hit %d\n",i));
+	    winners = List_push(winners,(void *) hit);
+	  } else {
+	    debug9(printf("Freeing hit %d\n",i));
+	    Stage3end_free(&hit);
+	  }
+	}
+
+      } else {
+	/* Create ambiguous */
+	hit = array[j];
+	donor = Stage3end_substring_donor(hit);
+	acceptor = Stage3end_substring_acceptor(hit);
+	sensedir = Stage3end_sensedir(hit);
+
+	ambcoords = NULL;
+	amb_knowni = (Intlist_T) NULL;
+	amb_nmismatches = (Intlist_T) NULL;
+	if (Substring_left_genomicseg(donor) == segmentj_left) {
+	  for (i = j; i < k; i++) {
+	    hit = array[i];
+	    acceptor = Stage3end_substring_acceptor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+	  }
+
+	  if (Substring_plusp(donor) == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  }
+
+	  nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+							       donor,/*acceptor*/NULL,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(donor) - nmismatches_acceptor,
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+							       sensedir,sarrayp));
+#ifdef LARGE_GENOMES
+	  Uint8list_free(&ambcoords);
+#else
+	  Uintlist_free(&ambcoords);
+#endif
+	  Intlist_free(&amb_knowni);
+	  Intlist_free(&amb_nmismatches);
+	  
+	} else if (Substring_left_genomicseg(acceptor) == segmentj_left) {
+	  for (i = j; i < k; i++) {
+	    hit = array[i];
+	    donor = Stage3end_substring_donor(hit);
+#ifdef LARGE_GENOMES
+	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+	    amb_knowni = Intlist_push(amb_knowni,-1);
+	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	  }
+
+	  if (Substring_plusp(acceptor) == true) {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	  } else {
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+	  }
+
+	  nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	  *ambiguous = List_push(*ambiguous,
+				 (void *) Stage3end_new_splice(&(*found_score),
+							       nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+							       /*donor*/NULL,acceptor,/*distance*/0U,
+							       /*shortdistancep*/false,/*penalty*/0,querylength,
+							       /*amb_nmatches*/querylength - Substring_match_length_orig(acceptor) - nmismatches_donor,
+							       ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+							       amb_nmismatches_left,amb_nmismatches_right,
+							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+							       sensedir,sarrayp));
+	  
+#ifdef LARGE_GENOMES
+	  Uint8list_free(&ambcoords);
+#else
+	  Uintlist_free(&ambcoords);
+#endif
+	  Intlist_free(&amb_knowni);
+	  Intlist_free(&amb_nmismatches);
+	      
+	} else {
+	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals segmentj_left %u\n",
+		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),segmentj_left);
+	  abort();
+	}
+
+	for (i = j; i < k; i++) {
+	  hit = array[i];
+	  debug9(printf("Freeing hit %d\n",i));
+	  Stage3end_free(&hit);
+	}
+      }
+    }
+
+    j = k;
+  }
+
+  if (j < n) {
+    /* Singleton */
+    debug9(printf("Keeping hit %d\n",i));
+    winners = List_push(winners,(void *) array[j]);
+  }
+
+  FREE(array);
+
+  return winners;
 }
 
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 131543 2014-03-26 19:25:48Z twu $";
+static char rcsid[] = "$Id: pairpool.c 136057 2014-05-13 20:14:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,8 +13,11 @@ static char rcsid[] = "$Id: pairpool.c 131543 2014-03-26 19:25:48Z twu $";
 #include "pairdef.h"
 #include "listdef.h"
 #include "intron.h"
+#include "complement.h"
+
 
 #define CHUNKSIZE 20000
+#define MICROINTRON_LENGTH 9	/* For Pairpool_add_genomeskip */
 
 #ifdef DEBUG
 #define debug(x) x
@@ -34,6 +37,13 @@ static char rcsid[] = "$Id: pairpool.c 131543 2014-03-26 19:25:48Z twu $";
 #define debug2(x) x
 #else
 #define debug2(x)
+#endif
+
+/* Getting genomic nt */
+#ifdef DEBUG8
+#define debug8(x) x
+#else
+#define debug8(x)
 #endif
 
 /* joining ends */
@@ -922,5 +932,265 @@ Pairpool_join_end5 (List_T pairs_orig, List_T end5_path_orig, Pairpool_T pairpoo
   debug15(printf("\n"));
 
   return pairs;
+}
+
+
+List_T
+Pairpool_add_queryskip (List_T pairs, int r, int c, int dist, char *querysequence,
+			int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp, int dynprogindex) {
+  int j;
+  char c1;
+  int querycoord, genomecoord, step;
+
+  querycoord = r-1;
+  genomecoord = c-1;
+
+  if (revp == true) {
+    querycoord = -querycoord;
+    genomecoord = -genomecoord;
+    step = +1;
+  } else {
+    /* Advance to next genomepos */
+    /* genomecoord++;  -- No, this leads to bugs */
+    step = -1;
+  }
+  debug(printf("Entered Pairpool_add_genomeskip with r %d, c %d, revp %d => querycoord %d\n",r,c,revp,querycoord));
+
+  for (j = 0; j < dist; j++) {
+    c1 = querysequence[querycoord];
+    debug(printf("Pushing %d,%d [%d,%d] (%c,-), ",r,c,queryoffset+querycoord,genomeoffset+genomecoord,c1));
+    pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,
+			  c1,INDEL_COMP,/*genome*/' ',/*genomealt*/' ',dynprogindex);
+    debug(r--);
+    querycoord += step;
+  }
+
+  return pairs;
+}
+
+
+static char complCode[128] = COMPLEMENT_LC;
+
+static char
+get_genomic_nt (char *g_alt, int genomicpos, Univcoord_T chroffset, Univcoord_T chrhigh,
+		bool watsonp) {
+  char c2, c2_alt;
+  Univcoord_T pos;
+
+#if 0
+  /* If the read has a deletion, then we will extend beyond 0 or genomiclength, so do not restrict. */
+  if (genomicpos < 0) {
+    return '*';
+
+  } else if (genomicpos >= genomiclength) {
+    return '*';
+
+  }
+#endif
+
+  if (watsonp) {
+    if ((pos = chroffset + genomicpos) < chroffset) { /* Must be <, and not <=, or dynamic programming will fail */
+      *g_alt = '*';
+      return '*';
+
+    } else if (pos >= chrhigh) {
+      *g_alt = '*';
+      return '*';
+
+#if 0
+    } else if (genome) {
+      /* Not necessary, because Genome_get_char_blocks should work */
+      debug8(printf("At %u, genomicnt is %c\n",
+		    genomicpos,Genome_get_char(genome,pos)));
+      return Genome_get_char(genome,pos);
+#endif
+
+    } else {
+      /* GMAP with user-supplied genomic segment */
+      debug8(printf("At %u, genomicnt is %c\n",
+		    genomicpos,Genome_get_char_blocks(&(*g_alt),pos)));
+      return Genome_get_char_blocks(&(*g_alt),pos);
+    }
+
+  } else {
+    if ((pos = chrhigh - genomicpos) < chroffset) { /* Must be <, and not <=, or dynamic programming will fail */
+      *g_alt = '*';
+      return '*';
+
+    } else if (pos >= chrhigh) {
+      *g_alt = '*';
+      return '*';
+
+#if 0
+    } else if (genome) {
+      /* Not necessary, because Genome_get_char_blocks should work */
+      c2 = Genome_get_char(genome,pos);
+#endif
+
+    } else {
+      /* GMAP with user-supplied genomic segment */
+      c2 = Genome_get_char_blocks(&c2_alt,pos);
+    }
+    debug8(printf("At %u, genomicnt is %c\n",genomicpos,complCode[(int) c2]));
+    *g_alt = complCode[(int) c2_alt];
+    return complCode[(int) c2];
+  }
+}
+
+
+List_T
+Pairpool_add_genomeskip (bool *add_dashes_p, List_T pairs, int r, int c, int dist,
+			 char *genomesequence, char *genomesequenceuc,
+			 int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
+			 Univcoord_T chroffset, Univcoord_T chrhigh,
+			 int cdna_direction, bool watsonp, int dynprogindex, bool use_genomicseg_p) {
+  int j;
+  char left1, left2, right2, right1, left1_alt, left2_alt, right2_alt, right1_alt, c2, c2_alt;
+  int introntype;
+  int querycoord, leftgenomecoord, rightgenomecoord, genomecoord, temp, step;
+
+  querycoord = r-1;
+  leftgenomecoord = c-dist;
+  rightgenomecoord = c-1;
+
+  if (revp == true) {
+    querycoord = -querycoord;
+    temp = leftgenomecoord;
+    leftgenomecoord = -rightgenomecoord;
+    rightgenomecoord = -temp;
+    step = +1;
+  } else {
+    /* Advance to next querypos */
+    /* querycoord++; -- No, this leads to bugs */
+    step = -1;
+  }
+  debug(printf("Entered Pairpool_add_genomeskip with r %d, c %d, revp %d => querycoord %d\n",r,c,revp,querycoord));
+
+  if (dist < MICROINTRON_LENGTH) {
+    *add_dashes_p = true;
+  } else {
+    /* Check for intron */
+    if (use_genomicseg_p) {
+      left1 = left1_alt = genomesequenceuc[leftgenomecoord];
+      left2 = left2_alt = genomesequenceuc[leftgenomecoord+1];
+      right2 = right2_alt = genomesequenceuc[rightgenomecoord-1];
+      right1 = right1_alt = genomesequenceuc[rightgenomecoord];
+    } else {
+      left1 = get_genomic_nt(&left1_alt,genomeoffset+leftgenomecoord,chroffset,chrhigh,watsonp);
+      left2 = get_genomic_nt(&left2_alt,genomeoffset+leftgenomecoord+1,chroffset,chrhigh,watsonp);
+      right2 = get_genomic_nt(&right2_alt,genomeoffset+rightgenomecoord-1,chroffset,chrhigh,watsonp);
+      right1 = get_genomic_nt(&right1_alt,genomeoffset+rightgenomecoord,chroffset,chrhigh,watsonp);
+    }
+#ifdef EXTRACT_GENOMICSEG
+    assert(left1 == genomesequenceuc[leftgenomecoord]);
+    assert(left2 == genomesequenceuc[leftgenomecoord+1]);
+    assert(right2 == genomesequenceuc[rightgenomecoord-1]);
+    assert(right1 == genomesequenceuc[rightgenomecoord]);
+#endif
+	
+#ifdef PMAP
+    introntype = Intron_type(left1,left2,right2,right1,
+			     left1_alt,left2_alt,right2_alt,right1_alt,
+			     /*cdna_direction*/+1);
+#else
+    introntype = Intron_type(left1,left2,right2,right1,
+			     left1_alt,left2_alt,right2_alt,right1_alt,
+			     cdna_direction);
+#endif
+
+#if 0
+    if (introntype == NONINTRON) {
+      *add_dashes_p = true;
+    } else {
+      *add_dashes_p = false;
+    }
+#endif
+    *add_dashes_p = false;
+  }
+
+  if (*add_dashes_p == true) {
+    if (revp == true) {
+      genomecoord = leftgenomecoord;
+    } else {
+      genomecoord = rightgenomecoord;
+    }
+    for (j = 0; j < dist; j++) {
+      if (use_genomicseg_p) {
+	c2 = c2_alt = genomesequence[genomecoord];
+      } else {
+	c2 = get_genomic_nt(&c2_alt,genomeoffset+genomecoord,chroffset,chrhigh,watsonp);
+      }
+#ifdef EXTRACT_GENOMICSEG
+      assert(c2 == genomesequence[genomecoord]);
+#endif
+
+      debug(printf("Pushing %d,%d [%d,%d] (-,%c),",r,c,queryoffset+querycoord,genomeoffset+genomecoord,c2));
+      pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,
+			    ' ',INDEL_COMP,c2,c2_alt,dynprogindex);
+      debug(c--);
+      genomecoord += step;
+    }
+  } else {
+    debug(printf("Large gap %c%c..%c%c.  Adding gap of type %d.\n",
+		 left1,left2,right2,right1,introntype));
+#ifndef NOGAPHOLDER
+    pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/dist,
+				    /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/false);
+#endif
+  }
+  
+  return pairs;
+}
+
+
+/* Used for compacting pairs from working pairpool to final pairpool
+   (dest) at end of stage2 and stage3, so the working pairpool can be
+   re-used for the next gregion */
+List_T
+Pairpool_compact_copy (List_T list, T dest) {
+  List_T newlist = NULL, listcell;
+  Pair_T pair, orig;
+  List_T p, q;
+  int n;
+
+  for (q = list; q != NULL; q = q->rest) {
+    orig = (Pair_T) q->first;
+    
+    /* Following code taken from Pairpool_push_copy */
+    if (dest->pairctr >= dest->npairs) {
+      dest->pairptr = add_new_pairchunk(dest);
+    } else if ((dest->pairctr % CHUNKSIZE) == 0) {
+      for (n = dest->npairs - CHUNKSIZE, p = dest->pairchunks;
+	   n > dest->pairctr; p = p->rest, n -= CHUNKSIZE) ;
+      dest->pairptr = (struct Pair_T *) p->first;
+      debug1(printf("Located pair %d at %p\n",dest->pairctr,dest->pairptr));
+    }    
+    pair = dest->pairptr++;
+    dest->pairctr++;
+
+    memcpy(pair,orig,sizeof(struct Pair_T));
+
+    debug(
+	  printf("Copying %p: %d %d %c %c %c\n",
+		 pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	  );
+
+    if (dest->listcellctr >= dest->nlistcells) {
+      dest->listcellptr = add_new_listcellchunk(dest);
+    } else if ((dest->listcellctr % CHUNKSIZE) == 0) {
+      for (n = dest->nlistcells - CHUNKSIZE, p = dest->listcellchunks;
+	   n > dest->listcellctr; p = p->rest, n -= CHUNKSIZE) ;
+      dest->listcellptr = (struct List_T *) p->first;
+      debug1(printf("Located listcell %d at %p\n",dest->listcellctr,dest->listcellptr));
+    }
+    listcell = dest->listcellptr++;
+    dest->listcellctr++;
+
+    listcell->first = (void *) pair;
+    listcell->rest = newlist;
+    newlist = listcell;
+  }
+
+  return List_reverse(newlist);
 }
 

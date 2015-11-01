@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1hr.c 131814 2014-03-28 23:17:18Z twu $";
+static char rcsid[] = "$Id: stage1hr.c 136085 2014-05-13 23:00:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -31,7 +31,7 @@ static char rcsid[] = "$Id: stage1hr.c 131814 2014-03-28 23:17:18Z twu $";
 #include "substring.h"
 #include "complement.h"
 #include "compress.h"
-#include "genome_hr.h"
+#include "genome128_hr.h"
 #include "genome_sites.h"
 #include "maxent.h"
 #include "maxent_hr.h"
@@ -85,6 +85,8 @@ static char rcsid[] = "$Id: stage1hr.c 131814 2014-03-28 23:17:18Z twu $";
 /* MAX_NALIGNMENTS of 2 vs 1 gets 1600 improvements in 275,000 reads */
 /* MAX_NALIGNMENTS of 3 vs 2 gets 96 improvements in 275,000 reads */
 #define MAX_NALIGNMENTS 3
+
+#define MAX_NTERMINALS 100
 
 static bool use_sarray_p = true;
 
@@ -160,7 +162,6 @@ static int ngap = 3;  /* 0? */
 #define G_CHAR 0x2
 #define T_CHAR 0x3
 
-#define NOT_APPLICABLE true
 
 /* Originally allowed only 1, to print only unique translocations.
    But need to allow enough to avoid missing some translocations. */
@@ -209,6 +210,7 @@ static int end_miss_two;	/* Used for computing max_terminal_length */
 
 #define MAX_LOCALSPLICING_HITS 10000
 #define MAX_LOCALSPLICING_POTENTIAL 50
+#define LOCALSPLICING_SLOP 0.05
 
 
 /* Overall flow */
@@ -929,7 +931,7 @@ check_dinucleotides (char *sequence, int querylength) {
 
 static int
 read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
-	     int query_lastpos, int genestrand) {
+	     int query_lastpos, int genestrand, bool first_read_p) {
   Reader_T reader;
   int querypos, noligos = 0;
   Oligostate_T last_state = INIT;
@@ -997,7 +999,7 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
       }
     }
 
-  } else if (mode == CMET_STRANDED) {
+  } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
     while ((last_state = Oligo_next(last_state,&querypos,&forward,&revcomp,
 				    reader,/*cdnaend*/FIVE)) != DONE) {
 #ifdef LARGE_GENOMES
@@ -1019,10 +1021,27 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
 	this->plus_retrievedp[querypos] = false;
 	this->minus_retrievedp[querypos] = false;
 
-	this->forward_oligos[querypos] = Cmet_reduce_ct(forward) & oligobase_mask;
-	this->revcomp_oligos[querypos] = Cmet_reduce_ga(revcomp >> leftreadshift) & oligobase_mask;
+	if (genestrand == +2) {
+	  if (first_read_p == false) {
+	    this->forward_oligos[querypos] = Cmet_reduce_ct(forward) & oligobase_mask;
+	    this->revcomp_oligos[querypos] = Cmet_reduce_ga(revcomp >> leftreadshift) & oligobase_mask;
+	  } else {
+	    this->forward_oligos[querypos] = Cmet_reduce_ga(forward) & oligobase_mask;
+	    this->revcomp_oligos[querypos] = Cmet_reduce_ct(revcomp >> leftreadshift) & oligobase_mask;
+	  }
+	} else {
+	  if (first_read_p == true) {
+	    this->forward_oligos[querypos] = Cmet_reduce_ct(forward) & oligobase_mask;
+	    this->revcomp_oligos[querypos] = Cmet_reduce_ga(revcomp >> leftreadshift) & oligobase_mask;
+	  } else {
+	    this->forward_oligos[querypos] = Cmet_reduce_ga(forward) & oligobase_mask;
+	    this->revcomp_oligos[querypos] = Cmet_reduce_ct(revcomp >> leftreadshift) & oligobase_mask;
+	  }
+	}
 
-	debug(printf("At querypos %d, read oligo = %06X\n",querypos,this->forward_oligos[querypos]));
+	debug(printf("At querypos %d, fwd oligo %06X => %06X and rev oligo %06X => %06X\n",
+		     querypos,forward & oligobase_mask,this->forward_oligos[querypos],
+		     (revcomp >> leftreadshift) & oligobase_mask,this->revcomp_oligos[querypos]));
 	noligos++;
       }
     }
@@ -1110,8 +1129,13 @@ read_oligos (bool *allvalidp, T this, char *queryuc_ptr, int querylength,
 	this->plus_retrievedp[querypos] = false;
 	this->minus_retrievedp[querypos] = false;
 
-	this->forward_oligos[querypos] = Atoi_reduce_ag(forward) & oligobase_mask;
-	this->revcomp_oligos[querypos] = Atoi_reduce_tc(revcomp >> leftreadshift) & oligobase_mask;
+	if (first_read_p == true) {
+	  this->forward_oligos[querypos] = Atoi_reduce_ag(forward) & oligobase_mask;
+	  this->revcomp_oligos[querypos] = Atoi_reduce_tc(revcomp >> leftreadshift) & oligobase_mask;
+	} else {
+	  this->forward_oligos[querypos] = Atoi_reduce_tc(forward) & oligobase_mask;
+	  this->revcomp_oligos[querypos] = Atoi_reduce_ag(revcomp >> leftreadshift) & oligobase_mask;
+	}
 
 	debug(printf("At querypos %d, read oligo = %06X\n",querypos,this->forward_oligos[querypos]));
 	noligos++;
@@ -1682,14 +1706,14 @@ static List_T
 report_perfect_segment (int *found_score, int *nhits, List_T hits, Univcoord_T left,
 			Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 			Chrpos_T chrlength, int querylength, Compress_T query_compress,
-			int nmisses_allowed, bool plusp, int genestrand) {
+			int nmisses_allowed, bool plusp, int genestrand, bool first_read_p) {
   Stage3end_T hit;
   int nmismatches;
 
   if (snpp == true) {
     if ((hit = Stage3end_new_substitution(&(*found_score),/*nmismatches*/0,
 					  left,/*genomiclength*/querylength,query_compress,
-					  plusp,genestrand,chrnum,chroffset,chrhigh,chrlength,
+					  plusp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
 					  /*sarrayp*/false)) == NULL) {
       return hits;
     } else {
@@ -1700,15 +1724,16 @@ report_perfect_segment (int *found_score, int *nhits, List_T hits, Univcoord_T l
   } else if (mode != STANDARD || spansize != index1part) {
     /* Count actual number of mismatches.  May not be a perfect segment. */
     nmismatches = Genome_count_mismatches_limit(query_compress,left,/*pos5*/0,/*pos3*/querylength,
-						/*max_mismatches_allowed*/nmisses_allowed,plusp,
-						genestrand);
+						/*max_mismatches_allowed*/nmisses_allowed,
+						plusp,genestrand,first_read_p);
+    debug(printf("Got %d mismatches\n",nmismatches));
     if (nmismatches > nmisses_allowed) {
       return hits;
     } else {
       /* Don't use Stage3end_new_exact, because need to mark mismatches */
       if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					    left,/*genomiclength*/querylength,
-					    query_compress,plusp,genestrand,
+					    query_compress,plusp,genestrand,first_read_p,
 					    chrnum,chroffset,chrhigh,chrlength,
 					    /*sarrayp*/false)) == NULL) {
 	return hits;
@@ -1721,8 +1746,8 @@ report_perfect_segment (int *found_score, int *nhits, List_T hits, Univcoord_T l
   } else {
     /* mode == STANDARD && spansize == index1part */
     if ((hit = Stage3end_new_exact(&(*found_score),left,/*genomiclength*/querylength,
-				   query_compress,plusp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-				   /*sarrayp*/false)) == NULL) {
+				   query_compress,plusp,genestrand,first_read_p,
+				   chrnum,chroffset,chrhigh,chrlength,/*sarrayp*/false)) == NULL) {
       return hits;
     } else {
       *nhits += 1;
@@ -1749,7 +1774,7 @@ report_perfect_segment_dibase (int *found_score, int *nhits, List_T hits, Univco
   /* Need to fill buffer with nucleotide genome anyway */
   if ((hit = Stage3end_new_substitution(&(*found_score),/*nmismatches*/0,
 					left,/*genomiclength*/querylength,
-					query_compress,plusp,genestrand,
+					query_compress,plusp,genestrand,first_read_p,
 					chrnum,chroffset,chrhigh,chrlength,
 					/*sarrayp*/false)) == NULL) {
     return hits;
@@ -1885,7 +1910,7 @@ static List_T
 identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Univcoord_T *chroffset, Univcoord_T *chrhigh,
 			 Chrpos_T *chrlength, int *nhits, List_T hits, Univcoord_T goal, List_T prev, int *nempty,
 			 int *global_miss_querypos5, int *global_miss_querypos3,
-			 int querylength, Compress_T query_compress, bool plusp, int genestrand,
+			 int querylength, Compress_T query_compress, bool plusp, int genestrand, bool first_read_p,
 			 int nmisses_allowed, int nmisses_seen, int miss_querypos5, int miss_querypos3) {
   List_T spanningset;
   Stage3end_T hit;
@@ -2284,7 +2309,7 @@ identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Univcoord_T *chroff
       return hits;
     } else {
       return report_perfect_segment(&(*found_score),&(*nhits),hits,left,*chrnum,*chroffset,*chrhigh,*chrlength,
-				    querylength,query_compress,nmisses_allowed,plusp,genestrand);
+				    querylength,query_compress,nmisses_allowed,plusp,genestrand,first_read_p);
     }
   } else {
     if (goal < (unsigned int) querylength) {
@@ -2307,11 +2332,11 @@ identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Univcoord_T *chroff
       if (snpp || mode != STANDARD || spansize != index1part) {
 	debug7(printf("  Testing in entire query\n"));
 	nmismatches = Genome_count_mismatches_substring(query_compress,left,/*pos5*/0,/*pos3*/querylength,
-							plusp,genestrand);
+							plusp,genestrand,first_read_p);
       } else {
 	debug7(printf("  Testing in query bounds %d..%d\n",miss_querypos5,miss_querypos3));
 	nmismatches = Genome_count_mismatches_substring(query_compress,left,/*pos5*/miss_querypos5,/*pos3*/miss_querypos3,
-							plusp,genestrand);
+							plusp,genestrand,first_read_p);
 
       }
       debug7(printf("nmismatches = %d (vs %d misses allowed)\n",nmismatches,nmisses_allowed));
@@ -2324,7 +2349,7 @@ identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Univcoord_T *chroff
 	debug(printf("Reporting hit with %d mismatches\n",nmismatches));
 	if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					      left,/*genomiclength*/querylength,
-					      query_compress,plusp,genestrand,
+					      query_compress,plusp,genestrand,first_read_p,
 					      *chrnum,*chroffset,*chrhigh,*chrlength,
 					      /*sarrayp*/false)) == NULL) {
 	  return hits;
@@ -2342,7 +2367,7 @@ identify_multimiss_iter (int *found_score, Chrnum_T *chrnum, Univcoord_T *chroff
    stored as compoundpos, we no longer want to use them for boosting */
 static void
 most_specific_oligomer_1 (int *best_plus_querypos, int *best_minus_querypos, T this,
-			  int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
+			  int query_lastpos, Indexdb_T plus_indexdb, Indexdb_T minus_indexdb) {
   int querypos;
   int best_plus_count, best_minus_count;
 
@@ -2359,8 +2384,8 @@ most_specific_oligomer_1 (int *best_plus_querypos, int *best_minus_querypos, T t
 #if 0
     if (this->validp[querypos] == true) {
 #endif
-      this->plus_npositions[querypos] = Indexdb_count_no_subst(indexdb_fwd,this->forward_oligos[querypos]);
-      this->minus_npositions[querypos] = Indexdb_count_no_subst(indexdb_rev,this->revcomp_oligos[querypos]);
+      this->plus_npositions[querypos] = Indexdb_count_no_subst(plus_indexdb,this->forward_oligos[querypos]);
+      this->minus_npositions[querypos] = Indexdb_count_no_subst(minus_indexdb,this->revcomp_oligos[querypos]);
       debug(printf("Counting at querypos %d, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		   querypos,this->plus_npositions[querypos],this->forward_oligos[querypos],
 		   this->minus_npositions[querypos],this->revcomp_oligos[querypos]));
@@ -2386,7 +2411,7 @@ most_specific_oligomer_1 (int *best_plus_querypos, int *best_minus_querypos, T t
    stored as compoundpos, we no longer want to use them for boosting */
 static void
 most_specific_oligomer_2 (int *best_plus_querypos, int *best_minus_querypos, T this,
-			  int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
+			  int query_lastpos, Indexdb_T plus_indexdb, Indexdb_T minus_indexdb) {
   int querypos, mod;
   int best_plus_count[2], best_minus_count[2];
 
@@ -2408,8 +2433,8 @@ most_specific_oligomer_2 (int *best_plus_querypos, int *best_minus_querypos, T t
     this->minus_npositions[-1] = 0;
   } else {
 #endif
-    this->plus_npositions[-1] = Indexdb_count_left_subst_1(indexdb_fwd,this->forward_oligos[0]);
-    this->minus_npositions[-1] = Indexdb_count_right_subst_1(indexdb_rev,this->revcomp_oligos[0]);
+    this->plus_npositions[-1] = Indexdb_count_left_subst_1(plus_indexdb,this->forward_oligos[0]);
+    this->minus_npositions[-1] = Indexdb_count_right_subst_1(minus_indexdb,this->revcomp_oligos[0]);
     debug(printf("Counting at querypos 0, neg 1, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		 this->plus_npositions[-1],this->forward_oligos[0],this->minus_npositions[-1],this->revcomp_oligos[0]));
     best_plus_count[1] = this->plus_npositions[-1];
@@ -2423,8 +2448,8 @@ most_specific_oligomer_2 (int *best_plus_querypos, int *best_minus_querypos, T t
     if (this->validp[querypos] == true) {
 #endif
       mod = querypos % 2;
-      this->plus_npositions[querypos] = Indexdb_count_no_subst(indexdb_fwd,this->forward_oligos[querypos]);
-      this->minus_npositions[querypos] = Indexdb_count_no_subst(indexdb_rev,this->revcomp_oligos[querypos]);
+      this->plus_npositions[querypos] = Indexdb_count_no_subst(plus_indexdb,this->forward_oligos[querypos]);
+      this->minus_npositions[querypos] = Indexdb_count_no_subst(minus_indexdb,this->revcomp_oligos[querypos]);
       debug(printf("Counting at querypos %d, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		   querypos,this->plus_npositions[querypos],this->forward_oligos[querypos],
 		   this->minus_npositions[querypos],this->revcomp_oligos[querypos]));
@@ -2452,8 +2477,8 @@ most_specific_oligomer_2 (int *best_plus_querypos, int *best_minus_querypos, T t
   } else {
 #endif
     mod = (querypos+1) % 2;
-    this->plus_npositions[querypos+1] = Indexdb_count_right_subst_1(indexdb_fwd,this->forward_oligos[querypos]);
-    this->minus_npositions[querypos+1] = Indexdb_count_left_subst_1(indexdb_rev,this->revcomp_oligos[querypos]);
+    this->plus_npositions[querypos+1] = Indexdb_count_right_subst_1(plus_indexdb,this->forward_oligos[querypos]);
+    this->minus_npositions[querypos+1] = Indexdb_count_left_subst_1(minus_indexdb,this->revcomp_oligos[querypos]);
     debug(printf("Counting at querypos %d, pos 1, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		 querypos,this->plus_npositions[querypos+1],this->forward_oligos[querypos],
 		 this->minus_npositions[querypos+1],this->revcomp_oligos[querypos]));
@@ -2481,7 +2506,7 @@ most_specific_oligomer_2 (int *best_plus_querypos, int *best_minus_querypos, T t
    stored as compoundpos, we no longer want to use them for boosting */
 static void
 most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T this,
-			  int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev) {
+			  int query_lastpos, Indexdb_T plus_indexdb, Indexdb_T minus_indexdb) {
   int querypos, mod;
   int best_plus_count[3], best_minus_count[3];
 
@@ -2507,15 +2532,15 @@ most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T t
     this->minus_npositions[-1] = 0;
   } else {
 #endif
-    this->plus_npositions[-2] = Indexdb_count_left_subst_2(indexdb_fwd,this->forward_oligos[0]);
-    this->minus_npositions[-2] = Indexdb_count_right_subst_2(indexdb_rev,this->revcomp_oligos[0]);
+    this->plus_npositions[-2] = Indexdb_count_left_subst_2(plus_indexdb,this->forward_oligos[0]);
+    this->minus_npositions[-2] = Indexdb_count_right_subst_2(minus_indexdb,this->revcomp_oligos[0]);
     debug(printf("Counting at querypos 0, neg 2, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		 this->plus_npositions[-2],this->forward_oligos[0],this->minus_npositions[-2],this->revcomp_oligos[0]));
     best_plus_count[1] = this->plus_npositions[-2];
     best_minus_count[1] = this->minus_npositions[-2];
 
-    this->plus_npositions[-1] = Indexdb_count_left_subst_1(indexdb_fwd,this->forward_oligos[0]);
-    this->minus_npositions[-1] = Indexdb_count_right_subst_1(indexdb_rev,this->revcomp_oligos[0]);
+    this->plus_npositions[-1] = Indexdb_count_left_subst_1(plus_indexdb,this->forward_oligos[0]);
+    this->minus_npositions[-1] = Indexdb_count_right_subst_1(minus_indexdb,this->revcomp_oligos[0]);
     debug(printf("Counting at querypos 0, neg 1, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		 this->plus_npositions[-1],this->forward_oligos[0],this->minus_npositions[-1],this->revcomp_oligos[0]));
     best_plus_count[2] = this->plus_npositions[-1];
@@ -2529,8 +2554,8 @@ most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T t
     if (this->validp[querypos] == true) {
 #endif
       mod = querypos % 3;
-      this->plus_npositions[querypos] = Indexdb_count_no_subst(indexdb_fwd,this->forward_oligos[querypos]);
-      this->minus_npositions[querypos] = Indexdb_count_no_subst(indexdb_rev,this->revcomp_oligos[querypos]);
+      this->plus_npositions[querypos] = Indexdb_count_no_subst(plus_indexdb,this->forward_oligos[querypos]);
+      this->minus_npositions[querypos] = Indexdb_count_no_subst(minus_indexdb,this->revcomp_oligos[querypos]);
       debug(printf("Counting at querypos %d, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		   querypos,this->plus_npositions[querypos],this->forward_oligos[querypos],
 		   this->minus_npositions[querypos],this->revcomp_oligos[querypos]));
@@ -2560,8 +2585,8 @@ most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T t
   } else {
 #endif
     mod = (querypos+1) % 3;
-    this->plus_npositions[querypos+1] = Indexdb_count_right_subst_1(indexdb_fwd,this->forward_oligos[querypos]);
-    this->minus_npositions[querypos+1] = Indexdb_count_left_subst_1(indexdb_rev,this->revcomp_oligos[querypos]);
+    this->plus_npositions[querypos+1] = Indexdb_count_right_subst_1(plus_indexdb,this->forward_oligos[querypos]);
+    this->minus_npositions[querypos+1] = Indexdb_count_left_subst_1(minus_indexdb,this->revcomp_oligos[querypos]);
     debug(printf("Counting at querypos %d, pos 1, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		 querypos,this->plus_npositions[querypos+1],this->forward_oligos[querypos],
 		 this->minus_npositions[querypos+1],this->revcomp_oligos[querypos]));
@@ -2579,8 +2604,8 @@ most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T t
 #endif
 
     mod = (querypos+2) % 3;
-    this->plus_npositions[querypos+2] = Indexdb_count_right_subst_2(indexdb_fwd,this->forward_oligos[querypos]);
-    this->minus_npositions[querypos+2] = Indexdb_count_left_subst_2(indexdb_rev,this->revcomp_oligos[querypos]);
+    this->plus_npositions[querypos+2] = Indexdb_count_right_subst_2(plus_indexdb,this->forward_oligos[querypos]);
+    this->minus_npositions[querypos+2] = Indexdb_count_left_subst_2(minus_indexdb,this->revcomp_oligos[querypos]);
     debug(printf("Counting at querypos %d, pos 2, plus_npositions = %d (oligo %06X), minus_npositions = %d (oligo %06X)\n",
 		 querypos,this->plus_npositions[querypos+2],this->forward_oligos[querypos],
 		 this->minus_npositions[querypos+2],this->revcomp_oligos[querypos]));
@@ -2606,8 +2631,8 @@ most_specific_oligomer_3 (int *best_plus_querypos, int *best_minus_querypos, T t
 
 
 static List_T
-find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, int genestrand,
-			     int querylength, int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
+find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, int genestrand, bool first_read_p,
+			     int querylength, int query_lastpos, Indexdb_T plus_indexdb, Indexdb_T minus_indexdb,
 			     Compress_T query_compress_fwd, Compress_T query_compress_rev) {
   List_T spanningset, sorted;
   Spanningelt_T *array;
@@ -2631,11 +2656,11 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 
   /* Use shortest list for candidate generation */
   if (index1interval == 3) {
-    most_specific_oligomer_3(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+    most_specific_oligomer_3(best_plus_querypos,best_minus_querypos,this,query_lastpos,plus_indexdb,minus_indexdb);
   } else if (index1interval == 2) {
-    most_specific_oligomer_2(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+    most_specific_oligomer_2(best_plus_querypos,best_minus_querypos,this,query_lastpos,plus_indexdb,minus_indexdb);
   } else {
-    most_specific_oligomer_1(best_plus_querypos,best_minus_querypos,this,query_lastpos,indexdb_fwd,indexdb_rev);
+    most_specific_oligomer_1(best_plus_querypos,best_minus_querypos,this,query_lastpos,plus_indexdb,minus_indexdb);
   }
 
   /* Plus */
@@ -2647,7 +2672,7 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 #else
 				  &this->plus_positions,
 #endif
-				  &this->plus_npositions,indexdb_fwd,query_lastpos,querylength,mod,/*plusp*/true);
+				  &this->plus_npositions,plus_indexdb,query_lastpos,querylength,mod,/*plusp*/true);
     nelts = List_length(spanningset);
     array = (Spanningelt_T *) List_to_array(spanningset,NULL);
     List_free(&spanningset);
@@ -2669,10 +2694,10 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 #ifdef LARGE_GENOMES
       this->plus_positions_low[boostpos] =
 	Indexdb_read_inplace(&(this->plus_npositions[boostpos]),&(this->plus_positions_high[boostpos]),
-			     indexdb_fwd,this->forward_oligos[boostpos]);
+			     plus_indexdb,this->forward_oligos[boostpos]);
 #else
       this->plus_positions[boostpos] =
-	Indexdb_read_inplace(&(this->plus_npositions[boostpos]),indexdb_fwd,this->forward_oligos[boostpos]);
+	Indexdb_read_inplace(&(this->plus_npositions[boostpos]),plus_indexdb,this->forward_oligos[boostpos]);
 #endif
       this->plus_retrievedp[boostpos] = true;
 #ifdef LARGE_GENOMES
@@ -2707,7 +2732,7 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal0,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_fwd,
-				       /*plusp*/true,genestrand,/*nmisses_allowed*/0,
+				       /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/0,
 				       /*nmisses_seen*/0,global_miss_querypos5,global_miss_querypos3);
       }
       List_free(&spanningset);
@@ -2739,7 +2764,7 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,*diagonals0++,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_fwd,
-				       /*plusp*/true,genestrand,/*nmisses_allowed*/0,
+				       /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/0,
 				       /*nmisses_seen*/0,global_miss_querypos5,global_miss_querypos3);
       }
       List_free(&spanningset);
@@ -2755,7 +2780,7 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 #else
 				  &this->minus_positions,
 #endif
-				  &this->minus_npositions,indexdb_rev,query_lastpos,querylength,mod,/*plusp*/false);
+				  &this->minus_npositions,minus_indexdb,query_lastpos,querylength,mod,/*plusp*/false);
     nelts = List_length(spanningset);
     array = (Spanningelt_T *) List_to_array(spanningset,NULL);
     List_free(&spanningset);
@@ -2777,10 +2802,10 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 #ifdef LARGE_GENOMES
       this->minus_positions_low[boostpos] =
 	Indexdb_read_inplace(&(this->minus_npositions[boostpos]),&(this->minus_positions_high[boostpos]),
-			     indexdb_rev,this->revcomp_oligos[boostpos]);
+			     minus_indexdb,this->revcomp_oligos[boostpos]);
 #else
       this->minus_positions[boostpos] =
-	Indexdb_read_inplace(&(this->minus_npositions[boostpos]),indexdb_rev,this->revcomp_oligos[boostpos]);
+	Indexdb_read_inplace(&(this->minus_npositions[boostpos]),minus_indexdb,this->revcomp_oligos[boostpos]);
 #endif
       this->minus_retrievedp[boostpos] = true;
 #ifdef LARGE_GENOMES
@@ -2815,7 +2840,7 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal0,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_rev,
-				       /*plusp*/false,genestrand,/*nmisses_allowed*/0,
+				       /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/0,
 				       /*nmisses_seen*/0,global_miss_querypos5,global_miss_querypos3);
       }
       List_free(&spanningset);
@@ -2847,7 +2872,7 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,*diagonals0++,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_rev,
-				       /*plusp*/false,genestrand,/*nmisses_allowed*/0,
+				       /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/0,
 				       /*nmisses_seen*/0,global_miss_querypos5,global_miss_querypos3);
       }
       List_free(&spanningset);
@@ -2859,8 +2884,8 @@ find_spanning_exact_matches (int *found_score, int *nhits, List_T hits, T this, 
 
 
 static List_T
-find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this, int genestrand, int querylength,
-			       Compress_T query_compress_fwd, Compress_T query_compress_rev) {
+find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this, int genestrand, bool first_read_p,
+			       int querylength, Compress_T query_compress_fwd, Compress_T query_compress_rev) {
   List_T spanningset, sorted;
   Spanningelt_T *array;
   Univcoord_T *diagonals0, *diagonals1, diagonal0, diagonal1;
@@ -2913,7 +2938,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal0,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_fwd,
-				       /*plusp*/true,genestrand,/*nmisses_allowed*/1,
+				       /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/1,
 				       /*nmisses_seen*/1+nempty,miss1_querypos5,miss1_querypos3);
 	++diagonals0;
 	--ndiagonals0;
@@ -2923,7 +2948,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal1,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_fwd,
-				       /*plusp*/true,genestrand,/*nmisses_allowed*/1,
+				       /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/1,
 				       /*nmisses_seen*/1+nempty,miss0_querypos5,miss0_querypos3);
 	++diagonals1;
 	--ndiagonals1;
@@ -2933,7 +2958,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal0,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_fwd,
-				       /*plusp*/true,genestrand,/*nmisses_allowed*/1,
+				       /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/1,
 				       /*nmisses_seen*/nempty,global_miss_querypos5,global_miss_querypos3);
 	++diagonals0;
 	--ndiagonals0;
@@ -2947,7 +2972,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
       hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,*diagonals0++,
 				     /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				     querylength,/*query_compress*/query_compress_fwd,
-				     /*plusp*/true,genestrand,/*nmisses_allowed*/1,
+				     /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/1,
 				     /*nmisses_seen*/1+nempty,miss1_querypos5,miss1_querypos3);
     }
 
@@ -2956,7 +2981,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
       hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,*diagonals1++,
 				     /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				     querylength,/*query_compress*/query_compress_fwd,
-				     /*plusp*/true,genestrand,/*nmisses_allowed*/1,
+				     /*plusp*/true,genestrand,first_read_p,/*nmisses_allowed*/1,
 				     /*nmisses_seen*/1+nempty,miss0_querypos5,miss0_querypos3);
     }
 
@@ -3001,7 +3026,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal0,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_rev,
-				       /*plusp*/false,genestrand,/*nmisses_allowed*/1,
+				       /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/1,
 				       /*nmisses_seen*/1+nempty,miss1_querypos5,miss1_querypos3);
 	++diagonals0;
 	--ndiagonals0;
@@ -3011,7 +3036,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal1,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_rev,
-				       /*plusp*/false,genestrand,/*nmisses_allowed*/1,
+				       /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/1,
 				       /*nmisses_seen*/1+nempty,miss0_querypos5,miss0_querypos3);
 	++diagonals1;
 	--ndiagonals1;
@@ -3021,7 +3046,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal0,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_rev,
-				       /*plusp*/false,genestrand,/*nmisses_allowed*/1,
+				       /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/1,
 				       /*nmisses_seen*/nempty,global_miss_querypos5,global_miss_querypos3);
 	++diagonals0;
 	--ndiagonals0;
@@ -3035,7 +3060,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
       hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,*diagonals0++,
 				     /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				     querylength,/*query_compress*/query_compress_rev,
-				     /*plusp*/false,genestrand,/*nmisses_allowed*/1,
+				     /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/1,
 				     /*nmisses_seen*/1+nempty,miss1_querypos5,miss1_querypos3);
     }
 
@@ -3044,7 +3069,7 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
       hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,*diagonals1++,
 				     /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				     querylength,/*query_compress*/query_compress_rev,
-				     /*plusp*/false,genestrand,/*nmisses_allowed*/1,
+				     /*plusp*/false,genestrand,first_read_p,/*nmisses_allowed*/1,
 				     /*nmisses_seen*/1+nempty,miss0_querypos5,miss0_querypos3);
     }
 
@@ -3056,8 +3081,8 @@ find_spanning_onemiss_matches (int *found_score, int *nhits, List_T hits, T this
 
 
 static List_T
-find_spanning_multimiss_matches (int *found_score, int *nhits, List_T hits, T this, int genestrand, int nrequired, int querylength,
-				 Compress_T query_compress_fwd, Compress_T query_compress_rev,
+find_spanning_multimiss_matches (int *found_score, int *nhits, List_T hits, T this, int genestrand, bool first_read_p,
+				 int nrequired, int querylength, Compress_T query_compress_fwd, Compress_T query_compress_rev,
 				 int nmisses_allowed) {
   Univcoord_T *diagonals, diagonal;
   List_T spanningset, sorted;
@@ -3192,7 +3217,7 @@ find_spanning_multimiss_matches (int *found_score, int *nhits, List_T hits, T th
 	    hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal,
 					   /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 					   querylength,/*query_compress*/query_compress_fwd,
-					   /*plusp*/true,genestrand,nmisses_allowed,
+					   /*plusp*/true,genestrand,first_read_p,nmisses_allowed,
 					   /*nmisses_seen*/nunion-count+nempty,global_miss_querypos5,global_miss_querypos3);
 	  }
 	  diagonal = batch->diagonal;
@@ -3236,7 +3261,7 @@ find_spanning_multimiss_matches (int *found_score, int *nhits, List_T hits, T th
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_fwd,
-				       /*plusp*/true,genestrand,nmisses_allowed,
+				       /*plusp*/true,genestrand,first_read_p,nmisses_allowed,
 				       /*nmisses_seen*/nunion-count+nempty,global_miss_querypos5,global_miss_querypos3);
       }
       List_free(&spanningset);
@@ -3353,7 +3378,7 @@ find_spanning_multimiss_matches (int *found_score, int *nhits, List_T hits, T th
 	    hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal,
 					   /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 					   querylength,/*query_compress*/query_compress_rev,
-					   /*plusp*/false,genestrand,nmisses_allowed,
+					   /*plusp*/false,genestrand,first_read_p,nmisses_allowed,
 					   /*nmisses_seen*/nunion-count+nempty,global_miss_querypos5,global_miss_querypos3);
 	  }
 	  diagonal = batch->diagonal;
@@ -3397,7 +3422,7 @@ find_spanning_multimiss_matches (int *found_score, int *nhits, List_T hits, T th
 	hits = identify_multimiss_iter(&(*found_score),&chrnum,&chroffset,&chrhigh,&chrlength,&(*nhits),hits,diagonal,
 				       /*prev*/spanningset,&nempty,&global_miss_querypos5,&global_miss_querypos3,
 				       querylength,/*query_compress*/query_compress_rev,
-				       /*plusp*/false,genestrand,nmisses_allowed,
+				       /*plusp*/false,genestrand,first_read_p,nmisses_allowed,
 				       /*nmisses_seen*/nunion-count+nempty,global_miss_querypos5,global_miss_querypos3);
       }
       List_free(&spanningset);
@@ -3463,7 +3488,7 @@ trim_ends_unknowns_only (int *trim5, int *trim3, char *sequence1, char *sequence
 static List_T
 find_complete_mm (int *found_score, int *nhits, List_T hits, struct Segment_T *segments, int nsegments,
 		  int querylength, Compress_T query_compress,
-		  int max_mismatches_allowed, bool plusp, int genestrand) {
+		  int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p) {
   Stage3end_T hit;
   int nmismatches;
   Univcoord_T left;
@@ -3475,11 +3500,11 @@ find_complete_mm (int *found_score, int *nhits, List_T hits, struct Segment_T *s
     } else if (segmenti->floor <= max_mismatches_allowed) {
       left = segmenti->diagonal - querylength;
       nmismatches = Genome_count_mismatches_limit(query_compress,left,/*pos5*/0,/*pos3*/querylength,
-						  max_mismatches_allowed,plusp,genestrand);
+						  max_mismatches_allowed,plusp,genestrand,first_read_p);
       if (nmismatches <= max_mismatches_allowed) {
 	if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					      left,/*genomiclength*/querylength,
-					      query_compress,plusp,genestrand,segmenti->chrnum,
+					      query_compress,plusp,genestrand,first_read_p,segmenti->chrnum,
 					      segmenti->chroffset,segmenti->chrhigh,segmenti->chrlength,
 					      /*sarrayp*/false)) != NULL) {
 	  segmenti->usedp = true;
@@ -4880,7 +4905,7 @@ find_middle_indels (int *found_score, int *nhits, List_T hits,
 #endif
 		    Floors_T floors, int querylength, int query_lastpos,
 		    Compress_T query_compress_fwd, Compress_T query_compress_rev,
-		    int max_mismatches_allowed, int genestrand) {
+		    int max_mismatches_allowed, int genestrand, bool first_read_p) {
   Segment_T segmenti, segmentj, segmentj_end, *ptr;
   int indels, floor, pos, prev, middle;
   int *floors_from_neg3, *floors_to_pos3;
@@ -4953,7 +4978,7 @@ find_middle_indels (int *found_score, int *nhits, List_T hits,
 						  /*queryptr*/queryuc_ptr,
 #endif
 						  querylength,max_mismatches_allowed,
-						  /*plusp*/true,genestrand,/*sarrayp*/false);
+						  /*plusp*/true,genestrand,first_read_p,/*sarrayp*/false);
 	    } else {
 	      debug2(printf("too many mismatches, because floor %d+middle+%d=%d > %d\n",
 			    floors->scorefrom[-index1interval][segmentj->querypos5],
@@ -5019,7 +5044,8 @@ find_middle_indels (int *found_score, int *nhits, List_T hits,
 #ifdef DEBUG2
 						 /*queryptr*/queryuc_ptr,
 #endif
-						 querylength,max_mismatches_allowed,/*plusp*/true,genestrand,/*sarrayp*/false);
+						 querylength,max_mismatches_allowed,
+						 /*plusp*/true,genestrand,first_read_p,/*sarrayp*/false);
 	    } else {
 	      debug2(printf("too many mismatches, because floor = %d+middle+%d=%d > %d\n",
 			    floors->scorefrom[-index1interval][segmenti->querypos5],
@@ -5096,7 +5122,8 @@ find_middle_indels (int *found_score, int *nhits, List_T hits,
 #ifdef DEBUG2
 						 /*queryptr*/queryrc,
 #endif
-						 querylength,max_mismatches_allowed,/*plusp*/false,genestrand,/*sarrayp*/false);
+						 querylength,max_mismatches_allowed,
+						 /*plusp*/false,genestrand,first_read_p,/*sarrayp*/false);
 	    } else {
 	      debug2(printf("too many mismatches, because floor = %d+middle+%d=%d > %d\n",
 			    floors->scorefrom[-index1interval][segmentj->querypos5],
@@ -5163,7 +5190,8 @@ find_middle_indels (int *found_score, int *nhits, List_T hits,
 #ifdef DEBUG2
 						  /*queryptr*/queryrc,
 #endif
-						  querylength,max_mismatches_allowed,/*plusp*/false,genestrand,/*sarrayp*/false);
+						  querylength,max_mismatches_allowed,
+						  /*plusp*/false,genestrand,first_read_p,/*sarrayp*/false);
 	    } else {
 	      debug2(printf("too many mismatches, because floor %d+middle+%d=%d > %d\n",
 			    floors->scorefrom[-index1interval][segmenti->querypos5],
@@ -5197,7 +5225,7 @@ compute_end_indels_right (int *indels, int *nmismatches_longcont, int *nmismatch
 			  int *mismatch_positions_long, int nmismatches_avail_long,
 			  int breakpoint, int querylength, Univcoord_T left, Compress_T query_compress,
 			  int min_indel_end_matches, int max_end_insertions, int max_end_deletions,
-			  int max_mismatches_short, bool plusp, int genestrand) {
+			  int max_mismatches_short, bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG2E
   int i;
 #endif
@@ -5233,7 +5261,7 @@ compute_end_indels_right (int *indels, int *nmismatches_longcont, int *nmismatch
       nmismatches_avail_shift = Genome_mismatches_right(mismatch_positions_shift,
 							max_mismatches_short,query_compress,
 							left-(-sep),/*pos5*/0,/*pos3*/querylength,
-							plusp,genestrand);
+							plusp,genestrand,first_read_p);
       debug2e(
 	      printf("A. Trying deletion of %d.  ",-sep);
 	      printf("%d mismatches on right at:",nmismatches_avail_shift);
@@ -5434,7 +5462,7 @@ compute_end_indels_right (int *indels, int *nmismatches_longcont, int *nmismatch
       nmismatches_avail_shift = Genome_mismatches_right(mismatch_positions_shift,
 							max_mismatches_short,query_compress,
 							left-(+sep),/*pos5*/0,/*pos3*/querylength,
-							plusp,genestrand);
+							plusp,genestrand,first_read_p);
 
       debug2e(
 	      printf("B. Trying insertion of %d.  ",+sep);
@@ -5637,7 +5665,7 @@ compute_end_indels_left (int *indels, int *nmismatches_longcont, int *nmismatche
 			 int *mismatch_positions_long, int nmismatches_avail_long,
 			 int breakpoint, int querylength, Univcoord_T left, Compress_T query_compress,
 			 int min_indel_end_matches, int max_end_insertions, int max_end_deletions,
-			 int max_mismatches_short, bool plusp, int genestrand) {
+			 int max_mismatches_short, bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG2E
   int i;
 #endif
@@ -5675,7 +5703,7 @@ compute_end_indels_left (int *indels, int *nmismatches_longcont, int *nmismatche
       nmismatches_avail_shift = Genome_mismatches_left(mismatch_positions_shift,
 						       max_mismatches_short,query_compress,
 						       left+(+sep),/*pos5*/0,/*pos3*/querylength,
-						       plusp,genestrand);
+						       plusp,genestrand,first_read_p);
       debug2e(
 	      printf("D. Trying insertion of %d.  ",+sep);
 	      printf("%d mismatches on left at:",nmismatches_avail_shift);
@@ -5872,7 +5900,7 @@ compute_end_indels_left (int *indels, int *nmismatches_longcont, int *nmismatche
       nmismatches_avail_shift = Genome_mismatches_left(mismatch_positions_shift,
 						       max_mismatches_short,query_compress,
 						       left+(-sep),/*pos5*/0,/*pos3*/querylength,
-						       plusp,genestrand);
+						       plusp,genestrand,first_read_p);
       debug2e(
 	      printf("C. Trying deletion of %d.  ",-sep);
 	      printf("%d mismatches on left at:",nmismatches_avail_shift);
@@ -6074,7 +6102,7 @@ solve_end_indel_low (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 #endif
 		     int querylength, Compress_T query_compress,
 		     int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		     int indel_penalty_end, int max_mismatches, bool plusp, int genestrand) {
+		     int indel_penalty_end, int max_mismatches, bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG2E
   char *gbuffer;
 #endif
@@ -6109,7 +6137,8 @@ solve_end_indel_low (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 
   /* No need to check chromosome bounds */
   nmismatches = Genome_mismatches_right(mismatch_positions,max_mismatches,
-					query_compress,left,/*pos5*/0,/*pos3*/querylength,plusp,genestrand);
+					query_compress,left,/*pos5*/0,/*pos3*/querylength,
+					plusp,genestrand,first_read_p);
 
   debug2e(
 	  printf("full read: %d (max %d) mismatches from right:",nmismatches,max_mismatches);
@@ -6155,7 +6184,7 @@ solve_end_indel_low (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 					     breakpoint,querylength,left,query_compress,
 					     min_indel_end_matches,max_end_insertions,max_end_deletions,
 					     /*max_mismatches_allowed*/max_mismatches-nmismatches_long+1,
-					     plusp,genestrand)) >= 0) {
+					     plusp,genestrand,first_read_p)) >= 0) {
       debug2e(printf("Got indel_pos %d.\n",indel_pos));
 
       /* formulas for query_indel_pos have been checked on examples */
@@ -6179,7 +6208,7 @@ solve_end_indel_low (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 	if ((hit = Stage3end_new_insertion(&(*found_score),indels,query_indel_pos,
 					   nmismatches1,nmismatches2,
 					   left+indels,/*genomiclength*/querylength-indels,
-					   query_compress,querylength,plusp,genestrand,
+					   query_compress,querylength,plusp,genestrand,first_read_p,
 					   chrnum,chroffset,chrhigh,chrlength,indel_penalty_end,
 					   /*sarrayp*/false)) != NULL) {
 	  ptr->usedp = true;
@@ -6207,7 +6236,7 @@ solve_end_indel_low (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 	if ((hit = Stage3end_new_deletion(&(*found_score),-indels,query_indel_pos,
 					  nmismatches1,nmismatches2,
 					  left+indels,/*genomiclength*/querylength-indels,
-					  query_compress,querylength,plusp,genestrand,
+					  query_compress,querylength,plusp,genestrand,first_read_p,
 					  chrnum,chroffset,chrhigh,chrlength,indel_penalty_end,
 					  /*sarrayp*/false)) != NULL) {
 	  ptr->usedp = true;
@@ -6234,7 +6263,7 @@ solve_end_indel_high (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 #endif
 		      int querylength, Compress_T query_compress,
 		      int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		      int indel_penalty_end, int max_mismatches, bool plusp, int genestrand) {
+		      int indel_penalty_end, int max_mismatches, bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG2E
   char *gbuffer;
 #endif
@@ -6270,7 +6299,8 @@ solve_end_indel_high (int *found_score, int *nhits, List_T hits, Segment_T ptr,
   /* No need to check chromosome bounds */
   /* Previously checked from 0 to lastbound */
   nmismatches = Genome_mismatches_left(mismatch_positions,max_mismatches,
-				       query_compress,left,/*pos5*/0,/*pos3*/querylength,plusp,genestrand);
+				       query_compress,left,/*pos5*/0,/*pos3*/querylength,
+				       plusp,genestrand,first_read_p);
 
   debug2e(
 	  printf("full read: %d (max %d) mismatches from left:",nmismatches,max_mismatches);
@@ -6315,7 +6345,7 @@ solve_end_indel_high (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 					      breakpoint,querylength,left,query_compress,
 					      min_indel_end_matches,max_end_insertions,max_end_deletions,
 					      /*max_mismatches_allowed*/max_mismatches-nmismatches_long+1,
-					      plusp,genestrand)) >= 0) {
+					      plusp,genestrand,first_read_p)) >= 0) {
       debug2e(printf("Got indel_pos %d\n",indel_pos));
 
       /* formulas for query_indel_pos have been checked on examples */
@@ -6339,7 +6369,7 @@ solve_end_indel_high (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 	if ((hit = Stage3end_new_insertion(&(*found_score),indels,query_indel_pos,
 					   nmismatches1,nmismatches2,
 					   left,/*genomiclength*/querylength-indels,
-					   query_compress,querylength,plusp,genestrand,
+					   query_compress,querylength,plusp,genestrand,first_read_p,
 					   chrnum,chroffset,chrhigh,chrlength,indel_penalty_end,
 					   /*sarrayp*/false)) != NULL) {
 	  ptr->usedp = true;
@@ -6367,7 +6397,7 @@ solve_end_indel_high (int *found_score, int *nhits, List_T hits, Segment_T ptr,
 	if ((hit = Stage3end_new_deletion(&(*found_score),-indels,query_indel_pos,
 					  nmismatches1,nmismatches2,
 					  left,/*genomiclength*/querylength-indels,
-					  query_compress,querylength,plusp,genestrand,
+					  query_compress,querylength,plusp,genestrand,first_read_p,
 					  chrnum,chroffset,chrhigh,chrlength,indel_penalty_end,
 					  /*sarrayp*/false)) != NULL) {
 	  ptr->usedp = true;
@@ -6394,7 +6424,7 @@ find_end_indels (int *found_score, int *nhits, List_T hits,
 		 int querylength, int firstbound, int lastbound,
 		 Compress_T query_compress_fwd, Compress_T query_compress_rev,
 		 int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		 int indel_penalty_end, int max_mismatches_allowed, int genestrand) {
+		 int indel_penalty_end, int max_mismatches_allowed, int genestrand, bool first_read_p) {
   Segment_T ptr;
 
   debug(printf("*** find_end_indels with max_mismatches_allowed %d ***\n",
@@ -6413,7 +6443,7 @@ find_end_indels (int *found_score, int *nhits, List_T hits,
 #endif
 				   querylength,/*query_compress*/query_compress_fwd,
 				   max_end_insertions,max_end_deletions,min_indel_end_matches,
-				   indel_penalty_end,max_mismatches_allowed,/*plusp*/true,genestrand);
+				   indel_penalty_end,max_mismatches_allowed,/*plusp*/true,genestrand,first_read_p);
       }
 
       if (ptr->floor_xlast <= max_mismatches_allowed) {
@@ -6426,7 +6456,7 @@ find_end_indels (int *found_score, int *nhits, List_T hits,
 #endif
 				    querylength,/*query_compress*/query_compress_fwd,
 				    max_end_insertions,max_end_deletions,min_indel_end_matches,
-				    indel_penalty_end,max_mismatches_allowed,/*plusp*/true,genestrand);
+				    indel_penalty_end,max_mismatches_allowed,/*plusp*/true,genestrand,first_read_p);
       }
     }
   }
@@ -6444,7 +6474,7 @@ find_end_indels (int *found_score, int *nhits, List_T hits,
 #endif
 				    querylength,/*query_compress*/query_compress_rev,
 				    max_end_insertions,max_end_deletions,min_indel_end_matches,
-				    indel_penalty_end,max_mismatches_allowed,/*plusp*/false,genestrand);
+				    indel_penalty_end,max_mismatches_allowed,/*plusp*/false,genestrand,first_read_p);
       }
 
       if (ptr->floor_xlast <= max_mismatches_allowed) {
@@ -6457,7 +6487,7 @@ find_end_indels (int *found_score, int *nhits, List_T hits,
 #endif
 				   querylength,/*query_compress*/query_compress_rev,
 				   max_end_insertions,max_end_deletions,min_indel_end_matches,
-				   indel_penalty_end,max_mismatches_allowed,/*plusp*/false,genestrand);
+				   indel_penalty_end,max_mismatches_allowed,/*plusp*/false,genestrand,first_read_p);
       }
     }
   }
@@ -6521,14 +6551,15 @@ sufficient_splice_prob_halfintron (int support, int nmismatches, double splicepr
 static void
 find_segmentm_span (Segment_T segmentm, int max_mismatches_allowed,
 		    int querylength, Compress_T query_compress,
-		    Univcoord_T left, bool plusp, int genestrand) {
+		    Univcoord_T left, bool plusp, int genestrand, bool first_read_p) {
   int mismatch_positions[MAX_READLENGTH];
   int nmismatches, i;
   int leftspan, rightspan, bestspan;
 
   /* Find all mismatches */
   nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/querylength,
-				       query_compress,left,/*pos5*/0,/*pos3*/querylength,plusp,genestrand);
+				       query_compress,left,/*pos5*/0,/*pos3*/querylength,
+				       plusp,genestrand,first_read_p);
 
   if (nmismatches < max_mismatches_allowed) {
     segmentm->leftspan = 0;
@@ -6554,7 +6585,7 @@ find_segmentm_span (Segment_T segmentm, int max_mismatches_allowed,
 
 
 static List_T
-find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
+find_singlesplices_plus (int *found_score, List_T hits, List_T *ambiguous, List_T *lowprob,
 			 Segment_T *plus_spliceable, int plus_nspliceable,
 			 Floors_T floors, int querylength, int query_lastpos,
 			 Compress_T query_compress /* expecting fwd */,
@@ -6580,6 +6611,21 @@ find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
   int floor_outer_i;
   int *floors_from_neg3, *floors_to_pos3;
   int nhits_local = 0;
+
+  List_T spliceends, p;
+  Stage3end_T hit;
+  int nspliceends, n_good_spliceends;
+  int best_nmismatches, nmismatches, nmismatches_donor, nmismatches_acceptor;
+  double best_prob, prob;
+  Substring_T donor, acceptor;
+
+  int sensedir;
+#ifdef LARGE_GENOMES
+  Uint8list_T ambcoords, ambcoords_left, ambcoords_right;
+#else
+  Uintlist_T ambcoords, ambcoords_left, ambcoords_right;
+#endif
+  Intlist_T amb_knowni, amb_nmismatches, amb_knowni_left, amb_knowni_right, amb_nmismatches_left, amb_nmismatches_right;
 
 
   debug4s(printf("*** Starting find_singlesplices_plus on %d spliceable segments ***\n",plus_nspliceable));
@@ -6634,10 +6680,16 @@ find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
 	     segmentj_end->diagonal <= segmenti->diagonal + max_distance) {
 	segmentj_end++;
       }
+
+#if 0
+      /* Now processing spliceends to limit number of splices */
       if (segmentj_end - segmenti > MAX_LOCALSPLICING_POTENTIAL + 1) {    /* segmentj_end - segmenti - 1 > MAX_LOCALSPLICING_POTENTIAL */
 	/* Too many to check */
 	segmentj_end = segmenti+1 + MAX_LOCALSPLICING_POTENTIAL;
       }
+#endif
+
+      spliceends = (List_T) NULL;
 
       for (segmentj = segmenti+1; segmentj < segmentj_end; segmentj++) {
 	debug4s(printf("plus local?  diagonal %lu, querypos %d..%d => diagonal %lu, querypos %d..%d => ",
@@ -6672,7 +6724,7 @@ find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
 	    if (segmenti->leftmost < 0) {
 	      nmismatches_left = Genome_mismatches_left(mismatch_positions_left,max_mismatches_allowed,
 							query_compress,/*left*/segmenti_left,/*pos5*/0,/*pos3*/querylength,
-							/*plusp*/true,genestrand);
+							/*plusp*/true,genestrand,first_read_p);
 	      segmenti->leftmost = (nmismatches_left == 0) ? 0 : mismatch_positions_left[nmismatches_left-1];
 	      debug4s(printf("%d mismatches on left at:",nmismatches_left);
 		      for (i = 0; i <= nmismatches_left; i++) {
@@ -6685,7 +6737,7 @@ find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
 	    if (segmentj->rightmost < 0) {
 	      nmismatches_right = Genome_mismatches_right(mismatch_positions_right,max_mismatches_allowed,
 							  query_compress,/*left*/segmentj_left,/*pos5*/0,/*pos3*/querylength,
-							  /*plusp*/true,genestrand);
+							  /*plusp*/true,genestrand,first_read_p);
 	      segmentj->rightmost = (nmismatches_right == 0) ? 0 : mismatch_positions_right[nmismatches_right-1];
 	      debug4s(printf("%d mismatches on right at:",nmismatches_right);
 		      for (i = 0; i <= nmismatches_right; i++) {
@@ -6721,26 +6773,183 @@ find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
 
 
 	      debug4s(printf("  => checking for single splice: Splice_solve_single_plus\n"));
-	      hits = Splice_solve_single(&(*found_score),&nhits_local,hits,&(*lowprob),
-					 &segmenti->usedp,&segmentj->usedp,
-					 /*segmenti_left*/segmenti->diagonal - querylength,
-					 /*segmentj_left*/segmentj->diagonal - querylength,
-					 segmenti->chrnum,segmenti->chroffset,segmenti->chrhigh,segmenti->chrlength,
-					 segmentj->chrnum,segmentj->chroffset,segmentj->chrhigh,segmentj->chrlength,
-					 querylength,query_compress,
-					 segmenti_donor_knownpos,segmentj_acceptor_knownpos,
-					 segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
-					 segmenti_donor_knowni,segmentj_acceptor_knowni,
-					 segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
-					 segmenti_donor_nknown,segmentj_acceptor_nknown,
-					 segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
-					 splicing_penalty,max_mismatches_allowed,
-					 first_read_p,/*plusp*/true,genestrand,subs_or_indels_p,
-					 /*sarrayp*/false);
+	      spliceends = Splice_solve_single(&(*found_score),&nhits_local,spliceends,&(*lowprob),
+					       &segmenti->usedp,&segmentj->usedp,
+					       /*segmenti_left*/segmenti->diagonal - querylength,
+					       /*segmentj_left*/segmentj->diagonal - querylength,
+					       segmenti->chrnum,segmenti->chroffset,segmenti->chrhigh,segmenti->chrlength,
+					       segmentj->chrnum,segmentj->chroffset,segmentj->chrhigh,segmentj->chrlength,
+					       querylength,query_compress,
+					       segmenti_donor_knownpos,segmentj_acceptor_knownpos,
+					       segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
+					       segmenti_donor_knowni,segmentj_acceptor_knowni,
+					       segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
+					       segmenti_donor_nknown,segmentj_acceptor_nknown,
+					       segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
+					       splicing_penalty,max_mismatches_allowed,
+					       /*plusp*/true,genestrand,first_read_p,subs_or_indels_p,
+					       /*sarrayp*/false);
 	    }
 	  }
 	}
       }
+
+      /* Process results for segmenti.  Modified from collect_elt_matches in sarray-read.c. */
+      if (spliceends != NULL) {
+	best_nmismatches = querylength;
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  debug7(printf("analyzing distance %d, nmismatches %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Substring_nmismatches_whole(hit),
+			Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	  if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	    best_nmismatches = nmismatches;
+	    best_prob = Stage3end_chimera_prob(hit);
+	  } else if (nmismatches == best_nmismatches && (prob = Stage3end_chimera_prob(hit)) > best_prob) {
+	    best_prob = prob;
+	  }
+	}
+
+	n_good_spliceends = 0;
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+	      (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	    debug7(printf("accepting distance %d, nmismatches %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	    n_good_spliceends += 1;
+	  }
+	}
+	
+	if (n_good_spliceends == 1) {
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+		(Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	      debug7(printf("pushing distance %d, nmismatches %d, probabilities %f and %f\n",
+			    Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			    Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			    Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	      hits = List_push(hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
+	  }
+	  List_free(&spliceends);
+
+	} else {
+	  /* Create ambiguous */
+	  hit = (Stage3end_T) List_head(spliceends);
+	  donor = Stage3end_substring_donor(hit);
+	  acceptor = Stage3end_substring_acceptor(hit);
+	  sensedir = Stage3end_sensedir(hit);
+
+	  ambcoords = NULL;
+	  amb_knowni = (Intlist_T) NULL;
+	  amb_nmismatches = (Intlist_T) NULL;
+	  if (Substring_left_genomicseg(donor) == /*segmenti_left*/ segmenti->diagonal - querylength) {
+	    for (p = spliceends; p != NULL; p = List_next(p)) {
+	      hit = (Stage3end_T) List_head(p);
+	      acceptor = Stage3end_substring_acceptor(hit);
+#ifdef LARGE_GENOMES
+	      ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+	      ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+	      amb_knowni = Intlist_push(amb_knowni,-1);
+	      amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+	    }
+
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+
+	    nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	    *ambiguous = List_push(*ambiguous,
+				   (void *) Stage3end_new_splice(&(*found_score),
+								 /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+								 donor,/*acceptor*/NULL,/*distance*/0U,
+								 /*shortdistancep*/false,/*penalty*/0,querylength,
+								 /*amb_nmatches*/querylength - Substring_match_length_orig(donor) - nmismatches_acceptor,
+								 ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+								 amb_nmismatches_left,amb_nmismatches_right,
+								 /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+								 sensedir,/*sarrayp*/false));
+	    
+	  } else if (Substring_left_genomicseg(acceptor) == /*segmenti_left*/ segmenti->diagonal - querylength) {
+	    for (p = spliceends; p != NULL; p = List_next(p)) {
+	      hit = (Stage3end_T) List_head(p);
+	      donor = Stage3end_substring_donor(hit);
+#ifdef LARGE_GENOMES
+	      ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+	      ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+	      amb_knowni = Intlist_push(amb_knowni,-1);
+	      amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	    }
+
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+	    
+	    nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	    *ambiguous = List_push(*ambiguous,
+				   (void *) Stage3end_new_splice(&(*found_score),
+								 nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+								 /*donor*/NULL,acceptor,/*distance*/0U,
+								 /*shortdistancep*/false,/*penalty*/0,querylength,
+								 /*amb_nmatches*/querylength - Substring_match_length_orig(acceptor) - nmismatches_donor,
+								 ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+								 amb_nmismatches_left,amb_nmismatches_right,
+								 /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+								 sensedir,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	    Uint8list_free(&ambcoords);
+#else
+	    Uintlist_free(&ambcoords);
+#endif
+	    Intlist_free(&amb_knowni);
+	    Intlist_free(&amb_nmismatches);
+	      
+	  } else {
+	    fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals segmenti_left %u\n",
+		    Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),segmenti->diagonal - querylength);
+	    abort();
+	  }
+
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    Stage3end_free(&hit);
+	  }
+	  List_free(&spliceends);
+	}
+
+      }
+
     }
   }
 
@@ -6752,7 +6961,7 @@ find_singlesplices_plus (int *found_score, List_T hits, List_T *lowprob,
 
 
 static List_T
-find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
+find_singlesplices_minus (int *found_score, List_T hits, List_T *ambiguous, List_T *lowprob,
 			  Segment_T *minus_spliceable, int minus_nspliceable,
 			  Floors_T floors, int querylength, int query_lastpos, Compress_T query_compress /* expecting rev */,
 			  int splicing_penalty, int max_mismatches_allowed, bool first_read_p, int genestrand,
@@ -6777,6 +6986,21 @@ find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
   int floor_outer_i;
   int *floors_from_neg3, *floors_to_pos3;
   int nhits_local = 0;
+
+  List_T spliceends, p;
+  Stage3end_T hit;
+  int nspliceends, n_good_spliceends;
+  int best_nmismatches, nmismatches, nmismatches_donor, nmismatches_acceptor;
+  double best_prob, prob;
+  Substring_T donor, acceptor;
+
+  int sensedir;
+#ifdef LARGE_GENOMES
+  Uint8list_T ambcoords, ambcoords_left, ambcoords_right;
+#else
+  Uintlist_T ambcoords, ambcoords_left, ambcoords_right;
+#endif
+  Intlist_T amb_knowni, amb_nmismatches, amb_knowni_left, amb_knowni_right, amb_nmismatches_left, amb_nmismatches_right;
 
 
   debug4s(printf("*** Starting find_singlesplices_minus on %d spliceable segments ***\n",minus_nspliceable));
@@ -6830,10 +7054,16 @@ find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
 	     segmentj_end->diagonal <= segmenti->diagonal + max_distance) {
 	segmentj_end++;
       }
+
+#if 0
+      /* Now processing spliceends to limit number of splices */
       if (segmentj_end - segmenti > MAX_LOCALSPLICING_POTENTIAL + 1) {    /* segmentj_end - segmenti - 1 > MAX_LOCALSPLICING_POTENTIAL */
 	/* Too many to check */
 	segmentj_end = segmenti+1 + MAX_LOCALSPLICING_POTENTIAL;
       }
+#endif
+
+      spliceends = (List_T) NULL;
 
       for (segmentj = segmenti+1; segmentj < segmentj_end; segmentj++) {
 	debug4s(printf("minus local?  diagonal %lu, querypos %d..%d => diagonal %lu, querypos %d..%d => ",
@@ -6868,7 +7098,7 @@ find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
 	    if (segmenti->leftmost < 0) {
 	      nmismatches_left = Genome_mismatches_left(mismatch_positions_left,max_mismatches_allowed,
 							query_compress,/*left*/segmenti_left,/*pos5*/0,/*pos3*/querylength,
-							/*plusp*/false,genestrand);
+							/*plusp*/false,genestrand,first_read_p);
 	      segmenti->leftmost = (nmismatches_left == 0) ? 0 : mismatch_positions_left[nmismatches_left-1];
 	      debug4s(printf("%d mismatches on left at:",nmismatches_left);
 		      for (i = 0; i <= nmismatches_left; i++) {
@@ -6881,7 +7111,7 @@ find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
 	    if (segmentj->rightmost < 0) {
 	      nmismatches_right = Genome_mismatches_right(mismatch_positions_right,max_mismatches_allowed,
 							  query_compress,/*left*/segmentj_left,/*pos5*/0,/*pos3*/querylength,
-							  /*plusp*/false,genestrand);
+							  /*plusp*/false,genestrand,first_read_p);
 	      segmentj->rightmost = (nmismatches_right == 0) ? 0 : mismatch_positions_right[nmismatches_right-1];
 	      debug4s(printf("%d mismatches on right at:",nmismatches_right);
 		      for (i = 0; i <= nmismatches_right; i++) {
@@ -6916,25 +7146,188 @@ find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
 	      segmentj_acceptor_knownpos[segmentj_acceptor_nknown] = MAX_READLENGTH;
 
 	      debug4s(printf("  => checking for single splice: Splice_solve_single_minus\n"));
-	      hits = Splice_solve_single(&(*found_score),&nhits_local,hits,&(*lowprob),
-					 &segmenti->usedp,&segmentj->usedp,
-					 /*segmenti_left*/segmenti->diagonal - querylength,
-					 /*segmentj_left*/segmentj->diagonal - querylength,
-					 segmenti->chrnum,segmenti->chroffset,segmenti->chrhigh,segmenti->chrlength,
-					 segmentj->chrnum,segmentj->chroffset,segmentj->chrhigh,segmentj->chrlength,
-					 querylength,query_compress,					 
-					 segmenti_donor_knownpos,segmentj_acceptor_knownpos,
-					 segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
-					 segmenti_donor_knowni,segmentj_acceptor_knowni,
-					 segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
-					 segmenti_donor_nknown,segmentj_acceptor_nknown,
-					 segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
-					 splicing_penalty,max_mismatches_allowed,
-					 first_read_p,/*plusp*/false,genestrand,subs_or_indels_p,
-					 /*sarrayp*/false);
+	      spliceends = Splice_solve_single(&(*found_score),&nhits_local,spliceends,&(*lowprob),
+					       &segmenti->usedp,&segmentj->usedp,
+					       /*segmenti_left*/segmenti->diagonal - querylength,
+					       /*segmentj_left*/segmentj->diagonal - querylength,
+					       segmenti->chrnum,segmenti->chroffset,segmenti->chrhigh,segmenti->chrlength,
+					       segmentj->chrnum,segmentj->chroffset,segmentj->chrhigh,segmentj->chrlength,
+					       querylength,query_compress,					 
+					       segmenti_donor_knownpos,segmentj_acceptor_knownpos,
+					       segmentj_antidonor_knownpos,segmenti_antiacceptor_knownpos,
+					       segmenti_donor_knowni,segmentj_acceptor_knowni,
+					       segmentj_antidonor_knowni,segmenti_antiacceptor_knowni,
+					       segmenti_donor_nknown,segmentj_acceptor_nknown,
+					       segmentj_antidonor_nknown,segmenti_antiacceptor_nknown,
+					       splicing_penalty,max_mismatches_allowed,
+					       /*plusp*/false,genestrand,first_read_p,subs_or_indels_p,
+					       /*sarrayp*/false);
 	    }
 	  }
 	}
+      }
+
+      /* Process results for segmenti.  Modified from collect_elt_matches in sarray-read.c. */
+      if (spliceends != NULL) {
+	best_nmismatches = querylength;
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  debug7(printf("analyzing distance %d, nmismatches %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	  if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	    best_nmismatches = nmismatches;
+	    best_prob = Stage3end_chimera_prob(hit);
+	  } else if (nmismatches == best_nmismatches && (prob = Stage3end_chimera_prob(hit)) > best_prob) {
+	    best_prob = prob;
+	  }
+	}
+
+	n_good_spliceends = 0;
+	for (p = spliceends; p != NULL; p = List_next(p)) {
+	  hit = (Stage3end_T) List_head(p);
+	  if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+	      (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	    debug7(printf("accepting distance %d, nmismatches %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	    n_good_spliceends += 1;
+	  }
+	}
+	
+	if (n_good_spliceends == 1) {
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    if (Stage3end_nmismatches_whole(hit) == best_nmismatches &&
+		(Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP)) {
+	      debug7(printf("pushing distance %d, nmismatches %d, probabilities %f and %f\n",
+			    Stage3end_distance(hit),Stage3end_nmismatches_whole(hit),
+			    Substring_chimera_prob(Stage3end_substring_donor(hit)),
+			    Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	      hits = List_push(hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
+	  }
+	  List_free(&spliceends);
+
+	} else {
+	  /* Create ambiguous */
+	  hit = (Stage3end_T) List_head(spliceends);
+	  donor = Stage3end_substring_donor(hit);
+	  acceptor = Stage3end_substring_acceptor(hit);
+	  sensedir = Stage3end_sensedir(hit);
+
+	  ambcoords = NULL;
+	  amb_knowni = (Intlist_T) NULL;
+	  amb_nmismatches = (Intlist_T) NULL;
+	  if (Substring_left_genomicseg(donor) == /*segmenti_left*/ segmenti->diagonal - querylength) {
+	    for (p = spliceends; p != NULL; p = List_next(p)) {
+	      hit = (Stage3end_T) List_head(p);
+	      acceptor = Stage3end_substring_acceptor(hit);
+#ifdef LARGE_GENOMES
+	      ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+	      ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+	      amb_knowni = Intlist_push(amb_knowni,-1);
+	      amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+	    }
+
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    } else {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    }
+
+	    nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	    *ambiguous = List_push(*ambiguous,
+				   (void *) Stage3end_new_splice(&(*found_score),
+								 /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+								 donor,/*acceptor*/NULL,/*distance*/0U,
+								 /*shortdistancep*/false,/*penalty*/0,querylength,
+								 /*amb_nmatches*/querylength - Substring_match_length_orig(donor) - nmismatches_acceptor,
+								 ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+								 amb_nmismatches_left,amb_nmismatches_right,
+								 /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+								 sensedir,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	    Uint8list_free(&ambcoords);
+#else
+	    Uintlist_free(&ambcoords);
+#endif
+	    Intlist_free(&amb_knowni);
+	    Intlist_free(&amb_nmismatches);
+
+	  } else if (Substring_left_genomicseg(acceptor) == /*segmenti_left*/ segmenti->diagonal - querylength) {
+	    for (p = spliceends; p != NULL; p = List_next(p)) {
+	      hit = (Stage3end_T) List_head(p);
+	      donor = Stage3end_substring_donor(hit);
+#ifdef LARGE_GENOMES
+	      ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+	      ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+	      amb_knowni = Intlist_push(amb_knowni,-1);
+	      amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	    }
+
+	    if (sensedir == SENSE_FORWARD) {
+	      ambcoords_left = NULL;
+	      amb_knowni_left = amb_nmismatches_left = (Intlist_T) NULL;
+	      ambcoords_right = ambcoords;
+	      amb_knowni_right = amb_knowni;
+	      amb_nmismatches_right = amb_nmismatches;
+	    } else {
+	      ambcoords_left = ambcoords;
+	      amb_knowni_left = amb_knowni;
+	      amb_nmismatches_left = amb_nmismatches;
+	      ambcoords_right = NULL;
+	      amb_knowni_right = amb_nmismatches_right = (Intlist_T) NULL;
+	    }
+
+	    nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	    *ambiguous = List_push(*ambiguous,
+				   (void *) Stage3end_new_splice(&(*found_score),
+								 nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+								 /*donor*/NULL,acceptor,/*distance*/0U,
+								 /*shortdistancep*/false,/*penalty*/0,querylength,
+								 /*amb_nmatches*/querylength - Substring_match_length_orig(acceptor) - nmismatches_donor,
+								 ambcoords_left,ambcoords_right,amb_knowni_left,amb_knowni_right,
+								 amb_nmismatches_left,amb_nmismatches_right,
+								 /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+								 sensedir,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	    Uint8list_free(&ambcoords);
+#else
+	    Uintlist_free(&ambcoords);
+#endif
+	    Intlist_free(&amb_knowni);
+	    Intlist_free(&amb_nmismatches);
+
+	  } else {
+	    fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals segmenti_left %u\n",
+		    Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),segmenti->diagonal - querylength);
+	    abort();
+	  }
+
+	  for (p = spliceends; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    Stage3end_free(&hit);
+	  }
+	  List_free(&spliceends);
+	}
+
       }
     }
   }
@@ -6944,6 +7337,33 @@ find_singlesplices_minus (int *found_score, List_T hits, List_T *lowprob,
 
   return hits;
 }
+
+
+#ifdef LARGE_GENOMES
+static Uint8list_T
+lookup_splicesites (Intlist_T splicesites_i, Univcoord_T *splicesites) {
+  Uint8list_T coords = NULL;
+  Intlist_T p;
+
+  for (p = splicesites_i; p != NULL; p = Intlist_next(p)) {
+    coords = Uint8list_push(coords,splicesites[Intlist_head(p)]);
+  }
+
+  return Uint8list_reverse(coords);
+}
+#else
+static Uintlist_T
+lookup_splicesites (Intlist_T splicesites_i, Univcoord_T *splicesites) {
+  Uintlist_T coords = NULL;
+  Intlist_T p;
+
+  for (p = splicesites_i; p != NULL; p = Intlist_next(p)) {
+    coords = Uintlist_push(coords,splicesites[Intlist_head(p)]);
+  }
+
+  return Uintlist_reverse(coords);
+}
+#endif
 
 
 static List_T
@@ -6972,12 +7392,18 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
     segmentm_donor_nknown, segmentm_acceptor_nknown,
     segmentm_antidonor_nknown, segmentm_antiacceptor_nknown;
 
+#ifdef LARGE_GENOMES
+  Uint8list_T ambcoords_left, ambcoords_right;
+#else
+  Uintlist_T ambcoords_left, ambcoords_right;
+#endif
   Intlist_T splicesites_i_left, splicesites_i_right;
   Intlist_T nmismatches_list_left, nmismatches_list_right;
   bool ambp_left, ambp_right;
   bool sensep;
   int sensedir;
   int *floors_from_neg3, *floors_to_pos3;
+  int nterminals_left, nterminals_right;
 
   int nmismatches_shortexon_left, nmismatches_shortexon_middle, nmismatches_shortexon_right;
   int amb_nmatches_donor, amb_nmatches_acceptor;
@@ -7159,7 +7585,7 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 			     max_mismatches_allowed,
 			     Genome_count_mismatches_substring(query_compress,segmentm_left,
 							       /*pos5*/segmenti->leftmost,/*pos3*/segmentj->rightmost,
-							       plusp,genestrand),
+							       plusp,genestrand,first_read_p),
 			     segmenti->leftmost,segmentj->rightmost));
 	    
 	      if (segmenti->leftmost >= segmentj->rightmost) {
@@ -7167,7 +7593,8 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 			       segmenti->leftmost,segmentj->rightmost));
 	      } else if (Genome_count_mismatches_limit(query_compress,segmentm_left,
 						       /*pos5*/segmenti->leftmost,/*pos3*/segmentj->rightmost,
-						       max_mismatches_allowed,plusp,genestrand) <= max_mismatches_allowed) {
+						       max_mismatches_allowed,
+						       plusp,genestrand,first_read_p) <= max_mismatches_allowed) {
 		debug4d(printf("Double splice is possible\n"));
 		segmentj_left = segmentj->diagonal - querylength;
 
@@ -7207,7 +7634,8 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 					   segmentj_antidonor_knowni,segmentm_antiacceptor_knowni,segmentm_antidonor_knowni,segmenti_antiacceptor_knowni,
 					   segmenti_donor_nknown,segmentm_acceptor_nknown,segmentm_donor_nknown,segmentj_acceptor_nknown,
 					   segmentj_antidonor_nknown,segmentm_antiacceptor_nknown,segmentm_antidonor_nknown,segmenti_antiacceptor_nknown,
-					   splicing_penalty,max_mismatches_allowed,plusp,genestrand,subs_or_indels_p,/*sarrayp*/false);
+					   splicing_penalty,max_mismatches_allowed,plusp,genestrand,first_read_p,
+					   subs_or_indels_p,/*sarrayp*/false);
 	      }
 	    }
 	  }
@@ -7227,7 +7655,7 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 	    if ((splicesites_i_left =
 		 Splicetrie_find_left(&nmismatches_shortexon_left,&nmismatches_list_left,j1,
 				      /*origleft*/segmentm_left,/*pos5*/0,/*pos3*/leftpos,segmentm->chroffset,
-				      query_compress,queryptr,querylength,max_mismatches_allowed,plusp,genestrand,
+				      query_compress,queryptr,querylength,max_mismatches_allowed,plusp,genestrand,first_read_p,
 				      /*collect_all_p*/pairedp == true && first_read_p != plusp)) != NULL) {
 	      ambp_left = (leftpos < min_shortend || Intlist_length(splicesites_i_left) > 1) ? true : false;
 
@@ -7237,13 +7665,14 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 		  debug4k(printf("  Doing Splicetrie_find_right from rightpos %d (plus)\n",rightpos));
 		  if ((nmismatches_shortexon_middle =
 		       Genome_count_mismatches_substring(query_compress,segmentm_left,/*pos5*/leftpos,/*pos3*/rightpos,
-							 plusp,genestrand)) <= max_mismatches_allowed - nmismatches_shortexon_left &&
+							 plusp,genestrand,first_read_p)) <= max_mismatches_allowed - nmismatches_shortexon_left &&
 		      (splicesites_i_right =
 		       Splicetrie_find_right(&nmismatches_shortexon_right,&nmismatches_list_right,j2,
 					     /*origleft*/segmentm_left,/*pos5*/rightpos,/*pos3*/querylength,segmentm->chrhigh,
 					     query_compress,queryptr,
 					     max_mismatches_allowed - nmismatches_shortexon_left - nmismatches_shortexon_middle,
-					     plusp,genestrand,/*collect_all_p*/pairedp == true && first_read_p == plusp)) != NULL) {
+					     plusp,genestrand,first_read_p,
+					     /*collect_all_p*/pairedp == true && first_read_p == plusp)) != NULL) {
 		    ambp_right = (querylength - rightpos < min_shortend || Intlist_length(splicesites_i_right) > 1) ? true : false;
 
 		    debug4k(printf("  donor %s ... acceptor %d (%lu) ... donor %d (%lu) ... acceptor %s: %d + %d + %d mismatches\n",
@@ -7251,32 +7680,36 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 				   nmismatches_shortexon_left,nmismatches_shortexon_middle,nmismatches_shortexon_right));
 
 		    if (ambp_left == true && ambp_right == true) {
-		      shortexon = Substring_new_shortexon(j1,j2,/*joffset*/0,/*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j1],/*acceptor_knowni*/j1,
+							  /*donor_coord*/splicesites[j2],/*donor_knowni*/j2,
+							  /*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
 							  nmismatches_shortexon_middle,
 							  /*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/true,/*donor_ambp*/true,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/true,/*donor_ambp*/true,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 		      if (shortexon != NULL) {
 			debug4k(printf("New one-third shortexon at left %lu\n",segmentm_left));
+			ambcoords_left = lookup_splicesites(splicesites_i_left,splicesites);
+			ambcoords_right = lookup_splicesites(splicesites_i_right,splicesites);
 			amb_nmatches_donor = leftpos - nmismatches_shortexon_left;
 			amb_nmatches_acceptor = querylength - rightpos - nmismatches_shortexon_right;
 			segmentm->usedp = true;
 			hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),/*donor*/NULL,/*acceptor*/NULL,shortexon,
 									       /*acceptor_distance*/0U,/*donor_distance*/0U,
 									       amb_nmatches_donor,amb_nmatches_acceptor,
-									       /*ambi_left*/splicesites_i_left,/*ambi_right*/splicesites_i_right,
+									       ambcoords_left,ambcoords_right,
+									       /*amb_knowni_left*/splicesites_i_left,/*amb_knowni_right*/splicesites_i_right,
 									       nmismatches_list_left,nmismatches_list_right,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
+#ifdef LARGE_GENOMES
+			Uint8list_free(&ambcoords_right);
+			Uint8list_free(&ambcoords_left);
+#else
+			Uintlist_free(&ambcoords_right);
+			Uintlist_free(&ambcoords_left);
 #endif
 		      }
 
@@ -7286,17 +7719,21 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 
 		      debug4k(printf("shortexon with amb_acceptor at %d (%lu) ... donor at %d (%lu)\n",
 				     j1,splicesites[j1],j2,splicesites[j2]));
-		      shortexon = Substring_new_shortexon(j1,j2,/*joffset*/0,/*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j1],/*acceptor_knowni*/j1,
+							  /*donor_coord*/splicesites[j2],/*donor_knowni*/j2,
+							  /*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
 							  nmismatches_shortexon_middle,
 							  /*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/true,/*donor_ambp*/false,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/true,/*donor_ambp*/false,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      debug4k(printf("acceptor at %d (%lu)\n",best_right_j,splicesites[best_right_j]));
-		      acceptor = Substring_new_acceptor(best_right_j,/*joffset*/0,/*splice_pos*/rightpos,nmismatches_shortexon_right,
+		      acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[best_right_j],/*acceptor_knowni*/best_right_j,
+							/*splice_pos*/rightpos,nmismatches_shortexon_right,
 							/*prob*/2.0,/*left*/splicesites[best_right_j]-rightpos,
-							query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+							query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 							segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      if (shortexon == NULL || acceptor == NULL) {
@@ -7304,24 +7741,22 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 			if (acceptor != NULL) Substring_free(&acceptor);
 		      } else {
 			debug4k(printf("ambp_left true, ambp_right false: New two-thirds shortexon at left %lu\n",segmentm_left));
+			ambcoords_left = lookup_splicesites(splicesites_i_left,splicesites);
 			amb_nmatches_donor = leftpos - nmismatches_shortexon_left;
 			segmentm->usedp = true;
 			hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),/*donor*/NULL,acceptor,shortexon,
 									       /*acceptor_distance*/0U,
 									       /*donor_distance*/splicesites[best_right_j]-splicesites[j2],
 									       amb_nmatches_donor,/*amb_nmatches_acceptor*/0,
-									       /*ambi_left*/splicesites_i_left,/*ambi_right*/NULL,
+									       ambcoords_left,/*ambcoords_right*/NULL,
+									       /*amb_knowni_left*/splicesites_i_left,/*amb_knowni_right*/NULL,
 									       nmismatches_list_left,/*amb_nmismatches_right*/NULL,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
+#ifdef LARGE_GENOMES
+			Uint8list_free(&ambcoords_left);
+#else
+			Uintlist_free(&ambcoords_left);
 #endif
 		      }
 
@@ -7330,42 +7765,44 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 		      best_left_j = Intlist_head(splicesites_i_left);
 
 		      debug4k(printf("donor at %d (%lu)\n",best_left_j,splicesites[best_left_j]));
-		      donor = Substring_new_donor(best_left_j,/*joffset*/0,/*splice_pos*/leftpos,nmismatches_shortexon_left,
+		      donor = Substring_new_donor(/*donor_coord*/splicesites[best_left_j],/*donor_knowni*/best_left_j,
+						  /*splice_pos*/leftpos,nmismatches_shortexon_left,
 						  /*prob*/2.0,/*left*/splicesites[best_left_j]-leftpos,
-						  query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+						  query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 						  segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      debug4k(printf("shortexon with acceptor at %d (%lu) ... amb_donor %d (%lu)\n",
 				     j1,splicesites[j1],j2,splicesites[j2]));
-		      shortexon = Substring_new_shortexon(j1,j2,/*joffset*/0,/*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j1],/*acceptor_knowni*/j1,
+							  /*donor_coord*/splicesites[j2],/*donor_knowni*/j2,
+							  /*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
 							  nmismatches_shortexon_middle,
 							  /*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/false,/*donor_ambp*/true,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/false,/*donor_ambp*/true,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      if (donor == NULL || shortexon == NULL) {
 			if (donor != NULL) Substring_free(&donor);
 			if (shortexon != NULL) Substring_free(&shortexon);
 		      } else {
+			ambcoords_right = lookup_splicesites(splicesites_i_right,splicesites);
 			amb_nmatches_acceptor = querylength - rightpos - nmismatches_shortexon_right;
 			segmentm->usedp = true;
 			hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),donor,/*acceptor*/NULL,shortexon,
 									       /*acceptor_distance*/splicesites[j1]-splicesites[best_left_j],
 									       /*donor_distance*/0U,
 									       /*amb_nmatches_donor*/0,amb_nmatches_acceptor,
-									       /*ambi_left*/NULL,/*ambi_right*/splicesites_i_right,
+									       /*ambcoords_left*/NULL,ambcoords_right,
+									       /*amb_knowni_left*/NULL,/*amb_knowni_right*/splicesites_i_right,
 									       /*amb_nmismatches_left*/NULL,nmismatches_list_right,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
+#ifdef LARGE_GENOMES
+			Uint8list_free(&ambcoords_right);
+#else
+			Uintlist_free(&ambcoords_right);
 #endif
 		      }
 
@@ -7374,20 +7811,25 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 		      debug4k(printf("ambp_left false, ambp_right false\n"));
 		      best_left_j = Intlist_head(splicesites_i_left);
 		      best_right_j = Intlist_head(splicesites_i_right);
-		      donor = Substring_new_donor(best_left_j,/*joffset*/0,/*splice_pos*/leftpos,nmismatches_shortexon_left,
+		      donor = Substring_new_donor(/*donor_coord*/splicesites[best_left_j],/*donor_knowni*/best_left_j,
+						  /*splice_pos*/leftpos,nmismatches_shortexon_left,
 						  /*prob*/2.0,/*left*/splicesites[best_left_j]-leftpos,
-						  query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+						  query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 						  segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
-		      shortexon = Substring_new_shortexon(j1,j2,/*joffset*/0,/*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j1],/*acceptor_knowni*/j1,
+							  /*donor_coord*/splicesites[j2],/*donor_knowni*/j2,
+							  /*acceptor_pos*/leftpos,/*donor_pos*/rightpos,
 							  nmismatches_shortexon_middle,/*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 		      
-		      acceptor = Substring_new_acceptor(best_right_j,/*joffset*/0,/*splice_pos*/rightpos,nmismatches_shortexon_right,
+		      acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[best_right_j],/*acceptor_knowni*/best_right_j,
+							/*splice_pos*/rightpos,nmismatches_shortexon_right,
 							/*prob*/2.0,/*left*/splicesites[best_right_j]-rightpos,
-							query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+							query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 							segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      if (donor == NULL || shortexon == NULL || acceptor == NULL) {
@@ -7401,19 +7843,11 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 									       /*acceptor_distance*/splicesites[j1]-splicesites[best_left_j],
 									       /*donor_distance*/splicesites[best_right_j]-splicesites[j2],
 									       /*amb_nmatches_donor*/0,/*amb_nmatches_acceptor*/0,
-									       /*ambi_left*/NULL,/*ambi_right*/NULL,
+									       /*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									       /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									       /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
-#endif
 		      }
 		    }
 		    Intlist_free(&nmismatches_list_right);
@@ -7442,7 +7876,8 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 	    if ((splicesites_i_left =
 		 Splicetrie_find_left(&nmismatches_shortexon_left,&nmismatches_list_left,j1,
 				      /*origleft*/segmentm_left,/*pos5*/0,/*pos3*/leftpos,segmentm->chroffset,
-				      query_compress,queryptr,querylength,max_mismatches_allowed,plusp,genestrand,
+				      query_compress,queryptr,querylength,max_mismatches_allowed,
+				      plusp,genestrand,first_read_p,
 				      /*collect_all_p*/pairedp == true && first_read_p != plusp)) != NULL) {
 	      ambp_left = (leftpos < min_shortend || Intlist_length(splicesites_i_left) > 1) ? true : false;
 	      
@@ -7452,13 +7887,14 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 		  debug4k(printf("  Doing Splicetrie_find_right from rightpos %d (minus)\n",rightpos));
 		  if ((nmismatches_shortexon_middle =
 		       Genome_count_mismatches_substring(query_compress,segmentm_left,/*pos5*/leftpos,/*pos3*/rightpos,
-							 plusp,genestrand)) <= max_mismatches_allowed - nmismatches_shortexon_left &&
+							 plusp,genestrand,first_read_p)) <= max_mismatches_allowed - nmismatches_shortexon_left &&
 		      (splicesites_i_right =
 		       Splicetrie_find_right(&nmismatches_shortexon_right,&nmismatches_list_right,j2,
 					     /*origleft*/segmentm_left,/*pos5*/rightpos,/*pos3*/querylength,segmentm->chrhigh,
 					     query_compress,queryptr,
 					     max_mismatches_allowed - nmismatches_shortexon_left - nmismatches_shortexon_middle,
-					     plusp,genestrand,/*collect_all_p*/pairedp == true && first_read_p == plusp)) != NULL) {
+					     plusp,genestrand,first_read_p,
+					     /*collect_all_p*/pairedp == true && first_read_p == plusp)) != NULL) {
 		    ambp_right = (querylength - rightpos < min_shortend || Intlist_length(splicesites_i_right) > 1) ? true : false;
 
 		    debug4k(printf("  antiacceptor %s ... antidonor %d (%lu) ... antiacceptor %d (%lu) ... antidonor %s: %d + %d + %d mismatches\n",
@@ -7466,31 +7902,35 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 				   nmismatches_shortexon_left,nmismatches_shortexon_middle,nmismatches_shortexon_right));
 
 		    if (ambp_left == true && ambp_right == true) {
-		      shortexon = Substring_new_shortexon(j2,j1,/*joffset*/0,/*acceptor_pos*/rightpos,/*donor_pos*/leftpos,nmismatches_shortexon_middle,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j2],/*acceptor_knowni*/j2,
+							  /*donor_coord*/splicesites[j1],/*donor_knowni*/j1,
+							  /*acceptor_pos*/rightpos,/*donor_pos*/leftpos,nmismatches_shortexon_middle,
 							  /*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/true,/*donor_ambp*/true,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/true,/*donor_ambp*/true,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 		      if (shortexon != NULL) {
 			debug4k(printf("New one-third shortexon at left %lu\n",segmentm_left));
+			ambcoords_left = lookup_splicesites(splicesites_i_left,splicesites);
+			ambcoords_right = lookup_splicesites(splicesites_i_right,splicesites);
 			amb_nmatches_donor = querylength - rightpos - nmismatches_shortexon_right;
 			amb_nmatches_acceptor = leftpos - nmismatches_shortexon_left;
 			segmentm->usedp = true;
 			hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),/*donor*/NULL,/*acceptor*/NULL,shortexon,
 									       /*acceptor_distance*/0U,/*donor_distance*/0U,
 									       amb_nmatches_donor,amb_nmatches_acceptor,
-									       /*ambi_left*/splicesites_i_left,/*ambi_right*/splicesites_i_right,
+									       ambcoords_left,ambcoords_right,
+									       /*amb_knowni_left*/splicesites_i_left,/*amb_knowni_right*/splicesites_i_right,
 									       nmismatches_list_left,nmismatches_list_right,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
+#ifdef LARGE_GENOMES
+			Uint8list_free(&ambcoords_right);
+			Uint8list_free(&ambcoords_left);
+#else
+			Uintlist_free(&ambcoords_right);
+			Uintlist_free(&ambcoords_left);
 #endif
 		      }
 
@@ -7500,40 +7940,42 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 
 		      debug4k(printf("shortexon with amb_donor at %d (%lu) ... acceptor at %d (%lu)\n",
 				     j1,splicesites[j1],j2,splicesites[j2]));
-		      shortexon = Substring_new_shortexon(j2,j1,/*joffset*/0,/*acceptor_pos*/rightpos,/*donor_pos*/leftpos,nmismatches_shortexon_middle,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j2],/*acceptor_knowni*/j2,
+							  /*donor_coord*/splicesites[j1],/*donor_knowni*/j1,
+							  /*acceptor_pos*/rightpos,/*donor_pos*/leftpos,nmismatches_shortexon_middle,
 							  /*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/false,/*donor_ambp*/true,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/false,/*donor_ambp*/true,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      debug4k(printf("donor at %d (%lu)\n",best_right_j,splicesites[best_right_j]));
-		      donor = Substring_new_donor(best_right_j,/*joffset*/0,/*splice_pos*/rightpos,nmismatches_shortexon_right,
+		      donor = Substring_new_donor(/*donor_coord*/splicesites[best_right_j],/*donor_knowni*/best_right_j,
+						  /*splice_pos*/rightpos,nmismatches_shortexon_right,
 						  /*prob*/2.0,/*left*/splicesites[best_right_j]-rightpos,
-						  query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+						  query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 						  segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      if (donor == NULL || shortexon == NULL) {
 			if (donor != NULL) Substring_free(&donor);
 			if (shortexon != NULL) Substring_free(&shortexon);
 		      } else {
+			ambcoords_left = lookup_splicesites(splicesites_i_left,splicesites);
 			amb_nmatches_acceptor = leftpos - nmismatches_shortexon_left;
 			segmentm->usedp = true;
 			hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),donor,/*acceptor*/NULL,shortexon,
 									       /*acceptor_distance*/splicesites[best_right_j]-splicesites[j2],
 									       /*donor_distance*/0U,
 									       /*amb_nmatches_donor*/0,amb_nmatches_acceptor,
-									       /*ambi_left*/splicesites_i_left,/*ambi_right*/NULL,
+									       ambcoords_left,/*ambcoords_right*/NULL,
+									       /*amb_knowni_left*/splicesites_i_left,/*amb_knowni_right*/NULL,
 									       nmismatches_list_left,/*amb_nmismatches_right*/NULL,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
+#ifdef LARGE_GENOMES
+			Uint8list_free(&ambcoords_left);
+#else
+			Uintlist_free(&ambcoords_left);
 #endif
 		      }
 
@@ -7542,17 +7984,21 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 		      best_left_j = Intlist_head(splicesites_i_left);
 
 		      debug4k(printf("acceptor at %d (%lu)\n",best_left_j,splicesites[best_left_j]));
-		      acceptor = Substring_new_acceptor(best_left_j,/*joffset*/0,/*splice_pos*/leftpos,nmismatches_shortexon_left,
+		      acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[best_left_j],/*acceptor_knowni*/best_left_j,
+							/*splice_pos*/leftpos,nmismatches_shortexon_left,
 							/*prob*/2.0,/*left*/splicesites[best_left_j]-leftpos,
-							query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+							query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 							segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      debug4k(printf("shortexon with donor at %d (%lu) ... amb_acceptor at %d (%lu)\n",
 				     j2,splicesites[j2],j1,splicesites[j1]));
-		      shortexon = Substring_new_shortexon(j2,j1,/*joffset*/0,/*acceptor_pos*/rightpos,/*donor_pos*/leftpos,nmismatches_shortexon_middle,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j2],/*acceptor_knowni*/j2,
+							  /*donor_coord*/splicesites[j1],/*donor_knowni*/j1,
+							  /*acceptor_pos*/rightpos,/*donor_pos*/leftpos,nmismatches_shortexon_middle,
 							  /*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/true,/*donor_ambp*/false,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/true,/*donor_ambp*/false,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      if (shortexon == NULL || acceptor == NULL) {
@@ -7560,44 +8006,47 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 			if (acceptor != NULL) Substring_free(&acceptor);
 		      } else {
 			debug4k(printf("ambp_left false, ambp_right true: New splice at left %lu\n",segmentm_left));
+			ambcoords_right = lookup_splicesites(splicesites_i_right,splicesites);
 			amb_nmatches_donor = querylength - rightpos - nmismatches_shortexon_right;
 			segmentm->usedp = true;
 			hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),/*donor*/NULL,acceptor,shortexon,
 									       /*acceptor_distance*/0U,
 									       /*donor_distance*/splicesites[j1]-splicesites[best_left_j],
 									       amb_nmatches_donor,/*amb_nmatches_acceptor*/0,
-									       /*ambi_left*/NULL,/*ambi_right*/splicesites_i_right,
+									       /*ambcoords_left*/NULL,ambcoords_right,
+									       /*amb_knowni_left*/NULL,/*amb_knowni_right*/splicesites_i_right,
 									       /*amb_nmismatches_left*/NULL,nmismatches_list_right,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
+#ifdef LARGE_GENOMES
+			Uint8list_free(&ambcoords_right);
+#else
+			Uintlist_free(&ambcoords_right);
 #endif
 		      }
 
 		    } else {  /* ambp_left == false && ambp_right == false */
 		      best_left_j = Intlist_head(splicesites_i_left);
 		      best_right_j = Intlist_head(splicesites_i_right);
-		      acceptor = Substring_new_acceptor(best_left_j,/*joffset*/0,/*splice_pos*/leftpos,nmismatches_shortexon_left,
+		      acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[best_left_j],/*acceptor_knowni*/best_left_j,
+							/*splice_pos*/leftpos,nmismatches_shortexon_left,
 							/*prob*/2.0,/*left*/splicesites[best_left_j]-leftpos,
-							query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+							query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 							segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
-		      shortexon = Substring_new_shortexon(j2,j1,/*joffset*/0,/*acceptor_pos*/rightpos,/*donor_pos*/leftpos,
+		      shortexon = Substring_new_shortexon(/*acceptor_coord*/splicesites[j2],/*acceptor_knowni*/j2,
+							  /*donor_coord*/splicesites[j1],/*donor_knowni*/j1,
+							  /*acceptor_pos*/rightpos,/*donor_pos*/leftpos,
 							  nmismatches_shortexon_middle,/*acceptor_prob*/2.0,/*donor_prob*/2.0,
 							  /*left*/segmentm_left,query_compress,
-							  querylength,plusp,genestrand,sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
+							  querylength,plusp,genestrand,first_read_p,
+							  sensep,/*acceptor_ambp*/false,/*donor_ambp*/false,
 							  segmentm->chrnum,segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
-		      donor = Substring_new_donor(best_right_j,/*joffset*/0,/*splice_pos*/rightpos,nmismatches_shortexon_right,
+		      donor = Substring_new_donor(/*donor_coord*/splicesites[best_right_j],/*donor_knowni*/best_right_j,
+						  /*splice_pos*/rightpos,nmismatches_shortexon_right,
 						  /*prob*/2.0,/*left*/splicesites[best_right_j]-rightpos,
-						  query_compress,querylength,plusp,genestrand,sensep,segmentm->chrnum,
+						  query_compress,querylength,plusp,genestrand,first_read_p,sensep,segmentm->chrnum,
 						  segmentm->chroffset,segmentm->chrhigh,segmentm->chrlength);
 
 		      if (acceptor == NULL || shortexon == NULL || donor == NULL) {
@@ -7611,19 +8060,11 @@ find_doublesplices (int *found_score, List_T hits, List_T *lowprob,
 									       /*acceptor_distance*/splicesites[best_right_j]-splicesites[j2],
 									       /*donor_distance*/splicesites[j1]-splicesites[best_left_j],
 									       /*amb_nmatches_donor*/0,/*amb_nmatches_acceptor*/0,
-									       /*ambi_left*/NULL,/*ambi_right*/NULL,
+									       /*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									       /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									       /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									       /*copy_donor_p*/false,/*copy_acceptor_p*/false,/*copy_shortexon_p*/false,
 									       splicing_penalty,querylength,sensedir,/*sarrayp*/false));
-#if 0
-			if (++nhits_local >= MAX_LOCALSPLICING_HITS) {
-			  Intlist_free(&nmismatches_list_right);
-			  Intlist_free(&splicesites_i_right);
-			  Intlist_free(&nmismatches_list_left);
-			  Intlist_free(&splicesites_i_left);
-			  return hits;
-			}
-#endif
 		      }
 		    }
 		    Intlist_free(&nmismatches_list_right);
@@ -7759,7 +8200,7 @@ find_doublesplices_old (int *found_score, List_T hits, struct Segment_T *segment
 			     max_mismatches_allowed,
 			     Genome_count_mismatches_substring(query_compress,segmentm_left,
 							       /*pos5*/segmenti->leftmost,/*pos3*/segmentj->rightmost,
-							       plusp,genestrand),
+							       plusp,genestrand,first_read_p),
 			     segmenti->leftmost,segmentj->rightmost));
 	      
 	      if (segmenti->leftmost >= segmentj->rightmost) {
@@ -7767,7 +8208,8 @@ find_doublesplices_old (int *found_score, List_T hits, struct Segment_T *segment
 			       segmenti->leftmost,segmentj->rightmost));
 	      } else if (Genome_count_mismatches_limit(query_compress,segmentm_left,
 						       /*pos5*/segmenti->leftmost,/*pos3*/segmentj->rightmost,
-						       max_mismatches_allowed,plusp,genestrand) <= max_mismatches_allowed) {
+						       max_mismatches_allowed,
+						       plusp,genestrand,first_read_p) <= max_mismatches_allowed) {
 		debug4d(printf("Double splice is possible\n"));
 		segmentj_left = segmentj->diagonal - querylength;
 
@@ -7787,7 +8229,8 @@ find_doublesplices_old (int *found_score, List_T hits, struct Segment_T *segment
 					   segmentj_antidonor_knowni,segmentm_antiacceptor_knowni,segmentm_antidonor_knowni,segmenti_antiacceptor_knowni,
 					   segmenti_donor_nknown,segmentm_acceptor_nknown,segmentm_donor_nknown,segmentj_acceptor_nknown,
 					   segmentj_antidonor_nknown,segmentm_antiacceptor_nknown,segmentm_antidonor_nknown,segmenti_antiacceptor_nknown,
-					   splicing_penalty,max_mismatches_allowed,plusp,genestrand,subs_or_indels_p,/*sarrayp*/false);
+					   splicing_penalty,max_mismatches_allowed,plusp,genestrand,first_read_p,
+					   subs_or_indels_p,/*sarrayp*/false);
 	      }
 	    }
 	  }
@@ -7809,7 +8252,7 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 			  char *queryptr,
 #endif
 			  Floors_T floors, int querylength, int query_lastpos, Compress_T query_compress,
-			  int max_mismatches_allowed, bool plusp, int genestrand) {
+			  int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG4E
   char *gbuffer;
 #endif
@@ -7861,7 +8304,7 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	  /* pos3 was trimpos */
 	  nmismatches_left = Genome_mismatches_left(mismatch_positions,max_mismatches_allowed,
 						    query_compress,/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-						    plusp,genestrand);
+						    plusp,genestrand,first_read_p);
 
 	  debug4e(
 		  printf("%d mismatches on left (%d allowed) at:",
@@ -7901,7 +8344,8 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	      nmismatches++;
 	    }
 #if 0
-	    assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/0,/*pos3*/splice_pos,plusp,genestrand));
+	    assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/0,/*pos3*/splice_pos,
+								    plusp,genestrand,first_read_p));
 #endif
 	    if (nmismatches > max_mismatches_allowed) {
 	      debug4e(printf("nmismatches %d > max_mismatches_allowed %d\n",nmismatches,max_mismatches_allowed));
@@ -7910,9 +8354,10 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	      debug4e(printf("Known donor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 			     segment_left,splice_pos,nmismatches,splice_pos_end));
 	      sensep = (plusp == true) ? true : false;
-	      if ((hit = Substring_new_donor(j,/*joffset*/0,splice_pos,nmismatches,
+	      if ((hit = Substring_new_donor(/*donor_coord*/splicesites[j],/*donor_knowni*/j,splice_pos,nmismatches,
 					     /*prob*/2.0,/*left*/segment_left,query_compress,
-					     querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+					     querylength,plusp,genestrand,first_read_p,
+					     sensep,segment->chrnum,segment->chroffset,
 					     segment->chrhigh,segment->chrlength)) != NULL) {
 		debug4e(printf("=> %s donor: known at %d (%d mismatches)\n",
 			       plusp == true ? "plus" : "minus",Substring_chimera_pos(hit),nmismatches));
@@ -7924,9 +8369,10 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	      debug4e(printf("Known antiacceptor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 			     segment_left,splice_pos,nmismatches,splice_pos_end));
 	      sensep = (plusp == true) ? false : true;
-	      if ((hit = Substring_new_acceptor(j,/*joffset*/0,splice_pos,nmismatches,
-						/*prob*/2.0,/*left*/segment_left,query_compress,
-						querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+	      if ((hit = Substring_new_acceptor(/*acceptor_coord*/splicesites[j],/*acceptor_knowni*/j,
+						splice_pos,nmismatches,/*prob*/2.0,/*left*/segment_left,query_compress,
+						querylength,plusp,genestrand,first_read_p,
+						sensep,segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength)) != NULL) {
 		debug4e(printf("=> %s antiacceptor : known at %d (%d mismatches)\n",
 			       plusp == true ? "plus" : "minus",Substring_chimera_pos(hit),nmismatches));
@@ -7943,7 +8389,7 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	  /* pos5 was trimpos+1 */
 	  nmismatches_right = Genome_mismatches_right(mismatch_positions,max_mismatches_allowed,
 						      query_compress,/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-						      plusp,genestrand);
+						      plusp,genestrand,first_read_p);
 
 	  debug4e(
 		  printf("%d mismatches on right (%d allowed) at:",nmismatches_right,max_mismatches_allowed);
@@ -7981,7 +8427,8 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	      nmismatches++;
 	    }
 #if 0
-	    assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/splice_pos,/*pos3*/querylength,plusp,genestrand));
+	    assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/splice_pos,/*pos3*/querylength,
+								    plusp,genestrand,first_read_p));
 #endif
 	    if (nmismatches > max_mismatches_allowed) {
 	      debug4e(printf("nmismatches %d > max_mismatches_allowed %d\n",nmismatches,max_mismatches_allowed));
@@ -7990,9 +8437,10 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	      debug4e(printf("Known acceptor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 			     segment_left,splice_pos,nmismatches,splice_pos_start));
 	      sensep = (plusp == true) ? true : false;
-	      if ((hit = Substring_new_acceptor(j,/*joffset*/0,splice_pos,nmismatches,
-						/*prob*/2.0,/*left*/segment_left,query_compress,
-						querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+	      if ((hit = Substring_new_acceptor(/*acceptor_coord*/splicesites[j],/*acceptor_knowni*/j,
+						splice_pos,nmismatches,/*prob*/2.0,/*left*/segment_left,query_compress,
+						querylength,plusp,genestrand,first_read_p,
+						sensep,segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength)) != NULL) {
 		debug4e(printf("=> %s acceptor: known at %d (%d mismatches)\n",
 			       plusp == true ? "plus" : "minus",Substring_chimera_pos(hit),nmismatches));
@@ -8004,9 +8452,10 @@ find_spliceends_shortend (List_T **shortend_donors, List_T **shortend_antidonors
 	      debug4e(printf("Known antidonor for segmenti at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 			     segment_left,splice_pos,nmismatches,splice_pos_start));
 	      sensep = (plusp == true) ? false : true;
-	      if ((hit = Substring_new_donor(j,/*joffset*/0,splice_pos,nmismatches,
+	      if ((hit = Substring_new_donor(/*donor_coord*/splicesites[j],/*donor_knowni*/j,splice_pos,nmismatches,
 					     /*prob*/2.0,/*left*/segment_left,query_compress,
-					     querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+					     querylength,plusp,genestrand,first_read_p,
+					     sensep,segment->chrnum,segment->chroffset,
 					     segment->chrhigh,segment->chrlength)) != NULL) {
 		debug4e(printf("=> %s antidonor: known at %d (%d mismatches)\n",
 			       plusp == true ? "plus" : "minus",Substring_chimera_pos(hit),nmismatches));
@@ -8031,7 +8480,7 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 			 char *queryptr,
 #endif
 			 Floors_T floors, int querylength, int query_lastpos, Compress_T query_compress,
-			 int max_mismatches_allowed, bool plusp, int genestrand) {
+			 int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG4E
   char *gbuffer;
 #endif
@@ -8092,7 +8541,7 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 	  /* pos3 was trimpos */
 	  nmismatches_left = Genome_mismatches_left(mismatch_positions,max_mismatches_allowed,
 						    query_compress,/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-						    plusp,genestrand);
+						    plusp,genestrand,first_read_p);
 
 	  debug4e(
 		  printf("%d mismatches on left (%d allowed) at:",
@@ -8163,16 +8612,18 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 	      }
 	      debug4e(printf(" splice pos %d, nmismatches %d\n",splice_pos,nmismatches));
 #if 0
-	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/0,/*pos3*/splice_pos,plusp,genestrand));
+	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/0,/*pos3*/splice_pos,
+								      plusp,genestrand,first_read_p));
 #endif
 	      if (nmismatches <= max_mismatches_allowed) {
 		if (donori_knowni[i] >= 0) {
 		  debug4e(printf("Known donor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				 segment_left,splice_pos,nmismatches,splice_pos_end));
 		
-		  if ((hit = Substring_new_donor(donori_knowni[i],/*joffset*/0,splice_pos,nmismatches,
-						 /*prob*/2.0,/*left*/segment_left,query_compress,
-						 querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		  if ((hit = Substring_new_donor(/*donor_coord*/segment_left + splice_pos,/*donor_knowni*/donori_knowni[i],
+						 splice_pos,nmismatches,/*prob*/2.0,/*left*/segment_left,query_compress,
+						 querylength,plusp,genestrand,first_read_p,
+						 sensep,segment->chrnum,segment->chroffset,
 						 segment->chrhigh,segment->chrlength)) != NULL) {
 		    debug4e(printf("=> %s donor: %f at %d (%d mismatches)\n",
 				   plusp == true ? "plus" : "minus",Maxent_hr_donor_prob(segment_left + splice_pos,segment->chroffset),
@@ -8188,9 +8639,10 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 		  if (sufficient_splice_prob_distant(/*support*/splice_pos,nmismatches,prob)) {
 		    debug4e(printf("Novel donor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				   segment_left,splice_pos,nmismatches,splice_pos_end));
-		    if ((hit = Substring_new_donor(/*knowni*/-1,/*joffset*/0,splice_pos,nmismatches,
-						   prob,/*left*/segment_left,query_compress,
-						   querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		    if ((hit = Substring_new_donor(/*donor_coord*/segment_left + splice_pos,/*donor_knowni*/-1,
+						   splice_pos,nmismatches,prob,/*left*/segment_left,query_compress,
+						   querylength,plusp,genestrand,first_read_p,
+						   sensep,segment->chrnum,segment->chroffset,
 						   segment->chrhigh,segment->chrlength)) != NULL) {
 		      debug4e(printf("=> %s donor: %f at %d (%d mismatches)\n",
 				     plusp == true ? "plus" : "minus",prob,Substring_chimera_pos(hit),nmismatches));
@@ -8236,15 +8688,17 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 	      }
 	      debug4e(printf(" splice pos %d, nmismatches %d\n",splice_pos,nmismatches));
 #if 0
-	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/0,/*pos3*/splice_pos,plusp,genestrand));
+	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/0,/*pos3*/splice_pos,
+								      plusp,genestrand,first_read_p));
 #endif
 	      if (nmismatches <= max_mismatches_allowed) {
 		if (antiacceptori_knowni[i] >= 0) {
 		  debug4e(printf("Known antiacceptor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				 segment_left,splice_pos,nmismatches,splice_pos_end));
-		  if ((hit = Substring_new_acceptor(antiacceptori_knowni[i],/*joffset*/0,splice_pos,nmismatches,
-						    /*prob*/2.0,/*left*/segment_left,query_compress,
-						    querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		  if ((hit = Substring_new_acceptor(/*acceptor_coord*/segment_left + splice_pos,/*acceptor_knowni*/antiacceptori_knowni[i],
+						    splice_pos,nmismatches,/*prob*/2.0,/*left*/segment_left,query_compress,
+						    querylength,plusp,genestrand,first_read_p,
+						    sensep,segment->chrnum,segment->chroffset,
 						    segment->chrhigh,segment->chrlength)) != NULL) {
 		    debug4e(printf("=> %s antiacceptor : %f at %d (%d mismatches)\n",
 				   plusp == true ? "plus" : "minus",Maxent_hr_antiacceptor_prob(segment_left + splice_pos,segment->chroffset),
@@ -8260,9 +8714,10 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 		  if (sufficient_splice_prob_distant(/*support*/splice_pos,nmismatches,prob)) {
 		    debug4e(printf("Novel antiacceptor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				   segment_left,splice_pos,nmismatches,splice_pos_end));
-		    if ((hit = Substring_new_acceptor(/*knowni*/-1,/*joffset*/0,splice_pos,nmismatches,
-						      prob,/*left*/segment_left,query_compress,
-						      querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		    if ((hit = Substring_new_acceptor(/*acceptor_coord*/segment_left + splice_pos,/*acceptor_knowni*/-1,
+						      splice_pos,nmismatches,prob,/*left*/segment_left,query_compress,
+						      querylength,plusp,genestrand,first_read_p,
+						      sensep,segment->chrnum,segment->chroffset,
 						      segment->chrhigh,segment->chrlength)) != NULL) {
 		      debug4e(printf("=> %s antiacceptor : %f at %d (%d mismatches)\n",
 				     plusp == true ? "plus" : "minus",prob,Substring_chimera_pos(hit),nmismatches));
@@ -8286,7 +8741,7 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 	  /* pos5 was trimpos+1 */
 	  nmismatches_right = Genome_mismatches_right(mismatch_positions,max_mismatches_allowed,
 						      query_compress,/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-						      plusp,genestrand);
+						      plusp,genestrand,first_read_p);
 
 	  debug4e(
 		  printf("%d mismatches on right (%d allowed) at:",nmismatches_right,max_mismatches_allowed);
@@ -8358,15 +8813,17 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 	      }
 	      debug4e(printf(" splice pos %d, nmismatches %d\n",splice_pos,nmismatches));
 #if 0
-	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/splice_pos,/*pos3*/querylength,plusp,genestrand));
+	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/splice_pos,/*pos3*/querylength,
+								      plusp,genestrand,first_read_p));
 #endif
 	      if (nmismatches <= max_mismatches_allowed) {
 		if (acceptorj_knowni[i] >= 0) {
 		  debug4e(printf("Known acceptor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				 segment_left,splice_pos,nmismatches,splice_pos_start));
-		  if ((hit = Substring_new_acceptor(acceptorj_knowni[i],/*joffset*/0,splice_pos,nmismatches,
-						    /*prob*/2.0,/*left*/segment_left,query_compress,
-						    querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		  if ((hit = Substring_new_acceptor(/*acceptor_coord*/segment_left + splice_pos,/*acceptor_knowni*/acceptorj_knowni[i],
+						    splice_pos,nmismatches,/*prob*/2.0,/*left*/segment_left,query_compress,
+						    querylength,plusp,genestrand,first_read_p,
+						    sensep,segment->chrnum,segment->chroffset,
 						    segment->chrhigh,segment->chrlength)) != NULL) {
 		    debug4e(printf("=> %s acceptor: %f at %d (%d mismatches)\n",
 				   plusp == true ? "plus" : "minus",Maxent_hr_acceptor_prob(segment_left + splice_pos,segment->chroffset),
@@ -8382,9 +8839,10 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 		  if (sufficient_splice_prob_distant(/*support*/querylength - splice_pos,nmismatches,prob)) {
 		    debug4e(printf("Novel acceptor for segment at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				   segment_left,splice_pos,nmismatches,splice_pos_start));
-		    if ((hit = Substring_new_acceptor(/*knowni*/-1,/*joffset*/0,splice_pos,nmismatches,
-						      prob,/*left*/segment_left,query_compress,
-						      querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		    if ((hit = Substring_new_acceptor(/*acceptor_coord*/segment_left + splice_pos,/*acceptor_knowni*/-1,
+						      splice_pos,nmismatches,prob,/*left*/segment_left,query_compress,
+						      querylength,plusp,genestrand,first_read_p,
+						      sensep,segment->chrnum,segment->chroffset,
 						      segment->chrhigh,segment->chrlength)) != NULL) {
 		      debug4e(printf("=> %s acceptor: %f at %d (%d mismatches)\n",
 				     plusp == true ? "plus" : "minus",prob,Substring_chimera_pos(hit),nmismatches));
@@ -8430,15 +8888,17 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 	      }
 	      debug4e(printf(" splice pos %d, nmismatches %d\n",splice_pos,nmismatches));
 #if 0
-	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/splice_pos,/*pos3*/querylength,plusp,genestrand));
+	      assert(nmismatches == Genome_count_mismatches_substring(query_compress,segment_left,/*pos5*/splice_pos,/*pos3*/querylength,
+								      plusp,genestrand,first_read_p));
 #endif
 	      if (nmismatches <= max_mismatches_allowed) {
 		if (antidonorj_knowni[i] >= 0) {
 		  debug4e(printf("Known antidonor for segmenti at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				 segment_left,splice_pos,nmismatches,splice_pos_start));
-		  if ((hit = Substring_new_donor(antidonorj_knowni[i],/*joffset*/0,splice_pos,nmismatches,
-						 /*prob*/2.0,/*left*/segment_left,query_compress,
-						 querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		  if ((hit = Substring_new_donor(/*donor_coord*/segment_left + splice_pos,/*donor_knowni*/antidonorj_knowni[i],
+						 splice_pos,nmismatches,/*prob*/2.0,/*left*/segment_left,query_compress,
+						 querylength,plusp,genestrand,first_read_p,
+						 sensep,segment->chrnum,segment->chroffset,
 						 segment->chrhigh,segment->chrlength)) != NULL) {
 		    debug4e(printf("=> %s antidonor: %f at %d (%d mismatches)\n",
 				   plusp == true ? "plus" : "minus",Maxent_hr_antidonor_prob(segment_left + splice_pos,segment->chroffset),
@@ -8454,9 +8914,10 @@ find_spliceends_distant (List_T **distant_donors, List_T **distant_antidonors,
 		  if (sufficient_splice_prob_distant(/*support*/querylength - splice_pos,nmismatches,prob)) {
 		    debug4e(printf("Novel antidonor for segmenti at %lu, splice_pos %d (%d mismatches), stopi = %d\n",
 				   segment_left,splice_pos,nmismatches,splice_pos_start));
-		    if ((hit = Substring_new_donor(/*knowni*/-1,/*joffset*/0,splice_pos,nmismatches,
-						   prob,/*left*/segment_left,query_compress,
-						   querylength,plusp,genestrand,sensep,segment->chrnum,segment->chroffset,
+		    if ((hit = Substring_new_donor(/*donor_coord*/segment_left + splice_pos,/*donor_knowni*/-1,
+						   splice_pos,nmismatches,prob,/*left*/segment_left,query_compress,
+						   querylength,plusp,genestrand,first_read_p,
+						   sensep,segment->chrnum,segment->chroffset,
 						   segment->chrhigh,segment->chrlength)) != NULL) {
 		      debug4e(printf("=> %s antidonor: %f at %d (%d mismatches)\n",
 				     plusp == true ? "plus" : "minus",prob,Substring_chimera_pos(hit),nmismatches));
@@ -8491,11 +8952,11 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 #endif
 		Floors_T floors, int querylength, int query_lastpos,
 		Compress_T query_compress_fwd, Compress_T query_compress_rev,
-		int max_mismatches_allowed, int genestrand) {
+		int max_mismatches_allowed, int genestrand, bool first_read_p) {
 #ifdef DEBUG4T
   char *gbuffer;
 #endif
-  List_T terminals = NULL;
+  List_T plus_terminals_left = NULL, plus_terminals_right = NULL, minus_terminals_left = NULL, minus_terminals_right = NULL, p;
   Segment_T segment;
   Stage3end_T hit;
   Univcoord_T segment_left;
@@ -8505,6 +8966,7 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
   int mismatch_positions[MAX_READLENGTH+1];
   int *floors_from_neg3, *floors_to_pos3;
   int max_terminal_length;
+  int nterminals_left, nterminals_right;
 
 #ifdef DEBUG4T
   int i;
@@ -8524,7 +8986,9 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
   }
 
   if (plus_nsegments > 0) {
-    for (segment = plus_segments; segment < &(plus_segments[plus_nsegments]); segment++) {
+    nterminals_left = nterminals_right = 0;
+    for (segment = plus_segments; (nterminals_left < MAX_NTERMINALS || nterminals_right < MAX_NTERMINALS) &&
+	   segment < &(plus_segments[plus_nsegments]); segment++) {
       if (0 && segment->usedp == true) {
 	/* Previously skipped, but looks like a bad idea */
       } else if (segment->diagonal < (Univcoord_T) -1) {
@@ -8540,7 +9004,9 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 		FREE(gbuffer);
 		);
 
-	if (segment->querypos3 - segment->querypos5 > index1part) {
+#if 0
+	if (0 && segment->querypos3 - segment->querypos5 > index1part) {
+	  /* ? This checks for a middle section */
 	  debug4t(printf(" => ? Terminal based on querypos3 %d - querypos5 %d > index1part %d",
 			 segment->querypos3,segment->querypos5,index1part));
 	  start_endtype = (segment->querypos5 < index1interval) ? END : TERM;
@@ -8552,19 +9018,24 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 
 	  if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*//*truncate_pos_left*/querylength,
 					    /*left*/segment_left,query_compress_fwd,
-					    querylength,/*plusp*/true,genestrand,start_endtype,end_endtype,
-					    segment->chrnum,segment->chroffset,
+					    querylength,/*plusp*/true,genestrand,first_read_p,
+					    start_endtype,end_endtype,segment->chrnum,segment->chroffset,
 					    segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 					    /*sarrayp*/false)) != NULL) {
 	    debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
 	    terminals = List_push(terminals,(void *) hit);
+	    /* nterminals += 1; */
 	  } else {
 	    debug4t(printf(" => no"));
 	  }
 	  debug4t(printf("\n"));
 
 	} else {
-	  if (segment->floor_left > max_mismatches_allowed) {
+#endif
+
+	  if (nterminals_left >= MAX_NTERMINALS) {
+	    /* Skip */
+	  } else if (segment->floor_left > max_mismatches_allowed) {
 	    debug4t(printf("Not checking left because floor_left %d > max_mismatches_allowed %d\n",
 			   segment->floor_left,max_mismatches_allowed));
 	  } else {
@@ -8574,7 +9045,7 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 
 	    nmismatches_left = Genome_mismatches_left(mismatch_positions,max_mismatches_allowed,
 						      query_compress_fwd,/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-						      /*plusp*/true,genestrand);
+						      /*plusp*/true,genestrand,first_read_p);
 	    
 	    debug4t(
 		    printf("%d mismatches on left at:",nmismatches_left);
@@ -8590,13 +9061,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_left,max_mismatches_allowed,mismatch_positions[nmismatches_left-1],querylength - max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*//*truncate_pos_left*/querylength,
 						/*left*/segment_left,query_compress_fwd,
-						querylength,/*plusp*/true,genestrand,
+						querylength,/*plusp*/true,genestrand,first_read_p,
 						/*start_endtype*/END,/*end_endtype*/TERM,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		plus_terminals_left = List_push(plus_terminals_left,(void *) hit);
+		nterminals_left += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8608,13 +9080,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 
 	      if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*//*truncate_pos_left*/querylength,
 						/*left*/segment_left,query_compress_fwd,
-						querylength,/*plusp*/true,genestrand,
+						querylength,/*plusp*/true,genestrand,first_read_p,
 						/*start_endtype*/END,/*end_endtype*/TERM,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		plus_terminals_left = List_push(plus_terminals_left,(void *) hit);
+		nterminals_left += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8623,7 +9096,9 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 	    }
 	  }
 
-	  if (segment->floor_right > max_mismatches_allowed) {
+	  if (nterminals_right >= MAX_NTERMINALS) {
+	    /* Skip */
+	  } else if (segment->floor_right > max_mismatches_allowed) {
 	    debug4t(printf("Not checking right because floor_right %d > max_mismatches_allowed %d\n",
 			   segment->floor_right,max_mismatches_allowed));
 	  } else {
@@ -8633,7 +9108,7 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 	    nmismatches_right = Genome_mismatches_right(mismatch_positions,max_mismatches_allowed,
 							/*query_compress*/query_compress_fwd,
 							/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-							/*plusp*/true,genestrand);
+							/*plusp*/true,genestrand,first_read_p);
 	    
 	    debug4t(
 		    printf("%d mismatches on right at:",nmismatches_right);
@@ -8653,13 +9128,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_right,max_mismatches_allowed,mismatch_positions[nmismatches_right-1],max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*//*truncate_pos_right*/0,/*queryend*/querylength,
 						/*left*/segment_left,query_compress_fwd,
-						querylength,/*plusp*/true,genestrand,
+						querylength,/*plusp*/true,genestrand,first_read_p,
 						/*start_endtype*/TERM,/*end_endtype*/END,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		plus_terminals_right = List_push(plus_terminals_right,(void *) hit);
+		nterminals_right += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8670,13 +9146,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_right,max_mismatches_allowed,mismatch_positions[(nmismatches_right-1)/2],querylength-max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*//*truncate_pos_right*/0,/*queryend*/querylength,
 						/*left*/segment_left,query_compress_fwd,
-						querylength,/*plusp*/true,genestrand,
+						querylength,/*plusp*/true,genestrand,first_read_p,
 						/*start_endtype*/TERM,/*end_endtype*/END,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		plus_terminals_right = List_push(plus_terminals_right,(void *) hit);
+		nterminals_right += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8685,13 +9162,35 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 
 	    }
 	  }
+#if 0
 	}
+#endif
       }
+    }
+
+    if (nterminals_left >= MAX_NTERMINALS) {
+      for (p = plus_terminals_left; p != NULL; p = p->rest) {
+	hit = (Stage3end_T) p->first;
+	Stage3end_free(&hit);
+      }
+      List_free(&plus_terminals_left);
+      plus_terminals_left = (List_T) NULL;
+    }
+
+    if (nterminals_right >= MAX_NTERMINALS) {
+      for (p = plus_terminals_right; p != NULL; p = p->rest) {
+	hit = (Stage3end_T) p->first;
+	Stage3end_free(&hit);
+      }
+      List_free(&plus_terminals_right);
+      plus_terminals_right = (List_T) NULL;
     }
   }
 
   if (minus_nsegments > 0) {
-    for (segment = minus_segments; segment < &(minus_segments[minus_nsegments]); segment++) {
+    nterminals_left = nterminals_right = 0;
+    for (segment = minus_segments; (nterminals_left < MAX_NTERMINALS || nterminals_right < MAX_NTERMINALS) &&
+	   segment < &(minus_segments[minus_nsegments]); segment++) {
       if (0 && segment->usedp == true) {
 	/* Previously skipped, but looks like a bad idea */
 	debug4t(printf("segment used\n"));
@@ -8709,7 +9208,9 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 		);
 
 
-	if (segment->querypos3 - segment->querypos5 > index1part) {
+#if 0
+	if (0 && segment->querypos3 - segment->querypos5 > index1part) {
+	  /* ? This checks for a middle section */
 	  debug4t(printf(" => ? Terminal based on querypos3 %d - querypos5 %d > index1part %d",
 			 segment->querypos3,segment->querypos5,index1part));
 	  start_endtype = (segment->querypos5 < index1interval) ? END : TERM;
@@ -8721,20 +9222,25 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 
 	  if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*/querylength,
 					    /*left*/segment_left,query_compress_rev,
-					    querylength,/*plusp*/false,genestrand,start_endtype,end_endtype,
-					    segment->chrnum,segment->chroffset,
+					    querylength,/*plusp*/false,genestrand,first_read_p,
+					    start_endtype,end_endtype,segment->chrnum,segment->chroffset,
 					    segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 					    /*sarrayp*/false)) != NULL) {
 	    debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
 	    terminals = List_push(terminals,(void *) hit);
+	    /* nterminals += 1; */
 	  } else {
 	    debug4t(printf(" => no"));
 	  }
 	  debug4t(printf("\n"));
 
 	} else {
+#endif
+
 	  /* Need to reverse floor_left and floor_right */
-	  if (segment->floor_right > max_mismatches_allowed) {
+	  if (nterminals_left >= MAX_NTERMINALS) {
+	    /* Skip */
+	  } else if (segment->floor_right > max_mismatches_allowed) {
 	    debug4t(printf("Not checking left because floor_right %d > max_mismatches_allowed %d\n",
 			   segment->floor_right,max_mismatches_allowed));
 	  } else {
@@ -8744,7 +9250,7 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 	    nmismatches_left = Genome_mismatches_left(mismatch_positions,max_mismatches_allowed,
 						      /*query_compress*/query_compress_rev,
 						      /*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-						      /*plusp*/false,genestrand);
+						      /*plusp*/false,genestrand,first_read_p);
 
 	    debug4t(
 		    printf("%d mismatches on left at:",nmismatches_left);
@@ -8760,13 +9266,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_left,max_mismatches_allowed,mismatch_positions[nmismatches_left-1],querylength - max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*//*querylength-truncate_pos_left*/0,/*queryend*/querylength,
 						/*left*/segment_left,query_compress_rev,
-						querylength,/*plusp*/false,genestrand,
+						querylength,/*plusp*/false,genestrand,first_read_p,
 						/*start_endtype*/TERM,/*end_endtype*/END,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		minus_terminals_left = List_push(minus_terminals_left,(void *) hit);
+		nterminals_left += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8777,13 +9284,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_left,max_mismatches_allowed,mismatch_positions[(nmismatches_left-1)/2],max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*//*querylength-truncate_pos_left*/0,/*queryend*/querylength,
 						/*left*/segment_left,query_compress_rev,
-						querylength,/*plusp*/false,genestrand,
+						querylength,/*plusp*/false,genestrand,first_read_p,
 						/*start_endtype*/TERM,/*end_endtype*/END,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		minus_terminals_left = List_push(minus_terminals_left,(void *) hit);
+		nterminals_left += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8791,7 +9299,9 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 	    }
 	  }
 
-	  if (segment->floor_left > max_mismatches_allowed) {
+	  if (nterminals_right >= MAX_NTERMINALS) {
+	    /* Skip */
+	  } else if (segment->floor_left > max_mismatches_allowed) {
 	    debug4t(printf("Not checking right because floor_left %d > max_mismatches_allowed %d\n",
 			   segment->floor_left,max_mismatches_allowed));
 	  } else {
@@ -8801,7 +9311,7 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 	    nmismatches_right = Genome_mismatches_right(mismatch_positions,max_mismatches_allowed,
 							/*query_compress*/query_compress_rev,
 							/*left*/segment_left,/*pos5*/0,/*pos3*/querylength,
-							/*plusp*/false,genestrand);
+							/*plusp*/false,genestrand,first_read_p);
 
 	    debug4t(
 		    printf("%d mismatches on right at:",nmismatches_right);
@@ -8817,13 +9327,14 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_right,max_mismatches_allowed,mismatch_positions[nmismatches_right-1],max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*//*querylength-truncate_pos_right*/querylength,
 						/*left*/segment_left,query_compress_rev,
-						querylength,/*plusp*/false,genestrand,
+						querylength,/*plusp*/false,genestrand,first_read_p,
 						/*start_endtype*/END,/*end_endtype*/TERM,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		minus_terminals_right = List_push(minus_terminals_right,(void *) hit);
+		nterminals_right += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
@@ -8834,27 +9345,48 @@ find_terminals (struct Segment_T *plus_segments, int plus_nsegments,
 			     nmismatches_right,max_mismatches_allowed,mismatch_positions[(nmismatches_right-1)/2],querylength-max_terminal_length));
 	      if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*//*querylength-truncate_pos_right*/querylength,
 						/*left*/segment_left,query_compress_rev,
-						querylength,/*plusp*/false,genestrand,
+						querylength,/*plusp*/false,genestrand,first_read_p,
 						/*start_endtype*/END,/*end_endtype*/TERM,
 						segment->chrnum,segment->chroffset,
 						segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 						/*sarrayp*/false)) != NULL) {
 		debug4t(printf(" => yes, with %d matches",Stage3end_nmatches(hit)));
-		terminals = List_push(terminals,(void *) hit);
+		minus_terminals_right = List_push(minus_terminals_right,(void *) hit);
+		nterminals_right += 1;
 	      } else {
 		debug4t(printf(" => no"));
 	      }
 	      debug4t(printf("\n"));
 	    }
 	  }
+#if 0
 	}
+#endif
       }
+    }
+
+    if (nterminals_left >= MAX_NTERMINALS) {
+      for (p = minus_terminals_left; p != NULL; p = p->rest) {
+	hit = (Stage3end_T) p->first;
+	Stage3end_free(&hit);
+      }
+      List_free(&minus_terminals_left);
+      minus_terminals_left = (List_T) NULL;
+    }
+
+    if (nterminals_right >= MAX_NTERMINALS) {
+      for (p = minus_terminals_right; p != NULL; p = p->rest) {
+	hit = (Stage3end_T) p->first;
+	Stage3end_free(&hit);
+      }
+      List_free(&minus_terminals_right);
+      minus_terminals_right = (List_T) NULL;
     }
   }
 
   debug4t(printf("Total number of terminals: %d\n",List_length(terminals)));
 
-  return terminals;
+  return List_append(plus_terminals_left,List_append(plus_terminals_right,List_append(minus_terminals_left,minus_terminals_right)));
 }
 
 
@@ -8919,7 +9451,7 @@ find_terminals_by_width_only (struct Segment_T *plus_segments, int plus_nsegment
 
 	  if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*/querylength,
 					    /*left*/segment_left,query_compress_fwd,
-					    querylength,/*plusp*/true,genestrand,
+					    querylength,/*plusp*/true,genestrand,first_read_p,
 					    segment->chrnum,segment->chroffset,
 					    segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 					    /*sarrayp*/false)) != NULL) {
@@ -8951,7 +9483,7 @@ find_terminals_by_width_only (struct Segment_T *plus_segments, int plus_nsegment
 
 	  if ((hit = Stage3end_new_terminal(/*querystart*/0,/*queryend*/querylength,
 					    /*left*/segment_left,query_compress_rev,
-					    querylength,/*plusp*/false,genestrand,
+					    querylength,/*plusp*/false,genestrand,first_read_p,
 					    segment->chrnum,segment->chroffset,
 					    segment->chrhigh,segment->chrlength,max_mismatches_allowed,
 					    /*sarrayp*/false)) != NULL) {
@@ -8972,7 +9504,7 @@ find_terminals_by_width_only (struct Segment_T *plus_segments, int plus_nsegment
 
 
 static void
-fetch_positions_for_all_12mers (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int query_lastpos) {
+fetch_positions_for_all_12mers (T this, Indexdb_T plus_indexdb, Indexdb_T minus_indexdb, int query_lastpos) {
   int querypos;
 
   /* querypos -2, -1, query_lastpos+1, and query_lastpos+2 are special cases */
@@ -8983,10 +9515,10 @@ fetch_positions_for_all_12mers (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb
 #ifdef LARGE_GENOMES
       this->plus_positions_low[querypos] =
 	Indexdb_read_inplace(&(this->plus_npositions[querypos]),&(this->plus_positions_high[querypos]),
-			     indexdb_fwd,this->forward_oligos[querypos]);
+			     plus_indexdb,this->forward_oligos[querypos]);
 #else
       this->plus_positions[querypos] =
-	Indexdb_read_inplace(&(this->plus_npositions[querypos]),indexdb_fwd,this->forward_oligos[querypos]);
+	Indexdb_read_inplace(&(this->plus_npositions[querypos]),plus_indexdb,this->forward_oligos[querypos]);
 #endif
       debug(printf("Retrieving at querypos %d, plus_npositions = %d\n",
 		   querypos,this->plus_npositions[querypos]));
@@ -9000,10 +9532,10 @@ fetch_positions_for_all_12mers (T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb
 #ifdef LARGE_GENOMES
       this->minus_positions_low[querypos] =
 	Indexdb_read_inplace(&(this->minus_npositions[querypos]),&(this->minus_positions_high[querypos]),
-			     indexdb_rev,this->revcomp_oligos[querypos]);
+			     minus_indexdb,this->revcomp_oligos[querypos]);
 #else
       this->minus_positions[querypos] =
-	Indexdb_read_inplace(&(this->minus_npositions[querypos]),indexdb_rev,this->revcomp_oligos[querypos]);
+	Indexdb_read_inplace(&(this->minus_npositions[querypos]),minus_indexdb,this->revcomp_oligos[querypos]);
 #endif
       debug(printf("Retrieving at querypos %d, minus_npositions = %d\n",
 		   querypos,this->minus_npositions[querypos]));
@@ -9025,13 +9557,13 @@ static bool
 intragenic_splice_p (Chrpos_T splicedistance, Substring_T donor, Substring_T acceptor) {
   int knowni;
 
-  if ((knowni = Substring_splicesites_i(donor)) >= 0) {
+  if ((knowni = Substring_splicesites_knowni(donor)) >= 0) {
     if (splicedists[knowni] >= splicedistance) {
       return true;
     }
   }
 
-  if ((knowni = Substring_splicesites_i(acceptor)) >= 0) {
+  if ((knowni = Substring_splicesites_knowni(acceptor)) >= 0) {
     if (splicedists[knowni] >= splicedistance) {
       return true;
     }
@@ -9151,7 +9683,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					   (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									 donor,acceptor,distance,
 									 /*shortdistancep*/true,localsplicing_penalty,querylength,
-									 /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									 /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									 /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									 /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									 /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									 /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9160,7 +9693,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					    (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									  donor,acceptor,distance,
 									  /*shortdistancep*/false,distantsplicing_penalty,querylength,
-									  /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									  /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									  /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									  /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									  /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									  /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9235,7 +9769,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					   (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									 donor,acceptor,distance,
 									 /*shortdistancep*/true,localsplicing_penalty,querylength,
-									 /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									 /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									 /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									 /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									 /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									 /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9244,7 +9779,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					    (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									  donor,acceptor,distance,
 									  /*shortdistancep*/false,distantsplicing_penalty,querylength,
-									  /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									  /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									  /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									  /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									  /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									  /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9319,7 +9855,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					   (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									 donor,acceptor,distance,
 									 /*shortdistancep*/true,localsplicing_penalty,querylength,
-									 /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									 /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									 /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									 /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									 /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									 /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -9328,7 +9865,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					    (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									  donor,acceptor,distance,
 									  /*shortdistancep*/false,distantsplicing_penalty,querylength,
-									  /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									  /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									  /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									  /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									  /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									  /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -9403,7 +9941,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					   (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									 donor,acceptor,distance,
 									 /*shortdistancep*/true,localsplicing_penalty,querylength,
-									 /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									 /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									 /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									 /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									 /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									 /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -9412,7 +9951,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					    (void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 									  donor,acceptor,distance,
 									  /*shortdistancep*/false,distantsplicing_penalty,querylength,
-									  /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+									  /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+									  /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 									  /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 									  /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 									  /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -9477,7 +10017,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					(void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 								      donor,acceptor,distance,
 								      /*shortdistancep*/false,distantsplicing_penalty,querylength,
-								      /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								      /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								      /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								      /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								      /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 								      /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9534,7 +10075,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					(void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 								      donor,acceptor,distance,
 								      /*shortdistancep*/false,distantsplicing_penalty,querylength,
-								      /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								      /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								      /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								      /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								      /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 								      /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9592,7 +10134,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					(void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 								      donor,acceptor,distance,
 								      /*shortdistancep*/false,distantsplicing_penalty,querylength,
-								      /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								      /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								      /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								      /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								      /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 								      /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -9649,7 +10192,8 @@ find_splicepairs_distant (int *found_score, int *ndistantsplicepairs,
 					(void *) Stage3end_new_splice(&(*found_score),nmismatches1,nmismatches2,
 								      donor,acceptor,distance,
 								      /*shortdistancep*/false,distantsplicing_penalty,querylength,
-								      /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								      /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								      /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								      /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								      /*copy_donor_p*/true,/*copy_acceptor_p*/true,first_read_p,
 								      /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -9680,12 +10224,16 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 			   List_T *donors_minus, List_T *antidonors_minus,
 			   List_T *acceptors_minus, List_T *antiacceptors_minus,
 			   Compress_T query_compress_fwd, Compress_T query_compress_rev,
-			   char *queryuc_ptr, char *queryrc, int min_shortend,
-			   int localsplicing_penalty,
+			   char *queryuc_ptr, char *queryrc, int min_shortend, int localsplicing_penalty,
 			   int max_mismatches_allowed, int querylength, bool pairedp, bool first_read_p,
 			   int genestrand) {
   List_T p;
   Substring_T donor, acceptor;
+#ifdef LARGE_GENOMES
+  Uint8list_T ambcoords_left, ambcoords_right;
+#else
+  Uintlist_T ambcoords_left, ambcoords_right;
+#endif
   Intlist_T splicesites_i;
   Intlist_T nmismatches_list;
   int nmismatches, nmismatches_shortend, nmisses_allowed, support, endlength;
@@ -9744,40 +10292,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 1: short-overlap donor_plus: #%d:%u (%d mismatches) => searching right\n",
 		       Substring_chrnum(donor),(Chrpos_T) (leftbound-1-chroffset),Substring_nmismatches_whole(donor)));
 
-	if ((i = Substring_splicesites_i(donor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(donor)) >= 0) {
 	  origleft = Substring_genomicstart(donor);
 	  if ((splicesites_i = 
 	       Splicetrie_find_right(&nmismatches_shortend,&nmismatches_list,i,
 				     origleft,/*pos5*/support,/*pos3*/querylength,chrhigh,
 				     query_compress_fwd,/*queryptr*/queryuc_ptr,
-				     nmisses_allowed,/*plusp*/true,genestrand,
+				     nmisses_allowed,/*plusp*/true,genestrand,first_read_p,
 				     /*collect_all_p*/pairedp == true && first_read_p == true)) != NULL) {
 	    
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_right = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 1: short-overlap donor_plus: Successful ambiguous from donor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(donor),amb_nmatches));
+			     Substring_splicesites_knowni(donor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								  donor,/*acceptor*/NULL,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/NULL,/*ambi_right*/splicesites_i,
+                                                                  amb_nmatches,/*ambcoords_left*/NULL,ambcoords_right,
+								  /*ambi_left*/NULL,/*ambi_right*/splicesites_i,
 								  /*amb_nmismatches_left*/NULL,nmismatches_list,
 								  /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								  /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_right);
+#else
+	      Uintlist_free(&ambcoords_right);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - support;
-	      if ((acceptor = Substring_new_acceptor(/*splicesites_i*/bestj,/*joffset*/0,Substring_chimera_pos(donor),nmismatches_shortend,
+	      if ((acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[bestj],/*acceptor_knowni*/bestj,
+						     Substring_chimera_pos(donor),nmismatches_shortend,
 						     /*prob*/2.0,/*left*/bestleft,query_compress_fwd,
-						     querylength,/*plusp*/true,genestrand,/*sensep*/true,
+						     querylength,/*plusp*/true,genestrand,first_read_p,/*sensep*/true,
 						     Substring_chrnum(donor),Substring_chroffset(donor),
 						     Substring_chrhigh(donor),Substring_chrlength(donor))) != NULL) {
 		debug4h(printf("End 1: short-overlap donor_plus: Successful splice from donor #%d to acceptor #%d\n",
-			       Substring_splicesites_i(donor),Substring_splicesites_i(acceptor)));
+			       Substring_splicesites_knowni(donor),Substring_splicesites_knowni(acceptor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								    donor,acceptor,/*distance*/bestleft-origleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								    /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9808,41 +10365,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 2: short-overlap acceptor_plus: #%d:%u (%d mismatches) => searching left\n",
 		       Substring_chrnum(acceptor),(Chrpos_T) (rightbound+1-chroffset),Substring_nmismatches_whole(acceptor)));
 
-	if ((i = Substring_splicesites_i(acceptor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(acceptor)) >= 0) {
 	  origleft = Substring_genomicstart(acceptor);
 	  if ((splicesites_i =
 	       Splicetrie_find_left(&nmismatches_shortend,&nmismatches_list,i,
 				    origleft,/*pos5*/0,/*pos3*/endlength,chroffset,
 				    query_compress_fwd,/*queryptr*/queryuc_ptr,querylength,
-				    nmisses_allowed,/*plusp*/true,genestrand,
+				    nmisses_allowed,/*plusp*/true,genestrand,first_read_p,
 				    /*collect_all_p*/pairedp == true && first_read_p == false)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_left = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 2: short-overlap acceptor_plus: Successful ambiguous from acceptor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(acceptor),amb_nmatches));
+			     Substring_splicesites_knowni(acceptor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								  /*donor*/NULL,acceptor,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/splicesites_i,/*ambi_right*/NULL,
+								  amb_nmatches,ambcoords_left,/*ambcoords_right*/NULL,
+								  /*amb_knowni_left*/splicesites_i,/*amb_knowni_right*/NULL,
 								  nmismatches_list,/*amb_nmismatches_right*/NULL,
 								  /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								  /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
-
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_left);
+#else
+	      Uintlist_free(&ambcoords_left);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - endlength;
-	      if ((donor = Substring_new_donor(/*splicesites_i*/bestj,/*joffset*/0,Substring_chimera_pos(acceptor),nmismatches_shortend,
+	      if ((donor = Substring_new_donor(/*donor_coord*/splicesites[bestj],/*donor_knowni*/bestj,
+					       Substring_chimera_pos(acceptor),nmismatches_shortend,
 					       /*prob*/2.0,/*left*/bestleft,query_compress_fwd,
-					       querylength,/*plusp*/true,genestrand,/*sensep*/true,
+					       querylength,/*plusp*/true,genestrand,first_read_p,/*sensep*/true,
 					       Substring_chrnum(acceptor),Substring_chroffset(acceptor),
 					       Substring_chrhigh(acceptor),Substring_chrlength(acceptor))) != NULL) {
 		debug4h(printf("End 2: short-overlap acceptor_plus: Successful splice from acceptor #%d to donor #%d\n",
-			       Substring_splicesites_i(acceptor),Substring_splicesites_i(donor)));
+			       Substring_splicesites_knowni(acceptor),Substring_splicesites_knowni(donor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								    donor,acceptor,/*distance*/origleft-bestleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								    /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9873,41 +10438,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 3: short-overlap donor_minus: #%d:%u (%d mismatches) => searching left\n",
 		       Substring_chrnum(donor),(Chrpos_T) (rightbound+1-chroffset),Substring_nmismatches_whole(donor)));
 
-	if ((i = Substring_splicesites_i(donor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(donor)) >= 0) {
 	  origleft = Substring_genomicend(donor);
 	  if ((splicesites_i =
 	       Splicetrie_find_left(&nmismatches_shortend,&nmismatches_list,i,
 				    origleft,/*pos5*/0,/*pos3*/endlength,chroffset,
 				    query_compress_rev,/*queryptr*/queryrc,querylength,
-				    nmisses_allowed,/*plusp*/false,genestrand,
+				    nmisses_allowed,/*plusp*/false,genestrand,first_read_p,
 				    /*collect_all_p*/pairedp == true && first_read_p == true)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_left = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 3: short-overlap donor_minus: Successful ambiguous from donor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(donor),amb_nmatches));
+			     Substring_splicesites_knowni(donor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								  donor,/*acceptor*/NULL,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/splicesites_i,/*ambi_right*/NULL,
+								  amb_nmatches,ambcoords_left,/*ambcoords_right*/NULL,
+								  /*amb_knowni_left*/splicesites_i,/*amb_knowni_right*/NULL,
 								  nmismatches_list,/*amb_nmismatches_right*/NULL,
 								  /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								  /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_left);
+#else
+	      Uintlist_free(&ambcoords_left);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - endlength;
-	      if ((acceptor = Substring_new_acceptor(/*splicesites_i*/bestj,/*joffset*/0,
+	      if ((acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[bestj],/*acceptor_knowni*/bestj,
 						     querylength-Substring_chimera_pos(donor),nmismatches_shortend,
 						     /*prob*/2.0,/*left*/bestleft,query_compress_rev,
-						     querylength,/*plusp*/false,genestrand,/*sensep*/true,
+						     querylength,/*plusp*/false,genestrand,first_read_p,/*sensep*/true,
 						     Substring_chrnum(donor),Substring_chroffset(donor),
 						     Substring_chrhigh(donor),Substring_chrlength(donor))) != NULL) {
 		debug4h(printf("End 3: short-overlap donor_minus: Successful splice from donor #%d to acceptor #%d\n",
-			       Substring_splicesites_i(donor),Substring_splicesites_i(acceptor)));
+			       Substring_splicesites_knowni(donor),Substring_splicesites_knowni(acceptor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								    donor,acceptor,/*distance*/origleft-bestleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								    /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -9939,41 +10512,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 4: short-overlap acceptor_minus: #%d:%u (%d mismatches) => searching right\n",
 		       Substring_chrnum(acceptor),(Chrpos_T) (leftbound-1-chroffset),Substring_nmismatches_whole(acceptor)));
 
-	if ((i = Substring_splicesites_i(acceptor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(acceptor)) >= 0) {
 	  origleft = Substring_genomicend(acceptor);
 	  if ((splicesites_i =
 	       Splicetrie_find_right(&nmismatches_shortend,&nmismatches_list,i,
 				     origleft,/*pos5*/support,/*pos3*/querylength,chrhigh,
 				     query_compress_rev,/*queryptr*/queryrc,
-				     nmisses_allowed,/*plusp*/false,genestrand,
+				     nmisses_allowed,/*plusp*/false,genestrand,first_read_p,
 				     /*collect_all_p*/pairedp == true && first_read_p == false)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_right = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 4: short-overlap acceptor_minus: Successful ambiguous from acceptor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(acceptor),amb_nmatches));
+			     Substring_splicesites_knowni(acceptor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								  /*donor*/NULL,acceptor,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/NULL,/*ambi_right*/splicesites_i,
+								  amb_nmatches,/*ambcoords_left*/NULL,ambcoords_right,
+								  /*amb_knowni_left*/NULL,/*amb_knowni_right*/splicesites_i,
 								  /*amb_nmismatches_left*/NULL,nmismatches_list,
 								  /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								  /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_right);
+#else
+	      Uintlist_free(&ambcoords_right);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - support;
-	      if ((donor = Substring_new_donor(/*splicesites_i*/bestj,/*joffset*/0,
+	      if ((donor = Substring_new_donor(/*donor_coord*/splicesites[bestj],/*donor_knowni*/bestj,
 					       querylength-Substring_chimera_pos(acceptor),nmismatches_shortend,
 					       /*prob*/2.0,/*left*/bestleft,query_compress_rev,
-					       querylength,/*plusp*/false,genestrand,/*sensep*/true,
+					       querylength,/*plusp*/false,genestrand,first_read_p,/*sensep*/true,
 					       Substring_chrnum(acceptor),Substring_chroffset(acceptor),
 					       Substring_chrhigh(acceptor),Substring_chrlength(acceptor))) != NULL) {
 		debug4h(printf("End 4: short-overlap acceptor_minus: Successful splice from acceptor #%d to #%d\n",
-			       Substring_splicesites_i(acceptor),Substring_splicesites_i(donor)));
+			       Substring_splicesites_knowni(acceptor),Substring_splicesites_knowni(donor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								    donor,acceptor,/*distance*/bestleft-origleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								    /*sensedir*/SENSE_FORWARD,/*sarrayp*/false));
@@ -10004,40 +10585,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 5: short-overlap antidonor_plus: #%d:%u (%d mismatches) => searching left\n",
 		       Substring_chrnum(donor),(Chrpos_T) (rightbound+1-chroffset),Substring_nmismatches_whole(donor)));
 
-	if ((i = Substring_splicesites_i(donor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(donor)) >= 0) {
 	  origleft = Substring_genomicstart(donor);
 	  if ((splicesites_i =
 	       Splicetrie_find_left(&nmismatches_shortend,&nmismatches_list,i,
 				    origleft,/*pos5*/0,/*pos3*/endlength,chroffset,
 				    query_compress_fwd,/*queryptr*/queryuc_ptr,querylength,
-				    nmisses_allowed,/*plusp*/true,genestrand,
+				    nmisses_allowed,/*plusp*/true,genestrand,first_read_p,
 				    /*collect_all_p*/pairedp == true && first_read_p == false)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_left = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 5: short-overlap antidonor_plus: Successful ambiguous from antidonor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(donor),amb_nmatches));
+			     Substring_splicesites_knowni(donor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								  donor,/*acceptor*/NULL,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/splicesites_i,/*ambi_right*/NULL,
+								  amb_nmatches,ambcoords_left,/*ambcoords_right*/NULL,
+								  /*amb_knowni_left*/splicesites_i,/*amb_knowni_right*/NULL,
 								  nmismatches_list,/*amb_nmismatches_right*/NULL,
 								  /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								  /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_left);
+#else
+	      Uintlist_free(&ambcoords_left);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - endlength;
-	      if ((acceptor = Substring_new_acceptor(/*splicesites_i*/bestj,/*joffset*/0,Substring_chimera_pos(donor),nmismatches_shortend,
+	      if ((acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[bestj],/*acceptor_knowni*/bestj,
+						     Substring_chimera_pos(donor),nmismatches_shortend,
 						     /*prob*/2.0,/*left*/bestleft,query_compress_fwd,
-						     querylength,/*plusp*/true,genestrand,/*sensep*/false,
+						     querylength,/*plusp*/true,genestrand,first_read_p,/*sensep*/false,
 						     Substring_chrnum(donor),Substring_chroffset(donor),
 						     Substring_chrhigh(donor),Substring_chrlength(donor))) != NULL) {
 		debug4h(printf("End 5: short-overlap antidonor_plus: Successful splice from antidonor #%d to antiacceptor #%d\n",
-			       Substring_splicesites_i(donor),Substring_splicesites_i(acceptor)));
+			       Substring_splicesites_knowni(donor),Substring_splicesites_knowni(acceptor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								    donor,acceptor,/*distance*/origleft-bestleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								    /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -10069,40 +10659,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 6: short-overlap antiacceptor_plus: #%d:%u (%d mismatches) => searching right\n",
 		       Substring_chrnum(acceptor),(Chrpos_T) (leftbound-1-chroffset),Substring_nmismatches_whole(acceptor)));
 
-	if ((i = Substring_splicesites_i(acceptor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(acceptor)) >= 0) {
 	  origleft = Substring_genomicstart(acceptor);
 	  if ((splicesites_i =
 	       Splicetrie_find_right(&nmismatches_shortend,&nmismatches_list,i,
 				     origleft,/*pos5*/support,/*pos3*/querylength,chrhigh,
 				     query_compress_fwd,/*queryptr*/queryuc_ptr,
-				     nmisses_allowed,/*plusp*/true,genestrand,
+				     nmisses_allowed,/*plusp*/true,genestrand,first_read_p,
 				     /*collect_all_p*/pairedp == true && first_read_p == true)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_right = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 6: short-overlap antiacceptor_plus: Successful ambiguous from antiacceptor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(acceptor),amb_nmatches));
+			     Substring_splicesites_knowni(acceptor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								  /*donor*/NULL,acceptor,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/NULL,/*ambi_right*/splicesites_i,
+								  amb_nmatches,/*ambcoords_left*/NULL,ambcoords_right,
+								  /*amb_knowni_left*/NULL,/*amb_knowni_right*/splicesites_i,
 								  /*amb_nmismatches_left*/NULL,nmismatches_list,
 								  /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								  /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_right);
+#else
+	      Uintlist_free(&ambcoords_right);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - support;
-	      if ((donor = Substring_new_donor(/*splicesites_i*/bestj,/*joffset*/0,Substring_chimera_pos(acceptor),nmismatches_shortend,
+	      if ((donor = Substring_new_donor(/*donor_coord*/splicesites[bestj],/*donor_knowni*/bestj,
+					       Substring_chimera_pos(acceptor),nmismatches_shortend,
 					       /*prob*/2.0,/*left*/bestleft,query_compress_fwd,
-					       querylength,/*plusp*/true,genestrand,/*sensep*/false,
+					       querylength,/*plusp*/true,genestrand,first_read_p,/*sensep*/false,
 					       Substring_chrnum(acceptor),Substring_chroffset(acceptor),
 					       Substring_chrhigh(acceptor),Substring_chrlength(acceptor))) != NULL) {
 		debug4h(printf("End 6: short-overlap antiacceptor_plus: Successful splice from antiacceptor #%d to antidonor #%d\n",
-			       Substring_splicesites_i(acceptor),Substring_splicesites_i(donor)));
+			       Substring_splicesites_knowni(acceptor),Substring_splicesites_knowni(donor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								    donor,acceptor,/*distance*/bestleft-origleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								    /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -10134,41 +10733,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 7: short-overlap antidonor_minus: #%d:%u (%d mismatches) => searching right\n",
 		       Substring_chrnum(donor),(Chrpos_T) (leftbound-1-chroffset),Substring_nmismatches_whole(donor)));
 
-	if ((i = Substring_splicesites_i(donor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(donor)) >= 0) {
 	  origleft = Substring_genomicend(donor);
 	  if ((splicesites_i =
 	       Splicetrie_find_right(&nmismatches_shortend,&nmismatches_list,i,
 				     origleft,/*pos5*/support,/*pos3*/querylength,chrhigh,
 				     query_compress_rev,/*queryptr*/queryrc,
-				     nmisses_allowed,/*plusp*/false,genestrand,
+				     nmisses_allowed,/*plusp*/false,genestrand,first_read_p,
 				     /*collect_all_p*/pairedp == true && first_read_p == false)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_right = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 7: short-overlap antidonor_minus: Successful ambiguous from antidonor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(donor),amb_nmatches));
+			     Substring_splicesites_knowni(donor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								  donor,/*acceptor*/NULL,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/NULL,/*ambi_right*/splicesites_i,
+								  amb_nmatches,/*ambcoords_left*/NULL,ambcoords_right,
+								  /*amb_knowni_left*/NULL,/*amb_knowni_right*/splicesites_i,
 								  /*amb_nmismatches_left*/NULL,nmismatches_list,
 								  /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								  /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_right);
+#else
+	      Uintlist_free(&ambcoords_right);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - support;
-	      if ((acceptor = Substring_new_acceptor(/*splicesites_i*/bestj,/*joffset*/0,
+	      if ((acceptor = Substring_new_acceptor(/*acceptor_coord*/splicesites[bestj],/*acceptor_knowni*/bestj,
 						     querylength-Substring_chimera_pos(donor),nmismatches_shortend,
 						     /*prob*/2.0,/*left*/bestleft,query_compress_rev,
-						     querylength,/*plusp*/false,genestrand,/*sensep*/false,
+						     querylength,/*plusp*/false,genestrand,first_read_p,/*sensep*/false,
 						     Substring_chrnum(donor),Substring_chroffset(donor),
 						     Substring_chrhigh(donor),Substring_chrlength(donor))) != NULL) {
 		debug4h(printf("End 7: short-overlap antidonor_minus: Successful splice from antidonor #%d to antiacceptor #%d\n",
-			       Substring_splicesites_i(donor),Substring_splicesites_i(acceptor)));
+			       Substring_splicesites_knowni(donor),Substring_splicesites_knowni(acceptor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches,nmismatches_shortend,
 								    donor,acceptor,/*distance*/bestleft-origleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
 								    /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -10199,41 +10806,49 @@ find_splicepairs_shortend (int *found_score, List_T hits,
 	debug4h(printf("End 8: short-overlap antiacceptor_minus: #%d:%u (%d mismatches) => searching left\n",
 		       Substring_chrnum(acceptor),(Chrpos_T) (rightbound+1-chroffset),Substring_nmismatches_whole(acceptor)));
 
-	if ((i = Substring_splicesites_i(acceptor)) >= 0) {
+	if ((i = Substring_splicesites_knowni(acceptor)) >= 0) {
 	  origleft = Substring_genomicend(acceptor);
 	  if ((splicesites_i =
 	       Splicetrie_find_left(&nmismatches_shortend,&nmismatches_list,i,
 				    origleft,/*pos5*/0,/*pos3*/endlength,chroffset,
 				    query_compress_rev,/*queryptr*/queryrc,querylength,
-				    nmisses_allowed,/*plusp*/false,genestrand,
+				    nmisses_allowed,/*plusp*/false,genestrand,first_read_p,
 				    /*collect_all_p*/pairedp == true && first_read_p == true)) != NULL) {
 
 	    if (endlength < min_shortend || Intlist_length(splicesites_i) > 1) {
+	      ambcoords_left = lookup_splicesites(splicesites_i,splicesites);
 	      amb_nmatches = endlength - nmismatches_shortend;
 	      debug4h(printf("End 8: short-overlap antiacceptor_minus: Successful ambiguous from antiacceptor #%d with amb_nmatches %d\n",
-			     Substring_splicesites_i(acceptor),amb_nmatches));
+			     Substring_splicesites_knowni(acceptor),amb_nmatches));
 	      hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								  /*donor*/NULL,acceptor,/*distance*/0U,
 								  /*shortdistancep*/false,/*penalty*/0,querylength,
-								  amb_nmatches,/*ambi_left*/splicesites_i,/*ambi_right*/NULL,
+								  amb_nmatches,ambcoords_left,/*ambcoords_right*/NULL,
+								  /*amb_knowni_left*/splicesites_i,/*amb_knowni_right*/NULL,
 								  nmismatches_list,/*amb_nmismatches_right*/NULL,
 								  /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								  /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
+#ifdef LARGE_GENOMES
+	      Uint8list_free(&ambcoords_left);
+#else
+	      Uintlist_free(&ambcoords_left);
+#endif
 	    } else {
 	      bestj = Intlist_head(splicesites_i);
 	      bestleft = splicesites[bestj] - endlength;
-	      if ((donor = Substring_new_donor(/*splicesites_i*/bestj,/*joffset*/0,
+	      if ((donor = Substring_new_donor(/*donor_coord*/splicesites[bestj],/*donor_knowni*/bestj,
 					       querylength-Substring_chimera_pos(acceptor),nmismatches_shortend,
 					       /*prob*/2.0,/*left*/bestleft,query_compress_rev,
-					       querylength,/*plusp*/false,genestrand,/*sensep*/false,
+					       querylength,/*plusp*/false,genestrand,first_read_p,/*sensep*/false,
 					       Substring_chrnum(acceptor),Substring_chroffset(acceptor),
 					       Substring_chrhigh(acceptor),Substring_chrlength(acceptor))) != NULL) {
 		debug4h(printf("End 8: short-overlap antiacceptor_minus: Successful splice from antiacceptor #%d to antidonor #%d\n",
-			       Substring_splicesites_i(acceptor),Substring_splicesites_i(donor)));
+			       Substring_splicesites_knowni(acceptor),Substring_splicesites_knowni(donor)));
 		hits = List_push(hits,(void *) Stage3end_new_splice(&(*found_score),nmismatches_shortend,nmismatches,
 								    donor,acceptor,/*distance*/origleft-bestleft,
 								    /*shortdistancep*/true,localsplicing_penalty,querylength,
-								    /*amb_nmatches*/0,/*ambi_left*/NULL,/*ambi_right*/NULL,
+								    /*amb_nmatches*/0,/*ambcoords_left*/NULL,/*ambcoords_right*/NULL,
+								    /*amb_knowni_left*/NULL,/*amb_knowni_right*/NULL,
 								    /*amb_nmismatches_left*/NULL,/*amb_nmismatches_right*/NULL,
 								    /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
 								    /*sensedir*/SENSE_ANTI,/*sarrayp*/false));
@@ -10335,7 +10950,7 @@ find_12mer_bounds (int *firstbound, int *lastbound, bool *omitted, int query_las
 
 static Floors_T
 compute_floors (bool *any_omitted_p, bool *alloc_floors_p, Floors_T *floors_array,
-		T this, int querylength, int query_lastpos, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
+		T this, int querylength, int query_lastpos, Indexdb_T plus_indexdb, Indexdb_T minus_indexdb,
 		int indexdb_size_threshold, int max_end_insertions,
 		bool omit_frequent_p, bool omit_repetitive_p, bool keep_floors_p) {
   Floors_T floors;
@@ -10344,7 +10959,7 @@ compute_floors (bool *any_omitted_p, bool *alloc_floors_p, Floors_T *floors_arra
   if (this->all_positions_fetched_p == true) {
     omit_oligos_clear(this,query_lastpos);
   } else {
-    fetch_positions_for_all_12mers(this,indexdb_fwd,indexdb_rev,query_lastpos);
+    fetch_positions_for_all_12mers(this,plus_indexdb,minus_indexdb,query_lastpos);
   }
 
   debug(printf("Omitting frequent/repetitive oligos\n"));
@@ -10384,7 +10999,7 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
 			int querylength, int query_lastpos, Floors_T floors,
 			int subopt_levels, int indel_penalty_middle, int indel_penalty_end,
 			bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-			int fast_level, int genestrand) {
+			int fast_level, int genestrand, bool first_read_p) {
   int firstbound, lastbound;
   int max_mismatches_allowed;
 #if 0
@@ -10442,12 +11057,12 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
     *subs = find_complete_mm(&(*found_score),&(*nhits),*subs,this->plus_segments,this->plus_nsegments,
 			     querylength,/*queryptr:queryuc_ptr,*/
 			     /*query_compress*/query_compress_fwd,
-			     max_mismatches_allowed,/*plusp*/true,genestrand);
+			     max_mismatches_allowed,/*plusp*/true,genestrand,first_read_p);
 
     *subs = find_complete_mm(&(*found_score),&(*nhits),*subs,this->minus_segments,this->minus_nsegments,
 			     querylength,/*queryptr:queryrc,*/
 			     /*query_compress*/query_compress_rev,
-			     max_mismatches_allowed,/*plusp*/false,genestrand);
+			     max_mismatches_allowed,/*plusp*/false,genestrand,first_read_p);
     *segments_computed_p = true;
 
     debug(printf("5> found_score = %d, opt_level %d, done_level %d\n",*found_score,*opt_level,*done_level));
@@ -10497,7 +11112,7 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
 				   queryuc_ptr,queryrc,
 #endif
 				   floors,querylength,query_lastpos,query_compress_fwd,query_compress_rev,
-				   /*indel_mismatches_allowed*/indel_level - indel_penalty,genestrand);
+				   /*indel_mismatches_allowed*/indel_level - indel_penalty,genestrand,first_read_p);
 
       if (allow_end_indels_p == true) {
 	debug(printf("*** Stage 6.  End indels with %d-%d mismatches allowed\n",indel_level,indel_penalty));
@@ -10508,7 +11123,7 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
 #endif
 				  querylength,firstbound,lastbound,query_compress_fwd,query_compress_rev,
 				  max_end_insertions,max_end_deletions,min_indel_end_matches,indel_penalty,
-				  /*indel_mismatches_allowed*/indel_level - indel_penalty,genestrand);
+				  /*indel_mismatches_allowed*/indel_level - indel_penalty,genestrand,first_read_p);
       }
       if (revise_levels_p == true) {
 	*opt_level = (*found_score < *opt_level) ? *found_score : *opt_level;
@@ -10530,7 +11145,7 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
 				 queryuc_ptr,queryrc,
 #endif
 				 floors,querylength,query_lastpos,query_compress_fwd,query_compress_rev,
-				 /*indel_mismatches_allowed*/(*done_level) - indel_penalty_middle,genestrand);
+				 /*indel_mismatches_allowed*/(*done_level) - indel_penalty_middle,genestrand,first_read_p);
     if (revise_levels_p == true) {
       *opt_level = (*found_score < *opt_level) ? *found_score : *opt_level;
       if ((*done_level = *opt_level + subopt_levels) > user_maxlevel) {
@@ -10549,7 +11164,7 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
 #endif
 				querylength,firstbound,lastbound,query_compress_fwd,query_compress_rev,
 				max_end_insertions,max_end_deletions,min_indel_end_matches,indel_penalty_end,
-				/*indel_mismatches_allowed*/(*done_level) - indel_penalty_end,genestrand);
+				/*indel_mismatches_allowed*/(*done_level) - indel_penalty_end,genestrand,first_read_p);
       if (revise_levels_p == true) {
 	*opt_level = (*found_score < *opt_level) ? *found_score : *opt_level;
 	if ((*done_level = *opt_level + subopt_levels) > user_maxlevel) {
@@ -10571,42 +11186,51 @@ complete_set_mm_indels (int *found_score, bool *segments_computed_p,
 
 
 static List_T
-complete_set_singlesplicing (int *found_score, List_T localsplicing, Floors_T floors, T this,
+complete_set_singlesplicing (int *found_score, List_T localsplicing_orig, Floors_T floors, T this,
 			     Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			     int querylength, int query_lastpos, int localsplicing_penalty,
-			     int max_mismatches_allowed, bool first_read_p, int genestrand,
+			     int max_mismatches_allowed, int genestrand, bool first_read_p,
 			     bool subs_or_indels_p) {
-  List_T lowprob = NULL, p;
+  List_T localsplicing, localsplicing_plus, localsplicing_minus;
+  List_T ambiguous = NULL, lowprob = NULL, p;
   Stage3end_T hit;
   int worst_nmatches;
 
   debug(printf("Starting complete_set_singlesplicing with %d mismatches allowed\n",max_mismatches_allowed));
 
   if (floors == NULL) {
-    return (List_T) NULL;
+    /* Returning NULL results in a memory leak */
+    return localsplicing_orig;
   }
 
-  localsplicing = find_singlesplices_plus(&(*found_score),localsplicing,&lowprob,
-					  this->plus_spliceable,this->plus_nspliceable,
-					  floors,querylength,query_lastpos,
-					  /*query_compress*/query_compress_fwd,
-					  /*splicing_penalty*/localsplicing_penalty,
-					  max_mismatches_allowed,first_read_p,genestrand,
-					  subs_or_indels_p);
+  localsplicing_plus = find_singlesplices_plus(&(*found_score),/*localsplicing*/NULL,&ambiguous,&lowprob,
+					       this->plus_spliceable,this->plus_nspliceable,
+					       floors,querylength,query_lastpos,
+					       /*query_compress*/query_compress_fwd,
+					       /*splicing_penalty*/localsplicing_penalty,
+					       max_mismatches_allowed,first_read_p,genestrand,
+					       subs_or_indels_p);
+  localsplicing_plus = Splice_group_by_segmentj(&(*found_score),localsplicing_plus,&ambiguous,querylength,
+						first_read_p,/*sarrayp*/false);
 
-  localsplicing = find_singlesplices_minus(&(*found_score),localsplicing,&lowprob,
-					   this->minus_spliceable,this->minus_nspliceable,
-					   floors,querylength,query_lastpos,
-					   /*query_compress*/query_compress_rev,
-					   /*splicing_penalty*/localsplicing_penalty,
-					   max_mismatches_allowed,first_read_p,genestrand,
-					   subs_or_indels_p);
+  localsplicing_minus = find_singlesplices_minus(&(*found_score),/*localsplicing*/NULL,&ambiguous,&lowprob,
+						 this->minus_spliceable,this->minus_nspliceable,
+						 floors,querylength,query_lastpos,
+						 /*query_compress*/query_compress_rev,
+						 /*splicing_penalty*/localsplicing_penalty,
+						 max_mismatches_allowed,first_read_p,genestrand,
+						 subs_or_indels_p);
+  localsplicing_minus = Splice_group_by_segmentj(&(*found_score),localsplicing_minus,&ambiguous,querylength,
+						 first_read_p,/*sarrayp*/false);
 
   debug(printf("Finished with complete_set_singlesplicing\n"));
 
-  if (localsplicing == NULL) {
-    return lowprob;
+  if (localsplicing_plus == NULL && localsplicing_minus == NULL) {
+    return List_append(localsplicing_orig,List_append(ambiguous,lowprob));
+
   } else {
+    localsplicing = List_append(localsplicing_orig,List_append(localsplicing_plus,localsplicing_minus));
+
     worst_nmatches = querylength;
     for (p = localsplicing; p != NULL; p = List_next(p)) {
       hit = (Stage3end_T) List_head(p);
@@ -10626,7 +11250,7 @@ complete_set_singlesplicing (int *found_score, List_T localsplicing, Floors_T fl
     }
     List_free(&lowprob);
 
-    return localsplicing;
+    return List_append(localsplicing,ambiguous);
   }
 }
 
@@ -10637,7 +11261,7 @@ complete_set_doublesplicing (int *found_score, List_T localsplicing, Floors_T fl
 			     char *queryuc_ptr, char *queryrc, int querylength, int query_lastpos,
 			     int localsplicing_penalty,
 			     int min_shortend, int max_mismatches_allowed, bool pairedp,
-			     bool first_read_p, int genestrand, bool subs_or_indels_p) {
+			     int genestrand, bool first_read_p, bool subs_or_indels_p) {
   List_T lowprob = NULL, p;
   Stage3end_T hit;
   int worst_nmatches;
@@ -10646,7 +11270,8 @@ complete_set_doublesplicing (int *found_score, List_T localsplicing, Floors_T fl
 	       max_mismatches_allowed));
 
   if (floors == NULL) {
-    return (List_T) NULL;
+    /* Returning NULL results in a memory leak */
+    return localsplicing;
   }
 
   localsplicing = find_doublesplices(&(*found_score),localsplicing,&lowprob,
@@ -10762,14 +11387,12 @@ run_gmap (bool *good_start_p, bool *good_end_p, History_T gmap_history,
 
 	  Univcoord_T mappingstart, Univcoord_T mappingend,
 	  Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high,
-	  bool watsonp, int genestrand,
+	  bool watsonp, int genestrand, bool first_read_p,
 	  Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
 
-	  Oligoindex_T *oligoindices_major, int noligoindices_major,
-	  Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-	  Pairpool_T pairpool, Diagpool_T diagpool,
-	  Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-	  int user_maxlevel) {
+	  Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+	  Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
+	  Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR, int user_maxlevel) {
   Stage3end_T hit;
 #ifdef EXTRACT_GENOMICSEG
   char *genomicseg, *genomicseg_alloc;
@@ -10858,8 +11481,8 @@ run_gmap (bool *good_start_p, bool *good_end_p, History_T gmap_history,
 				     /*chrstart*/mappingstart-chroffset,/*chrend*/mappingend-chroffset,
 				     chroffset,chrhigh,/*plusp*/watsonp,genestrand,
 
-				     oligoindices_major,noligoindices_major,/*proceed_pctcoverage*/0.5,
-				     pairpool,diagpool,sufflookback,nsufflookback,
+				     oligoindices_major,/*proceed_pctcoverage*/0.5,
+				     pairpool,diagpool,cellpool,sufflookback,nsufflookback,
 				     maxintronlen_bound,/*localp*/true,
 				     /*skip_repetitive_p*/true,favor_right_p,/*max_nalignments*/MAX_NALIGNMENTS,
 				     /*debug_graphic_p*/false,/*diagnosticp*/false,
@@ -10897,7 +11520,7 @@ run_gmap (bool *good_start_p, bool *good_end_p, History_T gmap_history,
 				    minendexon,pairpool,dynprogL,dynprogM,dynprogR,ngap,
 				    /*diagnosticp*/false,/*checkp*/false,
 				    /*do_final_p*/true,sense_try,/*sense_filter*/0,
-				    oligoindices_minor,noligoindices_minor,diagpool,
+				    oligoindices_minor,diagpool,cellpool,
 				    sufflookback,nsufflookback,maxintronlen_bound,
 				    /*close_indels_mode*/+1,paired_favor_mode,zero_offset)) == NULL) {
       debug13(printf("stage3 is NULL\n"));
@@ -10932,7 +11555,8 @@ run_gmap (bool *good_start_p, bool *good_end_p, History_T gmap_history,
 					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/start,/*genomiclength*/end - start + 1,
-					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,chrlength,
+					/*plusp*/watsonp,genestrand,first_read_p,
+					querylength,chrnum,chroffset,chrhigh,chrlength,
 					cdna_direction,sensedir)) == NULL) {
 	    debug13(printf("Stage3end_new_gmap returns NULL\n"));
 	    stored_hits = List_push(stored_hits,(void *) NULL);
@@ -10976,7 +11600,8 @@ run_gmap (bool *good_start_p, bool *good_end_p, History_T gmap_history,
 					ambig_splicetype_5,ambig_splicetype_3,min_splice_prob,
 					pairarray,npairs,nsegments,nintrons,nindelbreaks,
 					/*left*/end,/*genomiclength*/start - end + 1,
-					/*plusp*/watsonp,genestrand,querylength,chrnum,chroffset,chrhigh,chrlength,
+					/*plusp*/watsonp,genestrand,first_read_p,
+					querylength,chrnum,chroffset,chrhigh,chrlength,
 					cdna_direction,sensedir)) == NULL) {
 	    debug13(printf("Stage3end_new_gmap returns NULL\n"));
 	    stored_hits = List_push(stored_hits,(void *) NULL);
@@ -11044,11 +11669,10 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 			    Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			    struct Segment_T *plus_segments, int plus_nsegments,
 			    struct Segment_T *minus_segments, int minus_nsegments,
-			    Oligoindex_T *oligoindices_major, int noligoindices_major,
-			    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-			    Pairpool_T pairpool, Diagpool_T diagpool,
+			    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+			    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-			    int user_maxlevel, int genestrand) {
+			    int user_maxlevel, int genestrand, bool first_read_p) {
   List_T hits = NULL;
 
   Univcoord_T segmentstart, segmentend;
@@ -11507,9 +12131,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 		    query_compress_fwd,query_compress_rev,
 		    close_mappingstart_greedy,close_mappingend_greedy,
 		    close_knownsplice_limit_low,close_knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
 
     if (good_start_p == true && good_end_p == true) {
       /* Success */
@@ -11522,9 +12146,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 			/*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 			query_compress_fwd,query_compress_rev,close_mappingstart_greedy,mappingend,
 			close_knownsplice_limit_low,knownsplice_limit_high,
-			watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+			watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+			oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
       }
     } else if (good_end_p == true) {
       if (fallback_mappingstart_p == true) {
@@ -11533,9 +12157,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 			/*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 			query_compress_fwd,query_compress_rev,mappingstart,close_mappingend_greedy,
 			knownsplice_limit_low,close_knownsplice_limit_high,
-			watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+			watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+			oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
       }
     } else {
       if (fallback_mappingstart_p == true && fallback_mappingend_p == true) {
@@ -11544,9 +12168,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 			/*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 			query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 			knownsplice_limit_low,close_knownsplice_limit_high,
-			watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+			watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+			oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
       }
     }
 
@@ -11556,9 +12180,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 		    /*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 		    query_compress_fwd,query_compress_rev,close_mappingstart_greedy,mappingend,
 		    close_knownsplice_limit_low,knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
     if (good_start_p == true) {
       /* Success */
     } else if (gmap_rerun_p == false) {
@@ -11569,9 +12193,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 		      /*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 		      query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 		      knownsplice_limit_low,knownsplice_limit_high,
-		      watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		      oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		      pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		      watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		      oligoindices_major,oligoindices_minor,
+		      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
     }
 
   } else if (close_mappingend_p == true) {
@@ -11580,9 +12204,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 		    /*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 		    query_compress_fwd,query_compress_rev,mappingstart,close_mappingend_greedy,
 		    knownsplice_limit_low,close_knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
     if (good_end_p == true) {
       /* Success */
     } else if (gmap_rerun_p == false) {
@@ -11593,9 +12217,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 		      /*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 		      query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 		      knownsplice_limit_low,knownsplice_limit_high,
-		      watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		      oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		      pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		      watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		      oligoindices_major,oligoindices_minor,
+		      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
     }
 
   } else {
@@ -11604,9 +12228,9 @@ align_single_hit_with_gmap (History_T gmap_history, Stage3end_T hit,
 		    /*sense_try*/0,favor_right_p,/*paired_favor_mode*/0,/*zero_offset*/0,
 		    query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 		    knownsplice_limit_low,knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
   }
 
   return hits;
@@ -11618,11 +12242,10 @@ static List_T
 align_singleend_with_gmap (History_T gmap_history, List_T result, T this,
 			   Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			   char *queryuc_ptr, int querylength, int query_lastpos,
-			   Oligoindex_T *oligoindices_major, int noligoindices_major,
-			   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-			   Pairpool_T pairpool, Diagpool_T diagpool,
+			   Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+			   Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-			   int user_maxlevel, int cutoff_level) {
+			   int user_maxlevel, int cutoff_level, bool first_read_p) {
   List_T new_result = NULL, gmap_hits = NULL;
   Stage3end_T hit, gmap;
   List_T p, a;
@@ -11688,10 +12311,9 @@ align_singleend_with_gmap (History_T gmap_history, List_T result, T this,
 					     query_compress_fwd,query_compress_rev,
 					     this->plus_segments,this->plus_nsegments,
 					     this->minus_segments,this->minus_nsegments,
-					     oligoindices_major,noligoindices_major,
-					     oligoindices_minor,noligoindices_minor,
-					     pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					     user_maxlevel,genestrand);
+					     oligoindices_major,oligoindices_minor,
+					     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					     user_maxlevel,genestrand,first_read_p);
 
       gmap_better_p = false;
       missing_hit = querylength - Stage3end_nmatches(hit);
@@ -11741,18 +12363,17 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 	   char *queryuc_ptr, char *queryrc, int querylength, int query_lastpos,
 	   Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int indexdb_size_threshold, Floors_T *floors_array,
 
-	   Oligoindex_T *oligoindices_major, int noligoindices_major,
-	   Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-	   Pairpool_T pairpool, Diagpool_T diagpool,
+	   Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+	   Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 	   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 
 	   int user_maxlevel, int subopt_levels,
 	   int indel_penalty_middle, int indel_penalty_end,
 	   int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 	   bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-	   bool allvalidp, bool keep_floors_p, int genestrand) {
+	   bool allvalidp, bool keep_floors_p, int genestrand, bool first_read_p) {
   List_T hits, subs = NULL, indels = NULL, new_indels,
-    singlesplicing = NULL, doublesplicing = NULL, shortendsplicing = NULL,
+    ambiguous = NULL, singlesplicing = NULL, doublesplicing = NULL, shortendsplicing = NULL,
     longsinglesplicing = NULL, distantsplicing = NULL, good_gmap_hits = NULL, terminals = NULL;
   List_T gmap_hits, p, a;
   Stage3end_T hit, gmap;
@@ -11765,6 +12386,25 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
   bool any_omitted_p, ambiguousp, alloc_floors_p = false, floors_computed_p = false;
   Floors_T floors;
   bool segments_computed_p = false, gmap_better_p, extend_left_p, extend_right_p;
+  Indexdb_T plus_indexdb, minus_indexdb;
+
+  if (genestrand == +2) {
+    if (first_read_p == false) {
+      plus_indexdb = indexdb_fwd;
+      minus_indexdb = indexdb_rev;
+    } else {
+      plus_indexdb = indexdb_rev;
+      minus_indexdb = indexdb_fwd;
+    }
+  } else {
+    if (first_read_p == true) {
+      plus_indexdb = indexdb_fwd;
+      minus_indexdb = indexdb_rev;
+    } else {
+      plus_indexdb = indexdb_rev;
+      minus_indexdb = indexdb_fwd;
+    }
+  }
 
   found_score = querylength;
   fast_level = (querylength + index1interval - 1)/spansize - NREQUIRED_FAST;
@@ -11811,10 +12451,16 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 
 #ifndef LARGE_GENOMES
     /* Replaces spanning set */
-    Sarray_search_greedy(&found_score,&subs,&indels,&singlesplicing,&doublesplicing,
+    Sarray_search_greedy(&found_score,&subs,&indels,&ambiguous,&singlesplicing,&doublesplicing,
 			 queryuc_ptr,queryrc,querylength,
 			 query_compress_fwd,query_compress_rev,/*nmisses_allowed*/fast_level,
-			 /*first_read_p*/NOT_APPLICABLE);
+			 genestrand,first_read_p);
+    singlesplicing = Splice_group_by_segmenti(&found_score,singlesplicing,&ambiguous,querylength,
+					      first_read_p,/*sarrayp*/true);
+    singlesplicing = Splice_group_by_segmentj(&found_score,singlesplicing,&ambiguous,querylength,
+					      first_read_p,/*sarrayp*/true);
+    singlesplicing = List_append(singlesplicing,ambiguous);
+
     opt_level = (found_score < opt_level) ? found_score : opt_level;
     if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
       done_level = user_maxlevel;
@@ -11830,8 +12476,8 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
     } else {
       debug(printf("fast_level = %d\n",fast_level));
       debug(printf("*** Stage 1.  Exact ***\n"));
-      subs = find_spanning_exact_matches(&found_score,&nhits,/*hits*/NULL,this,genestrand,
-					 querylength,query_lastpos,indexdb_fwd,indexdb_rev,
+      subs = find_spanning_exact_matches(&found_score,&nhits,/*hits*/NULL,this,genestrand,first_read_p,
+					 querylength,query_lastpos,plus_indexdb,minus_indexdb,
 					 query_compress_fwd,query_compress_rev);
       opt_level = (found_score < opt_level) ? found_score : opt_level;
       if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
@@ -11844,8 +12490,8 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
     /* 2. One mismatch.  Requires spanning set and compress. */
     if (allvalidp && querylength >= one_miss_querylength && done_level >= 1) {
       debug(printf("*** Stage 2.  One miss ***\n"));
-      subs = find_spanning_onemiss_matches(&found_score,&nhits,subs,this,genestrand,querylength,
-					   query_compress_fwd,query_compress_rev);
+      subs = find_spanning_onemiss_matches(&found_score,&nhits,subs,this,genestrand,first_read_p,
+					   querylength,query_compress_fwd,query_compress_rev);
       opt_level = (found_score < opt_level) ? found_score : opt_level;
       if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
 	done_level = user_maxlevel;
@@ -11858,8 +12504,8 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
     if (allvalidp && done_level >= 2) {
       while (mismatch_level <= fast_level && mismatch_level <= done_level) {
 	debug(printf("*** Stage 3 (level %d).  Spanning set mismatches ***\n",mismatch_level));
-	subs = find_spanning_multimiss_matches(&found_score,&nhits,subs,this,genestrand,NREQUIRED_FAST,querylength,
-					       query_compress_fwd,query_compress_rev,
+	subs = find_spanning_multimiss_matches(&found_score,&nhits,subs,this,genestrand,first_read_p,
+					       NREQUIRED_FAST,querylength,query_compress_fwd,query_compress_rev,
 					       /*nmisses_allowed*/mismatch_level);
 	opt_level = (found_score < opt_level) ? found_score : opt_level;
 	if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
@@ -11879,7 +12525,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
   } else if (done_level > fast_level || done_level >= indel_penalty_middle || done_level >= indel_penalty_end) {
 #if 1
     floors = compute_floors(&any_omitted_p,&alloc_floors_p,floors_array,this,querylength,query_lastpos,
-			    indexdb_fwd,indexdb_rev,indexdb_size_threshold,max_end_insertions,
+			    plus_indexdb,minus_indexdb,indexdb_size_threshold,max_end_insertions,
 			    /*omit_frequent_p*/true,/*omit_repetitive_p*/true,keep_floors_p);
     floors_computed_p = true;
     complete_set_mm_indels(&found_score,&segments_computed_p,
@@ -11891,7 +12537,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 			   querylength,query_lastpos,floors,subopt_levels,
 			   indel_penalty_middle,indel_penalty_end,
 			   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			   fast_level,genestrand);
+			   fast_level,genestrand,first_read_p);
 #else
     /* Using obsolete masktype */
     if (masktype == MASK_NONE) {
@@ -11902,12 +12548,12 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 #if defined(DEBUG2) || defined(DEBUG2E)
 			     queryuc_ptr,queryrc,
 #endif
-			     querylength,query_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			     querylength,query_lastpos,plus_indexdb,minus_indexdb,indexdb_size_threshold,
 			     floors_array,subopt_levels,
 			     indel_penalty_middle,indel_penalty_end,
 			     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			     fast_level,/*omit_frequent_p*/false,/*omit_repetitive_p*/false,keep_floors_p,
-			     genestrand);
+			     genestrand,first_read_p);
     } else {
       debug(printf("*** Stage 4,5.  Complete mm/indels masking frequent oligos with done_level %d ***\n",done_level));
       complete_set_mm_indels(&found_score,&segments_computed_p,
@@ -11916,13 +12562,13 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 #if defined(DEBUG2) || defined(DEBUG2E)
 			     queryuc_ptr,queryrc,
 #endif
-			     querylength,query_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			     querylength,query_lastpos,plus_indexdb,minus_indexdb,indexdb_size_threshold,
 			     floors_array,subopt_levels,
 			     indel_penalty_middle,indel_penalty_end,
 			     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			     fast_level,/*omit_frequent_p*/true,
 			     /*omit_repetitive_p*/(masktype == MASK_REPETITIVE || masktype == MASK_GREEDY_REPETITIVE) ? true : false,
-			     keep_floors_p,genestrand);
+			     keep_floors_p,genestrand,first_read_p);
       if ((masktype == MASK_GREEDY_FREQUENT || masktype == MASK_GREEDY_REPETITIVE) && subs == NULL && indels == NULL && any_omitted_p == true) {
 	FREE(this->minus_segments);
 	FREE(this->plus_segments);
@@ -11934,12 +12580,12 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 #if defined(DEBUG2) || defined(DEBUG2E)
 			       queryuc_ptr,queryrc,
 #endif
-			       querylength,query_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			       querylength,query_lastpos,plus_indexdb,minus_indexdb,indexdb_size_threshold,
 			       floors_array,subopt_levels,
 			       indel_penalty_middle,indel_penalty_end,
 			       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			       fast_level,/*omit_frequent_p*/false,/*omit_repetitive_p*/false,keep_floors_p,
-			       genestrand);
+			       genestrand,first_read_p);
       }
     }
 #endif
@@ -11958,7 +12604,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
       /* Always mask frequent oligos for splicing, which must be transcriptional */
       if (floors_computed_p == false) {
 	floors = compute_floors(&any_omitted_p,&alloc_floors_p,floors_array,this,querylength,query_lastpos,
-				indexdb_fwd,indexdb_rev,indexdb_size_threshold,max_end_insertions,
+				plus_indexdb,minus_indexdb,indexdb_size_threshold,max_end_insertions,
 				/*omit_frequent_p*/true,/*omit_repetitive_p*/true,keep_floors_p);
 	floors_computed_p = true;
       }
@@ -11988,7 +12634,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 						   querylength,query_lastpos,
 						   localsplicing_penalty,
 						   /*max_mismatches_allowed*/done_level - localsplicing_penalty,
-						   /*first_read_p*/NOT_APPLICABLE,genestrand,
+						   genestrand,first_read_p,
 						   /*subs_or_indels_p*/(subs != NULL || indels != NULL) ? true : false);
 
 #if 0
@@ -12014,7 +12660,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
       debug(printf("*** Stage 7.  Double splicing masking frequent oligos with done_level %d ***\n",done_level));
       if (floors_computed_p == false) {
 	floors = compute_floors(&any_omitted_p,&alloc_floors_p,floors_array,this,querylength,query_lastpos,
-				indexdb_fwd,indexdb_rev,indexdb_size_threshold,max_end_insertions,
+				plus_indexdb,minus_indexdb,indexdb_size_threshold,max_end_insertions,
 				/*omit_frequent_p*/true,/*omit_repetitive_p*/true,keep_floors_p);
 	floors_computed_p = true;
       }
@@ -12023,7 +12669,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 						   queryuc_ptr,queryrc,querylength,query_lastpos,
 						   localsplicing_penalty,min_shortend,
 						   /*max_mismatches_allowed*/done_level - localsplicing_penalty,
-						   /*pairedp*/false,/*first_read_p*/NOT_APPLICABLE,genestrand,
+						   /*pairedp*/false,genestrand,first_read_p,
 						   /*subs_or_indels_p*/(subs != NULL || indels != NULL) ? true : false);
       
 #if 0
@@ -12065,7 +12711,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 			       /*queryptr*/queryuc_ptr,
 #endif
 			       floors,querylength,query_lastpos,/*query_compress*/query_compress_fwd,
-			       max_splice_mismatches,/*plusp*/true,genestrand);
+			       max_splice_mismatches,/*plusp*/true,genestrand,first_read_p);
       debug(printf("Finished find_spliceends (plus)\n"));
 
       debug(printf("Starting find_spliceends (minus)\n"));
@@ -12075,7 +12721,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 			       /*queryptr*/queryrc,
 #endif
 			       floors,querylength,query_lastpos,/*query_compress*/query_compress_rev,
-			       max_splice_mismatches,/*plusp*/false,genestrand);
+			       max_splice_mismatches,/*plusp*/false,genestrand,first_read_p);
       debug(printf("Finished find_spliceends (minus)\n"));
 
       shortendsplicing = find_splicepairs_shortend(&found_score,shortendsplicing,
@@ -12087,7 +12733,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 						   queryuc_ptr,queryrc,min_shortend,
 						   localsplicing_penalty,
 						   /*max_mismatches_allowed*/max_splice_mismatches,querylength,
-						   /*pairedp*/false,/*first_read_p*/NOT_APPLICABLE,genestrand);
+						   /*pairedp*/false,genestrand,first_read_p);
       opt_level = (found_score < opt_level) ? found_score : opt_level;
       if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
 	done_level = user_maxlevel;
@@ -12147,7 +12793,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 			      /*queryptr*/queryuc_ptr,
 #endif
 			      floors,querylength,query_lastpos,/*query_compress*/query_compress_fwd,
-			      max_splice_mismatches,/*plusp*/true,genestrand);
+			      max_splice_mismatches,/*plusp*/true,genestrand,first_read_p);
       debug(printf("Finished find_spliceends (plus)\n"));
 
 
@@ -12158,7 +12804,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 			      /*queryptr*/queryrc,
 #endif
 			      floors,querylength,query_lastpos,/*query_compress*/query_compress_rev,
-			      max_splice_mismatches,/*plusp*/false,genestrand);
+			      max_splice_mismatches,/*plusp*/false,genestrand,first_read_p);
       debug(printf("Finished find_spliceends (minus)\n"));
 
 
@@ -12193,7 +12839,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 						   donors_plus,antidonors_plus,acceptors_plus,antiacceptors_plus,
 						   donors_minus,antidonors_minus,acceptors_minus,antiacceptors_minus,
 						   localsplicing_penalty,distantsplicing_penalty,
-						   querylength,nmismatches,/*first_read_p*/NOT_APPLICABLE);
+						   querylength,nmismatches,first_read_p);
 #if 0
 	assert(List_length(distantsplicing) <= 1);
 #endif
@@ -12287,10 +12933,9 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 #endif
 					       query_compress_fwd,query_compress_rev,
 					       this->plus_segments,this->plus_nsegments,this->minus_segments,this->minus_nsegments,
-					       oligoindices_major,noligoindices_major,
-					       oligoindices_minor,noligoindices_minor,
-					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					       user_maxlevel,genestrand);
+					       oligoindices_major,oligoindices_minor,
+					       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					       user_maxlevel,genestrand,first_read_p);
 
 	gmap_better_p = false;
 	missing_hit = querylength - Stage3end_nmatches(hit);
@@ -12334,7 +12979,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
     debug(printf("*** Stage 10.  Terminals up to %d mismatches ***\n",max_mismatches_allowed));
     if (floors_computed_p == false) {
       floors = compute_floors(&any_omitted_p,&alloc_floors_p,floors_array,this,querylength,query_lastpos,
-			      indexdb_fwd,indexdb_rev,indexdb_size_threshold,max_end_insertions,
+			      plus_indexdb,minus_indexdb,indexdb_size_threshold,max_end_insertions,
 			      /*omit_frequent_p*/true,/*omit_repetitive_p*/true,keep_floors_p);
     }
 
@@ -12363,7 +13008,7 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 #endif
 			       floors,querylength,query_lastpos,
 			       query_compress_fwd,query_compress_rev,
-			       max_mismatches_allowed,genestrand);
+			       max_mismatches_allowed,genestrand,first_read_p);
 #if 0
     opt_level = (found_score < opt_level) ? found_score : opt_level;
     if ((done_level = opt_level + subopt_levels) > user_maxlevel) {
@@ -12403,10 +13048,9 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 #endif
 					       query_compress_fwd,query_compress_rev,
 					       this->plus_segments,this->plus_nsegments,this->minus_segments,this->minus_nsegments,
-					       oligoindices_major,noligoindices_major,
-					       oligoindices_minor,noligoindices_minor,
-					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					       user_maxlevel,genestrand);
+					       oligoindices_major,oligoindices_minor,
+					       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					       user_maxlevel,genestrand,first_read_p);
 
 	missing_hit = querylength - Stage3end_nmatches(hit);
 	for (a = gmap_hits; a != NULL; a = List_next(a)) {
@@ -12471,9 +13115,9 @@ align_end (int *cutoff_level, History_T gmap_history, T this,
 
     hits = align_singleend_with_gmap(gmap_history,hits,this,query_compress_fwd,query_compress_rev,
 				     queryuc_ptr,querylength,query_lastpos,
-				     oligoindices_major,noligoindices_major,
-				     oligoindices_minor,noligoindices_minor,
-				     pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel,*cutoff_level);
+				     oligoindices_major,oligoindices_minor,
+				     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel,*cutoff_level,
+				     first_read_p);
     hits = Stage3end_optimal_score(hits,*cutoff_level,subopt_levels,query_compress_fwd,query_compress_rev,
 				   /*keep_gmap_p*/true,/*finalp*/true);
     hits = Stage3end_filter_terminals(hits,querylength);
@@ -12498,9 +13142,8 @@ single_read (int *npaths, int *first_absmq, int *second_absmq,
 	     int indel_penalty_middle, int indel_penalty_end,
 	     bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 	     int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-	     Oligoindex_T *oligoindices_major, int noligoindices_major,
-	     Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-	     Pairpool_T pairpool, Diagpool_T diagpool,
+	     Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+	     Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 	     Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 	     bool keep_floors_p) {
   Stage3end_T *stage3array;
@@ -12550,7 +13193,8 @@ single_read (int *npaths, int *first_absmq, int *second_absmq,
     this = Stage1_new(querylength);
     query_lastpos = querylength - index1part;
 
-    if (read_oligos(&allvalidp,this,queryuc_ptr,querylength,query_lastpos,/*genestrand*/0) == 0) {
+    if (read_oligos(&allvalidp,this,queryuc_ptr,querylength,query_lastpos,/*genestrand*/0,
+		    /*first_read_p*/true) == 0) {
       debug(printf("Aborting because no hits found anywhere\n"));
       *npaths = 0;
       Compress_free(&query_compress_fwd);
@@ -12565,13 +13209,13 @@ single_read (int *npaths, int *first_absmq, int *second_absmq,
 		       query_compress_fwd,query_compress_rev,
 		       queryuc_ptr,queryrc,querylength,query_lastpos,
 		       indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
-		       oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+		       oligoindices_major,oligoindices_minor,
+		       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 		       user_maxlevel,subopt_levels,
 		       indel_penalty_middle,indel_penalty_end,
 		       localsplicing_penalty,distantsplicing_penalty,min_shortend,
 		       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-		       allvalidp,keep_floors_p,/*genestrand*/0);
+		       allvalidp,keep_floors_p,/*genestrand*/0,/*first_read_p*/true);
 
       if ((*npaths = List_length(hits)) == 0) {
 	stage3array = (Stage3end_T *) NULL;
@@ -12595,15 +13239,14 @@ single_read (int *npaths, int *first_absmq, int *second_absmq,
 
 static Stage3end_T *
 single_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_absmq,
-				  Shortread_T queryseq, Indexdb_T indexdb_geneplus, Indexdb_T indexdb_geneminus,
+				  Shortread_T queryseq, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
 				  int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
 				  double user_maxlevel_float, int subopt_levels,
 				  int indel_penalty_middle, int indel_penalty_end,
 				  bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 				  int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-				  Oligoindex_T *oligoindices_major, int noligoindices_major,
-				  Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-				  Pairpool_T pairpool, Diagpool_T diagpool,
+				  Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor, 
+				  Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 				  Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 				  bool keep_floors_p) {
   Stage3end_T *stage3array;
@@ -12656,32 +13299,34 @@ single_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
     gmap_history = History_new();
     make_complement_buffered(queryrc,queryuc_ptr,querylength);
 
-    if (read_oligos(&allvalidp,this_geneplus,queryuc_ptr,querylength,query_lastpos,/*genestrand*/+1) > 0) {
+    if (read_oligos(&allvalidp,this_geneplus,queryuc_ptr,querylength,query_lastpos,/*genestrand*/+1,
+		    /*first_read_p*/true) > 0) {
       hits_geneplus = align_end(&cutoff_level,gmap_history,this_geneplus,
 				query_compress_fwd,query_compress_rev,
 				queryuc_ptr,queryrc,querylength,query_lastpos,
-				indexdb_geneplus,indexdb_geneplus,indexdb_size_threshold,floors_array,
-				oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+				floors_array,oligoindices_major,oligoindices_minor,
+				pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				user_maxlevel,subopt_levels,
 				indel_penalty_middle,indel_penalty_end,
 				localsplicing_penalty,distantsplicing_penalty,min_shortend,
 				allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				allvalidp,keep_floors_p,/*genestrand*/+1);
+				allvalidp,keep_floors_p,/*genestrand*/+1,/*first_read_p*/true);
     }
 
-    if (read_oligos(&allvalidp,this_geneminus,queryuc_ptr,querylength,query_lastpos,/*genestrand*/+2) > 0) {
+    if (read_oligos(&allvalidp,this_geneminus,queryuc_ptr,querylength,query_lastpos,/*genestrand*/+2,
+		    /*first_read_p*/true) > 0) {
       hits_geneminus = align_end(&cutoff_level,gmap_history,this_geneminus,
 				 query_compress_fwd,query_compress_rev,
 				 queryuc_ptr,queryrc,querylength,query_lastpos,
-				 indexdb_geneminus,indexdb_geneminus,indexdb_size_threshold,floors_array,
-				 oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				 pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				 indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+				 floors_array,oligoindices_major,oligoindices_minor,
+				 pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				 user_maxlevel,subopt_levels,
 				 indel_penalty_middle,indel_penalty_end,
 				 localsplicing_penalty,distantsplicing_penalty,min_shortend,
 				 allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				 allvalidp,keep_floors_p,/*genestrand*/+2);
+				 allvalidp,keep_floors_p,/*genestrand*/+2,/*first_read_p*/true);
     }
 
     hits = List_append(hits_geneplus,hits_geneminus);
@@ -12715,35 +13360,35 @@ single_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 
 Stage3end_T *
 Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
-		    Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
+		    Shortread_T queryseq, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
 		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
 		    double user_maxlevel_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-		    Oligoindex_T *oligoindices_major, int noligoindices_major,
-		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		    Pairpool_T pairpool, Diagpool_T diagpool,
+		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    bool keep_floors_p) {
 
   if (mode == STANDARD || mode == CMET_STRANDED || mode == ATOI_STRANDED) {
     return single_read(&(*npaths),&(*first_absmq),&(*second_absmq),
-		       queryseq,/*indexdb_fwd*/indexdb,/*indexdb_rev*/indexdb2,
-		       indexdb_size_threshold,genome,floors_array,user_maxlevel_float,subopt_levels,
+		       queryseq,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+		       genome,floors_array,user_maxlevel_float,subopt_levels,
 		       indel_penalty_middle,indel_penalty_end,
 		       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 		       localsplicing_penalty,distantsplicing_penalty,min_shortend,
-		       oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		       pairpool,diagpool,dynprogL,dynprogM,dynprogR,keep_floors_p);
+		       oligoindices_major,oligoindices_minor,
+		       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,keep_floors_p);
   } else if (mode == CMET_NONSTRANDED || mode == ATOI_NONSTRANDED) {
-    return single_read_tolerant_nonstranded(&(*npaths),&(*first_absmq),&(*second_absmq),queryseq,/*indexdb_geneplus*/indexdb,/*indexdb_geneminus*/indexdb2,
-					    indexdb_size_threshold,genome,floors_array,user_maxlevel_float,subopt_levels,
+    return single_read_tolerant_nonstranded(&(*npaths),&(*first_absmq),&(*second_absmq),queryseq,
+					    indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+					    genome,floors_array,user_maxlevel_float,subopt_levels,
 					    indel_penalty_middle,indel_penalty_end,
 					    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					    localsplicing_penalty,distantsplicing_penalty,min_shortend,
-					    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-					    pairpool,diagpool,dynprogL,dynprogM,dynprogR,keep_floors_p);
+					    oligoindices_major,oligoindices_minor,
+					    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,keep_floors_p);
   } else {
     fprintf(stderr,"Do not recognize mode %d\n",mode);
     abort();
@@ -12766,12 +13411,11 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 			     Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			     struct Segment_T *plus_segments, int plus_nsegments,
 			     struct Segment_T *minus_segments, int minus_nsegments,
-			     Oligoindex_T *oligoindices_major, int noligoindices_major,
-			     Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-			     Pairpool_T pairpool, Diagpool_T diagpool,
+			     Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+			     Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			     Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 			     int pairmax, Chrpos_T shortsplicedist, int user_maxlevel,
-			     int genestrand) {
+			     int genestrand, bool first_read_p) {
   List_T hits = NULL;
   int sensedir, sense_try;
   int overlap;
@@ -12807,6 +13451,11 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
       if (Shortread_find_primers(queryseq5,queryseq3) == true) {
 	/* Go from genomicstart */
 	debug13(printf("Found primers\n"));
+	genomicbound = subtract_bounded(Stage3end_genomicstart(hit5),querylength,chroffset);
+
+      } else if (Stage3end_anomalous_splice_p(hit5) == true) {
+	/* Go from genomicstart */
+	debug13(printf("Anomalous splice\n"));
 	genomicbound = subtract_bounded(Stage3end_genomicstart(hit5),querylength,chroffset);
 
       } else {
@@ -12943,6 +13592,11 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
       if (Shortread_find_primers(queryseq5,queryseq3) == true) {
 	/* Go from genomicstart */
 	debug13(printf("Found primers\n"));
+	genomicbound = add_bounded(Stage3end_genomicstart(hit5),querylength,chrhigh);
+
+      } else if (Stage3end_anomalous_splice_p(hit5) == true) {
+	/* Go from genomicstart */
+	debug13(printf("Anomalous splice\n"));
 	genomicbound = add_bounded(Stage3end_genomicstart(hit5),querylength,chrhigh);
 
       } else {
@@ -13097,6 +13751,11 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 	debug13(printf("Found primers\n"));
 	genomicbound = add_bounded(Stage3end_genomicend(hit3),querylength,chrhigh);
 
+      } else if (Stage3end_anomalous_splice_p(hit3) == true) {
+	/* Go from genomicend */
+	debug13(printf("Anomalous splice\n"));
+	genomicbound = add_bounded(Stage3end_genomicend(hit3),querylength,chrhigh);
+
       } else {
 	genomicbound = add_bounded(Stage3end_genomicstart(hit3),querylength,chrhigh);
 
@@ -13231,6 +13890,11 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
       if (Shortread_find_primers(queryseq5,queryseq3) == true) {
 	/* Go from genomicend */
 	debug13(printf("Found primers\n"));
+	genomicbound = subtract_bounded(Stage3end_genomicend(hit3),querylength,chroffset);
+
+      } else if (Stage3end_anomalous_splice_p(hit3) == true) {
+	/* Go from genomicend */
+	debug13(printf("Anomalous splice\n"));
 	genomicbound = subtract_bounded(Stage3end_genomicend(hit3),querylength,chroffset);
 
       } else {
@@ -13382,9 +14046,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 		    /*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 		    query_compress_fwd,query_compress_rev,close_mappingstart_greedy,close_mappingend_greedy,
 		    close_knownsplice_limit_low,close_knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
 
     if (good_start_p == true && good_end_p == true) {
       /* Success */
@@ -13398,9 +14062,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 			/*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 			query_compress_fwd,query_compress_rev,close_mappingstart_greedy,mappingend,
 			close_knownsplice_limit_low,knownsplice_limit_high,
-			watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+			watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+			oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
       }
 
     } else if (/* require both ends to be good */ 0 && good_end_p == true) {
@@ -13411,9 +14075,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 			/*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 			query_compress_fwd,query_compress_rev,mappingstart,close_mappingend_greedy,
 			knownsplice_limit_low,close_knownsplice_limit_high,
-			watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+			watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+			oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
       }
     } else {
       if (fallback_mappingstart_p == true && fallback_mappingend_p == true) {
@@ -13423,9 +14087,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 			/*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 			query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 			knownsplice_limit_low,knownsplice_limit_high,
-			watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+			watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+			oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
       }
     }
 
@@ -13436,9 +14100,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 		    /*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 		    query_compress_fwd,query_compress_rev,close_mappingstart_greedy,mappingend,
 		    close_knownsplice_limit_low,knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
 
     if (good_start_p == true && /* require both ends to be good */ good_end_p == true) {
       /* Success */
@@ -13451,9 +14115,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 		      /*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 		      query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 		      knownsplice_limit_low,knownsplice_limit_high,
-		      watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		      oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		      pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		      watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		      oligoindices_major,oligoindices_minor,
+		      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
     }
 
   } else if (close_mappingend_p == true) {
@@ -13463,9 +14127,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 		    /*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 		    query_compress_fwd,query_compress_rev,mappingstart,close_mappingend_greedy,
 		    knownsplice_limit_low,close_knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
 
     if (good_end_p == true && /* require both ends to be good */ good_start_p == true) {
       /* Success */
@@ -13478,9 +14142,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 		      /*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 		      query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 		      knownsplice_limit_low,knownsplice_limit_high,
-		      watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		      oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		      pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		      watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		      oligoindices_major,oligoindices_minor,
+		      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
     }
 
   } else {
@@ -13490,9 +14154,9 @@ align_halfmapping_with_gmap (History_T gmap_history, Stage3end_T hit5, Stage3end
 		    /*paired_favor_mode*/favor_right_p == true ? +1 : -1,zero_offset,
 		    query_compress_fwd,query_compress_rev,mappingstart,mappingend,
 		    knownsplice_limit_low,knownsplice_limit_high,
-		    watsonp,genestrand,chrnum,chroffset,chrhigh,chrlength,
-		    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-		    pairpool,diagpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
+		    watsonp,genestrand,first_read_p,chrnum,chroffset,chrhigh,chrlength,
+		    oligoindices_major,oligoindices_minor,
+		    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,user_maxlevel);
   }
 
   return hits;
@@ -13512,9 +14176,8 @@ align_pair_with_gmap (Pairtype_T *final_pairtype, List_T result,
 		      char *queryuc_ptr_5, char *queryuc_ptr_3,
 		      int querylength5, int querylength3, int query5_lastpos, int query3_lastpos,
 		      int localsplicing_penalty,
-		      Oligoindex_T *oligoindices_major, int noligoindices_major,
-		      Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		      Pairpool_T pairpool, Diagpool_T diagpool,
+		      Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		      Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		      Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		      int pairmax, int user_maxlevel_5, int user_maxlevel_3,
 		      int cutoff_level_5, int cutoff_level_3,
@@ -13577,10 +14240,9 @@ align_pair_with_gmap (Pairtype_T *final_pairtype, List_T result,
 					      plus_nsegments_genestrand_5[genestrand],
 					      minus_segments_genestrand_5[genestrand],
 					      minus_nsegments_genestrand_5[genestrand],
-					      oligoindices_major,noligoindices_major,
-					      oligoindices_minor,noligoindices_minor,
-					      pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					      user_maxlevel_5,genestrand);
+					      oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					      user_maxlevel_5,genestrand,/*first_read_p*/true);
 
       missing_hit = querylength5 - Stage3end_nmatches(hit5);
       for (b = gmap5_hits; b != NULL; b = List_next(b)) {
@@ -13621,10 +14283,10 @@ align_pair_with_gmap (Pairtype_T *final_pairtype, List_T result,
 					       plus_nsegments_genestrand_5[genestrand],
 					       minus_segments_genestrand_5[genestrand],
 					       minus_nsegments_genestrand_5[genestrand],
-					       oligoindices_major,noligoindices_major,
-					       oligoindices_minor,noligoindices_minor,
-					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					       pairmax,shortsplicedist,user_maxlevel_5,genestrand);
+					       oligoindices_major,oligoindices_minor,
+					       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					       pairmax,shortsplicedist,user_maxlevel_5,genestrand,
+					       /*first_read_p*/true);
 
       missing_hit = querylength5 - Stage3end_nmatches(hit5);
       for (a = gmap5_hits; a != NULL; a = List_next(a)) {
@@ -13684,10 +14346,9 @@ align_pair_with_gmap (Pairtype_T *final_pairtype, List_T result,
 					      plus_nsegments_genestrand_3[genestrand],
 					      minus_segments_genestrand_3[genestrand],
 					      minus_nsegments_genestrand_3[genestrand],
-					      oligoindices_major,noligoindices_major,
-					      oligoindices_minor,noligoindices_minor,
-					      pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					      user_maxlevel_3,genestrand);
+					      oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					      user_maxlevel_3,genestrand,/*first_read_p*/false);
 
       missing_hit = querylength3 - Stage3end_nmatches(hit3);
       for (b = gmap3_hits; b != NULL; b = List_next(b)) {
@@ -13728,10 +14389,10 @@ align_pair_with_gmap (Pairtype_T *final_pairtype, List_T result,
 					       plus_nsegments_genestrand_3[genestrand],
 					       minus_segments_genestrand_3[genestrand],
 					       minus_nsegments_genestrand_3[genestrand],
-					       oligoindices_major,noligoindices_major,
-					       oligoindices_minor,noligoindices_minor,
-					       pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-					       pairmax,shortsplicedist,user_maxlevel_3,genestrand);
+					       oligoindices_major,oligoindices_minor,
+					       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					       pairmax,shortsplicedist,user_maxlevel_3,genestrand,
+					       /*first_read_p*/false);
 
       missing_hit = querylength3 - Stage3end_nmatches(hit3);
       for (b = gmap3_hits; b != NULL; b = List_next(b)) {
@@ -13961,9 +14622,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	    int querylength5, int querylength3, int query5_lastpos, int query3_lastpos,
 	    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int indexdb_size_threshold, Floors_T *floors_array,
 
-	    Oligoindex_T *oligoindices_major, int noligoindices_major,
-	    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-	    Pairpool_T pairpool, Diagpool_T diagpool,
+	    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+	    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 	    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 
 	    int user_maxlevel_5, int user_maxlevel_3, int subopt_levels,
@@ -13979,8 +14639,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
   List_T gmap5_hits, gmap3_hits, a;
   Stage3end_T hit5, hit3, gmap5, gmap3;
   List_T hitarray5[HITARRAY_N], hitarray3[HITARRAY_N];
-  List_T subs5 = NULL, indels5 = NULL, singlesplicing5 = NULL, doublesplicing5 = NULL, terminals5 = NULL;
-  List_T subs3 = NULL, indels3 = NULL, singlesplicing3 = NULL, doublesplicing3 = NULL, terminals3 = NULL;
+  List_T subs5 = NULL, indels5 = NULL, ambiguous5 = NULL, singlesplicing5 = NULL, doublesplicing5 = NULL, terminals5 = NULL;
+  List_T subs3 = NULL, indels3 = NULL, ambiguous3 = NULL, singlesplicing3 = NULL, doublesplicing3 = NULL, terminals3 = NULL;
   List_T longsinglesplicing5 = NULL, longsinglesplicing3 = NULL;
   int ignore_found_score, done_level_5, done_level_3, opt_level, fast_level_5, fast_level_3,
     mismatch_level_5, mismatch_level_3, nmismatches, max_mismatches_allowed;
@@ -14000,6 +14660,19 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
   int best_score_paired;
   bool found_terminals_p = false;
   int nconcordant = 0, nsamechr = 0;
+  Indexdb_T plus_indexdb_5, plus_indexdb_3, minus_indexdb_5, minus_indexdb_3;
+
+  if (genestrand == +2) {
+    plus_indexdb_5 = indexdb_rev;
+    plus_indexdb_3 = indexdb_fwd;
+    minus_indexdb_5 = indexdb_fwd;
+    minus_indexdb_3 = indexdb_rev;
+  } else {
+    plus_indexdb_5 = indexdb_fwd;
+    plus_indexdb_3 = indexdb_rev;
+    minus_indexdb_5 = indexdb_rev;
+    minus_indexdb_3 = indexdb_fwd;
+  }
 
 
   *samechr = (List_T) NULL;
@@ -14084,14 +14757,28 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #ifndef LARGE_GENOMES
   if (use_sarray_p == true) {
     /* Replaces spanning set */
-    Sarray_search_greedy(&ignore_found_score,&subs5,&indels5,&singlesplicing5,&doublesplicing5,
+    Sarray_search_greedy(&ignore_found_score,&subs5,&indels5,&ambiguous5,&singlesplicing5,&doublesplicing5,
 			 queryuc_ptr_5,queryrc5,querylength5,
 			 query5_compress_fwd,query5_compress_rev,/*nmisses_allowed*/fast_level_5,
-			 /*first_read_p*/true);
-    Sarray_search_greedy(&ignore_found_score,&subs3,&indels3,&singlesplicing3,&doublesplicing3,
+			 genestrand,/*first_read_p*/true);
+    singlesplicing5 = Splice_group_by_segmenti(&ignore_found_score,singlesplicing5,&ambiguous5,querylength5,
+					       /*first_read_p*/true,/*sarrayp*/true);
+    singlesplicing5 = Splice_group_by_segmentj(&ignore_found_score,singlesplicing5,&ambiguous5,querylength5,
+					       /*first_read_p*/true,/*sarrayp*/true);
+    singlesplicing5 = List_append(singlesplicing5,ambiguous5);
+
+
+    Sarray_search_greedy(&ignore_found_score,&subs3,&indels3,&ambiguous3,&singlesplicing3,&doublesplicing3,
 			 queryuc_ptr_3,queryrc3,querylength3,
 			 query3_compress_fwd,query3_compress_rev,/*nmisses_allowed*/fast_level_3,
-			 /*first_read_p*/false);
+			 genestrand,/*first_read_p*/false);
+    singlesplicing3 = Splice_group_by_segmenti(&ignore_found_score,singlesplicing3,&ambiguous3,querylength3,
+					       /*first_read_p*/false,/*sarrayp*/true);
+    singlesplicing3 = Splice_group_by_segmentj(&ignore_found_score,singlesplicing3,&ambiguous3,querylength3,
+					       /*first_read_p*/false,/*sarrayp*/true);
+    singlesplicing3 = List_append(singlesplicing3,ambiguous3);
+
+
     hitarray5[HITARRAY_SUBS] = subs5 = Stage3end_remove_duplicates(subs5);
     hitarray3[HITARRAY_SUBS] = subs3 = Stage3end_remove_duplicates(subs3);
     hitarray5[HITARRAY_INDELS] = indels5 = Stage3end_remove_duplicates(indels5);
@@ -14167,8 +14854,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       debug(printf("fast_level_5 = %d\n",fast_level_5));
       debug(printf("*** Stage 1.  Exact ***\n"));
       ignore_found_score = *found_score;
-      subs5 = find_spanning_exact_matches(&ignore_found_score,&nhits5,subs5,this5,genestrand,
-					  querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,
+      subs5 = find_spanning_exact_matches(&ignore_found_score,&nhits5,subs5,this5,genestrand,/*first_read_p*/true,
+					  querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
 					  query5_compress_fwd,query5_compress_rev);
       mismatch_level_5 = 1;
     }
@@ -14182,8 +14869,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       debug(printf("fast_level_3 = %d\n",fast_level_3));
       debug(printf("*** Stage 1.  Exact ***\n"));
       ignore_found_score = *found_score;
-      subs3 = find_spanning_exact_matches(&ignore_found_score,&nhits3,subs3,this3,genestrand,
-					  querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,
+      subs3 = find_spanning_exact_matches(&ignore_found_score,&nhits3,subs3,this3,genestrand,/*first_read_p*/false,
+					  querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
 					  query3_compress_fwd,query3_compress_rev);
       mismatch_level_3 = 1;
     }
@@ -14226,8 +14913,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       debug(printf("*** Stage 2A.  One miss ***\n"));
       did_alignment_p = true;
       ignore_found_score = *found_score;
-      subs5 = find_spanning_onemiss_matches(&ignore_found_score,&nhits5,subs5,this5,genestrand,querylength5,
-					    query5_compress_fwd,query5_compress_rev);
+      subs5 = find_spanning_onemiss_matches(&ignore_found_score,&nhits5,subs5,this5,genestrand,/*first_read_p*/true,
+					    querylength5,query5_compress_fwd,query5_compress_rev);
       mismatch_level_5 = 2;
     }
 
@@ -14236,8 +14923,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       debug(printf("*** Stage 2B.  One miss ***\n"));
       did_alignment_p = true;
       ignore_found_score = *found_score;
-      subs3 = find_spanning_onemiss_matches(&ignore_found_score,&nhits3,subs3,this3,genestrand,querylength3,
-					    query3_compress_fwd,query3_compress_rev);
+      subs3 = find_spanning_onemiss_matches(&ignore_found_score,&nhits3,subs3,this3,genestrand,/*first_read_p*/false,
+					    querylength3,query3_compress_fwd,query3_compress_rev);
       mismatch_level_3 = 2;
     }
 
@@ -14287,8 +14974,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	debug(printf("*** Stage 3A (level %d).  Spanning set mismatches ***\n",mismatch_level_5));
 	did_alignment_p = true;
 	ignore_found_score = *found_score;
-	subs5 = find_spanning_multimiss_matches(&ignore_found_score,&nhits5,subs5,this5,genestrand,NREQUIRED_FAST,querylength5,
-						query5_compress_fwd,query5_compress_rev,
+	subs5 = find_spanning_multimiss_matches(&ignore_found_score,&nhits5,subs5,this5,genestrand,/*first_read_p*/true,
+						NREQUIRED_FAST,querylength5,query5_compress_fwd,query5_compress_rev,
 						/*nmisses_allowed*/mismatch_level_5);
 	mismatch_level_5++;
       }
@@ -14301,8 +14988,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 	debug(printf("*** Stage 3B (level %d).  Spanning set mismatches ***\n",mismatch_level_3));
 	did_alignment_p = true;
 	ignore_found_score = *found_score;
-	subs3 = find_spanning_multimiss_matches(&ignore_found_score,&nhits3,subs3,this3,genestrand,NREQUIRED_FAST,querylength3,
-						query3_compress_fwd,query3_compress_rev,
+	subs3 = find_spanning_multimiss_matches(&ignore_found_score,&nhits3,subs3,this3,genestrand,/*first_read_p*/true,
+						NREQUIRED_FAST,querylength3,query3_compress_fwd,query3_compress_rev,
 						/*nmisses_allowed*/mismatch_level_3);
 	mismatch_level_3++;
       }
@@ -14369,8 +15056,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 
 #if 1
     floors5 = compute_floors(&any_omitted_p_5,&alloc_floors_p_5,floors_array,this5,
-			     querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			     max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+			     querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+			     indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 			     keep_floors_p);
     floors5_computed_p = true;
     ignore_found_score = *found_score;
@@ -14383,7 +15070,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			   querylength5,query5_lastpos,floors5,subopt_levels,
 			   indel_penalty_middle,indel_penalty_end,
 			   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			   fast_level_5,genestrand);
+			   fast_level_5,genestrand,/*first_read_p*/true);
 
 #else
     /* Using obsolete masktype */
@@ -14396,12 +15083,12 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #if defined(DEBUG2) || defined(DEBUG2E)
 			     queryuc_ptr_5,queryrc5,
 #endif
-			     querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			     floors_array,subopt_levels,
+			     querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+			     indexdb_size_threshold,floors_array,subopt_levels,
 			     indel_penalty_middle,indel_penalty_end,
 			     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			     fast_level_5,/*omit_frequent_p*/false,/*omit_repetitive_p*/false,keep_floors_p,
-			     genestrand);
+			     genestrand,/*first_read_p*/true);
     } else {
       debug(printf("*** Stage 4A,5A.  Complete mm/indels masking frequent oligos with done_level %d ***\n",done_level_5));
       ignore_found_score = *found_score;
@@ -14411,13 +15098,13 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #if defined(DEBUG2) || defined(DEBUG2E)
 			     queryuc_ptr_5,queryrc5,
 #endif
-			     querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			     floors_array,subopt_levels,
+			     querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+			     indexdb_size_threshold,floors_array,subopt_levels,
 			     indel_penalty_middle,indel_penalty_end,
 			     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			     fast_level_5,/*omit_frequent_p*/true,
 			     /*omit_repetitive_p*/(masktype == MASK_REPETITIVE || masktype == MASK_GREEDY_REPETITIVE) ? true : false,
-			     keep_floors_p,genestrand);
+			     keep_floors_p,genestrand,/*first_read_p*/true);
       if ((masktype == MASK_GREEDY_FREQUENT || masktype == MASK_GREEDY_REPETITIVE) && subs5 == NULL && indels5 == NULL && any_omitted_p_5 == true) {
 	FREE(this->minus_segments_5);
 	FREE(this->plus_segments_5);
@@ -14431,12 +15118,12 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #if defined(DEBUG2) || defined(DEBUG2E)
 			       queryuc_ptr_5,queryrc5,
 #endif
-			       querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			       floors_array,subopt_levels,
+			       querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+			       indexdb_size_threshold,floors_array,subopt_levels,
 			       indel_penalty_middle,indel_penalty_end,
 			       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			       fast_level_5,/*omit_frequent_p*/false,/*omit_repetitive_p*/false,keep_floors_p,
-			       genestrand);
+			       genestrand,/*first_read_p*/true);
       }
     }
 #endif
@@ -14452,8 +15139,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 
 #if 1
     floors3 = compute_floors(&any_omitted_p_3,&alloc_floors_p_3,floors_array,this3,
-			     querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			     max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+			     querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+			     indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 			     keep_floors_p);
     floors3_computed_p = true;
     ignore_found_score = *found_score;
@@ -14466,7 +15153,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			   querylength3,query3_lastpos,floors3,subopt_levels,
 			   indel_penalty_middle,indel_penalty_end,
 			   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			   fast_level_3,genestrand);
+			   fast_level_3,genestrand,/*first_read_p*/false);
 
 #else
     if (masktype == MASK_NONE) {
@@ -14478,12 +15165,12 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #if defined(DEBUG2) || defined(DEBUG2E)
 			     queryrc3,
 #endif
-			     querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			     floors_array,subopt_levels,
+			     querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+			     indexdb_size_threshold,floors_array,subopt_levels,
 			     indel_penalty_middle,indel_penalty_end,
 			     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			     fast_level_3,/*omit_frequent_p*/false,/*omit_repetitive_p*/false,keep_floors_p,
-			     genestrand);
+			     genestrand,/*first_read_p*/false);
     } else {
       debug(printf("*** Stage 4B,5B.  Complete mm/indels masking frequent oligos with done_level %d ***\n",done_level_3));
       ignore_found_score = *found_score;
@@ -14493,13 +15180,13 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #if defined(DEBUG2) || defined(DEBUG2E)
 			     queryuc_ptr_3,queryrc3,
 #endif
-			     querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			     floors_array,subopt_levels,
+			     querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+			     indexdb_size_threshold,floors_array,subopt_levels,
 			     indel_penalty_middle,indel_penalty_end,
 			     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			     fast_level_3,/*omit_frequent_p*/true,
 			     /*omit_repetitive_p*/(masktype == MASK_REPETITIVE || masktype == MASK_GREEDY_REPETITIVE) ? true : false,
-			     keep_floors_p,genestrand);
+			     keep_floors_p,genestrand,/*first_read_p*/false);
       if ((masktype == MASK_GREEDY_FREQUENT || masktype == MASK_GREEDY_REPETITIVE) && subs3 == NULL && indels3 == NULL && any_omitted_p_3 == true) {
 	FREE(this->minus_segments_3);
 	FREE(this->plus_segments_3);
@@ -14513,12 +15200,12 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #if defined(DEBUG2) || defined(DEBUG2E)
 			       queryuc_ptr_3,queryrc3,
 #endif
-			       querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-			       floors_array,subopt_levels,
+			       querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+			       indexdb_size_threshold,floors_array,subopt_levels,
 			       indel_penalty_middle,indel_penalty_end,
 			       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			       fast_level_3,/*omit_frequent_p*/false,/*omit_repetitive_p*/false,keep_floors_p,
-			       genestrand);
+			       genestrand,/*first_read_p*/false);
       }
     }
 #endif
@@ -14596,8 +15283,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       /* Always mask frequent oligos for splicing, which must be transcriptional */
       if (floors5_computed_p == false) {
 	floors5 = compute_floors(&any_omitted_p_5,&alloc_floors_p_5,floors_array,this5,
-				 querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
 	floors5_computed_p = true;
       }
@@ -14629,7 +15316,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 						    querylength5,query5_lastpos,
 						    localsplicing_penalty,
 						    /*max_mismatches_allowed*/done_level_5 - localsplicing_penalty,
-						    /*first_read_p*/true,genestrand,
+						    genestrand,/*first_read_p*/true,
 						    /*subs_or_indels_p*/(subs5 != NULL || indels5 != NULL) ? true : false);
     }
   }
@@ -14647,8 +15334,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       /* Always mask frequent oligos for splicing, which must be transcriptional */
       if (floors3_computed_p == false) {
 	floors3 = compute_floors(&any_omitted_p_3,&alloc_floors_p_3,floors_array,this3,
-				 querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
 	floors3_computed_p = true;
       }
@@ -14680,7 +15367,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 						    querylength3,query3_lastpos,
 						    localsplicing_penalty,
 						    /*max_mismatches_allowed*/done_level_3 - localsplicing_penalty,
-						    /*first_read_p*/false,genestrand,
+						    genestrand,/*first_read_p*/false,
 						    /*subs_or_indels_p*/(subs3 != NULL || indels3 != NULL) ? true : false);
     }
   }
@@ -14735,8 +15422,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       debug(printf("*** Stage 7A.  Double splicing masking frequent oligos with done_level %d ***\n",done_level_5));
       if (floors5_computed_p == false) {
 	floors5 = compute_floors(&any_omitted_p_5,&alloc_floors_p_5,floors_array,this5,
-				 querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
 	floors5_computed_p = true;
       }
@@ -14746,7 +15433,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 						    queryuc_ptr_5,queryrc5,querylength5,query5_lastpos,
 						    localsplicing_penalty,min_shortend,
 						    /*max_mismatches_allowed*/done_level_5 - localsplicing_penalty,
-						    /*pairedp*/true,/*first_read_p*/true,genestrand,
+						    /*pairedp*/true,genestrand,/*first_read_p*/true,
 						    /*subs_or_indels_p*/(subs5 != NULL || indels5 != NULL) ? true : false);
     }
 
@@ -14754,8 +15441,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
       debug(printf("*** Stage 7B.  Double splicing masking frequent oligos with done_level %d ***\n",done_level_3));
       if (floors3_computed_p == false) {
 	floors3 = compute_floors(&any_omitted_p_3,&alloc_floors_p_3,floors_array,this3,
-				 querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
 	floors3_computed_p = true;
       }
@@ -14765,7 +15452,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 						    queryuc_ptr_3,queryrc3,querylength3,query3_lastpos,
 						    localsplicing_penalty,min_shortend,
 						    /*max_mismatches_allowed*/done_level_3 - localsplicing_penalty,
-						    /*pairedp*/true,/*first_read_p*/false,genestrand,
+						    /*pairedp*/true,genestrand,/*first_read_p*/false,
 						    /*subs_or_indels_p*/(subs3 != NULL || indels3 != NULL) ? true : false);
     }
     
@@ -14836,7 +15523,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			       queryuc_ptr_5,
 #endif
 			       floors5,querylength5,query5_lastpos,/*query_compress*/query5_compress_fwd,
-			       /*max_mismatches_allowed*/max_splice_mismatches_5,/*plusp*/true,genestrand);
+			       /*max_mismatches_allowed*/max_splice_mismatches_5,/*plusp*/true,genestrand,
+			       /*first_read_p*/true);
 
       find_spliceends_shortend(&antidonors_minus_5,&donors_minus_5,&antiacceptors_minus_5,&acceptors_minus_5,
 			       this5->minus_segments,this5->minus_nsegments,
@@ -14844,7 +15532,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			       /*queryptr*/queryrc5,
 #endif
 			       floors5,querylength5,query5_lastpos,/*query_compress*/query5_compress_rev,
-			       /*max_mismatches_allowed*/max_splice_mismatches_5,/*plusp*/false,genestrand);
+			       /*max_mismatches_allowed*/max_splice_mismatches_5,/*plusp*/false,genestrand,
+			       /*first_read_p*/true);
 
       ignore_found_score = *found_score;
       singlesplicing5 = find_splicepairs_shortend(&ignore_found_score,/*hits*/singlesplicing5,
@@ -14879,7 +15568,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			       queryuc_ptr_3,
 #endif
 			       floors3,querylength3,query3_lastpos,/*query_compress*/query3_compress_fwd,
-			       /*max_mismatches_allowed*/max_splice_mismatches_3,/*plusp*/true,genestrand);
+			       /*max_mismatches_allowed*/max_splice_mismatches_3,/*plusp*/true,genestrand,
+			       /*first_read_p*/false);
 
       find_spliceends_shortend(&antidonors_minus_3,&donors_minus_3,&antiacceptors_minus_3,&acceptors_minus_3,
 			       this3->minus_segments,this3->minus_nsegments,
@@ -14887,7 +15577,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			       /*queryptr*/queryrc3,
 #endif
 			       floors3,querylength3,query3_lastpos,/*query_compress*/query3_compress_rev,
-			       /*max_mismatches_allowed*/max_splice_mismatches_3,/*plusp*/false,genestrand);
+			       /*max_mismatches_allowed*/max_splice_mismatches_3,/*plusp*/false,genestrand,
+			       /*first_read_p*/false);
       
       ignore_found_score = *found_score;
       singlesplicing3 = find_splicepairs_shortend(&ignore_found_score,/*hits*/singlesplicing3,
@@ -15025,10 +15716,10 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 						     query3_compress_fwd,query3_compress_rev,
 						     this3->plus_segments,this3->plus_nsegments,this3->minus_segments,this3->minus_nsegments,
-						     oligoindices_major,noligoindices_major,
-						     oligoindices_minor,noligoindices_minor,
-						     pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						     pairmax,shortsplicedist,user_maxlevel_5,genestrand);
+						     oligoindices_major,oligoindices_minor,
+						     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+						     pairmax,shortsplicedist,user_maxlevel_5,genestrand,
+						     /*first_read_p*/false);
 	    for (a = gmap3_hits; a != NULL; a = List_next(a)) {
 	      gmap3 = (Stage3end_T) List_head(a);
 	      debug13(printf("=> Successful pairsearch GMAP on hit3 with score %d and nmatches %d\n",
@@ -15095,10 +15786,10 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 						     query5_compress_fwd,query5_compress_rev,
 						     this5->plus_segments,this5->plus_nsegments,this5->minus_segments,this5->minus_nsegments,
-						     oligoindices_major,noligoindices_major,
-						     oligoindices_minor,noligoindices_minor,
-						     pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						     pairmax,shortsplicedist,user_maxlevel_5,genestrand);
+						     oligoindices_major,oligoindices_minor,
+						     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+						     pairmax,shortsplicedist,user_maxlevel_5,genestrand,
+						     /*first_read_p*/true);
 	    for (a = gmap5_hits; a != NULL; a = List_next(a)) {
 	      gmap5 = (Stage3end_T) List_head(a);
 	      debug13(printf("=> Successful pairsearch GMAP on hit5 with score %d and nmatches %d\n",
@@ -15180,7 +15871,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			      /*queryptr*/queryuc_ptr_5,
 #endif
 			      floors5,querylength5,query5_lastpos,/*query_compress*/query5_compress_fwd,
-			      max_splice_mismatches_5,/*plusp*/true,genestrand);
+			      max_splice_mismatches_5,/*plusp*/true,genestrand,/*first_read_p*/true);
       debug(printf("Finished find_spliceends (plus)\n"));
 
       debug(printf("Starting find_spliceends (minus)\n"));
@@ -15190,7 +15881,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			      /*queryptr*/queryrc5,
 #endif
 			      floors5,querylength5,query5_lastpos,/*query_compress*/query5_compress_rev,
-			      max_splice_mismatches_5,/*plusp*/false,genestrand);
+			      max_splice_mismatches_5,/*plusp*/false,genestrand,/*first_read_p*/true);
       debug(printf("Finished find_spliceends (minus)\n"));
 
 
@@ -15277,7 +15968,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			      /*queryptr*/queryuc_ptr_3,
 #endif
 			      floors3,querylength3,query3_lastpos,/*query_compress*/query3_compress_fwd,
-			      max_splice_mismatches_3,/*plusp*/true,genestrand);
+			      max_splice_mismatches_3,/*plusp*/true,genestrand,/*first_read_p*/false);
       debug(printf("Finished find_spliceends (plus)\n"));
 
       debug(printf("Starting find_spliceends (minus)\n"));
@@ -15287,7 +15978,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 			      /*queryptr*/queryrc3,
 #endif
 			      floors3,querylength3,query3_lastpos,/*query_compress*/query3_compress_rev,
-			      max_splice_mismatches_3,/*plusp*/false,genestrand);
+			      max_splice_mismatches_3,/*plusp*/false,genestrand,/*first_read_p*/false);
       debug(printf("Finished find_spliceends (minus)\n"));
 
       /* 10B.  Distant splicing */
@@ -15394,8 +16085,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 		   done_level_5,terminal_threshold));
       if (floors5_computed_p == false) {
 	floors5 = compute_floors(&any_omitted_p_5,&alloc_floors_p_5,floors_array,this5,
-				 querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
       }
 
@@ -15425,7 +16116,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 				  floors5,querylength5,query5_lastpos,
 				  query5_compress_fwd,query5_compress_rev,
-				  max_mismatches_allowed,genestrand);
+				  max_mismatches_allowed,genestrand,/*first_read_p*/true);
 #if 0
       *hits5 = Stage3end_remove_overlaps(List_append(*hits5,terminals5),/*finalp*/false);
 #endif
@@ -15438,8 +16129,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 
       if (floors3_computed_p == false) {
 	floors3 = compute_floors(&any_omitted_p_3,&alloc_floors_p_3,floors_array,this3,
-				 querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
       }
       if (segments3_computed_p == false) {
@@ -15468,7 +16159,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 				  floors3,querylength3,query3_lastpos,
 				  query3_compress_fwd,query3_compress_rev,
-				  max_mismatches_allowed,genestrand);
+				  max_mismatches_allowed,genestrand,/*first_read_p*/false);
 #if 0
       *hits3 = Stage3end_remove_overlaps(List_append(*hits3,terminals3),/*finalp*/false);
 #endif
@@ -15519,8 +16210,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 		   done_level_5,terminal_threshold));
       if (floors5_computed_p == false) {
 	floors5 = compute_floors(&any_omitted_p_5,&alloc_floors_p_5,floors_array,this5,
-				 querylength5,query5_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength5,query5_lastpos,plus_indexdb_5,minus_indexdb_5,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
       }
 
@@ -15550,7 +16241,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 				  floors5,querylength5,query5_lastpos,
 				  query5_compress_fwd,query5_compress_rev,
-				  max_mismatches_allowed,genestrand);
+				  max_mismatches_allowed,genestrand,/*first_read_p*/true);
 #if 0
       *hits5 = Stage3end_remove_overlaps(List_append(*hits5,terminals5),/*finalp*/false);
 #endif
@@ -15563,8 +16254,8 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 		   done_level_3,terminal_threshold));
       if (floors3_computed_p == false) {
 	floors3 = compute_floors(&any_omitted_p_3,&alloc_floors_p_3,floors_array,this3,
-				 querylength3,query3_lastpos,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
-				 max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
+				 querylength3,query3_lastpos,plus_indexdb_3,minus_indexdb_3,
+				 indexdb_size_threshold,max_end_insertions,/*omit_frequent_p*/true,/*omit_repetitive_p*/true,
 				 keep_floors_p);
       }
       if (segments3_computed_p == false) {
@@ -15593,7 +16284,7 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 				  floors3,querylength3,query3_lastpos,
 				  query3_compress_fwd,query3_compress_rev,
-				  max_mismatches_allowed,genestrand);
+				  max_mismatches_allowed,genestrand,/*first_read_p*/false);
 #if 0
       *hits3 = Stage3end_remove_overlaps(List_append(*hits3,terminals3),/*finalp*/false);
 #endif
@@ -15672,10 +16363,10 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 						 query3_compress_fwd,query3_compress_rev,
 						 this3->plus_segments,this3->plus_nsegments,this3->minus_segments,this3->minus_nsegments,
-						 oligoindices_major,noligoindices_major,
-						 oligoindices_minor,noligoindices_minor,
-						 pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						 pairmax,shortsplicedist,user_maxlevel_3,genestrand);
+						 oligoindices_major,oligoindices_minor,
+						 pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+						 pairmax,shortsplicedist,user_maxlevel_3,genestrand,
+						 /*first_read_p*/false);
 
 	for (a = gmap3_hits; a != NULL; a = List_next(a)) {
 	  gmap3 = (Stage3end_T) List_head(a);
@@ -15719,10 +16410,10 @@ align_pair (bool *abort_pairing_p, int *found_score, int *cutoff_level_5, int *c
 #endif
 						 query5_compress_fwd,query5_compress_rev,
 						 this5->plus_segments,this5->plus_nsegments,this5->minus_segments,this5->minus_nsegments,
-						 oligoindices_major,noligoindices_major,
-						 oligoindices_minor,noligoindices_minor,
-						 pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-						 pairmax,shortsplicedist,user_maxlevel_5,genestrand);
+						 oligoindices_major,oligoindices_minor,
+						 pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+						 pairmax,shortsplicedist,user_maxlevel_5,genestrand,
+						 /*first_read_p*/true);
 	for (a = gmap5_hits; a != NULL; a = List_next(a)) {
 	  gmap5 = (Stage3end_T) List_head(a);
 	  debug13(printf("=> Successful terminal GMAP on hit5 %p with score %d and nmatches %d.  Copying hit3 %p\n",
@@ -15880,9 +16571,8 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, 
 		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-		    Oligoindex_T *oligoindices_major, int noligoindices_major,
-		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		    Pairpool_T pairpool, Diagpool_T diagpool,
+		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    bool keep_floors_p, int genestrand) {
   List_T singlehits5, singlehits3;
@@ -15890,21 +16580,22 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, 
   bool allvalidp5, allvalidp3;
 
   /* Re-align 5' end as a single end */
-  if (read_oligos(&allvalidp5,this5,queryuc_ptr_5,querylength5,query5_lastpos,genestrand) == 0) {
+  if (read_oligos(&allvalidp5,this5,queryuc_ptr_5,querylength5,query5_lastpos,genestrand,
+		  /*first_read_p*/true) == 0) {
     debug(printf("Aborting because no hits found anywhere\n"));
     singlehits5 = (List_T) NULL;
   } else {
     singlehits5 = align_end(&cutoff_level_5,gmap_history_5,this5,
 			    query5_compress_fwd,query5_compress_rev,
 			    queryuc_ptr_5,queryrc5,querylength5,query5_lastpos,
-			    indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
-			    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			    indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			    floors_array,oligoindices_major,oligoindices_minor,
+			    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			    user_maxlevel_5,subopt_levels,
 			    indel_penalty_middle,indel_penalty_end,
 			    localsplicing_penalty,distantsplicing_penalty,min_shortend,
 			    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			    allvalidp5,keep_floors_p,genestrand);
+			    allvalidp5,keep_floors_p,genestrand,/*first_read_p*/true);
   }
 
   if ((*nhits5 = List_length(singlehits5)) == 0) {
@@ -15918,21 +16609,22 @@ realign_separately (Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, 
   }
 
   /* Re-align 3' end as a single end */
-  if (read_oligos(&allvalidp3,this3,queryuc_ptr_3,querylength3,query3_lastpos,genestrand) == 0) {
+  if (read_oligos(&allvalidp3,this3,queryuc_ptr_3,querylength3,query3_lastpos,genestrand,
+		  /*first_read_p*/false) == 0) {
     debug(printf("Aborting because no hits found anywhere\n"));
     singlehits3 = (List_T) NULL;
   } else {
     singlehits3 = align_end(&cutoff_level_3,gmap_history_3,this3,
 			    query3_compress_fwd,query3_compress_rev,
 			    queryuc_ptr_3,queryrc3,querylength3,query3_lastpos,
-			    indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
-			    oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			    indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			    floors_array,oligoindices_major,oligoindices_minor,
+			    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			    user_maxlevel_3,subopt_levels,
 			    indel_penalty_middle,indel_penalty_end,
 			    localsplicing_penalty,distantsplicing_penalty,min_shortend,
 			    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			    allvalidp3,keep_floors_p,genestrand);
+			    allvalidp3,keep_floors_p,genestrand,/*first_read_p*/false);
   }
 
   if ((*nhits3 = List_length(singlehits3)) == 0) {
@@ -15966,9 +16658,8 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 			    Shortread_T queryseq3, char *queryuc_ptr_3, char *quality_string_3, int querylength3, int query3_lastpos,
 			    Genome_T genome, int subopt_levels, int cutoff_level_5, int cutoff_level_3,
 			    int localsplicing_penalty,
-			    Oligoindex_T *oligoindices_major, int noligoindices_major,
-			    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-			    Pairpool_T pairpool, Diagpool_T diagpool,
+			    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+			    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 			    Chrpos_T pairmax, int user_maxlevel_5, int user_maxlevel_3) {
   Stage3pair_T *stage3pairarray, stage3pair, newpair;
@@ -16045,9 +16736,8 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 				    queryseq5,queryseq3,queryuc_ptr_5,queryuc_ptr_3,
 				    querylength5,querylength3,query5_lastpos,query3_lastpos,
 				    localsplicing_penalty,
-				    oligoindices_major,noligoindices_major,
-				    oligoindices_minor,noligoindices_minor,
-				    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				    oligoindices_major,oligoindices_minor,
+				    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				    pairmax,user_maxlevel_5,user_maxlevel_3,cutoff_level_5,cutoff_level_3,
 				    /*pairtype*/CONCORDANT,/*expect_concordant_p*/true,
 				    /*redo_for_sense_p*/false);
@@ -16062,9 +16752,8 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 				      queryseq5,queryseq3,queryuc_ptr_5,queryuc_ptr_3,
 				      querylength5,querylength3,query5_lastpos,query3_lastpos,
 				      localsplicing_penalty,
-				      oligoindices_major,noligoindices_major,
-				      oligoindices_minor,noligoindices_minor,
-				      pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				      oligoindices_major,oligoindices_minor,
+				      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				      pairmax,user_maxlevel_5,user_maxlevel_3,cutoff_level_5,cutoff_level_3,
 				      /*pairtype*/CONCORDANT,/*expect_concordant_p*/true,
 				      /*redo_for_sense_p*/true);
@@ -16138,9 +16827,8 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 				    queryseq5,queryseq3,queryuc_ptr_5,queryuc_ptr_3,
 				    querylength5,querylength3,query5_lastpos,query3_lastpos,
 				    localsplicing_penalty,
-				    oligoindices_major,noligoindices_major,
-				    oligoindices_minor,noligoindices_minor,
-				    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				    oligoindices_major,oligoindices_minor,
+				    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				    pairmax,user_maxlevel_5,user_maxlevel_3,cutoff_level_5,cutoff_level_3,
 				    /*pairtype*/PAIRED_UNSPECIFIED,/*expect_concordant_p*/false,
 				    /*redo_for_sense_p*/false);
@@ -16262,9 +16950,8 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 				    queryseq5,queryseq3,queryuc_ptr_5,queryuc_ptr_3,
 				    querylength5,querylength3,query5_lastpos,query3_lastpos,
 				    localsplicing_penalty,
-				    oligoindices_major,noligoindices_major,
-				    oligoindices_minor,noligoindices_minor,
-				    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				    oligoindices_major,oligoindices_minor,
+				    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				    pairmax,user_maxlevel_5,user_maxlevel_3,cutoff_level_5,cutoff_level_3,
 				    /*pairtype*/CONCORDANT,/*expect_concordant_p*/true,
 				    /*redo_for_sense_p*/false);
@@ -16279,9 +16966,8 @@ consolidate_paired_results (int *npaths, int *first_absmq, int *second_absmq, Pa
 				      queryseq5,queryseq3,queryuc_ptr_5,queryuc_ptr_3,
 				      querylength5,querylength3,query5_lastpos,query3_lastpos,
 				      localsplicing_penalty,
-				      oligoindices_major,noligoindices_major,
-				      oligoindices_minor,noligoindices_minor,
-				      pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				      oligoindices_major,oligoindices_minor,
+				      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				      pairmax,user_maxlevel_5,user_maxlevel_3,cutoff_level_5,cutoff_level_3,
 				      /*pairtype*/CONCORDANT,/*expect_concordant_p*/true,
 				      /*redo_for_sense_p*/true);
@@ -16477,9 +17163,8 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
 	     int indel_penalty_middle, int indel_penalty_end,
 	     bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 	     int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-	     Oligoindex_T *oligoindices_major, int noligoindices_major,
-	     Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-	     Pairpool_T pairpool, Diagpool_T diagpool,
+	     Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+	     Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 	     Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 	     Chrpos_T pairmax, bool keep_floors_p) {
   Stage3pair_T *stage3pairarray;
@@ -16546,7 +17231,8 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
       user_maxlevel_3 = 0;
     }
 
-    noligos3 = read_oligos(&allvalidp3,this3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/0);
+    noligos3 = read_oligos(&allvalidp3,this3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/0,
+			   /*first_read_p*/false);
     if (noligos3 == 0) {
       debug(printf("Aborting because no hits found anywhere\n"));
       Stage1_free(&this3,querylength3);
@@ -16564,14 +17250,14 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
       hits3 = align_end(&cutoff_level_3,gmap_history_3,this3,
 			query3_compress_fwd,query3_compress_rev,
 			queryuc_ptr_3,queryrc3,querylength3,query3_lastpos,
-			indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			floors_array,oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			user_maxlevel_3,subopt_levels,
 			indel_penalty_middle,indel_penalty_end,
 			localsplicing_penalty,distantsplicing_penalty,min_shortend,
 			allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			allvalidp3,keep_floors_p,/*genestrand*/0);
+			allvalidp3,keep_floors_p,/*genestrand*/0,/*first_read_p*/false);
 
       if ((*nhits3 = List_length(hits3)) == 0) {
 	*stage3array3 = (Stage3end_T *) NULL;
@@ -16616,7 +17302,8 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
       user_maxlevel_5 = 0;
     }
 
-    noligos5 = read_oligos(&allvalidp5,this5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/0);
+    noligos5 = read_oligos(&allvalidp5,this5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/0,
+			   /*first_read_p*/true);
     if (noligos5 == 0) {
       debug(printf("Aborting because no hits found anywhere\n"));
       Stage1_free(&this5,querylength5);
@@ -16634,14 +17321,14 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
       hits5 = align_end(&cutoff_level_5,gmap_history_5,this5,
 			query5_compress_fwd,query5_compress_rev,
 			queryuc_ptr_5,queryrc5,querylength5,query5_lastpos,
-			indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
-			oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+			floors_array,oligoindices_major,oligoindices_minor,
+			pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			user_maxlevel_5,subopt_levels,
 			indel_penalty_middle,indel_penalty_end,
 			localsplicing_penalty,distantsplicing_penalty,min_shortend,
 			allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-			allvalidp5,keep_floors_p,/*genestrand*/0);
+			allvalidp5,keep_floors_p,/*genestrand*/0,/*first_read_p*/true);
 
       if ((*nhits5 = List_length(hits5)) == 0) {
 	*stage3array5 = (Stage3end_T *) NULL;
@@ -16688,8 +17375,10 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
       user_maxlevel_3 = 0;
     }
 
-    noligos5 = read_oligos(&allvalidp5,this5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/0);
-    noligos3 = read_oligos(&allvalidp3,this3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/0);
+    noligos5 = read_oligos(&allvalidp5,this5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/0,
+			   /*first_read_p*/true);
+    noligos3 = read_oligos(&allvalidp3,this3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/0,
+			   /*first_read_p*/false);
     if (noligos5 == 0 && noligos3 == 0) {
       debug(printf("Aborting because no hits found anywhere\n"));
       Stage1_free(&this3,querylength3);
@@ -16717,9 +17406,8 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
 			    querylength5,querylength3,query5_lastpos,query3_lastpos,
 			    indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
 
-			    oligoindices_major,noligoindices_major,
-			    oligoindices_minor,noligoindices_minor,
-			    pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			    oligoindices_major,oligoindices_minor,
+			    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 
 			    user_maxlevel_5,user_maxlevel_3,subopt_levels,
 			    indel_penalty_middle,indel_penalty_end,
@@ -16746,8 +17434,8 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
 			   indel_penalty_middle,indel_penalty_end,
 			   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			   localsplicing_penalty,distantsplicing_penalty,min_shortend,
-			   oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			   pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			   oligoindices_major,oligoindices_minor,
+			   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			   keep_floors_p,/*genestrand*/0);
 
 	*npaths = 0;
@@ -16775,8 +17463,8 @@ paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T *final
 				     queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
 				     genome,subopt_levels,cutoff_level_5,cutoff_level_3,
 				     localsplicing_penalty,
-				     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				     pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
+				     oligoindices_major,oligoindices_minor,
+				     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
 
 	History_free(&gmap_history_3);
 	History_free(&gmap_history_5);
@@ -16798,15 +17486,14 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 				  Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, int *second_absmq5,
 				  Stage3end_T **stage3array3, int *nhits3, int *first_absmq3, int *second_absmq3,
 				  Shortread_T queryseq5, Shortread_T queryseq3,
-				  Indexdb_T indexdb_geneplus, Indexdb_T indexdb_geneminus, int indexdb_size_threshold,
+				  Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int indexdb_size_threshold,
 				  Genome_T genome, Floors_T *floors_array,
 				  double user_maxlevel_float, int subopt_levels,
 				  int indel_penalty_middle, int indel_penalty_end,
 				  bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 				  int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-				  Oligoindex_T *oligoindices_major, int noligoindices_major,
-				  Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-				  Pairpool_T pairpool, Diagpool_T diagpool,
+				  Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+				  Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 				  Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 				  Chrpos_T pairmax, bool keep_floors_p) {
   Stage3pair_T *stage3pairarray;
@@ -16888,36 +17575,38 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
     gmap_history_3 = History_new();
     make_complement_buffered(queryrc3,queryuc_ptr_3,querylength3);
 
-    if (read_oligos(&allvalidp3,this_geneplus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+1) == 0) {
+    if (read_oligos(&allvalidp3,this_geneplus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+1,
+		    /*first_read_p*/false) == 0) {
       hits_geneplus_3 = (List_T) NULL;
     } else {
       hits_geneplus_3 = align_end(&cutoff_level_3,gmap_history_3,this_geneplus_3,
 				  query3_compress_fwd,query3_compress_rev,
 				  queryuc_ptr_3,queryrc3,querylength3,query3_lastpos,
-				  indexdb_geneplus,indexdb_geneplus,indexdb_size_threshold,floors_array,
-				  oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				  pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				  indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+				  floors_array,oligoindices_major,oligoindices_minor,
+				  pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				  user_maxlevel_3,subopt_levels,
 				  indel_penalty_middle,indel_penalty_end,
 				  localsplicing_penalty,distantsplicing_penalty,min_shortend,
 				  allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				  allvalidp3,keep_floors_p,/*genestrand*/+1);
+				  allvalidp3,keep_floors_p,/*genestrand*/+1,/*first_read_p*/false);
     }
 
-    if (read_oligos(&allvalidp3,this_geneminus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+2) == 0) {
+    if (read_oligos(&allvalidp3,this_geneminus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+2,
+		    /*first_read_p*/false) == 0) {
       hits_geneminus_3 = (List_T) NULL;
     } else {
       hits_geneminus_3 = align_end(&cutoff_level_3,gmap_history_3,this_geneminus_3,
-				  query3_compress_fwd,query3_compress_rev,
-				  queryuc_ptr_3,queryrc3,querylength3,query3_lastpos,
-				  indexdb_geneminus,indexdb_geneminus,indexdb_size_threshold,floors_array,
-				  oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				  pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-				  user_maxlevel_3,subopt_levels,
-				  indel_penalty_middle,indel_penalty_end,
-				  localsplicing_penalty,distantsplicing_penalty,min_shortend,
-				  allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				  allvalidp3,keep_floors_p,/*genestrand*/+2);
+				   query3_compress_fwd,query3_compress_rev,
+				   queryuc_ptr_3,queryrc3,querylength3,query3_lastpos,
+				   indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+				   floors_array,oligoindices_major,oligoindices_minor,
+				   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+				   user_maxlevel_3,subopt_levels,
+				   indel_penalty_middle,indel_penalty_end,
+				   localsplicing_penalty,distantsplicing_penalty,min_shortend,
+				   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
+				   allvalidp3,keep_floors_p,/*genestrand*/+2,/*first_read_p*/false);
     }
 
     hits3 = List_append(hits_geneplus_3,hits_geneminus_3);
@@ -16972,36 +17661,38 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
     gmap_history_5 = History_new();
     make_complement_buffered(queryrc5,queryuc_ptr_5,querylength5);
 
-    if (read_oligos(&allvalidp5,this_geneplus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+1) == 0) {
+    if (read_oligos(&allvalidp5,this_geneplus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+1,
+		    /*first_read_p*/true) == 0) {
       hits_geneplus_5 = (List_T) NULL;
     } else {
       hits_geneplus_5 = align_end(&cutoff_level_5,gmap_history_5,this_geneplus_5,
 				  query5_compress_fwd,query5_compress_rev,
 				  queryuc_ptr_5,queryrc5,querylength5,query5_lastpos,
-				  indexdb_geneplus,indexdb_geneplus,indexdb_size_threshold,floors_array,
-				  oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				  pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				  indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+				  floors_array,oligoindices_major,oligoindices_minor,
+				  pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 				  user_maxlevel_5,subopt_levels,
 				  indel_penalty_middle,indel_penalty_end,
 				  localsplicing_penalty,distantsplicing_penalty,min_shortend,
 				  allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				  allvalidp5,keep_floors_p,/*genestrand*/+1);
+				  allvalidp5,keep_floors_p,/*genestrand*/+1,/*first_read_p*/true);
     }
 
-    if (read_oligos(&allvalidp5,this_geneminus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+2) == 0) {
+    if (read_oligos(&allvalidp5,this_geneminus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+2,
+		    /*first_read_p*/true) == 0) {
       hits_geneminus_5 = (List_T) NULL;
     } else {
       hits_geneminus_5 = align_end(&cutoff_level_5,gmap_history_5,this_geneminus_5,
-				  query5_compress_fwd,query5_compress_rev,
-				  queryuc_ptr_5,queryrc5,querylength5,query5_lastpos,
-				  indexdb_geneminus,indexdb_geneminus,indexdb_size_threshold,floors_array,
-				  oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				  pairpool,diagpool,dynprogL,dynprogM,dynprogR,
-				  user_maxlevel_5,subopt_levels,
-				  indel_penalty_middle,indel_penalty_end,
-				  localsplicing_penalty,distantsplicing_penalty,min_shortend,
-				  allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				  allvalidp5,keep_floors_p,/*genestrand*/+2);
+				   query5_compress_fwd,query5_compress_rev,
+				   queryuc_ptr_5,queryrc5,querylength5,query5_lastpos,
+				   indexdb_fwd,indexdb_rev,indexdb_size_threshold,
+				   floors_array,oligoindices_major,oligoindices_minor,
+				   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+				   user_maxlevel_5,subopt_levels,
+				   indel_penalty_middle,indel_penalty_end,
+				   localsplicing_penalty,distantsplicing_penalty,min_shortend,
+				   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
+				   allvalidp5,keep_floors_p,/*genestrand*/+2,/*first_read_p*/true);
     }
 
     hits5 = List_append(hits_geneplus_5,hits_geneminus_5);
@@ -17064,8 +17755,10 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
     make_complement_buffered(queryrc3,queryuc_ptr_3,querylength3);
 
     abort_pairing_p_geneplus = false;
-    noligos5 = read_oligos(&allvalidp5,this_geneplus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+1);
-    noligos3 = read_oligos(&allvalidp3,this_geneplus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+1);
+    noligos5 = read_oligos(&allvalidp5,this_geneplus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+1,
+			   /*first_read_p*/true);
+    noligos3 = read_oligos(&allvalidp3,this_geneplus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+1,
+			   /*first_read_p*/false);
 
     if (noligos5 == 0 && noligos3 == 0) {
       debug(printf("Aborting because no hits found anywhere\n"));
@@ -17080,11 +17773,10 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 				     query5_compress_fwd,query5_compress_rev,query3_compress_fwd,query3_compress_rev,
 				     queryuc_ptr_5,queryuc_ptr_3,queryrc5,queryrc3,
 				     querylength5,querylength3,query5_lastpos,query3_lastpos,
-				     indexdb_geneplus,indexdb_geneplus,indexdb_size_threshold,floors_array,
+				     indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
 
-				     oligoindices_major,noligoindices_major,
-				     oligoindices_minor,noligoindices_minor,
-				     pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				     oligoindices_major,oligoindices_minor,
+				     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 
 				     user_maxlevel_5,user_maxlevel_3,subopt_levels,
 				     indel_penalty_middle,indel_penalty_end,
@@ -17095,8 +17787,10 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
     }
 
     abort_pairing_p_geneminus = false;
-    noligos5 = read_oligos(&allvalidp5,this_geneminus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+2);
-    noligos3 = read_oligos(&allvalidp3,this_geneminus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+2);
+    noligos5 = read_oligos(&allvalidp5,this_geneminus_5,queryuc_ptr_5,querylength5,query5_lastpos,/*genestrand*/+2,
+			   /*first_read_p*/true);
+    noligos3 = read_oligos(&allvalidp3,this_geneminus_3,queryuc_ptr_3,querylength3,query3_lastpos,/*genestrand*/+2,
+			   /*first_read_p*/false);
 
     if (noligos5 == 0 && noligos3 == 0) {
       debug(printf("Aborting because no hits found anywhere\n"));
@@ -17111,11 +17805,10 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 				      query5_compress_fwd,query5_compress_rev,query3_compress_fwd,query3_compress_rev,
 				      queryuc_ptr_5,queryuc_ptr_3,queryrc5,queryrc3,
 				      querylength5,querylength3,query5_lastpos,query3_lastpos,
-				      indexdb_geneminus,indexdb_geneminus,indexdb_size_threshold,floors_array,
+				      indexdb_fwd,indexdb_rev,indexdb_size_threshold,floors_array,
 
-				      oligoindices_major,noligoindices_major,
-				      oligoindices_minor,noligoindices_minor,
-				      pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+				      oligoindices_major,oligoindices_minor,
+				      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 
 				      user_maxlevel_5,user_maxlevel_3,subopt_levels,
 				      indel_penalty_middle,indel_penalty_end,
@@ -17142,13 +17835,13 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 			   query5_compress_fwd,query5_compress_rev,query3_compress_fwd,query3_compress_rev,
 			   queryseq5,queryuc_ptr_5,queryrc5,quality_string_5,querylength5,query5_lastpos,
 			   queryseq3,queryuc_ptr_3,queryrc3,quality_string_3,querylength3,query3_lastpos,
-			   indexdb_geneplus,indexdb_geneplus,indexdb_size_threshold,genome,floors_array,
+			   indexdb_fwd,indexdb_rev,indexdb_size_threshold,genome,floors_array,
 			   user_maxlevel_5,user_maxlevel_3,subopt_levels,
 			   indel_penalty_middle,indel_penalty_end,
 			   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			   localsplicing_penalty,distantsplicing_penalty,min_shortend,
-			   oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			   pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			   oligoindices_major,oligoindices_minor,
+			   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			   keep_floors_p,/*genestrand*/+1);
 
 	*npaths = 0;
@@ -17187,8 +17880,8 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 				     queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
 				     genome,subopt_levels,cutoff_level_5,cutoff_level_3,
 				     localsplicing_penalty,
-				     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				     pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
+				     oligoindices_major,oligoindices_minor,
+				     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
 	History_free(&gmap_history_3);
 	History_free(&gmap_history_5);
 	Compress_free(&query5_compress_fwd);
@@ -17217,13 +17910,13 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 			   query5_compress_fwd,query5_compress_rev,query3_compress_fwd,query3_compress_rev,
 			   queryseq5,queryuc_ptr_5,queryrc5,quality_string_5,querylength5,query5_lastpos,
 			   queryseq3,queryuc_ptr_3,queryrc3,quality_string_3,querylength3,query3_lastpos,
-			   indexdb_geneminus,indexdb_geneminus,indexdb_size_threshold,genome,floors_array,
+			   indexdb_fwd,indexdb_rev,indexdb_size_threshold,genome,floors_array,
 			   user_maxlevel_5,user_maxlevel_3,subopt_levels,
 			   indel_penalty_middle,indel_penalty_end,
 			   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 			   localsplicing_penalty,distantsplicing_penalty,min_shortend,
-			   oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-			   pairpool,diagpool,dynprogL,dynprogM,dynprogR,
+			   oligoindices_major,oligoindices_minor,
+			   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
 			   keep_floors_p,/*genestrand*/+2);
 
 	*npaths = 0;
@@ -17262,8 +17955,8 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 				     queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
 				     genome,subopt_levels,cutoff_level_5,cutoff_level_3,
 				     localsplicing_penalty,
-				     oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				     pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
+				     oligoindices_major,oligoindices_minor,
+				     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
 	History_free(&gmap_history_3);
 	History_free(&gmap_history_5);
 	Compress_free(&query5_compress_fwd);
@@ -17315,8 +18008,8 @@ paired_read_tolerant_nonstranded (int *npaths, int *first_absmq, int *second_abs
 				   queryseq3,queryuc_ptr_3,quality_string_3,querylength3,query3_lastpos,
 				   genome,subopt_levels,cutoff_level_5,cutoff_level_3,
 				   localsplicing_penalty,
-				   oligoindices_major,noligoindices_major,oligoindices_minor,noligoindices_minor,
-				   pairpool,diagpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
+				   oligoindices_major,oligoindices_minor,
+				   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,pairmax,user_maxlevel_5,user_maxlevel_3);
       History_free(&gmap_history_3);
       History_free(&gmap_history_5);
       Compress_free(&query5_compress_fwd);
@@ -17338,15 +18031,14 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 		    Stage3end_T **stage3array5, int *nhits5, int *first_absmq5, int *second_absmq5,
 		    Stage3end_T **stage3array3, int *nhits3, int *first_absmq3, int *second_absmq3,
 		    Shortread_T queryseq5, Shortread_T queryseq3,
-		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
+		    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int indexdb_size_threshold,
 		    Genome_T genome, Floors_T *floors_array,
 		    double user_maxlevel_float, int subopt_levels,
 		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
-		    Oligoindex_T *oligoindices_major, int noligoindices_major,
-		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		    Pairpool_T pairpool, Diagpool_T diagpool,
+		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		    Chrpos_T pairmax, bool keep_floors_p) {
 
@@ -17354,26 +18046,24 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
     return paired_read(&(*npaths),&(*first_absmq),&(*second_absmq),&(*final_pairtype),
 		       &(*stage3array5),&(*nhits5),&(*first_absmq5),&(*second_absmq5),
 		       &(*stage3array3),&(*nhits3),&(*first_absmq3),&(*second_absmq3),
-		       queryseq5,queryseq3,/*indexdb_fwd*/indexdb,/*indexdb_rev*/indexdb2,indexdb_size_threshold,
+		       queryseq5,queryseq3,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
 		       genome,floors_array,user_maxlevel_float,subopt_levels,
 		       indel_penalty_middle,indel_penalty_end,
 		       allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 		       localsplicing_penalty,distantsplicing_penalty,min_shortend,
-		       oligoindices_major,noligoindices_major,
-		       oligoindices_minor,noligoindices_minor,pairpool,diagpool,
+		       oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
 		       dynprogL,dynprogM,dynprogR,pairmax,keep_floors_p);
 
   } else if (mode == CMET_NONSTRANDED || mode == ATOI_NONSTRANDED) {
     return paired_read_tolerant_nonstranded(&(*npaths),&(*first_absmq),&(*second_absmq),&(*final_pairtype),
 					    &(*stage3array5),&(*nhits5),&(*first_absmq5),&(*second_absmq5),
 					    &(*stage3array3),&(*nhits3),&(*first_absmq3),&(*second_absmq3),
-					    queryseq5,queryseq3,/*indexdb_geneplus*/indexdb,/*indexdb_geneminus*/indexdb2,indexdb_size_threshold,
+					    queryseq5,queryseq3,indexdb_fwd,indexdb_rev,indexdb_size_threshold,
 					    genome,floors_array,user_maxlevel_float,subopt_levels,
 					    indel_penalty_middle,indel_penalty_end,
 					    allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					    localsplicing_penalty,distantsplicing_penalty,min_shortend,
-					    oligoindices_major,noligoindices_major,
-					    oligoindices_minor,noligoindices_minor,pairpool,diagpool,
+					    oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
 					    dynprogL,dynprogM,dynprogR,pairmax,keep_floors_p);
   } else {
     fprintf(stderr,"Do not recognize mode %d\n",mode);

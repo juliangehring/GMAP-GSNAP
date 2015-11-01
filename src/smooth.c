@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c 115499 2013-11-19 01:10:07Z twu $";
+static char rcsid[] = "$Id: smooth.c 135447 2014-05-07 22:25:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -547,16 +547,16 @@ bad_intron_p (double donor_prob, double acceptor_prob, int intron_matches_left, 
 }
 
 
-struct Cell_T {
+struct Smoothcell_T {
   int exoni;
   double pvalue;
   int exonstatus;
 };
 
 static int
-Cell_cmp (const void *x, const void *y) {
-  struct Cell_T a = * (struct Cell_T *) x;
-  struct Cell_T b = * (struct Cell_T *) y;
+Smoothcell_cmp (const void *x, const void *y) {
+  struct Smoothcell_T a = * (struct Smoothcell_T *) x;
+  struct Smoothcell_T b = * (struct Smoothcell_T *) y;
 
   if (a.pvalue < b.pvalue) {
     return -1;
@@ -574,7 +574,7 @@ find_internal_bads_by_prob (bool *deletep, int *exonmatches, int *exon_denominat
 			    int *intron_matches_left, int *intron_denominator_left,
 			    int *intron_matches_right, int *intron_denominator_right,
 			    int total_matches, int total_denominator) {
-  struct Cell_T *cells;
+  struct Smoothcell_T *cells;
   int *exonstatus;
   int starti, startj, i, j;
   int exonlen;
@@ -587,7 +587,7 @@ find_internal_bads_by_prob (bool *deletep, int *exonmatches, int *exon_denominat
 
   *deletep = false;
   exonstatus = (int *) MALLOC(nexons * sizeof(int));
-  cells = (struct Cell_T *) MALLOC(nexons * sizeof(struct Cell_T));
+  cells = (struct Smoothcell_T *) MALLOC(nexons * sizeof(struct Smoothcell_T));
   for (i = 0; i < nexons; i++) {
     exonstatus[i] = KEEP;
     cells[i].exoni = i;
@@ -622,7 +622,7 @@ find_internal_bads_by_prob (bool *deletep, int *exonmatches, int *exon_denominat
     intron1_bad_p = intron2_bad_p;
   }
 
-  qsort(cells,nexons,sizeof(struct Cell_T),Cell_cmp);
+  qsort(cells,nexons,sizeof(struct Smoothcell_T),Smoothcell_cmp);
   i = 0;
   while (i < nexons && cells[i].pvalue < STRICT_EXON_PVALUE) {
     if (cells[i].exonstatus == DELETE) {

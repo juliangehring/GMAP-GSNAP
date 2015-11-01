@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c 129930 2014-03-13 03:29:20Z twu $";
+static char rcsid[] = "$Id: oligo.c 133760 2014-04-20 05:16:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1726,9 +1726,9 @@ oligo_revise (int *querypos, Storedoligomer_T *forward, Storedoligomer_T *revcom
     *forward = *revcomp = 0U;
     debug(
 	  if (cdnaend == FIVE) {
-	    printf("5' Revision: read terminating char %c\n",c);
+	    printf("5' Revision: read terminating char '0'\n");
 	  } else {
-	    printf("3' Revision: read terminating char %c\n",c);
+	    printf("3' Revision: read terminating char '0'\n");
 	  }
 	  );
     return DONE;
@@ -1782,9 +1782,9 @@ oligo_revise_dibase (int *querypos, Storedoligomer_T *forward, Storedoligomer_T 
     *forward = *revcomp = 0U;
     debug(
 	  if (cdnaend == FIVE) {
-	    printf("5' Revision: read terminating char %c\n",c);
+	    printf("5' Revision: read terminating char '0'\n");
 	  } else {
-	    printf("3' Revision: read terminating char %c\n",c);
+	    printf("3' Revision: read terminating char '0'\n");
 	  }
 	  );
     return DONE;

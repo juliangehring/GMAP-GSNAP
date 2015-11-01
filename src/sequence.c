@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 121509 2013-12-13 21:56:56Z twu $";
+static char rcsid[] = "$Id: sequence.c 132731 2014-04-08 21:19:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -207,6 +207,114 @@ Sequence_free (T *old) {
 }
 
 #ifdef PMAP
+static int aa_index_table[128] =
+  { -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  /*     *                                  */
+    -1, 20, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1,
+
+  /* A,  B,  C,  D,  E,  F,  G,  H,  I,  J, */
+     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
+
+  /* K,  L,  M,  N,  O,  P,  Q,  R,  S,  T  */
+     8,  9, 10, 11, -1, 12, 13, 14, 15, 16,
+
+  /* U,  V,  W,  X,  Y,  Z  */
+    21, 17, 18, -1, 19, -1,
+
+    -1, -1, -1, -1, -1, -1,
+
+  /* a,  b,  c,  d,  e,  f,  g,  h,  i,  j, */
+     0, -1,  1,  2,  3,  4,  5,  6,  7, -1,
+
+  /* k,  l,  m,  n,  o,  p,  q,  r,  s,  t  */
+     8,  9, 10, 11, -1, 12, 13, 14, 15, 16,
+
+  /* u,  v,  w,  x,  y,  z  */
+    21, 17, 18, -1, 19, -1,
+
+    -1, -1, -1, -1, -1};
+
+
+static char *iupac_table[21+1] =
+  {"GCN",			/* A */
+   "TGY",			/* C */
+   "GAY",			/* D */
+   "GAR",			/* E */
+   "TTY",			/* F */
+   "GGN",			/* G */
+   "CAY",			/* H */
+   "ATH",			/* I */
+   "AAR",			/* K */
+   "YTN",			/* L */
+   "ATG",			/* M */
+   "AAY",			/* N */
+   "CCN",			/* P */
+   "CAR",			/* Q */
+   "MGN",			/* R */
+   "WSN",			/* S */
+   "ACN",			/* T */
+   "GTN",			/* V */
+   "TGG",			/* W */
+   "TAY",			/* Y */
+   "TRR",			/* STOP */
+   "TGA"};			/* U */
+
+
+static char aa_table[21+1] = "ACDEFGHIKLMNPQRSTVWY*U";
+
+char
+Sequence_codon_char (char aa, int codonpos) {
+  int index;
+  char *codon;
+
+  if ((index = aa_index_table[(int) aa]) < 0) {
+    return 'N';
+  } else {
+    codon = iupac_table[index];
+    return codon[codonpos];
+  }
+}
+
+
+
+static char *
+instantiate_codons (char *aasequence, int ntlength) {
+  char *newntsequence;
+  int aapos, ntpos;
+  int index, frame;
+  char *codon, aa;
+
+  newntsequence = (char *) CALLOC(ntlength+1,sizeof(char));
+
+  for (ntpos = 0; ntpos < ntlength; ntpos++) {
+    aapos = (/*offset+*/ntpos)/3;
+	
+    aa = aasequence[aapos];
+    index = aa_index_table[(int) aa];
+    if (index < 0) {
+      newntsequence[ntpos] = 'N';
+    } else {
+      codon = iupac_table[index];
+
+      frame = (/*offset+*/ntpos) % 3;
+      newntsequence[ntpos] = codon[frame];
+    }
+  }
+
+#if 0
+  printf("New sequence: %s\n",newntsequence);
+#endif
+  return newntsequence;
+}
+
+
 T
 Sequence_convert_to_nucleotides (T this) {
   T new = (T) MALLOC_IN(sizeof(*new));
@@ -217,7 +325,7 @@ Sequence_convert_to_nucleotides (T this) {
   new->fulllength = this->fulllength*3;
   new->fulllength_given = this->fulllength_given*3;
   new->contents = new->contents_alloc =
-    Dynprog_instantiate_codons(/*aasequence*/this->contents,/*ntlength*/this->fulllength*3);
+    instantiate_codons(/*aasequence*/this->contents,/*ntlength*/this->fulllength*3);
 #if 0
   for (i = 0; i < new->fulllength; i++) {
     new->contents[i] = '?';

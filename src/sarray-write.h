@@ -1,43 +1,54 @@
-/* $Id: sarray-write.h 122381 2013-12-24 01:22:55Z twu $ */
+/* $Id: sarray-write.h 133760 2014-04-20 05:16:56Z twu $ */
 #ifndef SARRAY_WRITE_INCLUDED
 #define SARRAY_WRITE_INCLUDED
 #include "types.h"
 #include "genome.h"
 
+/* If conversion is NULL, then no conversion is performed */
 extern void
 Sarray_write_array (char *sarrayfile, Genome_T genomecomp, UINT4 genomelength);
 extern void
-Sarray_write_plcp (char *plcpptrsfile, char *plcpcompfile, char *sarrayfile,
-		   Genome_T genomecomp, UINT4 genomelength);
+Sarray_write_array_from_genome (char *sarrayfile, unsigned char *gbuffer, UINT4 genomelength);
+
 extern void
-Sarray_write_child (
-#ifdef USE_CHILD_BP
-		    char *childbpfile, char *childfcfile, char *childs_pagesfile, char *childs_ptrsfile, char *childs_compfile,
-		    char *childr_ptrsfile,  char *childr_compfile, char *childx_ptrsfile, char *childx_compfile,
-		    char *pioneerbpfile, char *pior_ptrsfile, char *pior_compfile,
-		    char *piom_ptrsfile, char *piom_compfile,
-#else
-		    char *childptrsfile, char *childcompfile, char *sanextpfile,
-#endif
-		    char *sarrayfile, char *plcpptrsfile, char *plcpcompfile, UINT4 genomelength);
+Sarray_write_index_separate (char *indexiptrsfile, char *indexicompfile, char *indexjptrsfile,char *indexjcompfile,
+			     char *sarrayfile, Genome_T genomecomp, UINT4 genomelength, bool compressp,
+			     char chartable[]);
+
 extern void
-Sarray_write_index (char *indexiptrsfile, char *indexicompfile, char *indexjptrsfile,char *indexjcompfile,
-		    char *sarrayfile, Genome_T genomecomp, UINT4 genomelength);
+Sarray_write_index_interleaved (char *indexptrsfile, char *indexcompfile,
+				char *sarrayfile, Genome_T genomecomp, UINT4 genomelength, bool compressp,
+				char chartable[]);
+
+extern UINT4 *
+Sarray_compute_lcp (UINT4 *SA, UINT4 n);
+extern UINT4 *
+Sarray_compute_lcp_from_genome (UINT4 *SA, unsigned char *gbuffer, UINT4 n);
+
+extern unsigned char *
+Sarray_discriminating_chars (UINT4 *nbytes, UINT4 *SA, Genome_T genome,
+			     unsigned char *lcp_bytes, UINT4 *lcp_guide, UINT4 *lcp_exceptions, int guide_interval,
+			     UINT4 n, char chartable[]);
+
+extern UINT4 *
+Sarray_compute_child (unsigned char *lcp_bytes, UINT4 *lcp_guide, UINT4 *lcp_exceptions, UINT4 n);
+
+
 extern void
 Sarray_array_uncompress (Genome_T genomecomp, char *sarrayfile, char *plcpptrsfile, char *plcpcompfile,
 			 UINT4 genomelength, UINT4 start, UINT4 end);
 
-#ifdef USE_CHILD_BP
-void
-Sarray_child_uncompress (char *childbpfile, char *childfcfile, char *childs_pagesfile, char *childs_ptrsfile, char *childs_compfile,
-			 char *childr_ptrsfile, char *childr_compfile, char *childx_ptrsfile, char *childx_compfile,
-			 char *pioneerbpfile, char *pior_ptrsfile, char *pior_compfile,
-			 char *piom_ptrsfile, char *piom_compfile, UINT4 genomelength, BP_size_t startl, BP_size_t endl);
-#else
 extern void
-Sarray_child_uncompress (Genome_T genomecomp, char *plcpptrsfile, char *plcpcompfile, char *childptrsfile, char *childcompfile,
-			 char *sanextpfile, char *sarrayfile, UINT4 genomelength, UINT4 start, UINT4 end);
-#endif
+Sarray_child_uncompress (Genome_T genomecomp, unsigned char *lcpchilddc, UINT4 *lcp_guide, UINT4 *lcp_exceptions,
+			 int n_lcp_exceptions, UINT4 *child_guide, UINT4 *child_exceptions, int n_child_exceptions,
+			 UINT4 *SA, UINT4 genomelength, UINT4 start, UINT4 end);
+
+extern void
+Sarray_child_test (char *sarrayfile,
+		   char *childbpfile, char *childs_pagesfile, char *childs_ptrsfile, char *childs_compfile,
+		   char *childr_ptrsfile, char *childr_compfile, char *childx_ptrsfile, char *childx_compfile,
+		   char *pioneerbpfile, char *pior_ptrsfile, char *pior_compfile,
+		   char *piom_ptrsfile, char *piom_compfile, UINT4 genomelength, int sampling_interval);
 
 #endif
 

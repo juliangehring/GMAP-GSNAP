@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stopwatch.c 43367 2011-07-21 20:47:54Z twu $";
+static char rcsid[] = "$Id: stopwatch.c 134892 2014-05-01 23:35:06Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,18 +6,26 @@ static char rcsid[] = "$Id: stopwatch.c 43367 2011-07-21 20:47:54Z twu $";
 #include "stopwatch.h"
 #include "mem.h"
 
+#define USE_POSIX_C_TIME 1
+
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For sysconf */
 #endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>		/* For sys/times.h under AT&T System V Interface */
 #endif
+
+#ifdef USE_POSIX_C_TIME
 #include <sys/times.h>
+#else
 #include <time.h>		/* For clock() */
+#endif
+
 
 #define T Stopwatch_T
 struct T {
-#if 1
+#ifdef USE_POSIX_C_TIME
   struct tms start;
   struct tms stop;
 #endif
@@ -42,7 +50,7 @@ Stopwatch_free (T *old) {
 void
 Stopwatch_start (T this) {
   if (this != NULL) {
-#if 1
+#ifdef USE_POSIX_C_TIME
     this->start_elapsed = times(&this->start);
 #else
     this->start_elapsed = clock();
@@ -56,12 +64,14 @@ Stopwatch_start (T this) {
    in "clock ticks per second", CLK_TCK */
 double 
 Stopwatch_stop (T this) {
+#ifdef USE_POSIX_C_TIME
   long clk_tck = sysconf(_SC_CLK_TCK);
+#endif
 
   if (this == NULL) {
     return 0.0;
   } else {
-#if 1
+#ifdef USE_POSIX_C_TIME
     this->stop_elapsed = times(&this->stop);
     /* user time is in stop.tms_utime */
     return (double) (this->stop_elapsed - this->start_elapsed)/(double) clk_tck;

@@ -1,4 +1,4 @@
-/* $Id: splice.h 131512 2014-03-26 16:27:22Z twu $ */
+/* $Id: splice.h 136085 2014-05-13 23:00:04Z twu $ */
 #ifndef SPLICE_INCLUDED
 #define SPLICE_INCLUDED
 #include "bool.h"
@@ -28,7 +28,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 		     int segmenti_donor_nknown, int segmentj_acceptor_nknown,
 		     int segmentj_antidonor_nknown, int segmenti_antiacceptor_nknown,
 		     int splicing_penalty, int max_mismatches_allowed,
-		     bool first_read_p, bool plusp, int genestrand, bool subs_or_indels_p, bool sarrayp);
+		     bool plusp, int genestrand, bool first_read_p,
+		     bool subs_or_indels_p, bool sarrayp);
 
 extern List_T
 Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
@@ -49,7 +50,16 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 		     int *segmentj_antidonor_knowni, int *segmentm_antiacceptor_knowni, int *segmentm_antidonor_knowni, int *segmenti_antiacceptor_knowni,
 		     int segmenti_donor_nknown, int segmentm_acceptor_nknown, int segmentm_donor_nknown, int segmentj_acceptor_nknown,
 		     int segmentj_antidonor_nknown, int segmentm_antiacceptor_nknown, int segmentm_antidonor_nknown, int segmenti_antiacceptor_nknown,
-		     int splicing_penalty, int max_mismatches_allowed, bool plusp, int genestrand, bool subs_or_indels_p, bool sarrayp);
+		     int splicing_penalty, int max_mismatches_allowed, bool plusp, int genestrand, bool first_read_p,
+		     bool subs_or_indels_p, bool sarrayp);
+
+extern List_T
+Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambiguous, 
+			  int querylength, bool first_read_p, bool sarrayp);
+
+extern List_T
+Splice_group_by_segmentj (int *found_score, List_T localsplicing, List_T *ambiguous, 
+			  int querylength, bool first_read_p, bool sarrayp);
 
 #endif
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress-write.c 101503 2013-07-15 18:26:20Z twu $";
+static char rcsid[] = "$Id: compress-write.c 132144 2014-04-02 16:02:28Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -567,6 +567,71 @@ Compress_unshuffle (FILE *out, FILE *in) {
     FWRITE_UINT(highbits,out);
     FWRITE_UINT(lowbits,out);
     FWRITE_UINT(flags,out);
+  }
+
+  return;
+}
+
+void
+Compress_unshuffle_bits128 (FILE *out, FILE *in) {
+  UINT4 high0, high1, high2, high3, low0, low1, low2, low3,
+    flags0, flags1, flags2, flags3;
+  UINT4 highbits0, highbits1, highbits2, highbits3,
+    lowbits0, lowbits1, lowbits2, lowbits3;
+
+  while (!feof(in)) {
+    if (FREAD_UINT(&high0,in) == 0 ||
+	FREAD_UINT(&low0,in) == 0 ||
+	FREAD_UINT(&flags0,in) == 0) {
+      highbits0 = -1U;
+      lowbits0 = -1U;
+      flags0 = -1U;
+    } else {
+      nt_unshuffle(&highbits0,&lowbits0,high0,low0);
+    }
+
+    if (FREAD_UINT(&high1,in) == 0 ||
+	FREAD_UINT(&low1,in) == 0 ||
+	FREAD_UINT(&flags1,in) == 0) {
+      highbits1 = -1U;
+      lowbits1 = -1U;
+      flags1 = -1U;
+    } else {
+      nt_unshuffle(&highbits1,&lowbits1,high1,low1);
+    }
+
+    if (FREAD_UINT(&high2,in) == 0 ||
+	FREAD_UINT(&low2,in) == 0 ||
+	FREAD_UINT(&flags2,in) == 0) {
+      highbits2 = -1U;
+      lowbits2 = -1U;
+      flags2 = -1U;
+    } else {
+      nt_unshuffle(&highbits2,&lowbits2,high2,low2);
+    }
+
+    if (FREAD_UINT(&high3,in) == 0 ||
+	FREAD_UINT(&low3,in) == 0 ||
+	FREAD_UINT(&flags3,in) == 0) {
+      highbits3 = -1U;
+      lowbits3 = -1U;
+      flags3 = -1U;
+    } else {
+      nt_unshuffle(&highbits3,&lowbits3,high3,low3);
+    }
+      
+    FWRITE_UINT(highbits0,out);
+    FWRITE_UINT(highbits1,out);
+    FWRITE_UINT(highbits2,out);
+    FWRITE_UINT(highbits3,out);
+    FWRITE_UINT(lowbits0,out);
+    FWRITE_UINT(lowbits1,out);
+    FWRITE_UINT(lowbits2,out);
+    FWRITE_UINT(lowbits3,out);
+    FWRITE_UINT(flags0,out);
+    FWRITE_UINT(flags1,out);
+    FWRITE_UINT(flags2,out);
+    FWRITE_UINT(flags3,out);
   }
 
   return;

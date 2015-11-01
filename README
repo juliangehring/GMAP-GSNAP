@@ -804,6 +804,21 @@ To prevent this flag, which cannot be handled by such programs (such
 as Cufflinks), use the --force-xs-dir flag.  However, this flag will
 merely change occurrences of XS:A:? arbitrarily to XS:A:+.
 
+XA: Indicates an ambiguous splice.  If GSNAP finds two or more
+possible splices at a given position, it will try to resolve the
+ambiguity if possible based on the other end of the paired-end read.
+If the ambiguity cannot be resolved, GSNAP will not report any of the
+splices, but will report a soft clip instead.  The XA field indicates
+which end or ends are ambiguous and the number of matches found on
+each ambiguous end, based on the output XA:Z:i,j.  If i or j is
+greater than 0, that indicates that the lower or higher chromosomal
+end is ambiguous, respectively.  The value given indicates the number
+of matches found in the ambiguous end.  This number may be smaller
+than the number of bases soft-clipped, due to mismatches.
+
+XC: Indicates whether the alignment crosses over the origin of a
+circular chromosome.  If so, the string XC:A:+ is printed.
+
 XT: Prints the intron dinucleotides and splice probabilities around a
 distant splicing event (genomic deletion, inversion, scramble, or
 translocation).

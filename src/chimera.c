@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c 131707 2014-03-27 23:34:08Z twu $";
+static char rcsid[] = "$Id: chimera.c 132706 2014-04-08 20:02:26Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -55,6 +55,9 @@ static char rcsid[] = "$Id: chimera.c 131707 2014-03-27 23:34:08Z twu $";
 
 #define T Chimera_T
 struct T {
+  Stage3_T from;
+  Stage3_T to;
+
   int chimerapos;
   int equivpos;
 
@@ -72,6 +75,17 @@ struct T {
   double donor_prob;
   double acceptor_prob;
 };
+
+
+Stage3_T
+Chimera_left_part (T this) {
+  return this->from;
+}
+
+Stage3_T
+Chimera_right_part (T this) {
+  return this->to;
+}
 
 
 int 
@@ -147,11 +161,15 @@ Chimera_acceptor_prob (T this) {
 
 
 T
-Chimera_new (int chimerapos, int chimeraequivpos, int exonexonpos, int cdna_direction,
+Chimera_new (Stage3_T from, Stage3_T to, int chimerapos, int chimeraequivpos,
+	     int exonexonpos, int cdna_direction,
 	     char donor1, char donor2, char acceptor2, char acceptor1,
 	     bool donor_watsonp, bool acceptor_watsonp,
 	     double donor_prob, double acceptor_prob) {
   T new = (T) MALLOC(sizeof(*new));
+
+  new->from = from;
+  new->to = to;
 
   new->chimerapos = chimerapos;
   new->equivpos = chimeraequivpos;

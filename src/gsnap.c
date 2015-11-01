@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 131708 2014-03-27 23:34:22Z twu $";
+static char rcsid[] = "$Id: gsnap.c 135779 2014-05-09 21:29:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -47,7 +47,7 @@ static char rcsid[] = "$Id: gsnap.c 131708 2014-03-27 23:34:22Z twu $";
 #include "shortread.h"		/* For Shortread_setup */
 #include "stopwatch.h"
 #include "genome.h"
-#include "genome_hr.h"		/* For Genome_hr_setup */
+#include "genome128_hr.h"	/* For Genome_hr_setup */
 #include "genome_sites.h"	/* For Genome_sites_setup */
 #include "maxent_hr.h"		/* For Maxent_hr_setup */
 #include "indexdb_hr.h"
@@ -56,15 +56,23 @@ static char rcsid[] = "$Id: gsnap.c 131708 2014-03-27 23:34:22Z twu $";
 #include "stage3hr.h"
 #include "goby.h"
 #include "spanningelt.h"
+#include "splicestringpool.h"
 #include "splicetrie_build.h"
-#include "splice.h"             /* For Splice_setup */
+#include "splice.h"		/* For Splice_setup */
 #include "oligo.h"		/* For Oligo_setup */
 #include "oligoindex_hr.h"	/* For Oligoindex_hr_setup */
+#include "pairpool.h"
+#include "diagpool.h"
+#include "cellpool.h"
 #include "stage2.h"		/* For Stage2_setup */
 #ifndef LARGE_GENOMES
 #include "sarray-read.h"
 #endif
 #include "indel.h"		/* For Indel_setup */
+#include "dynprog.h"
+#include "dynprog_single.h"
+#include "dynprog_genome.h"
+#include "dynprog_end.h"
 #include "stage1hr.h"
 #include "indexdb.h"
 #include "resulthr.h"
@@ -84,6 +92,9 @@ static char rcsid[] = "$Id: gsnap.c 131708 2014-03-27 23:34:22Z twu $";
 
 
 #define MIN_INDEXDB_SIZE_THRESHOLD 100
+
+#define MAX_QUERYLENGTH_FOR_ALLOC    100000
+#define MAX_GENOMICLENGTH_FOR_ALLOC 1000000
 
 
 #ifdef DEBUG
@@ -136,8 +147,18 @@ static Genome_T genomebits_alt = NULL;
 
 static bool use_sarray_p = true; /* if present */
 #ifndef LARGE_GENOMES
-static Sarray_T sarray = NULL;
+static Sarray_T sarray_fwd = NULL;
+static Sarray_T sarray_rev = NULL;
 #endif
+
+#if 0
+static char STANDARD_CHARTABLE[4] = {'A','C','G','T'};
+static char CMET_FWD_CHARTABLE[4] = {'A','T','G','T'}; /* CT */
+static char CMET_REV_CHARTABLE[4] = {'A','C','A','T'}; /* GA */
+static char ATOI_FWD_CHARTABLE[4] = {'G','C','G','T'};     /* AG */
+static char ATOI_REV_CHARTABLE[4] = {'A','C','G','C'};     /* TC */
+#endif
+
 
 static bool fastq_format_p = false;
 static bool creads_format_p = false;
@@ -175,17 +196,20 @@ static int trim_mismatch_score = -3;
 static int trim_indel_score = -2; /* was -4 */
 
 
-static Access_mode_T offsetscomp_access = USE_ALLOCATE;
+static Access_mode_T offsetsstrm_access = USE_ALLOCATE;
 static bool expand_offsets_p = false;
 
+/* Note: sarray aux files (like lcpchilddc) are always allocated */
 #ifdef HAVE_MMAP
 static Access_mode_T positions_access = USE_MMAP_PRELOAD;
 static Access_mode_T genome_access = USE_MMAP_PRELOAD;
 static Access_mode_T sarray_access = USE_MMAP_PRELOAD;
+static Access_mode_T aux_access = USE_MMAP_PRELOAD;
 #else
 static Access_mode_T positions_access = USE_ALLOCATE;
 static Access_mode_T genome_access = USE_ALLOCATE;
 static Access_mode_T sarray_access = USE_ALLOCATE;
+static Access_mode_T aux_access = USE_ALLOCATE;
 #endif
 
 static int pairmax;
@@ -235,8 +259,6 @@ static int min_shortend = 2;
 /* static bool find_novel_doublesplices_p = true; */
 static int antistranded_penalty = 0; /* Most RNA-Seq is non-stranded */
 
-static Width_T basesize;
-static Width_T required_basesize = 0;
 static Width_T index1part;
 static Width_T required_index1part = 0;
 static Width_T index1interval;
@@ -384,7 +406,6 @@ static struct option long_options[] = {
   {"dir", required_argument, 0, 'D'},	/* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
   {"use-sarray", required_argument, 0, 0}, /* use_sarray_p */
-  {"basesize", required_argument, 0, 0}, /* required_basesize, basesize */
   {"kmer", required_argument, 0, 'k'}, /* required_index1part, index1part */
   {"sampling", required_argument, 0, 0}, /* required_index1interval, index1interval */
   {"genomefull", no_argument, 0, 'G'}, /* uncompressedp */
@@ -408,7 +429,7 @@ static struct option long_options[] = {
 
   /* Compute options */
 #ifdef HAVE_MMAP
-  {"batch", required_argument, 0, 'B'}, /* offsetscomp_access, positions_access, genome_access */
+  {"batch", required_argument, 0, 'B'}, /* offsetsstrm_access, positions_access, genome_access */
 #endif
   {"expand-offsets", required_argument, 0, 0}, /* expand_offsets_p */
   {"pairmax-dna", required_argument, 0, 0}, /* pairmax_dna */
@@ -691,9 +712,8 @@ check_compiler_assumptions () {
 
 static Result_T
 process_request (Request_T request, Floors_T *floors_array,
-		 Oligoindex_T *oligoindices_major, int noligoindices_major,
-		 Oligoindex_T *oligoindices_minor, int noligoindices_minor,
-		 Pairpool_T pairpool, Diagpool_T diagpool,
+		 Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		 Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		 Stopwatch_T worker_stopwatch) {
   int jobid;
@@ -710,6 +730,10 @@ process_request (Request_T request, Floors_T *floors_array,
   queryseq1 = Request_queryseq1(request);
   queryseq2 = Request_queryseq2(request);
 
+  Pairpool_reset(pairpool);
+  Diagpool_reset(diagpool);
+  Cellpool_reset(cellpool);
+
   /* printf("%s\n",Shortread_accession(queryseq1)); */
 
   if (worker_stopwatch != NULL) {
@@ -723,10 +747,8 @@ process_request (Request_T request, Floors_T *floors_array,
 				     indel_penalty_middle,indel_penalty_end,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     localsplicing_penalty,distantsplicing_penalty,min_shortend,
-				     oligoindices_major,noligoindices_major,
-				     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-				     dynprogL,dynprogM,dynprogR,
-				     /*keep_floors_p*/true);
+				     oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+				     dynprogL,dynprogM,dynprogR,/*keep_floors_p*/true);
 
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
     return Result_single_read_new(jobid,(void **) stage3array,npaths,first_absmq,second_absmq,worker_runtime);
@@ -739,10 +761,8 @@ process_request (Request_T request, Floors_T *floors_array,
 						   indel_penalty_middle,indel_penalty_end,
 						   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 						   localsplicing_penalty,distantsplicing_penalty,min_shortend,
-						   oligoindices_major,noligoindices_major,
-						   oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-						   dynprogL,dynprogM,dynprogR,
-						   pairmax,/*keep_floors_p*/true)) != NULL) {
+						   oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+						   dynprogL,dynprogM,dynprogR,pairmax,/*keep_floors_p*/true)) != NULL) {
     /* Paired or concordant hits found */
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
     return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,first_absmq,second_absmq,
@@ -775,10 +795,8 @@ process_request (Request_T request, Floors_T *floors_array,
 					      indel_penalty_middle,indel_penalty_end,
 					      allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					      localsplicing_penalty,distantsplicing_penalty,min_shortend,
-					      oligoindices_major,noligoindices_major,
-					      oligoindices_minor,noligoindices_minor,pairpool,diagpool,
-					      dynprogL,dynprogM,dynprogR,
-					      pairmax,/*keep_floors_p*/false)) != NULL) {
+					      oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      dynprogL,dynprogM,dynprogR,pairmax,/*keep_floors_p*/false)) != NULL) {
       /* Paired or concordant hits found, after chopping adapters */
       worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
       return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,first_absmq,second_absmq,
@@ -869,7 +887,9 @@ signal_handler (int sig) {
 #endif
 
 
-#define POOL_FREE_INTERVAL 200
+/* #define POOL_FREE_INTERVAL 200 */
+#define POOL_FREE_INTERVAL 1
+
 
 static void
 single_thread () {
@@ -882,41 +902,45 @@ single_thread () {
   Stopwatch_T worker_stopwatch;
 
   /* For GMAP */
-  Oligoindex_T *oligoindices_major, *oligoindices_minor;
-  int noligoindices_major, noligoindices_minor;
+  Oligoindex_array_T oligoindices_major, oligoindices_minor;
   Dynprog_T dynprogL, dynprogM, dynprogR;
   Pairpool_T pairpool;
   Diagpool_T diagpool;
+  Cellpool_T cellpool;
   int jobid = 0;
 
 #ifdef MEMUSAGE
   long int memusage_constant = 0;
 #endif
 
-  oligoindices_major = Oligoindex_new_major(&noligoindices_major);
-  oligoindices_minor = Oligoindex_new_minor(&noligoindices_minor);
-  dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  oligoindices_major = Oligoindex_array_new_major(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
+  oligoindices_minor = Oligoindex_array_new_minor(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
+  dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
+			 /*doublep*/true);
+  dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
+			 /*doublep*/false);
+  dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
+			 /*doublep*/true);
   pairpool = Pairpool_new();
   diagpool = Diagpool_new();
+  cellpool = Cellpool_new();
   worker_stopwatch = (timingp == true) ? Stopwatch_new() : (Stopwatch_T) NULL;
 
   floors_array = (Floors_T *) CALLOC(MAX_READLENGTH+1,sizeof(Floors_T));
   /* Except_stack_create(); -- requires pthreads */
 
 #ifdef MEMUSAGE
-  memusage_constant += Mem_usage_report();
+  memusage_constant += Mem_usage_report_std();
   Mem_usage_reset(0);
+  printf("Initial memusage of single thread: %ld\n",Mem_usage_report_std());
 #endif
 
   while ((request = Inbuffer_get_request(inbuffer)) != NULL) {
     debug(printf("single_thread got request %d\n",Request_id(request)));
 
     TRY
-      result = process_request(request,floors_array,oligoindices_major,noligoindices_major,
-			       oligoindices_minor,noligoindices_minor,
-			       pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+      result = process_request(request,floors_array,oligoindices_major,oligoindices_minor,
+			       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
       queryseq1 = Request_queryseq1(request);
       if (queryseq1 == NULL) {
@@ -958,13 +982,15 @@ single_thread () {
     if (jobid % POOL_FREE_INTERVAL == 0) {
       Pairpool_free_memory(pairpool);
       Diagpool_free_memory(diagpool);
+      Cellpool_free_memory(cellpool);
     }
 
 #ifdef MEMUSAGE
-    printf("Memusage of single thread: %ld\n",Mem_usage_report());
-    printf("Memusage of OUT: %ld\n",Mem_usage_out_report());
-    assert(Mem_usage_report() == 0);
-    assert(Mem_usage_out_report() == 0);
+    /* Run with a single thread (-t 0), which should bring usage back down to 0 after each read */
+    printf("Memusage of single thread: %ld\n",Mem_usage_report_std());
+    printf("Memusage of OUT: %ld\n",Mem_usage_report_out());
+    assert(Mem_usage_report_std() == 0);
+    assert(Mem_usage_report_out() == 0);
 #endif
 
   }
@@ -985,13 +1011,14 @@ single_thread () {
   if (worker_stopwatch != NULL) {
     Stopwatch_free(&worker_stopwatch);
   }
+  Cellpool_free(&cellpool);
   Diagpool_free(&diagpool);
   Pairpool_free(&pairpool);
   Dynprog_free(&dynprogR);
   Dynprog_free(&dynprogM);
   Dynprog_free(&dynprogL);
-  Oligoindex_free_array(&oligoindices_minor,noligoindices_minor);
-  Oligoindex_free_array(&oligoindices_major,noligoindices_major);
+  Oligoindex_array_free(&oligoindices_minor);
+  Oligoindex_array_free(&oligoindices_major);
 
   return;
 }
@@ -1009,11 +1036,11 @@ worker_thread (void *data) {
   Stopwatch_T worker_stopwatch;
 
   /* For GMAP */
-  Oligoindex_T *oligoindices_major, *oligoindices_minor;
-  int noligoindices_major, noligoindices_minor;
+  Oligoindex_array_T oligoindices_major, oligoindices_minor;
   Dynprog_T dynprogL, dynprogM, dynprogR;
   Pairpool_T pairpool;
   Diagpool_T diagpool;
+  Cellpool_T cellpool;
   int worker_jobid = 0;
 
 #ifdef MEMUSAGE
@@ -1024,20 +1051,24 @@ worker_thread (void *data) {
 #endif
 
   /* Thread-specific data and storage */
-  oligoindices_major = Oligoindex_new_major(&noligoindices_major);
-  oligoindices_minor = Oligoindex_new_minor(&noligoindices_minor);
-  dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
-  dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired);
+  oligoindices_major = Oligoindex_array_new_major(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
+  oligoindices_minor = Oligoindex_array_new_minor(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
+  dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
+			 /*doublep*/true);
+  dynprogM = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
+			 /*doublep*/false);
+  dynprogR = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
+			 /*doublep*/true);
   pairpool = Pairpool_new();
   diagpool = Diagpool_new();
+  cellpool = Cellpool_new();
   worker_stopwatch = (timingp == true) ? Stopwatch_new() : (Stopwatch_T) NULL;
 
   floors_array = (Floors_T *) CALLOC(MAX_READLENGTH+1,sizeof(Floors_T));
   Except_stack_create();
 
 #ifdef MEMUSAGE
-  memusage_constant += Mem_usage_report();
+  memusage_constant += Mem_usage_report_std();
   Mem_usage_reset(0);
 #endif
 
@@ -1047,11 +1078,12 @@ worker_thread (void *data) {
     if (worker_jobid % POOL_FREE_INTERVAL == 0) {
       Pairpool_free_memory(pairpool);
       Diagpool_free_memory(diagpool);
+      Cellpool_free_memory(cellpool);
     }
 
 #ifdef MEMUSAGE
-    memusage = Mem_usage_report();
-    /* printf("Memusage of worker thread %ld: %ld\n",worker_id,memusage); */
+    memusage = Mem_usage_report_std();
+    printf("Memusage of worker thread %ld: %ld\n",worker_id,memusage);
     if (memusage != 0) {
       fprintf(stderr,"Memusage of worker thread %ld: %ld\n",worker_id,memusage);
       fflush(stdout);
@@ -1060,9 +1092,8 @@ worker_thread (void *data) {
 #endif
 
     TRY
-      result = process_request(request,floors_array,oligoindices_major,noligoindices_major,
-			       oligoindices_minor,noligoindices_minor,
-			       pairpool,diagpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
+      result = process_request(request,floors_array,oligoindices_major,oligoindices_minor,
+			       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
       queryseq1 = Request_queryseq1(request);
       if (queryseq1 == NULL) {
@@ -1088,6 +1119,13 @@ worker_thread (void *data) {
     RERAISE;
     END_TRY;
 
+#ifdef MEMUSAGE
+    queryseq1 = Request_queryseq1(request);
+    fprintf(stderr,"Acc %s, thread %d: max %ld  std %dl  keep %ld  in %ld  out %ld\n",
+	    Shortread_accession(queryseq1),worker_id,Mem_max_usage_report_std(),Mem_usage_report_std(),
+	    Mem_usage_report_keep(),Mem_usage_report_in(),Mem_usage_report_out());
+#endif
+
     debug(printf("worker_thread putting result %d\n",Result_id(result)));
 
     Outbuffer_put_result(outbuffer,result,request);
@@ -1111,13 +1149,14 @@ worker_thread (void *data) {
   if (worker_stopwatch != NULL) {
     Stopwatch_free(&worker_stopwatch);
   }
+  Cellpool_free(&cellpool);
   Diagpool_free(&diagpool);
   Pairpool_free(&pairpool);
   Dynprog_free(&dynprogR);
   Dynprog_free(&dynprogM);
   Dynprog_free(&dynprogL);
-  Oligoindex_free_array(&oligoindices_minor,noligoindices_minor);
-  Oligoindex_free_array(&oligoindices_major,noligoindices_major);
+  Oligoindex_array_free(&oligoindices_minor);
+  Oligoindex_array_free(&oligoindices_major);
 
   return (void *) NULL;
 }
@@ -1184,7 +1223,7 @@ add_gmap_mode (char *string) {
 }
 
 
-char *
+static char *
 check_valid_int (char *string) {
   char *p = string;
 
@@ -1224,8 +1263,71 @@ check_valid_int (char *string) {
 }
 
 
-char *
-check_valid_float (char *string) {
+static double
+check_valid_float (char *string, const char *option) {
+  double value;
+  char *p = string;
+
+  if (*p == '+' || *p == '-') {
+    p++;
+  }
+
+  while (*p != '\0' && isdigit(*p)) {
+    p++;
+  }
+  if (*p == '\0') {
+    if ((value = atof(string)) > 1.0 || value < 0.0) {
+      fprintf(stderr,"Value for option %s should be between 0.0 and 1.0\n",option);
+      exit(9);
+    } else {
+      return value;
+    }
+  }
+
+  if (*p == '.') {
+    p++;
+  }
+
+  if (!isdigit(*p)) {
+    fprintf(stderr,"Value %s for option %s is not a valid float\n",string,option);
+    exit(9);
+    return 0.0;
+  }
+  while (*p != '\0' && isdigit(*p)) {
+    p++;
+  }
+
+  if (*p == 'e') {
+    p++;
+    if (*p == '+' || *p == '-') {
+      p++;
+    }
+    if (!isdigit(*p)) {
+      fprintf(stderr,"Value %s for option %s is not a valid float\n",string,option);
+      exit(9);
+      return 0.0;
+    }
+    while (*p != '\0' && isdigit(*p)) {
+      p++;
+    }
+  }
+
+  if (*p == '\0') {
+    if ((value = atof(string)) > 1.0 || value < 0.0) {
+      fprintf(stderr,"Value for option %s should be between 0.0 and 1.0\n",option);
+      exit(9);
+    } else {
+      return value;
+    }
+  } else {
+    fprintf(stderr,"Value %s for option %s is not a valid float\n",string,option);
+    exit(9);
+    return 0.0;
+  }
+}
+
+static char *
+check_valid_float_or_int (char *string) {
   char *p = string;
 
   if (*p == '+' || *p == '-') {
@@ -1277,7 +1379,6 @@ check_valid_float (char *string) {
 }
 
 
-
 int
 main (int argc, char *argv[]) {
   char *genomesubdir = NULL, *snpsdir = NULL, *modedir = NULL, *mapdir = NULL, *iitfile = NULL, *fileroot = NULL;
@@ -1297,6 +1398,8 @@ main (int argc, char *argv[]) {
 
   unsigned int nread;
   double runtime;
+
+  Splicestringpool_T splicestringpool;
 
 #ifdef HAVE_PTHREAD
   int ret;
@@ -1364,9 +1467,6 @@ main (int argc, char *argv[]) {
 	  fprintf(stderr,"--expand-offsets flag must be 0 or 1\n");
 	  exit(9);
 	}
-
-      } else if (!strcmp(long_name,"basesize")) {
-	required_basesize = atoi(check_valid_int(optarg));
 
       } else if (!strcmp(long_name,"sampling")) {
 	required_index1interval = atoi(check_valid_int(optarg));
@@ -1441,7 +1541,7 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"max-gmap-improvement")) {
 	max_gmap_improvement = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"microexon-spliceprob")) {
-	microexon_spliceprob = atof(check_valid_float(optarg));
+	microexon_spliceprob = check_valid_float(optarg,long_name);
       } else if (!strcmp(long_name,"stage2-start")) {
 	suboptimal_score_start = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"stage2-end")) {
@@ -1606,7 +1706,7 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"goby-output")) {
 	goby_output_root = optarg;
       } else if (!strcmp(long_name,"distant-splice-identity")) {
-	min_distantsplicing_identity = atof(check_valid_float(optarg));
+	min_distantsplicing_identity = check_valid_float(optarg,long_name);
       } else if (!strcmp(long_name,"print-snps")) {
 	print_snplabels_p = true;
       } else if (!strcmp(long_name,"failsonly")) {
@@ -1715,7 +1815,7 @@ main (int argc, char *argv[]) {
 
     case 'M': subopt_levels = atoi(check_valid_int(optarg)); break;
     case 'm':
-      user_maxlevel_float = atof(check_valid_float(optarg));
+      user_maxlevel_float = atof(check_valid_float_or_int(optarg));
       if (user_maxlevel_float > 1.0 && user_maxlevel_float != rint(user_maxlevel_float)) {
 	fprintf(stderr,"Cannot specify fractional value %f for --max-mismatches except between 0.0 and 1.0\n",user_maxlevel_float);
 	exit(9);
@@ -1751,30 +1851,42 @@ main (int argc, char *argv[]) {
       if (!strcmp(optarg,"5")) {
 	fprintf(stderr,"Note: Batch mode 5 is now the same as batch mode 4.\n");
 	fprintf(stderr,"Expansion of offsets is now controlled separately by --expand-offsets (default=1).\n");
-	offsetscomp_access = USE_ALLOCATE; /* Doesn't matter */
+	offsetsstrm_access = USE_ALLOCATE; /* Doesn't matter */
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_ALLOCATE;
+	sarray_access = USE_ALLOCATE;
+	aux_access = USE_ALLOCATE;
       } else if (!strcmp(optarg,"4")) {
-	offsetscomp_access = USE_ALLOCATE;
+	offsetsstrm_access = USE_ALLOCATE;
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_ALLOCATE;
+	sarray_access = USE_MMAP_PRELOAD;
+	aux_access = USE_ALLOCATE;
 #ifdef HAVE_MMAP
       } else if (!strcmp(optarg,"3")) {
-	offsetscomp_access = USE_ALLOCATE;
+	offsetsstrm_access = USE_ALLOCATE;
 	positions_access = USE_ALLOCATE;
 	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
+	sarray_access = USE_MMAP_ONLY;
+	aux_access = USE_MMAP_PRELOAD;
       } else if (!strcmp(optarg,"2")) {
-	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	offsetsstrm_access = USE_ALLOCATE; /* was batch_offsets_p = true */
 	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
 	genome_access = USE_MMAP_PRELOAD; /* was batch_genome_p = true */
+	sarray_access = USE_MMAP_ONLY;
+	aux_access = USE_MMAP_ONLY;
       } else if (!strcmp(optarg,"1")) {
-	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	offsetsstrm_access = USE_ALLOCATE; /* was batch_offsets_p = true */
 	positions_access = USE_MMAP_PRELOAD; /* was batch_positions_p = true */
 	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
+	sarray_access = USE_MMAP_ONLY;
+	aux_access = USE_MMAP_ONLY;
       } else if (!strcmp(optarg,"0")) {
-	offsetscomp_access = USE_ALLOCATE; /* was batch_offsets_p = true */
+	offsetsstrm_access = USE_ALLOCATE; /* was batch_offsets_p = true */
 	positions_access = USE_MMAP_ONLY; /* was batch_positions_p = false */
 	genome_access = USE_MMAP_ONLY; /* was batch_genome_p = false */
+	sarray_access = USE_MMAP_ONLY;
+	aux_access = USE_MMAP_ONLY;
 #endif
       } else {
 #ifdef HAVE_MMAP
@@ -1966,6 +2078,7 @@ main (int argc, char *argv[]) {
 
   /* Open input stream and peek at first char */
   if (argc == 0) {
+    fprintf(stderr,"Reading from stdin\n");
     input = stdin;
     files = (char **) NULL;
     nfiles = 0;
@@ -2120,7 +2233,8 @@ main (int argc, char *argv[]) {
 
   if (nread > 1) {
     multiple_sequences_p = true;
-    if (offsetscomp_access != USE_ALLOCATE || genome_access != USE_ALLOCATE) {
+    if (offsetsstrm_access != USE_ALLOCATE || genome_access != USE_ALLOCATE ||
+	sarray_access != USE_ALLOCATE || aux_access != USE_ALLOCATE) {
       fprintf(stderr,"Note: >1 sequence detected, so index files are being memory mapped.\n");
       fprintf(stderr,"  GSNAP can run slowly at first while the computer starts to accumulate\n");
       fprintf(stderr,"  pages from the hard disk into its cache.  To copy index files into RAM\n");
@@ -2135,14 +2249,17 @@ main (int argc, char *argv[]) {
     /* fprintf(stderr,"Note: only 1 sequence detected.  Ignoring batch (-B) command\n"); */
     expand_offsets_p = false;
 #ifdef HAVE_MMAP
-    offsetscomp_access = USE_MMAP_ONLY;
+    offsetsstrm_access = USE_MMAP_ONLY;
     positions_access = USE_MMAP_ONLY;
     genome_access = USE_MMAP_ONLY;
     sarray_access = USE_MMAP_ONLY;
+    aux_access = USE_MMAP_ONLY;
 #else
-    offsetscomp_access = USE_ALLOCATE;
+    offsetsstrm_access = USE_ALLOCATE;
     positions_access = USE_ALLOCATE;
     genome_access = USE_ALLOCATE;
+    sarray_access = USE_ALLOCATE;
+    aux_access = USE_ALLOCATE;
 #endif
   }
 
@@ -2178,8 +2295,20 @@ main (int argc, char *argv[]) {
 			    uncompressedp,genome_access);
 #ifndef LARGE_GENOMES
     if (use_sarray_p == true) {
-      if ((sarray = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access)) == NULL) {
-	use_sarray_p = false;
+      if (mode == STANDARD) {
+	if ((sarray_fwd = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access,aux_access,
+				     mode,/*fwdp*/true)) == NULL) {
+	  use_sarray_p = false;
+	} else {
+	  sarray_rev = sarray_fwd;
+	}
+      } else {
+	if ((sarray_fwd = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access,aux_access,
+				     mode,/*fwdp*/true)) == NULL ||
+	    (sarray_rev = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access,aux_access,
+				     mode,/*fwdp*/false)) == NULL) {
+	  use_sarray_p = false;
+	}
       }
     }
 #endif
@@ -2187,10 +2316,10 @@ main (int argc, char *argv[]) {
     if (dibasep == true) {
       fprintf(stderr,"No longer supporting 2-base encoding\n");
       exit(9);
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					genomesubdir,fileroot,/*idx_filesuffix*/"dibase",/*snps_root*/NULL,
-					required_basesize,required_index1part,required_index1interval,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find offsets file %s.%s*offsets, needed for GSNAP color mode\n",fileroot,"dibase");
 	exit(9);
       }
@@ -2204,18 +2333,18 @@ main (int argc, char *argv[]) {
 	modedir = user_cmetdir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"metct",/*snps_root*/NULL,
-					required_basesize,required_index1part,required_index1interval,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
 	exit(9);
       }
 
-      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"metga",/*snps_root*/NULL,
-					 required_basesize,required_index1part,required_index1interval,
-					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					 required_index1part,required_index1interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
 	exit(9);
       }
@@ -2227,18 +2356,18 @@ main (int argc, char *argv[]) {
 	modedir = user_atoidir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
-					required_basesize,required_index1part,required_index1interval,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
-      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
-					 required_basesize,required_index1part,required_index1interval,
-					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					 required_index1part,required_index1interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -2246,10 +2375,10 @@ main (int argc, char *argv[]) {
 
     } else {
       /* Standard behavior */
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-					required_basesize,required_index1part,required_index1interval,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find offsets file %s.%s*offsets, needed for GSNAP\n",fileroot,IDX_FILESUFFIX);
 	exit(9);
       }
@@ -2278,8 +2407,20 @@ main (int argc, char *argv[]) {
 #ifndef LARGE_GENOMES
     if (use_sarray_p == true) {
       fprintf(stderr,"Note: Suffix arrays will bias against SNP-tolerant alignment.  For bias-free alignment, set --use-sarray=0\n");
-      if ((sarray = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access)) == NULL) {
-	use_sarray_p = false;
+      if (mode == STANDARD) {
+	if ((sarray_fwd = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access,aux_access,
+				     mode,/*fwdp*/true)) == NULL) {
+	  use_sarray_p = false;
+	} else {
+	  sarray_rev = sarray_fwd;
+	}
+      } else {
+	if ((sarray_fwd = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access,aux_access,
+				     mode,/*fwdp*/true)) == NULL ||
+	    (sarray_rev = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access,aux_access,
+				     mode,/*fwdp*/false)) == NULL) {
+	  use_sarray_p = false;
+	}
       }
     }
 #endif
@@ -2296,17 +2437,17 @@ main (int argc, char *argv[]) {
 	modedir = user_cmetdir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"metct",snps_root,
-					required_basesize,required_index1part,required_index1interval,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
 	exit(9);
       }
-      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"metga",snps_root,
-					 required_basesize,required_index1part,required_index1interval,
-					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					 required_index1part,required_index1interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
 	exit(9);
       }
@@ -2318,26 +2459,26 @@ main (int argc, char *argv[]) {
 	modedir = user_atoidir;
       }
 
-      if ((indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
-					required_basesize,required_index1part,required_index1interval,
-					expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
-      if ((indexdb2 = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
-					 required_basesize,required_index1part,required_index1interval,
-					 expand_offsets_p,offsetscomp_access,positions_access)) == NULL) {
+					 required_index1part,required_index1interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
     } else {
-      indexdb = Indexdb_new_genome(&basesize,&index1part,&index1interval,
+      indexdb = Indexdb_new_genome(&index1part,&index1interval,
 				   snpsdir,fileroot,/*idx_filesuffix*/"ref",snps_root,
-				   required_basesize,required_index1part,required_index1interval,
-				   expand_offsets_p,offsetscomp_access,positions_access);
+				   required_index1part,required_index1interval,
+				   expand_offsets_p,offsetsstrm_access,positions_access);
       if (indexdb == NULL) {
 	fprintf(stderr,"Cannot find snps index file for %s in directory %s\n",snps_root,snpsdir);
 	exit(9);
@@ -2376,7 +2517,7 @@ main (int argc, char *argv[]) {
     exit(9);
   }
 
-  Dynprog_init(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,mode);
+  Dynprog_init(mode);
   Compoundpos_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   Spanningelt_init_positions_free(Indexdb_positions_fileio_p(indexdb));
   Stage1_init_positions_free(Indexdb_positions_fileio_p(indexdb));
@@ -2450,11 +2591,12 @@ main (int argc, char *argv[]) {
     if ((donor_typeint = IIT_typeint(splicing_iit,"donor")) >= 0 && 
 	(acceptor_typeint = IIT_typeint(splicing_iit,"acceptor")) >= 0) {
       fprintf(stderr,"found donor and acceptor tags, so treating as splicesites file\n");
+      splicestringpool = Splicestringpool_new();
       splicesites = Splicetrie_retrieve_via_splicesites(&distances_observed_p,&splicecomp,&splicetypes,&splicedists,
 							&splicestrings,&splicefrags_ref,&splicefrags_alt,
 							&nsplicesites,splicing_iit,splicing_divint_crosstable,
 							donor_typeint,acceptor_typeint,chromosome_iit,
-							genomecomp,genomecomp_alt,shortsplicedist);
+							genomecomp,genomecomp_alt,shortsplicedist,splicestringpool);
       if (nsplicesites == 0) {
 	fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
 		dbroot);
@@ -2467,27 +2609,24 @@ main (int argc, char *argv[]) {
       } else {
 	Splicetrie_npartners(&nsplicepartners_skip,&nsplicepartners_obs,&nsplicepartners_max,splicesites,splicetypes,splicedists,
 			     splicestrings,nsplicesites,chromosome_iit,shortsplicedist,distances_observed_p);
-#if 0
-	if (multiple_sequences_p == true && splicetrie_precompute_p == true) {
-#endif
-	  Splicetrie_build_via_splicesites(&triecontents_obs,&trieoffsets_obs,&triecontents_max,&trieoffsets_max,
-					   nsplicepartners_skip,nsplicepartners_obs,nsplicepartners_max,splicetypes,
-					   splicestrings,nsplicesites);
-	  FREE(nsplicepartners_max);
-	  FREE(nsplicepartners_obs);
-	  FREE(nsplicepartners_skip);
-	  Splicestring_gc(splicestrings,nsplicesites);
-#if 0
-	}
-#endif
+	Splicetrie_build_via_splicesites(&triecontents_obs,&trieoffsets_obs,&triecontents_max,&trieoffsets_max,
+					 nsplicepartners_skip,nsplicepartners_obs,nsplicepartners_max,splicetypes,
+					 splicestrings,nsplicesites);
+	FREE(nsplicepartners_max);
+	FREE(nsplicepartners_obs);
+	FREE(nsplicepartners_skip);
+	/* Splicestring_gc(splicestrings,nsplicesites); */
+	FREE(splicestrings);
       }
+      Splicestringpool_free(&splicestringpool);
 
     } else {
       fprintf(stderr,"no donor or acceptor tags found, so treating as introns file\n");
+      splicestringpool = Splicestringpool_new();
       splicesites = Splicetrie_retrieve_via_introns(&splicecomp,&splicetypes,&splicedists,
 						    &splicestrings,&splicefrags_ref,&splicefrags_alt,
 						    &nsplicesites,splicing_iit,splicing_divint_crosstable,
-						    chromosome_iit,genomecomp,genomecomp_alt);
+						    chromosome_iit,genomecomp,genomecomp_alt,splicestringpool);
       if (nsplicesites == 0) {
 	fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
 		dbroot);
@@ -2497,19 +2636,15 @@ main (int argc, char *argv[]) {
 	IIT_dump_divstrings(stderr,splicing_iit);
 	exit(9);
       } else {
-#if 0
-	if (multiple_sequences_p == true && splicetrie_precompute_p == true) {
-#endif
-	  Splicetrie_build_via_introns(&triecontents_obs,&trieoffsets_obs,splicesites,splicetypes,
-				       splicestrings,nsplicesites,chromosome_iit,splicing_iit,splicing_divint_crosstable);
-	  triecontents_max = (Triecontent_T *) NULL;
-	  trieoffsets_max =  (Trieoffset_T *) NULL;
-	  Splicestring_gc(splicestrings,nsplicesites);
-#if 0
-	}
-#endif
+	Splicetrie_build_via_introns(&triecontents_obs,&trieoffsets_obs,splicesites,splicetypes,
+				     splicestrings,nsplicesites,chromosome_iit,splicing_iit,splicing_divint_crosstable);
+	triecontents_max = (Triecontent_T *) NULL;
+	trieoffsets_max =  (Trieoffset_T *) NULL;
+	/* Splicestring_gc(splicestrings,nsplicesites); */
+	FREE(splicestrings);
       }
-
+      Splicestringpool_free(&splicestringpool);
+      
     }
 
     /* For benchmarking purposes.  Can spend time/memory to load
@@ -2527,7 +2662,8 @@ main (int argc, char *argv[]) {
 	  FREE(nsplicepartners_max);
 	  FREE(nsplicepartners_obs);
 	  FREE(nsplicepartners_skip);
-	  Splicestring_gc(splicestrings,nsplicesites);
+	  /* Splicestring_gc(splicestrings,nsplicesites); */
+	  FREE(splicestrings);
 	}
 	FREE(splicefrags_ref);
 	FREE(splicedists);
@@ -2627,22 +2763,22 @@ main (int argc, char *argv[]) {
   FREE(fileroot);
   FREE(dbroot);
 
-
   Genome_setup(genomecomp,genomecomp_alt,mode,circular_typeint);
 #ifndef LARGE_GENOMES
-  if (sarray != NULL) {
-    Sarray_setup(sarray,genomecomp,chromosome_iit,circular_typeint,shortsplicedist,
-		 localsplicing_penalty,
+  if (sarray_fwd != NULL && sarray_rev != NULL) {
+    Sarray_setup(sarray_fwd,sarray_rev,genomecomp,mode,chromosome_iit,circular_typeint,
+		 shortsplicedist,localsplicing_penalty,
 		 max_deletionlength,max_end_deletions,max_middle_insertions,max_end_insertions,
 		 splicesites,splicetypes,splicedists,nsplicesites);
   }
 #endif
+
   if (genomebits == NULL) {
-    Genome_hr_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL,
-		    query_unk_mismatch_p,genome_unk_mismatch_p,mode,/*genomebits_avail_p*/false);
+    fprintf(stderr,"This version of GSNAP requires the genomebits128 file\n");
+    exit(9);
   } else {
     Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/genomebits_alt ? Genome_blocks(genomebits_alt) : NULL,
-		    query_unk_mismatch_p,genome_unk_mismatch_p,mode,/*genomebits_avail_p*/true);
+		    query_unk_mismatch_p,genome_unk_mismatch_p,mode);
   }
   Genome_sites_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL);
   Maxent_hr_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL);
@@ -2673,11 +2809,11 @@ main (int argc, char *argv[]) {
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
 		  novelsplicingp,knownsplicingp,output_sam_p,mode);
-  Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
-		donor_typeint,acceptor_typeint,
-		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
-		/*homopolymerp*/false);
+  Dynprog_single_setup(/*homopolymerp*/false);
+  Dynprog_genome_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
+		       donor_typeint,acceptor_typeint);
+  Dynprog_end_setup(splicesites,splicetypes,splicedists,nsplicesites,
+		    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
   Oligoindex_hr_setup(Genome_blocks(genomecomp),mode);
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
 	       suboptimal_score_start,suboptimal_score_end,
@@ -2688,8 +2824,8 @@ main (int argc, char *argv[]) {
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       /*require_splicedir_p*/true,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,
-	       splicesites,min_intronlength,max_deletionlength,output_sam_p,
-	       /*homopolymerp*/false,/*stage3debug*/NO_STAGE3DEBUG);
+	       splicesites,min_intronlength,max_deletionlength,min_indel_end_matches,
+	       output_sam_p,/*homopolymerp*/false,/*stage3debug*/NO_STAGE3DEBUG);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
 		 terminal_output_minlength,distances_observed_p,pairmax,
@@ -2700,6 +2836,7 @@ main (int argc, char *argv[]) {
   SAM_setup(quiet_if_excessive_p,maxpaths_report,fails_as_input_p,fastq_format_p,hide_soft_clips_p,
 	    sam_multiple_primaries_p,force_xs_direction_p,md_lowercase_variant_p,snps_iit);
   Goby_setup(show_refdiff_p);
+
 
 
   /* Setup outbuffer */
@@ -2838,8 +2975,13 @@ main (int argc, char *argv[]) {
     FREE(dbversion);
   }
 #ifndef LARGE_GENOMES
-  if (sarray != NULL) {
-    Sarray_free(&sarray);
+  if (sarray_fwd != NULL && sarray_rev != NULL) {
+    if (mode == STANDARD) {
+      Sarray_free(&sarray_fwd);
+    } else {
+      Sarray_free(&sarray_rev);
+      Sarray_free(&sarray_fwd);
+    }
   }
 #endif
   if (genomecomp_alt != NULL) {
@@ -2864,7 +3006,8 @@ main (int argc, char *argv[]) {
       FREE(nsplicepartners_max);
       FREE(nsplicepartners_obs);
       FREE(nsplicepartners_skip);
-      Splicestring_gc(splicestrings,nsplicesites);
+      /* Splicestring_gc(splicestrings,nsplicesites); */
+      FREE(splicestrings);
     }
     FREE(splicefrags_ref);
     FREE(splicedists);
@@ -2930,12 +3073,9 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
   -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less)\n\
                                    If not specified, the program will find the highest available\n\
                                    kmer size in the genome database\n\
-  --basesize=INT                 Base size to use in genome database.  If not specified, the program\n\
-                                   will find the highest available base size in the genome database\n\
-                                   within selected k-mer size\n\
   --sampling=INT                 Sampling to use in genome database.  If not specified, the program\n\
                                    will find the smallest available sampling value in the genome database\n\
-                                   within selected basesize and k-mer size\n\
+                                   within selected k-mer size\n\
   -q, --part=INT/INT             Process only the i-th out of every n sequences\n\
                                    e.g., 0/100 or 99/100 (useful for distributing jobs\n\
                                    to a computer farm).\n\
@@ -2992,28 +3132,27 @@ is still designed to be fast.\n\
 #ifdef HAVE_MMAP
   fprintf(stdout,"\
   -B, --batch=INT                Batch mode (default = 2)\n\
-                                 Mode     Offsets       Positions       Genome\n\
-                                   0      see note      mmap            mmap\n\
-                                   1      see note      mmap & preload  mmap\n\
-                      (default)    2      see note      mmap & preload  mmap & preload\n\
-                                   3      see note      allocate        mmap & preload\n\
-                                   4      see note      allocate        allocate\n\
-                                   5      expand        allocate        allocate\n\
+                                 Mode     Offsets       Positions       Genome          Suffix array\n\
+                                   0      see note      mmap            mmap            mmap\n\
+                                   1      see note      mmap & preload  mmap            mmap\n\
+                      (default)    2      see note      mmap & preload  mmap & preload  mmap & preload\n\
+                                   3      see note      allocate        mmap & preload  mmap & preload\n\
+                                   4      see note      allocate        allocate        mmap & preload\n\
+                                   5      see note      allocate        allocate        allocate\n\
                            Note: For a single sequence, all data structures use mmap\n\
                            If mmap not available and allocate not chosen, then will use fileio (very slow)\n\
 ");
 #else
   fprintf(stdout,"\
-  -B, --batch=INT                Batch mode (default = 4, modes 0-3 disallowed because program configured without mmap)\n\
-                                 Mode     Offsets       Positions       Genome\n\
-                      (default)    4      see note      allocate        allocate\n\
-                                   5      expand        allocate        allocate\n \
+  -B, --batch=INT                Batch mode (default = 5, modes 0-4 disallowed because program configured without mmap)\n\
+                                 Mode     Offsets       Positions       Genome         Suffix array\n\
+                      (default)    5      see note      allocate        allocate       allocate\n \
 ");
 #endif
   fprintf(stdout,"\
-                       Note about --batch and offsets: Expansion of offsets can be controlled\n\
-                       independently by the --expand-offsets flag.  The --batch=5 option is equivalent\n\
-                       to --batch=4 plus --expand-offsets=1\n\
+                       Note about offsets: Expansion of offsets can be controlled\n\
+                       independently by the --expand-offsets flag.  However, offsets\n\
+                       are accessed relatively fast in this version of GSNAP.\n\
 \n\
   --expand-offsets=INT           Whether to expand the genomic offsets index\n\
                                    Values: 0 (no, default), or 1 (yes).\n\

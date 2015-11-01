@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 128855 2014-02-28 21:50:24Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 135654 2014-05-09 01:30:29Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1938,7 +1938,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 
 #ifdef MEMUSAGE
   printf("Memusage of IN: %ld.  Memusage of OUT: %ld.  Entries in outbuffer: %d = %d processed - %u output\n",
-	 Mem_usage_in_report(),Mem_usage_out_report(),this->nprocessed - noutput,this->nprocessed,noutput);
+	 Mem_usage_report_in(),Mem_usage_report_out(),this->nprocessed - noutput,this->nprocessed,noutput);
 #endif
 
   return;
@@ -2425,8 +2425,8 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
   }
 
 #ifdef MEMUSAGE
-  comma1 = Genomicpos_commafmt(Mem_usage_report());
-  comma2 = Genomicpos_commafmt(Mem_max_usage_report());
+  comma1 = Genomicpos_commafmt(Mem_usage_report_std());
+  comma2 = Genomicpos_commafmt(Mem_max_usage_report_std());
   printf("Memusage: %s.  Peak: %s.\n",comma1,comma2);
   FREE(comma2);
   FREE(comma1);

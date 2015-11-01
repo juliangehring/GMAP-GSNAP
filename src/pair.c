@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 131709 2014-03-27 23:34:45Z twu $";
+static char rcsid[] = "$Id: pair.c 135239 2014-05-06 16:12:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2898,34 +2898,54 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 
 
 int
-Pair_circularpos (struct T *pairs, int npairs, Chrpos_T chrlength, bool plusp, int querylength) {
+Pair_circularpos (int *alias, struct T *pairs, int npairs, Chrpos_T chrlength, bool plusp, int querylength) {
   int i;
   struct T *ptr;
 
   if (plusp == true) {
     i = 0;
     ptr = pairs;
-    while (i < npairs && ptr->genomepos < chrlength) {
-      i++;
-      ptr++;
-    }
-    if (i >= npairs) {
+    if (ptr->genomepos >= chrlength) {
+      /* All of read after trimming is in circular alias */
+      *alias = +1;
       return -1;
     } else {
-      return ptr->querypos;
+      while (i < npairs && ptr->genomepos < chrlength) {
+	i++;
+	ptr++;
+      }
+      if (i >= npairs) {
+	/* All of read after trimming is in circular proper */
+	*alias = -1;
+	return -1;
+      } else {
+	/* Some of read is in circular proper and some is in circular alias */
+	*alias = 0;
+	return ptr->querypos;
+      }
     }
 
   } else {
     i = npairs - 1;
     ptr = &(pairs[i]);
-    while (i >= 0 && ptr->genomepos < chrlength) {
-      i--;
-      ptr--;
-    }
-    if (i < 0) {
+    if (ptr->genomepos >= chrlength) {
+      /* All of read after trimming is in circular alias */
+      *alias = +1;
       return -1;
     } else {
-      return (querylength - ptr->querypos - 1);
+      while (i >= 0 && ptr->genomepos < chrlength) {
+	i--;
+	ptr--;
+      }
+      if (i < 0) {
+	/* All of read after trimming is in circular proper */
+	*alias = -1;
+	return -1;
+      } else {
+	/* Some of read is in circular proper and some is in circular alias */
+	*alias = 0;
+	return (querylength - ptr->querypos - 1);
+      }
     }
   }
 }
@@ -7859,11 +7879,17 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
   bool in_indelp;
 
   debug8(printf("Entered trim_ends\n"));
+  if (pairs == NULL) {
+    *trim5p = *trim3p = 0;
+    return (List_T) NULL;
+  }
+
 
   /* Find trim_right */
   bestscore = 0;
   score = 0;
   in_indelp = false;
+  this = (T) NULL;
   for (p = pairs, pairi = 0; p != NULL; p = p->rest, pairi++) {
     this = p->first;
 
@@ -7910,7 +7936,10 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
 		  pairi,this->querypos,this->genomepos,this->comp,score,trim_right,this->protectedp));
   }
 
-  if (this->protectedp == true) {
+  if (this == NULL) {
+    fprintf(stderr,"check for trim_right yields this == NULL\n");
+    abort();
+  } else if (this->protectedp == true) {
     debug8(printf("Protected against trim_right\n"));
     trim_right = 0;
   } else {
@@ -7925,6 +7954,7 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
   bestscore = 0;
   score = 0;
   in_indelp = false;
+  this = (T) NULL;
   for (p = pairs, pairi = 0; p != NULL; p = p->rest, pairi++) {
     this = p->first;
 
@@ -7972,7 +8002,10 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
 		  pairi,this->querypos,this->genomepos,this->comp,score,trim_left,this->protectedp));
   }
 
-  if (this->protectedp == true) {
+  if (this == NULL) {
+    fprintf(stderr,"check for trim_left yields this == NULL\n");
+    abort();
+  } else if (this->protectedp == true) {
     debug8(printf("Protected against trim_left\n"));
     trim_left = pairi - 1;
   } else {

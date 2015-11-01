@@ -2,9 +2,8 @@
 #define BITPACK64_ACCESS_INCLUDED
 #include "types.h"
 
-extern void
-Bitpack64_access_setup (UINT4 *lcpptrs_in, UINT4 *lcpcomp_in);
+/* For reading direct-coded bitstreams */
 extern UINT4
-Bitpack64_access (UINT4 position);
+Bitpack64_access (UINT4 position, UINT4 *ptrs, UINT4 *comp);
 
 #endif

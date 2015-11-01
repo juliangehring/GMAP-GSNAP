@@ -1,4 +1,4 @@
-/* $Id: stage2.h 106198 2013-08-28 23:07:34Z twu $ */
+/* $Id: stage2.h 128119 2014-02-20 22:07:04Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 
@@ -6,11 +6,15 @@ typedef struct Stage2_T *Stage2_T;
 
 #include "bool.h"
 #include "list.h"
-#include "oligoindex.h"
 #include "pairpool.h"
 #include "diagpool.h"
 #include "stopwatch.h"
 #include "mode.h"
+#ifdef PMAP
+#include "oligoindex_pmap.h"
+#else
+#include "oligoindex_hr.h"
+#endif
 
 #define T Stage2_T
 
@@ -26,16 +30,13 @@ Stage2_free (T *old);
 extern void
 Stage2_setup (bool splicingp_in, bool cross_species_p,
 	      int suboptimal_score_start_in, int suboptimal_score_end_in,
-	      int min_intronlength_in, Mode_T mode_in, bool snps_p_in);
+	      Mode_T mode_in, bool snps_p_in);
 	    
 extern void
 Stage2_free (T *old);
 
 extern int
 Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
-#ifdef PMAP
-	     char *genomicuc_ptr,
-#endif
 	     Chrpos_T chrstart, Chrpos_T chrend,
 	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 	     int genestrand, Oligoindex_T *oligoindices, int noligoindices,
@@ -44,10 +45,6 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 extern List_T
 Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,
-
-#ifdef PMAP
-		char *genomicuc_ptr,
-#endif
 		Chrpos_T chrstart, Chrpos_T chrend,
 		Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 		Oligoindex_T *oligoindices, int noligoindices, double proceed_pctcoverage,
@@ -59,9 +56,6 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 extern List_T
 Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 		    char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,	
-#ifdef PMAP
-		    char *genomicuc_ptr,
-#endif
 		    Chrpos_T chrstart, Chrpos_T chrend,
 		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 

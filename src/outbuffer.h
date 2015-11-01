@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 103696 2013-08-02 22:32:38Z twu $ */
+/* $Id: outbuffer.h 128855 2014-02-28 21:50:24Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -19,7 +19,6 @@
 #else
 #include "stage3.h"		/* Has Printtype_T */
 #include "result.h"
-#include "chrsubset.h"
 #include "genome.h"
 
 #endif
@@ -46,8 +45,8 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 extern T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp,
 	       bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
-	       char *dbversion, Genome_T genome, Univ_IIT_T chromosome_iit,
-	       Chrsubset_T chrsubset, Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
+	       char *dbversion, Genome_T genome, Univ_IIT_T chromosome_iit, char *chrsubset_name,
+	       Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
 #ifndef PMAP
 	       bool sam_headers_p, int quality_shift, bool sam_paired_p,

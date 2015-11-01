@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-access.c 109827 2013-10-02 22:32:56Z twu $";
+static char rcsid[] = "$Id: bitpack64-access.c 121509 2013-12-13 21:56:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,8 +15,6 @@ static char rcsid[] = "$Id: bitpack64-access.c 109827 2013-10-02 22:32:56Z twu $
 #endif
 
 
-static UINT4 *lcpptrs;
-static UINT4 *lcpcomp;
 #define BLOCKSIZE 64
 
 /* Vertical access is slightly more efficient than horizontal */
@@ -26,14 +24,6 @@ static UINT4 *lcpcomp;
 #else
 #define WORD_INCR 4
 #endif
-
-
-void
-Bitpack64_access_setup (UINT4 *lcpptrs_in, UINT4 *lcpcomp_in) {
-  lcpptrs = lcpptrs_in;
-  lcpcomp = lcpcomp_in;
-  return;
-}
 
 
 static UINT4
@@ -2069,12 +2059,12 @@ static Accessor_T accessor_table[272] =
   
 
 
-#define METAINFO_SIZE 1
+#define DIRECT_METAINFO_SIZE 1
 
 #ifdef HORIZONTAL
 
 UINT4
-Bitpack64_access (UINT4 position) {
+Bitpack64_access (UINT4 position, UINT4 *ptrs, UINT4 *comp) {
   UINT4 *info, start;
   int nwritten, remainder;
   UINT4 *bitpack;
@@ -2083,9 +2073,9 @@ Bitpack64_access (UINT4 position) {
   int packsize, i;
 #endif
 
-  info = &(lcpptrs[position/BLOCKSIZE * METAINFO_SIZE]);
+  info = &(ptrs[position/BLOCKSIZE * DIRECT_METAINFO_SIZE]);
   start = info[0];
-  bitpack = (UINT4 *) &(lcpcomp[start]);
+  bitpack = (UINT4 *) &(comp[start]);
   nwritten = info[1] - start;
 
   remainder = position % BLOCKSIZE;
@@ -2109,7 +2099,7 @@ Bitpack64_access (UINT4 position) {
 #else
 
 UINT4
-Bitpack64_access (UINT4 position) {
+Bitpack64_access (UINT4 position, UINT4 *ptrs, UINT4 *comp) {
   UINT4 *info, start;
   int nwritten, remainder;
   UINT4 *bitpack;
@@ -2118,9 +2108,9 @@ Bitpack64_access (UINT4 position) {
   int packsize, i;
 #endif
 
-  info = &(lcpptrs[position/BLOCKSIZE * METAINFO_SIZE]);
+  info = &(ptrs[position/BLOCKSIZE * DIRECT_METAINFO_SIZE]);
   start = info[0];
-  bitpack = (UINT4 *) &(lcpcomp[start]);
+  bitpack = (UINT4 *) &(comp[start]);
   nwritten = info[1] - start;
 
   remainder = position % BLOCKSIZE;

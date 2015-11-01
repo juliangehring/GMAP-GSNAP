@@ -1,4 +1,4 @@
-/* $Id: sequence.h 83593 2013-01-16 22:59:40Z twu $ */
+/* $Id: sequence.h 121509 2013-12-13 21:56:56Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 #include <stdio.h>
@@ -53,6 +53,10 @@ extern int
 Sequence_ntlength (T this);
 extern int
 Sequence_fulllength (T this);
+extern char *
+Sequence_subseq_pointer (T this, int querystart);
+extern int
+Sequence_subseq_length (T this, int querystart);
 extern int
 Sequence_trimlength (T this);
 extern int

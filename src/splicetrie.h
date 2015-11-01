@@ -42,9 +42,6 @@ Splicetrie_solve_end5 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *revsequence1, char *revsequenceuc1,
 		       int length1, int length2, int revoffset1, int revoffset2,
-#ifdef PMAP
-		       char *queryaaseq,
-#endif
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate);
 
@@ -62,9 +59,6 @@ Splicetrie_solve_end3 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *sequence1, char *sequenceuc1,
 		       int length1, int length2, int offset1, int offset2,
-#ifdef PMAP
-		       char *queryaaseq,
-#endif
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate);
 

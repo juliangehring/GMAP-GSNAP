@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 101271 2013-07-12 02:44:39Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 121509 2013-12-13 21:56:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -305,9 +305,6 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 		int *dynprogindex, Dynprog_T dynprog, 
 		char *revsequence1, char *revsequenceuc1,
 		int length1, int length2, int revoffset1, int revoffset2,
-#ifdef PMAP
-		char *queryaaseq,
-#endif
 		int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		int extraband_end, double defect_rate) {
   Triecontent_T leaf;
@@ -341,11 +338,7 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 					  /*revsequence2*/&(splicejunction[length2-1]),/*revsequenceuc2*/&(splicejunction[length2-1]),
 					  /*revsequencealt2*/&(splicejunction_alt[length2-1]),
 					  length1,length2,revoffset1,spliceoffset2_anchor,spliceoffset2_far,
-					  chroffset,chrhigh,
-#ifdef PMAP
-					  queryaaseq,
-#endif
-					  cdna_direction,watsonp,jump_late_p,pairpool,
+					  chroffset,chrhigh,cdna_direction,watsonp,jump_late_p,pairpool,
 					  extraband_end,defect_rate,contlength);
 
       /* miss_score = perfect_score - score; */
@@ -440,11 +433,7 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 					    /*revsequence2*/&(splicejunction[length2-1]),/*revsequenceuc2*/&(splicejunction[length2-1]),
 					    /*revsequencealt2*/&(splicejunction_alt[length2-1]),
 					    length1,length2,revoffset1,spliceoffset2_anchor,spliceoffset2_far,
-					    chroffset,chrhigh,
-#ifdef PMAP
-					    queryaaseq,
-#endif
-					    cdna_direction,watsonp,jump_late_p,pairpool,
+					    chroffset,chrhigh,cdna_direction,watsonp,jump_late_p,pairpool,
 					    extraband_end,defect_rate,contlength);
 
 	/* miss_score = perfect_score - score; */
@@ -532,9 +521,6 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
     if (offsetc > 0) {
@@ -547,9 +533,6 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
     if (offsetg > 0) {
@@ -562,9 +545,6 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
     if (offsett > 0) {
@@ -577,9 +557,6 @@ solve_end5_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
   }
@@ -603,9 +580,6 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 		int *dynprogindex, Dynprog_T dynprog, 
 		char *sequence1, char *sequenceuc1,
 		int length1, int length2, int offset1, int offset2,
-#ifdef PMAP
-		char *queryaaseq,
-#endif
 		int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		int extraband_end, double defect_rate) {
   Triecontent_T leaf;
@@ -639,11 +613,7 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 					  /*sequence2*/splicejunction,/*sequenceuc2*/splicejunction,
 					  /*sequencealt2*/splicejunction_alt,
 					  length1,length2,offset1,spliceoffset2_anchor,spliceoffset2_far,
-					  chroffset,chrhigh,
-#ifdef PMAP
-					  queryaaseq,
-#endif
-					  cdna_direction,watsonp,jump_late_p,pairpool,
+					  chroffset,chrhigh,cdna_direction,watsonp,jump_late_p,pairpool,
 					  extraband_end,defect_rate,contlength);
 
       /* miss_score = perfect_score - score; */
@@ -736,11 +706,7 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 					    /*sequence2*/splicejunction,/*sequenceuc2*/splicejunction,
 					    /*sequencealt2*/splicejunction_alt,
 					    length1,length2,offset1,spliceoffset2_anchor,spliceoffset2_far,
-					    chroffset,chrhigh,
-#ifdef PMAP
-					    queryaaseq,
-#endif
-					    cdna_direction,watsonp,jump_late_p,pairpool,
+					    chroffset,chrhigh,cdna_direction,watsonp,jump_late_p,pairpool,
 					    extraband_end,defect_rate,contlength);
 
 	/* miss_score = perfect_score - score; */
@@ -827,9 +793,6 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
     if (offsetc > 0) {
@@ -842,9 +805,6 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
     if (offsetg > 0) {
@@ -857,9 +817,6 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
     if (offsett > 0) {
@@ -872,9 +829,6 @@ solve_end3_aux (Univcoord_T **coordsptr, Univcoord_T *coords,
 				  splicelength,contlength,far_splicetype,
 				  chroffset,chrhigh,&(*dynprogindex),dynprog,
 				  sequence1,sequenceuc1,length1,length2,offset1,offset2,
-#ifdef PMAP
-				  queryaaseq,
-#endif
 				  cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     }
   }
@@ -896,9 +850,6 @@ Splicetrie_solve_end5 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *revsequence1, char *revsequenceuc1,
 		       int length1, int length2, int revoffset1, int revoffset2,
-#ifdef PMAP
-		       char *queryaaseq,
-#endif
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate) {
   Univcoord_T *coordsptr, *coords, splicecoord0;
@@ -927,9 +878,6 @@ Splicetrie_solve_end5 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
 				splicelength,contlength,far_splicetype,
 				chroffset,chrhigh,&(*dynprogindex),dynprog,
 				revsequence1,revsequenceuc1,length1,length2,revoffset1,revoffset2,
-#ifdef PMAP
-				queryaaseq,
-#endif
 				cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     debug7(printf("\n"));
 
@@ -967,9 +915,6 @@ Splicetrie_solve_end3 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
 		       int *dynprogindex, Dynprog_T dynprog, 
 		       char *sequence1, char *sequenceuc1,
 		       int length1, int length2, int offset1, int offset2,
-#ifdef PMAP
-		       char *queryaaseq,
-#endif
 		       int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
 		       int extraband_end, double defect_rate) {
   Univcoord_T *coordsptr, *coords, splicecoord0;
@@ -998,9 +943,6 @@ Splicetrie_solve_end3 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
 				splicelength,contlength,far_splicetype,
 				chroffset,chrhigh,&(*dynprogindex),dynprog,
 				sequence1,sequenceuc1,length1,length2,offset1,offset2,
-#ifdef PMAP
-				queryaaseq,
-#endif
 				cdna_direction,watsonp,jump_late_p,pairpool,extraband_end,defect_rate);
     debug7(printf("\n"));
 

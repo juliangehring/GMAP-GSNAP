@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 112423 2013-10-23 22:18:52Z twu $";
+static char rcsid[] = "$Id: samprint.c 128289 2014-02-22 01:10:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -54,20 +54,150 @@ static char rcsid[] = "$Id: samprint.c 112423 2013-10-23 22:18:52Z twu $";
 
 static bool quiet_if_excessive_p;
 static int maxpaths_report;
+static bool fails_as_input_p;
+static bool fastq_format_p;
+static bool hide_soft_clips_p = true;
+
 static bool sam_multiple_primaries_p;
 static bool force_xs_direction_p;
 static bool md_lowercase_variant_p;
 static IIT_T snps_iit;
 
 void
-SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in, bool sam_multiple_primaries_p_in,
+SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in,
+	   bool fails_as_input_p_in, bool fastq_format_p_in, bool hide_soft_clips_p_in,
+	   bool sam_multiple_primaries_p_in,
 	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in) {
   quiet_if_excessive_p = quiet_if_excessive_p_in;
+  fails_as_input_p = fails_as_input_p_in;
+  fastq_format_p = fastq_format_p_in;
+  hide_soft_clips_p = hide_soft_clips_p_in;
   maxpaths_report = maxpaths_report_in;
   sam_multiple_primaries_p = sam_multiple_primaries_p_in;
   force_xs_direction_p = force_xs_direction_p_in;
   md_lowercase_variant_p = md_lowercase_variant_p_in;
   snps_iit = snps_iit_in;
+  return;
+}
+
+
+static FILE *fp_nomapping_1;
+static FILE *fp_nomapping_2;
+static FILE *fp_unpaired_uniq;
+static FILE *fp_unpaired_circular;
+static FILE *fp_unpaired_transloc;
+static FILE *fp_unpaired_mult;
+static FILE *fp_unpaired_mult_xs_1;
+static FILE *fp_unpaired_mult_xs_2;
+static FILE *fp_halfmapping_uniq;
+static FILE *fp_halfmapping_circular;
+static FILE *fp_halfmapping_transloc;
+static FILE *fp_halfmapping_mult;
+static FILE *fp_halfmapping_mult_xs_1;
+static FILE *fp_halfmapping_mult_xs_2;
+static FILE *fp_paired_uniq_circular;
+static FILE *fp_paired_uniq_inv;
+static FILE *fp_paired_uniq_scr;
+static FILE *fp_paired_uniq_long;
+static FILE *fp_paired_mult;
+static FILE *fp_paired_mult_xs_1;
+static FILE *fp_paired_mult_xs_2;
+static FILE *fp_concordant_uniq;
+static FILE *fp_concordant_circular;
+static FILE *fp_concordant_transloc;
+static FILE *fp_concordant_mult;
+static FILE *fp_concordant_mult_xs_1;
+static FILE *fp_concordant_mult_xs_2;
+
+
+void
+SAM_file_setup_single (FILE *fp_nomapping_1_in,
+		       FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
+		       FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in) {
+
+  fp_nomapping_1 = fp_nomapping_1_in;
+  fp_unpaired_uniq = fp_unpaired_uniq_in;
+  fp_unpaired_circular = fp_unpaired_circular_in;
+  fp_unpaired_transloc = fp_unpaired_transloc_in;
+  fp_unpaired_mult = fp_unpaired_mult_in;
+  fp_unpaired_mult_xs_1 = fp_unpaired_mult_xs_1_in;
+
+  return;
+}
+
+void
+SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+		       FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
+		       FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
+		       FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
+		       FILE *fp_paired_uniq_long_in, FILE *fp_paired_mult_in, FILE *fp_paired_mult_xs_1_in, FILE *fp_paired_mult_xs_2_in,
+		       FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
+		       FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in) {
+
+  fp_nomapping_1 = fp_nomapping_1_in;
+  fp_nomapping_2 = fp_nomapping_2_in;
+  fp_halfmapping_uniq = fp_halfmapping_uniq_in;
+  fp_halfmapping_circular = fp_halfmapping_circular_in;
+  fp_halfmapping_transloc = fp_halfmapping_transloc_in;
+  fp_halfmapping_mult = fp_halfmapping_mult_in;
+  fp_halfmapping_mult_xs_1 = fp_halfmapping_mult_xs_1_in;
+  fp_halfmapping_mult_xs_2 = fp_halfmapping_mult_xs_2_in;
+  fp_paired_uniq_circular = fp_paired_uniq_circular_in;
+  fp_paired_uniq_inv = fp_paired_uniq_inv_in;
+  fp_paired_uniq_scr = fp_paired_uniq_scr_in;
+  fp_paired_uniq_long = fp_paired_uniq_long_in;
+  fp_paired_mult = fp_paired_mult_in;
+  fp_paired_mult_xs_1 = fp_paired_mult_xs_1_in;
+  fp_paired_mult_xs_2 = fp_paired_mult_xs_2_in;
+  fp_concordant_uniq = fp_concordant_uniq_in;
+  fp_concordant_circular = fp_concordant_circular_in;
+  fp_concordant_transloc = fp_concordant_transloc_in;
+  fp_concordant_mult = fp_concordant_mult_in;
+  fp_concordant_mult_xs_1 = fp_concordant_mult_xs_1_in;
+  fp_concordant_mult_xs_2 = fp_concordant_mult_xs_2_in;
+
+  return;
+}
+
+void
+SAM_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+		    FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
+		    FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in, FILE *fp_unpaired_mult_xs_2_in,
+		    FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
+		    FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
+		    FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
+		    FILE *fp_paired_uniq_long_in, FILE *fp_paired_mult_in, FILE *fp_paired_mult_xs_1_in, FILE *fp_paired_mult_xs_2_in,
+		    FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
+		    FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in) {
+  
+  fp_nomapping_1 = fp_nomapping_1_in;
+  fp_nomapping_2 = fp_nomapping_2_in;
+  fp_unpaired_uniq = fp_unpaired_uniq_in;
+  fp_unpaired_circular = fp_unpaired_circular_in;
+  fp_unpaired_transloc = fp_unpaired_transloc_in;
+  fp_unpaired_mult = fp_unpaired_mult_in;
+  fp_unpaired_mult_xs_1 = fp_unpaired_mult_xs_1_in;
+  fp_unpaired_mult_xs_2 = fp_unpaired_mult_xs_2_in;
+  fp_halfmapping_uniq = fp_halfmapping_uniq_in;
+  fp_halfmapping_circular = fp_halfmapping_circular_in;
+  fp_halfmapping_transloc = fp_halfmapping_transloc_in;
+  fp_halfmapping_mult = fp_halfmapping_mult_in;
+  fp_halfmapping_mult_xs_1 = fp_halfmapping_mult_xs_1_in;
+  fp_halfmapping_mult_xs_2 = fp_halfmapping_mult_xs_2_in;
+  fp_paired_uniq_circular = fp_paired_uniq_circular_in;
+  fp_paired_uniq_inv = fp_paired_uniq_inv_in;
+  fp_paired_uniq_scr = fp_paired_uniq_scr_in;
+  fp_paired_uniq_long = fp_paired_uniq_long_in;
+  fp_paired_mult = fp_paired_mult_in;
+  fp_paired_mult_xs_1 = fp_paired_mult_xs_1_in;
+  fp_paired_mult_xs_2 = fp_paired_mult_xs_2_in;
+  fp_concordant_uniq = fp_concordant_uniq_in;
+  fp_concordant_circular = fp_concordant_circular_in;
+  fp_concordant_transloc = fp_concordant_transloc_in;
+  fp_concordant_mult = fp_concordant_mult_in;
+  fp_concordant_mult_xs_1 = fp_concordant_mult_xs_1_in;
+  fp_concordant_mult_xs_2 = fp_concordant_mult_xs_2_in;
+
   return;
 }
 
@@ -186,7 +316,8 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
   } else if (Stage3end_hittype(this) == GMAP) {
     chrpos = Pair_genomicpos_low(clipdir,hardclip5,hardclip3,
 				 Stage3end_pairarray(this),Stage3end_npairs(this),
-				 querylength,/*watsonp*/Stage3end_plusp(this),firstp);
+				 querylength,/*watsonp*/Stage3end_plusp(this),firstp,
+				 hide_soft_clips_p);
 
   } else {
     if (substring_low != NULL) {
@@ -197,7 +328,12 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 
     if (plusp == true) {
       /* Add 1 to report in 1-based coordinates */
-      if (*hardclip_low > Substring_querystart(substring_low)) {
+      if (hide_soft_clips_p == true) {
+	querystart = Substring_querystart_orig(substring_low);
+      } else {
+	querystart = Substring_querystart(substring_low);
+      }
+      if (*hardclip_low > querystart) {
 	substring = (Substring_T) NULL;
 	while (*hardclip_low < querylength && substring == NULL) {
 	  substring = Stage3end_substring_containing(this,*hardclip_low);
@@ -209,9 +345,13 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 	  return 0U;
 	}
 
-	chrpos = Substring_alignstart_trim(substring) - Substring_chroffset(substring) + 1U;
-	querystart = Substring_querystart(substring);
-	queryend = Substring_queryend(Stage3end_substring_high(this));
+	if (hide_soft_clips_p == true) {
+	  chrpos = Substring_alignstart(substring) - Substring_chroffset(substring) + 1U;
+	  queryend = Substring_queryend_orig(Stage3end_substring_high(this));
+	} else {
+	  chrpos = Substring_alignstart_trim(substring) - Substring_chroffset(substring) + 1U;
+	  queryend = Substring_queryend(Stage3end_substring_high(this));
+	}
 
 #if 0
 	fprintf(stderr,"case 1, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
@@ -230,8 +370,13 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 	chrpos += (*hardclip_low) - querystart;
 
       } else {
-	querystart = Substring_querystart(substring_low);
-	queryend = Substring_queryend(Stage3end_substring_high(this));
+	if (hide_soft_clips_p == true) {
+	  querystart = Substring_querystart_orig(substring_low);
+	  queryend = Substring_queryend_orig(Stage3end_substring_high(this));
+	} else {
+	  querystart = Substring_querystart(substring_low);
+	  queryend = Substring_queryend(Stage3end_substring_high(this));
+	}
 
 #if 0
 	fprintf(stderr,"case 2, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
@@ -243,12 +388,22 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 	  return 0U;
 	}
 
-	chrpos = Substring_alignstart_trim(substring_low) - Substring_chroffset(substring_low) + 1U;
+	if (hide_soft_clips_p == true) {
+	  chrpos = Substring_alignstart(substring_low) - Substring_chroffset(substring_low) + 1U;
+	} else {
+	  chrpos = Substring_alignstart_trim(substring_low) - Substring_chroffset(substring_low) + 1U;
+	}
       }
 
     } else {
       /* Add 1 to report in 1-based coordinates */
-      if (querylength - *hardclip_low < Substring_queryend(substring_low)) {
+      if (hide_soft_clips_p == true) {
+	queryend = Substring_queryend_orig(substring_low);
+      } else {
+	queryend = Substring_queryend(substring_low);
+      }
+
+      if (querylength - *hardclip_low < queryend) {
 	substring = (Substring_T) NULL;
 	while (*hardclip_low < querylength && substring == NULL) {
 	  substring = Stage3end_substring_containing(this,querylength - 1 - (*hardclip_low));
@@ -260,9 +415,13 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 	  return 0U;
 	}
 
-	chrpos = Substring_alignend_trim(substring) - Substring_chroffset(substring) + 1U;
-	queryend = Substring_queryend(substring);
-	querystart = Substring_querystart(Stage3end_substring_high(this));
+	if (hide_soft_clips_p == true) {
+	  chrpos = Substring_alignend(substring) - Substring_chroffset(substring) + 1U;
+	  querystart = Substring_querystart_orig(Stage3end_substring_high(this));
+	} else {
+	  chrpos = Substring_alignend_trim(substring) - Substring_chroffset(substring) + 1U;
+	  querystart = Substring_querystart(Stage3end_substring_high(this));
+	}
 
 #if 0
 	fprintf(stderr,"case 3, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
@@ -281,8 +440,13 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 
 	chrpos += queryend - (querylength - (*hardclip_low));
       } else {
-	querystart = Substring_querystart(Stage3end_substring_high(this));
-	queryend = Substring_queryend(substring_low);
+	if (hide_soft_clips_p == true) {
+	  querystart = Substring_querystart_orig(Stage3end_substring_high(this));
+	  queryend = Substring_queryend_orig(substring_low);
+	} else {
+	  querystart = Substring_querystart(Stage3end_substring_high(this));
+	  queryend = Substring_queryend(substring_low);
+	}
 
 #if 0
 	fprintf(stderr,"case 4, hardclip_low %d, hardclip_high %d, querystart %d, queryend %d\n",
@@ -294,7 +458,11 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 	  return 0U;
 	}
 
-	chrpos = Substring_alignend_trim(substring_low) - Substring_chroffset(substring_low) + 1U;
+	if (hide_soft_clips_p == true) {	
+	  chrpos = Substring_alignend(substring_low) - Substring_chroffset(substring_low) + 1U;
+	} else {
+	  chrpos = Substring_alignend_trim(substring_low) - Substring_chroffset(substring_low) + 1U;
+	}
       }
     }
   }
@@ -304,8 +472,7 @@ SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
 
 
 static void
-print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Chrpos_T chrpos,
-		       Univ_IIT_T chromosome_iit) {
+print_chromosomal_pos (FILE *fp, Chrnum_T chrnum, Chrpos_T chrpos, Univ_IIT_T chromosome_iit) {
   bool allocp;
   char *chr;
 
@@ -1071,7 +1238,7 @@ print_md_string (bool *printp, int *nmismatches_refdiff, int *nmismatches_bothdi
 
 
 static void
-print_single (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
+print_single (FILE *fp, char *abbrev, Hittype_T hittype, Stage3end_T this, Stage3end_T mate,
 	      char *acc1, char *acc2, int pathnum, int npaths,
 	      int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 	      Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
@@ -1087,6 +1254,7 @@ print_single (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   char *genomicfwd_refdiff, *genomicfwd_bothdiff, *genomicdir_refdiff, *genomicdir_bothdiff;
   bool plusp, printp;
 
+  debug(printf("print_single\n"));
 
   querylength = Shortread_fulllength(queryseq);
   plusp = Stage3end_plusp(this);
@@ -1159,26 +1327,41 @@ print_single (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"\t");
 
   if (plusp == true) {
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring),
-		/*querypos*/0,querylength,hardclip_low,hardclip_high,
-		/*plusp*/true,/*lastp*/false);
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring),
-		/*querypos*/Substring_querystart(substring),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring),
-		/*querypos*/Substring_queryend(substring),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    if (hide_soft_clips_p == true && hittype != TERMINAL) {
+      print_cigar(fp,/*type*/'M',
+		  Substring_querystart(substring) + Substring_match_length(substring) +
+		  (querylength - Substring_queryend(substring)),/*querypos*/0,querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    } else {
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring),
+		  /*querypos*/Substring_querystart(substring),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring),
+		  /*querypos*/Substring_queryend(substring),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    }
 
   } else {
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring),
-		/*querypos*/querylength,querylength,hardclip_low,hardclip_high,
-		/*plusp*/false,/*lastp*/false);
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring),
-		/*querypos*/Substring_queryend(substring),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring),
-		/*querypos*/Substring_querystart(substring),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    if (hide_soft_clips_p == true && hittype != TERMINAL) {
+      print_cigar(fp,/*type*/'M',
+		  (querylength - Substring_queryend(substring)) + 
+		  Substring_match_length(substring) + Substring_querystart(substring),
+		  /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/true);
+    } else {
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring),
+		  /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring),
+		  /*querypos*/Substring_queryend(substring),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring),
+		  /*querypos*/Substring_querystart(substring),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    }
   }
 
 
@@ -1240,8 +1423,13 @@ print_single (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"MD:Z:");  
   printp = false;
 
-  substring_start = Substring_querystart(substring);
-  substring_length = Substring_match_length(substring);
+  if (hide_soft_clips_p == true) {
+    substring_start = Substring_querystart_orig(substring);
+    substring_length = Substring_match_length_orig(substring);
+  } else {
+    substring_start = Substring_querystart(substring);
+    substring_length = Substring_match_length(substring);
+  }
 
   if ((genomicdir_bothdiff = Substring_genomic_bothdiff(substring)) == NULL) {
     if (plusp == true) {
@@ -1326,6 +1514,12 @@ print_single (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   /* 12. TAGS: XO */
   fprintf(fp,"\t");
   fprintf(fp,"XO:Z:%s",abbrev);
+
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
+  }
 
   /* 12. TAGS: PG */
   if (Stage3end_sarrayp(this) == true) {
@@ -1433,38 +1627,72 @@ print_insertion (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"\t");
 
   if (plusp == true) {
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',Substring_querystart(substring1),
-				 /*querypos*/0,querylength,hardclip_low,hardclip_high,
-				 /*plusp*/true,/*lastp*/false);
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring1),
-				 /*querypos*/Substring_querystart(substring1),querylength,
-				 hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    if (hide_soft_clips_p == true) {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',
+				   Substring_querystart(substring1) + Substring_match_length(substring1),
+				   /*querypos*/0,querylength,hardclip_low,hardclip_high,
+				   /*plusp*/true,/*lastp*/false);
+    } else {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',Substring_querystart(substring1),
+				   /*querypos*/0,querylength,hardclip_low,hardclip_high,
+				   /*plusp*/true,/*lastp*/false);
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring1),
+				   /*querypos*/Substring_querystart(substring1),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    }
+
     cigar_tokens = compute_cigar(cigar_tokens,/*type*/'I',nindels,
 				 /*querypos*/Substring_queryend(substring1),querylength,
 				 hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring2),
-				 /*querypos*/Substring_querystart(substring2),querylength,
-				 hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',querylength - Substring_queryend(substring2),
-				 /*querypos*/Substring_queryend(substring2),querylength,
-				 hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+
+    if (hide_soft_clips_p == true) {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',
+				   Substring_match_length(substring2) + (querylength - Substring_queryend(substring2)),
+				   /*querypos*/Substring_querystart(substring2),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    } else {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring2),
+				   /*querypos*/Substring_querystart(substring2),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',querylength - Substring_queryend(substring2),
+				   /*querypos*/Substring_queryend(substring2),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    }
 
   } else {
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',querylength - Substring_queryend(substring2),
-				 /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
-				 /*plusp*/false,/*lastp*/false);
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring2),
-				 /*querypos*/Substring_queryend(substring2),querylength,
-				 hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    if (hide_soft_clips_p == true) {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',
+				   (querylength - Substring_queryend(substring2)) +
+				   Substring_match_length(substring2),
+				   /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+				   /*plusp*/false,/*lastp*/false);
+    } else {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',querylength - Substring_queryend(substring2),
+				   /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+				   /*plusp*/false,/*lastp*/false);
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring2),
+				   /*querypos*/Substring_queryend(substring2),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    }
+
     cigar_tokens = compute_cigar(cigar_tokens,/*type*/'I',nindels,
 				 /*querypos*/Substring_querystart(substring2),querylength,
 				 hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring1),
-				 /*querypos*/Substring_queryend(substring1),querylength,
-				 hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',Substring_querystart(substring1),
-				 /*querypos*/Substring_querystart(substring1),querylength,
-				 hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+
+    if (hide_soft_clips_p == true) {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',
+				   Substring_match_length(substring1) +
+				   Substring_querystart(substring1),
+				   /*querypos*/Substring_queryend(substring1),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    } else {
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'M',Substring_match_length(substring1),
+				   /*querypos*/Substring_queryend(substring1),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      cigar_tokens = compute_cigar(cigar_tokens,/*type*/'S',Substring_querystart(substring1),
+				   /*querypos*/Substring_querystart(substring1),querylength,
+				   hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    }
   }
   cigar_tokens = Pair_clean_cigar(cigar_tokens,/*watsonp*/true);
   print_tokens_sam(fp,cigar_tokens);
@@ -1528,10 +1756,17 @@ print_insertion (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"MD:Z:");
   printp = false;
 
-  substring1_start = Substring_querystart(substring1);
-  substring1_length = Substring_match_length(substring1);
-  substring2_start = Substring_querystart(substring2);
-  substring2_length = Substring_match_length(substring2);
+  if (hide_soft_clips_p == true) {
+    substring1_start = Substring_querystart_orig(substring1);
+    substring1_length = Substring_match_length_orig(substring1);
+    substring2_start = Substring_querystart_orig(substring2);
+    substring2_length = Substring_match_length_orig(substring2);
+  } else {
+    substring1_start = Substring_querystart(substring1);
+    substring1_length = Substring_match_length(substring1);
+    substring2_start = Substring_querystart(substring2);
+    substring2_length = Substring_match_length(substring2);
+  }
 
   if (plusp == true) {
     genomicfwd_refdiff = Substring_genomic_refdiff(substring1);
@@ -1647,6 +1882,12 @@ print_insertion (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"\t");
   fprintf(fp,"XO:Z:%s",abbrev);
 
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
+  }
+
   /* 12. TAGS: PG */
   if (Stage3end_sarrayp(this) == true) {
     fprintf(fp,"\t");
@@ -1760,52 +2001,109 @@ print_deletion (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   /* 6. CIGAR */
   fprintf(fp,"\t");
 
-  substring1_start = Substring_querystart(substring1);
-  substring1_length = Substring_match_length(substring1);
-  substring2_start = Substring_querystart(substring2);
-  substring2_length = Substring_match_length(substring2);
+  if (hide_soft_clips_p == true) {
+    substring1_start = Substring_querystart_orig(substring1);
+    substring1_length = Substring_match_length_orig(substring1);
+    substring2_start = Substring_querystart_orig(substring2);
+    substring2_length = Substring_match_length_orig(substring2);
+  } else {
+    substring1_start = Substring_querystart(substring1);
+    substring1_length = Substring_match_length(substring1);
+    substring2_start = Substring_querystart(substring2);
+    substring2_length = Substring_match_length(substring2);
+  }
 
   if (plusp == true) {
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
-		/*querypos*/0,querylength,hardclip_low,hardclip_high,
-		/*plusp*/true,/*lastp*/false);
-    if (/*nindels > 0 &&*/ hardclip_low < substring1_start + substring1_length && hardclip_high < querylength - substring2_start) {
-      print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
-		  /*querypos*/Substring_querystart(substring1),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-      fprintf(fp,"%dD",nindels);
-      print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
-		  /*querypos*/Substring_querystart(substring2),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    if (hide_soft_clips_p == true) {
+      if (/*nindels > 0 &&*/ hardclip_low < substring1_start + substring1_length && hardclip_high < querylength - substring2_start) {
+	print_cigar(fp,/*type*/'M',
+		    Substring_querystart(substring1) +
+		    Substring_match_length(substring1),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	fprintf(fp,"%dD",nindels);
+	print_cigar(fp,/*type*/'M',
+		    Substring_match_length(substring2) +
+		    (querylength - Substring_queryend(substring2)),
+		    /*querypos*/Substring_querystart(substring2),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/'M',
+		    Substring_querystart(substring1) + 
+		    (Substring_match_length(substring1) +
+		     Substring_match_length(substring2)) +
+		    (querylength - Substring_queryend(substring2)),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/true);
+      }
+
+
     } else {
-      print_cigar(fp,/*type*/'M',Substring_match_length(substring1) + Substring_match_length(substring2),
-		  /*querypos*/Substring_querystart(substring1),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      if (/*nindels > 0 &&*/ hardclip_low < substring1_start + substring1_length && hardclip_high < querylength - substring2_start) {
+	print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		    /*querypos*/Substring_querystart(substring1),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+	fprintf(fp,"%dD",nindels);
+	print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		    /*querypos*/Substring_querystart(substring2),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      } else {
+	print_cigar(fp,/*type*/'M',Substring_match_length(substring1) + Substring_match_length(substring2),
+		    /*querypos*/Substring_querystart(substring1),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      }
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		  /*querypos*/Substring_queryend(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
     }
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
-		/*querypos*/Substring_queryend(substring2),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
   } else {
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
-		/*querypos*/querylength,querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    if (/*nindels > 0 &&*/ hardclip_low < querylength - substring2_start && hardclip_high < substring1_start + substring1_length) {
-      print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
-		  /*querypos*/Substring_queryend(substring2),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      fprintf(fp,"%dD",nindels);
-      print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
-		  /*querypos*/Substring_querystart(substring2),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    if (hide_soft_clips_p == true) {
+      if (/*nindels > 0 &&*/ hardclip_low < querylength - substring2_start && hardclip_high < substring1_start + substring1_length) {
+	print_cigar(fp,/*type*/'M',
+		    (querylength - Substring_queryend(substring2)) + 
+		    Substring_match_length(substring2),
+		    /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/false);
+	fprintf(fp,"%dD",nindels);
+	print_cigar(fp,/*type*/'M',
+		    Substring_match_length(substring1) +
+		    Substring_querystart(substring1),
+		    /*querypos*/Substring_querystart(substring2),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/'M',
+		    (querylength - Substring_queryend(substring2)) + 
+		    (Substring_match_length(substring2) + Substring_match_length(substring1)) +
+		    Substring_querystart(substring1),		    
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+      }
+
     } else {
-      print_cigar(fp,/*type*/'M',Substring_match_length(substring2) + Substring_match_length(substring1),
-		  /*querypos*/Substring_queryend(substring2),querylength,
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		  /*querypos*/querylength,querylength,
 		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      if (/*nindels > 0 &&*/ hardclip_low < querylength - substring2_start && hardclip_high < substring1_start + substring1_length) {
+	print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		    /*querypos*/Substring_queryend(substring2),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	fprintf(fp,"%dD",nindels);
+	print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		    /*querypos*/Substring_querystart(substring2),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      } else {
+	print_cigar(fp,/*type*/'M',Substring_match_length(substring2) + Substring_match_length(substring1),
+		    /*querypos*/Substring_queryend(substring2),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      }
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		  /*querypos*/Substring_querystart(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
     }
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
-		/*querypos*/Substring_querystart(substring1),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
   }
 
   /* 7. MRNM: Mate chr */
@@ -2000,6 +2298,12 @@ print_deletion (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"\t");
   fprintf(fp,"XO:Z:%s",abbrev);
 
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
+  }
+
   /* 12. TAGS: PG */
   if (Stage3end_sarrayp(this) == true) {
     fprintf(fp,"\t");
@@ -2067,14 +2371,14 @@ static void
 print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, Stage3end_T mate,
 		 char *acc1, char *acc2, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		 Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		 Chrpos_T concordant_chrpos, Chrpos_T chrpos, Chrpos_T mate_chrpos,
+		 Chrpos_T concordant_chrpos, Chrpos_T donor_chrpos, Chrpos_T acceptor_chrpos, Chrpos_T mate_chrpos,
 		 int clipdir, int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		 int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
-		 bool use_hardclip_p, bool print_xt_p, char donor1, char donor2, char acceptor2, char acceptor1,
+		 bool use_hardclip_p, bool print_xt_p, char donor_strand, char acceptor_strand,
+		 char *donor_chr, char *acceptor_chr, char donor1, char donor2, char acceptor2, char acceptor1,
 		 double donor_prob, double acceptor_prob, bool circularp) {
   unsigned int flag = 0U;
   int nmismatches_refdiff = 0, nmismatches_bothdiff = 0, querylength;
-  int sensedir;
   bool sensep;
   char *genomicfwd_refdiff, *genomicfwd_bothdiff, *genomicdir_refdiff, *genomicdir_bothdiff;
   int substring_start, substring_length;
@@ -2141,7 +2445,7 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  print_chromosomal_pos(fp,Substring_chrnum(donor),chrpos,chromosome_iit);
+  print_chromosomal_pos(fp,Substring_chrnum(donor),donor_chrpos,chromosome_iit);
   
 
   /* 5. MAPQ: Mapping quality */
@@ -2150,7 +2454,7 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
   /* 6. CIGAR */
   fprintf(fp,"\t");
   /* sensedir for chimera must be SENSE_FORWARD or SENSE_ANTI, not SENSE_NULL */
-  sensedir = Substring_chimera_sensedir(donor);
+  /* sensedir = Substring_chimera_sensedir(donor); */
   sensep = Substring_chimera_sensep(donor);
 
   if (use_hardclip_p == true) {
@@ -2188,54 +2492,100 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
     if (plusp == true) {
       /* sensep true */
       assert(Substring_chimera_pos(donor) == Substring_queryend(donor));
-      print_cigar(fp,/*type*/'S',Substring_querystart(donor),
-		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
-		  /*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
-		  /*querypos*/Substring_querystart(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
-		  /*querypos*/Substring_queryend(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/'M',
+		    Substring_querystart(donor) + 
+		    Substring_match_length(donor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
+		    /*querypos*/Substring_queryend(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+
+      } else {
+	print_cigar(fp,/*type*/'S',Substring_querystart(donor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		    /*querypos*/Substring_querystart(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
+		    /*querypos*/Substring_queryend(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      }
 
     } else {
       /* sensep false */
       assert(Substring_chimera_pos(donor) == Substring_querystart(donor));
-      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(donor),
-		  /*querypos*/querylength,querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
-		  /*querypos*/Substring_queryend(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
-		  /*querypos*/Substring_querystart(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/'M',
+		    (querylength - Substring_queryend(donor)) +
+		    Substring_match_length(donor),
+		    /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
+		      /*querypos*/Substring_querystart(donor),querylength,
+		      hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+
+      } else {
+	print_cigar(fp,/*type*/'S',querylength - Substring_queryend(donor),
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		    /*querypos*/Substring_queryend(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
+		    /*querypos*/Substring_querystart(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+      }
     }
 
   } else { /* sensep != Substring_plusp(donor) */
     if (plusp == true) {
       assert(Substring_chimera_pos(donor) == Substring_querystart(donor));
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
-		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
-		  /*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
-		  /*querypos*/Substring_querystart(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(donor),
-		  /*querypos*/Substring_queryend(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',
+		    Substring_match_length(donor) + 
+		    (querylength - Substring_queryend(donor)),
+		    /*querypos*/Substring_querystart(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(donor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		    /*querypos*/Substring_querystart(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'S',querylength - Substring_queryend(donor),
+		    /*querypos*/Substring_queryend(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      }
 
     } else {
       assert(Substring_chimera_pos(donor) == Substring_queryend(donor));
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
-		  /*querypos*/querylength,querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(donor),
-		  /*querypos*/Substring_queryend(donor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/'S',Substring_querystart(donor),
-		  /*querypos*/Substring_querystart(donor),querylength,hardclip_low,hardclip_high,
-		  /*plusp*/false,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',
+		    Substring_match_length(donor) +
+		    Substring_querystart(donor),
+		    /*querypos*/Substring_queryend(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(donor),
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(donor),
+		    /*querypos*/Substring_queryend(donor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'S',Substring_querystart(donor),
+		    /*querypos*/Substring_querystart(donor),querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/true);
+      }
     }
   }
 
@@ -2243,7 +2593,7 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
   /* 8. MPOS: Mate chrpos */
   /* For anchor_chrnum, previously used Stage3end_chrnum(this), but this is 0 */
   print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
-			     /*anchor_chrnum*/Substring_chrnum(donor),chrpos,chromosome_iit);
+			     /*anchor_chrnum*/Substring_chrnum(donor),donor_chrpos,chromosome_iit);
 
 
   /* 9. ISIZE: Insert size */
@@ -2299,8 +2649,13 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
   fprintf(fp,"MD:Z:");
   printp = false;
 
-  substring_start = Substring_querystart(donor);
-  substring_length = Substring_match_length(donor);
+  if (hide_soft_clips_p == true) {
+    substring_start = Substring_querystart_orig(donor);
+    substring_length = Substring_match_length_orig(donor);
+  } else {
+    substring_start = Substring_querystart(donor);
+    substring_length = Substring_match_length(donor);
+  }
 
   if (use_hardclip_p == false) {
     genomicdir_refdiff = Substring_genomic_refdiff(donor);
@@ -2441,6 +2796,8 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
 
   /* 12. TAGS: XS */
   fprintf(fp,"\t");
+#if 0
+  /* Not necessary to compute, because already computed by print_exon_exon */
   /* sensedir for chimera must be SENSE_FORWARD or SENSE_ANTI, not SENSE_NULL */
   if (sensedir == SENSE_FORWARD) {
     if (plusp == true) {
@@ -2459,11 +2816,21 @@ print_halfdonor (FILE *fp, char *abbrev, Substring_T donor, Stage3end_T this, St
   } else {
     fprintf(fp,"XS:A:?");
   }
+#else
+  fprintf(fp,"XS:A:%c",donor_strand);
+#endif
 
   /* 12. TAGS: XT */
   if (print_xt_p == true) {
     fprintf(fp,"\t");
     fprintf(fp,"XT:Z:%c%c-%c%c,%.2f,%.2f",donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+    fprintf(fp,",%c%s:%u..%c%s:%u",donor_strand,donor_chr,donor_chrpos,acceptor_strand,acceptor_chr,acceptor_chrpos);
+  }
+
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
   }
 
   /* 12. TAGS: PG */
@@ -2481,14 +2848,14 @@ static void
 print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T this, Stage3end_T mate,
 		    char *acc1, char *acc2, int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		    Univ_IIT_T chromosome_iit, Shortread_T queryseq, int pairedlength,
-		    Chrpos_T concordant_chrpos, Chrpos_T chrpos, Chrpos_T mate_chrpos,
+		    Chrpos_T concordant_chrpos, Chrpos_T donor_chrpos, Chrpos_T acceptor_chrpos, Chrpos_T mate_chrpos,
 		    int clipdir, int hardclip5, int hardclip3, Resulttype_T resulttype, bool first_read_p, int npaths_mate,
 		    int quality_shift, char *sam_read_group_id, bool invertp, bool invert_mate_p,
-		    bool use_hardclip_p, bool print_xt_p, char donor1, char donor2, char acceptor2, char acceptor1,
+		    bool use_hardclip_p, bool print_xt_p, char donor_strand, char acceptor_strand,
+		    char *donor_chr, char *acceptor_chr, char donor1, char donor2, char acceptor2, char acceptor1,
 		    double donor_prob, double acceptor_prob, bool circularp) {
   unsigned int flag = 0U;
   int nmismatches_refdiff = 0, nmismatches_bothdiff = 0, querylength;
-  int sensedir;
   bool sensep;
   char *genomicfwd_refdiff, *genomicfwd_bothdiff, *genomicdir_refdiff, *genomicdir_bothdiff;
   int substring_start, substring_length;
@@ -2555,7 +2922,7 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
 
   /* 3. RNAME: chr */
   /* 4. POS: chrpos */
-  print_chromosomal_pos(fp,Substring_chrnum(acceptor),chrpos,chromosome_iit);
+  print_chromosomal_pos(fp,Substring_chrnum(acceptor),acceptor_chrpos,chromosome_iit);
 
 
   /* 5. MAPQ: Mapping quality */
@@ -2564,7 +2931,7 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
   /* 6. CIGAR */
   fprintf(fp,"\t");
   /* sensedir for chimera must be SENSE_FORWARD or SENSE_ANTI, not SENSE_NULL */
-  sensedir = Substring_chimera_sensedir(acceptor);
+  /* sensedir = Substring_chimera_sensedir(acceptor); */
   sensep = Substring_chimera_sensep(acceptor);
 
   if (use_hardclip_p == true) {
@@ -2601,54 +2968,98 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
     if (plusp == true) {
       /* sensep false */
       assert(Substring_chimera_pos(acceptor) == Substring_queryend(acceptor));
-      print_cigar(fp,/*type*/'S',Substring_querystart(acceptor),
-		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
-		  /*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
-		  /*querypos*/Substring_querystart(acceptor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
-		  /*querypos*/Substring_queryend(acceptor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/'M',
+		    Substring_querystart(acceptor) +
+		    Substring_match_length(acceptor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
+		    /*querypos*/Substring_queryend(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/'S',Substring_querystart(acceptor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		    /*querypos*/Substring_querystart(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
+		    /*querypos*/Substring_queryend(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      }
 
     } else {
       /* sensep true */
       assert(Substring_chimera_pos(acceptor) == Substring_querystart(acceptor));
-      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(acceptor),
-		  /*querypos*/querylength,querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
-		  /*querypos*/Substring_queryend(acceptor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
-		  /*querypos*/Substring_querystart(acceptor),querylength,hardclip_low,hardclip_high,
-		  /*plusp*/false,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/'M',
+		    (querylength - Substring_queryend(acceptor)) +
+		    Substring_match_length(acceptor),
+		    /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
+		    /*querypos*/Substring_querystart(acceptor),querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/'S',querylength - Substring_queryend(acceptor),
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		    /*querypos*/Substring_queryend(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
+		    /*querypos*/Substring_querystart(acceptor),querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/true);
+      }
     }
 
   } else { /*  sensep == Substring_plusp(acceptor) */
     if (plusp == true) {
       assert(Substring_chimera_pos(acceptor) == Substring_querystart(acceptor));
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
-		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
-		  /*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
-		  /*querypos*/Substring_querystart(acceptor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(acceptor),
-		  /*querypos*/Substring_queryend(acceptor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',
+		    Substring_match_length(acceptor) +
+		    (querylength - Substring_queryend(acceptor)),
+		    /*querypos*/Substring_querystart(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',Substring_querystart(acceptor),
+		    /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		    /*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		    /*querypos*/Substring_querystart(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+	print_cigar(fp,/*type*/'S',querylength - Substring_queryend(acceptor),
+		    /*querypos*/Substring_queryend(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+      }
 
     } else {
       assert(Substring_chimera_pos(acceptor) == Substring_queryend(acceptor));
-      print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
-		  /*querypos*/querylength,querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
-		  /*querypos*/Substring_queryend(acceptor),querylength,
-		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-      print_cigar(fp,/*type*/'S',Substring_querystart(acceptor),
-		  /*querypos*/Substring_querystart(acceptor),querylength,hardclip_low,hardclip_high,
-		  /*plusp*/false,/*lastp*/true);
+      if (hide_soft_clips_p == true) {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',
+		    Substring_match_length(acceptor) +
+		    Substring_querystart(acceptor),
+		    /*querypos*/Substring_queryend(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+      } else {
+	print_cigar(fp,/*type*/use_hardclip_p ? 'H' : 'S',querylength - Substring_queryend(acceptor),
+		    /*querypos*/querylength,querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'M',Substring_match_length(acceptor),
+		    /*querypos*/Substring_queryend(acceptor),querylength,
+		    hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+	print_cigar(fp,/*type*/'S',Substring_querystart(acceptor),
+		    /*querypos*/Substring_querystart(acceptor),querylength,hardclip_low,hardclip_high,
+		    /*plusp*/false,/*lastp*/true);
+      }
     }
   }
 
@@ -2657,7 +3068,7 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
   /* 8. MPOS: Mate chrpos */
   /* For anchor_chrnum, previously used Stage3end_chrnum(this), but this is 0 */
   print_mate_chromosomal_pos(fp,Stage3end_chrnum(mate),Stage3end_effective_chrnum(mate),mate_chrpos,
-			     /*anchor_chrnum*/Substring_chrnum(acceptor),chrpos,chromosome_iit);
+			     /*anchor_chrnum*/Substring_chrnum(acceptor),acceptor_chrpos,chromosome_iit);
 
 
   /* 9. ISIZE: Insert size */
@@ -2713,8 +3124,13 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
   fprintf(fp,"MD:Z:");
   printp = false;
 
-  substring_start = Substring_querystart(acceptor);
-  substring_length = Substring_match_length(acceptor);
+  if (hide_soft_clips_p == true) {
+    substring_start = Substring_querystart_orig(acceptor);
+    substring_length = Substring_match_length_orig(acceptor);
+  } else {
+    substring_start = Substring_querystart(acceptor);
+    substring_length = Substring_match_length(acceptor);
+  }
 
   if (use_hardclip_p == false) {
     genomicdir_refdiff = Substring_genomic_refdiff(acceptor);
@@ -2856,6 +3272,8 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
 
   /* 12. TAGS: XS */
   fprintf(fp,"\t");
+#if 0
+  /* Not necessary to compute, because already computed by print_exon_exon */
   /* sensedir for chimera must be SENSE_FORWARD or SENSE_ANTI, not SENSE_NULL */
   if (sensedir == SENSE_FORWARD) {
     if (plusp == true) {
@@ -2874,11 +3292,21 @@ print_halfacceptor (FILE *fp, char *abbrev, Substring_T acceptor, Stage3end_T th
   } else {
     fprintf(fp,"XS:A:?");
   }
+#else
+  fprintf(fp,"XS:A:%c",acceptor_strand);
+#endif
 
   /* 12. TAGS: XT */
   if (print_xt_p == true) {
     fprintf(fp,"\t");
     fprintf(fp,"XT:Z:%c%c-%c%c,%.2f,%.2f",donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob);
+    fprintf(fp,",%c%s:%u..%c%s:%u",donor_strand,donor_chr,donor_chrpos,acceptor_strand,acceptor_chr,acceptor_chrpos);
+  }
+
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
   }
 
   /* 12. TAGS: PG */
@@ -2993,44 +3421,82 @@ print_localsplice (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   }
 
   if (plusp == true) {
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
-		/*querypos*/0,querylength,hardclip_low,hardclip_high,
-		/*plusp*/true,/*lastp*/false);
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
-		/*querypos*/Substring_querystart(substring1),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-    if (hardclip_low < Substring_queryend(substring1) &&
-	querylength - hardclip_high > Substring_querystart(substring2)) {
-      debug1(printf("\ncase 1: hardclip_low %d < queryend(substring1) %d && querylength %d - hardclip_high %d > querystart(substring2) %d\n",
-		    hardclip_low,Substring_queryend(substring1),querylength,hardclip_high,Substring_querystart(substring2)));
-      fprintf(fp,"%uN",Stage3end_distance(this));
+    if (hide_soft_clips_p == true) {
+      print_cigar(fp,/*type*/'M',
+		  Substring_querystart(substring1) +
+		  Substring_match_length(substring1),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      if (hardclip_low < Substring_queryend(substring1) &&
+	  querylength - hardclip_high > Substring_querystart(substring2)) {
+	debug1(printf("\ncase 1: hardclip_low %d < queryend(substring1) %d && querylength %d - hardclip_high %d > querystart(substring2) %d\n",
+		      hardclip_low,Substring_queryend(substring1),querylength,hardclip_high,Substring_querystart(substring2)));
+	fprintf(fp,"%uN",Stage3end_distance(this));
+      }
+      print_cigar(fp,/*type*/'M',
+		  Substring_match_length(substring2) +
+		  (querylength - Substring_queryend(substring2)),
+		  /*querypos*/Substring_querystart(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    } else {
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		  /*querypos*/Substring_querystart(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      if (hardclip_low < Substring_queryend(substring1) &&
+	  querylength - hardclip_high > Substring_querystart(substring2)) {
+	debug1(printf("\ncase 1: hardclip_low %d < queryend(substring1) %d && querylength %d - hardclip_high %d > querystart(substring2) %d\n",
+		      hardclip_low,Substring_queryend(substring1),querylength,hardclip_high,Substring_querystart(substring2)));
+	fprintf(fp,"%uN",Stage3end_distance(this));
+      }
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		  /*querypos*/Substring_querystart(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		  /*querypos*/Substring_queryend(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
     }
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
-		/*querypos*/Substring_querystart(substring2),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
-		/*querypos*/Substring_queryend(substring2),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
 
   } else {
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring1),
-		/*querypos*/querylength,querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
-		/*querypos*/Substring_queryend(substring1),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    if (querylength - hardclip_low > Substring_queryend(substring2) &&
-	hardclip_high < Substring_querystart(substring1)) {
-      debug1(printf("\ncase 2: querylength %d - hardclip_low %d > queryend(substring2) %d && hardclip_high %d < querystart(substring1) %d\n",
-		    querylength,hardclip_low,Substring_queryend(substring2),hardclip_high,Substring_querystart(substring1)));
-      fprintf(fp,"%uN",Stage3end_distance(this));
+    if (hide_soft_clips_p == true) {
+      print_cigar(fp,/*type*/'M',
+		  (querylength - Substring_queryend(substring1)) +
+		  Substring_match_length(substring1),
+		  /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/false);
+      if (querylength - hardclip_low > Substring_queryend(substring2) &&
+	  hardclip_high < Substring_querystart(substring1)) {
+	debug1(printf("\ncase 2: querylength %d - hardclip_low %d > queryend(substring2) %d && hardclip_high %d < querystart(substring1) %d\n",
+		      querylength,hardclip_low,Substring_queryend(substring2),hardclip_high,Substring_querystart(substring1)));
+	fprintf(fp,"%uN",Stage3end_distance(this));
+      }
+      print_cigar(fp,/*type*/'M',
+		  Substring_match_length(substring2) +
+		  Substring_querystart(substring2),
+		  /*querypos*/Substring_querystart(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    } else {
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring1),
+		  /*querypos*/querylength,querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		  /*querypos*/Substring_queryend(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      if (querylength - hardclip_low > Substring_queryend(substring2) &&
+	  hardclip_high < Substring_querystart(substring1)) {
+	debug1(printf("\ncase 2: querylength %d - hardclip_low %d > queryend(substring2) %d && hardclip_high %d < querystart(substring1) %d\n",
+		      querylength,hardclip_low,Substring_queryend(substring2),hardclip_high,Substring_querystart(substring1)));
+	fprintf(fp,"%uN",Stage3end_distance(this));
+      }
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		  /*querypos*/Substring_querystart(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring2),
+		  /*querypos*/Substring_querystart(substring2),querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/true);
     }
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
-		/*querypos*/Substring_querystart(substring1),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring2),
-		/*querypos*/Substring_querystart(substring2),querylength,hardclip_low,hardclip_high,
-		/*plusp*/false,/*lastp*/true);
   }
 
 
@@ -3092,10 +3558,17 @@ print_localsplice (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   fprintf(fp,"MD:Z:");
   printp = false;
 
-  substring1_start = Substring_querystart(substring1);
-  substring1_length = Substring_match_length(substring1);
-  substring2_start = Substring_querystart(substring2);
-  substring2_length = Substring_match_length(substring2);
+  if (hide_soft_clips_p == true) {
+    substring1_start = Substring_querystart_orig(substring1);
+    substring1_length = Substring_match_length_orig(substring1);
+    substring2_start = Substring_querystart_orig(substring2);
+    substring2_length = Substring_match_length_orig(substring2);
+  } else {
+    substring1_start = Substring_querystart(substring1);
+    substring1_length = Substring_match_length(substring1);
+    substring2_start = Substring_querystart(substring2);
+    substring2_length = Substring_match_length(substring2);
+  }
 
   if (plusp == true) {
     genomicfwd_refdiff = Substring_genomic_refdiff(substring1);
@@ -3231,6 +3704,12 @@ print_localsplice (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
     fprintf(fp,"XS:A:?");
   }
 
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
+  }
+
   /* 12. TAGS: PG */
   if (Stage3end_sarrayp(this) == true) {
     fprintf(fp,"\t");
@@ -3362,12 +3841,20 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
     }
 
   } else if (plusp == true) {
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
-		/*querypos*/0,querylength,hardclip_low,hardclip_high,
-		/*plusp*/true,/*lastp*/false);
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
-		/*querypos*/Substring_querystart(substring1),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    if (hide_soft_clips_p == true) {
+      print_cigar(fp,/*type*/'M',
+		  Substring_querystart(substring1) +
+		  Substring_match_length(substring1),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+    } else {
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring1),
+		  /*querypos*/0,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		  /*querypos*/Substring_querystart(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+    }
     if (hardclip_low < Substring_queryend(substring1) &&
 	querylength - hardclip_high > Substring_querystart(substringM)) {
       debug1(printf("\ncase 3: hardclip_low %d < queryend(substring1) %d && querylength %d - hardclip_high %d > querystart(substringM) %d\n",
@@ -3376,12 +3863,20 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
     }
 
   } else {
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring1),
-		/*querypos*/querylength,querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
-		/*querypos*/Substring_queryend(substring1),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    if (hide_soft_clips_p == true) {
+      print_cigar(fp,/*type*/'M',
+		  (querylength - Substring_queryend(substring1)) +
+		  Substring_match_length(substring1),
+		  /*querypos*/querylength,querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/false);
+    } else {
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring1),
+		  /*querypos*/querylength,querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring1),
+		  /*querypos*/Substring_queryend(substring1),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+    }
     if (querylength - hardclip_low > Substring_queryend(substringM) &&
 	hardclip_high < Substring_querystart(substring1)) {
       debug1(printf("\ncase 4: querylength %d - hardclip_low %d > queryend(substringM) %d && hardclip_high %d < querystart(substring1) %d\n",
@@ -3418,12 +3913,20 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
 		    hardclip_low,Substring_queryend(substringM),querylength,hardclip_high,Substring_querystart(substring2)));
       fprintf(fp,"%uN",distance2);
     }
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
-		/*querypos*/Substring_querystart(substring2),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
-    print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
-		/*querypos*/Substring_queryend(substring2),querylength,
-		hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    if (hide_soft_clips_p == true) {
+      print_cigar(fp,/*type*/'M',
+		  Substring_match_length(substring2) +
+		  (querylength - Substring_queryend(substring2)),
+		  /*querypos*/Substring_querystart(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    } else {
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		  /*querypos*/Substring_querystart(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',querylength - Substring_queryend(substring2),
+		  /*querypos*/Substring_queryend(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/true,/*lastp*/true);
+    }
 
   } else {
     if (querylength - hardclip_low > Substring_queryend(substring2) &&
@@ -3432,12 +3935,20 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
 		    querylength,hardclip_low,Substring_queryend(substring2),querylength,Substring_querystart(substringM)));
       fprintf(fp,"%uN",distance2);
     }
-    print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
-		/*querypos*/Substring_queryend(substring2),querylength,
-		hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
-    print_cigar(fp,/*type*/'S',Substring_querystart(substring2),
-		/*querypos*/Substring_querystart(substring2),querylength,hardclip_low,hardclip_high,
-		/*plusp*/false,/*lastp*/true);
+    if (hide_soft_clips_p == true) {
+      print_cigar(fp,/*type*/'M',
+		  Substring_match_length(substring2) +
+		  Substring_querystart(substring2),
+		  /*querypos*/Substring_queryend(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/true);
+    } else {
+      print_cigar(fp,/*type*/'M',Substring_match_length(substring2),
+		  /*querypos*/Substring_queryend(substring2),querylength,
+		  hardclip_low,hardclip_high,/*plusp*/false,/*lastp*/false);
+      print_cigar(fp,/*type*/'S',Substring_querystart(substring2),
+		  /*querypos*/Substring_querystart(substring2),querylength,hardclip_low,hardclip_high,
+		  /*plusp*/false,/*lastp*/true);
+    }
   }
 
 
@@ -3499,12 +4010,20 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
   fprintf(fp,"MD:Z:");
   printp = false;
 
-  substringM_start = Substring_querystart(substringM);
-  substringM_length = Substring_match_length(substringM);
+  if (hide_soft_clips_p == true) {
+    substringM_start = Substring_querystart_orig(substringM);
+    substringM_length = Substring_match_length_orig(substringM);
+  } else {
+    substringM_start = Substring_querystart(substringM);
+    substringM_length = Substring_match_length(substringM);
+  }
 
   if (substring1 == NULL) {
     substring1_start = 0;
     substring1_length = 0;
+  } else if (hide_soft_clips_p == true) {
+    substring1_start = Substring_querystart_orig(substring1);
+    substring1_length = Substring_match_length_orig(substring1);
   } else {
     substring1_start = Substring_querystart(substring1);
     substring1_length = Substring_match_length(substring1);
@@ -3512,6 +4031,9 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
   if (substring2 == NULL) {
     substring2_start = 0;
     substring2_length = 0;
+  } else if (hide_soft_clips_p == true) {
+    substring2_start = Substring_querystart_orig(substring2);
+    substring2_length = Substring_match_length_orig(substring2);
   } else {
     substring2_start = Substring_querystart(substring2);
     substring2_length = Substring_match_length(substring2);
@@ -3717,6 +4239,12 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
     fprintf(fp,"XS:A:?");
   }
 
+  /* 12. TAGS: XC */
+  if (circularp == true) {
+    fprintf(fp,"\t");
+    fprintf(fp,"XC:A:+");
+  }
+
   /* 12. TAGS: PG */
   if (Stage3end_sarrayp(shortexon) == true) {
     fprintf(fp,"\t");
@@ -3741,9 +4269,13 @@ print_exon_exon (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   Chrpos_T donor_chrpos, acceptor_chrpos, concordant_chrpos;
   Substring_T donor, acceptor;
   int hardclip_low, hardclip_high;
+  char *donor_chr, *acceptor_chr;
   char donor1, donor2, acceptor2, acceptor1;
   double donor_prob, acceptor_prob;
   int circularpos, querylength;
+  char donor_strand, acceptor_strand;
+  int sensedir;
+  bool allocp;
 
   donor = Stage3end_substring_donor(this);
   acceptor = Stage3end_substring_acceptor(this);
@@ -3780,39 +4312,84 @@ print_exon_exon (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
 
   halfdonor_dinucleotide(&donor1,&donor2,donor);
   halfacceptor_dinucleotide(&acceptor2,&acceptor1,acceptor);
+  donor_chr = Univ_IIT_label(chromosome_iit,Substring_chrnum(donor),&allocp);
+  acceptor_chr = Univ_IIT_label(chromosome_iit,Substring_chrnum(acceptor),&allocp);
   donor_prob = Substring_chimera_prob(donor);
   acceptor_prob = Substring_chimera_prob(acceptor);
 
+  /* Code taken from that for XS tag for print_halfdonor and print_halfacceptor */
+  if ((sensedir = Substring_chimera_sensedir(donor)) == SENSE_FORWARD) {
+    if (Substring_plusp(donor) == true) {
+      donor_strand = '+';
+    } else {
+      donor_strand = '-';
+    }
+  } else if (sensedir == SENSE_ANTI) {
+    if (Substring_plusp(donor) == true) {
+      donor_strand = '-';
+    } else {
+      donor_strand = '+';
+    }
+  } else if (force_xs_direction_p == true) {
+    donor_strand = '+';
+  } else {
+    donor_strand = '?';
+  }
+
+  /* Code taken from that for XS tag for print_halfdonor and print_halfacceptor */
+  if ((sensedir = Substring_chimera_sensedir(acceptor)) == SENSE_FORWARD) {
+    if (Substring_plusp(acceptor) == true) {
+      acceptor_strand = '+';
+    } else {
+      acceptor_strand = '-';
+    }
+  } else if (sensedir == SENSE_ANTI) {
+    if (Substring_plusp(acceptor) == true) {
+      acceptor_strand = '-';
+    } else {
+      acceptor_strand = '+';
+    }
+  } else if (force_xs_direction_p == true) {
+    acceptor_strand = '+';
+  } else {
+    acceptor_strand = '?';
+  }
+
+
   if (Stage3end_sensedir(this) == SENSE_FORWARD) {
+
     /* NEEDS WORK: Need to decide whether to split halfdonor or halfacceptor */
     /* Not sure if circular chromosomes should participate in distant splicing anyway */
     if (0 && (circularpos = Stage3end_circularpos(this)) > 0) {
       print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
-		      concordant_chrpos,donor_chrpos,mate_chrpos,
+		      concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		      donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
       print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
-		      /*concordant_chrpos*/1,/*donor_chrpos*/1,mate_chrpos,
+		      /*concordant_chrpos*/1,/*donor_chrpos*/1,acceptor_chrpos,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		      donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
     } else {
       print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
-		      concordant_chrpos,donor_chrpos,mate_chrpos,
+		      concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		      donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/false);
     }
@@ -3821,29 +4398,32 @@ print_exon_exon (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
       print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
-			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
+			 concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+			 donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
       print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
-			 /*concordant_chrpos*/1,/*acceptor_chrpos*/1,mate_chrpos,
+			 /*concordant_chrpos*/1,donor_chrpos,/*acceptor_chrpos*/1,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+			 donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
     } else {
       print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
-			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
+			 concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+			 donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/false);
     }
@@ -3853,29 +4433,32 @@ print_exon_exon (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
       print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
-			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
+			 concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+			 donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
       print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
-			 /*concordant_chrpos*/1,/*acceptor_chrpos*/1,mate_chrpos,
+			 /*concordant_chrpos*/1,donor_chrpos,/*acceptor_chrpos*/1,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+			 donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/true);
     } else {
       print_halfacceptor(fp,abbrev,acceptor,this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,
 			 chromosome_iit,queryseq,pairedlength,
-			 concordant_chrpos,acceptor_chrpos,mate_chrpos,
+			 concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+			 donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 			 donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 			 /*circularp*/false);
     }
@@ -3884,35 +4467,43 @@ print_exon_exon (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
       print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
-		      concordant_chrpos,donor_chrpos,mate_chrpos,
+		      concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		      donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
       print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
-		      /*concordant_chrpos*/1,/*donor_chrpos*/1,mate_chrpos,
+		      /*concordant_chrpos*/1,/*donor_chrpos*/1,acceptor_chrpos,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		      donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/true);
     } else {
       print_halfdonor(fp,abbrev,donor,this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,
 		      chromosome_iit,queryseq,pairedlength,
-		      concordant_chrpos,donor_chrpos,mate_chrpos,
+		      concordant_chrpos,donor_chrpos,acceptor_chrpos,mate_chrpos,
 		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/true,/*print_xt_p*/true,
+		      donor_strand,acceptor_strand,donor_chr,acceptor_chr,
 		      donor1,donor2,acceptor2,acceptor1,donor_prob,acceptor_prob,
 		      /*circularp*/false);
     }
 
   } else {
     abort();
+  }
+
+  if (allocp == true) {
+    FREE(acceptor_chr);
+    FREE(donor_chr);
   }
 
   return;
@@ -3939,9 +4530,23 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   hittype = Stage3end_hittype(this);
   /* printf("hittype %s, chrpos %u\n",Stage3end_hittype_string(this),chrpos); */
   if (npaths == 0) {		/* was chrpos == 0, but we can actually align to chrpos 0 */
-    SAM_print_nomapping(fp,abbrev,queryseq,mate,acc1,acc2,chromosome_iit,resulttype,first_read_p,
-			npaths_mate,mate_chrpos,quality_shift,
-			sam_read_group_id,invertp,invert_mate_p);
+    if (fails_as_input_p == false) {
+      SAM_print_nomapping(fp,abbrev,queryseq,mate,acc1,acc2,chromosome_iit,resulttype,first_read_p,
+			  npaths_mate,mate_chrpos,quality_shift,
+			  sam_read_group_id,invertp,invert_mate_p);
+    } else if (fastq_format_p == true) {
+      if (first_read_p == true) {
+	Shortread_print_query_singleend_fastq(fp,queryseq,/*headerseq*/queryseq);
+      } else {
+	Shortread_print_query_singleend_fastq(fp,queryseq,/*headerseq*/queryseq_mate);
+      }
+    } else {
+      if (first_read_p == true) {
+	Shortread_print_query_singleend_fasta(fp,queryseq,/*headerseq*/queryseq);
+      } else {
+	Shortread_print_query_singleend_fasta(fp,queryseq,/*headerseq*/queryseq_mate);
+      }
+    }
 
   } else if (hittype == EXACT || hittype == SUB || hittype == TERMINAL) {
     if ((circularpos = Stage3end_circularpos(this)) > 0) {
@@ -3953,18 +4558,18 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
 	assert(chrpos-Stage3end_trim_right(this)+circularpos-Stage3end_chrlength(this) == 1);
       }
 #endif
-      print_single(fp,abbrev,this,mate,acc1,acc2,pathnum,npaths,
+      print_single(fp,abbrev,hittype,this,mate,acc1,acc2,pathnum,npaths,
 		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		   chrpos,mate_chrpos,/*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p,/*circularp*/true);
-      print_single(fp,abbrev,this,mate,acc1,acc2,pathnum,npaths,
+      print_single(fp,abbrev,hittype,this,mate,acc1,acc2,pathnum,npaths,
 		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		   /*chrpos*/1,mate_chrpos,/*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
 		   invertp,invert_mate_p,/*circularp*/true);
     } else {
-      print_single(fp,abbrev,this,mate,acc1,acc2,pathnum,npaths,
+      print_single(fp,abbrev,hittype,this,mate,acc1,acc2,pathnum,npaths,
 		   absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
 		   chrpos,mate_chrpos,clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		   npaths_mate,quality_shift,sam_read_group_id,
@@ -4018,27 +4623,30 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
       querylength = Shortread_fulllength(queryseq);
       print_halfdonor(fp,abbrev,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
+		      /*concordant_chrpos*/chrpos,chrpos,/*acceptor_chrpos*/-1U,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+		      /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
       print_halfdonor(fp,abbrev,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      /*concordant_chrpos*/1,/*chrpos*/1,mate_chrpos,
+		      /*concordant_chrpos*/1,/*chrpos*/1,/*acceptor_chrpos*/-1U,mate_chrpos,
 		      /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 		      resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+		      /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
     } else {
       print_halfdonor(fp,abbrev,Stage3end_substring_donor(this),this,mate,acc1,acc2,pathnum,npaths,
 		      absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-		      /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
+		      /*concordant_chrpos*/chrpos,chrpos,/*acceptor_chrpos*/-1U,mate_chrpos,
 		      clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 		      npaths_mate,quality_shift,sam_read_group_id,
 		      invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+		      /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 		      /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 		      /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/false);
     }
@@ -4048,27 +4656,30 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
       querylength = Shortread_fulllength(queryseq);
       print_halfacceptor(fp,abbrev,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			 /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
+			 /*concordant_chrpos*/chrpos,/*donor_chrpos*/-1U,chrpos,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/0,/*hardclip3*/querylength-circularpos,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+			 /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
       print_halfacceptor(fp,abbrev,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			 /*concordant_chrpos*/1,/*chrpos*/1,mate_chrpos,
+			 /*concordant_chrpos*/1,/*donor_chrpos*/-1U,/*chrpos*/1,mate_chrpos,
 			 /*clipdir*/+1,/*hardclip5*/circularpos,/*hardclip3*/0,
 			 resulttype,first_read_p,npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+			 /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/true);
     } else {
       print_halfacceptor(fp,abbrev,Stage3end_substring_acceptor(this),this,mate,acc1,acc2,pathnum,npaths,
 			 absmq_score,first_absmq,second_absmq,mapq_score,chromosome_iit,queryseq,pairedlength,
-			 /*concordant_chrpos*/chrpos,chrpos,mate_chrpos,
+			 /*concordant_chrpos*/chrpos,/*donor_chrpos*/-1U,chrpos,mate_chrpos,
 			 clipdir,hardclip5,hardclip3,resulttype,first_read_p,
 			 npaths_mate,quality_shift,sam_read_group_id,
 			 invertp,invert_mate_p,/*use_hardclip_p*/false,/*print_xt_p*/false,
+			 /*donor_strand*/'\0',/*acceptor_strand*/'\0',/*donor_chr*/NULL,/*acceptor_chr*/NULL,
 			 /*donor1*/'X',/*donor2*/'X',/*acceptor2*/'X',/*acceptor1*/'X',
 			 /*donor_prob*/0.0,/*acceptor_prob*/0.0,/*circularp*/false);
     }
@@ -4276,18 +4887,8 @@ void
 SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  bool invert_first_p, bool invert_second_p,
-		  bool nofailsp, bool failsonlyp, bool fails_as_input_p,
-		  bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
-		  int quality_shift, char *sam_read_group_id,
-		  FILE *fp_nomapping_1, FILE *fp_nomapping_2,
-		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_circular,
-		  FILE *fp_unpaired_transloc, FILE *fp_unpaired_mult,
-		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_circular,
-		  FILE *fp_halfmapping_transloc, FILE *fp_halfmapping_mult,
-		  FILE *fp_paired_uniq_circular, FILE *fp_paired_uniq_inv, FILE *fp_paired_uniq_scr,
-		  FILE *fp_paired_uniq_long, FILE *fp_paired_mult,
-		  FILE *fp_concordant_uniq, FILE *fp_concordant_circular,
-		  FILE *fp_concordant_transloc, FILE *fp_concordant_mult) {
+		  bool nofailsp, bool failsonlyp, bool clip_overlap_p, bool merge_samechr_p,
+		  int quality_shift, char *sam_read_group_id) {
   Stage3pair_T *stage3pairarray, stage3pair;
   Stage3end_T *stage3array1, *stage3array2, stage3, mate, hit5, hit3;
   Chrpos_T chrpos5, chrpos3;
@@ -4296,8 +4897,8 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
   int hardclip5 = 0, hardclip3 = 0, ignore = 0, clipdir;
   char *acc1, *acc2;
   Pairtype_T pairtype;
-  FILE *fp;
-  char *abbrev;
+  FILE *fp, *fp_xs;
+  char *abbrev, *abbrev_xs;
 
   acc1 = Shortread_accession(queryseq1);
   acc2 = Shortread_accession(queryseq2); /* NULL, unless --allow-pe-name-mismatch is specified */
@@ -4307,16 +4908,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       /* No output */
       return;
       
-    } else if (fails_as_input_p == true) {
-      if (fastq_format_p == true) {
-	Shortread_print_query_pairedend_fastq(fp_nomapping_1,fp_nomapping_2,queryseq1,queryseq2,
-					     invert_first_p,invert_second_p);
-      } else {
-	Shortread_print_query_pairedend_fasta(fp_nomapping_1,queryseq1,queryseq2,
-					     invert_first_p,invert_second_p);
-      }
-
-    } else {
+    } else if (fails_as_input_p == false) {
       SAM_print_nomapping(fp_nomapping_1,ABBREV_NOMAPPING_1,queryseq1,/*mate*/(Stage3end_T) NULL,
 			  acc1,acc2,chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*npaths_mate*/0,
@@ -4327,6 +4919,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 			  /*first_read_p*/false,/*npaths_mate*/0,
 			  /*mate_chrpos*/0U,quality_shift,
 			  sam_read_group_id,invert_second_p,invert_first_p);
+    } else if (fastq_format_p == true) {
+      Shortread_print_query_pairedend_fastq(fp_nomapping_1,fp_nomapping_2,queryseq1,queryseq2,
+					    invert_first_p,invert_second_p);
+    } else {
+      Shortread_print_query_pairedend_fasta(fp_nomapping_1,queryseq1,queryseq2,
+					    invert_first_p,invert_second_p);
     }
 
   } else {
@@ -4404,19 +5002,22 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
-	/* Print as nomapping, but send to fp_concordant_transloc */
-	SAM_print_nomapping(fp_concordant_transloc,ABBREV_CONCORDANT_TRANSLOC,
-			    queryseq1,/*mate*/(Stage3end_T) NULL,
-			    acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/true,/*npaths_mate*/npaths,
-			    /*mate_chrpos*/0U,quality_shift,
-			    sam_read_group_id,invert_first_p,invert_second_p);
-	SAM_print_nomapping(fp_concordant_transloc,ABBREV_CONCORDANT_TRANSLOC,
-			    queryseq2,/*mate*/(Stage3end_T) NULL,
-			    acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/false,/*npaths_mate*/npaths,
-			    /*mate_chrpos*/0U,quality_shift,
-			    sam_read_group_id,invert_second_p,invert_first_p);
+	if (1 || fails_as_input_p == false) {
+	  /* Not able to print as input */
+	  /* Print as nomapping, but send to fp_concordant_transloc */
+	  SAM_print_nomapping(fp_concordant_transloc,ABBREV_CONCORDANT_TRANSLOC,
+			      queryseq1,/*mate*/(Stage3end_T) NULL,
+			      acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/true,/*npaths_mate*/npaths,
+			      /*mate_chrpos*/0U,quality_shift,
+			      sam_read_group_id,invert_first_p,invert_second_p);
+	  SAM_print_nomapping(fp_concordant_transloc,ABBREV_CONCORDANT_TRANSLOC,
+			      queryseq2,/*mate*/(Stage3end_T) NULL,
+			      acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/false,/*npaths_mate*/npaths,
+			      /*mate_chrpos*/0U,quality_shift,
+			      sam_read_group_id,invert_second_p,invert_first_p);
+	}
 
       } else {
 	/* Stage3pair_eval(stage3pairarray,npaths,maxpaths_report,queryseq1,queryseq2); */
@@ -4480,19 +5081,27 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
-	/* Print as nomapping, but send to fp_concordant_mult */
-	SAM_print_nomapping(fp_concordant_mult,ABBREV_CONCORDANT_MULT,
-			    queryseq1,/*mate*/(Stage3end_T) NULL,
-			    acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/true,/*npaths_mate*/npaths,
-			    /*mate_chrpos*/0U,quality_shift,
-			    sam_read_group_id,invert_first_p,invert_second_p);
-	SAM_print_nomapping(fp_concordant_mult,ABBREV_CONCORDANT_MULT,
-			    queryseq2,/*mate*/(Stage3end_T) NULL,
-			    acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/false,/*npaths_mate*/npaths,
-			    /*mate_chrpos*/0U,quality_shift,
-			    sam_read_group_id,invert_second_p,invert_first_p);
+	if (fails_as_input_p == false) {
+	  /* Print as nomapping, but send to fp_concordant_mult_xs */
+	  SAM_print_nomapping(fp_concordant_mult_xs_1,ABBREV_CONCORDANT_MULT_XS,
+			      queryseq1,/*mate*/(Stage3end_T) NULL,
+			      acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/true,/*npaths_mate*/npaths,
+			      /*mate_chrpos*/0U,quality_shift,
+			      sam_read_group_id,invert_first_p,invert_second_p);
+	  SAM_print_nomapping(fp_concordant_mult_xs_1,ABBREV_CONCORDANT_MULT_XS,
+			      queryseq2,/*mate*/(Stage3end_T) NULL,
+			      acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/false,/*npaths_mate*/npaths,
+			      /*mate_chrpos*/0U,quality_shift,
+			      sam_read_group_id,invert_second_p,invert_first_p);
+	} else if (fastq_format_p == true) {
+	  Shortread_print_query_pairedend_fastq(fp_concordant_mult_xs_1,fp_concordant_mult_xs_2,queryseq1,queryseq2,
+						invert_first_p,invert_second_p);
+	} else {
+	  Shortread_print_query_pairedend_fasta(fp_concordant_mult_xs_1,queryseq1,queryseq2,
+						invert_first_p,invert_second_p);
+	}
 
       } else {
 	/* Stage3pair_eval(stage3pairarray,npaths,maxpaths_report,queryseq1,queryseq2); */
@@ -4609,19 +5218,27 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
-	/* Print as nomapping, but send to fp_concordant_mult */
-	SAM_print_nomapping(fp_paired_mult,ABBREV_PAIRED_MULT,
-			    queryseq1,/*mate*/(Stage3end_T) NULL,
-			    acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/true,/*npaths_mate*/npaths,
-			    /*mate_chrpos*/0U,quality_shift,
-			    sam_read_group_id,invert_first_p,invert_second_p);
-	SAM_print_nomapping(fp_paired_mult,ABBREV_PAIRED_MULT,
-			    queryseq2,/*mate*/(Stage3end_T) NULL,
-			    acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/false,/*npaths_mate*/npaths,
-			    /*mate_chrpos*/0U,quality_shift,
-			    sam_read_group_id,invert_second_p,invert_first_p);
+	if (fails_as_input_p == false) {
+	  /* Print as nomapping, but send to fp_concordant_mult */
+	  SAM_print_nomapping(fp_paired_mult_xs_1,ABBREV_PAIRED_MULT_XS,
+			      queryseq1,/*mate*/(Stage3end_T) NULL,
+			      acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/true,/*npaths_mate*/npaths,
+			      /*mate_chrpos*/0U,quality_shift,
+			      sam_read_group_id,invert_first_p,invert_second_p);
+	  SAM_print_nomapping(fp_paired_mult_xs_1,ABBREV_PAIRED_MULT_XS,
+			      queryseq2,/*mate*/(Stage3end_T) NULL,
+			      acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/false,/*npaths_mate*/npaths,
+			      /*mate_chrpos*/0U,quality_shift,
+			      sam_read_group_id,invert_second_p,invert_first_p);
+	} else if (fastq_format_p == true) {
+	  Shortread_print_query_pairedend_fastq(fp_paired_mult_xs_1,fp_paired_mult_xs_2,queryseq1,queryseq2,
+						invert_first_p,invert_second_p);
+	} else {
+	  Shortread_print_query_pairedend_fasta(fp_paired_mult_xs_1,queryseq1,queryseq2,
+						invert_first_p,invert_second_p);
+	}
 
       } else {
 	/* Stage3pair_eval(stage3pairarray,npaths,maxpaths_report,queryseq1,queryseq2); */
@@ -4712,10 +5329,12 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
     } else if (resulttype == UNPAIRED_MULT || resulttype == UNPAIRED_TRANSLOC) {
       if (resulttype == UNPAIRED_MULT) {
 	fp = fp_unpaired_mult;
+	fp_xs = fp_unpaired_mult_xs_1;
 	abbrev = ABBREV_UNPAIRED_MULT;
+	abbrev_xs = ABBREV_UNPAIRED_MULT_XS;
       } else {
-	fp = fp_unpaired_transloc;
-	abbrev = ABBREV_UNPAIRED_TRANSLOC;
+	fp = fp_xs = fp_unpaired_transloc;
+	abbrev = abbrev_xs = ABBREV_UNPAIRED_TRANSLOC;
       }
 
       stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq1,&second_absmq1,result);
@@ -4774,10 +5393,13 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_first_p,invert_second_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths_report) {
-	SAM_print_nomapping(fp,abbrev,queryseq1,mate,acc1,acc2,chromosome_iit,
-			    resulttype,/*first_read_p*/true,/*npaths_mate*/npaths2,
-			    /*mate_chrpos*/chrpos3,
-			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
+	if (1 || fails_as_input_p == false) {
+	  /* Just printing one end as nomapping */
+	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq1,mate,acc1,acc2,chromosome_iit,
+			      resulttype,/*first_read_p*/true,/*npaths_mate*/npaths2,
+			      /*mate_chrpos*/chrpos3,
+			      quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
+	}
 
       } else {
 	for (pathnum = 1; pathnum <= npaths1 && pathnum <= maxpaths_report; pathnum++) {
@@ -4830,10 +5452,13 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_second_p,invert_first_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths_report) {
-	SAM_print_nomapping(fp,abbrev,queryseq2,mate,acc1,acc2,chromosome_iit,
-			    resulttype,/*first_read_p*/false,/*npaths_mate*/npaths1,
-			    /*mate_chrpos*/chrpos5,
-			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
+	if (1 || fails_as_input_p == false) {
+	  /* Just printing one end as nomapping */
+	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq2,mate,acc1,acc2,chromosome_iit,
+			      resulttype,/*first_read_p*/false,/*npaths_mate*/npaths1,
+			      /*mate_chrpos*/chrpos5,
+			      quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
+	}
 
       } else {
 	for (pathnum = 1; pathnum <= npaths2 && pathnum <= maxpaths_report; pathnum++) {
@@ -4860,21 +5485,23 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 
       if (resulttype == HALFMAPPING_UNIQ) {
 	if (npaths1 == 1 && Stage3end_circularpos(stage3array1[0]) > 0) {
-	  fp = fp_halfmapping_circular;
-	  abbrev = ABBREV_HALFMAPPING_CIRCULAR;
+	  fp = fp_xs = fp_halfmapping_circular;
+	  abbrev = abbrev_xs = ABBREV_HALFMAPPING_CIRCULAR;
 	} else if (npaths2 == 1 && Stage3end_circularpos(stage3array2[0]) > 0) {
-	  fp = fp_halfmapping_circular;
-	  abbrev = ABBREV_HALFMAPPING_CIRCULAR;
+	  fp = fp_xs = fp_halfmapping_circular;
+	  abbrev = abbrev_xs = ABBREV_HALFMAPPING_CIRCULAR;
 	} else {
-	  fp = fp_halfmapping_uniq;
-	  abbrev = ABBREV_HALFMAPPING_UNIQ;
+	  fp = fp_xs = fp_halfmapping_uniq;
+	  abbrev = abbrev_xs = ABBREV_HALFMAPPING_UNIQ;
 	}
       } else if (resulttype == HALFMAPPING_TRANSLOC) {
-	fp = fp_halfmapping_transloc;
-	abbrev = ABBREV_HALFMAPPING_TRANSLOC;
+	fp = fp_xs = fp_halfmapping_transloc;
+	abbrev = abbrev_xs = ABBREV_HALFMAPPING_TRANSLOC;
       } else if (resulttype == HALFMAPPING_MULT) {
 	fp = fp_halfmapping_mult;
+	fp_xs = fp_halfmapping_mult_xs_1;
 	abbrev = ABBREV_HALFMAPPING_MULT;
+	abbrev_xs = ABBREV_HALFMAPPING_MULT_XS;
       } else {
 	abort();
       }
@@ -4921,11 +5548,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
       if (npaths1 == 0) {
-	/* mate should be non-NULL here */
-	SAM_print_nomapping(fp,abbrev,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/true,/*npaths_mate*/npaths2,
-			    /*mate_chrpos*/chrpos3,
-			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
+	if (1 || fails_as_input_p == false) {
+	  /* just printing one end as nomapping */
+	  /* mate should be non-NULL here */
+	  SAM_print_nomapping(fp,abbrev,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/true,/*npaths_mate*/npaths2,
+			      /*mate_chrpos*/chrpos3,
+			      quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
+	}
 
       } else if (npaths1 == 1) {
 	/* mate should be NULL here */
@@ -4946,11 +5576,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_first_p,invert_second_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths_report) {
-	/* mate should be NULL here */
-	SAM_print_nomapping(fp,abbrev,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/true,/*npaths_mate*/npaths2,
-			    /*mate_chrpos*/chrpos3,
-			    quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
+	if (1 || fails_as_input_p == false) {
+	  /* Just printing one end as nomapping */
+	  /* mate should be NULL here */
+	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/true,/*npaths_mate*/npaths2,
+			      /*mate_chrpos*/chrpos3,
+			      quality_shift,sam_read_group_id,invert_first_p,invert_second_p);
+	}
 
       } else {
 	/* mate should be NULL here */
@@ -4988,11 +5621,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
       if (npaths2 == 0) {
-	/* mate should be non-NULL here */
-	SAM_print_nomapping(fp,abbrev,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/false,/*npaths_mate*/npaths1,
-			    /*mate_chrpos*/chrpos5,
-			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
+	if (1 || fails_as_input_p == false) {
+	  /* Just printing one end as nomapping */
+	  /* mate should be non-NULL here */
+	  SAM_print_nomapping(fp,abbrev,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/false,/*npaths_mate*/npaths1,
+			      /*mate_chrpos*/chrpos5,
+			      quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
+	}
 
       } else if (npaths2 == 1) {
 	/* mate should be NULL here */
@@ -5013,11 +5649,14 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_second_p,invert_first_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths_report) {
-	/* mate should be NULL here */
-	SAM_print_nomapping(fp,abbrev,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
-			    /*first_read_p*/false,/*npaths_mate*/npaths1,
-			    /*mate_chrpos*/chrpos5,
-			    quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
+	if (1 || fails_as_input_p == false) {
+	  /* Just printing one end as nomapping */
+	  /* mate should be NULL here */
+	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
+			      /*first_read_p*/false,/*npaths_mate*/npaths1,
+			      /*mate_chrpos*/chrpos5,
+			      quality_shift,sam_read_group_id,invert_second_p,invert_first_p);
+	}
 
       } else {
 	/* mate should be NULL here */

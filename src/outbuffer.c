@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 109763 2013-10-02 17:12:58Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 128855 2014-02-28 21:50:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -182,25 +182,33 @@ struct T {
 
 #ifdef GSNAP
 
-  FILE *fp_nomapping_1;		/* N1 */
-  FILE *fp_nomapping_2;		/* N2 */
+  FILE *fp_nomapping_1;		/* NM */
+  FILE *fp_nomapping_2;		/* NM */
   FILE *fp_halfmapping_uniq;	/* HU */
   FILE *fp_halfmapping_circular; /* HC */
   FILE *fp_halfmapping_transloc; /* HT */
   FILE *fp_halfmapping_mult;	 /* HM */
+  FILE *fp_halfmapping_mult_xs_1; /* HX */
+  FILE *fp_halfmapping_mult_xs_2; /* HX */
   FILE *fp_unpaired_uniq;	 /* UU */
   FILE *fp_unpaired_circular;	 /* UC */
   FILE *fp_unpaired_transloc;	 /* UT */
   FILE *fp_unpaired_mult;	 /* UM */
+  FILE *fp_unpaired_mult_xs_1;	 /* UX */
+  FILE *fp_unpaired_mult_xs_2;	 /* UX */
   FILE *fp_paired_uniq_circular; /* PC */
   FILE *fp_paired_uniq_inv;	 /* PI */
   FILE *fp_paired_uniq_scr;	 /* PS */
   FILE *fp_paired_uniq_long;	 /* PL */
   FILE *fp_paired_mult;		 /* PM */
+  FILE *fp_paired_mult_xs_1;	 /* PX */
+  FILE *fp_paired_mult_xs_2;	 /* PX */
   FILE *fp_concordant_uniq;	 /* CU */
   FILE *fp_concordant_circular;	 /* CC */
   FILE *fp_concordant_transloc;	 /* CT */
   FILE *fp_concordant_mult;	 /* CM */
+  FILE *fp_concordant_mult_xs_1; /* CX */
+  FILE *fp_concordant_mult_xs_2; /* CX */
 
   bool timingp;
   bool output_sam_p;
@@ -221,6 +229,7 @@ struct T {
   FILE *fp_circular;		/* UC */
   FILE *fp_transloc;		/* UT */
   FILE *fp_mult;		/* UM */
+  FILE *fp_mult_xs;		/* UX */
 
   bool chimeras_allowed_p;
 
@@ -228,7 +237,7 @@ struct T {
   Sequence_T usersegment;
 
   char *dbversion;
-  Chrsubset_T chrsubset;
+  char *chrsubset_name;
   Univ_IIT_T contig_iit;
   IIT_T altstrain_iit;
   IIT_T map_iit;
@@ -305,8 +314,8 @@ sevenway_open_single (T this) {
   }
 
   if (this->fails_as_input_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping.fq")+1,sizeof(char));
-    sprintf(filename,"%s.nomapping.fq",this->sevenway_root);
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping.1.fq")+1,sizeof(char));
+    sprintf(filename,"%s.nomapping.1.fq",this->sevenway_root);
     if ((this->fp_nomapping_1 = fopen(filename,write_mode)) == NULL) {
       fprintf(stderr,"Cannot open file %s for writing\n",filename);
       exit(9);
@@ -362,6 +371,36 @@ sevenway_open_single (T this) {
   }
   FREE(filename);
 
+  if (this->quiet_if_excessive_p == false) {
+    this->fp_unpaired_mult_xs_1 = (FILE *) NULL;
+
+  } else if (this->fails_as_input_p == true) {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs.1.fq")+1,sizeof(char));
+    sprintf(filename,"%s.unpaired_mult_xs.1.fq",this->sevenway_root);
+    if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+  } else {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs")+1,sizeof(char));
+    sprintf(filename,"%s.unpaired_mult_xs",this->sevenway_root);
+    if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    if (this->output_sam_p == true && this->sam_headers_p == true) {
+      SAM_header_print_HD(this->fp_unpaired_mult_xs_1,this->nworkers,this->orderedp);
+      SAM_header_print_PG(this->fp_unpaired_mult_xs_1,this->argc,this->argv,this->optind);
+      Univ_IIT_dump_sam(this->fp_unpaired_mult_xs_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+			this->sam_read_group_library,this->sam_read_group_platform);
+    }
+  }
+
+
   if (this->output_sam_p == true && this->sam_headers_p == true) {
     SAM_header_print_HD(this->fp_unpaired_uniq,this->nworkers,this->orderedp);
     SAM_header_print_PG(this->fp_unpaired_uniq,this->argc,this->argv,this->optind);
@@ -379,6 +418,14 @@ sevenway_open_single (T this) {
     SAM_header_print_PG(this->fp_unpaired_mult,this->argc,this->argv,this->optind);
     Univ_IIT_dump_sam(this->fp_unpaired_mult,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 		      this->sam_read_group_library,this->sam_read_group_platform);
+  }
+
+  if (this->output_sam_p == true) {
+    SAM_file_setup_single(this->fp_nomapping_1,this->fp_unpaired_uniq,this->fp_unpaired_circular,
+			  this->fp_unpaired_transloc,this->fp_unpaired_mult,this->fp_unpaired_mult_xs_1);
+  } else {
+    Stage3hr_file_setup_single(this->fp_nomapping_1,this->fp_unpaired_uniq,this->fp_unpaired_circular,
+			       this->fp_unpaired_transloc,this->fp_unpaired_mult,this->fp_unpaired_mult_xs_1);
   }
 
   return;
@@ -434,6 +481,49 @@ sevenway_open_paired (T this) {
     }
   }
 
+  if (this->quiet_if_excessive_p == false) {
+    this->fp_unpaired_mult_xs_1 = (FILE *) NULL;
+    this->fp_unpaired_mult_xs_2 = (FILE *) NULL;
+
+  } else if (this->fails_as_input_p == true) {
+    if (this->fp_unpaired_mult_xs_1 == NULL) {
+      filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs.1.fq")+1,sizeof(char));
+      sprintf(filename,"%s.unpaired_mult_xs.1.fq",this->sevenway_root);
+      if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+	fprintf(stderr,"Cannot open file %s for writing\n",filename);
+	exit(9);
+      }
+      FREE(filename);
+    }
+
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs.2.fq")+1,sizeof(char));
+    sprintf(filename,"%s.unpaired_mult_xs.2.fq",this->sevenway_root);
+    if ((this->fp_unpaired_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+  } else {
+    if (this->fp_unpaired_mult_xs_1 == NULL) {
+      filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs")+1,sizeof(char));
+      sprintf(filename,"%s.unpaired_mult_xs",this->sevenway_root);
+      if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+	fprintf(stderr,"Cannot open file %s for writing\n",filename);
+	exit(9);
+      }
+      FREE(filename);
+
+      if (this->output_sam_p == true && this->sam_headers_p == true) {
+	SAM_header_print_HD(this->fp_unpaired_mult_xs_1,this->nworkers,this->orderedp);
+	SAM_header_print_PG(this->fp_unpaired_mult_xs_1,this->argc,this->argv,this->optind);
+	Univ_IIT_dump_sam(this->fp_unpaired_mult_xs_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+			  this->sam_read_group_library,this->sam_read_group_platform);
+      }
+    }
+  }
+
+
   filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_uniq")+1,sizeof(char));
   sprintf(filename,"%s.halfmapping_uniq",this->sevenway_root);
   if ((this->fp_halfmapping_uniq = fopen(filename,write_mode)) == NULL) {
@@ -465,6 +555,44 @@ sevenway_open_paired (T this) {
     exit(9);
   }
   FREE(filename);
+
+  if (this->quiet_if_excessive_p == false) {
+    this->fp_halfmapping_mult_xs_1 = (FILE *) NULL;
+    this->fp_halfmapping_mult_xs_2 = (FILE *) NULL;
+
+  } else if (this->fails_as_input_p == true) {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult_xs.1.fq")+1,sizeof(char));
+    sprintf(filename,"%s.halfmapping_mult_xs.1.fq",this->sevenway_root);
+    if ((this->fp_halfmapping_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult_xs.2.fq")+1,sizeof(char));
+    sprintf(filename,"%s.halfmapping_mult_xs.2.fq",this->sevenway_root);
+    if ((this->fp_halfmapping_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+  } else {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult_xs")+1,sizeof(char));
+    sprintf(filename,"%s.halfmapping_mult_xs",this->sevenway_root);
+    if ((this->fp_halfmapping_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    if (this->output_sam_p == true && this->sam_headers_p == true) {
+      SAM_header_print_HD(this->fp_halfmapping_mult_xs_1,this->nworkers,this->orderedp);
+      SAM_header_print_PG(this->fp_halfmapping_mult_xs_1,this->argc,this->argv,this->optind);
+      Univ_IIT_dump_sam(this->fp_halfmapping_mult_xs_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+			this->sam_read_group_library,this->sam_read_group_platform);
+    }
+  }
 
   filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_uniq_circular")+1,sizeof(char));
   sprintf(filename,"%s.paired_uniq_circular",this->sevenway_root);
@@ -506,6 +634,44 @@ sevenway_open_paired (T this) {
   }
   FREE(filename);
 
+  if (this->quiet_if_excessive_p == false) {
+    this->fp_paired_mult_xs_1 = (FILE *) NULL;
+    this->fp_paired_mult_xs_2 = (FILE *) NULL;
+     
+  } else if (this->fails_as_input_p == true) {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult_xs.1.fq")+1,sizeof(char));
+    sprintf(filename,"%s.paired_mult_xs.1.fq",this->sevenway_root);
+    if ((this->fp_paired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult_xs.2.fq")+1,sizeof(char));
+    sprintf(filename,"%s.paired_mult_xs.2.fq",this->sevenway_root);
+    if ((this->fp_paired_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+  } else {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult_xs")+1,sizeof(char));
+    sprintf(filename,"%s.paired_mult_xs",this->sevenway_root);
+    if ((this->fp_paired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    if (this->output_sam_p == true && this->sam_headers_p == true) {
+      SAM_header_print_HD(this->fp_paired_mult_xs_1,this->nworkers,this->orderedp);
+      SAM_header_print_PG(this->fp_paired_mult_xs_1,this->argc,this->argv,this->optind);
+      Univ_IIT_dump_sam(this->fp_paired_mult_xs_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+			this->sam_read_group_library,this->sam_read_group_platform);
+    }
+  }
+
   filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_uniq")+1,sizeof(char));
   sprintf(filename,"%s.concordant_uniq",this->sevenway_root);
   if ((this->fp_concordant_uniq = fopen(filename,write_mode)) == NULL) {
@@ -537,6 +703,44 @@ sevenway_open_paired (T this) {
     exit(9);
   }
   FREE(filename);
+
+  if (this->quiet_if_excessive_p == false) {
+    this->fp_concordant_mult_xs_1 = (FILE *) NULL;
+    this->fp_concordant_mult_xs_2 = (FILE *) NULL;
+
+  } else if (this->fails_as_input_p == true) {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult_xs.1.fq")+1,sizeof(char));
+    sprintf(filename,"%s.concordant_mult_xs.1.fq",this->sevenway_root);
+    if ((this->fp_concordant_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult_xs.2.fq")+1,sizeof(char));
+    sprintf(filename,"%s.concordant_mult_xs.2.fq",this->sevenway_root);
+    if ((this->fp_concordant_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+  } else {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult_xs")+1,sizeof(char));
+    sprintf(filename,"%s.concordant_mult_xs",this->sevenway_root);
+    if ((this->fp_concordant_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+
+    if (this->output_sam_p == true && this->sam_headers_p == true) {
+      SAM_header_print_HD(this->fp_concordant_mult_xs_1,this->nworkers,this->orderedp);
+      SAM_header_print_PG(this->fp_concordant_mult_xs_1,this->argc,this->argv,this->optind);
+      Univ_IIT_dump_sam(this->fp_concordant_mult_xs_1,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+			this->sam_read_group_library,this->sam_read_group_platform);
+    }
+  }
 
   if (this->output_sam_p == true && this->sam_headers_p == true) {
     SAM_header_print_HD(this->fp_halfmapping_uniq,this->nworkers,this->orderedp);
@@ -593,6 +797,30 @@ sevenway_open_paired (T this) {
 		      this->sam_read_group_library,this->sam_read_group_platform);
   }
 
+  if (this->output_sam_p == true) {
+    SAM_file_setup_paired(this->fp_nomapping_1,this->fp_nomapping_2,
+			  this->fp_halfmapping_uniq,this->fp_halfmapping_circular,
+			  this->fp_halfmapping_transloc,this->fp_halfmapping_mult,
+			  this->fp_halfmapping_mult_xs_1,this->fp_halfmapping_mult_xs_2,
+			  this->fp_paired_uniq_circular,this->fp_paired_uniq_inv,this->fp_paired_uniq_scr,
+			  this->fp_paired_uniq_long,this->fp_paired_mult,
+			  this->fp_paired_mult_xs_1,this->fp_paired_mult_xs_2,
+			  this->fp_concordant_uniq,this->fp_concordant_circular,
+			  this->fp_concordant_transloc,this->fp_concordant_mult,
+			  this->fp_concordant_mult_xs_1,this->fp_concordant_mult_xs_2);
+  } else {
+    Stage3hr_file_setup_paired(this->fp_nomapping_1,this->fp_nomapping_2,
+			       this->fp_halfmapping_uniq,this->fp_halfmapping_circular,
+			       this->fp_halfmapping_transloc,this->fp_halfmapping_mult,
+			       this->fp_halfmapping_mult_xs_1,this->fp_halfmapping_mult_xs_2,
+			       this->fp_paired_uniq_circular,this->fp_paired_uniq_inv,this->fp_paired_uniq_scr,
+			       this->fp_paired_uniq_long,this->fp_paired_mult,
+			       this->fp_paired_mult_xs_1,this->fp_paired_mult_xs_2,
+			       this->fp_concordant_uniq,this->fp_concordant_circular,
+			       this->fp_concordant_transloc,this->fp_concordant_mult,
+			       this->fp_concordant_mult_xs_1,this->fp_concordant_mult_xs_2);
+  }
+
   return;
 }
 
@@ -602,6 +830,12 @@ sevenway_close (T this) {
   fclose(this->fp_unpaired_circular);
   fclose(this->fp_unpaired_transloc);
   fclose(this->fp_unpaired_mult);
+  if (this->quiet_if_excessive_p == true) {
+    fclose(this->fp_unpaired_mult_xs_1);
+    if (this->fp_unpaired_mult_xs_2 != NULL) {
+      fclose(this->fp_unpaired_mult_xs_2);
+    }
+  }
   if (this->fp_nomapping_2 != NULL) {
     fclose(this->fp_nomapping_2);
   }
@@ -609,6 +843,7 @@ sevenway_close (T this) {
     fclose(this->fp_nomapping_1);
   }
   if (this->fp_halfmapping_uniq != NULL) {
+    /* Paired output */
     fclose(this->fp_halfmapping_uniq);
     fclose(this->fp_halfmapping_circular);
     fclose(this->fp_halfmapping_transloc);
@@ -622,6 +857,21 @@ sevenway_close (T this) {
     fclose(this->fp_concordant_circular);
     fclose(this->fp_concordant_transloc);
     fclose(this->fp_concordant_mult);
+
+    if (this->quiet_if_excessive_p == true) {
+      fclose(this->fp_halfmapping_mult_xs_1);
+      fclose(this->fp_paired_mult_xs_1);
+      fclose(this->fp_concordant_mult_xs_1);
+      if (this->fp_halfmapping_mult_xs_2 != NULL) {
+	fclose(this->fp_halfmapping_mult_xs_2);
+      }
+      if (this->fp_paired_mult_xs_2 != NULL) {
+	fclose(this->fp_paired_mult_xs_2);
+      }
+      if (this->fp_concordant_mult_xs_2 != NULL) {
+	fclose(this->fp_concordant_mult_xs_2);
+      }
+    }
   }
 
   return;
@@ -752,10 +1002,25 @@ sevenway_open (T this, int argc, char **argv, int optind) {
   }
   FREE(filename);
 
+  if (this->quiet_if_excessive_p == false) {
+    this->fp_mult_xs = (FILE *) NULL;
+  } else {
+    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".mult_xs")+1,sizeof(char));
+    sprintf(filename,"%s.mult_xs",this->sevenway_root);
+    if ((this->fp_mult_xs = fopen(filename,write_mode)) == NULL) {
+      fprintf(stderr,"Cannot open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+  }
+
   if (this->printtype == GFF3_GENE || this->printtype == GFF3_MATCH_CDNA || this->printtype == GFF3_MATCH_EST) {
     print_gff_header(this->fp_uniq,argc,argv,optind);
     print_gff_header(this->fp_circular,argc,argv,optind);
     print_gff_header(this->fp_mult,argc,argv,optind);
+    if (this->quiet_if_excessive_p == true) {
+      print_gff_header(this->fp_mult_xs,argc,argv,optind);
+    }
 
 #ifndef PMAP
   } else if (this->printtype == SAM && this->sam_headers_p == true) {
@@ -769,6 +1034,12 @@ sevenway_open (T this, int argc, char **argv, int optind) {
       dump_sam_usersegment(this->fp_mult,this->usersegment,
 			   this->sam_read_group_id,this->sam_read_group_name,
 			   this->sam_read_group_library,this->sam_read_group_platform);
+      if (this->quiet_if_excessive_p == true) {
+	dump_sam_usersegment(this->fp_mult_xs,this->usersegment,
+			     this->sam_read_group_id,this->sam_read_group_name,
+			     this->sam_read_group_library,this->sam_read_group_platform);
+      }
+
     } else {
       Univ_IIT_dump_sam(this->fp_uniq,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 			this->sam_read_group_library,this->sam_read_group_platform);
@@ -776,6 +1047,10 @@ sevenway_open (T this, int argc, char **argv, int optind) {
 			this->sam_read_group_library,this->sam_read_group_platform);
       Univ_IIT_dump_sam(this->fp_mult,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
 			this->sam_read_group_library,this->sam_read_group_platform);
+      if (this->quiet_if_excessive_p == true) {
+	Univ_IIT_dump_sam(this->fp_mult_xs,this->chromosome_iit,this->sam_read_group_id,this->sam_read_group_name,
+			  this->sam_read_group_library,this->sam_read_group_platform);
+      }
     }
 #endif
   }
@@ -785,6 +1060,9 @@ sevenway_open (T this, int argc, char **argv, int optind) {
 
 static void
 sevenway_close (T this) {
+  if (this->quiet_if_excessive_p == true) {
+    fclose(this->fp_mult_xs);
+  }
   fclose(this->fp_mult);
   fclose(this->fp_circular);
   fclose(this->fp_uniq);
@@ -822,19 +1100,27 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
   new->fp_halfmapping_circular = NULL;
   new->fp_halfmapping_transloc = NULL;
   new->fp_halfmapping_mult = NULL;
+  new->fp_halfmapping_mult_xs_1 = NULL;
+  new->fp_halfmapping_mult_xs_2 = NULL;
   new->fp_unpaired_uniq = NULL;
   new->fp_unpaired_circular = NULL;
   new->fp_unpaired_transloc = NULL;
   new->fp_unpaired_mult = NULL;
+  new->fp_unpaired_mult_xs_1 = NULL;
+  new->fp_unpaired_mult_xs_2 = NULL;
   new->fp_paired_uniq_circular = NULL;
   new->fp_paired_uniq_inv = NULL;
   new->fp_paired_uniq_scr = NULL;
   new->fp_paired_uniq_long = NULL;
   new->fp_paired_mult = NULL;
+  new->fp_paired_mult_xs_1 = NULL;
+  new->fp_paired_mult_xs_2 = NULL;
   new->fp_concordant_uniq = NULL;
   new->fp_concordant_circular = NULL;
   new->fp_concordant_transloc = NULL;
   new->fp_concordant_mult = NULL;
+  new->fp_concordant_mult_xs_1 = NULL;
+  new->fp_concordant_mult_xs_2 = NULL;
   
   new->sevenway_root = sevenway_root;
   new->appendp = appendp;
@@ -894,19 +1180,57 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
     new->fp_halfmapping_circular = fp_capture;
     new->fp_halfmapping_transloc = fp_capture;
     new->fp_halfmapping_mult = fp_capture;
+    new->fp_halfmapping_mult_xs_1 = fp_capture;
+    new->fp_halfmapping_mult_xs_2 = fp_capture;
     new->fp_unpaired_uniq = fp_capture;
     new->fp_unpaired_circular = fp_capture;
     new->fp_unpaired_transloc = fp_capture;
     new->fp_unpaired_mult = fp_capture;
+    new->fp_unpaired_mult_xs_1 = fp_capture;
+    new->fp_unpaired_mult_xs_2 = fp_capture;
     new->fp_paired_uniq_circular = fp_capture;
     new->fp_paired_uniq_inv = fp_capture;
     new->fp_paired_uniq_scr = fp_capture;
     new->fp_paired_uniq_long = fp_capture;
     new->fp_paired_mult = fp_capture;
+    new->fp_paired_mult_xs_1 = fp_capture;
+    new->fp_paired_mult_xs_2 = fp_capture;
     new->fp_concordant_uniq = fp_capture;
     new->fp_concordant_circular = fp_capture;
     new->fp_concordant_transloc = fp_capture;
     new->fp_concordant_mult = fp_capture;
+    new->fp_concordant_mult_xs_1 = fp_capture;
+    new->fp_concordant_mult_xs_2 = fp_capture;
+
+    if (output_sam_p == true) {
+      SAM_file_setup_all(new->fp_nomapping_1,new->fp_nomapping_2,
+			 new->fp_unpaired_uniq,new->fp_unpaired_circular,
+			 new->fp_unpaired_transloc,new->fp_unpaired_mult,
+			 new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
+			 new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
+			 new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
+			 new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
+			 new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
+			 new->fp_paired_uniq_long,new->fp_paired_mult,
+			 new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
+			 new->fp_concordant_uniq,new->fp_concordant_circular,
+			 new->fp_concordant_transloc,new->fp_concordant_mult,
+			 new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
+    } else {
+      Stage3hr_file_setup_all(new->fp_nomapping_1,new->fp_nomapping_2,
+			      new->fp_unpaired_uniq,new->fp_unpaired_circular,
+			      new->fp_unpaired_transloc,new->fp_unpaired_mult,
+			      new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
+			      new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
+			      new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
+			      new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
+			      new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
+			      new->fp_paired_uniq_long,new->fp_paired_mult,
+			      new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
+			      new->fp_concordant_uniq,new->fp_concordant_circular,
+			      new->fp_concordant_transloc,new->fp_concordant_mult,
+			      new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
+    }
 
   } else if (sevenway_root != NULL) {
     sevenway_open_single(new);
@@ -918,19 +1242,57 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
     new->fp_halfmapping_circular = stdout;
     new->fp_halfmapping_transloc = stdout;
     new->fp_halfmapping_mult = stdout;
+    new->fp_halfmapping_mult_xs_1 = stdout;
+    new->fp_halfmapping_mult_xs_2 = stdout;
     new->fp_unpaired_uniq = stdout;
     new->fp_unpaired_circular = stdout;
     new->fp_unpaired_transloc = stdout;
     new->fp_unpaired_mult = stdout;
+    new->fp_unpaired_mult_xs_1 = stdout;
+    new->fp_unpaired_mult_xs_2 = stdout;
     new->fp_paired_uniq_circular = stdout;
     new->fp_paired_uniq_inv = stdout;
     new->fp_paired_uniq_scr = stdout;
     new->fp_paired_uniq_long = stdout;
     new->fp_paired_mult = stdout;
+    new->fp_paired_mult_xs_1 = stdout;
+    new->fp_paired_mult_xs_2 = stdout;
     new->fp_concordant_uniq = stdout;
     new->fp_concordant_circular = stdout;
     new->fp_concordant_transloc = stdout;
     new->fp_concordant_mult = stdout;
+    new->fp_concordant_mult_xs_1 = stdout;
+    new->fp_concordant_mult_xs_2 = stdout;
+
+    if (output_sam_p == true) {
+      SAM_file_setup_all(new->fp_nomapping_1,new->fp_nomapping_2,
+			 new->fp_unpaired_uniq,new->fp_unpaired_circular,
+			 new->fp_unpaired_transloc,new->fp_unpaired_mult,
+			 new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
+			 new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
+			 new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
+			 new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
+			 new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
+			 new->fp_paired_uniq_long,new->fp_paired_mult,
+			 new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
+			 new->fp_concordant_uniq,new->fp_concordant_circular,
+			 new->fp_concordant_transloc,new->fp_concordant_mult,
+			 new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
+    } else {
+      Stage3hr_file_setup_all(new->fp_nomapping_1,new->fp_nomapping_2,
+			      new->fp_unpaired_uniq,new->fp_unpaired_circular,
+			      new->fp_unpaired_transloc,new->fp_unpaired_mult,
+			      new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
+			      new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
+			      new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
+			      new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
+			      new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
+			      new->fp_paired_uniq_long,new->fp_paired_mult,
+			      new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
+			      new->fp_concordant_uniq,new->fp_concordant_circular,
+			      new->fp_concordant_transloc,new->fp_concordant_mult,
+			      new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
+    }
 
     if (output_sam_p == true && sam_headers_p == true) {
       if (fails_as_input_p == true) {
@@ -953,7 +1315,7 @@ T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp,
 	       bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
 	       char *dbversion, Genome_T genome, Univ_IIT_T chromosome_iit,
-	       Chrsubset_T chrsubset, Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
+	       char *chrsubset_name, Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
 #ifndef PMAP
 	       bool sam_headers_p, int quality_shift, bool sam_paired_p,
@@ -979,7 +1341,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
   new->dbversion = dbversion;
   new->genome = genome;
   new->chromosome_iit = chromosome_iit;
-  new->chrsubset = chrsubset;
+  new->chrsubset_name = chrsubset_name;
   new->contig_iit = contig_iit;
   new->altstrain_iit = altstrain_iit;
   new->map_iit = map_iit;
@@ -997,6 +1359,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
   new->fp_circular = NULL;
   new->fp_transloc = NULL;
   new->fp_mult = NULL;
+  new->fp_mult_xs = NULL;
   
 #ifndef PMAP
   new->sam_headers_p = sam_headers_p;
@@ -1068,6 +1431,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
     new->fp_circular = stdout;
     new->fp_transloc = stdout;
     new->fp_mult = stdout;
+    new->fp_mult_xs = stdout;
 
 #ifndef PMAP
     if (printtype == SAM && sam_headers_p == true) {
@@ -1175,21 +1539,6 @@ Outbuffer_put_result (T this, Result_T result, Request_T request) {
  ************************************************************************/
 
 static void
-print_query_singleend (T this, FILE *fp, Request_T request) {
-  Shortread_T queryseq1;
-
-  queryseq1 = Request_queryseq1(request);
-
-  if (this->fastq_format_p == true) {
-    Shortread_print_query_singleend_fastq(fp,queryseq1);
-  } else {
-    Shortread_print_query_singleend_fasta(fp,queryseq1);
-  }
-
-  return;
-}
-
-static void
 print_header_singleend (T this, FILE *fp, Request_T request, bool translocationp, int npaths) {
   Shortread_T queryseq1;
 
@@ -1234,15 +1583,17 @@ print_result_sam (T this, Result_T result, Request_T request) {
     if (this->nofailsp == true) {
       /* Skip */
     } else {
-      if (this->fails_as_input_p == true) {
-	print_query_singleend(this,this->fp_nomapping_1,request);
-      } else {
-	queryseq1 = Request_queryseq1(request);
+      queryseq1 = Request_queryseq1(request);
+      if (this->fails_as_input_p == false) {
 	SAM_print_nomapping(this->fp_nomapping_1,ABBREV_NOMAPPING_1,
 			    queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			    /*acc2*/NULL,this->chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
 			    this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
+      } else if (this->fastq_format_p == true) {
+	Shortread_print_query_singleend_fastq(this->fp_nomapping_1,queryseq1,/*headerseq*/queryseq1);
+      } else {
+	Shortread_print_query_singleend_fasta(this->fp_nomapping_1,queryseq1,/*headerseq*/queryseq1);
       }
     }
 
@@ -1324,7 +1675,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
     } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
       queryseq1 = Request_queryseq1(request);
       /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      SAM_print_nomapping(this->fp_unpaired_mult,ABBREV_UNPAIRED_MULT,
+      SAM_print_nomapping(this->fp_unpaired_mult_xs_1,ABBREV_UNPAIRED_MULT_XS,
 			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			  /*acc2*/NULL,this->chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
@@ -1360,17 +1711,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
     SAM_print_paired(result,resulttype,this->chromosome_iit,
 		     Request_queryseq1(request),Request_queryseq2(request),
 		     this->invert_first_p,this->invert_second_p,
-		     this->nofailsp,this->failsonlyp,this->fails_as_input_p,this->fastq_format_p,
-		     this->clip_overlap_p,this->merge_samechr_p,this->quality_shift,this->sam_read_group_id,
-		     this->fp_nomapping_1,this->fp_nomapping_2,
-		     this->fp_unpaired_uniq,this->fp_unpaired_circular,
-		     this->fp_unpaired_transloc,this->fp_unpaired_mult,
-		     this->fp_halfmapping_uniq,this->fp_halfmapping_circular,
-		     this->fp_halfmapping_transloc,this->fp_halfmapping_mult,
-		     this->fp_paired_uniq_circular,this->fp_paired_uniq_inv,this->fp_paired_uniq_scr,
-		     this->fp_paired_uniq_long,this->fp_paired_mult,
-		     this->fp_concordant_uniq,this->fp_concordant_circular,
-		     this->fp_concordant_transloc,this->fp_concordant_mult);
+		     this->nofailsp,this->failsonlyp,this->clip_overlap_p,
+		     this->merge_samechr_p,this->quality_shift,this->sam_read_group_id);
   }
 
   return;
@@ -1391,11 +1733,15 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
     if (this->nofailsp == true) {
       /* Skip */
     } else {
-      if (this->fails_as_input_p == true) {
-	print_query_singleend(this,this->fp_nomapping_1,request);
-      } else {
+      if (this->fails_as_input_p == false) {
 	print_header_singleend(this,this->fp_nomapping_1,request,/*translocationp*/false,/*npaths*/0);
 	fprintf(this->fp_nomapping_1,"\n");
+      } else if (this->fastq_format_p == true) {
+	queryseq1 = Request_queryseq1(request);
+	Shortread_print_query_singleend_fastq(this->fp_nomapping_1,queryseq1,/*headerseq*/queryseq1);
+      } else {
+	queryseq1 = Request_queryseq1(request);
+	Shortread_print_query_singleend_fasta(this->fp_nomapping_1,queryseq1,/*headerseq*/queryseq1);
       }
     }
 
@@ -1461,8 +1807,8 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
       /* Skip */
 
     } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      print_header_singleend(this,this->fp_unpaired_mult,request,/*translocationp*/false,npaths);
-      fprintf(this->fp_unpaired_mult,"\n");
+      print_header_singleend(this,this->fp_unpaired_mult_xs_1,request,/*translocationp*/false,npaths);
+      fprintf(this->fp_unpaired_mult_xs_1,"\n");
 
     } else {
       print_header_singleend(this,this->fp_unpaired_mult,request,/*translocationp*/false,npaths);
@@ -1493,16 +1839,7 @@ print_result_gsnap (T this, Result_T result, Request_T request) {
 		     this->invert_first_p,this->invert_second_p,
 #endif
 		     this->nofailsp,this->failsonlyp,this->fails_as_input_p,
-		     this->fastq_format_p,this->quality_shift,
-		     this->fp_nomapping_1,this->fp_nomapping_2,
-		     this->fp_unpaired_uniq,this->fp_unpaired_circular,
-		     this->fp_unpaired_transloc,this->fp_unpaired_mult,
-		     this->fp_halfmapping_uniq,this->fp_halfmapping_circular,
-		     this->fp_halfmapping_transloc,this->fp_halfmapping_mult,
-		     this->fp_paired_uniq_circular,this->fp_paired_uniq_inv,this->fp_paired_uniq_scr,
-		     this->fp_paired_uniq_long,this->fp_paired_mult,
-		     this->fp_concordant_uniq,this->fp_concordant_circular,
-		     this->fp_concordant_transloc,this->fp_concordant_mult);
+		     this->fastq_format_p,this->quality_shift);
   }
 
   return;
@@ -1615,7 +1952,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request
 
 static void
 print_npaths (T this, FILE *fp, int npaths, Diagnostic_T diagnostic,
-	      Chrsubset_T chrsubset, bool mergedp, Chimera_T chimera, Failure_T failuretype) {
+	      char *chrsubset_name, bool mergedp, Chimera_T chimera, Failure_T failuretype) {
 
   if (this->diagnosticp == true) {
     Diagnostic_print(diagnostic);
@@ -1628,7 +1965,9 @@ print_npaths (T this, FILE *fp, int npaths, Diagnostic_T diagnostic,
   } else {
     fprintf(fp,"Paths (%d):",npaths);
   }
-  Chrsubset_print(chrsubset);
+  if (chrsubset_name != NULL) {
+    printf("  [chrsubset: %s]",chrsubset_name);
+  }
   if (failuretype == NO_FAILURE) {
     if (chimera != NULL) {
       Chimera_print(fp,chimera);
@@ -1867,9 +2206,10 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 
     diagnostic = Result_diagnostic(result);
     if (npaths == 0) {
-      print_npaths(this,fp,0,diagnostic,this->chrsubset,/*mergedp*/false,/*chimera*/NULL,Result_failuretype(result));
+      print_npaths(this,fp,0,diagnostic,this->chrsubset_name,
+		   /*mergedp*/false,/*chimera*/NULL,Result_failuretype(result));
     } else {
-      print_npaths(this,fp,npaths,diagnostic,this->chrsubset,mergedp,chimera,NO_FAILURE);
+      print_npaths(this,fp,npaths,diagnostic,this->chrsubset_name,mergedp,chimera,NO_FAILURE);
       for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
 	Stage3_print_pathsummary(fp,stage3array[pathnum-1],pathnum,
 				 this->chromosome_iit,this->contig_iit,
@@ -1927,7 +2267,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 
     putc('>',fp);
     Sequence_print_header(fp,headerseq,this->checksump);
-    print_npaths(this,fp,npaths,diagnostic,this->chrsubset,mergedp,chimera,NO_FAILURE);
+    print_npaths(this,fp,npaths,diagnostic,this->chrsubset_name,mergedp,chimera,NO_FAILURE);
     if (npaths == 0) {
       fprintf(fp,"\n\n\n");
     } else {

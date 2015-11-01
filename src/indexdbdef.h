@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h 99952 2013-06-30 18:10:46Z twu $ */
+/* $Id: indexdbdef.h 121509 2013-12-13 21:56:56Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 
@@ -32,20 +32,33 @@ struct T {
   Width_T offsetscomp_basesize;		/* e.g., 12 */
   Blocksize_T offsetscomp_blocksize;	/* e.g., 64 = 4^(15-12) */
 
+#ifdef LARGE_GENOMES
+  UINT4 *offsetspages;
+#endif
+
   /* Access_T gammaptrs_access; -- Always ALLOCATED */ 
   int gammaptrs_fd;
   size_t gammaptrs_len;
-  Positionsptr_T *gammaptrs;
+  Gammaptr_T *gammaptrs;
 
   Access_T offsetscomp_access;
   int offsetscomp_fd;
   size_t offsetscomp_len;
-  Positionsptr_T *offsetscomp;
+  Offsetscomp_T *offsetscomp;
 
   Access_T positions_access;
+#ifdef LARGE_GENOMES
+  int positions_high_fd;
+  size_t positions_high_len;
+  int positions_low_fd;
+  size_t positions_low_len;
+  unsigned char *positions_high;
+  UINT4 *positions_low;
+#else
   int positions_fd;
   size_t positions_len;
-  Univcoord_T *positions;
+  UINT4 *positions;		/* For small genomes, same as Univcoord_T */
+#endif
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_t positions_read_mutex;

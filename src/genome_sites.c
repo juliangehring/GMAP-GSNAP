@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome_sites.c 112568 2013-10-24 23:12:02Z twu $";
+static char rcsid[] = "$Id: genome_sites.c 116711 2013-11-27 19:44:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -23,6 +23,7 @@ static char rcsid[] = "$Id: genome_sites.c 112568 2013-10-24 23:12:02Z twu $";
 #include "cmet.h"
 #include "atoi.h"
 #include "maxent_hr.h"
+#include "popcount.h"
 
 
 #ifdef WORDS_BIGENDIAN

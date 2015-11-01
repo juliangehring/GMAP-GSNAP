@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read-univ.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: iit-read-univ.c 115433 2013-11-18 18:24:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1277,7 +1277,7 @@ Univ_IIT_read (char *filename, bool readonlyp, bool add_iit_p) {
     new->coord_values_8p = true;
     new->total_nintervals = -new->total_nintervals;
 #else
-    fprintf(stderr,"This is a large genome of more than 2^32 billion bp.\n");
+    fprintf(stderr,"This is a large genome of more than 2^32 (4 billion) bp.\n");
 #ifdef GSNAP
     fprintf(stderr,"You should run gsnapl instead.\n");
 #else

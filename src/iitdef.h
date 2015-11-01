@@ -1,4 +1,4 @@
-/* $Id: iitdef.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: iitdef.h 115892 2013-11-20 22:52:31Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -17,7 +17,8 @@
 #include "types.h"
 
 
-#define IIT_LATEST_VERSION 5
+#define IIT_LATEST_VERSION_NOVALUES 5
+#define IIT_LATEST_VERSION_VALUES 6
 
 
 /* version 1 starts with nintervals (now handled separately as a Univ_IIT_T) */
@@ -29,6 +30,9 @@
    4- or 8-bytes and whether annot pointers are 4- or 8-bytes.  Also
    stores rest of header line with annotation, so NULL => print '\n',
    otherwise print annotation. */
+
+/* version 6 is like version 5, except it sorts intervals by a value
+   field.  The intent is to have both versions 5 and 6 in current use. */
 
 
 typedef enum {NO_SORT, ALPHA_SORT, NUMERIC_ALPHA_SORT, CHROM_SORT} Sorttype_T;
@@ -84,6 +88,14 @@ struct T {
   UINT4 *fieldpointers;
   char *fieldstrings;
 
+  off_t valueorder_offset;
+  size_t valueorder_length; /* mmap length (mmap uses size_t, not off_t) */
+  char *valueorder_mmap;
+
+  off_t value_offset;
+  size_t value_length;		/* mmap length (mmap uses size_t, not off_t) */
+  char *value_mmap;
+
   off_t labelorder_offset;
   size_t labelorder_length; /* mmap length (mmap uses size_t, not off_t) */
   char *labelorder_mmap;
@@ -110,6 +122,10 @@ struct T {
   UINT8 *labelpointers8;
 #endif
   char *labels;
+
+  bool valuep;
+  int *valueorder;		/* For version 6 IITs */
+  double *values;		/* For version 6 IITs */
 
   UINT4 *annotpointers;
 #ifdef HAVE_64_BIT

@@ -1,4 +1,4 @@
-/* $Id: shortread.h 101822 2013-07-17 18:43:45Z twu $ */
+/* $Id: shortread.h 115430 2013-11-18 18:19:36Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -120,9 +120,9 @@ extern void
 Shortread_print_header (FILE *fp, T queryseq1, T queryseq2);
 
 extern void
-Shortread_print_query_singleend_fasta (FILE *fp, T queryseq);
+Shortread_print_query_singleend_fasta (FILE *fp, T queryseq, T headerseq);
 extern void
-Shortread_print_query_singleend_fastq (FILE *fp, T queryseq);
+Shortread_print_query_singleend_fastq (FILE *fp, T queryseq, T headerseq);
 extern void
 Shortread_print_query_pairedend_fasta (FILE *fp, T queryseq1, T queryseq2,
 				      bool invert_first_p, bool invert_second_p);

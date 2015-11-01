@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splice.c 101271 2013-07-12 02:44:39Z twu $";
+static char rcsid[] = "$Id: splice.c 131512 2014-03-26 16:27:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -34,6 +34,14 @@ static char rcsid[] = "$Id: splice.c 101271 2013-07-12 02:44:39Z twu $";
 
 
 static bool novelsplicingp = true;
+static int min_shortend;
+
+void
+Splice_setup (int min_shortend_in) {
+  min_shortend = min_shortend_in;
+  return;
+}
+
 
 
 /* Do not compare against true or false */
@@ -129,8 +137,8 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 #else
   /* splice_pos_start = min_localsplicing_end_matches; */
   /* splice_pos_end = querylength - min_localsplicing_end_matches; */
-  splice_pos_start = 2;
-  splice_pos_end = querylength - 2;
+  splice_pos_start = min_shortend;
+  splice_pos_end = querylength - min_shortend; /* ? off by 1, so -l 3 allows only ends of up to 2 */
 #endif
 
 
@@ -519,8 +527,8 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
   debug2(printf("Splice_solve_double: Getting genome at lefti %u, leftm %u, and leftj %u\n",
 		 segmenti_left,segmentm_left,segmentj_left));
 
-  splice_pos_start = 2;
-  splice_pos_end = querylength - 2;
+  splice_pos_start = min_shortend;
+  splice_pos_end = querylength - min_shortend; /* ? off by 1, so -l 3 allows only ends of up to 2 */
 
   if (splice_pos_start <= splice_pos_end) {
     /* Originally from plus strand.  No complement. */

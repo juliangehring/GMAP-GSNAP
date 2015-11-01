@@ -146,11 +146,10 @@ billion bp also will not create or use a suffix array.
 ===============================================
 
 A GMAP/GSNAP "database" is a set of genomic index files, representing
-the genome in a hash table format.  You can use the programs
-gmap_build or gmap_setup to build your own database (as described
-below), but you can started quickly by downloading a pre-built
-GMAP/GSNAP database from the same place you obtained the GMAP program
-(see above for URL).
+the genome in a hash table format.  You can use the gmap_build program
+to build your own database (as described below), but you can started
+quickly by downloading a pre-built GMAP/GSNAP database from the same
+place you obtained the GMAP program (see above for URL).
 
 Place the database in the GMAPDB directory you specified in the
 config.site file when you built the gmap program.  You should include
@@ -176,20 +175,20 @@ your database has the most recent format if it has files of the type
 <genome>.sarray, <genome>.ref12153bitpackptrs, and
 <genome>.ref12153bitpackcomp.
 
-Note that the hg19 database provided on the Web site is in the older
-format.  If you want the newer format, you will have to build it
-yourself, as discussed in the next section.
+Note that the hg19 database provided on the Web site lacks the suffix
+array, although GMAP and GSNAP will work fine, albeit more slowly.
+The suffix array for hg19 requires 15 GB of disk space.  If you want
+the suffix array, you will have to build it yourself, as discussed in
+the next section.
 
 
 
 4.  Setting up to build a GMAP/GSNAP database (one chromosome per FASTA entry)
 ==============================================================================
 
-You can also build your own genomic database, using one of two utility
-programs provided with this package: gmap_build (the newer, one-step
-method) or gmap_setup (the older way that uses Makefile and requires
-multiple steps).  The gmap_build step is currently the best supported.
-
+You can also build your own genomic database, using the gmap_build
+program provided with this package.  (Note: the gmap_setup
+method from older versions is no longer provided or supported.)
 
 Previous versions limited the total sequence length in your database
 to 2^32 = 4,294,967,296 (about 4 billion) bp.  However, starting with
@@ -218,13 +217,14 @@ which will build and install the GMAP index files in your default
 GMAPDB location.
 
 You can see the full usage of gmap_build by doing "gmap_build --help",
-but here are some useful flags.  If your FASTA files are gzipped, you
-can add the flag "-g" to gmap_build.  You can control the k-mer size
-for the genomic index with the -k flag, which can range from 12 to 15.
-The default value for -k is 15, but this requires your machine to have
-4 GB of RAM to build the indices.  If you do not have 4 GB of RAM,
-then you will need to reduce the value of -k or find another machine.
-Here are the RAM requirements for building various indices:
+but here are some useful flags.  If your FASTA files are compressed
+using gzip, you can add the flag "-g" to gmap_build.  You can control
+the k-mer size for the genomic index with the -k flag, which can range
+from 12 to 15.  The default value for -k is 15, but this requires your
+machine to have 4 GB of RAM to build the indices.  If you do not have
+4 GB of RAM, then you will need to reduce the value of -k or find
+another machine.  Here are the RAM requirements for building various
+indices:
 
     k-mer of 12: 64 MB
     k-mer of 13: 256 MB
@@ -264,24 +264,11 @@ genome in human beings is circular.
 5.  Setting up to build a GMAP/GSNAP database (more complex cases)
 ==================================================================
 
-Note: this section is probably outdated as of 2013-10-01.  If you are
-using a current version of the source code, you should use gmap_build
-and gmap_setup, and skip to section 6.  I include this section for
-those users who are using older versions of the software.
-
-If gmap_build works for you, you can skip to section 6.  Otherwise, if
-you have more complicated needs than gmap_build can handle, there is a
-more general build tool called gmap_setup, which creates a Makefile
-with this command
-
-    gmap_setup -d <genome> [-k <kmer size>] <fasta_file>...
-
-and then has you run a few make commands, based on the directions it
-provides.  Note that gmap_setup is an older method, and not well
-supported at this point.
-
-As with gmap_build, you can type "gmap_setup --help" to see the full
-set of options.
+If you are indexing a genome, where each chromosome is contained in a
+separate FASTA entry, or a set of contigs, where the contigs are
+independent of each other, then you can just skip to section 6.
+Otherwise, if you have more complicated needs, you may need to add
+options to gmap_build.
 
 Note that the term
 
@@ -289,28 +276,27 @@ Note that the term
 
 above indicates that multiple files can be listed.  The files can be
 in any order, and the contigs can be in any order within these files.
-By default, the GMAP setup process will sort the contigs and
+By default, the gmap_build process will sort the contigs and
 chromosomes into their appropriate "chrom" order.  For the human
 genome, this order is 1, 2, ..., 10, 11, ..., 22, X, Y, M, followed by
 all other chromosomes in numeric/alphabetical order.  If you don't
-want this sort, provide the "-s none" flag to gmap_setup or
-gmap_build.  Other sort options besides "none" and "chrom" are "alpha"
-and "numeric-alpha".
+want this sort, provide the "-s none" flag to gmap_build.  Other sort
+options besides "none" and "chrom" are "alpha" and "numeric-alpha".
 
-We show the full set of gmap_setup options under item 4d below, but
-we first discuss some specific situations for using the program.
+You can type "gmap_setup --help" to see the full set of options.  We
+discuss some specific situations below.
 
 
-5a.  Chromosomes represented as contig pieces
-=============================================
+5a.  Contigs are mapped to chromosomes
+======================================
 
 If your FASTA entries consist of contigs, each of which has a mapping
-to a chromosomal region in the header, you may need to add the -C flag
-to gmap_setup, like this
+to a chromosomal region in the header, you may add the -C (or
+--contigs-are-mapped) flag to gmap_build, like this
 
-    gmap_setup -d <genome> -C <fasta_file>...
+    gmap_build -d <genome> -C <fasta_file>...
 
-Then gmap_setup will try to parse a chromosomal region from each
+Then gmap_build will try to parse a chromosomal region from each
 header.  The program knows how to parse the following patterns:
 
     chr=1:217281..257582  [may insert spaces around '=', or omit '=' character]
@@ -324,20 +310,21 @@ header.  The program knows how to parse the following patterns:
 
 If only the chromosome is specified, without coordinates, the program
 will assign its own chromosomal coordinates by concatenating the
-contigs within each chromosome.  If gmap_setup cannot figure out the
+contigs within each chromosome.  If gmap_build cannot figure out the
 chromosome, it will assign it to chromosome "NA".
 
 
 5b.  Using an MD file
 =====================
 
-Another possibility is that your FASTA entries consist of contigs,
-each of which has mapping information in an external file.  Genomes
-from NCBI typically include an ".md" file (like seq_contig.md) that
-specifies the chromosomal coordinates for each contig.  To use this
-information, provide the -M flag to gmap_setup, like this
+Another possibility is that your FASTA entries consist of contigs that
+mapped to chromosomes, where the mapping information is in an external
+file.  Genomes from NCBI typically include an ".md" file (like
+seq_contig.md) that specifies the chromosomal coordinates for each
+contig.  To use this information, provide the -M (or --mdfile) flag to
+gmap_build like this
 
-    gmap_setup -d <genome> -M <mdfile> <fasta_file>...
+    gmap_build -d <genome> -M <mdfile> <fasta_file>...
 
 The program will then try to parse the mdfile (which often changes
 formats) and verify with you which columns contain the contig names
@@ -347,78 +334,17 @@ and chromosomal coordinates.
 5c.  Compressed FASTA files or files requiring processing
 =========================================================
 
-If your genome files don't satisfy any of the cases above, you may
-need to write a small script that pipes the sequences in FASTA format
-to gmap_setup.  You can tell gmap_setup about your script with the -E
-flag, like this
+If your genome files are compressed using gzip, you can simply add the
+flag "-g" to gmap_build.  But if your genome files require some other
+type of processing, you may need to write a small script that pipes
+the sequences in FASTA format to gmap_build.  You can tell gmap_build
+about your script with the -E (or --fasta-pipe) flag, like this
 
-    gmap_setup -d <genome> -E 'gunzip -c chr*.gz'
-    gmap_setup -d <genome> -E 'cat *.fa | ./add-chromosomal-info.pl'
+    gmap_build -d <genome> -E 'gunzip -c chr*.gz'
+    gmap_build -d <genome> -E 'cat *.fa | ./add-chromosomal-info.pl'
 
 You can think of the command as a Unix pipe for processing each FASTA
-file before it is read by gmap_setup.
-
-
-5d.  General use of gmap_setup program
-======================================
-
-Any of the steps above (4a, 4b, or 4c) will create a Makefile, called
-Makefile.<genome>.  You will then use this Makefile to build a
-GMAP/GSNAP database.  You will be prompted to use this Makefile
-through the following commands:
-
-    make -f Makefile.<genome> coords
-    make -f Makefile.<genome> gmapdb
-    make -f Makefile.<genome> install
-
-Note that older versions of GMAP allowed the building of genomic
-databases containing lower-case characters by doing "make -f
-Makefile.<genome> gmapdb_lc" or "make -f Makefile.<genome>
-gmapdb_lc_masked", but these will not work with GSNAP, and I am not
-certain if these still work with the most recent GMAP either, so they
-are not currently supported.
-
-
-The first step in using this Makefile is to create a file called
-coords.<genome>.  You may manually edit this file, if you wish, before
-proceeding with the rest of the Makefile steps.  The coords file
-contains one contig per line, in the following format:
-
-<contig_name>	<chromosomal_mapping>	<optional_strain>
-
-where the chromosomal_mapping is in the form
-<chr_name>:<start>..<end>.  Here are some examples:
-
-NT_077911.1	1:217281..257582
-NT_091704.1	22U:1..166566
-
-If you want the contig to be inserted as its reverse complement, then
-list the coordinates in the reverse direction (starting with the
-higher number), like this:
-
-NT_039199.1	1:61563373..61273712
-
-You may delete lines or comment them out with a '#' character, which
-will effectively omit those contigs from your genome build.  You may
-also change chromosomal assignments (in column 2) at this stage.
-
-Note: Previous versions of GMAP allowed you to specify alternate
-strains in column 3, but this feature added too much complexity and is
-no longer supported.
-
-
-You then will run "make -f Makefile.<genome> gmapdb".  This creates a
-compressed version of the genome, in the file <genome>.genomecomp,
-which can hold only the standard, upper-case A, C, G, T, N, and X
-characters.  It converts all lower-case characters to upper-case, and
-all non-ACGTNX characters to 'N'.  This command also creates a hash
-table of the genome, with files that end with "gammaptrs",
-"offsetscomp", and "positions".
-
-Finally, running "make -f Makefile.<genome> install" will place all
-database files in a subdirectory specified by your "-d" flag under the
-directory specified either by the "-D" flag or, if not specified, the
-value of --with-gmapdb you provided at configure time.
+file before it is read by gmap_build.
 
 
 
@@ -585,7 +511,7 @@ found by doing "iit_store --help".
 =================
 
 GSNAP uses the same database as GMAP does, so you will need to process
-the genome using gmap_setup as explained above, if you haven't done
+the genome using gmap_build as explained above, if you haven't done
 that already.
 
 To see the full set of options for GSNAP, type "gsnap --help".  A key
@@ -769,15 +695,13 @@ as follows.  Note that the --split-output option will create separate
 output files for each output type, and the filename suffixes are shown
 below for each output type:
 
-  N1 (nomapping read 1) (filename suffix ".nomapping"): The entire
-  read (single-end or paired-end) could not be aligned, and this is
-  the first (or only) end.  If the --fails-as-input flag is specified,
-  then these reads are printed in FASTQ format instead of SAM format.
-
-  N2 (nomapping read 2) (filename suffix ".nomapping"): The entire
-  paired-end read could not be aligned, and this is the second end.
-  If the --fails-as-input flag is specified, then these reads are
-  printed in FASTQ format instead of SAM format.
+  NM (nomapping) (filename suffix ".nomapping"): The entire read
+  (single-end or paired-end) could not be aligned.  If the
+  --fails-as-input flag is specified, then these reads are printed in
+  FASTQ or FASTA format (depending on the input format) instead of SAM
+  format, and the filenames end in .nomapping.1.fq and
+  .nomapping.2.fq, respectively, for the first and second ends of the
+  read (if any).
 
   CU (concordant unique) (filename suffix ".concordant_uniq"): Both
   ends of a paired-end read could be aligned concordantly to a single
@@ -787,6 +711,11 @@ below for each output type:
   CM (concordant multiple) (filename suffix ".concordant_mult"): Both
   ends of a paired-end read could be aligned concordantly, but to more
   than one position in the genome.
+
+  CX (concordant multiple excess) (filename suffix
+  ".concordant_mult_xs"): Multiple concordant alignments, but user
+  specified --quiet-if-excessive and the number of alignments exceeds
+  "-n" threshold.
 
   CT (concordant translocation) (filename suffix
   ".concordant_transloc"): Both ends of a paired-end read could be
@@ -825,22 +754,28 @@ below for each output type:
   scramble, or deletion.  In addition, one or both ends of the read
   goes around the origin of a circular chromosome.
 
-  PM (paired multiple) (filename suffix ".paired_uniq_long"): Both
+  PM (paired multiple) (filename suffix ".paired_mult"): Both
   ends of a paired-end read could be aligned near each other,
   representing an inversion, scramble, or deletion, but there are
   multiple places in the genome where an alignment is found.
 
-  HU, HM, HT, HC (halfmapping unique, halfmapping multiple,
-  halfmapping translocation, and halfmapping circular, respectively)
-  (filename suffixes: ".halfmapping_uniq", ".halfmapping_mult",
+  PX (paired multiple excess) (filename suffix ".paired_mult_xs"):
+  Multiple paired alignments, but user specified --quiet-if-excessive
+  and the number of alignments exceeds the "-n" threshold.
+
+  HU, HM, HX, HT, HC (halfmapping unique, halfmapping multiple,
+  halfmapping multiple excess, halfmapping translocation, and
+  halfmapping circular, respectively) (filename suffixes:
+  ".halfmapping_uniq", ".halfmapping_mult", ".halfmapping_mult_xs",
   ".halfmapping_transloc", ".halfmapping_circular): Same as for the
   concordant output types, except that only one end of the paired-end
   read could be aligned, and the other end could not be aligned
   anywhere in the genome.
 
-  UU, UM, UT, UC (unpaired unique, unpaired multiple, unpaired
-  translocation, and unpaired circular, respectively) (filename
-  suffixes: ".unpaired_uniq", ".unpaired_mult", ".unpaired_transloc",
+  UU, UM, UX, UT, UC (unpaired unique, unpaired multiple, unpaired
+  multiple excess, unpaired translocation, and unpaired circular,
+  respectively) (filename suffixes: ".unpaired_uniq",
+  ".unpaired_mult", ".unpaired_mult_xs", ".unpaired_transloc",
   ".unpaired_circular): Same as for the concordant output types,
   except that the two ends could not be aligned concordantly or even
   paired.  could be aligned, and the other end could not be aligned
@@ -1364,11 +1299,13 @@ Additional options for snpindex can be found by doing "snpindex
 
 Finally, you can perform SNP-tolerant alignment by doing
 
-    gsnap -d <genome> [-V <snpdirectory>] -v <snpfile> <shortreads>
+    gsnap -d <genome> [-V <snpdirectory>] -v <snpfile> --use-sarray=0 <shortreads>
 
 You can also retrieve snp information for genomic segments by running
 get-genome with the -v and -f flags.  For more details, run
-"get-genome --help".
+"get-genome --help".  Note that you will want to turn off the suffix
+array algorithm, which helps GSNAP run faster, but has an inherent
+bias towards the reference alleles relative to the alternate alleles.
 
 
 14.  Alignment of reads from bisulfite-treated DNA in GSNAP

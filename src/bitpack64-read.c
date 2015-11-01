@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-read.c 109826 2013-10-02 22:32:35Z twu $";
+static char rcsid[] = "$Id: bitpack64-read.c 127963 2014-02-20 00:38:09Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -11,6 +11,8 @@ static char rcsid[] = "$Id: bitpack64-read.c 109826 2013-10-02 22:32:35Z twu $";
 #ifdef HAVE_SSE2
 #include <emmintrin.h>
 #endif
+
+#define POSITIONS_PAGE 4294967296 /* 2^32 */
 
 
 #ifdef DEBUG
@@ -57,17 +59,10 @@ static __m128i mask2, mask4, mask6, mask8, mask10, mask12, mask14, mask16,
 #endif
 
 
-static UINT4 *bitpackptrs;
-static UINT4 *offsetscomp;
-/* static Blocksize_T offsetscomp_blocksize = 64; */
-#define OFFSETSCOMP_BLOCKSIZE 64
+#define BITPACKCOMP_BLOCKSIZE 64
 
 void
-Bitpack64_read_setup (UINT4 *bitpackptrs_in, UINT4 *offsetscomp_in,
-		      Blocksize_T offsetscomp_blocksize_in) {
-  bitpackptrs = bitpackptrs_in;
-  offsetscomp = offsetscomp_in;
-  /* offsetscomp_blocksize = offsetscomp_blocksize_in; */
+Bitpack64_read_setup () {
 
 #ifdef HAVE_SSE2
 #ifdef ALLOW_ODD_PACKSIZES
@@ -4115,8 +4110,7 @@ unpack_32_rev (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 
     in += 8;
 
-
-    total = _mm_add_epi32(total, _mm_load_si128(in++));
+    total = _mm_load_si128(in++);
     _mm_store_si128(out++, total);
 
     total = _mm_add_epi32(total, _mm_load_si128(in++));
@@ -4255,31 +4249,38 @@ static Unpacker_T unpacker_table[33] =
 #define METAINFO_SIZE 2
 #define TOTAL_ROWS 16
 
-Positionsptr_T
-Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
+/* bitpackpages: A list of b-mers (12-mers by default), ending with -1U */
+UINT4
+Bitpack64_offsetptr (UINT4 *end0, Storedoligomer_T oligo,
+		     UINT4 *bitpackptrs, UINT4 *bitpackcomp) {
+  Storedoligomer_T bmer;
   UINT4 *info, nwritten;
-  Positionsptr_T offset0, offset1;
+  UINT4 offset0, offset1;
   int packsize, remainder;
 #ifdef HAVE_SSE2
   __m128i diffs[9], *bitpack;
   UINT4 *_diffs;
 #else
-  Positionsptr_T ptr;
+  UINT4 ptr;
   int column, row, k;
   UINT4 diffs[65], *bitpack;
 #endif
 #ifdef DEBUG
-  Positionsptr_T offsets[65];
+  UINT4 offsets[65];
   int i;
 #endif
 
-  info = &(bitpackptrs[oligo/OFFSETSCOMP_BLOCKSIZE * METAINFO_SIZE]);
+
+  bmer = oligo/BITPACKCOMP_BLOCKSIZE;
+  info = &(bitpackptrs[bmer * METAINFO_SIZE]);
+
+  debug(printf("Entered Bitpack64_offsetptr with oligo %u => bmer %u\n",oligo,bmer));
 
   nwritten = info[0];
 #ifdef HAVE_SSE2  
-  bitpack = (__m128i *) &(offsetscomp[nwritten]);
+  bitpack = (__m128i *) &(bitpackcomp[nwritten]);
 #else
-  bitpack = (UINT4 *) &(offsetscomp[nwritten]);
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten]);
 #endif
 
 #ifdef ALLOW_ODD_PACKSIZES
@@ -4293,18 +4294,19 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
 #endif
 
   debug(printf("nwritten0: %u, offset: %u, next_nwritten: %u, packsize %d, remainder %d\n",
-	       info[0],info[1],info[2],packsize,remainder));
+	       info[0],info[1],info[2],packsize,oligo % BITPACKCOMP_BLOCKSIZE));
 
 #ifdef HAVE_SSE2
-  if ((remainder = oligo % OFFSETSCOMP_BLOCKSIZE) < 32) {
+  if ((remainder = oligo % BITPACKCOMP_BLOCKSIZE) < 32) {
     /* Unpack fwd 32 cumulative sums under SIMD */
     (unpacker_table[packsize])(&(diffs[1]),bitpack);
+
     offset0 = info[1];
 
 #ifdef DEBUG
-    printf("oligo: %08X, remainder %d, offset0 %u\n",oligo,remainder,offset0);
+    printf("oligo: %08X, remainder %d, offset0 %lu\n",oligo,remainder,offset0);
     printf("bitpack:\n");
-    for (i = 0; i < packsize/4; i++) {
+    for (i = 0; i < packsize/2; i++) {
       print_vector_hex(bitpack[i]);
     }
     printf("\n");
@@ -4326,12 +4328,13 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
   } else {
     /* Unpack rev 32 cumulative sums under SIMD */
     (unpacker_table[packsize+1])(&(diffs[1]),bitpack);
+
     offset1 = info[METAINFO_SIZE+1];
 
 #ifdef DEBUG
-    printf("oligo: %08X, remainder %d, offset1 %u\n",oligo,remainder,offset1);
+    printf("oligo: %08X, remainder %d, offset1 %lu\n",oligo,remainder,offset1);
     printf("bitpack:\n");
-    for (i = 0; i < packsize/4; i++) {
+    for (i = 0; i < packsize/2; i++) {
       print_vector_hex(bitpack[i]);
     }
     printf("\n");
@@ -4351,17 +4354,17 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
     return offset1 - _diffs[67-remainder];
   }
 
-#else
+#else  /* HAVE_SSE2 */
 
-  debug(Bitpack64_block_offsets(offsets,bitpackptrs,offsetscomp,OFFSETSCOMP_BLOCKSIZE,oligo));
+  debug(Bitpack64_block_offsets(offsets,bitpackptrs,bitpackcomp,oligo));
 
 
   /* Unpack all 64 diffs for non-SIMD */
   (unpacker_table[packsize])(&(diffs[1]),bitpack);
 
 #ifdef DEBUG
-  printf("oligo: %08X, remainder %d, offset0 %u, offset1 %u\n",
-	 oligo,oligo % OFFSETSCOMP_BLOCKSIZE,info[1],info[METAINFO_SIZE+1]);
+  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+	 oligo,oligo % BITPACKCOMP_BLOCKSIZE,info[1],info[METAINFO_SIZE+1]);
   printf("bitpack:\n");
 
   for (i = 1; i <= 64; i++) {
@@ -4376,17 +4379,18 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
   printf("end of diffs\n");
 #endif  
 
-  if ((remainder = oligo % OFFSETSCOMP_BLOCKSIZE) == 0) {
+  if ((remainder = oligo % BITPACKCOMP_BLOCKSIZE) == 0) {
     offset0 = info[1];
+
     *end0 = offset0 + diffs[1];
     return offset0;
 
   } else if (remainder < 32) {
     /* Compute necessary cumulative sums */
-    /* Add 1 for start at diffs[1], and 1 to leave the first element intact */
-    diffs[0] = 0;
     offset0 = info[1];
 
+    /* Add 1 for start at diffs[1], and 1 to leave the first element intact */
+    diffs[0] = 0;
     column = (remainder - 1) % 4; /* Goes from 0 to 3 */
     /* row = ((remainder + 3) & ~3) / 4 - 1; */
     row = ((remainder + 3) >> 2) - 1; /* Assert remainder > 0 */
@@ -4413,23 +4417,23 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
     return ptr;
 
   } else if (remainder == 63) {
-    diffs[0] = 0;
     offset1 = info[METAINFO_SIZE+1];
 
+    diffs[0] = 0;
     column = 0;
     row = 8;
     k = 10;
     ptr = offset1 - diffs[k-1];
-    debug(printf("ptr remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %u\n",
+    debug(printf("ptr remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %lu\n",
 		 remainder,column,row,column*TOTAL_ROWS + row + 1,k,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1],ptr));
 
     *end0 = offset1;
     return ptr;
 
   } else {
-    diffs[0] = 0;
     offset1 = info[METAINFO_SIZE+1];
 
+    diffs[0] = 0;
     column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
     /* row = ((63 - remainder) & ~3) / 4; */
     row = ((63 - remainder) >> 2) + 8;
@@ -4438,7 +4442,7 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
     };
     /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
     ptr = offset1 - diffs[k-1];
-    debug(printf("ptr remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %u\n",
+    debug(printf("ptr remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %lu\n",
 		 remainder,column,row,column*TOTAL_ROWS + row + 1,k,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1],ptr));
 
     remainder++;
@@ -4450,13 +4454,269 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
     };
     /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
     *end0 = offset1 - diffs[k-1];
-    debug(printf("end0 remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %u\n",
+    debug(printf("end0 remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %lu\n",
 		 remainder,column,row,column*TOTAL_ROWS + row + 1,k,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1],*end0));
 
     return ptr;
   }
 
+#endif	/* HAVE_SSE2 */
+
+}
+
+
+/* bitpackpages: A list of b-mers (12-mers by default), ending with -1U */
+UINT8
+Bitpack64_offsetptr_huge (UINT8 *end0, Storedoligomer_T oligo,
+			  UINT4 *bitpackpages, UINT4 *bitpackptrs, UINT4 *bitpackcomp) {
+  Storedoligomer_T bmer;
+  UINT4 *info, nwritten;
+  UINT8 offset0, offset1;
+  int packsize, remainder;
+#ifdef HAVE_SSE2
+  __m128i diffs[9], *bitpack;
+  UINT4 *_diffs;
+#else
+  UINT4 ptr;
+  int column, row, k;
+  UINT4 diffs[65], *bitpack;
 #endif
+  UINT4 *pageptr;
+#ifdef DEBUG
+  UINT4 offsets[65];
+  int i;
+#endif
+
+
+  bmer = oligo/BITPACKCOMP_BLOCKSIZE;
+  info = &(bitpackptrs[bmer * METAINFO_SIZE]);
+
+  debug(printf("Entered Bitpack64_offsetptr with oligo %u => bmer %u\n",oligo,bmer));
+
+  nwritten = info[0];
+#ifdef HAVE_SSE2  
+  bitpack = (__m128i *) &(bitpackcomp[nwritten]);
+#else
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten]);
+#endif
+
+#ifdef ALLOW_ODD_PACKSIZES
+  /* Cannot allow odd packsizes, because they destroy to one-to-one
+     correspondence between nwritten and packsize */
+  abort();
+#else
+  /* packsize 1 => 1 _mm128i => nwritten 4 UINT4s */
+  /* packsize 2 => 1 _mm128i => nwritten 4 UINT4s */
+  packsize = (info[2] - nwritten)/2;
+#endif
+
+  debug(printf("nwritten0: %u, offset: %u, next_nwritten: %u, packsize %d, remainder %d\n",
+	       info[0],info[1],info[2],packsize,oligo % BITPACKCOMP_BLOCKSIZE));
+
+#ifdef HAVE_SSE2
+  if ((remainder = oligo % BITPACKCOMP_BLOCKSIZE) < 32) {
+    /* Unpack fwd 32 cumulative sums under SIMD */
+    (unpacker_table[packsize])(&(diffs[1]),bitpack);
+
+    offset0 = 0UL;
+    pageptr = bitpackpages;
+    while (bmer >= *pageptr) {
+      offset0 += POSITIONS_PAGE;
+      pageptr++;
+    }
+    /* offset1 = offset0; */
+    offset0 += info[1];
+
+#ifdef DEBUG
+    printf("oligo: %08X, remainder %d, offset0 %llu\n",oligo,remainder,offset0);
+    printf("bitpack:\n");
+    for (i = 0; i < packsize/2; i++) {
+      print_vector_hex(bitpack[i]);
+    }
+    printf("\n");
+
+    /* diffs[0] is used only to hold the result 0 when remainder is 0 */
+    for (i = 1; i <= 8; i++) {
+      print_vector(diffs[i]);
+    }
+    printf("end of diffs\n");
+#endif  
+
+    _diffs = (UINT4 *) &diffs;
+    _diffs[3] = 0;
+
+    *end0 = offset0 + _diffs[4+remainder];
+
+    return offset0 + _diffs[3+remainder];
+
+  } else {
+    /* Unpack rev 32 cumulative sums under SIMD */
+    (unpacker_table[packsize+1])(&(diffs[1]),bitpack);
+
+    offset1 = 0UL;
+    pageptr = bitpackpages;
+    while (bmer+1 >= *pageptr) {
+      offset1 += POSITIONS_PAGE;
+      pageptr++;
+    }
+    offset1 += info[METAINFO_SIZE+1];
+
+#ifdef DEBUG
+    printf("oligo: %08X, remainder %d, offset1 %llu\n",oligo,remainder,offset1);
+    printf("bitpack:\n");
+    for (i = 0; i < packsize/2; i++) {
+      print_vector_hex(bitpack[i]);
+    }
+    printf("\n");
+
+    /* diffs[0] is used only to hold the result 0 when remainder is 0 */
+    for (i = 1; i <= 8; i++) {
+      print_vector(diffs[i]);
+    }
+    printf("end of diffs\n");
+#endif  
+
+    _diffs = (UINT4 *) &diffs;
+    _diffs[3] = 0;
+
+    *end0 = offset1 - _diffs[66-remainder];
+
+    return offset1 - _diffs[67-remainder];
+  }
+
+#else  /* HAVE_SSE2 */
+
+  debug(Bitpack64_block_offsets(offsets,bitpackptrs,bitpackcomp,oligo));
+
+
+  /* Unpack all 64 diffs for non-SIMD */
+  (unpacker_table[packsize])(&(diffs[1]),bitpack);
+
+#ifdef DEBUG
+  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+	 oligo,oligo % BITPACKCOMP_BLOCKSIZE,info[1],info[METAINFO_SIZE+1]);
+  printf("bitpack:\n");
+
+  for (i = 1; i <= 64; i++) {
+    printf("%d ",diffs[i]);
+    if (i % 16 == 0) {
+      printf("\n");
+    } else if (i % 8 == 0) {
+      printf("| ");
+    }
+  }
+  printf("\n");
+  printf("end of diffs\n");
+#endif  
+
+  if ((remainder = oligo % BITPACKCOMP_BLOCKSIZE) == 0) {
+    offset0 = 0UL;
+    pageptr = bitpackpages;
+    while (bmer >= *pageptr) {
+      offset0 += POSITIONS_PAGE;
+      pageptr++;
+    }
+    /* offset1 = offset0; */
+    offset0 += info[1];
+
+    *end0 = offset0 + diffs[1];
+    return offset0;
+
+  } else if (remainder < 32) {
+    /* Compute necessary cumulative sums */
+    offset0 = 0UL;
+    pageptr = bitpackpages;
+    while (bmer >= *pageptr) {
+      offset0 += POSITIONS_PAGE;
+      pageptr++;
+    }
+    /* offset1 = offset0; */
+    offset0 += info[1];
+
+    /* Add 1 for start at diffs[1], and 1 to leave the first element intact */
+    diffs[0] = 0;
+    column = (remainder - 1) % 4; /* Goes from 0 to 3 */
+    /* row = ((remainder + 3) & ~3) / 4 - 1; */
+    row = ((remainder + 3) >> 2) - 1; /* Assert remainder > 0 */
+    for (k = column*TOTAL_ROWS + /*initial row*/0 + 1 + /*skip first diff*/ 1; k <= column*TOTAL_ROWS + row + 1; k++) {
+      diffs[k] += diffs[k-1];
+    };
+    /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
+    ptr = offset0 + diffs[k-1];
+    debug(printf("ptr remainder = %d => column %d, row %d => index %d, value %u\n",
+		 remainder,column,row,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1]));
+
+    remainder++;
+    column = (remainder - 1) % 4; /* Goes from 0 to 3 */
+    /* row = ((remainder + 3) & ~3) / 4 - 1; */
+    row = ((remainder + 3) >> 2) - 1;
+    for (k = column*TOTAL_ROWS + /*initial row*/0 + 1 + /*skip first diff*/ 1; k <= column*TOTAL_ROWS + row + 1; k++) {
+      diffs[k] += diffs[k-1];
+    };
+    /* *end0 = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
+    *end0 = offset0 + diffs[k-1];
+    debug(printf("end0 remainder = %d => column %d, row %d => index %d, value %u\n",
+		 remainder,column,row,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1]));
+
+    return ptr;
+
+  } else if (remainder == 63) {
+    offset1 = 0UL;
+    pageptr = bitpackpages;
+    while (bmer+1 >= *pageptr) {
+      offset1 += POSITIONS_PAGE;
+      pageptr++;
+    }
+    offset1 += info[METAINFO_SIZE+1];
+
+    diffs[0] = 0;
+    column = 0;
+    row = 8;
+    k = 10;
+    ptr = offset1 - diffs[k-1];
+    debug(printf("ptr remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %lu\n",
+		 remainder,column,row,column*TOTAL_ROWS + row + 1,k,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1],ptr));
+
+    *end0 = offset1;
+    return ptr;
+
+  } else {
+    offset1 = 0UL;
+    pageptr = bitpackpages;
+    while (bmer+1 >= *pageptr) {
+      offset1 += POSITIONS_PAGE;
+      pageptr++;
+    }
+    offset1 += info[METAINFO_SIZE+1];
+
+    diffs[0] = 0;
+    column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
+    /* row = ((63 - remainder) & ~3) / 4; */
+    row = ((63 - remainder) >> 2) + 8;
+    for (k = column*TOTAL_ROWS + /*initial row*/8 + 1 + /*skip first diff*/ 1; k <= column*TOTAL_ROWS + row + 1; k++) {
+      diffs[k] += diffs[k-1];
+    };
+    /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
+    ptr = offset1 - diffs[k-1];
+    debug(printf("ptr remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %lu\n",
+		 remainder,column,row,column*TOTAL_ROWS + row + 1,k,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1],ptr));
+
+    remainder++;
+    column = (63 - remainder) % 4; /* Goes from 0 to 3 */
+    /* row = ((63 - remainder) & ~3) / 4; */
+    row = ((63 - remainder) >> 2) + 8;
+    for (k = column*TOTAL_ROWS + /*initial row*/8 + 1 + /*skip first diff*/ 1; k <= column*TOTAL_ROWS + row + 1; k++) {
+      diffs[k] += diffs[k-1];
+    };
+    /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
+    *end0 = offset1 - diffs[k-1];
+    debug(printf("end0 remainder = %d => column %d, row %d => index %d, final k %d, diffs[%d] %u => offset %lu\n",
+		 remainder,column,row,column*TOTAL_ROWS + row + 1,k,column*TOTAL_ROWS + row + 1,diffs[column*TOTAL_ROWS + row + 1],*end0));
+
+    return ptr;
+  }
+
+#endif	/* HAVE_SSE2 */
 
 }
 
@@ -4464,8 +4724,10 @@ Bitpack64_offsetptr (Positionsptr_T *end0, Storedoligomer_T oligo) {
 
 /* Needed for poly-T to avoid computing on metablock after the last
    one to find end0 */
-Positionsptr_T
-Bitpack64_offsetptr_only (Storedoligomer_T oligo) {
+UINT4
+Bitpack64_offsetptr_only (Storedoligomer_T oligo,
+			  UINT4 *bitpackptrs, UINT4 *bitpackcomp) {
+  Storedoligomer_T bmer;
   UINT4 *info, nwritten;
   int packsize, remainder;
 #ifdef HAVE_SSE2
@@ -4475,18 +4737,25 @@ Bitpack64_offsetptr_only (Storedoligomer_T oligo) {
   UINT4 diffs[65], *bitpack;
   int column, row, k;
 #endif
+#ifdef DEBUG
+  int i;
+#endif
 
-  info = &(bitpackptrs[oligo/OFFSETSCOMP_BLOCKSIZE * METAINFO_SIZE]);
 
-  if ((remainder = oligo % OFFSETSCOMP_BLOCKSIZE) == 0) {
-    return /*offset0*/ info[1];
+  bmer = oligo/BITPACKCOMP_BLOCKSIZE;
+  info = &(bitpackptrs[bmer * METAINFO_SIZE]);
+
+  debug(printf("Entered Bitpack64_offsetptr_only with oligo %u => bmer %u\n",oligo,bmer));
+
+  if ((remainder = oligo % BITPACKCOMP_BLOCKSIZE) == 0) {
+    return /*offset0*/info[1];
     
   } else {
     nwritten = info[0];
 #ifdef HAVE_SSE2  
-    bitpack = (__m128i *) &(offsetscomp[nwritten]);
+    bitpack = (__m128i *) &(bitpackcomp[nwritten]);
 #else
-    bitpack = (UINT4 *) &(offsetscomp[nwritten]);
+    bitpack = (UINT4 *) &(bitpackcomp[nwritten]);
 #endif
 
 #ifdef ALLOW_ODD_PACKSIZES
@@ -4499,25 +4768,57 @@ Bitpack64_offsetptr_only (Storedoligomer_T oligo) {
     packsize = (info[2] - nwritten)/2;
 #endif
 
+  debug(printf("nwritten0: %u, offset: %u, next_nwritten: %u, packsize %d, remainder %d\n",
+	       info[0],info[1],info[2],packsize,remainder));
+
 #ifdef HAVE_SSE2
 
     if (remainder < 32) {
       /* Unpack fwd 32 cumulative sums under SIMD */
       (unpacker_table[packsize])(&(diffs[1]),bitpack);
       
+#ifdef DEBUG
+      printf("oligo: %08X, remainder %d, offset0 %lu\n",oligo,remainder,info[1]);
+      printf("bitpack:\n");
+      for (i = 0; i < packsize/2; i++) {
+	print_vector_hex(bitpack[i]);
+      }
+      printf("\n");
+      
+      /* diffs[0] is used only to hold the result 0 when remainder is 0 */
+      for (i = 1; i <= 8; i++) {
+	print_vector(diffs[i]);
+      }
+      printf("end of diffs\n");
+#endif  
+
       _diffs = (UINT4 *) &diffs;
       _diffs[3] = 0;
       
-      return /*offset0*/ info[1] + _diffs[3+remainder];
+      return /*offset0*/info[1] + _diffs[3+remainder];
       
     } else {
       /* Unpack rev 32 cumulative sums under SIMD */
       (unpacker_table[packsize+1])(&(diffs[1]),bitpack);
-      
       _diffs = (UINT4 *) &diffs;
       _diffs[3] = 0;
       
-      return /*offset1*/ info[METAINFO_SIZE+1] - _diffs[67-remainder];
+#ifdef DEBUG
+      printf("oligo: %08X, remainder %d, offset1 %lu\n",oligo,remainder,info[METAINFO_SIZE+1]);
+      printf("bitpack:\n");
+      for (i = 0; i < packsize/2; i++) {
+	print_vector_hex(bitpack[i]);
+      }
+      printf("\n");
+      
+      /* diffs[0] is used only to hold the result 0 when remainder is 0 */
+      for (i = 1; i <= 8; i++) {
+	print_vector(diffs[i]);
+      }
+      printf("end of diffs\n");
+#endif  
+
+      return /*offset1*/info[METAINFO_SIZE+1] - _diffs[67-remainder];
     }
 
 #else
@@ -4534,7 +4835,8 @@ Bitpack64_offsetptr_only (Storedoligomer_T oligo) {
 	diffs[k] += diffs[k-1];
       };
       /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
-      return /*offset0*/ info[1] + diffs[k-1];
+
+      return /*offset0*/info[1] + diffs[k-1];
 
     } else {
       column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
@@ -4544,7 +4846,195 @@ Bitpack64_offsetptr_only (Storedoligomer_T oligo) {
 	diffs[k] += diffs[k-1];
       };
       /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
-      return /*offset1*/ info[METAINFO_SIZE+1] - diffs[k-1];
+
+      return /*offset1*/info[METAINFO_SIZE+1] - diffs[k-1];
+    }
+
+#endif	/* HAVE_SSE2 */
+  }
+}
+
+
+/* Needed for poly-T to avoid computing on metablock after the last
+   one to find end0 */
+UINT8
+Bitpack64_offsetptr_only_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
+			       UINT4 *bitpackptrs, UINT4 *bitpackcomp) {
+  UINT4 *pageptr;
+  UINT4 *info, nwritten;
+  Storedoligomer_T bmer;
+  UINT8 offset0, offset1;
+  int packsize, remainder;
+#ifdef HAVE_SSE2
+  __m128i diffs[9], *bitpack;
+  UINT4 *_diffs;
+#else
+  UINT4 diffs[65], *bitpack;
+  int column, row, k;
+#endif
+#ifdef DEBUG
+  int i;
+#endif
+
+
+  bmer = oligo/BITPACKCOMP_BLOCKSIZE;
+  info = &(bitpackptrs[bmer * METAINFO_SIZE]);
+
+  if ((remainder = oligo % BITPACKCOMP_BLOCKSIZE) == 0) {
+    if (bitpackpages == NULL) {
+      return /*offset0*/info[1];
+    } else {
+      offset0 = 0UL;
+      pageptr = bitpackpages;
+      while (bmer >= *pageptr) {
+	offset0 += POSITIONS_PAGE;
+	pageptr++;
+      }
+      /* offset1 = offset0; */
+      return offset0 + info[1];
+    }
+    
+  } else {
+    nwritten = info[0];
+#ifdef HAVE_SSE2  
+    bitpack = (__m128i *) &(bitpackcomp[nwritten]);
+#else
+    bitpack = (UINT4 *) &(bitpackcomp[nwritten]);
+#endif
+
+#ifdef ALLOW_ODD_PACKSIZES
+    /* Cannot allow odd packsizes, because they destroy to one-to-one
+       correspondence between nwritten and packsize */
+    abort();
+#else
+    /* packsize 1 => 1 _mm128i => nwritten 4 UINT4s */
+    /* packsize 2 => 1 _mm128i => nwritten 4 UINT4s */
+    packsize = (info[2] - nwritten)/2;
+#endif
+
+  debug(printf("nwritten0: %u, offset: %u, next_nwritten: %u, packsize %d, remainder %d\n",
+	       info[0],info[1],info[2],packsize,remainder));
+
+#ifdef HAVE_SSE2
+
+    if (remainder < 32) {
+      /* Unpack fwd 32 cumulative sums under SIMD */
+      (unpacker_table[packsize])(&(diffs[1]),bitpack);
+      
+#ifdef DEBUG
+      printf("oligo: %08X, remainder %d, offset0 %lu\n",oligo,remainder,info[1]);
+      printf("bitpack:\n");
+      for (i = 0; i < packsize/2; i++) {
+	print_vector_hex(bitpack[i]);
+      }
+      printf("\n");
+      
+      /* diffs[0] is used only to hold the result 0 when remainder is 0 */
+      for (i = 1; i <= 8; i++) {
+	print_vector(diffs[i]);
+      }
+      printf("end of diffs\n");
+#endif  
+
+      _diffs = (UINT4 *) &diffs;
+      _diffs[3] = 0;
+      
+      if (bitpackpages == NULL) {
+	return /*offset0*/info[1] + _diffs[3+remainder];
+      } else {
+	offset0 = 0UL;
+	pageptr = bitpackpages;
+	while (bmer >= *pageptr) {
+	  offset0 += POSITIONS_PAGE;
+	  pageptr++;
+	}
+	/* offset1 = offset0; */
+	return offset0 + info[1] + _diffs[3+remainder];
+      }
+      
+    } else {
+      /* Unpack rev 32 cumulative sums under SIMD */
+      (unpacker_table[packsize+1])(&(diffs[1]),bitpack);
+      _diffs = (UINT4 *) &diffs;
+      _diffs[3] = 0;
+      
+#ifdef DEBUG
+      printf("oligo: %08X, remainder %d, offset1 %lu\n",oligo,remainder,info[METAINFO_SIZE+1]);
+      printf("bitpack:\n");
+      for (i = 0; i < packsize/2; i++) {
+	print_vector_hex(bitpack[i]);
+      }
+      printf("\n");
+      
+      /* diffs[0] is used only to hold the result 0 when remainder is 0 */
+      for (i = 1; i <= 8; i++) {
+	print_vector(diffs[i]);
+      }
+      printf("end of diffs\n");
+#endif  
+
+      if (bitpackpages == NULL) {
+	return /*offset1*/info[METAINFO_SIZE+1] - _diffs[67-remainder];
+      } else {
+	offset1 = 0UL;
+	pageptr = bitpackpages;
+	while (bmer+1 >= *pageptr) {
+	  offset1 += POSITIONS_PAGE;
+	  pageptr++;
+	}
+	return offset1 + info[METAINFO_SIZE+1] - _diffs[67-remainder];
+      }
+
+    }
+
+#else
+
+    /* Unpack all 64 diffs for non-SIMD */
+    (unpacker_table[packsize])(&(diffs[1]),bitpack);
+    diffs[0] = 0;
+
+    if (remainder < 32) {
+      column = (remainder - 1) % 4; /* Goes from 0 to 3 */
+      /* row = ((remainder + 3) & ~3) / 4 - 1; */
+      row = ((remainder + 3) >> 2) - 1; /* Assert remainder > 0 */
+      for (k = column*TOTAL_ROWS + /*initial row*/0 + 1 + /*skip first diff*/ 1; k <= column*TOTAL_ROWS + row + 1; k++) {
+	diffs[k] += diffs[k-1];
+      };
+      /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
+
+      if (bitpackpages == NULL) {
+	return /*offset0*/info[1] + diffs[k-1];
+      } else {
+	offset0 = 0UL;
+	pageptr = bitpackpages;
+	while (bmer >= *pageptr) {
+	  offset0 += POSITIONS_PAGE;
+	  pageptr++;
+	}
+	return offset0 + info[1] + diffs[k-1];
+      }
+
+    } else {
+      column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
+      /* row = ((63 - remainder) & ~3) / 4; */
+      row = ((63 - remainder) >> 2) + 8;
+      for (k = column*TOTAL_ROWS + /*initial row*/8 + 1 + /*skip first diff*/ 1; k <= column*TOTAL_ROWS + row + 1; k++) {
+	diffs[k] += diffs[k-1];
+      };
+      /* ptr = offset0 + diffs[column * TOTAL_ROWS + row + 1]; */
+
+      if (bitpackpages == NULL) {
+	return /*offset1*/info[METAINFO_SIZE+1] - diffs[k-1];
+      } else {
+	offset1 = 0UL;
+	pageptr = bitpackpages;
+	while (bmer+1 >= *pageptr) {
+	  offset1 += POSITIONS_PAGE;
+	  pageptr++;
+	}
+	return offset1 + info[METAINFO_SIZE+1] - diffs[k-1];
+      }
+
     }
 
 #endif
@@ -4552,12 +5042,13 @@ Bitpack64_offsetptr_only (Storedoligomer_T oligo) {
 }
 
 
+#ifndef PMAP
 /* Unpack all offsets.  Can treat offset0 as a special case */
 void
-Bitpack64_block_offsets (Positionsptr_T *offsets, UINT4 *bitpackptrs, Offsetscomp_T *offsetscomp,
-			 Blocksize_T offsetscomp_blocksize, Storedoligomer_T oligo) {
+Bitpack64_block_offsets (UINT4 *offsets, Storedoligomer_T oligo,
+			 UINT4 *bitpackptrs, Offsetscomp_T *bitpackcomp) {
   UINT4 *info, nwritten;
-  Positionsptr_T offset0, offset1, temp;
+  UINT4 offset0, offset1, temp;
   int packsize, k;
 #ifdef HAVE_SSE2
   __m128i diffs[8], *bitpack;
@@ -4571,12 +5062,12 @@ Bitpack64_block_offsets (Positionsptr_T *offsets, UINT4 *bitpackptrs, Offsetscom
 #endif
 
 
-  info = &(bitpackptrs[oligo/OFFSETSCOMP_BLOCKSIZE * METAINFO_SIZE]);
+  info = &(bitpackptrs[oligo/BITPACKCOMP_BLOCKSIZE * METAINFO_SIZE]);
   nwritten = info[0];
 #ifdef HAVE_SSE2
-  bitpack = (__m128i *) &(offsetscomp[nwritten]);
+  bitpack = (__m128i *) &(bitpackcomp[nwritten]);
 #else
-  bitpack = (UINT4 *) &(offsetscomp[nwritten]);
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten]);
 #endif
   offset0 = info[1];
   offset1 = info[METAINFO_SIZE+1];
@@ -4585,7 +5076,7 @@ Bitpack64_block_offsets (Positionsptr_T *offsets, UINT4 *bitpackptrs, Offsetscom
 
 #ifdef HAVE_SSE2
 #ifdef DEBUG
-  printf("oligo: %08X, nwritten %u, offset0 %u, offset1 %u, packsize %d\n",
+  printf("oligo: %08X, nwritten %u, offset0 %lu, offset1 %lu, packsize %d\n",
 	 oligo,nwritten,offset0,offset1,packsize);
   printf("bitpack:\n");
   for (i = 0; i < packsize/2; i++) {
@@ -4709,4 +5200,183 @@ Bitpack64_block_offsets (Positionsptr_T *offsets, UINT4 *bitpackptrs, Offsetscom
 
   return;
 }
+#endif
 
+
+#ifndef PMAP
+#if defined(HAVE_64_BIT) && (defined(UTILITYP) || defined(LARGE_GENOMES))
+/* Unpack all offsets.  Can treat offset0 as a special case */
+void
+Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
+			      UINT4 *bitpackpages, UINT4 *bitpackptrs, Offsetscomp_T *bitpackcomp) {
+  UINT4 *pageptr;
+  UINT4 *info, nwritten;
+  Storedoligomer_T bmer;
+  UINT8 offset0, offset1, temp;
+  int packsize, k;
+#ifdef HAVE_SSE2
+  __m128i diffs[8], *bitpack;
+  UINT4 *_diffs;
+#else
+  int column, row;
+  UINT4 diffs[64], *bitpack, *vertical;
+#endif
+#ifdef DEBUG
+  int i;
+#endif
+
+  bmer = oligo/BITPACKCOMP_BLOCKSIZE;
+
+  info = &(bitpackptrs[bmer * METAINFO_SIZE]);
+  nwritten = info[0];
+#ifdef HAVE_SSE2
+  bitpack = (__m128i *) &(bitpackcomp[nwritten]);
+#else
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten]);
+#endif
+
+  offset0 = offset1 = 0UL;
+  pageptr = bitpackpages;
+  while (bmer >= *pageptr) {
+    offset0 += POSITIONS_PAGE;
+    pageptr++;
+  }
+
+  offset1 = offset0;
+  if (bmer+1 >= *pageptr) {
+    offset1 += POSITIONS_PAGE;
+  }
+
+  offset0 += info[1];
+  offset1 += info[METAINFO_SIZE+1];
+  packsize = (info[2] - nwritten)/2;
+
+
+#ifdef HAVE_SSE2
+#ifdef DEBUG
+  printf("oligo: %08X, nwritten %u, offset0 %lu, offset1 %lu, packsize %d\n",
+	 oligo,nwritten,offset0,offset1,packsize);
+  printf("bitpack:\n");
+  for (i = 0; i < packsize/2; i++) {
+    print_vector_hex(bitpack[i]);
+  }
+  printf("\n");
+#endif
+
+  _diffs = (UINT4 *) &(diffs[0]);
+
+  /* Unpack fwd 32 cumulative sums under SIMD */
+  (unpacker_table[packsize])(&(diffs[0]),bitpack);
+
+#ifdef DEBUG
+  for (i = 0; i < 8; i++) {
+    print_vector(diffs[i]);
+  }
+  printf("end of fwd diffs\n");
+#endif
+
+  offsets[0] = offset0;
+  for (k = 0; k < 32; k++) {
+    offsets[k+1] = offset0 + _diffs[k];
+  }
+
+  /* Unpack rev 32 cumulative sums under SIMD */
+  (unpacker_table[packsize+1])(&(diffs[0]),bitpack);
+
+#ifdef DEBUG
+  for (i = 0; i < 8; i++) {
+    print_vector(diffs[i]);
+  }
+  printf("end of rev diffs\n");
+#endif
+
+  for (k = 0; k < 32; k++) {
+    offsets[63-k] = offset1 - _diffs[k];
+  }
+  offsets[64] = offset1;
+
+
+#ifdef DEBUG
+  printf("%lu\n",offsets[i]);
+  for (i = 1; i <= 64; i += 4) {
+    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+  }
+  printf("end of offsets\n");
+#endif
+
+
+#else
+
+  /* Unpack all 64 diffs for non-SIMD */
+  (unpacker_table[packsize])(&(diffs[0]),bitpack);
+
+#ifdef DEBUG
+  for (i = 0; i < 64; i += 16) {
+    printf("%u %u %u %u ",diffs[i],diffs[i+1],diffs[i+2],diffs[i+3]);
+    printf("%u %u %u %u ",diffs[i+4],diffs[i+5],diffs[i+6],diffs[i+7]);
+    printf("%u %u %u %u ",diffs[i+8],diffs[i+9],diffs[i+10],diffs[i+11]);
+    printf("%u %u %u %u\n",diffs[i+12],diffs[i+13],diffs[i+14],diffs[i+15]);
+  }
+  printf("end of diffs horizontal (because non-SIMD unpackers are horizontal)\n");
+#endif
+
+  /* Convert to horizontal, shifting values right by 1 */
+  vertical = &(diffs[0]);
+  for (column = 0; column < 4; column++) {
+    k = column;
+    for (row = 0; row < 16; row++) {
+      offsets[k+1] = *vertical++;
+      k += 4;
+    }
+  }
+
+#ifdef DEBUG
+  printf("%lu\n",offset0);
+  for (i = 1; i <= 64; i += 4) {
+    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+  }
+  printf("end of diffs vertical\n");
+#endif
+
+  /* Perform cumulative sum */
+  offsets[0] = offset0;
+  offsets[1] += offset0;
+  offsets[2] += offset0;
+  offsets[3] += offset0;
+  offsets[4] += offset0;
+  for (k = 5; k <= 32; k++) {
+    offsets[k] += offsets[k-4];
+  }
+
+  /* Skip offsets[33] through offsets[36] */
+  for (k = 37; k <= 64; k++) {
+    offsets[k] += offsets[k-4];
+  }
+
+  /* Now swap offsets */
+  for (k = 33; k <= 48; k++) {
+    temp = offsets[96-k];
+    offsets[96-k] = offset1 - offsets[k];
+    offsets[k] = offset1 - temp;
+  }
+  offsets[64] = offset1;
+
+
+#ifdef DEBUG
+  printf("%lu\n",offsets[0]);
+  for (i = 1; i <= 32; i += 4) {
+    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+  }
+  printf("\n");
+  for (i = 33; i <= 64; i += 4) {
+    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+  }
+  printf("end of offsets\n");
+#endif
+
+#endif
+
+  return;
+}
+#endif
+#endif

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diagpool.c 40326 2011-05-30 17:27:01Z twu $";
+static char rcsid[] = "$Id: diagpool.c 128119 2014-02-20 22:07:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -182,7 +182,7 @@ Diagpool_push (List_T list, T this, int diagonal, int querystart, int queryend, 
   diag->nconsecutive = nconsecutive;
   diag->dominatedp = false;
 
-  debug(printf("Creating %p: %d %d..%d %d\n",diag,diag->diagonal,diag->querystart,diag->queryend));
+  debug(printf("Creating %p: %d %d..%d\n",diag,diag->diagonal,diag->querystart,diag->queryend));
 
   if (this->listcellctr >= this->nlistcells) {
     this->listcellptr = add_new_listcellchunk(this);

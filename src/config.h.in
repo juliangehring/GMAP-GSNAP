@@ -13,8 +13,7 @@
 /* Define to 1 if bsr command is available in assembly */
 #undef HAVE_ASM_BSR
 
-/* Define to 1 inf you support AVX (Advanced Vector Extensions) instructions
-   */
+/* Define to 1 if you support AVX (Advanced Vector Extensions) instructions */
 #undef HAVE_AVX
 
 /* Define to 1 if __builtin_clz works. */

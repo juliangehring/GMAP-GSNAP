@@ -1,4 +1,4 @@
-/* $Id: iit-read.h 102262 2013-07-22 15:46:18Z twu $ */
+/* $Id: iit-read.h 115892 2013-11-20 22:52:31Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -23,6 +23,8 @@ typedef struct T *T;
 
 extern bool
 IIT_universalp (char *filename, bool add_iit_p);
+extern bool
+IIT_valuep (T this);
 extern char *
 IIT_name (T this);
 extern int
@@ -195,6 +197,13 @@ extern int *
 IIT_get_exact_multiple (int *nmatches, T this, char *divstring, Chrpos_T x, Chrpos_T y, int type);
 extern int *
 IIT_get_exact_multiple_with_divno (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, int type);
+
+extern int *
+IIT_get_values_between (int *nmatches, T this, double lowval, double highval, bool sortp);
+extern int *
+IIT_get_values_below (int *nmatches, T this, double highval, bool sortp);
+extern int *
+IIT_get_values_above (int *nmatches, T this, double lowval, bool sortp);
 
 extern List_T
 IIT_intervallist_typed (List_T *labellist, Uintlist_T *seglength_list, T this);

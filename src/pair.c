@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 109763 2013-10-02 17:12:58Z twu $";
+static char rcsid[] = "$Id: pair.c 131709 2014-03-27 23:34:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -330,6 +330,21 @@ Pair_protect_end3 (List_T pairs, Pairpool_T pairpool) {
 
   return result;
 }
+
+
+void
+Pair_protect_list (List_T pairs) {
+  List_T p;
+  T pair;
+
+  for (p = pairs; p != NULL; p = p->rest) {
+    pair = (T) p->first;
+    pair->protectedp = true;
+  }
+
+  return;
+}
+
 
 
 /* Pairs now made in pairpool.c */
@@ -2019,7 +2034,7 @@ static void
 print_gff3_mrna (FILE *fp, int pathnum, T start, T end,
 		 char *sourcename, char *accession, char *chrstring, Chrpos_T start_genomepos, 
 		 Chrpos_T end_genomepos, int querylength_given, int skiplength,
-		 int matches, int mismatches, int qindels, int tindels, 
+		 int matches, int mismatches, int qindels, int tindels, int unknowns,
 		 bool watsonp, int cdna_direction) {
   int den;
   int querypos1, querypos2;
@@ -2075,7 +2090,9 @@ print_gff3_mrna (FILE *fp, int pathnum, T start, T end,
   } else {
     fracidentity = (double) matches/(double) den;
   }
-  fprintf(fp,"identity=%.1f",((double) rint(1000.0*fracidentity))/10.0);
+  fprintf(fp,"identity=%.1f;",((double) rint(1000.0*fracidentity))/10.0);
+  fprintf(fp,"matches=%d;mismatches=%d;indels=%d;unknowns=%d",
+	  matches,mismatches,qindels+tindels,unknowns);
 
   putc('\n',fp);
 
@@ -2215,7 +2232,7 @@ strand_char (int strand) {
   switch (strand) {
     case  1: return '+';
     case -1: return '-';
-    case  0: return '?';
+      /* case  0: return '?'; -- Now returning '.' for unknown strand */
     default: return '.';
   }
 }
@@ -2227,7 +2244,7 @@ print_gff3_est_match (FILE *fp, int pathnum, T start, T end,
 		      int exon_genomestart, int exon_genomeend,
 		      int exon_querystart, int exon_queryend,
 		      int querylength_given, int skiplength, int matches, int mismatches, int qindels, int tindels,
-		      bool watsonp, int cdna_direction, int pctidentity, List_T tokens) {
+		      int unknowns, bool watsonp, int cdna_direction, int pctidentity, List_T tokens) {
   int feature_strand, target_strand;
   double coverage, fracidentity;
   int den;
@@ -2277,6 +2294,8 @@ print_gff3_est_match (FILE *fp, int pathnum, T start, T end,
     fracidentity = (double) matches/(double) den;
   }
   fprintf(fp,";identity=%.1f",((double) rint(1000.0*fracidentity))/10.0);
+  fprintf(fp,";matches=%d;mismatches=%d;indels=%d;unknowns=%d",
+	  matches,mismatches,qindels+tindels,unknowns);
 
   putc('\n',fp);
 }
@@ -2286,7 +2305,7 @@ static void
 print_gff3_exons_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, T start, T end,
 			  char *sourcename, char *accession, char *chrstring,
 			  int querylength_given, int skiplength, int matches, int mismatches,
-			  int qindels, int tindels, bool watsonp, int cdna_direction,
+			  int qindels, int tindels, int unknowns, bool watsonp, int cdna_direction,
 			  bool gff_introns_p, bool gff_gene_format_p, bool gff_estmatch_format_p) {
   bool in_exon = false;
   struct T *ptr, *prev, *this = NULL;
@@ -2497,7 +2516,7 @@ print_gff3_exons_forward (FILE *fp, struct T *pairs, int npairs, int pathnum, T 
       print_gff3_est_match(fp,pathnum,start,end,sourcename,accession,chrstring,
 			   estmatch_genomestart,estmatch_genomeend,
 			   estmatch_querystart,estmatch_queryend,
-			   querylength_given,skiplength,matches,mismatches,qindels,tindels,
+			   querylength_given,skiplength,matches,mismatches,qindels,tindels,unknowns,
 			   watsonp,cdna_direction,pctidentity,tokens);
     } else {
       tokens = List_reverse(tokens);
@@ -2820,7 +2839,7 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 		 T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		 int translation_end,
 		 int querylength_given, int skiplength, int matches, int mismatches, 
-		 int qindels, int tindels, bool watsonp, int cdna_direction,
+		 int qindels, int tindels, int unknowns, bool watsonp, int cdna_direction,
 		 bool gff_gene_format_p, bool gff_estmatch_format_p, char *sourcename) {
   char *chrstring = NULL;
   Chrpos_T chrpos1, chrpos2;
@@ -2841,12 +2860,12 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 
     print_gff3_gene(fp,pathnum,sourcename,accession,chrstring,chrpos1+1,chrpos2+1,watsonp,cdna_direction);
     print_gff3_mrna(fp,pathnum,start,end,sourcename,accession,chrstring,chrpos1+1,chrpos2+1,
-		    querylength_given,skiplength,matches,mismatches,qindels,tindels,
+		    querylength_given,skiplength,matches,mismatches,qindels,tindels,unknowns,
 		    watsonp,cdna_direction);
 
     if (cdna_direction >= 0) {
       print_gff3_exons_forward(fp,pairs,npairs,pathnum,start,end,sourcename,accession,chrstring,
-			       querylength_given,skiplength,matches,mismatches,qindels,tindels,
+			       querylength_given,skiplength,matches,mismatches,qindels,tindels,unknowns,
 			       watsonp,cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/true,
 			       /*gff_estmatch_format_p*/false);
       if (translation_end > 0) {
@@ -2865,7 +2884,7 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
     fprintf(fp,"###\n");		/* Terminates gene format */
   } else {
     print_gff3_exons_forward(fp,pairs,npairs,pathnum,start,end,sourcename,accession,chrstring,
-			     querylength_given,skiplength,matches,mismatches,qindels,tindels,
+			     querylength_given,skiplength,matches,mismatches,qindels,tindels,unknowns,
 			     watsonp,cdna_direction,/*gff_introns_p*/false,/*gff_gene_format_p*/false,
 			     gff_estmatch_format_p);
   }
@@ -3966,6 +3985,27 @@ print_tokens_sam (FILE *fp, List_T tokens) {
   return;
 }
 
+/* Derived from print_tokens_gff3 */
+static int
+tokens_cigarlength (List_T tokens) {
+  int length = 0, tokenlength;
+  List_T p;
+  char *token;
+  char type;
+  
+  for (p = tokens; p != NULL; p = List_next(p)) {
+    token = (char *) List_head(p);
+    type = token[strlen(token)-1];
+    /* Should include 'H', but that gets added according to hardclip_low and hardclip_high */
+    if (type == 'S' || type == 'I' || type == 'M') {
+      sscanf(token,"%d",&tokenlength);
+      length += tokenlength;
+    }
+  }
+
+  return length;
+}
+
 
 
 /* Only for GMAP program */
@@ -4102,6 +4142,8 @@ print_sam_line (FILE *fp, char *abbrev, bool firstp, char *acc1, char *acc2, cha
 #endif
 		char *sam_read_group_id, bool invertp) {
   int sensedir;
+
+  assert(tokens_cigarlength(cigar_tokens) + hardclip_low + hardclip_high == querylength);
 
   /* 1. QNAME or Accession */
   if (acc2 == NULL) {
@@ -6528,6 +6570,7 @@ void
 Pair_pathscores (bool *gapp, int *pathscores, struct T *ptr, int npairs, 
 		 int cdna_direction, int querylength, cDNAEnd_T cdnaend) {
   int querypos, querystart, queryend;
+  int basescore;
   bool in_intron = false;
   T this, prev = NULL;
   int i;
@@ -6537,6 +6580,22 @@ Pair_pathscores (bool *gapp, int *pathscores, struct T *ptr, int npairs,
   querystart = this->querypos;
   this = &(ptr[npairs-1]);
   queryend = this->querypos;
+  /* printf("Entered Pair_pathscores with querystart %d and queryend %d\n",querystart,queryend); */
+
+  /* Disallow transitions outside of the alignments.  Previously
+     allowed slop, but (1) not necessary, and (2) gave missed
+     merges. */
+  for (querypos = 0; querypos < querystart; querypos++) {
+    gapp[querypos] = true;
+  }
+  for (querypos = queryend + 1; querypos < querylength; querypos++) {
+    gapp[querypos] = true;
+  }
+
+  /* Initialize to cover the ends that aren't aligned */
+  for (querypos = 0; querypos < querylength; querypos++) {
+    pathscores[querypos] = QINDEL;
+  }
 
   for (i = 0; i < npairs; i++) {
     this = ptr++;
@@ -6612,8 +6671,9 @@ Pair_pathscores (bool *gapp, int *pathscores, struct T *ptr, int npairs,
     prev = this;
   }
 
+#if 0
   /* Gets querystart to queryend inclusive */
-  if (querystart == 0) {
+  if (0 && querystart == 0) {
     for (i = 1; i <= queryend; i++) {
       pathscores[i] += pathscores[i-1];
     }
@@ -6622,7 +6682,9 @@ Pair_pathscores (bool *gapp, int *pathscores, struct T *ptr, int npairs,
       pathscores[i] += pathscores[i-1];
     }
   }
+#endif
 
+#if 0
   if (cdnaend == FIVE) {
     for (i = queryend + 1; i < querylength; i++) {
       pathscores[i] = pathscores[i-1] + QINDEL;
@@ -6634,6 +6696,23 @@ Pair_pathscores (bool *gapp, int *pathscores, struct T *ptr, int npairs,
     for (i = queryend + 1; i < querylength; i++) {
       pathscores[i] = pathscores[i-1];
     }
+  }
+#endif
+
+  if (cdnaend == FIVE) {
+    for (i = 1; i < querylength; i++) {
+      pathscores[i] += pathscores[i-1];
+    }
+    basescore = pathscores[querystart];
+  } else if (cdnaend == THREE) {
+    for (i = querylength-2; i >= 0; --i) {
+      pathscores[i] += pathscores[i+1];
+    }
+    basescore = pathscores[queryend];
+  }
+
+  for (i = 0; i < querylength; i++) {
+    pathscores[i] -= basescore;
   }
 
   return;
@@ -7403,13 +7482,13 @@ Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pair
 		 lowi,highi,goal_start,goal_end));
 
   while (lowi < highi) {
-    middlei = (lowi+highi)/2;
+    middlei = lowi + ((highi - lowi) / 2);
     while (middlei < highi && pairarray[middlei].cdna == ' ') {
       /* Go forward past pairs corresponding to gaps */
       middlei++;
     }
     if (middlei >= highi) {
-      middlei = (lowi+highi)/2;
+      middlei = lowi + ((highi - lowi) / 2);
       while (middlei >= lowi && pairarray[middlei].cdna == ' ') {
 	/* Go backward past pairs corresponding to gaps */
 	middlei--;
@@ -7453,13 +7532,13 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 		 lowi,highi,goal_start,goal_end));
 
   while (lowi < highi) {
-    middlei = (lowi+highi)/2;
+    middlei = lowi + ((highi - lowi) / 2);
     while (middlei < highi && pairarray[middlei].cdna == ' ') {
       /* Go forward past pairs corresponding to gaps */
       middlei++;
     }
     if (middlei >= highi) {
-      middlei = (lowi+highi)/2;
+      middlei = lowi + ((highi - lowi) / 2);
       while (middlei >= lowi && pairarray[middlei].cdna == ' ') {
 	/* Go backward past pairs corresponding to gaps */
 	middlei--;
@@ -7499,7 +7578,7 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 Chrpos_T
 Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
 		     struct T *pairarray, int npairs, int querylength,
-		     bool watsonp, bool firstp) {
+		     bool watsonp, bool firstp, bool hide_soft_clips_p) {
   struct T *clipped_pairs;
   int clipped_npairs;
   int hardclip_low, hardclip_high;
@@ -7547,10 +7626,20 @@ Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
 				 pairarray,npairs,querylength);
   if (watsonp == true) {
     pair = &(clipped_pairs[0]);
-    return pair->genomepos + 1U;
+    if (hide_soft_clips_p == true) {
+      assert(pair->querypos == 0);
+      return pair->genomepos + 1U - pair->querypos;
+    } else {
+      return pair->genomepos + 1U;
+    }
   } else {
     pair = &(clipped_pairs[clipped_npairs-1]);
-    return pair->genomepos + 1U;
+    if (hide_soft_clips_p == true) {
+      assert(pair->querypos == querylength - 1);
+      return pair->genomepos + 1U + (querylength - 1 - pair->querypos);
+    } else {
+      return pair->genomepos + 1U;
+    }
   }
 }
 

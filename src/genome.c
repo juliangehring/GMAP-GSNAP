@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 111028 2013-10-11 23:23:10Z twu $";
+static char rcsid[] = "$Id: genome.c 121509 2013-12-13 21:56:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9373,7 +9373,7 @@ uncompress_mmap_snps_only (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T sta
 static char CHARTABLE[4] = {'A','C','G','T'};
 
 static char
-uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos) {
+uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos, char flagchar) {
   Univcoord_T ptr;
   Genomecomp_T high, low, flags;
   int bit, c;
@@ -9390,7 +9390,7 @@ uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos) {
 #endif
 
   if (flags & (1 << bit)) {
-    return 'N';
+    return flagchar;
 
   } else if (bit < 16) {
 #ifdef WORDS_BIGENDIAN
@@ -10599,7 +10599,7 @@ Genome_get_char (T this, Univcoord_T left) {
       pthread_mutex_unlock(&this->read_mutex);
 #endif
     } else {
-      c = uncompress_one_char(this->blocks,left);
+      c = uncompress_one_char(this->blocks,left,/*flagchar*/'N');
 #ifdef EXTRACT_GENOMICSEG
       Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+1);
       assert(c == gbuffer1[0]);
@@ -10612,6 +10612,33 @@ Genome_get_char (T this, Univcoord_T left) {
 }
 
 
+/* Removed checks for uncompressed genome and fileio access */
+char
+Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength) {
+#ifdef EXTRACT_GENOMICSEG
+  char c;
+  char gbuffer1[1];
+#endif
+  
+  /* assert(left < 4000000000U); */
+
+  if (left >= genomelength) {
+    return (char) 0;
+  } else {
+#ifdef EXTRACT_GENOMICSEG
+    Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+1);
+    assert(c == gbuffer1[0]);
+    return c;
+#else
+    /* Want 'X', because in building suffix array, the encoding was A(0), C(1), G(2), T(3), N(4) */
+    return uncompress_one_char(this->blocks,left,/*flagchar*/'X');
+#endif
+  }
+}
+
+
+
+
 char
 Genome_get_char_blocks (char *charalt, Univcoord_T left) {
   char c;
@@ -10622,7 +10649,7 @@ Genome_get_char_blocks (char *charalt, Univcoord_T left) {
   /* assert(left < 4000000000U); */
 
   /* printf("Genome_get_char_blocks called with left = %u\n",left); */
-  if ((c = uncompress_one_char(genome_blocks,left)) == 'N' || c == 'X') {
+  if ((c = uncompress_one_char(genome_blocks,left,/*flagchar*/'N')) == 'N') {
     *charalt = c;
   } else {
     *charalt = uncompress_one_char_ignore_flags(genomealt_blocks,left);

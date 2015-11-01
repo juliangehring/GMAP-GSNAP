@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-write.c 109823 2013-10-02 22:28:36Z twu $";
+static char rcsid[] = "$Id: bitpack64-write.c 121634 2013-12-16 18:04:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,6 +14,8 @@ static char rcsid[] = "$Id: bitpack64-write.c 109823 2013-10-02 22:28:36Z twu $"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>		/* For memset */
+#include "mem.h"
+#include "fopen.h"
 
 #ifdef HAVE_SSE2
 #include <emmintrin.h>
@@ -131,8 +133,8 @@ static __m128i mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8,
 #endif
 
 
-void
-Bitpack64_write_setup () {
+static void
+write_setup () {
 
 #ifdef HAVE_SSE2
   mask1 = _mm_set1_epi32(1U);
@@ -4013,9 +4015,9 @@ write_16_horiz (UINT4 *out, const UINT4 *in) {
 /* Vertical format is better for cumulative sums, which require all
    values in a block to be decoded */
 #ifdef HAVE_SSE2
-int
-Bitpack64_write_vert (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int offsets_buffer_size, int offsets_buffer_i,
-		      const UINT4 *_in, int packsize) {
+static int
+write_vert (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int offsets_buffer_size, int offsets_buffer_i,
+	    const UINT4 *_in, int packsize) {
 
 #if 0
   int i;
@@ -4127,9 +4129,9 @@ reorder_values_vertically (Positionsptr_T *vertical, Positionsptr_T *horizontal)
 
 /* Non-SIMD code cannot write vertical format easily, so using
    horizontal code and conversions */
-int
-Bitpack64_write_vert (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int offsets_buffer_size, int offsets_buffer_i,
-		      const UINT4 *horizontal, int packsize) {
+static int
+write_vert (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int offsets_buffer_size, int offsets_buffer_i,
+	    const UINT4 *horizontal, int packsize) {
   int nwritten;
   UINT4 buffer[64], vertical[64];
 
@@ -4218,4 +4220,569 @@ Bitpack64_write_horiz (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int
 				  offsets_buffer_size,offsets_buffer_i,
 				  buffer,nwritten);
 }
+
+
+#define DIFFERENTIAL_METAINFO_SIZE 2
+#define DIRECT_METAINFO_SIZE 1
+#define BUFFER_SIZE 1000000
+#define BLOCKSIZE 64
+#define POSITIONS_PAGE 4294967296 /* 2^32 */
+
+
+#if 0
+/* Processes 64 offsets at a time.  Returns packsize. */
+/* Replaced by a bidirectional difference scheme */
+static int
+compute_q4_diffs (Positionsptr_T *diffs, Positionsptr_T *values) {
+  UINT4 packsize;
+  int i;
+  Positionsptr_T maxdiff = 0, top;
+  int firstbit, msb;
+
+  for (i = 63; i >= 4; i--) {
+    maxdiff |= (diffs[i] = values[i+1] - values[i+1-4]);
+  }
+  maxdiff |= (diffs[3] = values[4] - values[0]);
+  maxdiff |= (diffs[2] = values[3] - values[0]);
+  maxdiff |= (diffs[1] = values[2] - values[0]);
+  maxdiff |= (diffs[0] = values[1] - values[0]);
+
+  if (maxdiff == 0) {
+    /* __builtin_clz() behaves oddly on zero */
+    return 0;
+
+  } else {
+#ifdef HAVE_BUILTIN_CLZ
+    firstbit = __builtin_clz(maxdiff);
+    packsize = 32 - firstbit;
+#elif defined(HAVE_ASM_BSR)
+    asm("bsr %1,%0" : "=r"(msb) : "r"(maxdiff));
+    packsize = msb + 1;
+#else
+    firstbit = ((top = maxdiff >> 16) ? clz_table[top] : 16 + clz_table[maxdiff]);
+    packsize = 32 - firstbit;
+#endif
+
+#ifdef ALLOW_ODD_PACKSIZES
+    return packsize;
+#else
+    return (packsize + 1) & ~1;	/* Converts packsizes to the next multiple of 2 */
+#endif
+  }
+}
+#endif
+
+
+
+/* Processes 64 values at a time.  Returns packsize. */
+/* Handles first 32 values from the initial value, and the last 32
+   values from the final value.  More efficient since we need to
+   process only half as many inputs. */
+static int
+compute_q4_diffs_bidir (UINT4 *diffs, UINT4 *values) {
+  UINT4 packsize;
+  int i;
+  UINT4 maxdiff = 0, top;
+  int firstbit, msb;
+
+#if 0
+  for (i = 0; i < 64; i++) {
+    assert(values[i+1] >= values[i]);
+  }
+#endif
+
+  maxdiff |= (diffs[32] = values[64] - values[63]);
+  maxdiff |= (diffs[33] = values[64] - values[62]);
+  maxdiff |= (diffs[34] = values[64] - values[61]);
+  maxdiff |= (diffs[35] = values[64] - values[60]);
+  for (i = 36; i < 64; i++) {
+    maxdiff |= (diffs[i] = values[64+32-(i+1-4)] - values[64+32-(i+1)]);
+  }
+  for (i = 31; i >= 4; i--) {
+    maxdiff |= (diffs[i] = values[i+1] - values[i+1-4]);
+  }
+  maxdiff |= (diffs[3] = values[4] - values[0]);
+  maxdiff |= (diffs[2] = values[3] - values[0]);
+  maxdiff |= (diffs[1] = values[2] - values[0]);
+  maxdiff |= (diffs[0] = values[1] - values[0]);
+
+  if (maxdiff == 0) {
+    /* __builtin_clz() behaves oddly on zero */
+    return 0;
+
+  } else {
+#ifdef HAVE_BUILTIN_CLZ
+    firstbit = __builtin_clz(maxdiff);
+    packsize = 32 - firstbit;
+#elif defined(HAVE_ASM_BSR)
+    asm("bsr %1,%0" : "=r"(msb) : "r"(maxdiff));
+    packsize = msb + 1;
+#else
+    firstbit = ((top = maxdiff >> 16) ? clz_table[top] : 16 + clz_table[maxdiff]);
+    packsize = 32 - firstbit;
+#endif
+
+#ifdef ALLOW_ODD_PACKSIZES
+    return packsize;
+#else
+    return (packsize + 1) & ~1;	/* Converts packsizes to the next multiple of 2 */
+#endif
+  }
+}
+
+
+#ifdef HAVE_64_BIT
+static int
+compute_q4_diffs_bidir_huge (UINT4 *diffs, UINT8 *values) {
+  UINT4 packsize;
+  int i;
+  UINT4 maxdiff = 0, top;
+  int firstbit, msb;
+
+
+  maxdiff |= (diffs[32] = (UINT4) (values[64] - values[63]));
+  maxdiff |= (diffs[33] = (UINT4) (values[64] - values[62]));
+  maxdiff |= (diffs[34] = (UINT4) (values[64] - values[61]));
+  maxdiff |= (diffs[35] = (UINT4) (values[64] - values[60]));
+  for (i = 36; i < 64; i++) {
+    maxdiff |= (diffs[i] = (UINT4) (values[64+32-(i+1-4)] - values[64+32-(i+1)]));
+  }
+  for (i = 31; i >= 4; i--) {
+    maxdiff |= (diffs[i] = (UINT4) (values[i+1] - values[i+1-4]));
+  }
+  maxdiff |= (diffs[3] = (UINT4) (values[4] - values[0]));
+  maxdiff |= (diffs[2] = (UINT4) (values[3] - values[0]));
+  maxdiff |= (diffs[1] = (UINT4) (values[2] - values[0]));
+  maxdiff |= (diffs[0] = (UINT4) (values[1] - values[0]));
+
+  if (maxdiff == 0) {
+    /* __builtin_clz() behaves oddly on zero */
+    return 0;
+
+  } else {
+#ifdef HAVE_BUILTIN_CLZ
+    firstbit = __builtin_clz(maxdiff);
+    packsize = 32 - firstbit;
+#elif defined(HAVE_ASM_BSR)
+    asm("bsr %1,%0" : "=r"(msb) : "r"(maxdiff));
+    packsize = msb + 1;
+#else
+    firstbit = ((top = maxdiff >> 16) ? clz_table[top] : 16 + clz_table[maxdiff]);
+    packsize = 32 - firstbit;
+#endif
+
+#ifdef ALLOW_ODD_PACKSIZES
+    return packsize;
+#else
+    return (packsize + 1) & ~1;	/* Converts packsizes to the next multiple of 2 */
+#endif
+  }
+}
+#endif
+
+
+
+/* We want to store values 0..n, with final value at ascending[n]
+   possibly stored as the final metainfo value */
+void
+Bitpack64_write_differential (char *ptrsfile, char *compfile, UINT4 *ascending, UINT4 n) {
+  FILE *ptrs_fp, *comp_fp;
+  UINT4 *ptrs;
+  int ptri, i;
+  UINT4 positioni;
+
+  /* Buffer is used to avoid frequent writes to the file */
+  UINT4 *buffer;
+  int buffer_size = BUFFER_SIZE;
+  int buffer_i;
+
+  UINT4 diffs[BLOCKSIZE], last_block[BLOCKSIZE+1];
+
+  UINT4 nwritten;
+  int packsize;
+
+
+  write_setup();
+
+  /* 2 metavalues: nwritten (pointer) and cumulative sum for block.
+     Packsize can be computed from difference between successive
+     pointers, if only even packsizes are allowed */
+  ptrs = (UINT4 *) CALLOC(((n + BLOCKSIZE - 1)/BLOCKSIZE + 1) * DIFFERENTIAL_METAINFO_SIZE,sizeof(UINT4));
+  ptri = 0;
+
+  if ((comp_fp = FOPEN_WRITE_BINARY(compfile)) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",compfile);
+    exit(9);
+  }
+  buffer = (UINT4 *) CALLOC(buffer_size,sizeof(UINT4));
+  buffer_i = 0;
+
+  nwritten = 0U;
+
+  /* Last value of ascending is at ascending[n] */
+  for (positioni = 0; positioni + BLOCKSIZE < n; positioni += BLOCKSIZE) {
+    /* Pointer */
+    ptrs[ptri++] = nwritten;
+
+    /* Value for start of block */
+    ptrs[ptri++] = ascending[positioni];
+	
+    /* Pack block of 64 diffs */
+    packsize = compute_q4_diffs_bidir(diffs,&(ascending[positioni]));
+    buffer_i = write_vert(comp_fp,buffer,buffer_size,buffer_i,diffs,packsize);
+
+#ifdef ALLOW_ODD_PACKSIZES
+    nwritten += 2 * ((packsize + 1) & ~1);
+#else
+    nwritten += 2 * packsize;
+#endif
+  }
+
+  /* Check for positioni < n, because if positioni == n, ascending[n] will be taken care of as metainfo */
+  if (positioni < n) {
+    /* Finish last block of 64 */
+    ptrs[ptri++] = nwritten;
+
+    /* Value for start of block */
+    ptrs[ptri++] = ascending[positioni];
+
+    /* For differential, want <=.  For direct, want < */
+    for (i = 0; i <= (int) (n - positioni); i++) {
+      last_block[i] = ascending[positioni+i];
+    }
+    for ( ; i <= BLOCKSIZE; i++) {
+      /* Copy last value for rest of block */
+      last_block[i] = ascending[n];
+    }
+
+    /* Pack block of < 64 diffs */
+    packsize = compute_q4_diffs_bidir(diffs,last_block);
+    buffer_i = write_vert(comp_fp,buffer,buffer_size,buffer_i,diffs,packsize);
+
+#ifdef ALLOW_ODD_PACKSIZES
+    nwritten += 2 * ((packsize + 1) & ~1);
+#else
+    nwritten += 2 * packsize;
+#endif
+  }
+
+
+  /* Write the final pointer, which will point after the end of the file */
+  ptrs[ptri++] = nwritten;
+
+  /* Value for end of block */
+  ptrs[ptri++] = ascending[n];
+
+  if ((ptrs_fp = FOPEN_WRITE_BINARY(ptrsfile)) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",ptrsfile);
+    exit(9);
+  } else {
+    FWRITE_UINTS(ptrs,ptri,ptrs_fp);
+    FREE(ptrs);
+    fclose(ptrs_fp);
+  }
+    
+  /* Empty buffer */
+  if (buffer_i > 0) {
+    FWRITE_UINTS(buffer,buffer_i,comp_fp);	
+    buffer_i = 0;
+  }
+  FREE(buffer);
+  fclose(comp_fp);
+
+  return;
+}
+
+
+void
+Bitpack64_write_differential_huge (char *pagesfile, char *ptrsfile, char *compfile,
+				   UINT8 *ascending, UINT4 n) {
+  UINT8 currpage, nextpage;
+  FILE *pages_fp, *ptrs_fp, *comp_fp;
+  UINT4 pages[25];	/* Allows us to handle up to 100 billion positions */
+  UINT4 *ptrs;
+  int ptri;
+  UINT4 positioni;
+
+  /* Buffer is used to avoid frequent writes to the file */
+  UINT4 *buffer;
+  int buffer_size = BUFFER_SIZE;
+  int buffer_i;
+
+  UINT4 diffs[BLOCKSIZE];
+  UINT8 last_block[BLOCKSIZE+1];
+
+  int pagei = 0, i;
+  UINT4 nwritten;
+  int packsize;
+
+
+  write_setup();
+
+  /* 2 metavalues: nwritten (pointer) and cumulative sum for block.
+     Packsize can be computed from difference between successive
+     pointers, if only even packsizes are allowed */
+  ptrs = (UINT4 *) CALLOC(((n + BLOCKSIZE - 1)/BLOCKSIZE + 1) * DIFFERENTIAL_METAINFO_SIZE,sizeof(UINT4));
+  ptri = 0;
+
+  if ((comp_fp = FOPEN_WRITE_BINARY(compfile)) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",compfile);
+    exit(9);
+  }
+  buffer = (UINT4 *) CALLOC(buffer_size,sizeof(UINT4));
+  buffer_i = 0;
+
+  currpage = 0;
+  nextpage = POSITIONS_PAGE;
+  nwritten = 0U;
+
+  /* Last value of ascending is at ascending[n] */
+  for (positioni = 0; positioni + BLOCKSIZE < n; positioni += BLOCKSIZE) {
+    /* Pointer */
+    ptrs[ptri++] = nwritten;
+
+    /* Value for start of block */
+    while (ascending[positioni] >= nextpage) {
+      fprintf(stderr,"\nAt position %u (block %u), ascending %lu >= nextpage %lu",
+	      positioni,positioni/BLOCKSIZE,ascending[positioni],nextpage);
+      pages[pagei++] = positioni/BLOCKSIZE;
+      currpage = nextpage;
+      nextpage += POSITIONS_PAGE;
+    }
+    ptrs[ptri++] = ascending[positioni] - currpage;
+
+	
+    /* Pack block of 64 diffs */
+    packsize = compute_q4_diffs_bidir_huge(diffs,&(ascending[positioni]));
+    buffer_i = write_vert(comp_fp,buffer,buffer_size,buffer_i,diffs,packsize);
+
+#ifdef ALLOW_ODD_PACKSIZES
+    nwritten += 2 * ((packsize + 1) & ~1);
+#else
+    nwritten += 2 * packsize;
+#endif
+  }
+
+  /* Check for positioni < n, because if positioni == n, ascending[n] will be taken care of as metainfo */
+  if (positioni < n) {
+    /* Finish last block of 64 */
+    ptrs[ptri++] = nwritten;
+
+    /* Value for start of block */
+    while (ascending[positioni] >= nextpage) {
+      fprintf(stderr,"\nAt position %u (block %u), ascending %lu >= nextpage %lu",
+	      positioni,positioni/BLOCKSIZE,ascending[positioni],nextpage);
+      pages[pagei++] = positioni/BLOCKSIZE;
+      currpage = nextpage;
+      nextpage += POSITIONS_PAGE;
+    }
+    ptrs[ptri++] = ascending[positioni] - currpage;
+
+    /* For differential, want <=.  For direct, want < */
+    for (i = 0; i <= (int) (n - positioni); i++) {
+      last_block[i] = ascending[positioni+i] - currpage;
+    }
+    for ( ; i <= BLOCKSIZE; i++) {
+      /* Copy last value for rest of block */
+      last_block[i] = ascending[n] - currpage;
+    }
+
+    /* Pack block of < 64 diffs */
+    packsize = compute_q4_diffs_bidir_huge(diffs,last_block);
+    buffer_i = write_vert(comp_fp,buffer,buffer_size,buffer_i,diffs,packsize);
+
+#ifdef ALLOW_ODD_PACKSIZES
+    nwritten += 2 * ((packsize + 1) & ~1);
+#else
+    nwritten += 2 * packsize;
+#endif
+  }
+
+
+  /* Write the final pointer, which will point after the end of the file */
+  ptrs[ptri++] = nwritten;
+
+  /* Value for end of block */
+  if (ascending[n] >= nextpage) {
+    fprintf(stderr,"\nAt final oligo %u (block %u), ascending %lu >= nextpage %lu",
+	    n,n/BLOCKSIZE,ascending[n],nextpage);
+    pages[pagei++] = n/BLOCKSIZE;
+    currpage = nextpage;
+    /* nextpage += POSITIONS_PAGE; */
+  }
+  ptrs[ptri++] = ascending[n] - currpage;
+
+
+  /* Write pages */
+  if (pagei > 0) {
+    pages[pagei++] = -1U; /* Final value */
+    if ((pages_fp = FOPEN_WRITE_BINARY(pagesfile)) == NULL) {
+      fprintf(stderr,"Can't write to file %s\n",pagesfile);
+      exit(9);
+    } else {
+      fprintf(stderr,"\nHave %d pages:",pagei);
+      for (i = 0; i < pagei; i++) {
+	fprintf(stderr," %u",pages[i]);
+      }
+      fprintf(stderr,"\n");
+      FWRITE_UINTS(pages,pagei,pages_fp);
+      /* FREE(pages); */
+      fclose(pages_fp);
+    }
+  }
+
+  if ((ptrs_fp = FOPEN_WRITE_BINARY(ptrsfile)) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",ptrsfile);
+    exit(9);
+  } else {
+    FWRITE_UINTS(ptrs,ptri,ptrs_fp);
+    FREE(ptrs);
+    fclose(ptrs_fp);
+  }
+    
+  /* Empty buffer */
+  if (buffer_i > 0) {
+    FWRITE_UINTS(buffer,buffer_i,comp_fp);	
+    buffer_i = 0;
+  }
+  FREE(buffer);
+  fclose(comp_fp);
+
+  return;
+}
+
+
+
+static int
+compute_packsize (UINT4 *values) {
+  UINT4 packsize;
+  UINT4 maxvalue = 0, top;
+  int i;
+  int firstbit, msb;
+
+  for (i = 0; i < 64; i++) {
+    maxvalue |= values[i];
+  }
+
+  if (maxvalue == 0) {
+    /* __builtin_clz() behaves oddly on zero */
+    return 0;
+
+  } else {
+#ifdef HAVE_BUILTIN_CLZ
+    firstbit = __builtin_clz(maxvalue);
+    packsize = 32 - firstbit;
+#elif defined(HAVE_ASM_BSR)
+    asm("bsr %1,%0" : "=r"(msb) : "r"(maxvalue));
+    packsize = msb + 1;
+#else
+    firstbit = ((top = maxvalue >> 16) ? clz_table[top] : 16 + clz_table[maxvalue]);
+    packsize = 32 - firstbit;
+#endif
+
+#ifdef ALLOW_ODD_PACKSIZES
+    return packsize;
+#else
+    return (packsize + 1) & ~1;	/* Converts packsizes to the next multiple of 2 */
+#endif
+  }
+}
+
+
+/* Want to store values 0..n-1.  The value direct[n] does not exist.  */
+void
+Bitpack64_write_direct (char *ptrsfile, char *compfile, UINT4 *direct, UINT4 n) {
+  FILE *ptrs_fp, *comp_fp;
+  UINT4 *ptrs;
+  int ptri, i;
+  UINT4 positioni;
+
+  UINT4 *buffer;
+  int buffer_size = BUFFER_SIZE;
+  int buffer_i;
+
+  UINT4 last_block[BLOCKSIZE];
+
+  UINT4 nwritten;
+  int packsize;
+
+
+  write_setup();
+
+  /* 1 metavalue: nwritten (pointer).  Packsize can be
+     computed from difference between successive pointers, if only
+     even packsizes are allowed */
+  ptrs = (UINT4 *) CALLOC(((n + BLOCKSIZE - 1)/BLOCKSIZE + 1) * DIRECT_METAINFO_SIZE,sizeof(UINT4));
+  ptri = 0;
+
+  if ((comp_fp = FOPEN_WRITE_BINARY(compfile)) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",compfile);
+    exit(9);
+  }
+  buffer = (UINT4 *) CALLOC(buffer_size,sizeof(UINT4));
+  buffer_i = 0;
+
+  nwritten = 0U;
+
+  for (positioni = 0; positioni + BLOCKSIZE < n; positioni += BLOCKSIZE) {
+    /* Pointer */
+    ptrs[ptri++] = nwritten;
+
+    /* Pack block of 64 diffs */
+    packsize = compute_packsize(&(direct[positioni]));
+    buffer_i = write_vert(comp_fp,buffer,buffer_size,buffer_i,&(direct[positioni]),packsize);
+
+#ifdef ALLOW_ODD_PACKSIZES
+    nwritten += 2 * ((packsize + 1) & ~1);
+#else
+    nwritten += 2 * packsize;
+#endif
+  }
+
+  if (positioni < n) {
+    /* Finish last block of 64 */
+    ptrs[ptri++] = nwritten;
+    
+    i = 0;
+    while (positioni < n) {
+      last_block[i++] = direct[positioni++];
+    }
+    while (i < BLOCKSIZE) {
+      last_block[i++] = 0;
+    }
+
+    packsize = compute_packsize(last_block);
+    buffer_i = write_vert(comp_fp,buffer,buffer_size,buffer_i,last_block,packsize);
+
+#ifdef ALLOW_ODD_PACKSIZES
+    nwritten += 2 * ((packsize + 1) & ~1);
+#else
+    nwritten += 2 * packsize;
+#endif
+  }
+
+  /* Write the final pointer, which will point after the end of the
+     file */
+  ptrs[ptri++] = nwritten;
+
+  if ((ptrs_fp = FOPEN_WRITE_BINARY(ptrsfile)) == NULL) {
+    fprintf(stderr,"Can't write to file %s\n",ptrsfile);
+    exit(9);
+  } else {
+    FWRITE_UINTS(ptrs,ptri,ptrs_fp);
+    FREE(ptrs);
+    fclose(ptrs_fp);
+  }
+    
+  /* Empty buffer */
+  if (buffer_i > 0) {
+    FWRITE_UINTS(buffer,buffer_i,comp_fp);	
+    buffer_i = 0;
+  }
+  FREE(buffer);
+  fclose(comp_fp);
+
+  return;
+}
+
 

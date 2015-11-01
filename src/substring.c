@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 110466 2013-10-09 00:29:37Z twu $";
+static char rcsid[] = "$Id: substring.c 131817 2014-03-28 23:19:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -995,23 +995,41 @@ Substring_print_ends (T this, int chrnum) {
 
 
 int
-Substring_compare (T substring1, T substring2) {
+Substring_compare (T substring1, T substring2, int alias1, int alias2, Chrpos_T chrlength1, Chrpos_T chrlength2) {
+  Univcoord_T alignstart1, alignend1, alignstart2, alignend2;
+
   if (substring1 == NULL && substring2 == NULL) {
     return 0;
   } else if (substring1 == NULL) {
     return -1;
   } else if (substring2 == NULL) {
     return +1;
-  } else if (substring1->alignstart < substring2->alignstart) {
-    return -1;
-  } else if (substring1->alignstart > substring2->alignstart) {
-    return +1;
-  } else if (substring1->alignend < substring2->alignend) {
-    return -1;
-  } else if (substring1->alignend > substring2->alignend) {
-    return +1;
   } else {
-    return 0;
+    alignstart1 = substring1->alignstart;
+    alignend1 = substring1->alignend;
+    if (alias1 < 0) {
+      alignstart1 += chrlength1;
+      alignend1 += chrlength1;
+    }
+
+    alignstart2 = substring2->alignstart;
+    alignend2 = substring2->alignend;
+    if (alias2 < 0) {
+      alignstart2 += chrlength2;
+      alignend2 += chrlength2;
+    }
+
+    if (alignstart1 < alignstart2) {
+      return -1;
+    } else if (alignstart1 > alignstart2) {
+      return +1;
+    } else if (alignend1 < alignend2) {
+      return -1;
+    } else if (alignend1 > alignend2) {
+      return +1;
+    } else {
+      return 0;
+    }
   }
 }
 
@@ -2317,6 +2335,11 @@ Substring_queryend (T this) {
 }
 
 int
+Substring_queryend_orig (T this) {
+  return this->queryend_orig;
+}
+
+int
 Substring_querylength (T this) {
   return this->querylength;
 }
@@ -2488,8 +2511,9 @@ Substring_circularpos (T this) {
     return -1;
 
   } else if (this->plusp == true) {
-    /* printf("substring plus: looking at %u..%u vs %u+%u\n",this->alignstart,this->alignend,this->chroffset,this->chrlength); */
-    if (this->alignend > this->chroffset + this->chrlength) {
+    /* printf("substring plus: looking at %u (trim %u) vs %u+%u\n",
+       this->alignend,this->alignend_trim,this->chroffset,this->chrlength); */
+    if (this->alignend_trim > this->chroffset + this->chrlength) {
       /* return (this->querystart - this->trim_left) + (this->chroffset + this->chrlength) - this->alignstart; */
       return this->querystart + (this->chroffset + this->chrlength) - this->alignstart_trim;
     } else {
@@ -2497,8 +2521,9 @@ Substring_circularpos (T this) {
     }
 
   } else {
-    /* printf("substring minus: looking at %u vs %u+%u\n",this->alignstart,this->chroffset,this->chrlength); */
-    if (this->alignstart > this->chroffset + this->chrlength) {
+    /* printf("substring minus: looking at %u (trim %u) vs %u+%u\n",
+       this->alignstart,this->alignstart_trim,this->chroffset,this->chrlength); */
+    if (this->alignstart_trim > this->chroffset + this->chrlength) {
       /* return ((this->querylength - this->trim_right) - this->queryend) + (this->chroffset + this->chrlength) - this->alignend; */
       return (this->querylength - this->queryend) + (this->chroffset + this->chrlength) - this->alignend_trim;
     } else {

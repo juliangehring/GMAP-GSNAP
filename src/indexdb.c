@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 113094 2013-10-29 18:02:19Z twu $";
+static char rcsid[] = "$Id: indexdb.c 131819 2014-03-28 23:21:14Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -137,17 +137,34 @@ void
 Indexdb_free (T *old) {
   if (*old) {
     if ((*old)->positions_access == ALLOCATED) {
+#ifdef LARGE_GENOMES
+      FREE((*old)->positions_high);
+      FREE((*old)->positions_low);
+#else
       FREE((*old)->positions);
+#endif
 #ifdef HAVE_MMAP
     } else if ((*old)->positions_access == MMAPPED) {
+#ifdef LARGE_GENOMES
+      munmap((void *) (*old)->positions_high,(*old)->positions_high_len);
+      close((*old)->positions_high_fd);
+      munmap((void *) (*old)->positions_high,(*old)->positions_low_len);
+      close((*old)->positions_low_fd);
+#else
       munmap((void *) (*old)->positions,(*old)->positions_len);
       close((*old)->positions_fd);
+#endif
 #endif
     } else if ((*old)->positions_access == FILEIO) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_destroy(&(*old)->positions_read_mutex);
 #endif
+#ifdef LARGE_GENOMES
+      close((*old)->positions_high_fd);
+      close((*old)->positions_low_fd);
+#else
       close((*old)->positions_fd);
+#endif
     }
 
     if ((*old)->offsetscomp_access == ALLOCATED) {
@@ -224,23 +241,30 @@ Indexdb_mean_size (T this, Mode_T mode, Width_T index1part) {
 
 
 
-Filenames_T
-Filenames_new (char *pointers_filename, char *offsets_filename, char *positions_filename,
-	       char *pointers_basename_ptr, char *offsets_basename_ptr, char *positions_basename_ptr,
-	       char *pointers_index1info_ptr, char *offsets_index1info_ptr, char *positions_index1info_ptr) {
+static Filenames_T
+Filenames_new (char *pages_filename, char *pointers_filename, char *offsets_filename,
+	       char *positions_high_filename, char *positions_low_filename,
+	       char *pointers_basename_ptr, char *offsets_basename_ptr,
+	       char *positions_high_basename_ptr, char *positions_low_basename_ptr,
+	       char *pointers_index1info_ptr, char *offsets_index1info_ptr,
+	       char *positions_high_index1info_ptr, char *positions_low_index1info_ptr) {
   Filenames_T new = (Filenames_T) MALLOC(sizeof(*new));
 
+  new->pages_filename = pages_filename;
   new->pointers_filename = pointers_filename;
   new->offsets_filename = offsets_filename;
-  new->positions_filename = positions_filename;
+  new->positions_high_filename = positions_high_filename;
+  new->positions_low_filename = positions_low_filename;
 
   new->pointers_basename_ptr = pointers_basename_ptr;
   new->offsets_basename_ptr = offsets_basename_ptr;
-  new->positions_basename_ptr = positions_basename_ptr;
+  new->positions_high_basename_ptr = positions_high_basename_ptr;
+  new->positions_low_basename_ptr = positions_low_basename_ptr;
 
   new->pointers_index1info_ptr = pointers_index1info_ptr;
   new->offsets_index1info_ptr = offsets_index1info_ptr;
-  new->positions_index1info_ptr = positions_index1info_ptr;
+  new->positions_high_index1info_ptr = positions_high_index1info_ptr;
+  new->positions_low_index1info_ptr = positions_low_index1info_ptr;
 
   return new;
 }
@@ -248,9 +272,11 @@ Filenames_new (char *pointers_filename, char *offsets_filename, char *positions_
 void
 Filenames_free (Filenames_T *old) {
 
+  FREE((*old)->pages_filename);
   FREE((*old)->pointers_filename);
   FREE((*old)->offsets_filename);
-  FREE((*old)->positions_filename);
+  FREE((*old)->positions_high_filename);
+  FREE((*old)->positions_low_filename);
 
   FREE(*old);
 
@@ -262,29 +288,32 @@ Filenames_T
 Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interval,
 				      char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
 				      Width_T required_interval, bool offsets_only_p) {
-  char *offsets_filename, *positions_filename,
-    *offsets_basename_ptr, *positions_basename_ptr,
-    *offsets_index1info_ptr, *positions_index1info_ptr;
+  char *offsets_filename, *positions_high_filename, *positions_low_filename,
+    *offsets_basename_ptr, *positions_high_basename_ptr, *positions_low_basename_ptr,
+    *offsets_index1info_ptr, *positions_high_index1info_ptr, *positions_low_index1info_ptr;
 
   char *base_filename, *filename;
   char *pattern, interval_char, digit_string[2], *p, *q;
-  char tens, ones;
+  char tens, ones, ones0;
   Width_T found_index1part, found_interval;
   int rootlength, patternlength;
 
-  char *offsets_suffix, *positions_suffix;
+  char *offsets_suffix, *positions_high_suffix, *positions_low_suffix;
   struct dirent *entry;
   DIR *dp;
 
 
   if (snps_root == NULL) {
     offsets_suffix = "offsets";
-    positions_suffix = POSITIONS_FILESUFFIX;
+    positions_high_suffix = POSITIONS_HIGH_FILESUFFIX;
+    positions_low_suffix = POSITIONS_LOW_FILESUFFIX;
   } else {
     offsets_suffix = (char *) CALLOC(strlen("offsets")+strlen(".")+strlen(snps_root)+1,sizeof(char));
     sprintf(offsets_suffix,"%s.%s","offsets",snps_root);
-    positions_suffix = (char *) CALLOC(strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(positions_suffix,"%s.%s",POSITIONS_FILESUFFIX,snps_root);
+    positions_high_suffix = (char *) CALLOC(strlen(POSITIONS_HIGH_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(positions_high_suffix,"%s.%s",POSITIONS_HIGH_FILESUFFIX,snps_root);
+    positions_low_suffix = (char *) CALLOC(strlen(POSITIONS_LOW_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(positions_low_suffix,"%s.%s",POSITIONS_LOW_FILESUFFIX,snps_root);
   }
 
   *index1part = 0;
@@ -307,7 +336,22 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
       p = &(filename[strlen(pattern)]); /* Points after idx_filesuffix, e.g., "ref" */
       if ((q = strstr(p,offsets_suffix)) != NULL && !strcmp(q,offsets_suffix)) {
 	if (q - p == 3) {
-	  /* New style, e.g., ref123offsets */
+#ifdef PMAP
+	  /* e.g., pf677 */
+	  if (sscanf(p,"%c%c%c",&ones0,&ones,&interval_char) == 3) {
+	    /* digit_string[0] = ones0; */
+	    /* found_basesize = atoi(digit_string); */
+
+	    digit_string[0] = ones;
+	    found_index1part = atoi(digit_string);
+	    
+	    digit_string[0] = interval_char;
+	    found_interval = atoi(digit_string);
+	  } else {
+	    abort();
+	  }
+#else
+	  /* e.g., ref123offsets */
 	  if (sscanf(p,"%c%c%c",&tens,&ones,&interval_char) == 3) {
 	    digit_string[0] = tens;
 	    found_index1part = 10*atoi(digit_string);
@@ -316,7 +360,10 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
 
 	    digit_string[0] = interval_char;
 	    found_interval = atoi(digit_string);
+	  } else {
+	    abort();
 	  }
+#endif
 
 	} else if (q - p == 1) {
 	  /* Old style, e.g, idx or ref3 */
@@ -327,6 +374,8 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
 	      digit_string[0] = interval_char;
 	      found_interval = atoi(digit_string);
 	    }
+	  } else {
+	    abort();
 	  }
 #ifdef PMAP
 	  found_index1part = found_interval;
@@ -338,7 +387,8 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
 	  fprintf(stderr,"Cannot parse part between %s and offsets in filename %s\n",idx_filesuffix,filename);
 	  if (snps_root != NULL) {
 	    FREE(offsets_suffix);
-	    FREE(positions_suffix);
+	    FREE(positions_high_suffix);
+	    FREE(positions_low_suffix);
 	  }
 	  return (Filenames_T) NULL;
 	}
@@ -381,10 +431,12 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
 #endif
 
     /* offsets_filename = (char *) NULL; */
-    /* positions_filename = (char *) NULL; */
+    /* positions_high_filename = (char *) NULL; */
+    /* positions_low_filename = (char *) NULL; */
     if (snps_root != NULL) {
       FREE(offsets_suffix);
-      FREE(positions_suffix);
+      FREE(positions_high_suffix);
+      FREE(positions_low_suffix);
     }
     return (Filenames_T) NULL;
 
@@ -398,11 +450,13 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
       fprintf(stderr,"Offsets filename %s does not exist\n",offsets_filename);
       FREE(offsets_filename);
       /* offsets_filename = (char *) NULL; */
-      /* positions_filename = (char *) NULL; */
+      /* positions_high_filename = (char *) NULL; */
+      /* positions_low_filename = (char *) NULL; */
       FREE(base_filename);
       if (snps_root != NULL) {
 	FREE(offsets_suffix);
-	FREE(positions_suffix);
+	FREE(positions_high_suffix);
+	FREE(positions_low_suffix);
       }
       return (Filenames_T) NULL;
     }
@@ -414,42 +468,67 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
       rootlength = q - base_filename;
     }
 
-    positions_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_suffix)+1,sizeof(char));
-    positions_basename_ptr = &(positions_filename[strlen(genomesubdir)+strlen("/")]);
-    positions_index1info_ptr = &(positions_basename_ptr[patternlength]);
+    positions_high_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_high_suffix)+1,sizeof(char));
+    positions_high_basename_ptr = &(positions_high_filename[strlen(genomesubdir)+strlen("/")]);
+    positions_high_index1info_ptr = &(positions_high_basename_ptr[patternlength]);
 
-    sprintf(positions_filename,"%s/",genomesubdir);
-    strncpy(positions_basename_ptr,base_filename,rootlength);
-    strcpy(&(positions_basename_ptr[rootlength]),positions_suffix);
+    positions_low_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_low_suffix)+1,sizeof(char));
+    positions_low_basename_ptr = &(positions_low_filename[strlen(genomesubdir)+strlen("/")]);
+    positions_low_index1info_ptr = &(positions_low_basename_ptr[patternlength]);
+
+    sprintf(positions_high_filename,"%s/",genomesubdir);
+    strncpy(positions_high_basename_ptr,base_filename,rootlength);
+    strcpy(&(positions_high_basename_ptr[rootlength]),positions_high_suffix);
+
+    sprintf(positions_low_filename,"%s/",genomesubdir);
+    strncpy(positions_low_basename_ptr,base_filename,rootlength);
+    strcpy(&(positions_low_basename_ptr[rootlength]),positions_low_suffix);
 
     if (offsets_only_p == true) {
       /* Do not look for a positions file */
-    } else if (Access_file_exists_p(positions_filename) == false) {
-      fprintf(stderr,"Positions filename %s does not exist\n",positions_filename);
+    } else if (Access_file_exists_p(positions_low_filename) == false) {
+      fprintf(stderr,"Positions filename %s does not exist\n",positions_low_filename);
       FREE(offsets_filename);
-      FREE(positions_filename);
+      FREE(positions_high_filename);
+      FREE(positions_low_filename);
       /* offsets_filename = (char *) NULL; */
-      /* positions_filename = (char *) NULL; */
+      /* positions_high_filename = (char *) NULL; */
+      /* positions_low_filename = (char *) NULL; */
       FREE(base_filename);
       if (snps_root != NULL) {
 	FREE(offsets_suffix);
-	FREE(positions_suffix);
+	FREE(positions_high_suffix);
+	FREE(positions_low_suffix);
       }
       return (Filenames_T) NULL;
     }
 
+    if (Access_file_exists_p(positions_high_filename) == false) {
+      /* Not a large genome */
+      FREE(positions_high_filename);
+      positions_high_filename = (char *) NULL;
+    }
+
     if (snps_root != NULL) {
       FREE(offsets_suffix);
-      FREE(positions_suffix);
+      FREE(positions_high_suffix);
+      FREE(positions_low_suffix);
     }
 
     FREE(base_filename);
     fprintf(stderr,"Looking for index files in directory %s (offsets not compressed)\n",genomesubdir);
     fprintf(stderr,"  Offsets file is %s\n",offsets_basename_ptr);
-    fprintf(stderr,"  Positions file is %s\n",positions_basename_ptr);
-    return Filenames_new(/*pointers_filename*/NULL,offsets_filename,positions_filename,
-			 /*pointers_basename_ptr*/NULL,offsets_basename_ptr,positions_basename_ptr,
-			 /*pointers_index1info_ptr*/NULL,offsets_index1info_ptr,positions_index1info_ptr);
+    if (positions_high_filename == NULL) {
+      fprintf(stderr,"  Positions file is %s\n",positions_low_basename_ptr);
+    } else {
+      fprintf(stderr,"  Positions files are %s and %s\n",positions_high_basename_ptr,positions_low_basename_ptr);
+    }
+    return Filenames_new(/*pages_filename*/NULL,/*pointers_filename*/NULL,offsets_filename,
+			 positions_high_filename,positions_low_filename,
+			 /*pointers_basename_ptr*/NULL,offsets_basename_ptr,
+			 positions_high_basename_ptr,positions_low_basename_ptr,
+			 /*pointers_index1info_ptr*/NULL,offsets_index1info_ptr,
+			 positions_high_index1info_ptr,positions_low_index1info_ptr);
   }
 }
 
@@ -473,9 +552,12 @@ Indexdb_get_filenames_bitpack64 (
 				 char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
 				 Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
 				 bool offsets_only_p) {
-  char *bitpackptrs_filename, *offsetscomp_filename, *positions_filename,
-    *bitpackptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
-    *bitpackptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
+  char *bitpackpages_filename, *bitpackptrs_filename, *offsetscomp_filename,
+    *positions_high_filename, *positions_low_filename,
+    *bitpackpages_basename_ptr, *bitpackptrs_basename_ptr, *offsetscomp_basename_ptr,
+    *positions_high_basename_ptr, *positions_low_basename_ptr,
+    *bitpackpages_index1info_ptr, *bitpackptrs_index1info_ptr, *offsetscomp_index1info_ptr,
+    *positions_high_index1info_ptr, *positions_low_index1info_ptr;
 
   char *base_filename, *filename;
 #ifdef PMAP
@@ -491,22 +573,29 @@ Indexdb_get_filenames_bitpack64 (
   int rootlength, patternlength;
 
   char ones0, ones;
-  char *bitpackptrs_suffix, *offsetscomp_suffix, *positions_suffix;
+  char *bitpackpages_suffix, *bitpackptrs_suffix, *offsetscomp_suffix,
+    *positions_high_suffix, *positions_low_suffix;
   struct dirent *entry;
   DIR *dp;
 
 
   if (snps_root == NULL) {
+    bitpackpages_suffix = "bitpackpages";
     bitpackptrs_suffix = "bitpackptrs";
     offsetscomp_suffix = "bitpackcomp";
-    positions_suffix = POSITIONS_FILESUFFIX;
+    positions_high_suffix = POSITIONS_HIGH_FILESUFFIX;
+    positions_low_suffix = POSITIONS_LOW_FILESUFFIX;
   } else {
+    bitpackpages_suffix = (char *) CALLOC(strlen("bitpackpages")+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(bitpackpages_suffix,"%s.%s","bitpackpages",snps_root);
     bitpackptrs_suffix = (char *) CALLOC(strlen("bitpackptrs")+strlen(".")+strlen(snps_root)+1,sizeof(char));
     sprintf(bitpackptrs_suffix,"%s.%s","bitpackptrs",snps_root);
     offsetscomp_suffix = (char *) CALLOC(strlen("bitpackcomp")+strlen(".")+strlen(snps_root)+1,sizeof(char));
     sprintf(offsetscomp_suffix,"%s.%s","bitpackcomp",snps_root);
-    positions_suffix = (char *) CALLOC(strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(positions_suffix,"%s.%s",POSITIONS_FILESUFFIX,snps_root);
+    positions_high_suffix = (char *) CALLOC(strlen(POSITIONS_HIGH_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(positions_high_suffix,"%s.%s",POSITIONS_HIGH_FILESUFFIX,snps_root);
+    positions_low_suffix = (char *) CALLOC(strlen(POSITIONS_LOW_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(positions_low_suffix,"%s.%s",POSITIONS_LOW_FILESUFFIX,snps_root);
   }
 
 #ifdef PMAP
@@ -541,8 +630,20 @@ Indexdb_get_filenames_bitpack64 (
 	  alphabet_strlen = p - a;
 	  p += patternlength2;
 
-	  if (q - p == BASE_KMER_SAMPLING) {
-	    /* New style, e.g., pf677 */
+	  if (q - p == KMER_SAMPLING) {
+	    /* Latest style, e.g., pf77 */
+	    if (sscanf(p,"%c%c",&ones,&interval_char) == 2) {
+	      digit_string[0] = ones;
+	      found_index1part = atoi(digit_string);
+
+	      digit_string[0] = interval_char;
+	      found_interval = atoi(digit_string);
+	    } else {
+	      abort();
+	    }
+
+	  } else if (q - p == BASE_KMER_SAMPLING) {
+	    /* Previous style, e.g., pf677 */
 	    if (sscanf(p,"%c%c%c",&ones0,&ones,&interval_char) == 3) {
 	      digit_string[0] = ones0;
 	      found_basesize = atoi(digit_string);
@@ -552,27 +653,29 @@ Indexdb_get_filenames_bitpack64 (
 
 	      digit_string[0] = interval_char;
 	      found_interval = atoi(digit_string);
+	    } else {
+	      abort();
 	    }
+
 	  } else {
 	    /* fprintf(stderr,"Cannot parse part between %s and offsets in filename %s\n",idx_filesuffix,filename); */
 	    if (snps_root != NULL) {
 	      FREE(offsetscomp_suffix);
 	      FREE(bitpackptrs_suffix);
-	      FREE(positions_suffix);
+	      FREE(bitpackpages_suffix);
+	      FREE(positions_high_suffix);
+	      FREE(positions_low_suffix);
 	    }
 	    return (Filenames_T) NULL;
 	  }
 
 	  if ((required_alphabet == AA0 || found_alphabet == required_alphabet) &&
 	      (required_index1part == 0 || found_index1part == required_index1part) &&
-	      (required_basesize == 0 || found_basesize == required_basesize) &&
 	      (required_interval == 0 || found_interval == required_interval)) {
 	    if (required_alphabet == AA0 && found_alphabet > *alphabet) {
 	      /* Skip, since we have already found an earlier alphabet */
 	    } else if (required_index1part == 0 && found_index1part < *index1part) {
 	      /* Skip, since we have already found a larger index1part */
-	    } else if (required_basesize == 0 && found_basesize < *basesize) {
-	      /* Skip, since we have already found a larger basesize */
 	    } else if (required_interval == 0 && found_interval > *index1interval) {
 	      /* Skip, since we have already found a smaller interval */
 	    } else {
@@ -622,14 +725,19 @@ Indexdb_get_filenames_bitpack64 (
 
 	    digit_string[0] = interval_char;
 	    found_interval = atoi(digit_string);
+	  } else {
+	    abort();
 	  }
+
 	} else {
 	  fprintf(stderr,"Cannot parse part between %s and offsets in filename %s: found %ld characters, expecting %d\n",
 		  idx_filesuffix,filename,q-p,BASE_KMER_SAMPLING);
 	  if (snps_root != NULL) {
 	    FREE(offsetscomp_suffix);
 	    FREE(bitpackptrs_suffix);
-	    FREE(positions_suffix);
+	    FREE(bitpackpages_suffix);
+	    FREE(positions_high_suffix);
+	    FREE(positions_low_suffix);
 	  }
 	  return (Filenames_T) NULL;
 	}
@@ -644,7 +752,11 @@ Indexdb_get_filenames_bitpack64 (
 	  } else if (required_interval == 0 && found_interval > *index1interval) {
 	    /* Skip, since we have already found a smaller interval */
 	  } else {
+#ifdef PMAP
+	    *basesize = 0;
+#else
 	    *basesize = found_basesize;
+#endif
 	    *index1part = found_index1part;
 	    *index1interval = found_interval;
 	    FREE(base_filename);
@@ -682,13 +794,17 @@ Indexdb_get_filenames_bitpack64 (
     fprintf(stderr,"\n");
 #endif
 
+    /* bitpackpages_filename = (char *) NULL; */
     /* bitpackptrs_filename = (char *) NULL; */
     /* offsetscomp_filename = (char *) NULL; */
-    /* positions_filename = (char *) NULL; */
+    /* positions_high_filename = (char *) NULL; */
+    /* positions_low_filename = (char *) NULL; */
     if (snps_root != NULL) {
       FREE(offsetscomp_suffix);
       FREE(bitpackptrs_suffix);
-      FREE(positions_suffix);
+      FREE(bitpackpages_suffix);
+      FREE(positions_high_suffix);
+      FREE(positions_low_suffix);
     }
     return (Filenames_T) NULL;
 
@@ -702,12 +818,15 @@ Indexdb_get_filenames_bitpack64 (
       fprintf(stderr,"Offsets filename %s does not exist\n",offsetscomp_filename);
       FREE(offsetscomp_filename);
       /* offsetscomp_filename = (char *) NULL; */
-      /* positions_filename = (char *) NULL; */
+      /* positions_high_filename = (char *) NULL; */
+      /* positions_low_filename = (char *) NULL; */
       FREE(base_filename);
       if (snps_root != NULL) {
 	FREE(offsetscomp_suffix);
 	FREE(bitpackptrs_suffix);
-	FREE(positions_suffix);
+	FREE(bitpackpages_suffix);
+	FREE(positions_high_suffix);
+	FREE(positions_low_suffix);
       }
       return (Filenames_T) NULL;
     }
@@ -720,6 +839,7 @@ Indexdb_get_filenames_bitpack64 (
     }
 
     if (*index1part == *basesize) {
+      /* bitpackpages_filename = (char *) NULL; */
       /* bitpackptrs_filename = (char *) NULL; */
       /* bitpackptrs_basename_ptr = (char *) NULL; */
       /* bitpackptrs_index1info_ptr = (char *) NULL; */
@@ -740,52 +860,91 @@ Indexdb_get_filenames_bitpack64 (
 	if (snps_root != NULL) {
 	  FREE(offsetscomp_suffix);
 	  FREE(bitpackptrs_suffix);
-	  FREE(positions_suffix);
+	  FREE(positions_high_suffix);
+	  FREE(positions_low_suffix);
 	}
 	return (Filenames_T) NULL;
       }
     }
 
+    bitpackpages_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(bitpackpages_suffix)+1,sizeof(char));
+    bitpackpages_basename_ptr = &(bitpackpages_filename[strlen(genomesubdir)+strlen("/")]);
+    bitpackpages_index1info_ptr = &(bitpackpages_basename_ptr[patternlength]);
 
-    positions_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_suffix)+1,sizeof(char));
-    positions_basename_ptr = &(positions_filename[strlen(genomesubdir)+strlen("/")]);
-    positions_index1info_ptr = &(positions_basename_ptr[patternlength]);
+    sprintf(bitpackpages_filename,"%s/",genomesubdir);
+    strncpy(bitpackpages_basename_ptr,base_filename,rootlength);
+    strcpy(&(bitpackpages_basename_ptr[rootlength]),bitpackpages_suffix);
+    if (Access_file_exists_p(bitpackpages_filename) == false) {
+      /* Not a huge genome */
+      FREE(bitpackpages_filename);
+      bitpackpages_filename = (char *) NULL;
+    }
 
-    sprintf(positions_filename,"%s/",genomesubdir);
-    strncpy(positions_basename_ptr,base_filename,rootlength);
-    strcpy(&(positions_basename_ptr[rootlength]),positions_suffix);
+    positions_high_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_high_suffix)+1,sizeof(char));
+    positions_high_basename_ptr = &(positions_high_filename[strlen(genomesubdir)+strlen("/")]);
+    positions_high_index1info_ptr = &(positions_high_basename_ptr[patternlength]);
+
+    positions_low_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_low_suffix)+1,sizeof(char));
+    positions_low_basename_ptr = &(positions_low_filename[strlen(genomesubdir)+strlen("/")]);
+    positions_low_index1info_ptr = &(positions_low_basename_ptr[patternlength]);
+
+    sprintf(positions_high_filename,"%s/",genomesubdir);
+    strncpy(positions_high_basename_ptr,base_filename,rootlength);
+    strcpy(&(positions_high_basename_ptr[rootlength]),positions_high_suffix);
+
+    sprintf(positions_low_filename,"%s/",genomesubdir);
+    strncpy(positions_low_basename_ptr,base_filename,rootlength);
+    strcpy(&(positions_low_basename_ptr[rootlength]),positions_low_suffix);
 
     if (offsets_only_p == true) {
       /* Do not look for a positions file */
-    } else if (Access_file_exists_p(positions_filename) == false) {
+    } else if (Access_file_exists_p(positions_low_filename) == false) {
       /* Try newer naming scheme: ref153positions instead of ref12153positions */
-      sprintf(positions_filename,"%s/",genomesubdir);
-      strncpy(positions_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
-      strncpy(&(positions_basename_ptr[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
-      strcpy(&(positions_basename_ptr[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_suffix);
+      sprintf(positions_high_filename,"%s/",genomesubdir);
+      strncpy(positions_high_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
+      strncpy(&(positions_high_basename_ptr[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
+      strcpy(&(positions_high_basename_ptr[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_high_suffix);
 
-      if (Access_file_exists_p(positions_filename) == false) {
-	fprintf(stderr,"Positions filename %s does not exist\n",positions_filename);
+      sprintf(positions_low_filename,"%s/",genomesubdir);
+      strncpy(positions_low_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
+      strncpy(&(positions_low_basename_ptr[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
+      strcpy(&(positions_low_basename_ptr[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_low_suffix);
+
+      if (Access_file_exists_p(positions_low_filename) == false) {
+	fprintf(stderr,"Positions filename %s does not exist\n",positions_low_filename);
+	FREE(bitpackpages_filename);
 	FREE(bitpackptrs_filename);
 	FREE(offsetscomp_filename);
-	FREE(positions_filename);
+	FREE(positions_high_filename);
+	FREE(positions_low_filename);
 	/* bitpackptrs_filename = (char *) NULL; */
 	/* offsetscomp_filename = (char *) NULL; */
-	/* positions_filename = (char *) NULL; */
+	/* positions_high_filename = (char *) NULL; */
+	/* positions_low_filename = (char *) NULL; */
 	FREE(base_filename);
 	if (snps_root != NULL) {
 	  FREE(offsetscomp_suffix);
 	  FREE(bitpackptrs_suffix);
-	  FREE(positions_suffix);
+	  FREE(bitpackpages_suffix);
+	  FREE(positions_high_suffix);
+	  FREE(positions_low_suffix);
 	}
 	return (Filenames_T) NULL;
       }
+    }
+
+    if (Access_file_exists_p(positions_high_filename) == false) {
+      /* Not a large genome */
+      FREE(positions_high_filename);
+      positions_high_filename = (char *) NULL;
     }
 
     if (snps_root != NULL) {
       FREE(offsetscomp_suffix);
       FREE(bitpackptrs_suffix);
-      FREE(positions_suffix);
+      FREE(bitpackpages_suffix);
+      FREE(positions_high_suffix);
+      FREE(positions_low_suffix);
     }
 
     FREE(base_filename);
@@ -793,15 +952,25 @@ Indexdb_get_filenames_bitpack64 (
     fprintf(stderr,"Looking for index files in directory %s\n",genomesubdir);
     if (*basesize == *index1part) {
       /* No pointers file */
-      bitpackptrs_filename = bitpackptrs_basename_ptr = bitpackptrs_index1info_ptr = (char *) NULL;
+      bitpackpages_filename = bitpackptrs_filename = bitpackptrs_basename_ptr = bitpackptrs_index1info_ptr = (char *) NULL;
     } else {
+      if (bitpackpages_filename != NULL)  {
+	fprintf(stderr,"  Pages file is %s\n",bitpackpages_basename_ptr);
+      }
       fprintf(stderr,"  Pointers file is %s\n",bitpackptrs_basename_ptr);
     }
     fprintf(stderr,"  Offsets file is %s\n",offsetscomp_basename_ptr);
-    fprintf(stderr,"  Positions file is %s\n",positions_basename_ptr);
-    return Filenames_new(bitpackptrs_filename,offsetscomp_filename,positions_filename,
-			 bitpackptrs_basename_ptr,offsetscomp_basename_ptr,positions_basename_ptr,
-			 bitpackptrs_index1info_ptr,offsetscomp_index1info_ptr,positions_index1info_ptr);
+    if (positions_high_filename == NULL) {
+      fprintf(stderr,"  Positions file is %s\n",positions_low_basename_ptr);
+    } else {
+      fprintf(stderr,"  Positions files are %s and %s\n",positions_high_basename_ptr,positions_low_basename_ptr);
+    }
+    return Filenames_new(bitpackpages_filename,bitpackptrs_filename,offsetscomp_filename,
+			 positions_high_filename,positions_low_filename,
+			 bitpackptrs_basename_ptr,offsetscomp_basename_ptr,
+			 positions_high_basename_ptr,positions_low_basename_ptr,
+			 bitpackptrs_index1info_ptr,offsetscomp_index1info_ptr,
+			 positions_high_index1info_ptr,positions_low_index1info_ptr);
 
   }
 }
@@ -817,9 +986,11 @@ Indexdb_get_filenames_gamma (
 			     char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
 			     Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
 			     bool offsets_only_p) {
-  char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
-    *gammaptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
-    *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
+  char *gammaptrs_filename, *offsetscomp_filename, *positions_high_filename, *positions_low_filename,
+    *gammaptrs_basename_ptr, *offsetscomp_basename_ptr,
+    *positions_high_basename_ptr, *positions_low_basename_ptr,
+    *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr,
+    *positions_high_index1info_ptr, *positions_low_index1info_ptr;
 
   char *base_filename, *filename;
 #ifdef PMAP
@@ -835,7 +1006,7 @@ Indexdb_get_filenames_gamma (
   int rootlength, patternlength;
 
   char ones0, ones;
-  char *gammaptrs_suffix, *offsetscomp_suffix, *positions_suffix;
+  char *gammaptrs_suffix, *offsetscomp_suffix, *positions_high_suffix, *positions_low_suffix;
   struct dirent *entry;
   DIR *dp;
 
@@ -843,14 +1014,17 @@ Indexdb_get_filenames_gamma (
   if (snps_root == NULL) {
     gammaptrs_suffix = "gammaptrs";
     offsetscomp_suffix = "offsetscomp";
-    positions_suffix = POSITIONS_FILESUFFIX;
+    positions_high_suffix = POSITIONS_HIGH_FILESUFFIX;
+    positions_low_suffix = POSITIONS_LOW_FILESUFFIX;
   } else {
     gammaptrs_suffix = (char *) CALLOC(strlen("gammaptrs")+strlen(".")+strlen(snps_root)+1,sizeof(char));
     sprintf(gammaptrs_suffix,"%s.%s","gammaptrs",snps_root);
     offsetscomp_suffix = (char *) CALLOC(strlen("offsetscomp")+strlen(".")+strlen(snps_root)+1,sizeof(char));
     sprintf(offsetscomp_suffix,"%s.%s","offsetscomp",snps_root);
-    positions_suffix = (char *) CALLOC(strlen(POSITIONS_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(positions_suffix,"%s.%s",POSITIONS_FILESUFFIX,snps_root);
+    positions_high_suffix = (char *) CALLOC(strlen(POSITIONS_HIGH_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(positions_high_suffix,"%s.%s",POSITIONS_HIGH_FILESUFFIX,snps_root);
+    positions_low_suffix = (char *) CALLOC(strlen(POSITIONS_LOW_FILESUFFIX)+strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(positions_low_suffix,"%s.%s",POSITIONS_LOW_FILESUFFIX,snps_root);
   }
 
 #ifdef PMAP
@@ -896,13 +1070,17 @@ Indexdb_get_filenames_gamma (
 
 	      digit_string[0] = interval_char;
 	      found_interval = atoi(digit_string);
+	    } else {
+	      abort();
 	    }
+
 	  } else {
 	    /* fprintf(stderr,"Cannot parse part between %s and offsets in filename %s\n",idx_filesuffix,filename); */
 	    if (snps_root != NULL) {
 	      FREE(offsetscomp_suffix);
 	      FREE(gammaptrs_suffix);
-	      FREE(positions_suffix);
+	      FREE(positions_high_suffix);
+	      FREE(positions_low_suffix);
 	    }
 	    return (Filenames_T) NULL;
 	  }
@@ -966,14 +1144,18 @@ Indexdb_get_filenames_gamma (
 
 	    digit_string[0] = interval_char;
 	    found_interval = atoi(digit_string);
+	  } else {
+	    abort();
 	  }
+
 	} else {
 	  fprintf(stderr,"Cannot parse part between %s and offsets in filename %s: found %ld characters, expecting %d\n",
 		  idx_filesuffix,filename,q-p,BASE_KMER_SAMPLING);
 	  if (snps_root != NULL) {
 	    FREE(offsetscomp_suffix);
 	    FREE(gammaptrs_suffix);
-	    FREE(positions_suffix);
+	    FREE(positions_high_suffix);
+	    FREE(positions_low_suffix);
 	  }
 	  return (Filenames_T) NULL;
 	}
@@ -1028,11 +1210,13 @@ Indexdb_get_filenames_gamma (
 
     /* gammaptrs_filename = (char *) NULL; */
     /* offsetscomp_filename = (char *) NULL; */
-    /* positions_filename = (char *) NULL; */
+    /* positions_high_filename = (char *) NULL; */
+    /* positions_low_filename = (char *) NULL; */
     if (snps_root != NULL) {
       FREE(offsetscomp_suffix);
       FREE(gammaptrs_suffix);
-      FREE(positions_suffix);
+      FREE(positions_high_suffix);
+      FREE(positions_low_suffix);
     }
     return (Filenames_T) NULL;
 
@@ -1046,12 +1230,14 @@ Indexdb_get_filenames_gamma (
       fprintf(stderr,"Offsets filename %s does not exist\n",offsetscomp_filename);
       FREE(offsetscomp_filename);
       /* offsetscomp_filename = (char *) NULL; */
-      /* positions_filename = (char *) NULL; */
+      /* positions_high_filename = (char *) NULL; */
+      /* positions_low_filename = (char *) NULL; */
       FREE(base_filename);
       if (snps_root != NULL) {
 	FREE(offsetscomp_suffix);
 	FREE(gammaptrs_suffix);
-	FREE(positions_suffix);
+	FREE(positions_high_suffix);
+	FREE(positions_low_suffix);
       }
       return (Filenames_T) NULL;
     }
@@ -1084,52 +1270,76 @@ Indexdb_get_filenames_gamma (
 	if (snps_root != NULL) {
 	  FREE(offsetscomp_suffix);
 	  FREE(gammaptrs_suffix);
-	  FREE(positions_suffix);
+	  FREE(positions_high_suffix);
+	  FREE(positions_low_suffix);
 	}
 	return (Filenames_T) NULL;
       }
     }
 
 
-    positions_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_suffix)+1,sizeof(char));
-    positions_basename_ptr = &(positions_filename[strlen(genomesubdir)+strlen("/")]);
-    positions_index1info_ptr = &(positions_basename_ptr[patternlength]);
+    positions_high_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_high_suffix)+1,sizeof(char));
+    positions_high_basename_ptr = &(positions_high_filename[strlen(genomesubdir)+strlen("/")]);
+    positions_high_index1info_ptr = &(positions_high_basename_ptr[patternlength]);
 
-    sprintf(positions_filename,"%s/",genomesubdir);
-    strncpy(positions_basename_ptr,base_filename,rootlength);
-    strcpy(&(positions_basename_ptr[rootlength]),positions_suffix);
+    positions_low_filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+rootlength+strlen(positions_low_suffix)+1,sizeof(char));
+    positions_low_basename_ptr = &(positions_low_filename[strlen(genomesubdir)+strlen("/")]);
+    positions_low_index1info_ptr = &(positions_low_basename_ptr[patternlength]);
+
+    sprintf(positions_high_filename,"%s/",genomesubdir);
+    strncpy(positions_high_basename_ptr,base_filename,rootlength);
+    strcpy(&(positions_high_basename_ptr[rootlength]),positions_high_suffix);
+
+    sprintf(positions_low_filename,"%s/",genomesubdir);
+    strncpy(positions_low_basename_ptr,base_filename,rootlength);
+    strcpy(&(positions_low_basename_ptr[rootlength]),positions_low_suffix);
 
     if (offsets_only_p == true) {
       /* Do not look for a positions file */
-    } else if (Access_file_exists_p(positions_filename) == false) {
+    } else if (Access_file_exists_p(positions_low_filename) == false) {
       /* Try newer naming scheme: ref153positions instead of ref12153positions */
-      sprintf(positions_filename,"%s/",genomesubdir);
-      strncpy(positions_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
-      strncpy(&(positions_basename_ptr[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
-      strcpy(&(positions_basename_ptr[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_suffix);
+      sprintf(positions_high_filename,"%s/",genomesubdir);
+      strncpy(positions_high_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
+      strncpy(&(positions_high_basename_ptr[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
+      strcpy(&(positions_high_basename_ptr[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_high_suffix);
 
-      if (Access_file_exists_p(positions_filename) == false) {
-	fprintf(stderr,"Positions filename %s does not exist\n",positions_filename);
+      sprintf(positions_low_filename,"%s/",genomesubdir);
+      strncpy(positions_low_basename_ptr,base_filename,rootlength-BASE_KMER_SAMPLING); /* e.g., skip "12153" */
+      strncpy(&(positions_low_basename_ptr[rootlength-BASE_KMER_SAMPLING]),&(base_filename[rootlength-KMER_SAMPLING]),KMER_SAMPLING);
+      strcpy(&(positions_low_basename_ptr[rootlength+KMER_SAMPLING-BASE_KMER_SAMPLING]),positions_low_suffix);
+
+      if (Access_file_exists_p(positions_low_filename) == false) {
+	fprintf(stderr,"Positions filename %s does not exist\n",positions_low_filename);
 	FREE(gammaptrs_filename);
 	FREE(offsetscomp_filename);
-	FREE(positions_filename);
+	FREE(positions_high_filename);
+	FREE(positions_low_filename);
 	/* gammaptrs_filename = (char *) NULL; */
 	/* offsetscomp_filename = (char *) NULL; */
-	/* positions_filename = (char *) NULL; */
+	/* positions_high_filename = (char *) NULL; */
+	/* positions_low_filename = (char *) NULL; */
 	FREE(base_filename);
 	if (snps_root != NULL) {
 	  FREE(offsetscomp_suffix);
 	  FREE(gammaptrs_suffix);
-	  FREE(positions_suffix);
+	  FREE(positions_high_suffix);
+	  FREE(positions_low_suffix);
 	}
 	return (Filenames_T) NULL;
       }
+    }
+
+    if (Access_file_exists_p(positions_high_filename) == false) {
+      /* Not a large genome */
+      FREE(positions_high_filename);
+      positions_high_filename = (char *) NULL;
     }
 
     if (snps_root != NULL) {
       FREE(offsetscomp_suffix);
       FREE(gammaptrs_suffix);
-      FREE(positions_suffix);
+      FREE(positions_high_suffix);
+      FREE(positions_low_suffix);
     }
 
     FREE(base_filename);
@@ -1142,10 +1352,17 @@ Indexdb_get_filenames_gamma (
       fprintf(stderr,"  Pointers file is %s\n",gammaptrs_basename_ptr);
     }
     fprintf(stderr,"  Offsets file is %s\n",offsetscomp_basename_ptr);
-    fprintf(stderr,"  Positions file is %s\n",positions_basename_ptr);
-    return Filenames_new(gammaptrs_filename,offsetscomp_filename,positions_filename,
-			 gammaptrs_basename_ptr,offsetscomp_basename_ptr,positions_basename_ptr,
-			 gammaptrs_index1info_ptr,offsetscomp_index1info_ptr,positions_index1info_ptr);
+    if (positions_high_filename == NULL) {
+      fprintf(stderr,"  Positions file is %s\n",positions_low_basename_ptr);
+    } else {
+      fprintf(stderr,"  Positions files are %s and %s\n",positions_high_basename_ptr,positions_low_basename_ptr);
+    }
+    return Filenames_new(/*pages_filename*/NULL,gammaptrs_filename,offsetscomp_filename,
+			 positions_high_filename,positions_low_filename,
+			 gammaptrs_basename_ptr,offsetscomp_basename_ptr,
+			 positions_high_basename_ptr,positions_low_basename_ptr,
+			 gammaptrs_index1info_ptr,offsetscomp_index1info_ptr,
+			 positions_high_index1info_ptr,positions_low_index1info_ptr);
 
   }
 }
@@ -1214,6 +1431,10 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
   unsigned int poly_T;
   Positionsptr_T ptr0, end0;
   off_t filesize;
+
+#ifdef LARGE_GENOMES
+  size_t bitpackpages_len;
+#endif
 
   char *comma;
   double seconds;
@@ -1329,6 +1550,10 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
     *index1interval = new->index1interval;
 
     if (expand_offsets_p == true) {
+#ifdef LARGE_GENOMES
+      fprintf(stderr,"Expansion of bitpack offsets not supported for large genomes\n");
+      abort();
+#else      
       fprintf(stderr,"Offsets compression type: none (bitpack expanded)\n");
       new->compression_type = NO_COMPRESSION;
 
@@ -1348,21 +1573,33 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
 
 #ifdef PMAP
       new->offsetscomp = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,
-						      new->offsetscomp_basesize,*alphabet_size,new->index1part);
+						      *alphabet_size,new->index1part);
 #else
       new->offsetscomp = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,
 						      new->offsetscomp_basesize,new->index1part);
 #endif
       new->offsetscomp_access = ALLOCATED;
 
+#endif
+
+#ifdef PMAP
+#else
       /* Sanity check on positions filesize */
       poly_T = ~(~0UL << 2*new->index1part);
       end0 = new->offsetscomp[poly_T+1];
-      if ((filesize = Access_filesize(filenames->positions_filename)) != end0 * (off_t) sizeof(Univcoord_T)) {
+#ifdef LARGE_GENOMES
+      if ((filesize = Access_filesize(filenames->positions_high_filename)) != end0 * (off_t) sizeof(unsigned char)) {
 	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
-		filenames->positions_filename,end0*sizeof(Univcoord_T),filesize);
+		filenames->positions_high_filename,end0*sizeof(unsigned char),filesize);
 	abort();
       }
+#endif
+      if ((filesize = Access_filesize(filenames->positions_low_filename)) != end0 * (off_t) sizeof(UINT4)) {
+	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
+		filenames->positions_low_filename,end0*sizeof(UINT4),filesize);
+	abort();
+      }
+#endif	/* PMAP */
 
     } else {
       fprintf(stderr,"Offsets compression type: bitpack\n");
@@ -1398,6 +1635,7 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
 	}
 	new->gammaptrs = (Gammaptr_T *) Access_allocated(&new->gammaptrs_len,&seconds,
 							 filenames->pointers_filename,sizeof(Gammaptr_T));
+
 	comma = Genomicpos_commafmt(new->gammaptrs_len);
 	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
 	FREE(comma);
@@ -1474,17 +1712,41 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
 	abort();
       }
 
+      Bitpack64_read_setup();
+#ifdef PMAP
+#else
       /* Sanity check on positions filesize */
-      Bitpack64_read_setup(new->gammaptrs,new->offsetscomp,new->offsetscomp_blocksize);
+#ifdef LARGE_GENOMES
+      if (filenames->pages_filename != NULL) {
+	new->offsetspages = (UINT4 *) Access_allocated(&bitpackpages_len,&seconds,filenames->pages_filename,sizeof(UINT4));
+      } else {
+	new->offsetspages = (UINT4 *) MALLOC(1*sizeof(UINT4));
+	new->offsetspages[0] = -1U;
+      }
+#endif
       poly_T = ~(~0UL << 2*new->index1part);
-      ptr0 = Bitpack64_offsetptr(&end0,poly_T);
-      if ((filesize = Access_filesize(filenames->positions_filename)) != end0 * (off_t) sizeof(Univcoord_T)) {
+#ifdef LARGE_GENOMES
+      ptr0 = Bitpack64_offsetptr_huge(&end0,poly_T,new->offsetspages,new->gammaptrs,new->offsetscomp);
+#else
+      ptr0 = Bitpack64_offsetptr(&end0,poly_T,new->gammaptrs,new->offsetscomp);
+#endif
+
+#ifdef LARGE_GENOMES
+      ptr0 = Bitpack64_offsetptr_huge(&end0,poly_T,new->offsetspages,new->gammaptrs,new->offsetscomp);
+      if ((filesize = Access_filesize(filenames->positions_high_filename)) != end0 * (off_t) sizeof(unsigned char)) {
 	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
-		filenames->positions_filename,end0*sizeof(Univcoord_T),filesize);
+		filenames->positions_high_filename,end0*sizeof(unsigned char),filesize);
 	abort();
       }
-    }
+#endif
+      if ((filesize = Access_filesize(filenames->positions_low_filename)) != end0 * (off_t) sizeof(UINT4)) {
+	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
+		filenames->positions_low_filename,end0*sizeof(UINT4),filesize);
+	abort();
+      }
+#endif	/* PMAP */
 
+    }
 
   } else if ((filenames = Indexdb_get_filenames_gamma(
 #ifdef PMAP
@@ -1499,6 +1761,10 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
     *index1interval = new->index1interval;
 
     if (expand_offsets_p == true) {
+#ifdef LARGE_GENOMES
+      fprintf(stderr,"Expansion of gamma offsets not supported for large genomes\n");
+      abort();
+#else
       fprintf(stderr,"Offsets compression type: none (gamma expanded)\n");
       new->compression_type = NO_COMPRESSION;
 
@@ -1524,6 +1790,8 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
 						     new->offsetscomp_basesize,new->index1part);
 #endif
       new->offsetscomp_access = ALLOCATED;
+
+#endif
 
     } else {
       fprintf(stderr,"Offsets compression type: gamma\n");
@@ -1636,6 +1904,8 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
       }
     }
 
+#ifdef PMAP
+#else
     /* Sanity check on positions filesize */
     poly_T = ~(~0UL << 2*new->index1part);
 #ifdef WORDS_BIGENDIAN
@@ -1648,11 +1918,12 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
     ptr0 = Genome_offsetptr_from_gammas(&end0,new->gammaptrs,new->offsetscomp,new->offsetscomp_blocksize,poly_T);
 #endif
 
-    if ((filesize = Access_filesize(filenames->positions_filename)) != end0 * (off_t) sizeof(Univcoord_T)) {
+    if ((filesize = Access_filesize(filenames->positions_low_filename)) != end0 * (off_t) sizeof(UINT4)) {
       fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
-	      filenames->positions_filename,end0*sizeof(Univcoord_T),filesize);
+	      filenames->positions_low_filename,end0*sizeof(UINT4),filesize);
       abort();
     }
+#endif	/* PMAP */
 
   } else {
     fprintf(stderr,"Cannot find genomic index files in either current or old format\n");
@@ -1669,8 +1940,33 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
       fprintf(stderr,"Allocating memory for %s positions, kmer %d, interval %d...",
 	      idx_filesuffix,new->index1part,new->index1interval);
     }
-    new->positions = (Univcoord_T *) Access_allocated(&new->positions_len,&seconds,
-						      filenames->positions_filename,sizeof(Univcoord_T));
+#ifdef LARGE_GENOMES
+    new->positions_high = (unsigned char *) Access_allocated(&new->positions_high_len,&seconds,
+							     filenames->positions_high_filename,sizeof(unsigned char));
+    if (new->positions_high == NULL) {
+      fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
+      exit(9);
+    } else {
+      comma = Genomicpos_commafmt(new->positions_high_len);
+      fprintf(stderr,"done (%s bytes, %.2f sec), ",comma,seconds);
+      FREE(comma);
+
+      new->positions_low = (UINT4 *) Access_allocated(&new->positions_low_len,&seconds,
+						      filenames->positions_low_filename,sizeof(UINT4));
+      if (new->positions_low == NULL) {
+	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
+	exit(9);
+      } else {
+	comma = Genomicpos_commafmt(new->positions_low_len);
+	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
+	FREE(comma);
+
+	new->positions_access = ALLOCATED;
+      }
+    }
+#else
+    new->positions = (UINT4 *) Access_allocated(&new->positions_len,&seconds,
+						filenames->positions_low_filename,sizeof(UINT4));
     if (new->positions == NULL) {
       fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
       exit(9);
@@ -1680,6 +1976,8 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
       FREE(comma);
       new->positions_access = ALLOCATED;
     }
+#endif
+    
 
 #ifdef HAVE_MMAP
   } else if (positions_access == USE_MMAP_PRELOAD) {
@@ -1690,9 +1988,33 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
       fprintf(stderr,"Pre-loading %s positions, kmer %d, interval %d...",
 	      idx_filesuffix,new->index1part,new->index1interval);
     }
-    new->positions = (Univcoord_T *) Access_mmap_and_preload(&new->positions_fd,&new->positions_len,&npages,&seconds,
-							     filenames->positions_filename,sizeof(Univcoord_T));
+#ifdef LARGE_GENOMES
+    new->positions_high = (unsigned char *) Access_mmap_and_preload(&new->positions_high_fd,&new->positions_high_len,&npages,&seconds,
+								  filenames->positions_high_filename,sizeof(unsigned char));
+    if (new->positions_high == NULL) {
+      fprintf(stderr,"insufficient memory (will use disk file instead, but program will be slow)\n");
+      new->positions_access = FILEIO;
+    } else {
+      comma = Genomicpos_commafmt(new->positions_high_len);
+      fprintf(stderr,"done (%s bytes, %d pages, %.2f sec), ",comma,npages,seconds);
+      FREE(comma);
 
+      new->positions_low = (UINT4 *) Access_mmap_and_preload(&new->positions_low_fd,&new->positions_low_len,&npages,&seconds,
+							     filenames->positions_low_filename,sizeof(UINT4));
+      if (new->positions_low == NULL) {
+	fprintf(stderr,"insufficient memory (will use disk file instead, but program will be slow)\n");
+	new->positions_access = FILEIO;
+      } else {
+	comma = Genomicpos_commafmt(new->positions_low_len);
+	fprintf(stderr,"done (%s bytes, %d pages, %.2f sec)\n",comma,npages,seconds);
+	FREE(comma);
+
+	new->positions_access = MMAPPED;
+      }
+    }
+#else
+    new->positions = (UINT4 *) Access_mmap_and_preload(&new->positions_fd,&new->positions_len,&npages,&seconds,
+						       filenames->positions_low_filename,sizeof(UINT4));
     if (new->positions == NULL) {
       fprintf(stderr,"insufficient memory (will use disk file instead, but program will be slow)\n");
       new->positions_access = FILEIO;
@@ -1702,18 +2024,41 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
       FREE(comma);
       new->positions_access = MMAPPED;
     }
+#endif
+
 
   } else if (positions_access == USE_MMAP_ONLY) {
-    new->positions = (Univcoord_T *) Access_mmap(&new->positions_fd,&new->positions_len,
-						 filenames->positions_filename,sizeof(Univcoord_T),/*randomp*/true);
+#ifdef LARGE_GENOMES
+    new->positions_high = (unsigned char *) Access_mmap(&new->positions_high_fd,&new->positions_high_len,
+							filenames->positions_high_filename,sizeof(unsigned char),/*randomp*/true);
+    if (new->positions_high == NULL) {
+      fprintf(stderr,"Insufficient memory for mmap of %s (will use disk file instead, but program will be slow)\n",
+	      filenames->positions_high_filename);
+      new->positions_access = FILEIO;
+    } else {
+      new->positions_low = (UINT4 *) Access_mmap(&new->positions_low_fd,&new->positions_low_len,
+						 filenames->positions_low_filename,sizeof(UINT4),/*randomp*/true);
+      if (new->positions_low == NULL) {
+	fprintf(stderr,"Insufficient memory for mmap of %s (will use disk file instead, but program will be slow)\n",
+		filenames->positions_low_filename);
+	new->positions_access = FILEIO;
+      } else {
+	new->positions_access = MMAPPED;
+      }
+    }
+#else
+    new->positions = (UINT4 *) Access_mmap(&new->positions_fd,&new->positions_len,
+					   filenames->positions_low_filename,sizeof(UINT4),/*randomp*/true);
 
     if (new->positions == NULL) {
       fprintf(stderr,"Insufficient memory for mmap of %s (will use disk file instead, but program will be slow)\n",
-	      filenames->positions_filename);
+	      filenames->positions_low_filename);
       new->positions_access = FILEIO;
     } else {
       new->positions_access = MMAPPED;
     }
+#endif
+
 #endif
 
   } else if (positions_access == USE_FILEIO) {
@@ -1784,12 +2129,25 @@ shortoligo_nt (Storedoligomer_T oligo, Width_T oligosize) {
 
 
 static void
-positions_move_absolute (int positions_fd, off_t ptr) {
-  off_t offset = ptr*((off_t) sizeof(Univcoord_T));
+positions_move_absolute_1 (int positions_fd, off_t ptr) {
+  off_t offset = ptr*((off_t) sizeof(unsigned char));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
     fprintf(stderr,"Attempted to do lseek on offset %ld*%lu=%ld\n",
-	    ptr,sizeof(Univcoord_T),offset);
+	    ptr,sizeof(unsigned char),offset);
+    perror("Error in indexdb.c, positions_move_absolute");
+    exit(9);
+  }
+  return;
+}
+
+static void
+positions_move_absolute_4 (int positions_fd, off_t ptr) {
+  off_t offset = ptr*((off_t) sizeof(UINT4));
+
+  if (lseek(positions_fd,offset,SEEK_SET) < 0) {
+    fprintf(stderr,"Attempted to do lseek on offset %ld*%lu=%ld\n",
+	    ptr,sizeof(UINT4),offset);
     perror("Error in indexdb.c, positions_move_absolute");
     exit(9);
   }
@@ -1815,6 +2173,66 @@ positions_read_forward (int positions_fd) {
   return value;
 }
 #endif
+
+#ifdef LARGE_GENOMES
+static void
+positions_read_multiple_large (int positions_high_fd, int positions_low_fd, Univcoord_T *values, int n) {
+  int i;
+  Univcoord_T value;
+  unsigned char buffer[4];
+
+#ifdef WORDS_BIGENDIAN
+  /* Need to keep in bigendian format */
+  for (i = 0; i < n; i++) {
+    read(positions_high_fd,buffer,1);
+    value = (buffer[0] & 0xff);
+    value <<= 8;
+
+    read(positions_low_fd,buffer,4);
+    value |= (buffer[0] & 0xff);
+    value <<= 8;
+    value |= (buffer[1] & 0xff);
+    value <<= 8;
+    value |= (buffer[2] & 0xff);
+    value <<= 8;
+    value |= (buffer[3] & 0xff);
+
+    values[i] = value;
+  }
+#else
+  for (i = 0; i < n; i++) {
+    read(positions_high_fd,buffer,1);
+    value = (buffer[0] & 0xff);
+    value <<= 8;
+
+    read(positions_low_fd,buffer,4);
+    value |= (buffer[3] & 0xff);
+    value <<= 8;
+    value |= (buffer[2] & 0xff);
+    value <<= 8;
+    value |= (buffer[1] & 0xff);
+    value <<= 8;
+    value |= (buffer[0] & 0xff);
+
+    values[i] = value;
+  }
+#endif
+
+  return;
+}
+
+static void
+positions_copy_multiple_large (Univcoord_T *positions, unsigned char *positions_high, UINT4 *positions_low, int n) {
+  int i;
+
+  for (i = 0; i < n; i++) {
+    positions[i] = ((Univcoord_T) positions_high[i] << 32) + positions_low[i];
+  }
+
+  return;
+}
+
+#else
 
 static void
 positions_read_multiple (int positions_fd, Univcoord_T *values, int n) {
@@ -1855,6 +2273,10 @@ positions_read_multiple (int positions_fd, Univcoord_T *values, int n) {
 
   return;
 }
+#endif
+
+
+
 
 #if 0
 static Univcoord_T
@@ -1885,18 +2307,110 @@ positions_read_backward (int positions_fd) {
 
 
 Positionsptr_T *
-Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
+Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, 
 #ifdef PMAP
-			     , int alphabet_size, Width_T index1part_aa
+			      int alphabet_size, Width_T index1part_aa
 #else
-			     , Width_T index1part
+			      Width_T offsetscomp_basesize , Width_T index1part
 #endif
-			     ) {
+			      ) {
   UINT4 *bitpackptrs;
   Offsetscomp_T *offsetscomp;
   int bitpackptrs_fd, offsetscomp_fd;
   size_t bitpackptrs_len, offsetscomp_len;
-  Positionsptr_T *offsets = NULL;
+  UINT4 *offsets = NULL;
+  Oligospace_T oligospace, oligoi;
+#ifndef PMAP
+  Blocksize_T blocksize;
+#endif
+  double seconds;
+
+#ifdef PMAP
+  oligospace = power(alphabet_size,index1part_aa);
+#else
+  oligospace = power(4,index1part);
+  blocksize = power(4,index1part - offsetscomp_basesize);
+#endif
+
+
+#ifdef HAVE_MMAP
+  bitpackptrs = (UINT4 *) Access_mmap(&bitpackptrs_fd,&bitpackptrs_len,bitpackptrsfile,sizeof(UINT4),/*randomp*/false);
+  offsetscomp = (Offsetscomp_T *) Access_mmap(&offsetscomp_fd,&offsetscomp_len,offsetscompfile,sizeof(Offsetscomp_T),/*randomp*/false);
+#else
+  bitpackptrs = (UINT4 *) Access_allocated(&bitpackptrs_len,&seconds,bitpackptrsfile,sizeof(UINT4));
+  offsetscomp = (Offsetscomp_T *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(Offsetscomp_T));
+#endif
+
+#ifdef OLIGOSPACE_NOT_LONG
+  fprintf(stderr,"Allocating memory (%u 4-byte words) for offsets, kmer %d...",oligospace+1U,
+#ifdef PMAP
+	  index1part_aa
+#else
+	  index1part
+#endif
+	  );
+#else
+  fprintf(stderr,"Allocating memory (%lu 4-byte words) for offsets, kmer %d...",oligospace+1UL,
+#ifdef PMAP
+	  index1part_aa
+#else
+	  index1part
+#endif
+	  );
+#endif
+
+  /* Bitpack procedures start from offsets[1], so we need to print offsets[0] as a special case */
+  offsets = (Positionsptr_T *) MALLOC((oligospace+1) * sizeof(Positionsptr_T));
+
+  if (offsets == NULL) {
+    fprintf(stderr,"cannot allocated requested memory.  Cannot run expand offsets on this machine.\n");
+    exit(9);
+  } else {
+    fprintf(stderr,"done\n");
+  }
+
+  fprintf(stderr,"Expanding bitpackcomp into offsets...");
+  Bitpack64_read_setup();
+#ifdef PMAP
+  for (oligoi = 0UL; oligoi <= oligospace; oligoi += 1) {
+    offsets[oligoi] = Bitpack64_offsetptr_only(oligoi,bitpackptrs,offsetscomp);
+  }
+#else
+  for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
+    Bitpack64_block_offsets(&(offsets[oligoi]),oligoi,bitpackptrs,offsetscomp);
+  }
+#endif
+
+  fprintf(stderr,"done\n");
+
+#ifdef HAVE_MMAP
+  munmap((void *) offsetscomp,offsetscomp_len);
+  munmap((void *) bitpackptrs,bitpackptrs_len);
+#else
+  FREE(offsetscomp);
+  FREE(bitpackptrs);
+#endif
+
+  return offsets;
+}
+
+
+#if defined(HAVE_64_BIT) && defined(UTILITYP)
+/* Used by utility programs */
+Hugepositionsptr_T *
+Indexdb_offsets_from_bitpack_huge (char *bitpackpagesfile, char *bitpackptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
+#ifdef PMAP
+				   , int alphabet_size, Width_T index1part_aa
+#else
+				   , Width_T index1part
+#endif
+				   ) {
+  UINT4 *bitpackpages;
+  UINT4 *bitpackptrs;
+  Offsetscomp_T *offsetscomp;
+  int bitpackptrs_fd, offsetscomp_fd;
+  size_t bitpackpages_len, bitpackptrs_len, offsetscomp_len;
+  Hugepositionsptr_T *offsets = NULL;
   Oligospace_T oligospace, oligoi;
   Blocksize_T blocksize;
   double seconds;
@@ -1910,10 +2424,16 @@ Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Widt
 #endif
 
   if (blocksize == 1) {
-    return (Positionsptr_T *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(Positionsptr_T));
+    return (Hugepositionsptr_T *) Access_allocated(&offsetscomp_len,&seconds,offsetscompfile,sizeof(Hugepositionsptr_T));
 
   } else {
 
+    if (bitpackpagesfile == NULL) {
+      bitpackpages = (UINT4 *) MALLOC(1*sizeof(UINT4));
+      bitpackpages[0] = -1U;
+    } else {
+      bitpackpages = (UINT4 *) Access_allocated(&bitpackpages_len,&seconds,bitpackpagesfile,sizeof(UINT4));
+    }
 #ifdef HAVE_MMAP
     bitpackptrs = (UINT4 *) Access_mmap(&bitpackptrs_fd,&bitpackptrs_len,bitpackptrsfile,sizeof(UINT4),/*randomp*/false);
     offsetscomp = (Offsetscomp_T *) Access_mmap(&offsetscomp_fd,&offsetscomp_len,offsetscompfile,sizeof(Offsetscomp_T),/*randomp*/false);
@@ -1923,7 +2443,7 @@ Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Widt
 #endif
 
 #ifdef OLIGOSPACE_NOT_LONG
-    fprintf(stderr,"Allocating memory (%u words) for offsets, kmer %d...",oligospace+1U,
+    fprintf(stderr,"Allocating memory (%u 8-byte words) for offsets, kmer %d...",oligospace+1U,
 #ifdef PMAP
 	    index1part_aa
 #else
@@ -1931,7 +2451,7 @@ Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Widt
 #endif
 	    );
 #else
-    fprintf(stderr,"Allocating memory (%lu words) for offsets, kmer %d...",oligospace+1UL,
+    fprintf(stderr,"Allocating memory (%lu 8-byte words) for offsets, kmer %d...",oligospace+1UL,
 #ifdef PMAP
 	    index1part_aa
 #else
@@ -1941,7 +2461,7 @@ Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Widt
 #endif
 
     /* Bitpack procedures start from offsets[1], so we need to print offsets[0] as a special case */
-    offsets = (Positionsptr_T *) MALLOC((oligospace+1) * sizeof(Positionsptr_T));
+    offsets = (Hugepositionsptr_T *) MALLOC((oligospace+1) * sizeof(Hugepositionsptr_T));
 
     if (offsets == NULL) {
       fprintf(stderr,"cannot allocated requested memory.  Cannot run expand offsets on this machine.\n");
@@ -1951,11 +2471,17 @@ Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Widt
     }
 
     fprintf(stderr,"Expanding bitpackcomp into offsets...");
-    Bitpack64_read_setup(bitpackptrs,offsetscomp,blocksize);
-
-    for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
-      Bitpack64_block_offsets(&(offsets[oligoi]),bitpackptrs,offsetscomp,blocksize,oligoi);
+    Bitpack64_read_setup();
+#ifdef PMAP
+    for (oligoi = 0UL; oligoi <= oligospace; oligoi += 1) {
+      offsets[oligoi] = Bitpack64_offsetptr_only_huge(oligoi,bitpackpages,bitpackptrs,offsetscomp);
     }
+#else
+    for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
+      Bitpack64_block_offsets_huge(&(offsets[oligoi]),oligoi,bitpackpages,bitpackptrs,offsetscomp);
+    }
+#endif
+
     fprintf(stderr,"done\n");
 
 #ifdef HAVE_MMAP
@@ -1965,10 +2491,12 @@ Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Widt
     FREE(offsetscomp);
     FREE(bitpackptrs);
 #endif
+    FREE(bitpackpages);
 
     return offsets;
   }
 }
+#endif
 
 
 
@@ -1981,7 +2509,7 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Width_T
 #endif
 			     ) {
   Gammaptr_T *gammaptrs;
-  Offsetscomp_T *offsetscomp;
+  Offsetscomp_T *offsetscomp, *ptr;
   int gammaptrs_fd, offsetscomp_fd;
   size_t gammaptrs_len, offsetscomp_len;
   Positionsptr_T *offsets = NULL;
@@ -1989,7 +2517,7 @@ Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Width_T
   Blocksize_T blocksize, j;
   double seconds;
 
-  Positionsptr_T *ptr, cum;
+  Positionsptr_T cum;
   int ctr;
 
 
@@ -2128,7 +2656,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex) {
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,aaindex);
+    ptr0 = Bitpack64_offsetptr(&end0,aaindex,this->gammaptrs,this->offsetscomp);
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -2149,6 +2677,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex) {
   debug0(printf("offset pointers are %u and %u\n",ptr0,end0));
 
 #ifdef ALLOW_DUPLICATES
+  /* Not used */
   /* Skip backward over bad values, due to duplicates */
   if (this->positions_access == FILEIO) {
 #ifdef HAVE_PTHREAD
@@ -2166,7 +2695,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex) {
       end0--;
     }
   }
-#endif
+#endif	/* ALLOW_DUPLICATES */
 
   if ((*nentries = end0 - ptr0) == 0) {
     return NULL;
@@ -2176,41 +2705,63 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-      positions_move_absolute(this->positions_fd,ptr0);
+#ifdef LARGE_GENOMES
+      positions_move_absolute_1(this->positions_high_fd,ptr0);
+      positions_move_absolute_4(this->positions_low_fd,ptr0);
+      positions_read_multiple_large(this->positions_high_fd,this->positions_low_fd,positions,*nentries);
+#else
+      positions_move_absolute_4(this->positions_fd,ptr0);
       positions_read_multiple(this->positions_fd,positions,*nentries);
+#endif
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
     } else if (this->positions_access == ALLOCATED) {
+#ifdef LARGE_GENOMES
+      positions_copy_multiple_large(positions,&(this->positions_high[ptr0]),&(this->positions_low[ptr0]),*nentries);
+#else
       memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Univcoord_T));
+#endif
 
     } else {
 #ifdef WORDS_BIGENDIAN
-	for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
-	  littleendian = this->positions[ptr];
-	  bigendian = littleendian & 0xff; /* 0 */
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 1 */
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
 #ifdef LARGE_GENOMES
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 4 */
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 5 */
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 6 */
-	  bigendian <<= 8;
-	  bigendian |= ((littleendian >>= 8) & 0xff); /* 7 */
-#endif
-	  positions[i] = bigendian;
-	}
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
+	bigendian = (Univcoord_T) this->positions_high[ptr];
+	bigendian <<= 8;
+
+	littleendian = this->positions_low[ptr];
+	bigendian |= littleendian & 0xff; /* 0 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 1 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
+	positions[i] = bigendian;
       }
 #else
-    memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Univcoord_T));
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
+	littleendian = this->positions[ptr];
+	bigendian = littleendian & 0xff; /* 0 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 1 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
+	positions[i] = bigendian;
+      }
+#endif
+
+#else  /* littleendian */
+
+#ifdef LARGE_GENOMES
+      positions_copy_multiple_large(positions,&(this->positions_high[ptr0]),&(this->positions_low[ptr0]),*nentries);
+#else
+      memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Univcoord_T));
+#endif
 #endif
     }
     debug0(
@@ -2271,7 +2822,11 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,part0);
+#ifdef LARGE_GENOMES
+    ptr0 = Bitpack64_offsetptr_huge(&end0,part0,this->offsetspages,this->gammaptrs,this->offsetscomp);
+#else
+    ptr0 = Bitpack64_offsetptr(&end0,part0,this->gammaptrs,this->offsetscomp);
+#endif
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -2290,6 +2845,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 
 
 #ifdef ALLOW_DUPLICATES
+  /* Not used */
   /* Skip backward over bad values, due to duplicates */
   if (this->positions_access == FILEIO) {
 #ifdef HAVE_PTHREAD
@@ -2319,16 +2875,42 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-      positions_move_absolute(this->positions_fd,ptr0);
+#ifdef LARGE_GENOMES
+      positions_move_absolute_1(this->positions_high_fd,ptr0);
+      positions_move_absolute_4(this->positions_low_fd,ptr0);
+      positions_read_multiple_large(this->positions_high_fd,this->positions_low_fd,positions,*nentries);
+#else
+      positions_move_absolute_4(this->positions_fd,ptr0);
       positions_read_multiple(this->positions_fd,positions,*nentries);
+#endif
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
     } else if (this->positions_access == ALLOCATED) {
+#ifdef LARGE_GENOMES
+      positions_copy_multiple_large(positions,&(this->positions_high[ptr0]),&(this->positions_low[ptr0]),*nentries);
+#else
       memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Univcoord_T));
+#endif
 
     } else {
 #ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
+	bigendian = (Univcoord_T) this->positions_high[ptr];
+	bigendian <<= 8;
+
+	littleendian = this->positions_low[ptr];
+	bigendian |= littleendian & 0xff; /* 0 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 1 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
+	bigendian <<= 8;
+	bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
+	positions[i] = bigendian;
+      }
+#else
       for (ptr = ptr0, i = 0; ptr < end0; ptr++, i++) {
 	littleendian = this->positions[ptr];
 	bigendian = littleendian & 0xff; /* 0 */
@@ -2338,20 +2920,17 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 	bigendian |= ((littleendian >>= 8) & 0xff); /* 2 */
 	bigendian <<= 8;
 	bigendian |= ((littleendian >>= 8) & 0xff); /* 3 */
-#ifdef LARGE_GENOMES
-	bigendian <<= 8;
-	bigendian |= ((littleendian >>= 8) & 0xff); /* 4 */
-	bigendian <<= 8;
-	bigendian |= ((littleendian >>= 8) & 0xff); /* 5 */
-	bigendian <<= 8;
-	bigendian |= ((littleendian >>= 8) & 0xff); /* 6 */
-	bigendian <<= 8;
-	bigendian |= ((littleendian >>= 8) & 0xff); /* 7 */
-#endif
 	positions[i] = bigendian;
       }
+#endif
+
+#else  /* littleendian */
+
+#ifdef LARGE_GENOMES
+      positions_copy_multiple_large(positions,&(this->positions_high[ptr0]),&(this->positions_low[ptr0]),*nentries);
 #else
       memcpy(positions,&(this->positions[ptr0]),(*nentries)*sizeof(Univcoord_T));
+#endif
 #endif
     }
 
@@ -2369,9 +2948,12 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 
 
 /* GSNAP version.  Expects calling procedure to handle bigendian conversion. */
-Univcoord_T *
-Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
-  Univcoord_T *positions;
+UINT4 *
+Indexdb_read_inplace (int *nentries,
+#ifdef LARGE_GENOMES
+		      unsigned char **positions_high,
+#endif
+		      T this, Storedoligomer_T oligo) {
   Positionsptr_T ptr0, end0;
   Storedoligomer_T part0;
 #ifdef DEBUG0
@@ -2402,7 +2984,11 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,oligo);
+#ifdef LARGE_GENOMES
+    ptr0 = Bitpack64_offsetptr_huge(&end0,oligo,this->offsetspages,this->gammaptrs,this->offsetscomp);
+#else
+    ptr0 = Bitpack64_offsetptr(&end0,oligo,this->gammaptrs,this->offsetscomp);
+#endif
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -2426,16 +3012,7 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
   if (*nentries == 0) {
     return NULL;
   } else if (this->positions_access == FILEIO) {
-    positions = (Univcoord_T *) CALLOC(*nentries,sizeof(Univcoord_T));
-#ifdef HAVE_PTHREAD
-    pthread_mutex_lock(&this->positions_read_mutex);
-#endif
-    positions_move_absolute(this->positions_fd,ptr0);
-    positions_read_multiple(this->positions_fd,positions,*nentries);
-#ifdef HAVE_PTHREAD
-    pthread_mutex_unlock(&this->positions_read_mutex);
-#endif
-    return positions;
+    abort();
   } else {
     debug0(
 	   printf("%d entries:",*nentries);
@@ -2444,7 +3021,12 @@ Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo) {
 	   }
 	   printf("\n");
 	   );
+#ifdef LARGE_GENOMES
+    *positions_high = &(this->positions_high[ptr0]);
+    return &(this->positions_low[ptr0]);
+#else
     return &(this->positions[ptr0]);
+#endif
   }
 }
 
@@ -2473,7 +3055,11 @@ Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int d
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,oligo);
+#ifdef LARGE_GENOMES
+    ptr0 = Bitpack64_offsetptr_huge(&end0,oligo,this->offsetspages,this->gammaptrs,this->offsetscomp);
+#else
+    ptr0 = Bitpack64_offsetptr(&end0,oligo,this->gammaptrs,this->offsetscomp);
+#endif
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -2500,28 +3086,51 @@ Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int d
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-      positions_move_absolute(this->positions_fd,ptr0);
+#ifdef LARGE_GENOMES
+      positions_move_absolute_1(this->positions_high_fd,ptr0);
+      positions_move_absolute_4(this->positions_low_fd,ptr0);
+      positions_read_multiple_large(this->positions_high_fd,this->positions_low_fd,positions,*nentries);
+#else
+      positions_move_absolute_4(this->positions_fd,ptr0);
       positions_read_multiple(this->positions_fd,positions,*nentries);
-
+#endif
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
     } else if (this->positions_access == ALLOCATED) {
+#ifdef LARGE_GENOMES
       for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
-	positions[i++] = this->positions[ptr] + diagterm;
-      }
-
-    } else {
-
-#ifdef WORDS_BIGENDIAN
-      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
-	positions[i++] = Bigendian_convert_univcoord(this->positions[ptr]) + diagterm;
+	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + this->positions_low[ptr] + diagterm;
       }
 #else
       for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
 	positions[i++] = this->positions[ptr] + diagterm;
       }
+#endif
+
+    } else {
+
+#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + Bigendian_convert_uint(this->positions_low[ptr]) + diagterm;
+      }
+#else
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = Bigendian_convert_univcoord(this->positions[ptr]) + diagterm;
+      }
+#endif
+#else
+#ifdef LARGE_GENOMES
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + this->positions_low[ptr] + diagterm;
+      }
+#else
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = this->positions[ptr] + diagterm;
+      }
+#endif
 #endif
     }
   }
@@ -2561,7 +3170,11 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,oligo);
+#ifdef LARGE_GENOMES
+    ptr0 = Bitpack64_offsetptr_huge(&end0,oligo,this->offsetspages,this->gammaptrs,this->offsetscomp);
+#else
+    ptr0 = Bitpack64_offsetptr(&end0,oligo,this->gammaptrs,this->offsetscomp);
+#endif
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -2594,28 +3207,52 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->positions_read_mutex);
 #endif
-      positions_move_absolute(this->positions_fd,ptr0);
+#ifdef LARGE_GENOMES
+      positions_move_absolute_1(this->positions_high_fd,ptr0);
+      positions_move_absolute_4(this->positions_low_fd,ptr0);
+      positions_read_multiple_large(this->positions_high_fd,this->positions_low_fd,positions,*nentries);
+#else
+      positions_move_absolute_4(this->positions_fd,ptr0);
       positions_read_multiple(this->positions_fd,positions,*nentries);
+#endif
 
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
     } else if (this->positions_access == ALLOCATED) {
+#ifdef LARGE_GENOMES
       for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
-	positions[i++] = this->positions[ptr] + diagterm;
-      }
-
-    } else {
-
-#ifdef WORDS_BIGENDIAN
-      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
-	positions[i++] = Bigendian_convert_univcoord(this->positions[ptr]) + diagterm;
+	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + this->positions_low[ptr] + diagterm;
       }
 #else
       for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
 	positions[i++] = this->positions[ptr] + diagterm;
       }
+#endif
+
+    } else {
+
+#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + Bigendian_convert_uint(this->positions_low[ptr]) + diagterm;
+      }
+#else
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = Bigendian_convert_univcoord(this->positions[ptr]) + diagterm;
+      }
+#endif
+#else
+#ifdef LARGE_GENOMES
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + this->positions_low[ptr] + diagterm;
+      }
+#else
+      for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
+	positions[i++] = this->positions[ptr] + diagterm;
+      }
+#endif
 #endif
     }
   }
@@ -2636,6 +3273,8 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
  *   Create procedure -- for user-provided genomic segment
  ************************************************************************/
 
+#if defined(UTILITYP) || defined(LARGE_GENOMES)
+#else
 T
 Indexdb_new_segment (char *genomicseg,
 #ifdef PMAP
@@ -2666,21 +3305,24 @@ Indexdb_new_segment (char *genomicseg,
 
 #ifdef PMAP
   oligospace = power(alphabet_size,index1part_aa);
+  between_counter[0] = between_counter[1] = between_counter[2] = 0;
+  in_counter[0] = in_counter[1] = in_counter[2] = 0;
+  new->index1part = index1part_aa;
 #else
   mask = ~(~0UL << 2*index1part);
   oligospace = power(4,index1part);
-  new->index1interval = 1;
+  new->index1part = index1part;
 #endif
+  new->index1interval = 1;
 
   new->compression_type = NO_COMPRESSION;
-  new->index1part = index1part;
 
   new->gammaptrs = (Gammaptr_T *) CALLOC(oligospace+1,sizeof(Gammaptr_T));
   for (oligoi = 0; oligoi <= oligospace; oligoi++) {
     new->gammaptrs[oligoi] = oligoi;
   }
 
-  new->offsetscomp = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
+  new->offsetscomp = (Offsetscomp_T *) CALLOC(oligospace+1,sizeof(Offsetscomp_T));
 
   p = genomicseg;
   while ((c = *(p++)) != '\0') {
@@ -2795,7 +3437,7 @@ Indexdb_new_segment (char *genomicseg,
   frame = -1;
   between_counter[0] = between_counter[1] = between_counter[2] = 0;
   in_counter[0] = in_counter[1] = in_counter[2] = 0;
-  high = low = 0UL;
+  high = low = 0U;
 #else
   between_counter = in_counter = 0;
   oligo = 0UL;
@@ -2915,6 +3557,7 @@ Indexdb_new_segment (char *genomicseg,
 
   return new;
 }
+#endif
 
 
 int

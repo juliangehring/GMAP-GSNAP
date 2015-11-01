@@ -1,4 +1,4 @@
-/* $Id: substring.h 110466 2013-10-09 00:29:37Z twu $ */
+/* $Id: substring.h 131817 2014-03-28 23:19:42Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -65,7 +65,7 @@ Substring_contains_p (T this, int querypos);
 extern void
 Substring_print_ends (T this, int chrnum);
 extern int
-Substring_compare (T substring1, T substring2);
+Substring_compare (T substring1, T substring2, int alias1, int alias2, Chrpos_T chrlength1, Chrpos_T chrlength2);
 extern bool
 Substring_overlap_p (T substring1, T substring2);
 extern Chrpos_T
@@ -126,6 +126,8 @@ extern int
 Substring_querystart_orig (T this);
 extern int
 Substring_queryend (T this);
+extern int
+Substring_queryend_orig (T this);
 extern int
 Substring_querylength (T this);
 extern int

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 100259 2013-07-02 23:46:07Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 131818 2014-03-28 23:20:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -119,7 +119,12 @@ typedef struct Batch_T *Batch_T;
 struct Batch_T {
   int nentries;
   Univcoord_T position;
+#ifdef LARGE_GENOMES
+  unsigned char *positionptr_high;
+  UINT4 *positionptr_low;
+#else
   Univcoord_T *positionptr;
+#endif
 };
 
 typedef struct Header_T *Header_T;
@@ -188,6 +193,12 @@ check_heap_even (Batch_T *heap, int heapsize) {
 
 #define READ_THEN_WRITE 1
 
+#ifdef LARGE_GENOMES
+static unsigned char sentinel_position_high = (unsigned char) -1;
+static UINT4 sentinel_position_low = (UINT4) -1;
+#endif
+
+
 static Univcoord_T *
 merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int nentries, int diagterm) {
   Univcoord_T *positions, *ptr, position, last_position, this_position;
@@ -212,7 +223,9 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
   for (i = 0; i < 16; i++) {
     batch = &(batchpool[i]);
     if (batch->nentries > 0) {
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      batch->position = (((Univcoord_T) *batch->positionptr_high++) << 32) + (*batch->positionptr_low++);
+#elif defined(WORDS_BIGENDIAN)
       batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
@@ -222,7 +235,12 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
   }
 
   sentinel_struct.position = (Univcoord_T) -1; /* infinity */
+#ifdef LARGE_GENOMES
+  sentinel_struct.positionptr_high = &sentinel_position_high;
+  sentinel_struct.positionptr_low = &sentinel_position_low;
+#else
   sentinel_struct.positionptr = &(sentinel_struct.position);
+#endif
   sentinel = &sentinel_struct;
 
   for (i = heapsize+1; i <= 16; i++) {
@@ -253,7 +271,9 @@ merge_batches_one_heap_16_existing (int *nmerged, struct Batch_T *batchpool, int
 
     } else {
       /* Advance heap, and use this batch for insertion */
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      batch->position = (((Univcoord_T) *batch->positionptr_high++) << 32) + (*batch->positionptr_low++);
+#elif defined(WORDS_BIGENDIAN)
       batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
@@ -418,7 +438,9 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
   for (i = 0; i < 4; i++) {
     batch = &(batchpool[i]);
     if (batch->nentries > 0) {
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      batch->position = (((Univcoord_T) *batch->positionptr_high++) << 32) + (*batch->positionptr_low++);
+#elif defined(WORDS_BIGENDIAN)
       batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
@@ -428,7 +450,12 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
   }
 
   sentinel_struct.position = (Univcoord_T) -1; /* infinity */
+#ifdef LARGE_GENOMES
+  sentinel_struct.positionptr_high = &sentinel_position_high;
+  sentinel_struct.positionptr_low = &sentinel_position_low;
+#else
   sentinel_struct.positionptr = &(sentinel_struct.position);
+#endif
   sentinel = &sentinel_struct;
 
   for (i = heapsize+1; i <= 4; i++) {
@@ -460,7 +487,9 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
 
     } else {
       /* Advance heap, and use this batch for insertion */
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      batch->position = (((Univcoord_T) *batch->positionptr_high++) << 32) + (*batch->positionptr_low++);
+#elif defined(WORDS_BIGENDIAN)
       batch->position = Bigendian_convert_univcoord(*batch->positionptr++);
 #else
       batch->position = *batch->positionptr++;
@@ -554,6 +583,7 @@ merge_batches_one_heap_4_existing (int *nmerged, struct Batch_T *batchpool, int 
  *  The following positions functions are take from indexdb.c
  ************************************************************************/
 
+#ifndef LARGE_GENOMES
 static void
 positions_move_absolute (int positions_fd, Positionsptr_T ptr) {
   off_t offset = ptr*((off_t) sizeof(Univcoord_T));
@@ -561,7 +591,7 @@ positions_move_absolute (int positions_fd, Positionsptr_T ptr) {
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
     fprintf(stderr,"Attempted to do lseek on offset %u*%lu=%lu\n",
 	    ptr,sizeof(Univcoord_T),(long unsigned int) offset);
-    perror("Error in indexdb.c, positions_move_absolute");
+    perror("Error in indexdb.c, positions_move_absolute_4");
     exit(9);
   }
   return;
@@ -606,7 +636,67 @@ positions_read_multiple (int positions_fd, Univcoord_T *values, int n) {
 
   return;
 }
+#endif
 
+
+
+#ifdef LARGE_GENOMES
+static UINT4 *
+point_one_shift (int *nentries, unsigned char **positions_high, T this, Storedoligomer_T subst) {
+  UINT4 *positions_low;
+  Positionsptr_T ptr0, end0;
+#ifdef DEBUG
+  int i;
+#endif
+
+  if (this->compression_type == NO_COMPRESSION) {
+#ifdef WORDS_BIGENDIAN
+    abort();
+#else
+    ptr0 = this->offsetscomp[subst];
+    end0 = this->offsetscomp[subst+1];
+#endif
+
+  } else if (this->compression_type == BITPACK64_COMPRESSION) {
+    ptr0 = Bitpack64_offsetptr_huge(&end0,subst,this->offsetspages,this->gammaptrs,this->offsetscomp);
+
+  } else if (this->compression_type == GAMMA_COMPRESSION) {
+#ifdef WORDS_BIGENDIAN
+    abort();
+#else
+    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+#endif
+  }
+
+
+  debug(printf("point_one_shift: %08X %u %u\n",subst,ptr0,end0));
+
+  if ((*nentries = end0 - ptr0) == 0) {
+    *positions_high = (unsigned char *) NULL;
+    return (UINT4 *) NULL;
+  } else {
+    if (this->positions_access == FILEIO) {
+      abort();
+
+    } else {
+      /* ALLOCATED or MMAPPED */
+      *positions_high = &(this->positions_high[ptr0]);
+      positions_low = &(this->positions_low[ptr0]);
+    }
+  }
+      
+  debug(
+	printf("%d entries:",*nentries);
+	for (i = 0; i < *nentries; i++) {
+	  printf(" %u",(Univcoord_T) positions_high[i] << 32 + positions_low[i]);
+	}
+	printf("\n");
+	);
+  
+  return positions_low;
+}
+
+#else
 
 static Univcoord_T *
 point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
@@ -631,7 +721,7 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,subst);
+    ptr0 = Bitpack64_offsetptr(&end0,subst,this->gammaptrs,this->offsetscomp);
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -658,7 +748,6 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
 #endif
       positions_move_absolute(this->positions_fd,ptr0);
       positions_read_multiple(this->positions_fd,positions,*nentries);
-
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
@@ -690,7 +779,7 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   return positions;
 }
 
-
+#endif
 
 
 
@@ -729,6 +818,7 @@ shortoligo_nt (Storedoligomer_T oligo, int oligosize) {
 #endif
 
 
+#ifdef LARGE_GENOMES
 static int
 count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
   Positionsptr_T ptr0, end0;
@@ -748,8 +838,41 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr_only(subst);
-    end0 = Bitpack64_offsetptr_only(subst+nadjacent);
+    ptr0 = Bitpack64_offsetptr_only_huge(subst,this->offsetspages,this->gammaptrs,this->offsetscomp);
+    end0 = Bitpack64_offsetptr_only_huge(subst+nadjacent,this->offsetspages,this->gammaptrs,this->offsetscomp);
+
+  } else {
+    abort();
+  }
+
+  debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
+	       subst,shortoligo_nt(subst,index1part),end0,ptr0,end0-ptr0));
+  return (end0 - ptr0);
+
+}
+
+#else
+static int
+count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
+  Positionsptr_T ptr0, end0;
+
+  if (this->compression_type == NO_COMPRESSION) {
+#ifdef WORDS_BIGENDIAN
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = this->offsetscomp[subst];
+      end0 = this->offsetscomp[subst+nadjacent];
+    } else {
+      ptr0 = Bigendian_convert_uint(this->offsetscomp[subst]);
+      end0 = Bigendian_convert_uint(this->offsetscomp[subst+nadjacent]);
+    }
+#else
+    ptr0 = this->offsetscomp[subst];
+    end0 = this->offsetscomp[subst+nadjacent];
+#endif
+
+  } else if (this->compression_type == BITPACK64_COMPRESSION) {
+    ptr0 = Bitpack64_offsetptr_only(subst,this->gammaptrs,this->offsetscomp);
+    end0 = Bitpack64_offsetptr_only(subst+nadjacent,this->gammaptrs,this->offsetscomp);
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
@@ -775,6 +898,7 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
 
 }
 
+#endif
 
 
 /************************************************************************
@@ -940,7 +1064,12 @@ Compoundpos_init_positions_free (bool positions_fileio_p) {
 struct Compoundpos_T {
   int n;
 
+#ifdef LARGE_GENOMES
+  unsigned char *positions_high[16];
+  UINT4 *positions_low[16];
+#else
   Univcoord_T *positions[16];
+#endif
   int npositions[16];
 
   struct Batch_T batchpool[16];
@@ -949,7 +1078,12 @@ struct Compoundpos_T {
   struct Batch_T sentinel_struct;
   Batch_T sentinel;
 
+#ifdef LARGE_GENOMES
+  unsigned char *positions_high_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
+  UINT4 *positions_low_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
+#else
   Univcoord_T *positions_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
+#endif
   int npositions_reset[16]; /* altered by find_nomiss_aux and find_onemiss_aux */
 };
 
@@ -959,7 +1093,12 @@ Compoundpos_set (Compoundpos_T compoundpos) {
   int i;
 
   for (i = 0; i < compoundpos->n; i++) {
+#ifdef LARGE_GENOMES
+    compoundpos->positions_high_reset[i] = compoundpos->positions_high[i];
+    compoundpos->positions_low_reset[i] = compoundpos->positions_low[i];
+#else
     compoundpos->positions_reset[i] = compoundpos->positions[i];
+#endif
     compoundpos->npositions_reset[i] = compoundpos->npositions[i];
   }
   return;
@@ -970,7 +1109,12 @@ Compoundpos_reset (Compoundpos_T compoundpos) {
   int i;
 
   for (i = 0; i < compoundpos->n; i++) {
+#ifdef LARGE_GENOMES
+    compoundpos->positions_high[i] = compoundpos->positions_high_reset[i];
+    compoundpos->positions_low[i] = compoundpos->positions_low_reset[i];
+#else
     compoundpos->positions[i] = compoundpos->positions_reset[i];
+#endif
     compoundpos->npositions[i] = compoundpos->npositions_reset[i];
   }
   return;
@@ -1001,7 +1145,10 @@ Compoundpos_dump (Compoundpos_T compoundpos, int diagterm) {
 
   for (i = 0; i < compoundpos->n; i++) {
     for (j = 0; j < compoundpos->npositions[i]; j++) {
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      printf(" compound%d.%d:%lu+%d\n",
+	     i,j,((Univcoord_T) compoundpos->positions_high[i][j] << 32) + compoundpos->positions_low[i][j],diagterm);
+#elif defined(WORDS_BIGENDIAN)
       printf(" compound%d.%d:%u+%d\n",
 	     i,j,Bigendian_convert_univcoord(compoundpos->positions[i][j]),diagterm);
 #else
@@ -1020,7 +1167,12 @@ Compoundpos_free (Compoundpos_T *old) {
   if (*old) {
     if (free_positions_p == true) {
       for (i = 0; i < (*old)->n; i++) {
+#ifdef LARGE_GENOMES
+	FREE((*old)->positions_high[i]);
+	FREE((*old)->positions_low[i]);
+#else
 	FREE((*old)->positions[i]);
+#endif
       }
     }
 
@@ -1048,7 +1200,12 @@ Indexdb_compoundpos_left_subst_2 (T this, Storedoligomer_T oligo) {
   /* Right shift */
   base = (oligo >> 4);
   for (i = 0; i < 16; i++, base += left_subst) {
+#ifdef LARGE_GENOMES
+    compoundpos->positions_low[i] =
+      point_one_shift(&(compoundpos->npositions[i]),&(compoundpos->positions_high[i]),this,base);
+#else
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
+#endif
   }
 
   return compoundpos;
@@ -1069,7 +1226,12 @@ Indexdb_compoundpos_left_subst_1 (T this, Storedoligomer_T oligo) {
   /* Zero shift */
   base = (oligo >> 2);
   for (i = 0; i < 4; i++, base += top_subst) {
+#ifdef LARGE_GENOMES
+    compoundpos->positions_low[i] =
+      point_one_shift(&(compoundpos->npositions[i]),&(compoundpos->positions_high[i]),this,base);
+#else
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
+#endif
   }
 
   return compoundpos;
@@ -1090,7 +1252,12 @@ Indexdb_compoundpos_right_subst_2 (T this, Storedoligomer_T oligo) {
   /* Left shift */
   base = (oligo << 4) & kmer_mask;
   for (i = 0; i < 16; i++, base += right_subst) {
+#ifdef LARGE_GENOMES
+    compoundpos->positions_low[i] =
+      point_one_shift(&(compoundpos->npositions[i]),&(compoundpos->positions_high[i]),this,base);
+#else
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
+#endif
   }
 
   return compoundpos;
@@ -1111,7 +1278,12 @@ Indexdb_compoundpos_right_subst_1 (T this, Storedoligomer_T oligo) {
   /* Zero shift */
   base = (oligo << 2) & kmer_mask;
   for (i = 0; i < 4; i++, base += right_subst) {
+#ifdef LARGE_GENOMES
+    compoundpos->positions_low[i] =
+      point_one_shift(&(compoundpos->npositions[i]),&(compoundpos->positions_high[i]),this,base);
+#else
     compoundpos->positions[i] = point_one_shift(&(compoundpos->npositions[i]),this,base);
+#endif
   }
 
   return compoundpos;
@@ -1120,6 +1292,46 @@ Indexdb_compoundpos_right_subst_1 (T this, Storedoligomer_T oligo) {
 
 
 /************************************************************************/
+
+#ifdef LARGE_GENOMES
+static int
+binary_search (int lowi, int highi, unsigned char *positions_high, UINT4 *positions_low, Univcoord_T goal) {
+  bool foundp = false;
+  int middlei;
+  Univcoord_T position;
+
+#ifdef NOBINARY
+  return lowi;
+#endif
+
+  if (goal == 0U) {
+    return lowi;
+  }
+
+  while (!foundp && lowi < highi) {
+    middlei = lowi + ((highi - lowi) / 2);
+    position = ((Univcoord_T) positions_high[middlei] << 32) + positions_low[middlei];
+    debug2(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		  lowi,(positions_high[lowi] << 32) + positions_low[lowi],
+		  middlei,position,
+		  highi,(positions_high[highi] << 32) + positions_low[highi],goal));
+    if (goal < position) {
+      highi = middlei;
+    } else if (goal > position) {
+      lowi = middlei + 1;
+    } else {
+      foundp = true;
+    }
+  }
+
+  if (foundp == true) {
+    return middlei;
+  } else {
+    return highi;
+  }
+}
+
+#else
 
 static int
 binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
@@ -1135,8 +1347,8 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   }
 
   while (!foundp && lowi < highi) {
+    middlei = lowi + ((highi - lowi) / 2);
 #ifdef WORDS_BIGENDIAN
-    middlei = (lowi+highi)/2;
     debug2(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		  lowi,Bigendian_convert_univcoord(positions[lowi]),
 		  middlei,Bigendian_convert_univcoord(positions[middlei]),
@@ -1149,7 +1361,6 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
       foundp = true;
     }
 #else
-    middlei = (lowi+highi)/2;
     debug2(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		  lowi,positions[lowi],middlei,positions[middlei],
 		  highi,positions[highi],goal));
@@ -1170,6 +1381,8 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   }
 }
 
+#endif
+
 
 void
 Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm) {
@@ -1179,11 +1392,24 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
   compoundpos->heapsize = 0;
   for (i = 0; i < compoundpos->n; i++) {
     batch = &(compoundpos->batchpool[i]);
+#ifdef LARGE_GENOMES
+    batch->positionptr_high = compoundpos->positions_high[i];
+    batch->positionptr_low = compoundpos->positions_low[i];
+#else
     batch->positionptr = compoundpos->positions[i];
+#endif
     batch->nentries = compoundpos->npositions[i];
     if (diagterm < querylength) {
       startbound = querylength - diagterm;
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      while (batch->nentries > 0 && (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low) < (unsigned int) startbound) {
+	debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Compoundpos_heap_init)\n",
+		       ((Univcoord_T) *batch->positionptr_high << 32) + *batch->positionptr_low));
+	++batch->positionptr_high;
+	++batch->positionptr_low;
+	--batch->nentries;
+      }
+#elif defined(WORDS_BIGENDIAN)
       while (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < (unsigned int) startbound) {
 	debug11(printf("Eliminating diagonal %u as straddling beginning of genome (Compoundpos_heap_init)\n",
 		       Bigendian_convert_univcoord(*batch->positionptr)));
@@ -1200,7 +1426,9 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
 #endif
     }
     if (batch->nentries > 0) {
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      batch->position = (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low);
+#elif defined(WORDS_BIGENDIAN)
       batch->position = Bigendian_convert_univcoord(*batch->positionptr);
 #else
       batch->position = *batch->positionptr;
@@ -1210,7 +1438,12 @@ Compoundpos_heap_init (Compoundpos_T compoundpos, int querylength, int diagterm)
   }
 
   compoundpos->sentinel_struct.position = (Univcoord_T) -1; /* infinity */
+#ifdef LARGE_GENOMES
+  compoundpos->sentinel_struct.positionptr_high = &sentinel_position_high;
+  compoundpos->sentinel_struct.positionptr_low = &sentinel_position_low;
+#else
   compoundpos->sentinel_struct.positionptr = &(compoundpos->sentinel_struct.position);
+#endif
   compoundpos->sentinel = &compoundpos->sentinel_struct;
 
   for (i = compoundpos->heapsize+1; i <= compoundpos->n; i++) {
@@ -1253,7 +1486,25 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Univcoord_T local_goa
     debug6(heap_even_dump(heap,compoundpos->heapsize));
 
     batch = heap[i];
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+    if (batch->nentries > 0 && (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low) < local_goal) {
+      j = 1;
+      while (j < batch->nentries &&
+	     ((Univcoord_T) batch->positionptr_high[j] << 32) + batch->positionptr_low[j] < local_goal) {
+	j <<= 1;		/* gallop by 2 */
+      }
+      if (j >= batch->nentries) {
+	j = binary_search(j >> 1,batch->nentries,batch->positionptr_high,batch->positionptr_low,local_goal);
+      } else {
+	j = binary_search(j >> 1,j,batch->positionptr_high,batch->positionptr_low,local_goal);
+      }
+      batch->positionptr_high += j;
+      batch->positionptr_low += j;
+      batch->nentries -= j;
+      debug6(printf("binary search jump %d positions to %d:%u\n",
+		    j,batch->nentries,(((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low)));
+    }
+#elif defined(WORDS_BIGENDIAN)
     if (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < local_goal) {
       j = 1;
       while (j < batch->nentries && Bigendian_convert_univcoord(batch->positionptr[j]) < local_goal) {
@@ -1293,7 +1544,13 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Univcoord_T local_goa
       compoundpos->heap[i] = compoundpos->heap[compoundpos->heapsize];
       --compoundpos->heapsize;
 
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+    } else if (((Univcoord_T) *batch->positionptr_high << 32) + (*batch->positionptr_low) > local_goal) {
+      /* Already advanced past goal, so continue with loop */
+      debug6(printf("Setting emptyp to be false\n"));
+      *emptyp = false;
+      i++;
+#elif defined(WORDS_BIGENDIAN)
     } else if (Bigendian_convert_univcoord(*batch->positionptr) > local_goal) {
       /* Already advanced past goal, so continue with loop */
       debug6(printf("Setting emptyp to be false\n"));
@@ -1310,12 +1567,19 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Univcoord_T local_goa
       /* Found goal, so return */
       debug6(printf("Setting emptyp to be false\n"));
       *emptyp = false;
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      debug6(printf("Found! Returning position %lu\n",(((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low)));
+#elif defined(WORDS_BIGENDIAN)
       debug6(printf("Found! Returning position %lu\n",Bigendian_convert_univcoord(*batch->positionptr)));
 #else
       debug6(printf("Found! Returning position %lu\n",*batch->positionptr));
 #endif
+#ifdef LARGE_GENOMES
+      ++batch->positionptr_high;
+      ++batch->positionptr_low;
+#else
       ++batch->positionptr;
+#endif
       --batch->nentries;
       return true;
     }
@@ -1345,7 +1609,26 @@ Compoundpos_search (Univcoord_T *value, Compoundpos_T compoundpos, Univcoord_T l
     while (compoundpos->heapsize > 0 && (batch = heap[1])->position < local_goal) {
       debug3(printf("Compoundpos_search iteration, heapsize %d:\n",compoundpos->heapsize));
       debug3(heap_even_dump(heap,compoundpos->heapsize));
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      if (batch->nentries > 0 && (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low) < local_goal) {
+	j = 1;
+	while (j < batch->nentries &&
+	       ((Univcoord_T) batch->positionptr_high[j] << 32) + batch->positionptr_low[j] < local_goal) {
+	  j <<= 1;		/* gallop by 2 */
+	}
+	if (j >= batch->nentries) {
+	  j = binary_search(j >> 1,batch->nentries,batch->positionptr_high,batch->positionptr_low,local_goal);
+	} else {
+	  j = binary_search(j >> 1,j,batch->positionptr_high,batch->positionptr_low,local_goal);
+	}
+	batch->positionptr_high += j;
+	batch->positionptr_low += j;
+	batch->nentries -= j;
+	debug3(printf("binary search jump %d positions to %d:%u\n",
+		      j,batch->nentries,(((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low)));
+      }
+      batch->position = (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low);
+#elif defined(WORDS_BIGENDIAN)
       if (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < local_goal) {
 	j = 1;
 	while (j < batch->nentries && Bigendian_convert_univcoord(batch->positionptr[j]) < local_goal) {
@@ -1420,7 +1703,26 @@ Compoundpos_search (Univcoord_T *value, Compoundpos_T compoundpos, Univcoord_T l
     while (compoundpos->heapsize > 0 && (batch = heap[1])->position < local_goal) {
       debug3(printf("Compoundpos_search iteration, heapsize %d:\n",compoundpos->heapsize));
       debug3(heap_even_dump(heap,compoundpos->heapsize));
-#ifdef WORDS_BIGENDIAN
+#ifdef LARGE_GENOMES
+      if (batch->nentries > 0 && (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low) < local_goal) {
+	j = 1;
+	while (j < batch->nentries &&
+	       ((Univcoord_T) batch->positionptr_high[j] << 32) + batch->positionptr_low[j] < local_goal) {
+	  j <<= 1;		/* gallop by 2 */
+	}
+	if (j >= batch->nentries) {
+	  j = binary_search(j >> 1,batch->nentries,batch->positionptr_high,batch->positionptr_low,local_goal);
+	} else {
+	  j = binary_search(j >> 1,j,batch->positionptr_high,batch->positionptr_low,local_goal);
+	}
+	batch->positionptr_high += j;
+	batch->positionptr_low += j;
+	batch->nentries -= j;
+	debug3(printf("binary search jump %d positions to %d:%u\n",
+		      j,batch->nentries,(((Univcoord_T) *batch->positionptr_high) << 32 + (*batch->positionptr_low))));
+      }
+      batch->position = (((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low);
+#elif defined(WORDS_BIGENDIAN)
       if (batch->nentries > 0 && Bigendian_convert_univcoord(*batch->positionptr) < local_goal) {
 	j = 1;
 	while (j < batch->nentries && Bigendian_convert_univcoord(batch->positionptr[j]) < local_goal) {
@@ -1534,7 +1836,12 @@ Indexdb_merge_compoundpos (int *nmerged, Compoundpos_T compoundpos, int diagterm
 
   for (i = 0; i < compoundpos->n; i++) {
     batch = &(batchpool[i]);
+#ifdef LARGE_GENOMES
+    batch->positionptr_high = compoundpos->positions_high[i];
+    batch->positionptr_low = compoundpos->positions_low[i];
+#else
     batch->positionptr = compoundpos->positions[i];
+#endif
     batch->nentries = compoundpos->npositions[i];
     debug(printf(" %d",batch->nentries));
     nentries += batch->nentries;
@@ -1573,7 +1880,11 @@ Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
 #endif
 
   } else if (this->compression_type == BITPACK64_COMPRESSION) {
-    ptr0 = Bitpack64_offsetptr(&end0,oligo);
+#ifdef LARGE_GENOMES
+    ptr0 = Bitpack64_offsetptr_huge(&end0,oligo,this->offsetspages,this->gammaptrs,this->offsetscomp);
+#else
+    ptr0 = Bitpack64_offsetptr(&end0,oligo,this->gammaptrs,this->offsetscomp);
+#endif
 
   } else if (this->compression_type == GAMMA_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN

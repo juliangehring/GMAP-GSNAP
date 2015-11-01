@@ -1,4 +1,4 @@
-/* $Id: pair.h 109763 2013-10-02 17:12:58Z twu $ */
+/* $Id: pair.h 128289 2014-02-22 01:10:57Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -61,6 +61,8 @@ extern List_T
 Pair_protect_end5 (List_T pairs, Pairpool_T pairpool);
 extern List_T
 Pair_protect_end3 (List_T pairs, Pairpool_T pairpool);
+extern void
+Pair_protect_list (List_T pairs);
 
 extern T
 Pair_new (int querypos, Chrpos_T genomepos, char cdna, char comp, char genome);
@@ -125,7 +127,7 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 		 T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		 int translation_end, 
 		 int querylength_given, int skiplength, int matches, int mismatches, 
-		 int qindels, int tindels, bool watsonp, int cdna_direction,
+		 int qindels, int tindels, int unknowns, bool watsonp, int cdna_direction,
 		 bool gff_gene_format_p, bool gff_estmatch_format_p, char *sourcename);
 
 extern void
@@ -288,7 +290,7 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 extern Chrpos_T
 Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
 		     struct T *pairarray, int npairs, int querylength,
-		     bool watsonp, bool firstp);
+		     bool watsonp, bool firstp, bool hide_soft_clips_p);
 #endif
 
 extern Chrpos_T

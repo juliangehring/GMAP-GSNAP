@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 109572 2013-09-30 22:57:27Z twu $";
+static char rcsid[] = "$Id: access.c 129929 2014-03-13 03:27:49Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -181,8 +181,35 @@ Access_fileio_rw (char *filename) {
 
 #ifndef WORDS_BIGENDIAN
 /* Needed as a test on Macintosh machines */
+static unsigned char
+first_nonzero_char (size_t *i, char *filename) {
+  size_t len;
+  FILE *fp;
+  unsigned char value = 0;
+  void *p;
+
+  len = (size_t) Access_filesize(filename);
+
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
+    exit(9);
+  } else {
+    *i = 0;
+    p = (void *) &value;
+    while ((size_t) *i < len && fread(p,sizeof(unsigned char),1,fp) > 0 &&
+	   value == 0) {
+      *i += 1;
+    }
+    if (value == 0) {
+      *i = -1;
+    }
+    fclose(fp);
+    return value;
+  }
+}
+
 static UINT4
-first_nonzero (size_t *i, char *filename) {
+first_nonzero_uint (size_t *i, char *filename) {
   size_t len;
   FILE *fp;
   UINT4 value = 0;
@@ -207,6 +234,33 @@ first_nonzero (size_t *i, char *filename) {
     return value;
   }
 }
+
+static UINT8
+first_nonzero_uint8 (size_t *i, char *filename) {
+  size_t len;
+  FILE *fp;
+  UINT8 value = 0;
+  void *p;
+
+  len = (size_t) Access_filesize(filename);
+
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
+    exit(9);
+  } else {
+    *i = 0;
+    p = (void *) &value;
+    while ((size_t) *i < len && fread(p,sizeof(UINT8),1,fp) > 0 &&
+	   value == 0) {
+      *i += 1;
+    }
+    if (value == 0) {
+      *i = -1;
+    }
+    fclose(fp);
+    return value;
+  }
+}
 #endif
 
 
@@ -218,11 +272,17 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   void *memory;
   FILE *fp;
   Stopwatch_T stopwatch;
-  UINT4 value;
+  unsigned char value1;
+  UINT4 value4;
+  UINT8 value8;
   void *p;
   size_t i;
 
   *len = (size_t) Access_filesize(filename);
+  if (*len == 0) {
+    *seconds = 0.0;
+    return (void *) NULL;
+  }
 
   if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
@@ -231,7 +291,9 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
 
   Stopwatch_start(stopwatch = Stopwatch_new());
   memory = (void *) MALLOC(*len);
-  if (eltsize == 4) {
+  if (eltsize == 1) {
+    FREAD_CHARS(memory,(*len)/eltsize,fp);
+  } else if (eltsize == 4) {
     FREAD_UINTS(memory,(*len)/eltsize,fp);
   } else if (eltsize == 8) {
     FREAD_UINT8S(memory,(*len)/eltsize,fp);
@@ -242,10 +304,36 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   fclose(fp);
 
 #ifndef WORDS_BIGENDIAN
-  if (eltsize == 4) {
+  if (eltsize == 1) {
     /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
-    value = first_nonzero(&i,filename);
-    if (((UINT4 *) memory)[i] != value) {
+    value1 = first_nonzero_char(&i,filename);
+    if (((unsigned char *) memory)[i] != value1) {
+      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
+#if 0
+      fprintf(stderr,"...reading file in smaller batches...");
+      fp = FOPEN_READ_BINARY(filename);
+
+      for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
+	p = (void *) &(((unsigned char *) memory)[i]);
+	fread(p,sizeof(unsigned char),FREAD_BATCH,fp);
+      }
+
+      if (i < (*len)/eltsize) {
+	p = (void *) &(((unsigned char *) memory)[i]);
+	fread(p,sizeof(unsigned char),(*len)/eltsize - i,fp);
+      }
+
+      fclose(fp);
+#else
+      fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
+      exit(9);
+#endif
+    }
+
+  } else if (eltsize == 4) {
+    /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
+    value4 = first_nonzero_uint(&i,filename);
+    if (((UINT4 *) memory)[i] != value4) {
       fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
 #if 0
       fprintf(stderr,"...reading file in smaller batches...");
@@ -266,8 +354,34 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
       fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
       exit(9);
 #endif
-
     }
+
+  } else if (eltsize == 8) {
+    /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
+    value8 = first_nonzero_uint8(&i,filename);
+    if (((UINT8 *) memory)[i] != value8) {
+      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
+#if 0
+      fprintf(stderr,"...reading file in smaller batches...");
+      fp = FOPEN_READ_BINARY(filename);
+
+      for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
+	p = (void *) &(((UINT8 *) memory)[i]);
+	fread(p,sizeof(UINT8),FREAD_BATCH,fp);
+      }
+
+      if (i < (*len)/eltsize) {
+	p = (void *) &(((UINT8 *) memory)[i]);
+	fread(p,sizeof(UINT8),(*len)/eltsize - i,fp);
+      }
+
+      fclose(fp);
+#else
+      fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
+      exit(9);
+#endif
+    }
+
   }
 #endif
 
@@ -327,16 +441,12 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
 #endif
 
   if ((*len = length = Access_filesize(filename)) == 0U) {
-    fprintf(stderr,"Error: file %s is empty\n",filename);
-    exit(9);
-  } 
-
-  if ((*fd = open(filename,O_RDONLY,0764)) < 0) {
+    fprintf(stderr,"Warning: file %s is empty\n",filename);
+    memory = NULL;
+  } else if ((*fd = open(filename,O_RDONLY,0764)) < 0) {
     fprintf(stderr,"Error: can't open file %s with open for reading\n",filename);
     exit(9);
-  }
-
-  if (sizeof(size_t) <= 4 && length > MAX32BIT) {
+  } else if (sizeof(size_t) <= 4 && length > MAX32BIT) {
     debug(printf("Too big to mmap\n"));
     *len = 0;
     memory = NULL;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 101271 2013-07-12 02:44:39Z twu $";
+static char rcsid[] = "$Id: snpindex.c 121509 2013-12-13 21:56:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -66,8 +66,11 @@ static char rcsid[] = "$Id: snpindex.c 101271 2013-07-12 02:44:39Z twu $";
 #include "iit-read.h"
 #include "indexdb.h"
 #include "indexdb-write.h"
+#include "bitpack64-write.h"
 #include "getopt.h"
 
+#define POSITIONS8_HIGH_SHIFT 32
+#define POSITIONS8_LOW_MASK 0xFFFFFFFF
 
 #ifdef DEBUG
 #define debug(x) x
@@ -847,8 +850,11 @@ compute_positions (Positionsptr_T *offsets, IIT_T snps_iit, Univ_IIT_T chromosom
 
 
 static void
-merge_positions8 (FILE *positions_fp, UINT8 *start1, UINT8 *end1,
-		  UINT8 *start2, UINT8 *end2, Storedoligomer_T oligo, int index1part) {
+merge_positions8 (FILE *positions_high_fp, FILE *positions_low_fp,
+		  UINT8 *start1, UINT8 *end1, UINT8 *start2, UINT8 *end2, 
+		  Storedoligomer_T oligo, int index1part) {
+  unsigned char position8_high;
+  UINT4 position8_low;
   UINT8 *ptr1 = start1, *ptr2 = start2;
   char *nt;
 #ifdef WORDS_BIGENDIAN
@@ -857,6 +863,7 @@ merge_positions8 (FILE *positions_fp, UINT8 *start1, UINT8 *end1,
 
   while (ptr1 < end1 && ptr2 < end2) {
 #ifdef WORDS_BIGENDIAN
+    abort();
     position2 = Bigendian_convert_uint8(*ptr2);
     if (*ptr1 < position2) {
       FWRITE_UINT8(*ptr1,positions_fp);
@@ -879,10 +886,16 @@ merge_positions8 (FILE *positions_fp, UINT8 *start1, UINT8 *end1,
 #else
 
     if (*ptr1 < *ptr2) {
-      FWRITE_UINT8(*ptr1,positions_fp);
+      position8_high = *ptr1 >> POSITIONS8_HIGH_SHIFT;
+      position8_low = *ptr1 & POSITIONS8_LOW_MASK;
+      FWRITE_CHAR(position8_high,positions_high_fp);
+      FWRITE_UINT(position8_low,positions_low_fp);
       ptr1++;
     } else if (*ptr2 < *ptr1) {
-      FWRITE_UINT8(*ptr2,positions_fp);
+      position8_high = *ptr2 >> POSITIONS8_HIGH_SHIFT;
+      position8_low = *ptr2 & POSITIONS8_LOW_MASK;
+      FWRITE_CHAR(position8_high,positions_high_fp);
+      FWRITE_UINT(position8_low,positions_low_fp);
       ptr2++;
     } else {
       nt = shortoligo_nt(oligo,index1part);
@@ -899,7 +912,10 @@ merge_positions8 (FILE *positions_fp, UINT8 *start1, UINT8 *end1,
   }
 
   while (ptr1 < end1) {
-    FWRITE_UINT8(*ptr1,positions_fp);
+    position8_high = *ptr1 >> POSITIONS8_HIGH_SHIFT;
+    position8_low = *ptr1 & POSITIONS8_LOW_MASK;
+    FWRITE_CHAR(position8_high,positions_high_fp);
+    FWRITE_UINT(position8_low,positions_low_fp);
     ptr1++;
   }
 
@@ -910,7 +926,10 @@ merge_positions8 (FILE *positions_fp, UINT8 *start1, UINT8 *end1,
   }
 #else
   while (ptr2 < end2) {
-    FWRITE_UINT8(*ptr2,positions_fp);
+    position8_high = *ptr2 >> POSITIONS8_HIGH_SHIFT;
+    position8_low = *ptr2 & POSITIONS8_LOW_MASK;
+    FWRITE_CHAR(position8_high,positions_high_fp);
+    FWRITE_UINT(position8_low,positions_low_fp);
     ptr2++;
   }
 #endif
@@ -1004,9 +1023,12 @@ main (int argc, char *argv[]) {
   IIT_T snps_iit;
   Genome_T genome;
   Positionsptr_T *offsets, *snp_offsets, *ref_offsets;
+  size_t totalcounts, i;
 #ifdef EXTRA_ALLOCATION
   Positionsptr_T npositions;
 #endif
+  unsigned char *ref_positions8_high;
+  UINT4 *ref_positions8_low;
   UINT8 *snp_positions8, *ref_positions8;
   UINT4 *snp_positions4, *ref_positions4;
   Univcoord_T nblocks;
@@ -1019,9 +1041,9 @@ main (int argc, char *argv[]) {
   bool coord_values_8p;
   Filenames_T filenames;
   char *filename, *filename1, *filename2;
-  FILE *genome_fp, *genomebits_fp, *positions_fp, *ref_positions_fp;
-  int ref_positions_fd;
-  size_t ref_positions_len;
+  FILE *genome_fp, *genomebits_fp, *positions_high_fp, *positions_low_fp;
+  int ref_positions_high_fd, ref_positions_low_fd;
+  size_t ref_positions_high_len, ref_positions_low_len;
 #ifdef WORDS_BIGENDIAN
   Positionsptr_T offset1, offset2;
 #endif
@@ -1272,8 +1294,7 @@ main (int argc, char *argv[]) {
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
 #else
   if (compression_type == BITPACK64_COMPRESSION) {
-    Indexdb_write_bitpackptrs(filename1,filename2,offsets,oligospace,
-			      /*offsetscomp_blocksize*/power(4,index1part - offsetscomp_basesize));
+    Bitpack64_write_differential(/*ptrsfile*/filename1,/*compfile*/filename2,offsets,oligospace);
   } else if (compression_type == GAMMA_COMPRESSION) {
     Indexdb_write_gammaptrs(filename1,filename2,offsets,oligospace,
 			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
@@ -1289,40 +1310,78 @@ main (int argc, char *argv[]) {
 
 
   /* Read reference positions and merge */
-  if ((ref_positions_fp = FOPEN_READ_BINARY(filenames->positions_filename)) == NULL) {
-    fprintf(stderr,"Can't open file %s\n",filenames->positions_filename);
+#if 0
+  if ((positions_low_fp = FOPEN_READ_BINARY(filenames->positions_low_filename)) == NULL) {
+    fprintf(stderr,"Can't open file %s\n",filenames->positions_low_filename);
     exit(9);
   } else {
-    fclose(ref_positions_fp);
-  }
-
-#ifdef HAVE_MMAP
-  if (coord_values_8p == true) {
-    ref_positions8 = (UINT8 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					   filenames->positions_filename,sizeof(UINT8),/*randomp*/false);
-  } else {
-    ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					   filenames->positions_filename,sizeof(UINT4),/*randomp*/false);
-  }
-#else
-  if (coord_values_8p == true) {
-    ref_positions8 = (UINT8 *) Access_allocated(&ref_positions_len,&seconds,
-						filenames->positions_filename,sizeof(UINT8));
-  } else {
-    ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_len,&seconds,
-						filenames->positions_filename,sizeof(UINT4));
+    fclose(positions_low_fp);
   }
 #endif
 
+  if (coord_values_8p == true) {
+#ifdef HAVE_MMAP
+    ref_positions8_high = (unsigned char *) Access_mmap(&ref_positions_high_fd,&ref_positions_high_len,
+							filenames->positions_high_filename,sizeof(unsigned char),/*randomp*/false);
+    ref_positions8_low = (UINT4 *) Access_mmap(&ref_positions_low_fd,&ref_positions_low_len,
+					       filenames->positions_low_filename,sizeof(UINT4),/*randomp*/false);
+#else
+    ref_positions8_high = (unsigned char *) Access_allocated(&ref_positions_high_len,&seconds,
+							     filenames->positions_high_filename,sizeof(unsigned char));
+    ref_positions8_low = (UINT4 *) Access_allocated(&ref_positions_low_len,&seconds,
+						     filenames->positions_low_filename,sizeof(UINT4));
+#endif
+    /* Unpack */
+    totalcounts = ref_positions_high_len/sizeof(unsigned char);
+    if (totalcounts > 4294967295) {
+      fprintf(stderr,"Program not yet designed to handle huge genomes\n");
+      abort();
+    }
+    ref_positions8 = (UINT8 *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(UINT8));
+    for (i = 0; i < totalcounts; i++) {
+      ref_positions8[i] = ((UINT8) ref_positions8_high[i] << 32) + ref_positions8_low[i];
+    }
+#ifdef HAVE_MMAP
+    munmap((void *) ref_positions8_high,ref_positions_high_len);
+    munmap((void *) ref_positions8_low,ref_positions_low_len);
+    close(ref_positions_high_fd);
+    close(ref_positions_low_fd);
+#else
+    FREE(ref_positions8_high);
+    FREE(ref_positions8_low);
+#endif
 
-  filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(filenames->positions_basename_ptr)+
+  } else {
+#ifdef HAVE_MMAP
+    ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_low_fd,&ref_positions_low_len,
+					   filenames->positions_low_filename,sizeof(UINT4),/*randomp*/false);
+#else
+    ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_low_len,&seconds,
+						filenames->positions_low_filename,sizeof(UINT4));
+#endif
+  }
+
+
+  if (coord_values_8p == true) {
+    filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(filenames->positions_high_basename_ptr)+
+			       strlen(".")+strlen(snps_root)+1,sizeof(char));
+    sprintf(filename,"%s/%s.%s",destdir,filenames->positions_high_basename_ptr,snps_root);
+    if ((positions_high_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
+      fprintf(stderr,"Can't open file %s for writing\n",filename);
+      exit(9);
+    }
+    FREE(filename);
+  }
+
+  filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(filenames->positions_low_basename_ptr)+
 			     strlen(".")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s",destdir,filenames->positions_basename_ptr,snps_root);
-  if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
+  sprintf(filename,"%s/%s.%s",destdir,filenames->positions_low_basename_ptr,snps_root);
+  if ((positions_low_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
     exit(9);
   }
   FREE(filename);
+
 
   fprintf(stderr,"Merging snp positions with reference positions\n");
 #ifndef EXTRA_ALLOCATION
@@ -1340,10 +1399,12 @@ main (int argc, char *argv[]) {
 #ifdef WORDS_BIGENDIAN
       offset1 = Bigendian_convert_uint(ref_offsets[oligoi]);
       offset2 = Bigendian_convert_uint(ref_offsets[oligoi+1]);
-      merge_positions8(positions_fp,&(snp_positions8[snp_offsets[oligoi]]),&(snp_positions8[snp_offsets[oligoi+1]]),
+      merge_positions8(positions_high_fp,positions_low_fp,
+		       &(snp_positions8[snp_offsets[oligoi]]),&(snp_positions8[snp_offsets[oligoi+1]]),
 		       &(ref_positions8[offset1]),&(ref_positions8[offset2]),oligoi,index1part);
 #else
-      merge_positions8(positions_fp,&(snp_positions8[snp_offsets[oligoi]]),&(snp_positions8[snp_offsets[oligoi+1]]),
+      merge_positions8(positions_high_fp,positions_low_fp,
+		       &(snp_positions8[snp_offsets[oligoi]]),&(snp_positions8[snp_offsets[oligoi+1]]),
 		       &(ref_positions8[ref_offsets[oligoi]]),&(ref_positions8[ref_offsets[oligoi+1]]),oligoi,index1part);
 #endif
     }
@@ -1352,10 +1413,10 @@ main (int argc, char *argv[]) {
 #ifdef WORDS_BIGENDIAN
       offset1 = Bigendian_convert_uint(ref_offsets[oligoi]);
       offset2 = Bigendian_convert_uint(ref_offsets[oligoi+1]);
-      merge_positions4(positions_fp,&(snp_positions4[snp_offsets[oligoi]]),&(snp_positions4[snp_offsets[oligoi+1]]),
+      merge_positions4(positions_low_fp,&(snp_positions4[snp_offsets[oligoi]]),&(snp_positions4[snp_offsets[oligoi+1]]),
 		       &(ref_positions4[offset1]),&(ref_positions4[offset2]),oligoi,index1part);
 #else
-      merge_positions4(positions_fp,&(snp_positions4[snp_offsets[oligoi]]),&(snp_positions4[snp_offsets[oligoi+1]]),
+      merge_positions4(positions_low_fp,&(snp_positions4[snp_offsets[oligoi]]),&(snp_positions4[snp_offsets[oligoi+1]]),
 		       &(ref_positions4[ref_offsets[oligoi]]),&(ref_positions4[ref_offsets[oligoi+1]]),oligoi,index1part);
 #endif
     }
@@ -1363,24 +1424,24 @@ main (int argc, char *argv[]) {
 
 
   FREE(ref_offsets);
-  fclose(positions_fp);
+  fclose(positions_low_fp);
+  if (coord_values_8p == true) {
+    fclose(positions_high_fp);
+  }
 
 
   /* Clean up */
-#ifdef HAVE_MMAP
   if (coord_values_8p == true) {
-    munmap((void *) ref_positions8,ref_positions_len);
-  } else {
-    munmap((void *) ref_positions4,ref_positions_len);
-  }
-  close(ref_positions_fd);
-#else
-  if (coord_values_8p == true) {
+    /* For both mmap and allocated, since we have already combined positions_high and positions_low */
     FREE(ref_positions8);
   } else {
+#ifdef HAVE_MMAP
+    munmap((void *) ref_positions4,ref_positions_low_len);
+    close(ref_positions_low_fd);
+#else
     FREE(ref_positions4);
-  }
 #endif
+  }
 
 
   if (coord_values_8p == true) {

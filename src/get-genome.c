@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 101271 2013-07-12 02:44:39Z twu $";
+static char rcsid[] = "$Id: get-genome.c 128855 2014-02-28 21:50:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,7 +17,6 @@ static char rcsid[] = "$Id: get-genome.c 101271 2013-07-12 02:44:39Z twu $";
 #include "chrom.h"
 #include "genome.h"
 #include "iit-read.h"
-#include "chrsubset.h"
 #include "datadir.h"
 #include "parserange.h"
 #include "separator.h"
@@ -63,18 +62,19 @@ static char *map_iitfile = NULL;
 static int nflanking = 0;
 static bool exonsp = false;
 static bool sequencep = false;
+static bool force_label_p = false;
 
 static bool exactp = false;
 static bool sortp = false;
 static bool signedp = false;
 
+static bool vareffect_p = false;
 
 /* Dump options */
 static bool dumpallp = false;
 static bool dumpchrp = false;
 static bool dumpchr_forsam_p = false;
 static bool dumpsegsp = false;
-static bool dumpchrsubsetsp = false;
 
 static struct option long_options[] = {
   /* Input options */
@@ -101,14 +101,17 @@ static struct option long_options[] = {
   {"sequence", no_argument, 0, 'S'},	   /* sequencep */
   {"exact", no_argument, 0, 0},		/* exactp */
   {"signed", no_argument, 0, 's'},	   /* signedp */
+  {"aslabel", no_argument, 0, 0},	   /* force_label_p */
 
   /* Dump options */
   {"dump", no_argument, 0, 'A'},	/* dumpallp */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
   {"forsam", no_argument, 0, 0},	/* dumpchr_forsam_p */
   {"contigs", no_argument, 0, 'I'}, /* dumpsegsp */
-  {"chrsubsets", no_argument, 0, 'c'}, /* dumpchrsubsetsp */
   
+  /* Special (hidden) options */
+  {"vareffect", no_argument, 0, 0}, /* vareffect_p */
+
   /* Help options */
   {"version", no_argument, 0, '^'}, /* print_program_version */
   {"help", no_argument, 0, '?'}, /* print_program_usage */
@@ -169,6 +172,7 @@ External map file options\n\
   -s, --signed            Show only intervals with same direction as query.  If flanking hits\n\
                             are also requested, show only flanking hits downstream in direction of\n\
                             query.\n\
+  --aslabel               Consider all queries to be labels, even if numeric\n\
 \n\
 Dump options\n\
   -A, --dump              Dump entire genome in FASTA format\n\
@@ -384,12 +388,14 @@ index_compare (const void *a, const void *b) {
 static void
 print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, Chrpos_T genomiclength,
 		Univ_IIT_T chromosome_iit, bool whole_chromosome_p) {
-  char *chromosome1, *chromosome2;
+  char *chromosome1, *chromosome2, *ptr, c;
   Sequence_T genomicseg, genomicseg_alt, genomicseg_snp;
   Chrpos_T chrpos;
 
   /* Handle reference strain */
-  if (user_typestring != NULL) {
+  if (vareffect_p == true) {
+    /* Don't print a header */
+  } else if (user_typestring != NULL) {
     /* Don't print a header */
   } else if (header != NULL) {
     printf(">%s\n",header);
@@ -431,7 +437,45 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
     FREE(chromosome1);
   }
 
-  if (snps_root == NULL || print_snps_mode == 0 || print_snps_mode == 2) {
+  if (vareffect_p == true) {
+    chromosome1 = Univ_IIT_string_from_position(&chrpos,genomicstart,chromosome_iit);
+    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
+    ptr = Sequence_fullpointer(genomicseg);
+    while ((c = *ptr++) != '\0') {
+      chrpos++;			/* Converts to a 1-based coordinate */
+      switch (c) {
+      case 'A':
+	printf("%s\t%u\t%u\tA/C\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tA/G\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tA/T\n",chromosome1,chrpos,chrpos);
+	break;
+      case 'C':
+	printf("%s\t%u\t%u\tC/A\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tC/G\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tC/T\n",chromosome1,chrpos,chrpos);
+	break;
+      case 'G':
+	printf("%s\t%u\t%u\tG/A\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tG/C\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tG/T\n",chromosome1,chrpos,chrpos);
+	break;
+      case 'T':
+	printf("%s\t%u\t%u\tT/A\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tT/C\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tT/G\n",chromosome1,chrpos,chrpos);
+	break;
+      default:
+	printf("%s\t%u\t%u\tN/A\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tN/C\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tN/G\n",chromosome1,chrpos,chrpos);
+	printf("%s\t%u\t%u\tN/T\n",chromosome1,chrpos,chrpos);
+	break;
+      }
+    }
+    Sequence_free(&genomicseg);
+    FREE(chromosome1);
+
+  } else if (snps_root == NULL || print_snps_mode == 0 || print_snps_mode == 2) {
     genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
@@ -678,17 +722,17 @@ get_matches (int *nmatches, int *sign, char *divstring, Chrpos_T coordstart, Chr
     *sign = +1;
   }
 
+  if (*iit == NULL) {
+    /* This call can give a warning if there are no entries in the map IIT file for the given div */
+    if ((*iit = IIT_read(filename,/*name*/NULL,true,/*divread*/READ_ONE,divstring,
+			 /*add_iit_p*/true,/*labels_read_p*/false)) == NULL) {
+      fprintf(stderr,"File %s appears to be an invalid IIT file\n",filename);
+      exit(9);
+    }
+  }
+
   if (typestring == NULL) {
     /* Treat query as coordinates, without a typestring */
-    if (*iit == NULL) {
-      /* This call can give a warning if there are no entries in the map IIT file for the given div */
-      if ((*iit = IIT_read(filename,/*name*/NULL,true,/*divread*/READ_ONE,divstring,
-			   /*add_iit_p*/true,/*labels_read_p*/false)) == NULL) {
-	fprintf(stderr,"File %s appears to be an invalid IIT file\n",filename);
-	exit(9);
-      }
-    }
-
     if (exactp == true) {
       matches = IIT_get_exact_multiple(&(*nmatches),*iit,divstring,coordstart,coordend,/*type*/0);
     } else {
@@ -701,14 +745,6 @@ get_matches (int *nmatches, int *sign, char *divstring, Chrpos_T coordstart, Chr
 
   } else if ((typeint = IIT_typeint(*iit,typestring)) < 0) {
     fprintf(stderr,"No such type as %s.  Ignoring the type.\n",typestring);
-    /* Treat query as coordinates, without a typestring */
-    if (*iit == NULL) {
-      if ((*iit = IIT_read(filename,/*name*/NULL,true,/*divread*/READ_ONE,divstring,
-			   /*add_iit_p*/true,/*labels_read_p*/false)) == NULL) {
-	fprintf(stderr,"File %s appears to be an invalid IIT file\n",filename);
-	exit(9);
-      }
-    }
     if (exactp == true) {
       matches = IIT_get_exact_multiple(&(*nmatches),*iit,divstring,coordstart,coordend,/*type*/0);
     } else {
@@ -721,16 +757,11 @@ get_matches (int *nmatches, int *sign, char *divstring, Chrpos_T coordstart, Chr
 
   } else {
     /* Treat query as coordinates, with a typestring */
-    if (*iit == NULL) {
-      if ((*iit = IIT_read(filename,/*name*/NULL,true,/*divread*/READ_ONE,divstring,
-			   /*add_iit_p*/true,/*labels_read_p*/false)) == NULL) {
-	fprintf(stderr,"File %s appears to be an invalid IIT file\n",filename);
-	exit(9);
-      }
-    }
     if (exactp == true) {
+      debug(printf("Calling IIT_get_exact_multiple\n"));
       matches = IIT_get_exact_multiple(&(*nmatches),*iit,divstring,coordstart,coordend,typeint);
     } else {
+      debug(printf("Calling IIT_get_typed_signed with sign %d\n",*sign));
       matches = IIT_get_typed_signed(&(*nmatches),*iit,divstring,coordstart,coordend,typeint,*sign,sortp);
     }
     if (nflanking > 0) {
@@ -1015,17 +1046,18 @@ print_interval (char *divstring, int index, IIT_T iit, int ndivs, Univ_IIT_T chr
 int
 main (int argc, char *argv[]) {
   char *snpsdir = NULL;
-  char *iitfile, *chrsubsetfile;
+  char *iitfile;
   FILE *fp;
   Genome_T genome = NULL, genomealt = NULL;
   Univcoord_T genomicstart, chroffset;
   Chrpos_T genomiclength, chrlength, chrstart, chrend;
   char *mapdir = NULL, *fileroot = NULL, *p;
+  char *typestring_ptr = NULL;
   char *divstring, *divstring2;
   Univ_IIT_T chromosome_iit, contig_iit;
   IIT_T map_iit = NULL;
-  Chrsubset_T chrsubset;
   char Buffer[BUFFERLEN], subsetname[BUFFERLEN], *segment;
+  char coords[BUFFERLEN], typestring[BUFFERLEN];
 
   int fieldint = -1;
   int *matches, nmatches, ndivs, i, *leftflanks, *rightflanks, nleftflanks = 0, nrightflanks = 0;
@@ -1041,7 +1073,7 @@ main (int argc, char *argv[]) {
   int long_option_index = 0;
   const char *long_name;
 
-  while ((opt = getopt_long(argc,argv,"D:d:CUl:Gh:V:v:f:M:m:kru:ESALIc^?",
+  while ((opt = getopt_long(argc,argv,"D:d:CUl:Gh:V:v:f:M:m:kru:ESALI^?",
 			    long_options,&long_option_index)) != -1) {
     switch (opt) {
     case 0:
@@ -1056,9 +1088,15 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"exact")) {
 	exactp = true;
 
+      } else if (!strcmp(long_name,"aslabel")) {
+	force_label_p = true;
+
       } else if (!strcmp(long_name,"forsam")) {
 	dumpchrp = true;
 	dumpchr_forsam_p = true;
+
+      } else if (!strcmp(long_name,"vareffect")) {
+	vareffect_p = true;
 
       } else {
 	/* Shouldn't reach here */
@@ -1094,7 +1132,6 @@ main (int argc, char *argv[]) {
     case 'A': dumpallp = true; break;
     case 'L': dumpchrp = true; dumpchr_forsam_p = false; break;
     case 'I': dumpsegsp = true; break;
-    case 'c': dumpchrsubsetsp = true; break;
 
     case '^': print_program_version(); exit(0);
     case '?': print_program_usage(); exit(0);
@@ -1197,45 +1234,6 @@ main (int argc, char *argv[]) {
     Univ_IIT_free(&contig_iit);
     return 0;
 
-  } else if (dumpchrsubsetsp == true) {
-    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
-			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
-    sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
-    chromosome_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false);
-    FREE(iitfile);
-
-    chrsubsetfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
-				    strlen(fileroot)+strlen(".chrsubset")+1,sizeof(char));
-    sprintf(chrsubsetfile,"%s/%s.chrsubset",genomesubdir,fileroot);
-    if ((fp = fopen(chrsubsetfile,"r")) == NULL) {
-      fprintf(stderr,"Cannot open file %s\n",chrsubsetfile);
-      exit(9);
-    } else {
-      while (fgets(Buffer,BUFFERLEN,fp) != NULL) {
-	if (Buffer[0] == '>') {
-	  if (Buffer[1] == '\0' || isspace(Buffer[1])) {
-	    /* Skip */
-	  } else {
-	    if ((p = rindex(Buffer,'\n')) != NULL) {
-	      *p = '\0';
-	    }
-	    sscanf(&(Buffer[1]),"%s",subsetname);
-	    printf("%s\t",subsetname);
-	    chrsubset = Chrsubset_read(chrsubsetfile,genomesubdir,fileroot,subsetname,chromosome_iit);
-	    Chrsubset_print_chromosomes(chrsubset,chromosome_iit);
-	    Chrsubset_free(&chrsubset);
-	    printf("\n");
-	  }
-	}
-      }
-      fclose(fp);
-    }
-
-    FREE(chrsubsetfile);
-    Univ_IIT_free(&chromosome_iit);
-
-    return 0;
-
   }
 
 #if 0
@@ -1321,7 +1319,8 @@ main (int argc, char *argv[]) {
 	}
       }
 
-      if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
+      if (force_label_p == false &&
+	  Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
 			       &chroffset,&chrlength,argv[0],genomesubdir,fileroot) == true) {
 	debug(printf("Query %s parsed as: genomicstart = %lu, genomiclength = %u, revcomp = %d\n",
 		     argv[0],genomicstart,genomiclength,revcomp));
@@ -1335,9 +1334,16 @@ main (int argc, char *argv[]) {
 	  chrend += 1U;
 	  debug(printf("Query translated to %s:%u..%u\n",divstring,chrstart,chrend));
 	}
+	if (argc <= 1) {
+	  debug(printf("No typestring\n"));
+	  typestring_ptr = (char *) NULL;
+	} else {
+	  debug(printf("Typestring is %s\n",argv[1]));
+	  typestring_ptr = argv[1];
+	}
 	matches = get_matches(&nmatches,&sign,divstring,chrstart,chrend,revcomp,
 			      &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
-			      /*typestring*/NULL,&map_iit,/*filename*/iitfile);
+			      typestring_ptr,&map_iit,/*filename*/iitfile);
 	ndivs = IIT_ndivs(map_iit);
 	if (nflanking > 0) {
 	  if (sign != +1) {
@@ -1362,6 +1368,9 @@ main (int argc, char *argv[]) {
 	  }
 	  FREE(rightflanks);
 	}
+
+	FREE(divstring2);
+	FREE(divstring);
 
       } else {
 	/* Must have been a label */
@@ -1474,11 +1483,18 @@ main (int argc, char *argv[]) {
       if ((p = rindex(Buffer,'\n')) != NULL) {
 	*p = '\0';
       }
-      fprintf(stdout,"# Query: %s\n",Buffer);
-      if (Parserange_universal_iit(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
-				   &chroffset,&chrlength,Buffer,chromosome_iit,contig_iit) == true) {
+      if (sscanf(Buffer,"%s %s",coords,typestring) < 2) {
+	typestring_ptr = (char *) NULL;
+      } else {
+	typestring_ptr = &(typestring[0]);
+      }
+      
+      fprintf(stdout,"# Query: %s\n",coords);
+      if (force_label_p == false &&
+	  Parserange_universal_iit(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
+				   &chroffset,&chrlength,coords,chromosome_iit,contig_iit) == true) {
 	debug(printf("Query %s parsed as: genomicstart = %lu, genomiclength = %u, revcomp = %d\n",
-		     Buffer,genomicstart,genomiclength,revcomp));
+		     coords,genomicstart,genomiclength,revcomp));
 	divstring = Univ_IIT_string_from_position(&chrstart,genomicstart,chromosome_iit);
 	divstring2 = Univ_IIT_string_from_position(&chrend,genomicstart+genomiclength-1U,chromosome_iit);
 	if (strcmp(divstring,divstring2)) {
@@ -1489,11 +1505,10 @@ main (int argc, char *argv[]) {
 	  chrend += 1U;
 	  debug(printf("Query translated to %s:%u..%u\n",divstring,chrstart,chrend));
 	}
-
 	if (map_iit != NULL) {
 	  matches = get_matches(&nmatches,&sign,divstring,chrstart,chrend,revcomp,
 				&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
-				/*typestring*/NULL,&map_iit,/*filename*/NULL);
+				typestring_ptr,&map_iit,/*filename*/NULL);
 	  if (nflanking > 0) {
 	    if (sign != +1) {
 	      for (i = nleftflanks-1; i >= 0; i--) {
@@ -1528,6 +1543,9 @@ main (int argc, char *argv[]) {
 	  print_sequence(genome,genomealt,genomicstart,genomiclength,chromosome_iit,
 			 /*whole_chromosome_p*/false);
 	}
+
+	FREE(divstring2);
+	FREE(divstring);
 
       } else {
 	/* Must have been a label */

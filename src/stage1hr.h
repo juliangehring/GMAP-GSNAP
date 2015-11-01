@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 109396 2013-09-27 15:14:11Z twu $ */
+/* $Id: stage1hr.h 121509 2013-12-13 21:56:56Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -13,7 +13,11 @@
 #include "resulthr.h"		/* For Pairtype_T */
 #include "stage3hr.h"
 
-#include "oligoindex.h"
+#ifdef PMAP
+#include "oligoindex_pmap.h"
+#else
+#include "oligoindex_hr.h"
+#endif
 #include "pairpool.h"
 #include "diagpool.h"
 #include "dynprog.h"

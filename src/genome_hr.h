@@ -1,4 +1,4 @@
-/* $Id: genome_hr.h 101271 2013-07-12 02:44:39Z twu $ */
+/* $Id: genome_hr.h 115433 2013-11-18 18:24:33Z twu $ */
 #ifndef GENOME_HR_INCLUDED
 #define GENOME_HR_INCLUDED
 #include "types.h"
@@ -20,7 +20,7 @@ Genome_hr_user_setup (UINT4 *ref_blocks_in,
 
 /* Procedures for indexdb */
 extern int
-Genome_read_gamma (Positionsptr_T **ptr, int ctr, Positionsptr_T *cum);
+Genome_read_gamma (Gammaptr_T **ptr, int ctr, Positionsptr_T *cum);
 extern Positionsptr_T
 Genome_offsetptr_from_gammas (Positionsptr_T *end0, Gammaptr_T *gammaptrs, Offsetscomp_T *offsetscomp,
 			      Blocksize_T offsetscomp_blocksize, Storedoligomer_T oligo);
@@ -30,7 +30,7 @@ Genome_offsetptr_only_from_gammas (Gammaptr_T *gammaptrs, Offsetscomp_T *offsets
 
 #ifdef WORDS_BIGENDIAN
 extern int
-Genome_read_gamma_bigendian (Positionsptr_T **ptr, int ctr, Positionsptr_T *cum);
+Genome_read_gamma_bigendian (Gammaptr_T **ptr, int ctr, Positionsptr_T *cum);
 extern Positionsptr_T
 Genome_offsetptr_from_gammas_bigendian (Positionsptr_T *end0, Gammaptr_T *gammaptrs, Offsetscomp_T *offsetscomp,
 					Blocksize_T offsetscomp_blocksize, Storedoligomer_T oligo);
@@ -46,6 +46,9 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 extern int
 Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 				     bool plusp, int genestrand);
+extern int
+Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength);
+
 extern int
 Genome_count_mismatches (Compress_T query_compress, Univcoord_T left, Univcoord_T left_plus_length);
 extern int

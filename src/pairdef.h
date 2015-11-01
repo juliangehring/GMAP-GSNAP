@@ -1,4 +1,4 @@
-/* $Id: pairdef.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: pairdef.h 115496 2013-11-19 01:08:40Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
 #include "bool.h"
@@ -40,7 +40,8 @@ struct T {
   State_T vstate_good;
   State_T vstate_bad;
 
-  bool protectedp;		/* Protected against trimming, because found using splicetrie */
+  bool protectedp;		/* Protected against trimming, because found using splicetrie, or
+				   protected against smoothing, because found by traverse_dual_intron */
   bool disallowedp;		/* Used when novelsplicingp is false and intron is not allowed */
 
   double donor_prob;		/* Set for an intron gap */

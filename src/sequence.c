@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 101717 2013-07-16 23:30:37Z twu $";
+static char rcsid[] = "$Id: sequence.c 121509 2013-12-13 21:56:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -29,6 +29,9 @@ static char rcsid[] = "$Id: sequence.c 101717 2013-07-16 23:30:37Z twu $";
 #include "intlist.h"
 #include "fopen.h"
 #include "md5.h"
+#ifdef PMAP
+#include "dynprog.h"
+#endif
 
 /* Before setting DEBUG, may want to reduce MAXSEQLEN in sequence.h */
 #ifdef DEBUG
@@ -136,6 +139,18 @@ Sequence_fulllength_given (T this) {
 #endif
 }
 
+char *
+Sequence_subseq_pointer (T this, int querystart) {
+  return &(this->contents[querystart]);
+}
+
+int
+Sequence_subseq_length (T this, int querystart) {
+  return this->fulllength - querystart;
+}
+
+
+
 int
 Sequence_trimlength (T this) {
   return this->trimend - this->trimstart;
@@ -201,10 +216,13 @@ Sequence_convert_to_nucleotides (T this) {
   new->restofheader = (char *) NULL;
   new->fulllength = this->fulllength*3;
   new->fulllength_given = this->fulllength_given*3;
-  new->contents = new->contents_alloc = (char *) CALLOC_IN(new->fulllength+1,sizeof(char));
+  new->contents = new->contents_alloc =
+    Dynprog_instantiate_codons(/*aasequence*/this->contents,/*ntlength*/this->fulllength*3);
+#if 0
   for (i = 0; i < new->fulllength; i++) {
     new->contents[i] = '?';
   }
+#endif
 
   new->trimstart = 0;
   new->trimend = new->fulllength_given;
@@ -946,7 +964,11 @@ Sequence_subsequence (T this, int start, int end) {
     new->quality_alloc = (char *) NULL;
 #endif
 
+#ifdef PMAP
+    new->subseq_offset = 3*start;
+#else
     new->subseq_offset = start;
+#endif
     new->skiplength = this->skiplength;
 
     new->firstp = this->firstp;

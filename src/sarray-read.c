@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-read.c 110160 2013-10-05 01:45:16Z twu $";
+static char rcsid[] = "$Id: sarray-read.c 132776 2014-04-09 01:03:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,8 +20,15 @@ static char rcsid[] = "$Id: sarray-read.c 110160 2013-10-05 01:45:16Z twu $";
 #include "list.h"
 #include "genome_hr.h"
 #include "splice.h"
+#include "indel.h"
 #include "stage3hr.h"
+#include "bitpack64-read.h"
 #include "bitpack64-access.h"
+
+#ifdef USE_CHILD_BP
+#include "bp.h"
+#include "bp-read.h"
+#endif
 
 
 #ifdef HAVE_SSE2
@@ -33,7 +40,9 @@ static char rcsid[] = "$Id: sarray-read.c 110160 2013-10-05 01:45:16Z twu $";
 #define EXCESS_SARRAY_HITS 100000
 #define GUESS_ALLOCATION 10
 
+#define get_bit(bitvector,i) ((bitvector)[(i)/32] & (1 << ((i)%32)))
 
+/* Results of each suffix array search */
 #ifdef DEBUG
 #define debug(x) x
 #else
@@ -52,6 +61,13 @@ static char rcsid[] = "$Id: sarray-read.c 110160 2013-10-05 01:45:16Z twu $";
 #define debug1a(x) x
 #else
 #define debug1a(x)
+#endif
+
+/* get_child */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
 #endif
 
 /* known splicing */
@@ -89,48 +105,83 @@ static char rcsid[] = "$Id: sarray-read.c 110160 2013-10-05 01:45:16Z twu $";
 #define debug10(x)
 #endif
 
+/* Compare sarray_search with sarray_search_simple */
+#ifdef DEBUG14
+#define debug14(x) x
+#else
+#define debug14(x)
+#endif
 
 
 #define T Sarray_T
 struct T {
-  Univcoord_T *array;
-#ifdef USE_LCP
-  Univcoord_T *lcp;
-#endif
-  UINT4 *lcpptrs;
-  UINT4 *lcpcomp;
+  Univcoord_T n;
   Univcoord_T n_plus_one;
 
-  Sarrayptr_T *saindex;
+  Univcoord_T *array;
+
+  UINT4 *plcp_ptrs, *plcp_comp;		/* permuted LCP */
+
+#ifdef USE_CHILD_BP
+  UINT4 *childbp;		    /* child balanced parentheses */
+  UINT4 *childfc;		    /* first child (array B in CST++) */
+  UINT4 *childs_pages, *childs_ptrs, *childs_comp; /* child select */
+  UINT4 *childr_ptrs, *childr_comp; /* child rank */
+  UINT4 *childx_ptrs, *childx_comp; /* child block excess */
+
+  UINT4 *pioneerbp;		/* pioneer balanced parentheses */
+  UINT4 *pior_ptrs, *pior_comp;	/* pioneer rank */
+  UINT4 *piom_ptrs, *piom_comp;	/* pioneer matches */
+#else
+  UINT4 *child_ptrs;
+  UINT4 *child_comp;
+  UINT4 *nextp;
+#endif
+
+  Sarrayptr_T initindexi[4];	/* For A, C, G, T */
+  Sarrayptr_T initindexj[4];	/* For A, C, G, T */
+
   int indexsize;
+  UINT4 indexspace;		/* 4^indexsize.  Used by sarray_search to detect when we have a poly-T oligo shorter than indexsize */
+  UINT4 *indexi_ptrs, *indexi_comp; /* oligomer lookup into suffix array */
+  UINT4 *indexj_ptrs, *indexj_comp;
 
   Access_T access;
-  int array_fd;
-  size_t array_len;
-#ifdef USE_LCP
-  int lcp_fd;
-  size_t lcp_len;
-#endif
-  int lcpptrs_fd;
-  size_t lcpptrs_len;
-  int lcpcomp_fd;
-  size_t lcpcomp_len;
 
-  int saindex_fd;
-  size_t saindex_len;
+  int array_fd; size_t array_len;
+  int plcp_ptrs_fd; size_t plcp_ptrs_len; int plcp_comp_fd; size_t plcp_comp_len;
+
+#ifdef USE_CHILD_BP
+  int childbp_fd; size_t childbp_len;
+  int childfc_fd; size_t childfc_len;
+  int childs_pages_fd; size_t childs_pages_len;
+  int childs_ptrs_fd; size_t childs_ptrs_len; int childs_comp_fd; size_t childs_comp_len;
+  int childr_ptrs_fd; size_t childr_ptrs_len; int childr_comp_fd; size_t childr_comp_len;
+  int childx_ptrs_fd; size_t childx_ptrs_len; int childx_comp_fd; size_t childx_comp_len;
+
+  int pioneerbp_fd; size_t pioneerbp_len;
+  int pior_ptrs_fd; size_t pior_ptrs_len; int pior_comp_fd; size_t pior_comp_len;
+  int piom_ptrs_fd; size_t piom_ptrs_len; int piom_comp_fd; size_t piom_comp_len;
+#else
+  int child_ptrs_fd; size_t child_ptrs_len; int child_comp_fd; size_t child_comp_len;
+  int nextp_fd; size_t nextp_len;
+#endif
+
+  int indexi_ptrs_fd; size_t indexi_ptrs_len; int indexi_comp_fd; size_t indexi_comp_len;
+  int indexj_ptrs_fd; size_t indexj_ptrs_len; int indexj_comp_fd; size_t indexj_comp_len;
 };
 
 
 /* For benchmarking */
 UINT4 *
-Sarray_lcpptrs (Sarray_T this) {
-  return this->lcpptrs;
+Sarray_plcp_ptrs (Sarray_T this) {
+  return this->plcp_ptrs;
 }
 
 /* For benchmarking */
 UINT4 *
-Sarray_lcpcomp (Sarray_T this) {
-  return this->lcpcomp;
+Sarray_plcp_comp (Sarray_T this) {
+  return this->plcp_comp;
 }
 
 /* For benchmarking */
@@ -159,6 +210,57 @@ static Chrpos_T *splicedists;
 static int nsplicesites;
 
 
+/* Simplified from sarray_search_simple in sarray-write.c */
+static void
+sarray_search_char (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char desired_char,
+		    UINT4 *SA, UINT4 n) {
+  Sarrayptr_T low, high, mid;
+  Univcoord_T pos;
+  char c;
+
+
+  low = 1;
+  high = n + 1;
+
+  while (low < high) {
+    /* Compute mid for unsigned ints.  Want floor((low+high)/2). */
+    mid = low/2 + high/2;
+    if (low % 2 == 1 && high % 2 == 1) {
+      mid += 1;
+    }
+    pos = SA[mid];
+    c = Genome_get_char_lex(genome,pos,n);
+    if (desired_char > c) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  *initptr = low;
+
+  low--;
+  high = n;
+  while (low < high) {
+    /* Compute mid for unsigned ints.  Want ceil((low+high)/2). */
+    mid = low/2 + high/2;
+    if (low % 2 == 1 || high % 2 == 1) {
+      mid += 1;
+    }
+    pos = SA[mid];
+    c = Genome_get_char_lex(genome,pos,n);
+    if (desired_char >= c) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  *finalptr = high;
+  return;
+}
+
+
 void
 Sarray_setup (T sarray_in, Genome_T genome_in, Univ_IIT_T chromosome_iit_in, int circular_typeint_in,
 	      Chrpos_T shortsplicedist_in, int splicing_penalty_in,
@@ -166,9 +268,6 @@ Sarray_setup (T sarray_in, Genome_T genome_in, Univ_IIT_T chromosome_iit_in, int
 	      int max_middle_insertions, int max_end_insertions,
 	      Univcoord_T *splicesites_in, Splicetype_T *splicetypes_in,
 	      Chrpos_T *splicedists_in, int nsplicesites_in) {
-#ifdef USE_LCP
-  Univcoord_T position;
-#endif
 
   sarray = sarray_in;
   genome = genome_in;
@@ -196,479 +295,281 @@ Sarray_setup (T sarray_in, Genome_T genome_in, Univ_IIT_T chromosome_iit_in, int
   splicedists = splicedists_in;
   nsplicesites = nsplicesites_in;
 
-  Bitpack64_access_setup(sarray->lcpptrs,sarray->lcpcomp);
-#ifdef USE_LCP
-  fprintf(stderr,"Checking validity of compressed LCP file\n");
-  for (position = 0; position < sarray->n_plus_one; position++) {
-    if (sarray->lcp[position] != Bitpack64_access(position)) {
-      abort();
-    }
-  }
+  Bitpack64_read_setup();
+
+  sarray_search_char(&(sarray->initindexi[0]),&(sarray->initindexj[0]),/*desired_char*/'A',sarray->array,sarray->n);
+  sarray_search_char(&(sarray->initindexi[1]),&(sarray->initindexj[1]),/*desired_char*/'C',sarray->array,sarray->n);
+  sarray_search_char(&(sarray->initindexi[2]),&(sarray->initindexj[2]),/*desired_char*/'G',sarray->array,sarray->n);
+  sarray_search_char(&(sarray->initindexi[3]),&(sarray->initindexj[3]),/*desired_char*/'T',sarray->array,sarray->n);
+
+#if 0
+  printf("A => %u %u\n",sarray->initindexi[0],sarray->initindexj[0]);
+  printf("C => %u %u\n",sarray->initindexi[1],sarray->initindexj[1]);
+  printf("G => %u %u\n",sarray->initindexi[2],sarray->initindexj[2]);
+  printf("T => %u %u\n",sarray->initindexi[3],sarray->initindexj[3]);
 #endif
 
   return;
 }
 
 
-T
-Sarray_new (char *directory, char *fileroot, char *snps_root, Access_mode_T access) {
-  T new = (T) MALLOC(sizeof(*new));
-  char *filename;
-  char *comma1, *comma2;
-  double seconds1, seconds2, seconds;
-  int npages;
+static int
+log4 (int result) {
+  int exponent = 0;
 
-  if (snps_root != NULL) {
-    /* Always allocate saindex and lcpptrs */
-    filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".saindex.")+
-			       strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.saindex.%s",directory,fileroot,snps_root);
-    if (Access_file_exists_p(filename) == false) {
-      fprintf(stderr,"Suffix array index file %s does not exist\n",filename);
-      FREE(filename);
-      FREE(new);
-      return (T) NULL;
-    } else {
-      new->saindex = (unsigned int *) Access_allocated(&new->saindex_len,&seconds,filename,sizeof(unsigned int));
-      new->indexsize = 12;
-      FREE(filename);
-    }
-
-    filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpptrs.")+
-			       strlen(snps_root)+1,sizeof(char));
-    sprintf(filename,"%s/%s.salcpptrs.%s",directory,fileroot,snps_root);
-    if (Access_file_exists_p(filename) == false) {
-      fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-      FREE(filename);
-      FREE(new->saindex);
-      FREE(new);
-      return (T) NULL;
-    } else {
-      new->lcpptrs = (UINT4 *) Access_allocated(&new->lcpptrs_len,&seconds2,filename,sizeof(UINT4));
-      FREE(filename);
-    }
-
-
-    if (access == USE_ALLOCATE) {
-      fprintf(stderr,"Allocating memory for suffix array...");
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".sarray.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.sarray.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->array = (Univcoord_T *) Access_allocated(&new->array_len,&seconds1,filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-#ifdef USE_LCP
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcp.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcp.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new->array);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcp = (Univcoord_T *) Access_allocated(&new->lcp_len,&seconds2,filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-#endif
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcpcomp.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new->array);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcpcomp = (Univcoord_T *) Access_allocated(&new->lcpcomp_len,&seconds2,filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-      if (new->array == NULL || new->lcpcomp == NULL) {
-	fprintf(stderr,"insufficient memory (need to use memory mapping)\n");
-	exit(9);
-      } else {
-	comma1 = Genomicpos_commafmt(new->array_len);
-	comma2 = Genomicpos_commafmt(new->lcpcomp_len);
-	fprintf(stderr,"done (%s + %s bytes, %.2f sec)\n",comma1,comma2,seconds1+seconds2);
-	FREE(comma2);
-	FREE(comma1);
-	new->access = ALLOCATED;
-      }
-
-    } else if (access == USE_MMAP_PRELOAD) {
-      fprintf(stderr,"Memory mapping suffix array...");
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".sarray.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.sarray.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->array = (Univcoord_T *) Access_mmap_and_preload(&new->array_fd,&new->array_len,&npages,&seconds1,
-							     filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-#ifdef USE_LCP
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcp.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcp.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcp = (Univcoord_T *) Access_mmap_and_preload(&new->lcp_fd,&new->lcp_len,&npages,&seconds,
-							   filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-#endif
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcpcomp.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcpcomp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcpcomp = (Univcoord_T *) Access_mmap_and_preload(&new->lcpcomp_fd,&new->lcpcomp_len,&npages,&seconds2,
-							       filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-      if (new->array == NULL || new->lcpcomp == NULL) {
-	fprintf(stderr,"insufficient memory (need more virtual memory or run without suffix array)\n");
-	exit(9);
-      } else {
-	comma1 = Genomicpos_commafmt(new->array_len);
-	comma2 = Genomicpos_commafmt(new->lcpcomp_len);
-	fprintf(stderr,"done (%s + %s bytes, %.2f sec)\n",comma1,comma2,seconds1+seconds2);
-	FREE(comma2);
-	FREE(comma1);
-	new->access = MMAPPED;
-      }
-
-    } else if (access == USE_MMAP_ONLY) {
-      fprintf(stderr,"Memory mapping suffix array...");
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".sarray.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.sarray.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->array = (Univcoord_T *) Access_mmap(&new->array_fd,&new->array_len,filename,sizeof(Univcoord_T),
-						 /*randomp*/true);
-	FREE(filename);
-      }
-
-#ifdef USE_LCP
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcp.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcp.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcp = (Univcoord_T *) Access_mmap(&new->lcp_fd,&new->lcp_len,filename,sizeof(Univcoord_T),
-					       /*randomp*/true);
-	FREE(filename);
-      }
-#endif
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp.")+
-				 strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcpcomp.%s",directory,fileroot,snps_root);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcpcomp = (Univcoord_T *) Access_mmap(&new->lcpcomp_fd,&new->lcpcomp_len,filename,sizeof(Univcoord_T),
-						 /*randomp*/true);
-	FREE(filename);
-      }
-
-      if (new->array == NULL || new->lcpcomp == NULL) {
-	fprintf(stderr,"insufficient memory (need more virtual memory or run without suffix array)\n");
-	exit(9);
-      } else {
-	comma1 = Genomicpos_commafmt(new->array_len);
-	comma2 = Genomicpos_commafmt(new->lcpcomp_len);
-	fprintf(stderr,"done (%s + %s bytes)\n",comma1,comma2);
-	FREE(comma2);
-	FREE(comma1);
-	new->access = MMAPPED;
-      }
-    }
-
-  } else {
-    /* Always allocate saindex and salcpptrs */
-    filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".saindex")+1,sizeof(char));
-    sprintf(filename,"%s/%s.saindex",directory,fileroot);
-    if (Access_file_exists_p(filename) == false) {
-      fprintf(stderr,"Suffix array index file %s does not exist\n",filename);
-      FREE(filename);
-      FREE(new);
-      return (T) NULL;
-    } else {
-      new->saindex = (Sarrayptr_T *) Access_allocated(&new->saindex_len,&seconds,filename,sizeof(Sarrayptr_T));
-      new->indexsize = 12;
-      FREE(filename);
-    }
-
-    filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpptrs")+1,sizeof(char));
-    sprintf(filename,"%s/%s.salcpptrs",directory,fileroot);
-    if (Access_file_exists_p(filename) == false) {
-      fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-      FREE(filename);
-      FREE(new->saindex);
-      FREE(new);
-      return (T) NULL;
-    } else {
-      new->lcpptrs = (UINT4 *) Access_allocated(&new->lcpptrs_len,&seconds,filename,sizeof(UINT4));
-      FREE(filename);
-    }
-
-
-    if (access == USE_ALLOCATE) {
-      fprintf(stderr,"Allocating memory for suffix array...");
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
-      sprintf(filename,"%s/%s.sarray",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->array = (Univcoord_T *) Access_allocated(&new->array_len,&seconds1,filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-#ifdef USE_LCP
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcp",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new->array);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcp = (Univcoord_T *) Access_allocated(&new->lcp_len,&seconds2,filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-#endif
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcpcomp",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new->array);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcpcomp = (Univcoord_T *) Access_allocated(&new->lcpcomp_len,&seconds2,filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-      if (new->array == NULL || new->lcpcomp == NULL) {
-	fprintf(stderr,"insufficient memory (need to use memory mapping)\n");
-	exit(9);
-      } else {
-	comma1 = Genomicpos_commafmt(new->array_len);
-	comma2 = Genomicpos_commafmt(new->lcpcomp_len);
-	fprintf(stderr,"done (%s + %s bytes, %.2f sec)\n",comma1,comma2,seconds1+seconds2);
-	FREE(comma2);
-	FREE(comma1);
-	new->access = ALLOCATED;
-      }
-
-    } else if (access == USE_MMAP_PRELOAD) {
-      fprintf(stderr,"Memory mapping suffix array...");
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
-      sprintf(filename,"%s/%s.sarray",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->array = (Univcoord_T *) Access_mmap_and_preload(&new->array_fd,&new->array_len,&npages,&seconds,
-							     filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-
-#ifdef USE_LCP
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcp",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcp = (Univcoord_T *) Access_mmap_and_preload(&new->lcp_fd,&new->lcp_len,&npages,&seconds,
-							   filename,sizeof(Univcoord_T));
-	FREE(filename);
-      }
-#endif
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcpcomp",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcpcomp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcpcomp = (UINT4 *) Access_mmap_and_preload(&new->lcpcomp_fd,&new->lcpcomp_len,&npages,&seconds,
-							 filename,sizeof(UINT4));
-	FREE(filename);
-      }
-
-      if (new->array == NULL || new->lcpcomp == NULL) {
-	fprintf(stderr,"insufficient memory (need more virtual memory or run without suffix array)\n");
-	exit(9);
-      } else {
-	comma1 = Genomicpos_commafmt(new->array_len);
-	comma2 = Genomicpos_commafmt(new->lcpcomp_len);
-	fprintf(stderr,"done (%s + %s bytes)\n",comma1,comma2);
-	FREE(comma2);
-	FREE(comma1);
-	new->access = MMAPPED;
-      }
-
-    } else if (access == USE_MMAP_ONLY) {
-      fprintf(stderr,"Memory mapping suffix array...");
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
-      sprintf(filename,"%s/%s.sarray",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->array = (Univcoord_T *) Access_mmap(&new->array_fd,&new->array_len,
-						 filename,sizeof(Univcoord_T),/*randomp*/true);
-	FREE(filename);
-      }
-
-#ifdef USE_LCP
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcp",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcp = (Univcoord_T *) Access_mmap(&new->lcp_fd,&new->lcp_len,
-					       filename,sizeof(Univcoord_T),/*randomp*/true);
-	FREE(filename);
-      }
-#endif
-
-      filename = (char *) CALLOC(strlen(directory)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.salcpcomp",directory,fileroot);
-      if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Suffix array lcp file %s does not exist\n",filename);
-	FREE(filename);
-	FREE(new->saindex);
-	FREE(new->lcpptrs);
-	munmap((void *) new->array,new->array_len);
-	FREE(new);
-	return (T) NULL;
-      } else {
-	new->lcpcomp = (Univcoord_T *) Access_mmap(&new->lcpcomp_fd,&new->lcpcomp_len,
-						   filename,sizeof(Univcoord_T),/*randomp*/true);
-	FREE(filename);
-      }
-
-      if (new->array == NULL || new->lcpcomp == NULL) {
-	fprintf(stderr,"insufficient memory (need more virtual memory or run without suffix array)\n");
-	exit(9);
-      } else {
-	comma1 = Genomicpos_commafmt(new->array_len);
-	comma2 = Genomicpos_commafmt(new->lcpcomp_len);
-	fprintf(stderr,"done (%s + %s bytes)\n",comma1,comma2);
-	FREE(comma2);
-	FREE(comma1);
-	new->access = MMAPPED;
-      }
-    }
+  while (result > 1) {
+    result /= 4;
+    exponent++;
   }
 
-  /* Should be genomiclength + 1*/
-  new->n_plus_one = new->array_len/sizeof(Univcoord_T);
+  return exponent;
+}
+
+static UINT4
+power (int base, int exponent) {
+  UINT4 result = 1;
+  int i;
+
+  for (i = 0; i < exponent; i++) {
+    result *= base;
+  }
+
+  return result;
+}
+
+
+
+
+/* Ignores snps_root */
+T
+Sarray_new (char *dir, char *fileroot, char *snps_root, Access_mode_T access) {
+  T new;
+  char *comma1;
+  double seconds;
+  int npages;
+
+  char *sarrayfile;
+  char *plcp_ptrsfile, *plcp_compfile;
+#ifdef USE_CHILD_BP
+  char *childbpfile, *childfcfile, *childs_pagesfile, *childs_ptrsfile, *childs_compfile, *childr_ptrsfile, *childr_compfile;
+  char *childx_ptrsfile, *childx_compfile;
+  char *pioneerbpfile, *pior_ptrsfile, *pior_compfile, *piom_ptrsfile, *piom_compfile;
+#else
+  char *child_ptrsfile, *child_compfile, *nextpfile;
+#endif
+  char *indexi_ptrsfile, *indexi_compfile, *indexj_ptrsfile, *indexj_compfile;
+
+
+  sarrayfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
+  sprintf(sarrayfile,"%s/%s.sarray",dir,fileroot);
+
+  plcp_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saplcpptrs")+1,sizeof(char));
+  sprintf(plcp_ptrsfile,"%s/%s.saplcpptrs",dir,fileroot);
+  plcp_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saplcpcomp")+1,sizeof(char));
+  sprintf(plcp_compfile,"%s/%s.saplcpcomp",dir,fileroot);
+
+#ifdef USE_CHILD_BP
+  childbpfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildbp")+1,sizeof(char));
+  sprintf(childbpfile,"%s/%s.sachildbp",dir,fileroot);
+  childfcfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildfc")+1,sizeof(char));
+  sprintf(childfcfile,"%s/%s.sachildfc",dir,fileroot);
+
+  childs_pagesfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildspages")+1,sizeof(char));
+  sprintf(childs_pagesfile,"%s/%s.sachildspages",dir,fileroot);
+  childs_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildsptrs")+1,sizeof(char));
+  sprintf(childs_ptrsfile,"%s/%s.sachildsptrs",dir,fileroot);
+  childs_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildscomp")+1,sizeof(char));
+  sprintf(childs_compfile,"%s/%s.sachildscomp",dir,fileroot);
+
+  childr_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildrptrs")+1,sizeof(char));
+  sprintf(childr_ptrsfile,"%s/%s.sachildrptrs",dir,fileroot);
+  childr_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildrcomp")+1,sizeof(char));
+  sprintf(childr_compfile,"%s/%s.sachildrcomp",dir,fileroot);
+
+  childx_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildxptrs")+1,sizeof(char));
+  sprintf(childx_ptrsfile,"%s/%s.sachildxptrs",dir,fileroot);
+  childx_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildxcomp")+1,sizeof(char));
+  sprintf(childx_compfile,"%s/%s.sachildxcomp",dir,fileroot);
+
+  pioneerbpfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiobp")+1,sizeof(char));
+  sprintf(pioneerbpfile,"%s/%s.sapiobp",dir,fileroot);
+  pior_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiorptrs")+1,sizeof(char));
+  sprintf(pior_ptrsfile,"%s/%s.sapiorptrs",dir,fileroot);
+  pior_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiorcomp")+1,sizeof(char));
+  sprintf(pior_compfile,"%s/%s.sapiorcomp",dir,fileroot);
+  piom_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiomptrs")+1,sizeof(char));
+  sprintf(piom_ptrsfile,"%s/%s.sapiomptrs",dir,fileroot);
+  piom_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sapiomcomp")+1,sizeof(char));
+  sprintf(piom_compfile,"%s/%s.sapiomcomp",dir,fileroot);
+#else
+  child_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildptrs")+1,sizeof(char));
+  sprintf(child_ptrsfile,"%s/%s.sachildptrs",dir,fileroot);
+  child_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sachildcomp")+1,sizeof(char));
+  sprintf(child_compfile,"%s/%s.sachildcomp",dir,fileroot);
+  nextpfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".sanextp")+1,sizeof(char));
+  sprintf(nextpfile,"%s/%s.sanextp",dir,fileroot);
+#endif
+
+  indexi_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexiptrs")+1,sizeof(char));
+  sprintf(indexi_ptrsfile,"%s/%s.saindexiptrs",dir,fileroot);
+  indexi_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexicomp")+1,sizeof(char));
+  sprintf(indexi_compfile,"%s/%s.saindexicomp",dir,fileroot);
+  indexj_ptrsfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexjptrs")+1,sizeof(char));
+  sprintf(indexj_ptrsfile,"%s/%s.saindexjptrs",dir,fileroot);
+  indexj_compfile = (char *) CALLOC(strlen(dir)+strlen("/")+strlen(fileroot)+strlen(".saindexjcomp")+1,sizeof(char));
+  sprintf(indexj_compfile,"%s/%s.saindexjcomp",dir,fileroot);
+
+
+  if (Access_file_exists_p(sarrayfile) == false) {
+    fprintf(stderr,"Suffix array index file %s does not exist\n",sarrayfile);
+    new = (T) NULL;
+
+  } else if (Access_file_exists_p(plcp_ptrsfile) == false || Access_file_exists_p(plcp_compfile) == false) {
+    fprintf(stderr,"Suffix array plcp file %s does not exist.  The genome may be built using an older suffix array format\n",sarrayfile);
+    new = (T) NULL;
+
+  } else {
+    new = (T) MALLOC(sizeof(*new));
+
+    if (access == USE_MMAP_PRELOAD) {
+      fprintf(stderr,"Pre-loading suffix array...");
+      new->array = (UINT4 *) Access_mmap_and_preload(&new->array_fd,&new->array_len,&npages,&seconds,sarrayfile,
+						     sizeof(UINT4));
+      new->access = MMAPPED;
+      comma1 = Genomicpos_commafmt(new->array_len);
+      fprintf(stderr,"done (%s bytes)\n",comma1);
+      FREE(comma1);
+    } else if (access == USE_MMAP_ONLY) {
+      new->array = (UINT4 *) Access_mmap(&new->array_fd,&new->array_len,sarrayfile,sizeof(UINT4),/*randomp*/true);
+      new->access = MMAPPED;
+    } else if (access == USE_ALLOCATE) {
+      /* Always memory map suffix array, regardless of access */
+      new->array = (UINT4 *) Access_mmap(&new->array_fd,&new->array_len,sarrayfile,sizeof(UINT4),/*randomp*/true);
+      new->access = ALLOCATED;
+    }
+
+    new->n_plus_one = new->array_len/sizeof(UINT4); /* Should be genomiclength + 1*/
+    new->n = new->n_plus_one - 1;
+
+    new->indexi_ptrs = (UINT4 *) Access_allocated(&new->indexi_ptrs_len,&seconds,indexi_ptrsfile,sizeof(UINT4));
+    /* 8 is for two DIFFERENTIAL_METAINFO_SIZE words */
+    new->indexsize = 3 + log4(((new->indexi_ptrs_len - 8)/sizeof(UINT4))/ /*DIFFERENTIAL_METAINFO_SIZE*/2);
+    new->indexspace = power(4,new->indexsize);
+
+    new->indexi_comp = (UINT4 *) Access_allocated(&new->indexi_comp_len,&seconds,indexi_compfile,sizeof(UINT4));
+    new->indexj_ptrs = (UINT4 *) Access_allocated(&new->indexj_ptrs_len,&seconds,indexj_ptrsfile,sizeof(UINT4));
+    new->indexj_comp = (UINT4 *) Access_allocated(&new->indexj_comp_len,&seconds,indexj_compfile,sizeof(UINT4));
+
+
+    new->plcp_ptrs = (UINT4 *) Access_allocated(&new->plcp_ptrs_len,&seconds,plcp_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->plcp_comp = (UINT4 *) Access_allocated(&new->plcp_comp_len,&seconds,plcp_compfile,sizeof(UINT4));
+    } else {
+      new->plcp_comp = (UINT4 *) Access_mmap(&new->plcp_comp_fd,&new->plcp_comp_len,plcp_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+#ifdef USE_CHILD_BP
+    if (access == USE_ALLOCATE) {
+      new->childbp = (UINT4 *) Access_allocated(&new->childbp_len,&seconds,childbpfile,sizeof(UINT4));
+    } else {
+      new->childbp = (UINT4 *) Access_mmap(&new->childbp_fd,&new->childbp_len,childbpfile,sizeof(UINT4),/*randomp*/true);
+    }
+    
+    /* Always allocate childfc */
+    new->childfc = (UINT4 *) Access_allocated(&new->childfc_len,&seconds,childfcfile,sizeof(UINT4));
+
+    if (Access_file_exists_p(childs_pagesfile) == false) {
+      new->childs_pages = (UINT4 *) NULL;
+    } else {
+      new->childs_pages = (UINT4 *) Access_allocated(&new->childs_pages_len,&seconds,childs_pagesfile,sizeof(UINT4));
+    }
+    new->childs_ptrs = (UINT4 *) Access_allocated(&new->childs_ptrs_len,&seconds,childs_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->childs_comp = (UINT4 *) Access_allocated(&new->childs_comp_len,&seconds,childs_compfile,sizeof(UINT4));
+    } else {
+      new->childs_comp = (UINT4 *) Access_mmap(&new->childs_comp_fd,&new->childs_comp_len,childs_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+    new->childr_ptrs = (UINT4 *) Access_allocated(&new->childr_ptrs_len,&seconds,childr_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->childr_comp = (UINT4 *) Access_allocated(&new->childr_comp_len,&seconds,childr_compfile,sizeof(UINT4));
+    } else {
+      new->childr_comp = (UINT4 *) Access_mmap(&new->childr_comp_fd,&new->childr_comp_len,childr_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+    new->childx_ptrs = (UINT4 *) Access_allocated(&new->childx_ptrs_len,&seconds,childx_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->childx_comp = (UINT4 *) Access_allocated(&new->childx_comp_len,&seconds,childx_compfile,sizeof(UINT4));
+    } else {
+      new->childx_comp = (UINT4 *) Access_mmap(&new->childx_comp_fd,&new->childx_comp_len,childx_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+
+    if (access == USE_ALLOCATE) {
+      new->pioneerbp = (UINT4 *) Access_allocated(&new->pioneerbp_len,&seconds,pioneerbpfile,sizeof(UINT4));
+    } else {
+      new->pioneerbp = (UINT4 *) Access_mmap(&new->pioneerbp_fd,&new->pioneerbp_len,pioneerbpfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+    new->pior_ptrs = (UINT4 *) Access_allocated(&new->pior_ptrs_len,&seconds,pior_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->pior_comp = (UINT4 *) Access_allocated(&new->pior_comp_len,&seconds,pior_compfile,sizeof(UINT4));
+    } else {
+      new->pior_comp = (UINT4 *) Access_mmap(&new->pior_comp_fd,&new->pior_comp_len,pior_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+    new->piom_ptrs = (UINT4 *) Access_allocated(&new->piom_ptrs_len,&seconds,piom_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->piom_comp = (UINT4 *) Access_allocated(&new->piom_comp_len,&seconds,piom_compfile,sizeof(UINT4));
+    } else {
+      new->piom_comp = (UINT4 *) Access_mmap(&new->piom_comp_fd,&new->piom_comp_len,piom_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+
+    BP_read_setup(BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
+
+#else
+    new->nextp = (UINT4 *) Access_allocated(&new->nextp_len,&seconds,nextpfile,sizeof(UINT4));
+    
+    new->child_ptrs = (UINT4 *) Access_allocated(&new->child_ptrs_len,&seconds,child_ptrsfile,sizeof(UINT4));
+    if (access == USE_ALLOCATE) {
+      new->child_comp = (UINT4 *) Access_allocated(&new->child_comp_len,&seconds,child_compfile,sizeof(UINT4));
+    } else {
+      new->child_comp = (UINT4 *) Access_mmap(&new->child_comp_fd,&new->child_comp_len,child_compfile,sizeof(UINT4),/*randomp*/true);
+    }
+#endif
+  }
+
+
+  FREE(indexj_compfile);
+  FREE(indexj_ptrsfile);
+  FREE(indexi_compfile);
+  FREE(indexi_ptrsfile);
+
+#ifdef USE_CHILD_BP
+  FREE(piom_compfile);
+  FREE(piom_ptrsfile);
+  FREE(pior_compfile);
+  FREE(pior_ptrsfile);
+  FREE(pioneerbpfile);
+
+  FREE(childx_compfile);
+  FREE(childx_ptrsfile);
+  FREE(childr_compfile);
+  FREE(childr_ptrsfile);
+  FREE(childs_compfile);
+  FREE(childs_ptrsfile);
+  FREE(childs_pagesfile);
+  FREE(childfcfile);
+  FREE(childbpfile);
+#else
+  FREE(nextpfile);
+  FREE(child_compfile);
+  FREE(child_ptrsfile);
+#endif
+
+  FREE(plcp_compfile);
+  FREE(plcp_ptrsfile);
+  FREE(sarrayfile);
 
   return new;
 }
@@ -677,25 +578,52 @@ Sarray_new (char *directory, char *fileroot, char *snps_root, Access_mode_T acce
 void
 Sarray_free (T *old) {
   if (*old) {
-    FREE((*old)->saindex);
-    FREE((*old)->lcpptrs);
-    if ((*old)->access == ALLOCATED) {
-      FREE((*old)->array);
-      FREE((*old)->lcpcomp);
-#ifdef USE_LCP
-      FREE((*old)->lcp);
+    FREE((*old)->indexi_ptrs);
+    FREE((*old)->indexi_comp);
+    FREE((*old)->indexj_ptrs);
+    FREE((*old)->indexj_comp);
+    FREE((*old)->plcp_ptrs);
+#ifdef USE_CHILD_BP
+    FREE((*old)->childfc);
+    FREE((*old)->childs_pages);
+    FREE((*old)->childs_ptrs);
+    FREE((*old)->childr_ptrs);
+    FREE((*old)->childx_ptrs);
+    FREE((*old)->pior_ptrs);
+    FREE((*old)->piom_ptrs);
+#else
+    FREE((*old)->child_ptrs);
+    FREE((*old)->nextp);
 #endif
 
-#ifdef HAVE_MMAP
-    } else if ((*old)->access == MMAPPED) {
-#ifdef USE_LCP
-      munmap((void *) (*old)->lcp,(*old)->lcp_len);
-      close((*old)->lcp_fd);
+    munmap((void *) (*old)->array,(*old)->array_len);
+    close((*old)->array_fd);
+
+    if ((*old)->access == ALLOCATED) {
+      FREE((*old)->plcp_comp);
+#ifdef USE_CHILD_BP
+      FREE((*old)->childbp);
+      FREE((*old)->childs_comp);
+      FREE((*old)->childr_comp);
+      FREE((*old)->childx_comp);
+      FREE((*old)->pior_comp);
+      FREE((*old)->piom_comp);
 #endif
-      munmap((void *) (*old)->lcpcomp,(*old)->lcpcomp_len);
-      munmap((void *) (*old)->array,(*old)->array_len);
-      close((*old)->lcpcomp_fd);
-      close((*old)->array_fd);
+
+    } else if ((*old)->access == MMAPPED) {
+      munmap((void *) (*old)->plcp_comp,(*old)->plcp_comp_len);
+      close((*old)->plcp_comp_fd);
+#ifdef USE_CHILD_BP
+      munmap((void *) (*old)->childs_comp,(*old)->childs_comp_len);
+      munmap((void *) (*old)->childr_comp,(*old)->childr_comp_len);
+      munmap((void *) (*old)->childx_comp,(*old)->childx_comp_len);
+      munmap((void *) (*old)->pior_comp,(*old)->pior_comp_len);
+      munmap((void *) (*old)->piom_comp,(*old)->piom_comp_len);
+      close((*old)->childs_comp_fd);
+      close((*old)->childr_comp_fd);
+      close((*old)->childx_comp_fd);
+      close((*old)->pior_comp_fd);
+      close((*old)->piom_comp_fd);
 #endif
     }
 
@@ -707,6 +635,9 @@ Sarray_free (T *old) {
 
 
 
+#if 0
+/* Old search method.  O(m*(log n)), where m is the querylength and n
+   is the size of the suffix array searched */
 static Sarrayptr_T
 sarray_search_init (char *query, int querylength, int queryoffset, Compress_T query_compress, bool plusp,
 		    Sarrayptr_T low, Sarrayptr_T high, Univcoord_T nmatches_low, Univcoord_T nmatches_high) {
@@ -714,6 +645,7 @@ sarray_search_init (char *query, int querylength, int queryoffset, Compress_T qu
   Univcoord_T pos;
   Univcoord_T nmatches_mid, fasti;
   char c;
+  UINT4 sa_low, sa_mid;
   UINT4 lcp_low, lcp_mid;
 
   assert(querylength > 0);
@@ -733,14 +665,13 @@ sarray_search_init (char *query, int querylength, int queryoffset, Compress_T qu
 							 /*pos5*/queryoffset+nmatches_mid,
 							 /*pos3*/queryoffset+querylength,plusp,/*genestrand*/0);
     pos = sarray->array[mid] + fasti;
-    if ((c = Genome_get_char(genome,pos)) == 'N') {
-      c = 'X';
-    }
+    c = Genome_get_char_lex(genome,pos,sarray->n);
 
     if (fasti == (Univcoord_T) querylength || c > query[fasti]) {
       high = mid;
       /* nmatches_high = (sarray->lcp[mid] < nmatches_mid) ? sarray->lcp[mid] : nmatches_mid; */
-      lcp_mid = Bitpack64_access(mid);
+      sa_mid = sarray->array[mid];
+      lcp_mid = Bitpack64_offsetptr_only(sa_mid,sarray->plcp_ptrs,sarray->plcp_comp) - sa_mid;
 #ifdef USE_LCP
       if (lcp_mid != sarray->lcp[mid]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -750,7 +681,8 @@ sarray_search_init (char *query, int querylength, int queryoffset, Compress_T qu
     } else {
       low = mid;
       /* nmatches_low = (sarray->lcp[low] < nmatches_mid) ? sarray->lcp[low] : nmatches_mid; */
-      lcp_low = Bitpack64_access(low);
+      sa_low = sarray->array[low];
+      lcp_low = Bitpack64_offsetptr_only(sa_low,sarray->plcp_ptrs,sarray->plcp_comp) - sa_low;
 #ifdef USE_LCP
       if (lcp_low != sarray->lcp[low]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -765,14 +697,19 @@ sarray_search_init (char *query, int querylength, int queryoffset, Compress_T qu
   debug1(printf("sarray_search_init ended.  Returning low %u+1\n\n",low));
   return low + 1;
 }
+#endif
 
 
+#if 0
+/* Old search method.  O(m*(log n)), where m is the querylength and n
+   is the size of the suffix array searched */
 static Sarrayptr_T
 sarray_search_final (char *query, int querylength, int queryoffset, Compress_T query_compress, bool plusp,
 		     Sarrayptr_T low, Sarrayptr_T high, Univcoord_T nmatches_low, Univcoord_T nmatches_high) {
   Sarrayptr_T mid;
   Univcoord_T pos;
   Univcoord_T nmatches_mid, fasti;
+  UINT4 sa_low, sa_mid;
   UINT4 lcp_low, lcp_mid;
   char c;
 
@@ -793,14 +730,13 @@ sarray_search_final (char *query, int querylength, int queryoffset, Compress_T q
 							 /*pos5*/queryoffset+nmatches_mid,
 							 /*pos3*/queryoffset+querylength,plusp,/*genestrand*/0);
     pos = sarray->array[mid] + fasti;
-    if ((c = Genome_get_char(genome,pos)) == 'N') {
-      c = 'X';
-    }
+    c = Genome_get_char_lex(genome,pos,sarray->n);
 
     if (fasti == (Univcoord_T) querylength || c < query[fasti]) {
       low = mid;
       /* nmatches_low = (sarray->lcp[low] < nmatches_mid) ? sarray->lcp[low] : nmatches_mid; */
-      lcp_low = Bitpack64_access(low);
+      sa_low = sarray->array[low];
+      lcp_low = Bitpack64_offsetptr_only(sa_low,sarray->plcp_ptrs,sarray->plcp_comp) - sa_low;
 #ifdef USE_LCP
       if (lcp_low != sarray->lcp[low]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -810,7 +746,8 @@ sarray_search_final (char *query, int querylength, int queryoffset, Compress_T q
     } else {
       high = mid;
       /* nmatches_high = (sarray->lcp[mid] < nmatches_mid) ? sarray->lcp[mid] : nmatches_mid; */
-      lcp_mid = Bitpack64_access(mid);
+      sa_mid = sarray->array[mid];
+      lcp_mid = Bitpack64_offsetptr_only(sa_mid,sarray->plcp_ptrs,sarray->plcp_comp) - sa_mid;
 #ifdef USE_LCP
       if (lcp_mid != sarray->lcp[mid]) {
 	fprintf(stderr,"LCP compression error at %u\n",mid);
@@ -825,6 +762,7 @@ sarray_search_final (char *query, int querylength, int queryoffset, Compress_T q
   debug1(printf("sarray_search_final ended.  Returning high %u-1\n\n",high-1));
   return high - 1;
 }
+#endif
 
 
 int
@@ -863,26 +801,305 @@ nt_oligo (char *query, int indexsize) {
   return oligo;
 }
 
+Storedoligomer_T
+nt_oligo_truncate (char *query, int truncsize, int indexsize, int subst_value) {
+  Storedoligomer_T oligo = 0U;
+  int i;
 
-static void
-sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
-	       int *nmatches, char *query, int querylength,
-	       int queryoffset, Compress_T query_compress, bool plusp) {
-  Sarrayptr_T low, high, mid;
-  Univcoord_T pos;
-  Univcoord_T nmatches_low, nmatches_high, nmatches_mid, fasti;
-  UINT4 lcp_low, lcp_mid;
+  for (i = 0; i < truncsize; i++) {
+    oligo *= 4;
+    
+    switch (query[i]) {
+    case 'A': break;
+    case 'C': oligo += 1; break;
+    case 'G': oligo += 2; break;
+    case 'T': oligo += 3; break;
+    default:
+      fprintf(stderr,"Saw N in nt_oligo\n");
+      abort();
+    }
+  }
 
-  Sarrayptr_T prevlow, prevhigh;
-  Univcoord_T nmatches_prevlow, nmatches_prevhigh, nmatches_best = 0;
+  for ( ; i < indexsize; i++) {
+    oligo *= 4;
+    oligo += subst_value;
+  }
 
-  int effective_querylength;	/* length to first N */
-  Storedoligomer_T oligo;
+  return oligo;
+}
+
+
+#ifndef USE_CHILD_BP
+
+/* For child[index+1].up, just calling child[index] */
+#define decode_up(index,child_ptrs,child_comp) index - Bitpack64_access(index,child_ptrs,child_comp)
+#define decode_down(index,child_ptrs,child_comp) Bitpack64_access(index,child_ptrs,child_comp) + index + 1
+#define decode_next(index,child_ptrs,child_comp) Bitpack64_access(index,child_ptrs,child_comp) + index + 1
+
+
+#if 0
+/* For benchmarking */
+void
+Sarray_traverse_children (Sarrayptr_T i, Sarrayptr_T j, T sarray) {
+  UINT4 up, nextl;
+
+  /* LCP interval */
+  debug1(printf("lcp-interval %u..%u\n",i,j));
+  up = decode_up(j,sarray->child_ptrs,sarray->child_comp);
+  if (i < up && up <= j) {
+    nextl = up;
+    debug1(printf("nextl is up: %d\n",nextl));
+  } else {
+    nextl = decode_down(i,sarray->child_ptrs,sarray->child_comp); /* down */
+    debug1(printf("nextl is down: %d\n",nextl));
+  }
+
+  /* Test for child[i] being down: lcp[child[i]] > lcp[i] */
+  /* Test for child[i] being next_lindex: lcp[child[i]] == lcp[i] */
+  while (get_bit(sarray->nextp,nextl) != 0) {
+    debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
+    nextl = decode_next(nextl,sarray->child_ptrs,sarray->child_comp); /* child[nextl] */
+  }
+
+  return;
+}
+#endif
+
+
+/* Previously did not use this code */
+static bool
+get_child (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_T j, char desired_char,
+	   UINT4 *child_ptrs, UINT4 *child_comp, INT4 *nextp, UINT4 *SA, UINT4 *plcp_ptrs, UINT4 *plcp_comp) {
+  UINT4 up, nextl;
+  Sarrayptr_T sa_nextl;
+  UINT4 lcp_whole;
+  UINT4 pos;
   char c;
 
+  debug2(printf("Getting children for l-interval from %u to %u, char %c\n",i,j,desired_char));
+
+  /* Test for child[j] being up: lcp[j] > lcp[j+1] */
+
+  up = decode_up(j,child_ptrs,child_comp); /* up: child[j] = childtab[j+1].up */
+  if (i < up && up <= j) {
+    nextl = up;
+  } else {
+    nextl = decode_down(i,child_ptrs,child_comp);	/* down: child[i] */
+  }
+  sa_nextl = SA[nextl];
+  lcp_whole = Bitpack64_offsetptr_only(sa_nextl,plcp_ptrs,plcp_comp) - sa_nextl;
+  debug2(printf("LCP of whole is %u\n",lcp_whole));
+
+  pos = SA[i] + lcp_whole;
+  c = Genome_get_char_lex(genome,pos,sarray->n);
+  if (c > desired_char) {
+    debug2(printf("Returning false\n"));
+    return false;
+  } else if (c == desired_char) {
+    *l = i;
+    *r = nextl - 1;
+    debug2(printf("Child: %u to %u, char %c\n",*l,*r,c));
+    debug2(printf("Returning true\n\n"));
+    return true;
+  } else {
+    /* Skip */
+  }
+  
+  /* Test for child[i] being down: lcp[child[i]] > lcp[i] */
+  /* Test for child[i] being next_lindex: lcp[child[i]] == lcp[i] */
+  while (get_bit(nextp,nextl) != 0) {
+    pos = SA[nextl] + lcp_whole;
+    c = Genome_get_char_lex(genome,pos,sarray->n);
+    if (c > desired_char) {
+      debug2(printf("Returning false\n"));
+      return false;
+    } else if (c == desired_char) {
+      *l = nextl;
+      nextl = decode_next(nextl,child_ptrs,child_comp);  /* child[nextl]; */
+      *r = nextl - 1;
+      debug2(printf("Child: %u to %u, char %c\n",*l,*r,c));
+      debug2(printf("Returning true\n\n"));
+      return true;
+    } else {
+      nextl = decode_next(nextl,child_ptrs,child_comp);  /* child[nextl]; */
+    }
+  }
+
+  pos = SA[nextl] + lcp_whole;
+  c = Genome_get_char_lex(genome,pos,sarray->n);
+  if (c == desired_char) {
+    *l = nextl;
+    *r = j;
+    debug2(printf("Child: %u to %u, char %c\n",*l,*r,c));
+    debug2(printf("Returning true\n\n"));
+    return true;
+  } else {
+    debug2(printf("Returning false\n"));
+    return false;
+  }
+}
+
+
+/* Previously used this code.  Avoids recomputing lcp_whole */
+static bool
+get_child_given_first (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_T j, char desired_char,
+		       UINT4 *child_ptrs, UINT4 *child_comp, UINT4 *nextp, UINT4 *SA, UINT4 lcp_whole, UINT4 nextl) {
+  UINT4 pos;
+  char c;
+
+  debug2(printf("Getting children for l-interval from %u to %u, char %c\n",i,j,desired_char));
+
+  /* First child already given */
+  pos = SA[i] + lcp_whole;
+  c = Genome_get_char_lex(genome,pos,sarray->n);
+  if (c > desired_char) {
+    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+    debug2(printf("1.  Returning false, because %c > desired %c\n",c,desired_char));
+    return false;
+  } else if (c == desired_char) {
+    *l = i;
+    *r = nextl - 1;
+    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+    debug2(printf("Returning true\n\n"));
+    return true;
+  } else {
+    /* Skip */
+    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+  }
+  
+  /* Test for child[i] being down: lcp[child[i]] > lcp[i] */
+  /* Test for child[i] being next_lindex: lcp[child[i]] == lcp[i] */
+  while (get_bit(nextp,nextl) != 0) {
+    pos = SA[nextl] + lcp_whole;
+    c = Genome_get_char_lex(genome,pos,sarray->n);
+    if (c > desired_char) {
+      debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
+      debug2(printf("2.  Returning false, because %c > desired %c\n",c,desired_char));
+      return false;
+    } else if (c == desired_char) {
+      *l = nextl;
+      *r = decode_next(nextl,child_ptrs,child_comp) - 1; /* child[nextl] - 1 */
+      debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
+      debug2(printf("Returning true\n\n"));
+      return true;
+    } else {
+      debug2(printf("Child: %u to %u, char %c\n",nextl,decode_next(nextl,child_ptrs,child_comp)-1,c));
+      nextl = decode_next(nextl,child_ptrs,child_comp); /* child[nextl] */
+    }
+  }
+
+  debug2(printf("Processing last interval\n"));
+  pos = SA[nextl] + lcp_whole;
+  c = Genome_get_char_lex(genome,pos,sarray->n);
+  if (c == desired_char) {
+    *l = nextl;
+    *r = j;
+    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
+    debug2(printf("Returning true\n\n"));
+    return true;
+  } else {
+    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
+    debug2(printf("3.  Returning false, because %c != desired %c\n",c,desired_char));
+    return false;
+  }
+}
+
+
+static UINT4
+find_longest_match (UINT4 nmatches, Sarrayptr_T *initptr, Sarrayptr_T *finalptr,
+		    Sarrayptr_T i, Sarrayptr_T j, char *query, UINT4 querylength,
+		    int queryoffset, Compress_T query_compress, T sarray, bool plusp) {
+  UINT4 lcp_whole, nextl, up, sa_nextl;
+  UINT4 minlength;
+  UINT4 l, r;
+
+  while (nmatches < querylength) {
+    if (i == j) {
+      /* Singleton interval */
+      debug1(printf("Singleton interval %u..%u\n",i,j));
+      nmatches +=
+	Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
+					     /*pos5*/queryoffset+nmatches,/*pos3*/queryoffset+querylength,
+					     plusp,/*genestrand*/0);
+      *initptr = i;
+      *finalptr = j;
+      return nmatches;
+
+    } else {
+      /* LCP interval */
+      debug1(printf("lcp-interval %u..%u\n",i,j));
+      up = decode_up(j,sarray->child_ptrs,sarray->child_comp);
+      if (i < up && up <= j) {
+	nextl = up;
+	debug1(printf("nextl is up: %u\n",nextl));
+      } else {
+	nextl = decode_down(i,sarray->child_ptrs,sarray->child_comp); /* down */
+	debug1(printf("nextl is down: %u\n",nextl));
+      }
+      sa_nextl = sarray->array[nextl];
+      lcp_whole = Bitpack64_offsetptr_only(sa_nextl,sarray->plcp_ptrs,sarray->plcp_comp) - sa_nextl; /* lcp(i,j) */
+      debug1(printf("lcp_whole for %u..%u is %d, compared with nmatches %d\n",i,j,lcp_whole,nmatches));
+
+      if (lcp_whole > nmatches) {
+	/* Check only up to minlength, so we validate the entire interval */
+	minlength = (lcp_whole < querylength) ? lcp_whole : querylength;
+	debug1(printf("Looking up genome for query from %d .. %d - 1\n",nmatches,minlength));
+	nmatches +=
+	  Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
+					       /*pos5*/queryoffset+nmatches,/*pos3*/queryoffset+minlength,
+					       plusp,/*genestrand*/0);
+	if (nmatches < minlength) {
+	  *initptr = i;
+	  *finalptr = j;
+	  return nmatches;
+
+	} else if (nmatches >= querylength) {
+	  debug1(printf("nmatches is now %d >= querylength %d => success\n",nmatches,querylength));
+	  *initptr = i;
+	  *finalptr = j;
+	  return nmatches;
+	}
+      }
+	
+      debug1(printf("nmatches is now %d => desired_char is %c\n",nmatches,query[nmatches]));
+      if (get_child_given_first(&l,&r,i,j,/*desired_char*/query[nmatches],
+				sarray->child_ptrs,sarray->child_comp,sarray->nextp,
+				sarray->array,lcp_whole,nextl) == false) {
+	*initptr = i;
+	*finalptr = j;
+	return nmatches;
+      } else {
+	nmatches += 1;
+	i = l;
+	j = r;
+      }
+    }
+  }
+
+  *initptr = i;
+  *finalptr = j;
+  return nmatches;
+}
+
+
+
+
+/* Searches using LCP and child arrays.  Should be O(m * |Sigma|),
+   where m wis the querylength and |Sigma| is the size of the alphabet
+   (4 for DNA) */
+/* query is a substring of the original, starting with queryoffset */
+static void
+sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
+	       UINT4 *nmatches, char *query, UINT4 querylength, int queryoffset,
+	       Compress_T query_compress, bool plusp) {
+  int effective_querylength;	/* length to first N */
+  Storedoligomer_T oligo;
+  UINT4 l, r;
+
+
 #ifdef DEBUG
-  int i = 0;
-  int recount;
+  int k = 0;
+  UINT4 recount;
   char Buffer[1000];
   Univcoord_T hit;
   bool failp;
@@ -890,134 +1107,141 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
   char Buffer[1000];
 #endif
 
+  debug(printf("sarray_search on %s, querylength %d\n",query,querylength));
 
-  *successp = false;
+  /* Find initial lcp-interval */
   effective_querylength = nt_querylength(query,querylength);
 
+  *nmatches = 0;
   if (effective_querylength == 0) {
     *initptr = *finalptr = 0;
-    *nmatches = 0;
+    *successp = false;
     return;
 
   } else if (effective_querylength < sarray->indexsize) {
-    low = prevlow = 0;
-    high = prevhigh = sarray->n_plus_one;
-    
+    debug1(printf("string %.*s with effective querylength %d is shorter than indexsize",
+		  querylength,query,effective_querylength));
+
+#if 1
+    l = 1;
+    r = sarray->n;
+
+#else
+    /* Try to infer from 12-mer index, but can be tricky when N's are present */
+    oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for A*/0);
+    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
+    debug1(printf(" => oligo %08X",oligo));
+
+    /* Because $ < A, we need to check for this case.  Need to back up just 1. */
+    if (l > 1 && sarray->array[l-1] + effective_querylength == sarray->n) {
+      debug1(printf(" (backing up one position for l, because at end of genome)"));
+      l--;
+    }
+
+    /* Add 1 to rollover to next oligo, to handle Ns in genome */
+    oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for T*/3) + 1;
+    r = Bitpack64_read_one(oligo*2,sarray->indexij_ptrs,sarray->indexij_comp) - 1;
+    debug1(printf(" => ending oligo %08X => r-value %u\n",oligo,r));
+
+    /* Potential bug here if N is present.  Could read dc and if .X, back up a certain number */
+
+    if (oligo == sarray->indexspace) {
+      /* We have a poly-T, so we cannot determine r.  For example,
+	 TTTTTN has a different r value than TTN. */
+      debug1(printf(" but poly-T => 1-letter for T: %u..%u\n",l,r));
+      l = sarray->initindexi[3];
+      r = sarray->initindexj[3];
+      /* Keep nmatches = 0, because there may not be a T in the genome */
+
+    } else {
+      r = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp) - 1;
+
+      /* Because $ < A, we need to check for this case.  Need to back up just 1. */
+      debug1(printf(" (checking %u + %d >= %u)",sarray->array[r],effective_querylength,sarray->n));
+      if (r > 0 && sarray->array[r] + effective_querylength >= sarray->n) {
+	debug1(printf(" (backing up one position for r, because at end of genome)"));
+	r--;
+      }
+
+      debug1(printf(" and %08X => interval %u..%u (effective_querylength %d)",
+		    oligo,l,r,effective_querylength));
+
+      if (l <= r) {
+	/* Keep nmatches = 0, since we don't know the value yet */
+	debug1(printf(" (good)\n"));
+      } else {
+#if 0
+	/* Did not find a match using saindex, so resort to one letter */
+	switch (query[0]) {
+	case 'A': l = sarray->initindexi[0]; r = sarray->initindexj[0]; break;
+	case 'C': l = sarray->initindexi[1]; r = sarray->initindexj[1]; break;
+	case 'G': l = sarray->initindexi[2]; r = sarray->initindexj[2]; break;
+	case 'T': l = sarray->initindexi[3]; r = sarray->initindexj[3]; break;
+	default: l = 1; r = 0;
+	}
+	debug1(printf(" (bad) => 1-letter from %c: %u..%u\n",query[0],l,r));
+#else
+	/* The entire lcp-interval [1,sarray->n] should also work without initindex */
+	l = 1;
+	r = sarray->n;
+	debug1(printf(" (bad) => entire lcp-interval: %u..%u\n",l,r));
+#endif
+      }
+    }
+    /* End of code to infer from 12-mers */
+#endif
+
   } else {
     oligo = nt_oligo(query,sarray->indexsize);
-    if (sarray->saindex[oligo] == -1U) {
-      low = prevlow = 0;
+    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
+    r = Bitpack64_offsetptr_only(oligo,sarray->indexj_ptrs,sarray->indexj_comp);
+    debug1(printf("string %.*s is equal/longer than indexsize %d => oligo %u => interval %u..%u",
+		  querylength,query,sarray->indexsize,oligo,l,r));
+    if (l <= r) {
+      debug1(printf(" (good)\n"));
+      *nmatches = sarray->indexsize;
+      /* i = l; */
+      /* j = r; */
     } else {
-      low = prevlow = sarray->saindex[oligo] - 1;
-    }
-
-    if (sarray->saindex[oligo+1] == -1U) {
-      high = prevhigh = sarray->n_plus_one;
-    } else {
-      high = prevhigh = sarray->saindex[oligo+1];
+#if 0
+      /* Did not find a match using saindex, so resort to one letter */
+      switch (query[0]) {
+      case 'A': l = sarray->initindexi[0]; r = sarray->initindexj[0]; break;
+      case 'C': l = sarray->initindexi[1]; r = sarray->initindexj[1]; break;
+      case 'G': l = sarray->initindexi[2]; r = sarray->initindexj[2]; break;
+      case 'T': l = sarray->initindexi[3]; r = sarray->initindexj[3]; break;
+      default: l = 1; r = 0;
+      }
+      debug1(printf(" (bad) => 1-letter from %c: %u..%u\n",query[0],l,r));
+#else
+      /* The entire lcp-interval [1,sarray->n] should also work without initindex */
+      l = 1;
+      r = sarray->n;
+      debug1(printf(" (bad) => entire lcp-interval: %u..%u\n",l,r));
+#endif
     }
   }
 
-  debug1(printf("sarray_search on %s, querylength %d, with low %u, high %u\n",
-		query,querylength,low,high));
-
-  nmatches_low = nmatches_high = 0;
-  while (low + 1 < high && *successp == false) {
-    /* Compute mid for unsigned ints */
-    mid = low/2 + high/2;
-    if (low % 2 == 1 && high % 2 == 1) {
-      mid += 1;
-    }
-    debug1(printf("low %u, high %u => mid %u\n",low,high,mid));
-    nmatches_mid = (nmatches_low < nmatches_high) ? nmatches_low : nmatches_high;
-
-    fasti = nmatches_mid +
-      (Univcoord_T) Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[mid]-queryoffset,
-							 /*pos5*/queryoffset+nmatches_mid,/*pos3*/queryoffset+querylength,
-							 plusp,/*genestrand*/0);
-    debug1(Genome_fill_buffer_simple(genome,sarray->array[mid],querylength,Buffer));
-    debug1(printf("fasti at %u is %d: %s\n",sarray->array[mid],fasti,Buffer));
-
-    pos = sarray->array[mid] + fasti;
-    if ((c = Genome_get_char(genome,pos)) == 'N') {
-      c = 'X';
-    }
-
-    if (fasti > nmatches_best) {
-      debug1(printf("fasti %d > nmatches_best %d.  Saving prevlow %u and prevhigh %u.\n",
-		   fasti,nmatches_best,low,high));
-      prevlow = low;
-      prevhigh = high;
-      nmatches_prevlow = nmatches_low;
-      nmatches_prevhigh = nmatches_high;
-      nmatches_best = fasti;
-    }
-
-    if (fasti == (Univcoord_T) querylength) {
-      *successp = true;
-
-    } else if (c < query[fasti]) {
-      low = mid;
-      /* nmatches_low = (sarray->lcp[low] < nmatches_mid) ? sarray->lcp[low] : nmatches_mid; */
-      lcp_low = Bitpack64_access(low);
-#ifdef USE_LCP
-      if (lcp_low != sarray->lcp[low]) {
-	fprintf(stderr,"LCP compression error at %u\n",mid);
-      }
-#endif
-      nmatches_low = (lcp_low < nmatches_mid) ? lcp_low : nmatches_mid;
-      debug1(printf("genome %c < query (%c) => low gets %u @ %u\n",c,query[fasti],low,sarray->array[low]));
-
-    } else if (c > query[fasti]) {
-      high = mid;
-      /* nmatches_high = (sarray->lcp[mid] < nmatches_mid) ? sarray->lcp[mid] : nmatches_mid; */
-      lcp_mid = Bitpack64_access(mid);
-#ifdef USE_LCP
-      if (lcp_mid != sarray->lcp[mid]) {
-	fprintf(stderr,"LCP compression error at %u\n",mid);
-      }
-#endif
-      nmatches_high = (lcp_mid < nmatches_mid) ? lcp_mid : nmatches_mid;
-      debug1(printf("genome %c > query (%c) => high gets %u @ %u\n",c,query[fasti],high,sarray->array[high]));
-
-    } else {
-      debug1(printf("genome %c == query (%c) => should not happen after Genome_consecutive_matches\n",
-		   c,query[fasti]));
-      abort();
-    }
-
-    debug1(printf("sarray_search with low %u @ %u, high %u @ %u\n",low,sarray->array[low],high,sarray->array[high]));
+  if (l > r) {
+    /* Did not find a match using saindex or one letter */
+    *initptr = l;
+    *finalptr = r;
+  } else {
+    *nmatches = find_longest_match(*nmatches,&(*initptr),&(*finalptr),/*i*/l,/*j*/r,
+				   query,querylength,queryoffset,query_compress,sarray,plusp);
   }
-  debug1(printf("\n"));
 
-  if ((*nmatches = (int) nmatches_best) == 0) {
-    debug(printf("Got no matches at all\n"));
-    return;
-  } else if (*successp == false) {
-    /* Search only on part of string that does match.  Back up to prevlow and prevhigh. */
-    debug(printf("%s fail at %d: calling init/final on prevlow %u, prevhigh %u\n",
-		 plusp ? "plus" : "minus",queryoffset,prevlow,prevhigh));
+  /* Search through suffix tree */
+  debug(printf("initptr gets %u, finalptr gets %u\n",*initptr,*finalptr));
 
-    *initptr = sarray_search_init(query,/*querylength*/*nmatches,queryoffset,query_compress,plusp,
-				  prevlow,prevhigh,nmatches_prevlow,nmatches_prevhigh);
-    *finalptr = sarray_search_final(query,/*querylength*/*nmatches,queryoffset,query_compress,plusp,
-				    prevlow,prevhigh,nmatches_prevlow,nmatches_prevhigh);
+  if (*nmatches < querylength) {
+    *successp = false;
     debug(printf("%s fail at %d: got %d hits with %d matches:\n",
 		 plusp ? "plus" : "minus",queryoffset,(*finalptr - *initptr + 1),*nmatches));
   } else {
-    debug(printf("%s success at %d: calling init/final on low %u, high %u\n",
-		 plusp ? "plus" : "minus",queryoffset,low,high));
-
-    *initptr = sarray_search_init(query,querylength,queryoffset,query_compress,plusp,
-				  low,mid,nmatches_low,nmatches_mid);
-    *finalptr = sarray_search_final(query,querylength,queryoffset,query_compress,plusp,
-				    mid,high,nmatches_mid,nmatches_high);
+    *successp = true;
     debug(printf("%s success at %d: got %d hits with %d matches:\n",
 		 plusp ? "plus" : "minus",queryoffset,(*finalptr - *initptr + 1),*nmatches));
-  }
-
-  if ((int) (*finalptr - *initptr + 1) < 0) {
-    abort();
   }
 
 #ifdef DEBUG
@@ -1042,13 +1266,13 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 
 
   /* Hits */
-  for (i = 0; i < (int) (*finalptr - *initptr + 1) && i < 100; i++) {
-    hit = sarray->array[(*initptr)+i];
+  for (k = 0; k < (int) (*finalptr - *initptr + 1) && k < 100; k++) {
+    hit = sarray->array[(*initptr)+k];
     recount = Genome_consecutive_matches_rightward(query_compress,/*left*/hit-queryoffset,
 						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
 						   plusp,/*genestrand*/0);
-    printf("%d\t%u\t%u\t",recount,(*initptr)+i,hit /*+ 1U*/);
-    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)+i],recount+1,Buffer);
+    printf("%d\t%u\t%u\t",recount,(*initptr)+k,hit /*+ 1U*/);
+    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)+k],recount+1,Buffer);
     
     printf("%s\n",Buffer);
     if (recount != *nmatches) {
@@ -1057,7 +1281,7 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 	     recount,sarray->array[(*initptr)],*nmatches);
       failp = true;
     }
-    /* hits[i] = sarray->array[(*initptr)++]; */
+    /* hits[k] = sarray->array[(*initptr)++]; */
   }
 
 
@@ -1080,12 +1304,479 @@ sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
 
   if (failp == true) {
     /* Can happen because $ ranks below 0 */
-    /* abort(); */
+    abort();
   }
 #endif
 
   return;
 }
+
+#else
+
+#if 0
+/* For benchmarking */
+void
+Sarray_traverse_children (Sarrayptr_T i, Sarrayptr_T j, T sarray) {
+  UINT4 nextl, nsv_i;
+  BP_size_t selecti, initw;
+  BP_size_t w, b, x;
+
+  /* First child */
+  /* Compute NSV(i) (next smallest value) */
+  selecti = BP_select(i,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
+		      HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
+  w = BP_find_closeparen(selecti,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			 sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+  nsv_i = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE) /*+1*/;
+  debug2(printf("NSV(i)-1 = %u, compared with j %u\n",nsv_i,j));
+
+  /* Check for <= and not ==, because of $ at end of genome */
+  /* Compare against j, and not j+1, because we computed NSV(i) - 1 */
+  if (nsv_i <= j) {
+    /* First child: case 1 */
+    initw = w-1;
+    w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			  sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+    nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+    debug2(printf("First child, case 1: %u\n",nextl));
+  } else {
+    /* First child: case 2 */
+    w = BP_select(j+1,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
+		  HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
+    initw = w-1;
+    w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			  sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+    nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+    debug2(printf("First child, case 2: %u\n",nextl));
+  }
+
+
+  debug2(printf("Requesting rank_close of %llu",w));
+  b = BP_rank_close(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+  debug2(printf("  Got %u\n",b));
+
+  debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
+		w-1,get_bit(sarray->childbp,w-1),b-1,get_bit(sarray->childfc,b-1)));
+  w--;
+  b--;
+
+  while (get_bit(sarray->childbp,w) == close_paren && get_bit(sarray->childfc,b) == 0) {
+    debug2(printf("Child: %u",nextl));
+    x = BP_find_openparen(w,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			  sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+    nextl = BP_rank_open(x,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+    debug2(printf(" to %u, char %c\n",nextl-1,c));
+
+    w--;
+    b--;
+    debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
+		  w,get_bit(sarray->childbp,w),b,get_bit(sarray->childfc,b)));
+  }
+
+  return;
+}
+#endif
+
+
+static bool
+get_child_given_first (Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, Sarrayptr_T j, char desired_char,
+		       T sarray, UINT4 lcp_whole, UINT4 nextl, BP_size_t initw) {
+  UINT4 pos;
+  char c;
+  BP_size_t w, b, x;
+#if 0
+  BP_size_t v;
+#endif
+
+
+  debug2(printf("Getting children for l-interval from %u to %u, char %c, lcp_whole = %d\n",
+		i,j,desired_char,lcp_whole));
+
+  /* First interval already given */
+  pos = sarray->array[i] + lcp_whole;
+  c = Genome_get_char_lex(genome,pos,sarray->n);
+  if (c > desired_char) {
+    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+    debug2(printf("1.  Returning false, because %c > desired %c\n",c,desired_char));
+    return false;
+  } else if (c == desired_char) {
+    *l = i;
+    *r = nextl - 1;
+    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+    debug2(printf("Returning true\n\n"));
+    return true;
+  } else {
+    /* Skip */
+    debug2(printf("Child: %u to %u, char %c\n",i,nextl-1,c));
+  }
+
+  /* Use first child info */
+#if 0
+  debug2(printf("Requesting select of nextl %u\n",nextl));
+  v = BP_select(nextl,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
+		HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
+  debug2(printf("  Got %llu\n",v));
+
+  debug2(printf("Requesting close paren of %llu",v));
+  w = BP_find_closeparen(v,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			 sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+  debug2(printf("  Got %llu\n",w));
+  assert(w == initw);
+#else
+  w = initw;
+#endif
+
+  debug2(printf("Requesting rank_close of %llu",w));
+  b = BP_rank_close(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+  debug2(printf("  Got %u\n",b));
+
+  debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
+		w-1,get_bit(sarray->childbp,w-1),b-1,get_bit(sarray->childfc,b-1)));
+  w--;
+  b--;
+
+  while (get_bit(sarray->childbp,w) == close_paren && get_bit(sarray->childfc,b) == 0) {
+    /* Test l-interval */
+    pos = sarray->array[nextl] + lcp_whole;
+    c = Genome_get_char_lex(genome,pos,sarray->n);
+    if (c > desired_char) {
+      debug2(printf("Child: %u to (nextl), char %c\n",nextl,c));
+      debug2(printf("2.  Returning false, because %c > desired %c\n",c,desired_char));
+      return false;
+    } else if (c == desired_char) {
+      *l = nextl;
+      x = BP_find_openparen(w,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			    sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+      *r = BP_rank_open(x,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE) - 1; /* nextl - 1 */
+      debug2(printf("Child: %u to %u, char %c\n",nextl,*r,c));
+      debug2(printf("Returning true\n\n"));
+      return true;
+    } else {
+      debug2(printf("Child: %u",nextl));
+      x = BP_find_openparen(w,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			    sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+      nextl = BP_rank_open(x,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+      debug2(printf(" to %u, char %c\n",nextl-1,c));
+
+      w--;
+      b--;
+      debug2(printf("close paren w is %u => %08X, and b is %u => %08X\n",
+		    w,get_bit(sarray->childbp,w),b,get_bit(sarray->childfc,b)));
+    }
+  }
+
+  /* Last interval */
+  debug2(printf("Processing last interval\n"));
+  pos = sarray->array[nextl] + lcp_whole;
+  c = Genome_get_char_lex(genome,pos,sarray->n);
+  if (c == desired_char) {
+    *l = nextl;
+    *r = j;
+    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
+    debug2(printf("Returning true\n\n"));
+    return true;
+  } else {
+    debug2(printf("Child: %u to %u, char %c\n",nextl,j,c));
+    debug2(printf("3.  Returning false, because %c != desired %c\n",c,desired_char));
+    return false;
+  }
+
+
+}
+
+
+/* Searches using LCP and BP arrays.  Should be O(m * |Sigma|),
+   where m wis the querylength and |Sigma| is the size of the alphabet
+   (4 for DNA) */
+/* query is a substring of the original, starting with queryoffset */
+static void
+sarray_search (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, bool *successp,
+	       UINT4 *nmatches, char *query, UINT4 querylength, int queryoffset,
+	       Compress_T query_compress, bool plusp) {
+  int effective_querylength;	/* length to first N */
+  Storedoligomer_T oligo;
+
+  UINT4 sa_i, sa_j_plus_one, sa_nextl;
+  int lcp_i, lcp_j_plus_one, lcp_whole;
+  UINT4 minlength;
+  bool next_interval_p;
+  UINT4 i, j;
+  UINT4 l, r, nextl, nsv_i;
+  BP_size_t selecti, v, w, initw;
+
+
+#ifdef DEBUG
+  int k = 0;
+  UINT4 recount;
+  char Buffer[1000];
+  Univcoord_T hit;
+  bool failp;
+#elif defined(DEBUG1)
+  char Buffer[1000];
+#endif
+
+  debug(printf("sarray_search on %s, querylength %d\n",query,querylength));
+
+  /* Find initial lcp-interval */
+  effective_querylength = nt_querylength(query,querylength);
+
+  *nmatches = 0;
+  if (effective_querylength == 0) {
+    *initptr = *finalptr = 0;
+    *successp = false;
+    return;
+
+  } else if (effective_querylength < sarray->indexsize) {
+    debug1(printf("string %.*s is shorter than indexsize",querylength,query));
+
+    oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for A*/0);
+    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
+    debug1(printf(" => oligo %08X",oligo));
+
+    /* Because $ < A, we need to check for this case.  Need to back up just 1. */
+    if (l > 1 && sarray->array[l-1] + effective_querylength == sarray->n) {
+      debug1(printf(" (backing up one position, because at end of genome)"));
+      l--;
+    }
+
+    /* Add 1 to rollover to next oligo, to handle Ns in genome */
+    oligo = nt_oligo_truncate(query,effective_querylength,sarray->indexsize,/*subst_value for T*/3) + 1;
+    if (oligo == sarray->indexspace) {
+      /* We have a poly-T, so we cannot determine r.  For example,
+	 TTTTTN has a different r value than TTN. */
+      debug1(printf(" but poly-T => 1-letter for T: %u..%u\n",l,r));
+      l = sarray->initindexi[3];
+      r = sarray->initindexj[3];
+      /* Keep nmatches = 0, because there may not be a T in the genome */
+
+    } else {
+      r = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp) - 1;
+
+      /* Because $ < A, we need to check for this case.  Need to back up just 1. */
+      debug1(printf(" (checking %u + %d >= %u)",sarray->array[r],effective_querylength,sarray->n));
+      if (r > 0 && sarray->array[r] + effective_querylength >= sarray->n) {
+	debug1(printf(" (backing up one position, because at end of genome)"));
+	r--;
+      }
+
+      debug1(printf(" and %08X => interval %u..%u (effective_querylength %d)",
+		    oligo,l,r,effective_querylength));
+
+      if (l <= r) {
+	/* Keep nmatches = 0, since we don't know the value yet */
+	debug1(printf(" (good)\n"));
+      } else {
+#if 0
+	/* Did not find a match using saindex, so resort to one letter */
+	switch (query[0]) {
+	case 'A': l = sarray->initindexi[0]; r = sarray->initindexj[0]; break;
+	case 'C': l = sarray->initindexi[1]; r = sarray->initindexj[1]; break;
+	case 'G': l = sarray->initindexi[2]; r = sarray->initindexj[2]; break;
+	case 'T': l = sarray->initindexi[3]; r = sarray->initindexj[3]; break;
+	default: l = 1; r = 0;
+	}
+	debug1(printf(" (bad) => 1-letter from %c: %u..%u\n",query[0],l,r));
+#else
+	/* The entire lcp-interval [1,sarray->n] should also work without initindex */
+	l = 1;
+	r = sarray->n;
+	debug1(printf(" (bad) => entire lcp-interval: %u..%u\n",l,r));
+#endif
+      }
+    }
+
+  } else {
+    oligo = nt_oligo(query,sarray->indexsize);
+    l = Bitpack64_offsetptr_only(oligo,sarray->indexi_ptrs,sarray->indexi_comp);
+    r = Bitpack64_offsetptr_only(oligo,sarray->indexj_ptrs,sarray->indexj_comp);
+    debug1(printf("string %.*s is equal/longer than indexsize %d => oligo %u => interval %u..%u",
+		  querylength,query,sarray->indexsize,oligo,l,r));
+    if (l <= r) {
+      debug1(printf(" (good)\n"));
+      *nmatches = sarray->indexsize;
+      i = l;
+      j = r;
+    } else {
+#if 0
+      /* Did not find a match using saindex, so resort to one letter */
+      switch (query[0]) {
+      case 'A': l = sarray->initindexi[0]; r = sarray->initindexj[0]; break;
+      case 'C': l = sarray->initindexi[1]; r = sarray->initindexj[1]; break;
+      case 'G': l = sarray->initindexi[2]; r = sarray->initindexj[2]; break;
+      case 'T': l = sarray->initindexi[3]; r = sarray->initindexj[3]; break;
+      default: l = 1; r = 0;
+      }
+      debug1(printf(" (bad) => 1-letter from %c: %u..%u\n",query[0],l,r));
+#else
+      /* The entire lcp-interval [1,sarray->n] should also work without initindex */
+      l = 1;
+      r = sarray->n;
+      debug1(printf(" (bad) => entire lcp-interval: %u..%u\n",l,r));
+#endif
+    }
+  }
+
+  if (l > r) {
+    /* Did not find a match using saindex or one letter */
+    i = l;
+    j = r;
+    next_interval_p = false;
+  } else {
+    next_interval_p = true;
+  }
+
+  /* Search through suffix tree */
+  while (*nmatches < querylength && next_interval_p == true) {
+    i = l;
+    j = r;
+    if (i == j) {
+      /* Singleton interval */
+      *nmatches +=
+	Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
+					     /*pos5*/queryoffset+(*nmatches),/*pos3*/queryoffset+querylength,
+					     plusp,/*genestrand*/0);
+      next_interval_p = false;
+
+    } else {
+      /* LCP interval */
+      debug2(printf("Initial i..j is %u..%u\n",i,j));
+
+      /* First child */
+      /* Compute NSV(i) (next smallest value) */
+      selecti = BP_select(i,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
+			  HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
+      w = BP_find_closeparen(selecti,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			     sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+      nsv_i = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE) /*+1*/;
+      debug2(printf("NSV(i)-1 = %u, compared with j %u\n",nsv_i,j));
+
+      /* Check for <= and not ==, because of $ at end of genome */
+      /* Compare against j, and not j+1, because we computed NSV(i) - 1 */
+      if (nsv_i <= j) {
+	/* First child: case 1 */
+	initw = w-1;
+	w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			      sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+	nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+	debug2(printf("First child, case 1: %u\n",nextl));
+      } else {
+	/* First child: case 2 */
+	w = BP_select(j+1,sarray->childbp,sarray->childs_pages,sarray->childs_ptrs,sarray->childs_comp,
+		      HALF_BLOCKSIZE,BLOCKSIZE,SELECT_SAMPLING_INTERVAL);
+	initw = w-1;
+	w = BP_find_openparen(w-1,sarray->childbp,sarray->childx_ptrs,sarray->childx_comp,sarray->pioneerbp,
+			      sarray->pior_ptrs,sarray->pior_comp,sarray->piom_ptrs,sarray->piom_comp,BLOCKSIZE);
+	nextl = BP_rank_open(w,sarray->childbp,sarray->childr_ptrs,sarray->childr_comp,BLOCKSIZE);
+	debug2(printf("First child, case 2: %u\n",nextl));
+      }
+
+      sa_nextl = sarray->array[nextl];
+      lcp_whole = Bitpack64_offsetptr_only(sa_nextl,sarray->plcp_ptrs,sarray->plcp_comp) - sa_nextl; /* lcp(i,j) */
+      /* printf("lcp_whole for %u..%u is %d\n",i,j,lcp_whole); */
+
+      /* Check only up to minlength, so we validate the entire interval */
+      minlength = (lcp_whole < querylength) ? lcp_whole : querylength;
+      *nmatches +=
+	Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[i]-queryoffset,
+					     /*pos5*/queryoffset+(*nmatches),/*pos3*/queryoffset+minlength,
+					     plusp,/*genestrand*/0);
+      if (*nmatches < minlength) {
+	next_interval_p = false;
+
+      } else if (*nmatches >= querylength) {
+	debug1(printf("nmatches is now %d >= querylength %d => success\n",*nmatches,querylength));
+	
+      } else {
+	debug1(printf("nmatches is now %d => desired_char is %c\n",*nmatches,query[minlength]));
+	next_interval_p =
+	  get_child_given_first(&l,&r,i,j,/*desired_char*/query[minlength],sarray,lcp_whole,nextl,initw);
+      }
+    }
+  }
+
+  debug(printf("initptr gets %u, finalptr gets %u\n",i,j));
+
+  *initptr = i;
+  *finalptr = j;
+  if (*nmatches < querylength) {
+    *successp = false;
+    debug(printf("%s fail at %d: got %d hits with %d matches:\n",
+		 plusp ? "plus" : "minus",queryoffset,(*finalptr - *initptr + 1),*nmatches));
+  } else {
+    *successp = true;
+    debug(printf("%s success at %d: got %d hits with %d matches:\n",
+		 plusp ? "plus" : "minus",queryoffset,(*finalptr - *initptr + 1),*nmatches));
+  }
+
+#ifdef DEBUG
+  failp = false;
+
+  /* Before */
+  if (*nmatches > 0 && *initptr > 0U) {
+    recount = Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[(*initptr)-1]-queryoffset,
+						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
+						   plusp,/*genestrand*/0);
+    printf("%d\t%u\t%u\t",recount,(*initptr)-1,sarray->array[(*initptr)-1] /*+ 1U*/);
+    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)-1],recount+1,Buffer);
+    printf("%s\n",Buffer);
+    if (recount >= *nmatches) {
+      printf("querylength is %d\n",querylength);
+      printf("false negative: recount %d at %u before init does equal expected nmatches %d\n",
+	     recount,sarray->array[(*initptr)-1],*nmatches);
+      failp = true;
+    }
+  }
+  printf("\n");
+
+
+  /* Hits */
+  for (k = 0; k < (int) (*finalptr - *initptr + 1) && k < 100; k++) {
+    hit = sarray->array[(*initptr)+k];
+    recount = Genome_consecutive_matches_rightward(query_compress,/*left*/hit-queryoffset,
+						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
+						   plusp,/*genestrand*/0);
+    printf("%d\t%u\t%u\t",recount,(*initptr)+k,hit /*+ 1U*/);
+    Genome_fill_buffer_simple(genome,sarray->array[(*initptr)+k],recount+1,Buffer);
+    
+    printf("%s\n",Buffer);
+    if (recount != *nmatches) {
+      printf("querylength is %d\n",querylength);
+      printf("false positive: recount %d at %u does not equal expected nmatches %d\n",
+	     recount,sarray->array[(*initptr)],*nmatches);
+      failp = true;
+    }
+    /* hits[k] = sarray->array[(*initptr)++]; */
+  }
+
+
+  /* After */
+  if (*nmatches > 0) {
+    printf("\n");
+    recount = Genome_consecutive_matches_rightward(query_compress,/*left*/sarray->array[(*finalptr)+1]-queryoffset,
+						   /*pos5*/queryoffset,/*pos3*/queryoffset+querylength,
+						   plusp,/*genestrand*/0);
+    printf("%d\t%u\t%u\t",recount,(*finalptr)+1,sarray->array[(*finalptr)+1] /*+ 1U*/);
+    Genome_fill_buffer_simple(genome,sarray->array[(*finalptr)+1],recount+1,Buffer);
+    printf("%s\n",Buffer);
+    if (recount >= *nmatches) {
+      printf("querylength is %d\n",querylength);
+      printf("false negative: recount %d at %u after (*finalptr) does equal expected nmatches %d\n",
+	     recount,sarray->array[(*finalptr)+1],*nmatches);
+      failp = true;
+    }
+  }
+
+  if (failp == true) {
+    /* Can happen because $ ranks below 0 */
+    abort();
+  }
+#endif
+
+  return;
+}
+
+#endif
+
 
 
 
@@ -1344,7 +2035,7 @@ Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T
 			     Compress_T query_compress, bool plusp, int genestrand) {
   Sarrayptr_T ptr, lastptr;
   int nmatches;
-  int i, j;
+  int i;
   Univcoord_T *array = sarray->array, low_adj, high_adj, value;
   Univcoord_T *more_positions;
 #ifdef HAVE_SSE2
@@ -1431,7 +2122,7 @@ Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T
 #else
       pointer = (UINT4) &(array[ptr]);
 #endif
-      n_prealign = (16 - (pointer & 0xF))/4;
+      n_prealign = ((16 - (pointer & 0xF))/4) & 0x3;
       debug7(printf("Initial ptr is at location %p.  Need %d to get to 128-bit boundary\n",
 		    &(array[ptr]),n_prealign));
 
@@ -1555,7 +2246,7 @@ Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T
 #else
 	pointer = (UINT4) &(array[ptr]);
 #endif
-	n_prealign = (pointer & 0xF)/4;
+	n_prealign = ((pointer & 0xF)/4) & 0x3;
 	debug7(printf("Initial ptr is at location %p.  Need %d to get to 128-bit boundary\n",
 		      &(array[ptr]),n_prealign));
 
@@ -1693,7 +2384,7 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
   debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,goal));
 
   while (lowi < highi) {
-    middlei = (lowi+highi)/2;
+    middlei = lowi + ((highi - lowi) / 2);
     debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		   lowi,positions[lowi],middlei,positions[middlei],
 		   highi,positions[highi],goal));
@@ -1719,7 +2410,7 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
 /* Taken from stage1hr.c identify_multimiss_iter */
 static bool
 extend_rightward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
-		  List_T set, Sarray_T sarray, Compress_T query_compress,
+		  List_T set, T sarray, Compress_T query_compress,
 		  bool plusp, int genestrand, int best_queryend) {
   Elt_T elt;
   Univcoord_T low, high;
@@ -1820,13 +2511,13 @@ extend_rightward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 /* Taken from stage1hr.c identify_multimiss_iter */
 static bool
 extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
-		 List_T set, Sarray_T sarray, char *queryptr, Compress_T query_compress,
+		 List_T set, T sarray, char *queryptr, Compress_T query_compress,
 		 bool plusp, int genestrand, int best_querystart, int best_queryend) {
   Elt_T elt;
-  int nmatches;
+  UINT4 nmatches;
   Sarrayptr_T initptr, finalptr;
   bool successp;
-  int queryend, querypos;
+  UINT4 queryend, querypos;
   Univcoord_T low, high;
 
 
@@ -1991,9 +2682,13 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
   Elt_T elt;
   Univcoord_T left, left1, left2, *array;
   Uintlist_T difflist = NULL;	/* Won't work with LARGE_GENOMES */
-  int nmismatches, nmismatches1, nmismatches2, nindels;
+  int nmismatches, nindels;
   int nsame, ndiff;
-  int querystart_diff, queryend_diff, query_indel_pos, indel_pos;
+  int querystart_diff, queryend_diff, indel_pos;
+#if 0
+  int nmismatches1, nmismatches2;
+  int query_indel_pos;
+#endif
 
   List_T lowprob;
   int nhits;
@@ -2005,7 +2700,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
     segmentj_antidonor_nknown, segmenti_antiacceptor_nknown;
   int j, i, n;
   bool segmenti_usedp, segmentj_usedp;
-
+  bool foundp;
 
   /* Potential success */
   debug7(printf("  successful candidate found\n"));
@@ -2127,6 +2822,9 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
       if (i > 0 && left2 == array[i-1]) {
 	/* Already processed */
 
+      } else if (left2 + querylength >= chrhigh) {
+	/* Splice or deletion would extend to next chromosome */
+
       } else if (left2 > left1 + max_deletionlen) {
 	debug7(printf("A splice..."));
 
@@ -2196,10 +2894,13 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 
       } else if (left2 > left1) {
 	nindels = left2 - left1;
-	debug7(printf("B deletion of %d bp relative to max_deletionlen %d...",nindels,max_deletionlen));
+	debug7(printf("B deletion of %d bp relative to max_deletionlen %d (nmisses allowed %d)...",
+		      nindels,max_deletionlen,nmisses_allowed));
 	if ((indel_pos < 17 || querylength - indel_pos < 17) && nindels > max_end_deletions) {
+	  /* Allow regular GSNAP algorithm to find this */
 	  debug7(printf("too long for end deletion"));
 	} else {
+#if 0
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos,
 							   plusp,genestrand);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos,
@@ -2218,6 +2919,17 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	    debug7(printf("successful"));
 	    *indels = List_push(*indels,(void *) hit);
 	  }
+#else
+	  *indels = Indel_solve_middle_deletion(&foundp,&(*found_score),&nhits,*indels,
+						/*left*/left1,chrnum,chroffset,chrhigh,chrlength,
+						/*indels*/-nindels,query_compress,querylength,nmisses_allowed,
+						plusp,genestrand,/*sarray*/true);
+	  debug7(
+		 if (foundp == true) {
+		   printf("successful");
+		 }
+		 );
+#endif
 	}
 	debug7(printf("\n"));
       
@@ -2226,8 +2938,8 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	if (nindels >= indel_pos || indel_pos + nindels >= querylength) {
 	  debug7(printf("X insertion of %d bp too long\n",nindels));
 	} else {
-	  debug7(printf("C insertion of %d bp...",nindels));
-      
+	  debug7(printf("C insertion of %d bp (nmisses allowed %d)...",nindels,nmisses_allowed));
+#if 0
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos-nindels,
 							   plusp,genestrand);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos+nindels,
@@ -2246,6 +2958,17 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	    debug7(printf("successful"));
 	    *indels = List_push(*indels,(void *) hit);
 	  }
+#else
+	  *indels = Indel_solve_middle_insertion(&foundp,&(*found_score),&nhits,*indels,
+						 /*left*/left1,chrnum,chroffset,chrhigh,chrlength,
+						 /*indels*/+nindels,query_compress,querylength,nmisses_allowed,
+						 plusp,genestrand,/*sarrayp*/true);
+	  debug7(
+		 if (foundp == true) {
+		   printf("successful");
+		 }
+		 );
+#endif
 	  debug7(printf("\n"));
 	}
       }
@@ -2269,6 +2992,9 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
       if (i > 0 && left1 == array[i-1]) {
 	/* Already processed */
 
+      } else if (left2 + querylength >= chrhigh) {
+	/* Splice or deletion would extend to next chromosome */
+
       } else if (left2 > left1 + max_deletionlen) {
 	debug7(printf("A splice..."));
 
@@ -2338,10 +3064,13 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 
       } else if (left2 > left1) {
 	nindels = left2 - left1;
-	debug7(printf("B deletion of %d bp relative to max_deletionlen %d...",nindels,max_deletionlen));
+	debug7(printf("B deletion of %d bp relative to max_deletionlen %d (nmisses allowed %d)...",
+		      nindels,max_deletionlen,nmisses_allowed));
 	if ((indel_pos < 17 || querylength - indel_pos < 17) && nindels > max_end_deletions) {
+	  /* Allow regular GSNAP algorithm to find this */
 	  debug7(printf("too long for end deletion"));
 	} else {
+#if 0
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos,
 							   plusp,genestrand);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos,
@@ -2360,6 +3089,17 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	    debug7(printf("successful"));
 	    *indels = List_push(*indels,(void *) hit);
 	  }
+#else
+	  *indels = Indel_solve_middle_deletion(&foundp,&(*found_score),&nhits,*indels,
+						/*left*/left1,chrnum,chroffset,chrhigh,chrlength,
+						/*indels*/-nindels,query_compress,querylength,nmisses_allowed,
+						plusp,genestrand,/*sarray*/true);
+	  debug7(
+		 if (foundp == true) {
+		   printf("successful");
+		 }
+		 );
+#endif
 	}
 	debug7(printf("\n"));
       
@@ -2368,8 +3108,8 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	if (nindels >= indel_pos || indel_pos + nindels >= querylength) {
 	  debug7(printf("X insertion of %d bp too long\n",nindels));
 	} else {
-	  debug7(printf("C insertion of %d bp...",nindels));
-      
+	  debug7(printf("C insertion of %d bp (nmisses allowed %d)...",nindels,nmisses_allowed));
+#if 0      
 	  nmismatches1 = Genome_count_mismatches_substring(query_compress,left1,/*pos5*/0,/*pos3*/indel_pos-nindels,
 							   plusp,genestrand);
 	  nmismatches2 = Genome_count_mismatches_substring(query_compress,left2,/*pos5*/indel_pos+nindels,
@@ -2388,6 +3128,17 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *sin
 	    debug7(printf("successful"));
 	    *indels = List_push(*indels,(void *) hit);
 	  }
+#else
+	  *indels = Indel_solve_middle_insertion(&foundp,&(*found_score),&nhits,*indels,
+						 /*left*/left1,chrnum,chroffset,chrhigh,chrlength,
+						 /*indels*/+nindels,query_compress,querylength,nmisses_allowed,
+						 plusp,genestrand,/*sarrayp*/true);
+	  debug7(
+		 if (foundp == true) {
+		   printf("successful");
+		 }
+		 );
+#endif
 	  debug7(printf("\n"));
 	}
       }
@@ -2411,7 +3162,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
   List_T plus_set, minus_set, p;
   List_T rightward_set, leftward_set;
   Elt_T best_plus_elt, best_minus_elt, elt, *array;
-  int best_plus_nmatches, best_minus_nmatches, nmatches;
+  UINT4 best_plus_nmatches, best_minus_nmatches, nmatches;
   Sarrayptr_T initptr, finalptr;
   int plus_niter, minus_niter;
   bool successp;
@@ -2424,10 +3175,11 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *si
   int nmismatches;
 
 
-  debug(printf("\nStarting Sarray_search_greedy with querylength %d and indexsize %d\n",querylength,sarray->indexsize));
   if (nmisses_allowed < 0) {
     nmisses_allowed = 0;
   }
+  debug(printf("\nStarting Sarray_search_greedy with querylength %d and indexsize %d and nmisses_allowed %d\n",
+	       querylength,sarray->indexsize,nmisses_allowed));
 
   *found_score = querylength;
 

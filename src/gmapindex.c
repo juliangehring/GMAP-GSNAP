@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 101477 2013-07-15 15:33:07Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 122381 2013-12-24 01:22:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -35,6 +35,7 @@ typedef Tableuint_T Table_chrpos_T;
 #include "iit-write-univ.h"
 #include "iit-read-univ.h"
 #include "genome.h"
+#include "genome_hr.h"
 #include "genome-write.h"
 #include "indexdb-write.h"
 #include "compress-write.h"
@@ -54,7 +55,8 @@ typedef Tableuint_T Table_chrpos_T;
 
 
 /* Program variables */
-typedef enum {NONE, AUXFILES, GENOME, UNSHUFFLE, OFFSETS, POSITIONS, SUFFIX_ARRAY, LCP} Action_T;
+typedef enum {NONE, AUXFILES, GENOME, UNSHUFFLE, COUNT, OFFSETS, POSITIONS, SUFFIX_ARRAY, LCP,
+	      ARRAY_UNCOMPRESS, CHILD_UNCOMPRESS} Action_T;
 static Action_T action = NONE;
 static char *sourcedir = ".";
 static char *destdir = ".";
@@ -74,6 +76,7 @@ static int nmessages = 50;
 
 static char *mitochondrial_string = NULL;
 static Sorttype_T divsort = CHROM_SORT;
+static bool huge_offsets_p = false;
 
 
 #if 0
@@ -915,22 +918,35 @@ main (int argc, char *argv[]) {
   Table_T accsegmentpos_table;
   Table_chrpos_T chrlength_table;
   List_T contigtypelist = NULL, p;
-  Genome_T genome;
+  Genome_T genomecomp, genomebits;
   Univ_IIT_T chromosome_iit, contig_iit;
   char *typestring;
   Univcoord_T genomelength, totalnts;
-  char *chromosomefile, *iitfile, *positionsfile, interval_char;
-  char *lcpfile, *lcpptrsfile, *lcpcompfile, *saindexfile, *sarrayfile;
+  char *chromosomefile, *iitfile, *positionsfile_high, *positionsfile_low, interval_char;
+  char *sarrayfile, *plcpptrsfile, *plcpcompfile;
+#ifdef USE_CHILD_BP
+  char *childbpfile, *childfcfile, *childs_pagesfile, *childs_ptrsfile, *childs_compfile, *childr_ptrsfile, *childr_compfile;
+  char *childx_ptrsfile, *childx_compfile;
+  char *pioneerbpfile, *pior_ptrsfile, *pior_compfile, *piom_ptrsfile, *piom_compfile;
+#else
+  char *childptrsfile, *childcompfile, *sanextpfile;
+#endif
+  char *indexiptrsfile, *indexicompfile, *indexjptrsfile, *indexjcompfile;
+  UINT4 start, end;
+  BP_size_t startl, endl;
   Filenames_T filenames;
   Chrpos_T seglength;
   bool coord_values_8p;
+#ifdef HAVE_64_BIT
+  UINT8 noffsets;
+#endif
 
   int c;
   extern int optind;
   extern char *optarg;
   char *string;
 
-  while ((c = getopt(argc,argv,"F:D:d:z:b:k:q:ArlGUOPSLWw:e:Ss:m")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:z:b:k:q:ArlGUCHOPSLXYWw:e:Ss:m")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -959,10 +975,14 @@ main (int argc, char *argv[]) {
     case 'l': genome_lc_p = true; break;
     case 'G': action = GENOME; break;
     case 'U': action = UNSHUFFLE; break;
+    case 'C': action = COUNT; break;
+    case 'H': huge_offsets_p = true; break;
     case 'O': action = OFFSETS; break;
     case 'P': action = POSITIONS; break;
     case 'S': action = SUFFIX_ARRAY; break;
     case 'L': action = LCP; break;
+    case 'X': action = ARRAY_UNCOMPRESS; break;
+    case 'Y': action = CHILD_UNCOMPRESS; break;
     case 'W': writefilep = true; break;
     case 'w': wraplength = atoi(optarg); break;
     case 'e': nmessages = atoi(optarg); break;
@@ -1163,6 +1183,28 @@ main (int argc, char *argv[]) {
     }
 #endif
 
+  } else if (action == COUNT) {
+    /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -C */
+
+#ifndef HAVE_64_BIT
+    printf("0\n");
+#else
+    chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
+				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
+      fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
+      exit(9);
+    }
+    FREE(chromosomefile);
+
+    noffsets = Indexdb_count_offsets(stdin,chromosome_iit,index1part,index1interval,
+				     genome_lc_p,fileroot,mask_lowercase_p);
+    printf("%lu\n",noffsets);
+
+    Univ_IIT_free(&chromosome_iit);
+#endif
+
   } else if (action == OFFSETS) {
     /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -O
        Creates <destdir>/<dbname>.idxoffsets */
@@ -1184,18 +1226,34 @@ main (int argc, char *argv[]) {
     }
     FREE(chromosomefile);
 
-    fprintf(stderr,"Offset compression types:");
-    if ((compression_types & GAMMA_COMPRESSION) != 0) {
-      fprintf(stderr," gamma");
+    if (huge_offsets_p == false) {
+      fprintf(stderr,"Offset compression types:");
+      if ((compression_types & GAMMA_COMPRESSION) != 0) {
+	fprintf(stderr," gamma");
+      }
+      if ((compression_types & BITPACK64_COMPRESSION) != 0) {
+	fprintf(stderr," bitpack");
+      }
+      fprintf(stderr,"\n");
+      
+      Indexdb_write_offsets(destdir,interval_char,stdin,chromosome_iit,
+			    offsetscomp_basesize,index1part,index1interval,
+			    genome_lc_p,fileroot,mask_lowercase_p,compression_types);
+    } else {
+      fprintf(stderr,"Offset compression types:");
+      if ((compression_types & GAMMA_COMPRESSION) != 0) {
+	/* fprintf(stderr," (gamma not supported for huge genomes)"); */
+	compression_types -= GAMMA_COMPRESSION;
+      }
+      if ((compression_types & BITPACK64_COMPRESSION) != 0) {
+	fprintf(stderr," bitpack");
+      }
+      fprintf(stderr,"\n");
+      
+      Indexdb_write_offsets_huge(destdir,interval_char,stdin,chromosome_iit,
+				 offsetscomp_basesize,index1part,index1interval,
+				 genome_lc_p,fileroot,mask_lowercase_p,compression_types);
     }
-    if ((compression_types & BITPACK64_COMPRESSION) != 0) {
-      fprintf(stderr," bitpack");
-    }
-    fprintf(stderr,"\n");
-
-    Indexdb_write_offsets(destdir,interval_char,stdin,chromosome_iit,
-			  offsetscomp_basesize,index1part,index1interval,
-			  genome_lc_p,fileroot,mask_lowercase_p,compression_types);
 
     Univ_IIT_free(&chromosome_iit);
 
@@ -1219,29 +1277,54 @@ main (int argc, char *argv[]) {
 				      /*required_index1part*/index1part,
 				      /*required_interval*/index1interval,/*offsets_only_p*/true);
 
-    positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				    strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for kmer*/2+/*for interval char*/1+
-				    strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
-    sprintf(positionsfile,"%s/%s.%s%02d%c%s",
-	    destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
-
-    
     if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
       coord_values_8p = true;
+
+      positionsfile_high = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					   strlen(".")+strlen(IDX_FILESUFFIX)+
+					   /*for kmer*/2+/*for interval char*/1+
+					   strlen(POSITIONS_HIGH_FILESUFFIX)+1,sizeof(char));
+      sprintf(positionsfile_high,"%s/%s.%s%02d%c%s",
+	    destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_HIGH_FILESUFFIX);
+
+      positionsfile_low = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					   strlen(".")+strlen(IDX_FILESUFFIX)+
+					   /*for kmer*/2+/*for interval char*/1+
+					   strlen(POSITIONS_LOW_FILESUFFIX)+1,sizeof(char));
+      sprintf(positionsfile_low,"%s/%s.%s%02d%c%s",
+	    destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_LOW_FILESUFFIX);
+
     } else {
       coord_values_8p = false;
+      
+      positionsfile_high = (char *) NULL;
+
+      positionsfile_low = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					   strlen(".")+strlen(IDX_FILESUFFIX)+
+					   /*for kmer*/2+/*for interval char*/1+
+					   strlen(POSITIONS_LOW_FILESUFFIX)+1,sizeof(char));
+      sprintf(positionsfile_low,"%s/%s.%s%02d%c%s",
+	    destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_LOW_FILESUFFIX);
     }
 
-    Indexdb_write_positions(positionsfile,filenames->pointers_filename,
-			    filenames->offsets_filename,stdin,chromosome_iit,
-			    offsetscomp_basesize,index1part,index1interval,
-			    genome_lc_p,writefilep,fileroot,mask_lowercase_p,
-			    compression_type,coord_values_8p);
+    if (huge_offsets_p == false) {
+      Indexdb_write_positions(positionsfile_high,positionsfile_low,filenames->pointers_filename,
+			      filenames->offsets_filename,stdin,chromosome_iit,
+			      offsetscomp_basesize,index1part,index1interval,
+			      genome_lc_p,writefilep,fileroot,mask_lowercase_p,
+			      compression_type,coord_values_8p);
+    } else {
+      Indexdb_write_positions_huge(positionsfile_high,positionsfile_low,filenames->pages_filename,filenames->pointers_filename,
+				   filenames->offsets_filename,stdin,chromosome_iit,
+				   offsetscomp_basesize,index1part,index1interval,
+				   genome_lc_p,writefilep,fileroot,mask_lowercase_p,
+				   compression_type,coord_values_8p);
+    }
 
     Filenames_free(&filenames);
 
-    FREE(positionsfile);
+    FREE(positionsfile_high);
+    FREE(positionsfile_low);
     Univ_IIT_free(&chromosome_iit);
 
   } else if (action == SUFFIX_ARRAY) {
@@ -1257,15 +1340,125 @@ main (int argc, char *argv[]) {
     }
     FREE(chromosomefile);
 
+    sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
+    sprintf(sarrayfile,"%s/%s.sarray",destdir,fileroot);
+
+    plcpptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saplcpptrs")+1,sizeof(char));
+    sprintf(plcpptrsfile,"%s/%s.saplcpptrs",destdir,fileroot);
+    plcpcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saplcpcomp")+1,sizeof(char));
+    sprintf(plcpcompfile,"%s/%s.saplcpcomp",destdir,fileroot);
+
+#ifdef USE_CHILD_BP
+    childbpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildbp")+1,sizeof(char));
+    sprintf(childbpfile,"%s/%s.sachildbp",destdir,fileroot);
+    childfcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildfc")+1,sizeof(char));
+    sprintf(childfcfile,"%s/%s.sachildfc",destdir,fileroot);
+
+    childs_pagesfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildspages")+1,sizeof(char));
+    sprintf(childs_pagesfile,"%s/%s.sachildspages",destdir,fileroot);
+    childs_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildsptrs")+1,sizeof(char));
+    sprintf(childs_ptrsfile,"%s/%s.sachildsptrs",destdir,fileroot);
+    childs_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildscomp")+1,sizeof(char));
+    sprintf(childs_compfile,"%s/%s.sachildscomp",destdir,fileroot);
+
+    childr_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildrptrs")+1,sizeof(char));
+    sprintf(childr_ptrsfile,"%s/%s.sachildrptrs",destdir,fileroot);
+    childr_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildrcomp")+1,sizeof(char));
+    sprintf(childr_compfile,"%s/%s.sachildrcomp",destdir,fileroot);
+
+    childx_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildxptrs")+1,sizeof(char));
+    sprintf(childx_ptrsfile,"%s/%s.sachildxptrs",destdir,fileroot);
+    childx_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildxcomp")+1,sizeof(char));
+    sprintf(childx_compfile,"%s/%s.sachildxcomp",destdir,fileroot);
+
+    pioneerbpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiobp")+1,sizeof(char));
+    sprintf(pioneerbpfile,"%s/%s.sapiobp",destdir,fileroot);
+    pior_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiorptrs")+1,sizeof(char));
+    sprintf(pior_ptrsfile,"%s/%s.sapiorptrs",destdir,fileroot);
+    pior_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiorcomp")+1,sizeof(char));
+    sprintf(pior_compfile,"%s/%s.sapiorcomp",destdir,fileroot);
+    piom_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiomptrs")+1,sizeof(char));
+    sprintf(piom_ptrsfile,"%s/%s.sapiomptrs",destdir,fileroot);
+    piom_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiomcomp")+1,sizeof(char));
+    sprintf(piom_compfile,"%s/%s.sapiomcomp",destdir,fileroot);
+#else
+    childptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildptrs")+1,sizeof(char));
+    sprintf(childptrsfile,"%s/%s.sachildptrs",destdir,fileroot);
+    childcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildcomp")+1,sizeof(char));
+    sprintf(childcompfile,"%s/%s.sachildcomp",destdir,fileroot);
+    sanextpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sanextp")+1,sizeof(char));
+    sprintf(sanextpfile,"%s/%s.sanextp",destdir,fileroot);
+#endif
+
+    indexiptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindexiptrs")+1,sizeof(char));
+    sprintf(indexiptrsfile,"%s/%s.saindexiptrs",destdir,fileroot);
+    indexicompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindexicomp")+1,sizeof(char));
+    sprintf(indexicompfile,"%s/%s.saindexicomp",destdir,fileroot);
+    indexjptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindexjptrs")+1,sizeof(char));
+    sprintf(indexjptrsfile,"%s/%s.saindexjptrs",destdir,fileroot);
+    indexjcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindexjcomp")+1,sizeof(char));
+    sprintf(indexjcompfile,"%s/%s.saindexjcomp",destdir,fileroot);
+
     if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
       fprintf(stderr,"Cannot create suffix arrays for large genomes of greater than 2^32 bp\n");
     } else {
-      genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			  /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
-      Sarray_write_all(destdir,fileroot,genome,
-		       /*genomelength*/Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true));
-      Genome_free(&genome);
+      genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
+      genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+      Sarray_write_array(sarrayfile,genomecomp,genomelength);
+
+      genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+      Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
+		      /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
+		      /*mode*/STANDARD,/*genomebits_avail_p*/true);
+      Sarray_write_plcp(plcpptrsfile,plcpcompfile,sarrayfile,genomecomp,genomelength);
+      Genome_free(&genomebits);
+
+#ifdef USE_CHILD_BP
+      Sarray_write_child(childbpfile,childfcfile,childs_pagesfile,childs_ptrsfile,childs_compfile,childr_ptrsfile,childr_compfile,
+			 childx_ptrsfile,childx_compfile,pioneerbpfile,pior_ptrsfile,pior_compfile,piom_ptrsfile,piom_compfile,
+			 sarrayfile,plcpptrsfile,plcpcompfile,genomelength);
+#else
+      Sarray_write_child(childptrsfile,childcompfile,sanextpfile,sarrayfile,plcpptrsfile,plcpcompfile,genomelength);
+#endif
+
+      Sarray_write_index(indexiptrsfile,indexicompfile,indexjptrsfile,indexjcompfile,
+			 sarrayfile,genomecomp,genomelength);
+
+      Genome_free(&genomecomp);
     }
+
+    FREE(indexjcompfile);
+    FREE(indexjptrsfile);
+    FREE(indexicompfile);
+    FREE(indexiptrsfile);
+
+#ifdef USE_CHILD_BP
+    FREE(piom_compfile);
+    FREE(piom_ptrsfile);
+    FREE(pior_compfile);
+    FREE(pior_ptrsfile);
+    FREE(pioneerbpfile);
+
+    FREE(childx_compfile);
+    FREE(childx_ptrsfile);
+    FREE(childr_compfile);
+    FREE(childr_ptrsfile);
+    FREE(childs_compfile);
+    FREE(childs_ptrsfile);
+    FREE(childs_pagesfile);
+    FREE(childfcfile);
+    FREE(childbpfile);
+#else
+    FREE(sanextpfile);
+    FREE(childcompfile);
+    FREE(childptrsfile);
+#endif
+
+    FREE(plcpcompfile);
+    FREE(plcpptrsfile);
+    FREE(sarrayfile);
 
     Univ_IIT_free(&chromosome_iit);
 
@@ -1282,34 +1475,148 @@ main (int argc, char *argv[]) {
     }
     FREE(chromosomefile);
 
+    sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
+    sprintf(sarrayfile,"%s/%s.sarray",destdir,fileroot);
+    plcpptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saplcpptrs")+1,sizeof(char));
+    sprintf(plcpptrsfile,"%s/%s.saplcpptrs",destdir,fileroot);
+    plcpcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saplcpcomp")+1,sizeof(char));
+    sprintf(plcpcompfile,"%s/%s.saplcpcomp",destdir,fileroot);
+
     if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
       fprintf(stderr,"Cannot create suffix arrays for large genomes of greater than 2^32 bp\n");
     } else {
-      genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			  /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+      genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
+      genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+      genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+      Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
+		      /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
+		      /*mode*/STANDARD,/*genomebits_avail_p*/true);
+      Sarray_write_plcp(plcpptrsfile,plcpcompfile,sarrayfile,genomecomp,genomelength);
 
-      lcpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcp")+1,sizeof(char));
-      sprintf(lcpfile,"%s/%s.salcp",destdir,fileroot);
-      lcpptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcpptrs")+1,sizeof(char));
-      sprintf(lcpptrsfile,"%s/%s.salcpptrs",destdir,fileroot);
-      lcpcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp")+1,sizeof(char));
-      sprintf(lcpcompfile,"%s/%s.salcpcomp",destdir,fileroot);
-      saindexfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindex")+1,sizeof(char));
-      sprintf(saindexfile,"%s/%s.saindex",destdir,fileroot);
-
-      sarrayfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
-      sprintf(sarrayfile,"%s/%s.sarray",sourcedir,fileroot);
-
-      Sarray_write_lcp(lcpfile,lcpptrsfile,lcpcompfile,saindexfile,sarrayfile,genome,
-		       /*genomelength*/Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true));
-      FREE(sarrayfile);
-      FREE(saindexfile);
-      FREE(lcpcompfile);
-      FREE(lcpptrsfile);
-      FREE(lcpfile);
-
-      Genome_free(&genome);
+      Genome_free(&genomebits);
+      Genome_free(&genomecomp);
     }
+
+    FREE(plcpcompfile);
+    FREE(plcpptrsfile);
+    FREE(sarrayfile);
+
+    Univ_IIT_free(&chromosome_iit);
+
+  } else if (action == CHILD_UNCOMPRESS) {
+#ifdef USE_CHILD_BP
+    if (argc <= 2) {
+      startl = endl = 0;
+    } else {
+      startl = strtoull(argv[1],NULL,10);
+      endl = strtoull(argv[2],NULL,10);
+    }
+#else
+    if (argc <= 2) {
+      start = end = 0;
+    } else {
+      start = strtoul(argv[1],NULL,10);
+      end = strtoul(argv[2],NULL,10);
+    }
+#endif
+
+    chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
+				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
+      fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
+      exit(9);
+    }
+    FREE(chromosomefile);
+
+    genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
+    genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+
+    sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
+    sprintf(sarrayfile,"%s/%s.sarray",destdir,fileroot);
+    plcpptrsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+strlen(".saplcpptrs")+1,sizeof(char));
+    sprintf(plcpptrsfile,"%s/%s.saplcpptrs",sourcedir,fileroot);
+    plcpcompfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+strlen(".saplcpcomp")+1,sizeof(char));
+    sprintf(plcpcompfile,"%s/%s.saplcpcomp",sourcedir,fileroot);
+
+#ifdef USE_CHILD_BP
+    childbpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildbp")+1,sizeof(char));
+    sprintf(childbpfile,"%s/%s.sachildbp",destdir,fileroot);
+    childfcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildfc")+1,sizeof(char));
+    sprintf(childfcfile,"%s/%s.sachildfc",destdir,fileroot);
+
+    childs_pagesfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildspages")+1,sizeof(char));
+    sprintf(childs_pagesfile,"%s/%s.sachildspages",destdir,fileroot);
+    childs_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildsptrs")+1,sizeof(char));
+    sprintf(childs_ptrsfile,"%s/%s.sachildsptrs",destdir,fileroot);
+    childs_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildscomp")+1,sizeof(char));
+    sprintf(childs_compfile,"%s/%s.sachildscomp",destdir,fileroot);
+
+    childr_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildrptrs")+1,sizeof(char));
+    sprintf(childr_ptrsfile,"%s/%s.sachildrptrs",destdir,fileroot);
+    childr_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildrcomp")+1,sizeof(char));
+    sprintf(childr_compfile,"%s/%s.sachildrcomp",destdir,fileroot);
+
+    childx_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildxptrs")+1,sizeof(char));
+    sprintf(childx_ptrsfile,"%s/%s.sachildxptrs",destdir,fileroot);
+    childx_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildxcomp")+1,sizeof(char));
+    sprintf(childx_compfile,"%s/%s.sachildxcomp",destdir,fileroot);
+
+    pioneerbpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiobp")+1,sizeof(char));
+    sprintf(pioneerbpfile,"%s/%s.sapiobp",destdir,fileroot);
+    pior_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiorptrs")+1,sizeof(char));
+    sprintf(pior_ptrsfile,"%s/%s.sapiorptrs",destdir,fileroot);
+    pior_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiorcomp")+1,sizeof(char));
+    sprintf(pior_compfile,"%s/%s.sapiorcomp",destdir,fileroot);
+    piom_ptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiomptrs")+1,sizeof(char));
+    sprintf(piom_ptrsfile,"%s/%s.sapiomptrs",destdir,fileroot);
+    piom_compfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sapiomcomp")+1,sizeof(char));
+    sprintf(piom_compfile,"%s/%s.sapiomcomp",destdir,fileroot);
+
+    Sarray_child_uncompress(childbpfile,childfcfile,childs_pagesfile,childs_ptrsfile,childs_compfile,childr_ptrsfile,childr_compfile,
+			    childx_ptrsfile,childx_compfile,pioneerbpfile,pior_ptrsfile,pior_compfile,piom_ptrsfile,piom_compfile,
+			    genomelength,startl,endl);
+
+    FREE(piom_compfile);
+    FREE(piom_ptrsfile);
+    FREE(pior_compfile);
+    FREE(pior_ptrsfile);
+    FREE(pioneerbpfile);
+
+    FREE(childx_compfile);
+    FREE(childx_ptrsfile);
+    FREE(childr_compfile);
+    FREE(childr_ptrsfile);
+    FREE(childs_compfile);
+    FREE(childs_ptrsfile);
+    FREE(childs_pagesfile);
+    FREE(childfcfile);
+    FREE(childbpfile);
+
+#else
+    childptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildptrs")+1,sizeof(char));
+    sprintf(childptrsfile,"%s/%s.sachildptrs",destdir,fileroot);
+    childcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sachildcomp")+1,sizeof(char));
+    sprintf(childcompfile,"%s/%s.sachildcomp",destdir,fileroot);
+    sanextpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sanextp")+1,sizeof(char));
+    sprintf(sanextpfile,"%s/%s.sanextp",destdir,fileroot);
+
+    Sarray_child_uncompress(genomecomp,plcpptrsfile,plcpcompfile,childptrsfile,childcompfile,sanextpfile,
+			    sarrayfile,genomelength,start,end);
+
+    FREE(sanextpfile);
+    FREE(childcompfile);
+    FREE(childptrsfile);
+#endif
+
+    Genome_free(&genomecomp);
+
+    FREE(plcpcompfile);
+    FREE(plcpptrsfile);
+    FREE(sarrayfile);
 
     Univ_IIT_free(&chromosome_iit);
   }

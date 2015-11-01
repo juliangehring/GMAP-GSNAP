@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 109074 2013-09-25 00:01:19Z twu $";
+static char rcsid[] = "$Id: pairpool.c 131543 2014-03-26 19:25:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -41,6 +41,13 @@ static char rcsid[] = "$Id: pairpool.c 109074 2013-09-25 00:01:19Z twu $";
 #define debug15(x) x
 #else 
 #define debug15(x)
+#endif
+
+/* clean_join */
+#ifdef DEBUG16
+#define debug16(x) x
+#else 
+#define debug16(x)
 #endif
 
 
@@ -721,19 +728,19 @@ Pairpool_clean_join (List_T *left_path, List_T *right_pairs) {
   int queryjump, genomejump;
 
 
-  debug15(printf("Entered clean_join\n"));
-  debug15(printf("left path:\n"));
-  debug15(Pair_dump_list(*left_path,true));
-  debug15(printf("right pairs:\n"));
-  debug15(Pair_dump_list(*right_pairs,true));
+  debug16(printf("Entered clean_join\n"));
+  debug16(printf("left path:\n"));
+  debug16(Pair_dump_list(*left_path,true));
+  debug16(printf("right pairs:\n"));
+  debug16(Pair_dump_list(*right_pairs,true));
 
 
   while (*left_path != NULL && ((Pair_T) (*left_path)->first)->gapp == true) {
-    debug15(printf("Clearing gap on left\n"));
+    debug16(printf("Clearing gap on left\n"));
     *left_path = Pairpool_pop(*left_path,&leftpair);
   }
   while (*right_pairs != NULL && ((Pair_T) (*right_pairs)->first)->gapp == true) {
-    debug15(printf("Clearing gap on right\n"));
+    debug16(printf("Clearing gap on right\n"));
     *right_pairs = Pairpool_pop(*right_pairs,&rightpair);
   }
   
@@ -742,31 +749,31 @@ Pairpool_clean_join (List_T *left_path, List_T *right_pairs) {
     rightpair = (Pair_T) (*right_pairs)->first;
     queryjump = rightpair->querypos - leftpair->querypos - 1;
     genomejump = rightpair->genomepos - leftpair->genomepos - 1;
-    debug15(printf("queryjump %d, genomejump %d\n",queryjump,genomejump));
+    debug16(printf("queryjump %d, genomejump %d\n",queryjump,genomejump));
 
     /* Fix overlap */
     while (*left_path != NULL && *right_pairs != NULL && (queryjump < 0 || genomejump < 0)) {
       while (*left_path != NULL && ((Pair_T) (*left_path)->first)->gapp == true) {
-	debug15(printf("Clearing gap on left\n"));
+	debug16(printf("Clearing gap on left\n"));
 	*left_path = Pairpool_pop(*left_path,&leftpair);
       }
       while (*right_pairs != NULL && ((Pair_T) (*right_pairs)->first)->gapp == true) {
-	debug15(printf("Clearing gap on right\n"));
+	debug16(printf("Clearing gap on right\n"));
 	*right_pairs = Pairpool_pop(*right_pairs,&rightpair);
       }
       *left_path = Pairpool_pop(*left_path,&leftpair);
       *right_pairs = Pairpool_pop(*right_pairs,&rightpair);
       queryjump = rightpair->querypos - leftpair->querypos - 1;
       genomejump = rightpair->genomepos - leftpair->genomepos - 1;
-      debug15(printf("Revising queryjump to be %d = %d - %d - 1\n",queryjump,rightpair->querypos,leftpair->querypos));
+      debug16(printf("Revising queryjump to be %d = %d - %d - 1\n",queryjump,rightpair->querypos,leftpair->querypos));
     }
   
     while (*left_path != NULL && ((Pair_T) (*left_path)->first)->gapp == true) {
-      debug15(printf("Clearing gap on left\n"));
+      debug16(printf("Clearing gap on left\n"));
       *left_path = Pairpool_pop(*left_path,&leftpair);
     }
     while (*right_pairs != NULL && ((Pair_T) (*right_pairs)->first)->gapp == true) {
-      debug15(printf("Clearing gap on right\n"));
+      debug16(printf("Clearing gap on right\n"));
       *right_pairs = Pairpool_pop(*right_pairs,&rightpair);
     }
   }

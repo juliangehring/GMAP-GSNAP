@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write.c 102135 2013-07-19 23:05:01Z twu $";
+static char rcsid[] = "$Id: iit-write.c 115892 2013-11-20 22:52:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,6 +26,7 @@ static char rcsid[] = "$Id: iit-write.c 102135 2013-07-19 23:05:01Z twu $";
 #include "fopen.h"
 #include "interval.h"
 #include "types.h"		/* For HAVE_64_BIT and UINT8 */
+#include "doublelist.h"
 
 
 #ifdef DEBUG
@@ -388,6 +389,9 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  *   fieldpointers: (nfields+1)*sizeof(UINT4)  [in version >= 2]
  *   fields: nfields*(variable length strings, including '\0')  [in version >= 2]
  *
+ *   valueorder: total_nintervals*sizeof(int)  [if version == 6]
+ *   values: total_nintervals*sizeof(double)   [if version == 6]
+ *
  *   labelorder: total_nintervals*sizeof(int);
  *   labelpointers: (total_nintervals+1)*sizeof(UINT4)  [changes to long unsigned int in v4 or if label_pointer_size = 8 in v5]
  *   labels: total_nintervals*(variable length strings, including '\0')
@@ -399,6 +403,63 @@ IIT_build_one_div (Node_T *root, struct Interval_T **intervals, int **alphas, in
  *   find the label/annot by looking up index = cum_nintervals[div]+recno.
  *   This is because alphas/betas/sigmas/omegas run from 1 to nintervals[div]
  ************************************************************************/
+
+/* For making valueorder */
+struct Valueitem_T {
+  int divno;
+  int recno;
+  double value;
+};
+
+static int
+Valueitem_cmp (const void *x, const void *y) {
+  struct Valueitem_T *a = (struct Valueitem_T *) x;
+  struct Valueitem_T *b = (struct Valueitem_T *) y;
+  
+  if (a->value < b->value) {
+    return -1;
+  } else if (b->value < a->value) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+static int *
+get_valueorder (List_T divlist, Table_T valuetable, int *cum_nintervals, int total_nintervals) {
+  int *valueorder, divno, recno, i, k = 0;
+  struct Valueitem_T *valueitems;
+  char *divstring;
+  List_T d;
+  Doublelist_T valuelist, v;
+
+  valueorder = (int *) CALLOC(total_nintervals,sizeof(int));
+  valueitems = (struct Valueitem_T *) CALLOC(total_nintervals,sizeof(struct Valueitem_T));
+  divno = 0;
+
+  for (d = divlist; d != NULL; d = List_next(d)) {
+    divstring = (char *) List_head(d);
+    valuelist = (Doublelist_T) Table_get(valuetable,(void *) divstring);
+    recno = 0;
+    for (v = valuelist; v != NULL; v = Doublelist_next(v)) {
+      valueitems[k].divno = divno;
+      valueitems[k].recno = recno;
+      valueitems[k].value = Doublelist_head(v);
+      k++;
+      recno++;
+    }
+    divno++;
+  }
+
+  qsort(valueitems,total_nintervals,sizeof(struct Valueitem_T),Valueitem_cmp);
+  for (i = 0; i < total_nintervals; i++) {
+    valueorder[i] = cum_nintervals[valueitems[i].divno] + valueitems[i].recno;
+  }
+  FREE(valueitems);
+  return valueorder;
+}
+
 
 
 /* For making labelorder */
@@ -776,16 +837,18 @@ IIT_create_one_div (T new, int divno, Node_T root, int *alphas, int *betas, int 
 
 static void
 IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlist,
-		      Table_T intervaltable, Table_T labeltable, Table_T annottable, 
+		      Table_T intervaltable, Table_T valuetable, Table_T labeltable, Table_T annottable,
 		      int *cum_nintervals, int total_nintervals, int version,
 		      bool label_pointers_8p, bool annot_pointers_8p) {
   List_T intervallist, labellist, annotlist, d, p;
+  Doublelist_T valuelist, v;
   Interval_T interval;
 #ifdef HAVE_64_BIT
   UINT8 pointer8 = 0LU;
 #endif
   UINT4 pointer = 0U;
-  int *labelorder;
+  int *labelorder, *valueorder;
+  double value;
   char *divstring, *typestring, *fieldstring, *label, *annot;
 
 #ifndef HAVE_64_BIT
@@ -820,7 +883,7 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
       FWRITE_UINT(pointer,fp);
     }
   }
-
+  
   /* Write types */
   for (p = typelist; p != NULL; p = List_next(p)) {
     typestring = (char *) List_head(p);
@@ -840,6 +903,23 @@ IIT_write_div_footer (FILE *fp, List_T divlist, List_T typelist, List_T fieldlis
   for (p = fieldlist; p != NULL; p = List_next(p)) {
     fieldstring = (char *) List_head(p);
     FWRITE_CHARS(fieldstring,strlen(fieldstring)+1,fp); /* Write '\0' */
+  }
+
+  /* Write valueorder (if values present) */
+  if (valuetable != NULL) {
+    valueorder = get_valueorder(divlist,valuetable,cum_nintervals,total_nintervals);
+    FWRITE_INTS(valueorder,total_nintervals,fp);
+    FREE(valueorder);
+
+    /* Write values */
+    for (d = divlist; d != NULL; d = List_next(d)) {
+      divstring = (char *) List_head(d);
+      valuelist = (Doublelist_T) Table_get(valuetable,(void *) divstring);
+      for (v = valuelist; v != NULL; v = Doublelist_next(v)) {
+	value = Doublelist_head(v);
+	FWRITE_DOUBLE(value,fp);
+      }
+    }
   }
 
   /* Write labelorder */
@@ -1204,9 +1284,9 @@ IIT_output_direct (char *iitfile, T this, int version) {
 
 /* If annotlist is NULL, X's are written */
 void
-IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Table_T intervaltable,
-	   Table_T labeltable, Table_T annottable, Sorttype_T divsort, int version,
-	   bool label_pointers_8p, bool annot_pointers_8p) {
+IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist,
+	   Table_T intervaltable, Table_T valuetable, Table_T labeltable, Table_T annottable,
+	   Sorttype_T divsort, int version, bool label_pointers_8p, bool annot_pointers_8p) {
   Node_T root;
   FILE *fp;
   List_T intervallist, d;
@@ -1282,7 +1362,7 @@ IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Tab
 
     fprintf(stderr,"Writing IIT file footer information...");
     IIT_write_div_footer(fp,divlist,typelist,fieldlist,intervaltable,
-			 labeltable,annottable,cum_nintervals,total_nintervals,version,
+			 valuetable,labeltable,annottable,cum_nintervals,total_nintervals,version,
 			 label_pointers_8p,annot_pointers_8p);
     fprintf(stderr,"done\n");
     FREE(cum_nnodes);

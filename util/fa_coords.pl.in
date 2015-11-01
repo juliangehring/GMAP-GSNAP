@@ -14,10 +14,11 @@ undef($opt_g);			# gunzip each file first
 #undef($opt_S);			# Do not order chromosomes
 undef($opt_c);			# Circular chromosomes
 undef($opt_n);			# File with substitute chromosome names
+undef($opt_f);			# File with input FASTA source filenames
 use Getopt::Std;
-getopts("o:CEgc:n:");
+getopts("o:CEgc:n:f:");
 
-# Usage: fa_coords [-o <output>] [-C] [-E] [-g] [-n <namefile>] <fastafiles or command>
+# Usage: fa_coords [-o <output>] [-C] [-E] [-g] [-n <namefile>] [-f <sourcefiles>]
 
 if (defined($circular = $opt_c)) {
     if (-e $circular) {
@@ -65,13 +66,28 @@ $flags .= "-o $outfile";
 #print STDERR "  $opt_l nt (but processing all of them, of course).\n";
 #print STDERR "  You can change this value with the -l flag to fa_coords.\n";
 
-if ($#ARGV < 0) {
+if (defined($opt_f)) {
+    # Source files given in a file
+    @sourcefiles = ();
+    $SOURCES = new IO::File($opt_f) or die "Cannot open file $opt_f";
+    while (defined($line = <$SOURCES>)) {
+	chop $line;
+	push @sourcefiles,$line;
+    }
+    close($SOURCES);
+    ($output,$skipped) = parse_fa_files(\@sourcefiles);
+
+} elsif ($#ARGV < 0) {
+    # FASTA is piped via stdin
     @streams = ();
     push @streams,"<&STDIN";
     ($output,$skipped) = parse_fa_files(\@streams);
+
 } else {
+    # Source files given on command line
     ($output,$skipped) = parse_fa_files(\@ARGV);
 }
+
 if ($#{$output} < 0) {
     printf STDOUT "Error: No contigs were read in.\n";
     exit(9);

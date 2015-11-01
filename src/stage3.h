@@ -1,4 +1,4 @@
-/* $Id: stage3.h 112059 2013-10-21 21:17:17Z twu $ */
+/* $Id: stage3.h 128881 2014-03-01 02:20:30Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -23,6 +23,11 @@ typedef struct Stage3_T *Stage3_T;
 #include "reader.h"		/* For cDNAEnd_T */
 #include "chimera.h"
 #include "stopwatch.h"
+#ifdef PMAP
+#include "oligoindex_pmap.h"
+#else
+#include "oligoindex_hr.h"
+#endif
 
 #ifndef GSNAP
 #include "gregion.h"
@@ -128,8 +133,6 @@ extern double
 Stage3_fracidentity (T this);
 extern Univcoord_T
 Stage3_genomicpos (T this, int querypos, bool headp);
-extern void
-Stage3_pathscores (bool *gapp, int *pathscores, T this, int querylength, cDNAEnd_T cdnaend);
 extern int
 Stage3_chimeric_goodness (int *matches1, int *matches2, T part1, T part2, int breakpoint);
 
@@ -268,8 +271,8 @@ extern int
 Stage3_good_part (struct Pair_T *pairarray, int npairs, int pos5, int pos3);
 
 extern struct Pair_T *
-Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, int *matches,
-		int *nmatches_posttrim, int *max_match_length,
+Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir,
+		int *matches, int *nmatches_posttrim, int *max_match_length,
 		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
@@ -281,7 +284,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir, 
 #endif
 #endif
 #ifdef PMAP
-		char *queryaaseq_ptr, char *genomicuc_ptr,
+		char *queryaaseq_ptr,
 #endif
 		char *queryseq_ptr, char *queryuc_ptr, int querylength,
 		int skiplength, int query_subseq_offset,
@@ -311,51 +314,39 @@ Stage3_direct (Gregion_T gregion,
 #endif
 
 extern bool
-Stage3_mergeable (int *cdna_direction, Stage3_T firstpart, Stage3_T secondpart,
-		  int exonexonpos, int queryntlength, int shortsplicedist);
+Stage3_mergeable (Stage3_T firstpart, Stage3_T secondpart,
+		  int exonexonpos, int queryntlength, int maxintronlen_bound);
 
 extern bool
 Stage3_merge_chimera (T this_left, T this_right,
 		      int minpos1, int maxpos1, int minpos2, int maxpos2,
-#ifdef PMAP
-		      char *queryaaseq_ptr,
-#endif
-		      Sequence_T queryseq, Sequence_T queryuc, Pairpool_T pairpool, 
+		      char *queryseq_ptr, char *queryuc_ptr, Pairpool_T pairpool, 
 		      Dynprog_T dynprogL, Dynprog_T dynprogR,
 		      int maxpeelback, int maxpeelback_distalmedial,
 		      int nullgap, int extramaterial_end, int extraband_end, int ngap);
 extern void
 Stage3_extend_right (T this, int goal, int querylength,
-#ifdef PMAP
-		     char *queryaaseq_ptr,
-#endif
 		     char *queryseq_ptr, char *queryuc_ptr,
 		     bool max_extend_p, Pairpool_T pairpool,
 		     int ngap, int maxpeelback);
 extern void
 Stage3_extend_left (T this, int goal,
-#ifdef PMAP
-		    char *queryaaseq_ptr,
-#endif
 		    char *queryseq_ptr, char *queryuc_ptr,
 		    bool max_extend_p, Pairpool_T pairpool,
 		    int ngap, int maxpeelback);
 
 extern bool
 Stage3_merge_local (T this_left, T this_right,
-		    int minpos1, int maxpos1, int minpos2, int maxpos2,
-		    int cdna_direction, int genestrand,
+		    int minpos1, int maxpos1, int minpos2, int maxpos2, int genestrand,
 #ifdef PMAP
 		    char *queryaaseq_ptr,
 #endif
 		    Sequence_T queryseq, char *queryseq_ptr, char *queryuc_ptr,
 		    Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		    Genome_T genome, Genome_T genomealt,
-		    int maxpeelback, int maxpeelback_distalmedial, int nullgap,
+		    int maxpeelback, int nullgap,
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor, Diagpool_T diagpool,
 		    int sufflookback, int nsufflookback, int maxintronlen_bound,
-		    int extramaterial_paired, int extramaterial_end,
-		    int extraband_paired, int extraband_single, int extraband_end, int ngap,
+		    int extramaterial_paired, int extraband_paired, int extraband_single, int ngap,
 		    int paired_favor_mode, int zero_offset);
 
 #ifndef PMAP

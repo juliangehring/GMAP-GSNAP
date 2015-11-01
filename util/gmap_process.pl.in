@@ -7,7 +7,8 @@ use IO::File;
 use Getopt::Std;
 undef($opt_c);			# coord file
 undef($opt_g);			# gunzip each file
-getopts("c:g");
+undef($opt_f);			# File with input FASTA source filenames
+getopts("c:gf:");
 
 if (!defined($coord_file = $opt_c)) {
   if (-e "coords.txt") {
@@ -19,11 +20,25 @@ if (!defined($coord_file = $opt_c)) {
 
 read_coords($coord_file);
 
-if ($#ARGV < 0) {
+if (defined($opt_f)) {
+    # Source files given in a file
+    @sourcefiles = ();
+    $SOURCES = new IO::File($opt_f) or die "Cannot open file $opt_f";
+    while (defined($line = <$SOURCES>)) {
+	chop $line;
+	push @sourcefiles,$line;
+    }
+    close($SOURCES);
+    process_fasta(\@sourcefiles);
+
+} elsif ($#ARGV < 0) {
+    # FASTA is piped via stdin
     @streams = ();
     push @streams,"<&STDIN";
     process_fasta(\@streams);
+
 } else {
+    # Source files given on command line
     process_fasta(\@ARGV);
 }
 

@@ -1,4 +1,4 @@
-/* $Id: stage1.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: stage1.h 128855 2014-02-28 21:50:24Z twu $ */
 #ifndef STAGE1_INCLUDED
 #define STAGE1_INCLUDED
 #include "bool.h"
@@ -9,7 +9,6 @@
 #include "match.h"
 #include "matchpool.h"
 #include "iit-read-univ.h"
-#include "chrsubset.h"
 #include "genome.h"
 #include "stopwatch.h"
 #include "diagnostic.h"
@@ -32,14 +31,16 @@ Stage1_setup (int index1part_in, Chrpos_T maxextension_in, Chrpos_T maxtotallen_
 extern List_T
 Stage1_compute (bool *samplingp, Sequence_T queryuc,
 		Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
-		int indexdb_size_threshold, Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset,
+		int indexdb_size_threshold, Univ_IIT_T chromosome_iit,
+		Univcoord_T chrsubset_start, Univcoord_T chrsubset_end,
 		Matchpool_T matchpool, int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch,
 		int nbest);
 
 extern List_T
 Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 			    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
-			    int indexdb_size_threshold, Univ_IIT_T chromosome_iit, Chrsubset_T chrsubset,
+			    int indexdb_size_threshold, Univ_IIT_T chromosome_iit,
+			    Univcoord_T chrsubset_start, Univcoord_T chrsubset_end,
 			    Matchpool_T matchpool, int stutterhits, Diagnostic_T diagnostic, Stopwatch_T stopwatch,
 			    int nbest);
 #undef T

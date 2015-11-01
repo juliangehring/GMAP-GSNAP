@@ -204,7 +204,7 @@ AC_DEFUN([AX_EXT],
         AX_CHECK_COMPILE_FLAG(-mavx, ax_cv_support_avx_ext=yes, [])
         if test x"$ax_cv_support_avx_ext" = x"yes"; then
           SIMD_FLAGS="$SIMD_FLAGS -mavx"
-          AC_DEFINE(HAVE_AVX,1,[Define to 1 inf you support AVX (Advanced Vector Extensions) instructions])
+          AC_DEFINE(HAVE_AVX,1,[Define to 1 if you support AVX (Advanced Vector Extensions) instructions])
         else
           AC_MSG_WARN([Your processor supports avx instructions but not your compiler.  Can you try another compiler?])
         fi

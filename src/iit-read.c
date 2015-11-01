@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 102262 2013-07-22 15:46:18Z twu $";
+static char rcsid[] = "$Id: iit-read.c 126795 2014-02-12 00:59:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -147,6 +147,12 @@ IIT_universalp (char *filename, bool add_iit_p) {
     }
     return true;
   }
+}
+
+
+bool
+IIT_valuep (T this) {
+  return this->valuep;
 }
 
 
@@ -660,6 +666,11 @@ IIT_fieldvalue (T this, int index, int fieldint) {
   allocp = false;
 
   p = annotation;
+
+  /* Starting with version 5, annotation should have '\n' from the header line.  */
+  while (*p != '\0' && *p != '\n') p++;
+  if (*p == '\n') p++;
+
   while (*p != '\0' && fieldno < fieldint) {
     if (*p == '\n') {
       fieldno++;
@@ -1366,6 +1377,10 @@ IIT_free (T *old) {
       munmap((void *) (*old)->label_mmap,(*old)->label_length);
       munmap((void *) (*old)->labelpointers_mmap,(*old)->labelpointers_length);
       munmap((void *) (*old)->labelorder_mmap,(*old)->labelorder_length);
+      if ((*old)->valuep == true) {
+	munmap((void *) (*old)->value_mmap,(*old)->value_length);
+	munmap((void *) (*old)->valueorder_mmap,(*old)->valueorder_length);
+      }
 #endif
       close((*old)->fd);
 
@@ -1392,6 +1407,11 @@ IIT_free (T *old) {
 #endif
       FREE((*old)->labelorder);
       /* close((*old)->fd); -- closed in read_annotations */
+
+      if ((*old)->valuep == true) {
+	FREE((*old)->values);
+	FREE((*old)->valueorder);
+      }
 
     } else if ((*old)->access == ALLOCATED) {
       /* Nothing to close.  IIT must have been created by IIT_new. */
@@ -1769,6 +1789,22 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
 	printf("\n");
 	);
 
+  if (new->valuep == true) {
+    debug1(printf("Starting read of valueorder offset/length\n"));
+    new->valueorder_offset = offset;
+    new->valueorder_length = (size_t) (new->total_nintervals*sizeof(int));
+    /* fprintf(stderr,"Doing a move_relative for valueorder_length %lu\n",new->valueorder_length); */
+    move_relative(fp,new->valueorder_length);
+    offset += new->valueorder_length;
+
+    debug1(printf("Starting read of value offset/length\n"));
+    new->value_offset = offset;
+    new->value_length = (size_t) (new->total_nintervals*sizeof(double));
+    /* fprintf(stderr,"Doing a move_relative for value_length %lu\n",new->value_length); */
+    move_relative(fp,new->value_length);
+    offset += new->value_length;
+  }
+
   debug1(printf("Starting read of labelorder offset/length\n"));
   new->labelorder_offset = offset;
   new->labelorder_length = (size_t) (new->total_nintervals*sizeof(int));
@@ -1898,6 +1934,22 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
   }
   printf("\n");
 
+  if (new->valuep == true) {
+    debug1(printf("Starting read of valueorder offset/length\n"));
+    new->valueorder_offset = offset;
+    new->valueorder_length = (size_t) (new->total_nintervals*sizeof(int));
+    /* fprintf(stderr,"Doing a move_relative for valueorder_length %lu\n",new->valueorder_length); */
+    move_relative(fp,new->valueorder_length);
+    offset += new->valueorder_length;
+
+    debug1(printf("Starting read of value offset/length\n"));
+    new->value_offset = offset;
+    new->value_length = (size_t) (new->total_nintervals*sizeof(double));
+    /* fprintf(stderr,"Doing a move_relative for value_length %lu\n",new->value_length); */
+    move_relative(fp,new->value_length);
+    offset += new->value_length;
+  }
+
   debug1(printf("Starting read of labelorder offset/length\n"));
   new->labelorder_offset = offset;
   new->labelorder_length = (size_t) (new->total_nintervals*sizeof(int));
@@ -1984,6 +2036,20 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
     if ((new->fd = open(filename,O_RDONLY,0764)) < 0) {
       fprintf(stderr,"Error: can't open file %s with open for reading\n",filename);
       exit(9);
+    }
+
+    if (new->valuep == true) {
+      new->valueorder_mmap = Access_mmap_offset(&remainder,new->fd,new->valueorder_offset,new->valueorder_length,
+						sizeof(char),/*randomp*/true);
+      debug(fprintf(stderr,"valueorder_mmap is %p\n",new->valueorder_mmap));
+      new->valueorder = (int *) &(new->valueorder_mmap[remainder]);
+      new->valueorder_length += (size_t) remainder;
+      
+      new->value_mmap = Access_mmap_offset(&remainder,new->fd,new->value_offset,new->value_length,
+					   sizeof(char),/*randomp*/true);
+      debug(fprintf(stderr,"values_mmap is %p\n",new->value_mmap));
+      new->values = (double *) &(new->value_mmap[remainder]);
+      new->value_length += (size_t) remainder;
     }
 
     new->labelorder_mmap = Access_mmap_offset(&remainder,new->fd,new->labelorder_offset,new->labelorder_length,
@@ -2136,6 +2202,16 @@ mmap_annotations (char *filename, T new, bool readonlyp) {
 static void
 read_annotations (T new) {
 
+  if (new->valuep == true) {
+    file_move_absolute(new->fd,new->valueorder_offset,sizeof(int),/*n*/0);
+    new->valueorder = (int *) CALLOC(new->total_nintervals,sizeof(int));
+    read(new->fd,new->valueorder,new->total_nintervals*sizeof(int));
+
+    file_move_absolute(new->fd,new->value_offset,sizeof(char),/*n*/0);
+    new->values = (double *) CALLOC(new->value_length,sizeof(char));
+    read(new->fd,new->values,new->value_length*sizeof(char));
+  }
+
   file_move_absolute(new->fd,new->labelorder_offset,sizeof(int),/*n*/0);
   new->labelorder = (int *) CALLOC(new->total_nintervals,sizeof(int));
   read(new->fd,new->labelorder,new->total_nintervals*sizeof(int));
@@ -2235,9 +2311,9 @@ IIT_read_divint (char *filename, char *divstring, bool add_iit_p) {
   } else {
     /* New format to indicate version > 1 */
     FREAD_INT(&version,fp);
-    if (version > IIT_LATEST_VERSION) {
-      fprintf(stderr,"This file is version %d, but this software can only read up to version %d\n",
-	      version,IIT_LATEST_VERSION);
+    if (version > IIT_LATEST_VERSION_NOVALUES && version > IIT_LATEST_VERSION_VALUES) {
+      fprintf(stderr,"This file is version %d, but this software can only read up to versions %d and %d\n",
+	      version,IIT_LATEST_VERSION_NOVALUES,IIT_LATEST_VERSION_VALUES);
       return -1;
     } else if ((offset += sizeof(int)) > filesize) {
       fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after version %lu, filesize %lu).  Did you generate it using iit_store?\n",
@@ -2493,14 +2569,21 @@ IIT_read (char *filename, char *name, bool readonlyp, Divread_T divread, char *d
   } else {
     /* New format to indicate version > 1 */
     FREAD_INT(&new->version,fp);
-    if (new->version > IIT_LATEST_VERSION) {
-      fprintf(stderr,"This file is version %d, but this software can only read up to version %d\n",
-	      new->version,IIT_LATEST_VERSION);
+    if (new->version > IIT_LATEST_VERSION_NOVALUES && new->version > IIT_LATEST_VERSION_VALUES) {
+      fprintf(stderr,"This file is version %d, but this software can only read up to versions %d and %d\n",
+	      new->version,IIT_LATEST_VERSION_NOVALUES,IIT_LATEST_VERSION_VALUES);
       return NULL;
     } else if ((offset += sizeof(int)) > filesize) {
       fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after version %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return NULL;
+    }
+
+    if (new->version == IIT_LATEST_VERSION_VALUES) {
+      /* If IIT_LATEST_VERSION_VALUES increases, need to revise this code to handle version 6 */
+      new->valuep = true;
+    } else {
+      new->valuep = false;
     }
 
     if (new->version <= 3) {
@@ -2892,18 +2975,26 @@ IIT_debug (char *filename) {
 
   if (new->total_nintervals > 0) {
     new->version = 1;
+    new->valuep = false;
     
   } else {
     /* New format to indicate version > 1 */
     FREAD_INT(&new->version,fp);
-    if (new->version > IIT_LATEST_VERSION) {
-      fprintf(stderr,"This file is version %d, but this software can only read up to version %d\n",
-	      new->version,IIT_LATEST_VERSION);
+    if (new->version > IIT_LATEST_VERSION_NOVALUES && new->version > IIT_LATEST_VERSION_VALUES) {
+      fprintf(stderr,"This file is version %d, but this software can only read up to versions %d and %d\n",
+	      new->version,IIT_LATEST_VERSION_NOVALUES,IIT_LATEST_VERSION_VALUES);
       return;
     } else if ((offset += sizeof(int)) > filesize) {
       fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after version %lu, filesize %lu).  Did you generate it using iit_store?\n",
 	      filename,(unsigned long) offset,(unsigned long) filesize);
       return;
+    }
+
+    if (new->version == IIT_LATEST_VERSION_VALUES) {
+      /* If IIT_LATEST_VERSION_VALUES increases, need to revise this code to handle version 6 */
+      new->valuep = true;
+    } else {
+      new->valuep = false;
     }
 
     if (new->version <= 3) {
@@ -3736,14 +3827,14 @@ IIT_low_exists_signed_p (T this, int divno, Chrpos_T x, int sign) {
       match = this->sigmas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.low == x && interval.sign == sign) {
+      if (interval.low == x && (sign == 0 || interval.sign == sign)) {
 	return true;
       }
 
       match = this->omegas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.low == x && interval.sign == sign) {
+      if (interval.low == x && (sign == 0 || interval.sign == sign)) {
 	return true;
       }
     }
@@ -3774,14 +3865,14 @@ IIT_high_exists_signed_p (T this, int divno, Chrpos_T x, int sign) {
       match = this->sigmas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.high == x && interval.sign == sign) {
+      if (interval.high == x && (sign == 0 || interval.sign == sign)) {
 	return true;
       }
 
       match = this->omegas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.high == x && interval.sign == sign) {
+      if (interval.high == x && (sign == 0 || interval.sign == sign)) {
 	return true;
       }
     }
@@ -3821,14 +3912,14 @@ IIT_get_lows_signed (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, i
       match = this->sigmas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.low >= x && interval.low <= y && interval.sign == sign) {
+      if (interval.low >= x && interval.low <= y && (sign == 0 || interval.sign == sign)) {
 	matches[nfound++] = match;
       }
 
       match = this->omegas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.low >= x && interval.low <= y && interval.sign == sign) {
+      if (interval.low >= x && interval.low <= y && (sign == 0 || interval.sign == sign)) {
 	matches[nfound++] = match;
       }
     }
@@ -3893,14 +3984,14 @@ IIT_get_highs_signed (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, 
       match = this->sigmas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.high >= x && interval.high <= y && interval.sign == sign) {
+      if (interval.high >= x && interval.high <= y && (sign == 0 || interval.sign == sign)) {
 	matches[nfound++] = match;
       }
 
       match = this->omegas[divno][lambda];
       /* Have to subtract 1 because intervals array is zero-based */
       interval = this->intervals[divno][match - 1];
-      if (interval.high >= x && interval.high <= y && interval.sign == sign) {
+      if (interval.high >= x && interval.high <= y && (sign == 0 || interval.sign == sign)) {
 	matches[nfound++] = match;
       }
     }
@@ -4185,14 +4276,14 @@ IIT_exists_with_divno_signed (T this, int divno, Chrpos_T x, Chrpos_T y, int sig
     match = this->sigmas[divno][lambda];
     interval = &(this->intervals[divno][match - 1]);
     if (Interval_low(interval) == x && Interval_high(interval) == y &&
-	Interval_sign(interval) == sign) {
+	(sign == 0 || Interval_sign(interval) == sign)) {
       return true;
     }
 
     match = this->omegas[divno][lambda];
     interval = &(this->intervals[divno][match - 1]);
     if (Interval_low(interval) == x && Interval_high(interval) == y &&
-	Interval_sign(interval) == sign) {
+	(sign == 0 || Interval_sign(interval) == sign)) {
       return true;
     }
   }
@@ -4223,14 +4314,14 @@ IIT_exists_with_divno_typed_signed (T this, int divno, Chrpos_T x, Chrpos_T y, i
     match = this->sigmas[divno][lambda];
     interval = &(this->intervals[divno][match - 1]);
     if (Interval_low(interval) == x && Interval_high(interval) == y &&
-	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+	Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
       return true;
     }
 
     match = this->omegas[divno][lambda];
     interval = &(this->intervals[divno][match - 1]);
     if (Interval_low(interval) == x && Interval_high(interval) == y &&
-	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+	Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
       return true;
     }
   }
@@ -4262,13 +4353,13 @@ IIT_exists_with_divno_typed_signed (T this, int divno, Chrpos_T x, Chrpos_T y, i
     match = this->sigmas[divno][lambda];
     interval = &(this->intervals[divno][match - 1]);
     if (Interval_overlap_p(x,y,this->intervals[divno],match) == true &&
-	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+	Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
       return true;
     }
     match = this->omegas[divno][lambda];
     interval = &(this->intervals[divno][match - 1]);
     if (Interval_overlap_p(x,y,this->intervals[divno],match) == true &&
-	Interval_type(interval) == type && Interval_sign(interval) == sign) {
+	Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
       return true;
     }
   }
@@ -5051,7 +5142,7 @@ IIT_get_typed_signed (int *ntypematches, T this, char *divstring, Chrpos_T x, Ch
   for (i = 0; i < nmatches; i++) {
     index = matches[i];
     interval = &(this->intervals[0][index-1]);
-    if (Interval_type(interval) == type && Interval_sign(interval) == sign) {
+    if (Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
       (*ntypematches)++;
     }
   }
@@ -5062,7 +5153,7 @@ IIT_get_typed_signed (int *ntypematches, T this, char *divstring, Chrpos_T x, Ch
     for (i = 0; i < nmatches; i++) {
       index = matches[i];
       interval = &(this->intervals[0][index-1]);
-      if (Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      if (Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
 	typematches[j++] = index;
       }
     }
@@ -5108,7 +5199,7 @@ IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, Chrpos_T 
   for (i = 0; i < nmatches; i++) {
     index = matches[i];
     interval = &(this->intervals[0][index-1]);
-    if (Interval_type(interval) == type && Interval_sign(interval) == sign) {
+    if (Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
       (*ntypematches)++;
     }
   }
@@ -5119,7 +5210,7 @@ IIT_get_typed_signed_with_divno (int *ntypematches, T this, int divno, Chrpos_T 
     for (i = 0; i < nmatches; i++) {
       index = matches[i];
       interval = &(this->intervals[0][index-1]);
-      if (Interval_type(interval) == type && Interval_sign(interval) == sign) {
+      if (Interval_type(interval) == type && (sign == 0 || Interval_sign(interval) == sign)) {
 	typematches[j++] = index;
       }
     }
@@ -5345,6 +5436,408 @@ IIT_get_exact_multiple_with_divno (int *nexactmatches, T this, int divno, Chrpos
     return exactmatches;
   }
 }
+
+
+/************************************************************************/
+
+/* Modified from IIT_find */
+int *
+IIT_get_values_between (int *nmatches, T this, double lowval, double highval, bool sortp) {
+  int *matches = NULL, j;
+  double val;
+  int start, end;
+  int low, middle, high, recno;
+  bool foundp;
+
+  debug(printf("Entering IIT_get_values_between with %f to %f\n",lowval,highval));
+
+  /* Find start */
+  foundp = false;
+  low = 0;
+  high = this->total_nintervals;
+
+#ifdef DEBUG
+#ifndef WORDS_BIGENDIAN
+  for (middle = low; middle < high; middle++) {
+    printf("%d:%d:%f\n",middle,this->valueorder[middle],
+	   this->values[this->valueorder[middle]]);
+  }
+  printf("\n");
+#endif
+#endif
+
+  while (!foundp && low < high) {
+    middle = (low+high)/2;
+
+#ifdef DEBUG
+#ifndef WORDS_BIGENDIAN
+    printf("low %d middle %d:%d:%f high %d\n",
+	   low,middle,this->valueorder[middle],
+	   this->values[this->valueorder[middle]],high);
+#endif
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[middle])]);
+#else
+    val = this->values[this->valueorder[middle]];
+#endif
+
+    if (val > lowval) {
+      high = middle;
+      debug(printf("Decreasing high to %d\n",high));
+    } else if (val < lowval) {
+      low = middle + 1;
+      debug(printf("Increasing low to %d\n",low));
+    } else {
+      foundp = true;
+    }
+  }
+
+  if (foundp == true) {
+    start = middle;
+    debug(printf("start is middle = %d\n\n",start));
+
+#ifdef WORDS_BIGENDIAN
+    while (start-1 >= 0 && 
+	   lowval == Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[start-1])])) {
+      start--;
+    }
+#else
+    while (start-1 >= 0 && 
+	   lowval == this->values[this->valueorder[start-1]]) {
+      start--;
+      debug(printf("Regressing start to %d\n",start));
+    }
+#endif
+
+  } else if ((start = low) >= this->total_nintervals) {
+    *nmatches = 0;
+    return (int *) NULL;
+
+  } else {
+    debug(printf("start is low = %d\n\n",start));
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[start])]);
+#else
+    val = this->values[this->valueorder[start]];
+#endif
+    debug(printf("Final value for low bound = %f\n",val));
+    if (val < lowval) {
+      *nmatches = 0;
+      return (int *) NULL;
+    }
+  }
+    
+
+  /* Find end */
+  foundp = false;
+  low = 0;
+  high = this->total_nintervals;
+  while (!foundp && low < high) {
+    middle = (low+high)/2;
+
+#ifdef DEBUG
+#ifndef WORDS_BIGENDIAN
+    printf("low %d middle %d:%d:%f high %d\n",
+	   low,middle,this->valueorder[middle],
+	   this->values[this->valueorder[middle]],high);
+#endif
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[middle])]);
+#else
+    val = this->values[this->valueorder[middle]];
+#endif
+
+    if (val > highval) {
+      high = middle;
+      debug(printf("Decreasing high to %d\n",high));
+    } else if (val < highval) {
+      low = middle + 1;
+      debug(printf("Increasing low to %d\n",low));
+    } else {
+      foundp = true;
+    }
+  }
+
+  if (foundp == true) {
+    end = middle;
+    debug(printf("end is middle = %d\n\n",end));
+
+#ifdef WORDS_BIGENDIAN
+    while (end+1 < this->total_nintervals && 
+	   highval == Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[end+1])])) {
+      end++;
+    }
+#else
+    while (end+1 < this->total_nintervals && 
+	   highval == this->values[this->valueorder[end+1]]) {
+      end++;
+      debug(printf("Advancing end to %d\n",end));
+    }
+#endif
+
+  } else if ((end = high - 1) < 0) {
+    *nmatches = 0;
+    return (int *) NULL;
+
+  } else {
+    debug(printf("end is high - 1 = %d\n\n",end));
+
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[end])]);
+#else
+    val = this->values[this->valueorder[end]];
+#endif
+    debug(printf("Final value for high bound = %f\n",val));
+  
+    if (val > highval) {
+      *nmatches = 0;
+      return (int *) NULL;
+    }
+  }
+    
+  *nmatches = end - start + 1;
+  if (*nmatches <= 0) {
+    *nmatches = 0;
+    return (int *) NULL;
+  } else {
+    matches = (int *) CALLOC(*nmatches,sizeof(int));
+    j = 0;
+    for (recno = start; recno <= end; recno++) {
+#ifdef WORDS_BIGENDIAN
+#ifdef DEBUG
+      printf("Pushing %d:%d\n",recno,Bigendian_convert_int(this->valueorder[recno]));
+#endif
+      matches[j++] = Bigendian_convert_int(this->valueorder[recno])+1;
+	
+#else
+#ifdef DEBUG
+      printf("Pushing %d:%d\n",recno,this->valueorder[recno]);
+#endif
+      matches[j++] = this->valueorder[recno]+1;
+#endif
+    }
+    
+    return matches;
+  }
+}
+
+
+int *
+IIT_get_values_below (int *nmatches, T this, double highval, bool sortp) {
+  int *matches = NULL, j;
+  double val;
+  int start = 0, end;
+  int low, middle, high, recno;
+  bool foundp;
+
+  debug(printf("Entering IIT_get_values_below with %f\n",highval));
+
+  /* Find end */
+  foundp = false;
+  low = 0;
+  high = this->total_nintervals;
+  while (!foundp && low < high) {
+    middle = (low+high)/2;
+
+#ifdef DEBUG
+#ifndef WORDS_BIGENDIAN
+    printf("low %d middle %d:%d:%f high %d\n",
+	   low,middle,this->valueorder[middle],
+	   this->values[this->valueorder[middle]],high);
+#endif
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[middle])]);
+#else
+    val = this->values[this->valueorder[middle]];
+#endif
+
+    if (val > highval) {
+      high = middle;
+      debug(printf("Decreasing high to %d\n",high));
+    } else if (val < highval) {
+      low = middle + 1;
+      debug(printf("Increasing low to %d\n",low));
+    } else {
+      foundp = true;
+    }
+  }
+
+  if (foundp == true) {
+    end = middle;
+    debug(printf("end is middle = %d\n\n",end));
+
+#ifdef WORDS_BIGENDIAN
+    while (end+1 < this->total_nintervals && 
+	   highval == Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[end+1])])) {
+      end++;
+    }
+#else
+    while (end+1 < this->total_nintervals && 
+	   highval == this->values[this->valueorder[end+1]]) {
+      end++;
+      debug(printf("Advancing end to %d\n",end));
+    }
+#endif
+
+  } else if ((end = high - 1) < 0) {
+    *nmatches = 0;
+    return (int *) NULL;
+
+  } else {
+    debug(printf("end is high - 1 = %d\n\n",end));
+
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[end])]);
+#else
+    val = this->values[this->valueorder[end]];
+#endif
+    debug(printf("Final value for high bound = %f\n",val));
+  
+    if (val > highval) {
+      *nmatches = 0;
+      return (int *) NULL;
+    }
+  }
+
+    
+  *nmatches = end - start + 1;
+  if (*nmatches <= 0) {
+    *matches = 0;
+    return (int *) NULL;
+  } else {
+    matches = (int *) CALLOC(*nmatches,sizeof(int));
+    j = 0;
+    for (recno = start; recno <= end; recno++) {
+#ifdef WORDS_BIGENDIAN
+#ifdef DEBUG
+      printf("Pushing %d:%d\n",recno,Bigendian_convert_int(this->valueorder[recno]));
+#endif
+      matches[j++] = Bigendian_convert_int(this->valueorder[recno])+1;
+	
+#else
+#ifdef DEBUG
+      printf("Pushing %d:%d\n",recno,this->valueorder[recno]);
+#endif
+      matches[j++] = this->valueorder[recno]+1;
+#endif
+    }
+    
+    return matches;
+  }
+}
+
+
+int *
+IIT_get_values_above (int *nmatches, T this, double lowval, bool sortp) {
+  int *matches = NULL, j;
+  double val;
+  int start, end = this->total_nintervals - 1;
+  int low, middle, high, recno;
+  bool foundp;
+
+  debug(printf("Entering IIT_get_values_above with %f\n",lowval));
+
+  /* Find start */
+  foundp = false;
+  low = 0;
+  high = this->total_nintervals;
+
+  while (!foundp && low < high) {
+    middle = (low+high)/2;
+
+#ifdef DEBUG
+#ifndef WORDS_BIGENDIAN
+    printf("low %d middle %d:%d:%f high %d\n",
+	   low,middle,this->valueorder[middle],
+	   this->values[this->valueorder[middle]],high);
+#endif
+#endif
+
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[middle])]);
+#else
+    val = this->values[this->valueorder[middle]];
+#endif
+
+    if (val > lowval) {
+      high = middle;
+      debug(printf("Decreasing high to %d\n",high));
+    } else if (val < lowval) {
+      low = middle + 1;
+      debug(printf("Increasing low to %d\n",low));
+    } else {
+      foundp = true;
+    }
+  }
+
+  if (foundp == true) {
+    start = middle;
+    debug(printf("start is middle = %d\n\n",start));
+
+#ifdef WORDS_BIGENDIAN
+    while (start-1 >= 0 && 
+	   lowval == Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[start-1])])) {
+      start--;
+    }
+#else
+    while (start-1 >= 0 && 
+	   lowval == this->values[this->valueorder[start-1]]) {
+      start--;
+      debug(printf("Regressing start to %d\n",start));
+    }
+#endif
+
+  } else if ((start = low) >= this->total_nintervals) {
+    *nmatches = 0;
+    return (int *) NULL;
+
+  } else {
+    debug(printf("start is low = %d\n\n",start));
+#ifdef WORDS_BIGENDIAN
+    val = Bigendian_convert_double(this->values[Bigendian_convert_int(this->valueorder[start])]);
+#else
+    val = this->values[this->valueorder[start]];
+#endif
+    debug(printf("Final value for low bound = %f\n",val));
+    if (val < lowval) {
+      *nmatches = 0;
+      return (int *) NULL;
+    }
+  }
+    
+
+  *nmatches = end - start + 1;
+  if (*nmatches <= 0) {
+    *matches = 0;
+    return (int *) NULL;
+  } else {
+    matches = (int *) CALLOC(*nmatches,sizeof(int));
+    j = 0;
+    for (recno = start; recno <= end; recno++) {
+#ifdef WORDS_BIGENDIAN
+#ifdef DEBUG
+      printf("Pushing %d:%d\n",recno,Bigendian_convert_int(this->valueorder[recno]));
+#endif
+      matches[j++] = Bigendian_convert_int(this->valueorder[recno])+1;
+	
+#else
+#ifdef DEBUG
+      printf("Pushing %d:%d\n",recno,this->valueorder[recno]);
+#endif
+      matches[j++] = this->valueorder[recno]+1;
+#endif
+    }
+    
+    return matches;
+  }
+}
+
 
 
 /************************************************************************/

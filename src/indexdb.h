@@ -1,4 +1,4 @@
-/* $Id: indexdb.h 108105 2013-09-16 22:57:25Z twu $ */
+/* $Id: indexdb.h 121509 2013-12-13 21:56:56Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -31,7 +31,8 @@
 #endif
 
 #define OFFSETS_FILESUFFIX "offsets"
-#define POSITIONS_FILESUFFIX "positions"
+#define POSITIONS_HIGH_FILESUFFIX "positionsh"
+#define POSITIONS_LOW_FILESUFFIX "positions"
 
 
 #define T Indexdb_T
@@ -59,17 +60,21 @@ Indexdb_mean_size (T this, Mode_T mode, Width_T index1part);
 
 typedef struct Filenames_T *Filenames_T;
 struct Filenames_T {
+  char *pages_filename;
   char *pointers_filename;
   char *offsets_filename;
-  char *positions_filename;
+  char *positions_high_filename;
+  char *positions_low_filename;
 
   char *pointers_basename_ptr;
   char *offsets_basename_ptr;
-  char *positions_basename_ptr;
+  char *positions_high_basename_ptr;
+  char *positions_low_basename_ptr;
 
   char *pointers_index1info_ptr;
   char *offsets_index1info_ptr;
-  char *positions_index1info_ptr;
+  char *positions_high_index1info_ptr;
+  char *positions_low_index1info_ptr;
 };
 
 
@@ -115,14 +120,25 @@ extern int
 Indexdb_count_one_shift (T this, Storedoligomer_T subst, int nadjacent);
 
 
-Positionsptr_T *
-Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
+extern Positionsptr_T *
+Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, 
 #ifdef PMAP
-			     , int alphabet_size, Width_T index1part_aa
+			      int alphabet_size, Width_T index1part_aa
 #else
-			     , Width_T index1part
+			      Width_T offsetscomp_basesize , Width_T index1part
 #endif
 			      );
+
+#if defined(HAVE_64_BIT) && defined(UTILITYP)
+extern Hugepositionsptr_T *
+Indexdb_offsets_from_bitpack_huge (char *bitpackpagesfile, char *bitpackptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
+#ifdef PMAP
+				   , int alphabet_size, Width_T index1part_aa
+#else
+				   , Width_T index1part
+#endif
+				   );
+#endif
 
 extern Positionsptr_T *
 Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
@@ -141,6 +157,7 @@ Indexdb_new_genome (Width_T *basesize, Width_T *index1part, Width_T *index1inter
 #endif
 		    Width_T required_basesize, Width_T required_index1part, Width_T required_interval, bool expand_offsets_p,
 		    Access_mode_T offsetscomp_access, Access_mode_T positions_access);
+#ifndef UTILITYP
 extern T
 Indexdb_new_segment (char *genomicseg,
 #ifdef PMAP
@@ -149,6 +166,7 @@ Indexdb_new_segment (char *genomicseg,
 		     Width_T index1part,
 #endif
 		     Width_T index1interval);
+#endif
 
 #ifdef PMAP
 extern Univcoord_T *
@@ -156,8 +174,12 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex);
 #else
 extern Univcoord_T *
 Indexdb_read (int *nentries, T this, Storedoligomer_T oligo);
-extern Univcoord_T *
-Indexdb_read_inplace (int *nentries, T this, Storedoligomer_T oligo);
+extern UINT4 *
+Indexdb_read_inplace (int *nentries,
+#ifdef LARGE_GENOMES
+		      unsigned char **positions_high,
+#endif
+		      T this, Storedoligomer_T oligo);
 #endif
 
 extern Univcoord_T *

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 108220 2013-09-17 18:51:00Z twu $";
+static char rcsid[] = "$Id: shortread.c 115430 2013-11-18 18:19:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3026,9 +3026,9 @@ Shortread_print_header (FILE *fp, T queryseq1, T queryseq2) {
 
 
 void
-Shortread_print_query_singleend_fasta (FILE *fp, T queryseq) {
+Shortread_print_query_singleend_fasta (FILE *fp, T queryseq, T headerseq) {
   fprintf(fp,">");
-  Shortread_print_header(fp,queryseq,/*queryseq2*/NULL);
+  Shortread_print_header(fp,headerseq,/*queryseq2*/NULL);
   /* fprintf(fp,"\n"); -- included in header */
   Shortread_print_oneline(fp,queryseq);
   fprintf(fp,"\n");
@@ -3037,9 +3037,9 @@ Shortread_print_query_singleend_fasta (FILE *fp, T queryseq) {
 }
 
 void
-Shortread_print_query_singleend_fastq (FILE *fp, T queryseq) {
+Shortread_print_query_singleend_fastq (FILE *fp, T queryseq, T headerseq) {
   fprintf(fp,"@");
-  Shortread_print_header(fp,queryseq,/*queryseq2*/NULL);
+  Shortread_print_header(fp,headerseq,/*queryseq2*/NULL);
   /* fprintf(fp,"\n"); -- included in header */
   Shortread_print_oneline(fp,queryseq);
   fprintf(fp,"\n");

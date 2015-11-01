@@ -1,4 +1,4 @@
-/* $Id: splice.h 100404 2013-07-03 21:32:22Z twu $ */
+/* $Id: splice.h 131512 2014-03-26 16:27:22Z twu $ */
 #ifndef SPLICE_INCLUDED
 #define SPLICE_INCLUDED
 #include "bool.h"
@@ -7,6 +7,8 @@
 #include "genomicpos.h"
 #include "compress.h"
 
+extern void
+Splice_setup (int min_shortend_in);
 
 extern List_T
 Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,

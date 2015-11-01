@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 109415 2013-09-27 19:28:52Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 128119 2014-02-20 22:07:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -36,6 +36,7 @@ static char rcsid[] = "$Id: uniqscan.c 109415 2013-09-27 19:28:52Z twu $";
 #include "oligo.h"		/* For Oligo_setup */
 #include "oligoindex_hr.h"	/* For Oligoindex_hr_setup */
 #include "stage2.h"		/* For Stage2_setup */
+#include "indel.h"		/* For Indel_setup */
 #include "stage1hr.h"
 #include "indexdb.h"
 #include "intlist.h"
@@ -1122,6 +1123,7 @@ main (int argc, char *argv[]) {
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,/*amb_clip_p*/true,min_shortend);
   spansize = Spanningelt_setup(index1part,index1interval);
+  Indel_setup(min_indel_end_matches,indel_penalty_middle);
   Stage1hr_setup(/*use_sarray_p*/false,index1part,index1interval,
 		 spansize,chromosome_iit,nchromosomes,
 		 genomealt,mode,/*maxpaths_search*/10,/*terminal_threshold*/5,/*terminal_output_minlength*/0,
@@ -1147,7 +1149,7 @@ main (int argc, char *argv[]) {
 		/*homopolymerp*/false);
   Oligoindex_hr_setup(Genome_blocks(genome),/*mode*/STANDARD);
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
-	       suboptimal_score_start,suboptimal_score_end,min_intronlength,
+	       suboptimal_score_start,suboptimal_score_end,
 	       mode,/*snps_p*/snps_iit ? true : false);
   Pair_setup(trim_mismatch_score,trim_indel_score,/*sam_insert_0M_p*/false,
 	     /*force_xs_direction_p*/false,/*md_lowercase_variant_p*/false,
@@ -1163,7 +1165,8 @@ main (int argc, char *argv[]) {
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,
-		 novelsplicingp,/*merge_samechr_p*/false,circularp);
+		 novelsplicingp,/*merge_samechr_p*/false,circularp,
+		 /*fails_as_input_p*/false,/*fastq_format_p*/false);
 
   uniqueness_scan(from_right_p);
 

@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 109557 2013-09-30 22:13:05Z twu $ */
+/* $Id: stage3hr.h 131816 2014-03-28 23:19:26Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -41,7 +41,33 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
 		int gmap_min_nconsecutive_in, int index1part, int index1interval,
-		bool novelsplicingp_in, bool merge_samechr_p_in, bool *circularp_in);
+		bool novelsplicingp_in, bool merge_samechr_p_in,
+		bool *circularp_in, bool fails_as_input_p_in, bool fastq_format_p_in);
+
+extern void
+Stage3hr_file_setup_single (FILE *fp_nomapping_1_in,
+			    FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
+			    FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in);
+
+extern void
+Stage3hr_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+			    FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
+			    FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
+			    FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
+			    FILE *fp_paired_uniq_long_in, FILE *fp_paired_mult_in, FILE *fp_paired_mult_xs_1_in, FILE *fp_paired_mult_xs_2_in,
+			    FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
+			    FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
+
+extern void
+Stage3hr_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+			 FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
+			 FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in, FILE *fp_unpaired_mult_xs_2_in,
+			 FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
+			 FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
+			 FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
+			 FILE *fp_paired_uniq_long_in, FILE *fp_paired_mult_in, FILE *fp_paired_mult_xs_1_in, FILE *fp_paired_mult_xs_2_in,
+			 FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
+			 FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
 
 extern Hittype_T
 Stage3end_hittype (T this);
@@ -321,9 +347,9 @@ Stage3end_remove_circular_alias (List_T hitlist);
 extern int
 Stage3end_noptimal (List_T hitlist);
 extern List_T
-Stage3end_remove_duplicates (List_T hitlist, Shortread_T queryseq1, Shortread_T queryseq2);
+Stage3end_remove_duplicates (List_T hitlist);
 extern List_T
-Stage3end_filter_terminals (List_T hits);
+Stage3end_filter_terminals (List_T hits, int querylength);
 extern List_T
 Stage3end_remove_overlaps (List_T hitlist, bool finalp);
 extern List_T
@@ -340,10 +366,6 @@ Stage3end_print (FILE *fp, T this, int score,
 		 bool invertp, T hit5, T hit3, int pairedlength, int pairscore,
 		 Pairtype_T pairtype, int mapq_score);
 
-extern List_T
-Stage3end_unalias_circular (List_T hitlist);
-
-
 extern Pairtype_T
 Stage3pair_pairtype (Stage3pair_T this);
 extern bool
@@ -354,16 +376,7 @@ Stage3pair_print (Result_T result, Resulttype_T resulttype,
 		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  int maxpaths, bool quiet_if_excessive_p,
 		  bool nofailsp, bool failsonlyp,
-		  bool fails_as_input_p, bool fastq_format_p, int quality_shift,
-		  FILE *fp_nomapping_1, FILE *fp_nomapping_2,
-		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_circular,
-		  FILE *fp_unpaired_transloc, FILE *fp_unpaired_mult,
-		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_circular,
-		  FILE *fp_halfmapping_transloc, FILE *fp_halfmapping_mult,
-		  FILE *fp_paired_uniq_circular, FILE *fp_paired_uniq_inv, FILE *fp_paired_uniq_scr,
-		  FILE *fp_paired_uniq_long, FILE *fp_paired_mult,
-		  FILE *fp_concordant_uniq, FILE *fp_concordant_circular,
-		  FILE *fp_concordant_transloc, FILE *fp_concordant_mult);
+		  bool fails_as_input_p, bool fastq_format_p, int quality_shift);
 
 extern Stage3pair_T
 Stage3pair_new (T hit5, T hit3, Univcoord_T *splicesites,
@@ -396,6 +409,11 @@ Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_m
 			  Compress_T query5_compress_fwd, Compress_T query5_compress_rev,
 			  Compress_T query3_compress_fwd, Compress_T query3_compress_rev,
 			  bool keep_gmap_p, bool finalp);
+
+#if 0
+extern List_T
+Stage3end_unalias_circular (List_T hitlist);
+#endif
 
 extern List_T
 Stage3pair_remove_circular_alias (List_T hitpairlist);

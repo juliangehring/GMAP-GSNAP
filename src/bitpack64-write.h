@@ -3,15 +3,14 @@
 #include <stdio.h>
 #include "types.h"
 
+/* Stores values 0..n */
 extern void
-Bitpack64_write_setup ();
-
-extern int
-Bitpack64_write_vert (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int offsets_buffer_size, int offsets_buffer_i,
-		      const UINT4 *horizontal, int packsize);
-
-extern int
-Bitpack64_write_horiz (FILE *offsetscomp_fp, Positionsptr_T *offsets_buffer, int offsets_buffer_size, int offsets_buffer_i,
-		       const UINT4 *horizontal, int packsize);
+Bitpack64_write_differential (char *ptrsfile, char *compfile, UINT4 *ascending, UINT4 n);
+extern void
+Bitpack64_write_differential_huge (char *pagesfile, char *ptrsfile, char *compfile,
+				   UINT8 *ascending, UINT4 n);
+/* Stores values 0..(n-1) */
+extern void
+Bitpack64_write_direct (char *ptrsfile, char *compfile, UINT4 *direct, UINT4 n);
 
 #endif

@@ -1,4 +1,4 @@
-/* $Id: iit-write.h 48925 2011-10-03 21:59:27Z twu $ */
+/* $Id: iit-write.h 115892 2013-11-20 22:52:31Z twu $ */
 #ifndef IIT_WRITE_INCLUDED
 #define IIT_WRITE_INCLUDED
 #include "bool.h"
@@ -17,7 +17,7 @@ extern void
 IIT_output_direct (char *iitfile, T this, int version);
 extern void
 IIT_write (char *iitfile, List_T divlist, List_T typelist, List_T fieldlist, Table_T intervaltable,
-	   Table_T labeltable, Table_T annottable, Sorttype_T divsort, int version,
+	   Table_T valuetable, Table_T labeltable, Table_T annottable, Sorttype_T divsort, int version,
 	   bool label_pointers_8p, bool annot_pointers_8p);
 extern T
 IIT_create (List_T divlist, List_T typelist, List_T fieldlist, Table_T intervaltable,

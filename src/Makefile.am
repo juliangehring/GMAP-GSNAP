@@ -19,18 +19,19 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h compress-write.c compress-write.h \
- gbuffer.c gbuffer.h genome.c genome.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
+ gbuffer.c gbuffer.h genome.c genome.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
  genome-write.c genome-write.h \
  bitpack64-read.c bitpack64-read.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h chrsubset.c chrsubset.h uinttable.c uinttable.h gregion.c gregion.h \
+ chrnum.c chrnum.h uinttable.c uinttable.h gregion.c gregion.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
  diagdef.h diag.c diag.h diagpool.c diagpool.h \
  cmet.c cmet.h atoi.c atoi.h \
- orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h \
+ orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h \
  scores.h intron.c intron.h maxent.c maxent.h maxent_hr.c maxent_hr.h samflags.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  doublelist.c doublelist.h smooth.c smooth.h \
@@ -63,18 +64,19 @@ GMAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h compress-write.c compress-write.h \
- gbuffer.c gbuffer.h genome.c genome.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
+ gbuffer.c gbuffer.h genome.c genome.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
  genome-write.c genome-write.h \
  bitpack64-read.c bitpack64-read.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h block.c block.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- chrnum.c chrnum.h chrsubset.c chrsubset.h uinttable.c uinttable.h gregion.c gregion.h \
+ chrnum.c chrnum.h uinttable.c uinttable.h gregion.c gregion.h \
  matchdef.h match.c match.h matchpool.c matchpool.h \
  diagnostic.c diagnostic.h stage1.c stage1.h \
  diagdef.h diag.c diag.h diagpool.c diagpool.h \
  cmet.c cmet.h atoi.c atoi.h \
- orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h \
+ orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h \
  scores.h intron.c intron.h maxent.c maxent.h maxent_hr.c maxent_hr.h samflags.h pairdef.h pair.c pair.h \
  pairpool.c pairpool.h stage2.c stage2.h \
  doublelist.c doublelist.h smooth.c smooth.h \
@@ -109,7 +111,8 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
+ genome.c genome.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
  bitpack64-read.c bitpack64-read.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h \
@@ -120,13 +123,14 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  goby.c goby.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
- orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
+ orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
  intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
  dynprog.c dynprog.h gbuffer.c gbuffer.h translation.c translation.h \
  doublelist.c doublelist.h smooth.c smooth.h \
  chimera.c chimera.h sense.h fastlog.h stage3.c stage3.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
- splice.c splice.h bitpack64-access.c bitpack64-access.h sarray-read.c sarray-read.h \
+ splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
+ sarray-read.c sarray-read.h \
  stage1hr.c stage1hr.h \
  request.c request.h resulthr.c resulthr.h \
  inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
@@ -154,7 +158,8 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
+ genome.c genome.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
  bitpack64-read.c bitpack64-read.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h \
@@ -165,13 +170,13 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  goby.c goby.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
- orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
+ orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
  intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
  dynprog.c dynprog.h gbuffer.c gbuffer.h translation.c translation.h \
  doublelist.c doublelist.h smooth.c smooth.h \
  chimera.c chimera.h sense.h fastlog.h stage3.c stage3.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
- splice.c splice.h bitpack64-access.c bitpack64-access.h sarray-read.c sarray-read.h \
+ splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
  stage1hr.c stage1hr.h \
  request.c request.h resulthr.c resulthr.h \
  inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
@@ -198,7 +203,8 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
+ genome.c genome.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
  bitpack64-read.c bitpack64-read.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h \
@@ -208,13 +214,14 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
- orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
+ orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
  intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
  dynprog.c dynprog.h translation.c translation.h \
  doublelist.c doublelist.h smooth.c smooth.h \
  chimera.c chimera.h sense.h fastlog.h stage3.c stage3.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
- splice.c splice.h bitpack64-access.c bitpack64-access.h sarray-read.c sarray-read.h \
+ splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
+ sarray-read.c sarray-read.h \
  stage1hr.c stage1hr.h resulthr.c resulthr.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h uniqscan.c
@@ -236,7 +243,8 @@ UNIQSCANL_FILES = fopen.h bool.h types.h separator.h comp.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
- genome.c genome.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
+ genome.c genome.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h genome_sites.c genome_sites.h \
  bitpack64-read.c bitpack64-read.h \
  indexdbdef.h indexdb.c indexdb.h indexdb_hr.c indexdb_hr.h \
  oligo.c oligo.h \
@@ -246,13 +254,13 @@ UNIQSCANL_FILES = fopen.h bool.h types.h separator.h comp.h \
  mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
- orderstat.c orderstat.h oligoindex.c oligoindex.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
+ orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h stage2.c stage2.h \
  intron.c intron.h boyer-moore.c boyer-moore.h changepoint.c changepoint.h pbinom.c pbinom.h \
  dynprog.c dynprog.h translation.c translation.h \
  doublelist.c doublelist.h smooth.c smooth.h \
  chimera.c chimera.h sense.h fastlog.h stage3.c stage3.h \
  splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
- splice.c splice.h bitpack64-access.c bitpack64-access.h sarray-read.c sarray-read.h \
+ splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
  stage1hr.c stage1hr.h resulthr.c resulthr.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h uniqscan.c
@@ -275,12 +283,12 @@ GMAPINDEX_FILES = fopen.h bool.h types.h \
  iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h genome.c genome.h \
  genomicpos.c genomicpos.h compress-write.c compress-write.h genome-write.c genome-write.h \
- compress.c compress.h genome_hr.c genome_hr.h \
- bitpack64-read.c bitpack64-read.h bitpack64-write.c bitpack64-write.h \
+ compress.c compress.h popcount.c popcount.h genome_hr.c genome_hr.h \
+ bitpack64-read.c bitpack64-read.h bitpack64-access.c bitpack64-access.h bitpack64-write.c bitpack64-write.h \
  indexdbdef.h indexdb.c indexdb.h indexdb-write.c indexdb-write.h \
  table.c table.h tableuint.c tableuint.h tableuint8.c tableuint8.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
- saca-k.c saca-k.h sarray-write.c sarray-write.h \
+ saca-k.c saca-k.h uint8list.c uint8list.h sarray-write.c sarray-write.h \
  gmapindex.c
 
 gmapindex_CC = $(PTHREAD_CC)
@@ -298,7 +306,7 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  stopwatch.c stopwatch.h access.c access.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  genomicpos.c genomicpos.h compress.c compress.h compress-write.c compress-write.h \
- genome_hr.c genome_hr.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h \
  bitpack64-read.c bitpack64-read.h bitpack64-write.c bitpack64-write.h \
  indexdbdef.h indexdb.c indexdb.h indexdb-write.c indexdb-write.h \
  chrom.c chrom.h \
@@ -307,7 +315,7 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  getopt.c getopt1.c getopt.h snpindex.c
 
 snpindex_CC = $(PTHREAD_CC)
-snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_FLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
 snpindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 snpindex_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 dist_snpindex_SOURCES = $(SNPINDEX_FILES)
@@ -321,7 +329,7 @@ CMETINDEX_FILES = fopen.h bool.h types.h \
  univinterval.c univinterval.h interval.h interval.c \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.h iit-read.c \
  complement.h compress.c compress.h compress-write.c compress-write.h \
- genome_hr.c genome_hr.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h \
  bitpack64-read.c bitpack64-read.h bitpack64-write.c bitpack64-write.h \
  indexdbdef.h indexdb.h indexdb.c indexdb-write.c indexdb-write.h \
  cmet.c cmet.h \
@@ -329,7 +337,7 @@ CMETINDEX_FILES = fopen.h bool.h types.h \
  getopt.c getopt1.c getopt.h cmetindex.c
 
 cmetindex_CC = $(PTHREAD_CC)
-cmetindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+cmetindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_FLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
 cmetindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 cmetindex_LDADD = $(PTHREAD_LIBS)
 dist_cmetindex_SOURCES = $(CMETINDEX_FILES)
@@ -343,7 +351,7 @@ ATOIINDEX_FILES = fopen.h bool.h types.h \
  univinterval.c univinterval.h interval.h interval.c \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.h iit-read.c \
  complement.h compress.c compress.h compress-write.c compress-write.h \
- genome_hr.c genome_hr.h \
+ popcount.c popcount.h genome_hr.c genome_hr.h \
  bitpack64-read.c bitpack64-read.h bitpack64-write.c bitpack64-write.h \
  indexdbdef.h indexdb.h indexdb.c indexdb-write.c indexdb-write.h \
  atoi.c atoi.h \
@@ -351,7 +359,7 @@ ATOIINDEX_FILES = fopen.h bool.h types.h \
  getopt.c getopt1.c getopt.h atoiindex.c
 
 atoiindex_CC = $(PTHREAD_CC)
-atoiindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+atoiindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_FLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
 atoiindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 atoiindex_LDADD = $(PTHREAD_LIBS)
 dist_atoiindex_SOURCES = $(ATOIINDEX_FILES)
@@ -367,7 +375,7 @@ GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h \
  genome.c genome.h \
  genomicpos.c genomicpos.h chrom.c chrom.h \
- chrnum.c chrnum.h chrsubset.c chrsubset.h \
+ chrnum.c chrnum.h \
  datadir.c datadir.h parserange.c parserange.h \
  getopt.c getopt1.c getopt.h get-genome.c
 
@@ -385,6 +393,7 @@ IIT_STORE_FILES = fopen.h bool.h types.h \
  univinterval.c univinterval.h interval.c interval.h \
  uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ doublelist.c doublelist.h \
  iit-write-univ.c iit-write-univ.h iitdef.h iit-write.c iit-write.h \
  tableint.c tableint.h table.c table.h chrom.c chrom.h \
  getopt.c getopt1.c getopt.h iit_store.c

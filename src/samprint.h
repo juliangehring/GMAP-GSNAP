@@ -1,4 +1,4 @@
-/* $Id: samprint.h 109763 2013-10-02 17:12:58Z twu $ */
+/* $Id: samprint.h 128289 2014-02-22 01:10:57Z twu $ */
 #ifndef SAMPRINT_INCLUDED
 #define SAMPRINT_INCLUDED
 
@@ -14,8 +14,35 @@
 #include "bool.h"
 
 extern void
-SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in, bool sam_multiple_primaries_p_in,
+SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in,
+	   bool fails_as_input_p_in, bool fastq_format_p_in, bool hide_soft_clips_p_in,
+	   bool sam_multiple_primaries_p_in,
 	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in);
+
+extern void
+SAM_file_setup_single (FILE *fp_nomapping_1_in,
+		       FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
+		       FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in);
+
+extern void
+SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+		       FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
+		       FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
+		       FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
+		       FILE *fp_paired_uniq_long_in, FILE *fp_paired_mult_in, FILE *fp_paired_mult_xs_1_in, FILE *fp_paired_mult_xs_2_in,
+		       FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
+		       FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
+
+extern void
+SAM_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+		    FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
+		    FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in, FILE *fp_unpaired_mult_xs_2_in,
+		    FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
+		    FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
+		    FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
+		    FILE *fp_paired_uniq_long_in, FILE *fp_paired_mult_in, FILE *fp_paired_mult_xs_1_in, FILE *fp_paired_mult_xs_2_in,
+		    FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
+		    FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
 
 extern Chrpos_T
 SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
@@ -46,18 +73,8 @@ extern void
 SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  bool invert_first_p, bool invert_second_p,
-		  bool nofailsp, bool failsonlyp, bool fails_as_input_p,
-		  bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
-		  int quality_shift, char *sam_read_group_id,
-		  FILE *fp_nomapping_1, FILE *fp_nomapping_2,
-		  FILE *fp_unpaired_uniq, FILE *fp_unpaired_circular,
-		  FILE *fp_unpaired_transloc, FILE *fp_unpaired_mult,
-		  FILE *fp_halfmapping_uniq, FILE *fp_halfmapping_circular,
-		  FILE *fp_halfmapping_transloc, FILE *fp_halfmapping_mult,
-		  FILE *fp_paired_uniq_circular, FILE *fp_paired_uniq_inv, FILE *fp_paired_uniq_scr,
-		  FILE *fp_paired_long, FILE *fp_paired_mult,
-		  FILE *fp_concordant_uniq, FILE *fp_concordant_circular,
-		  FILE *fp_concordant_transloc, FILE *fp_concordant_mult);
+		  bool nofailsp, bool failsonlyp, bool clip_overlap_p, bool merge_samechr_p,
+		  int quality_shift, char *sam_read_group_id);
 
 #endif
 

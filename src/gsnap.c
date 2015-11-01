@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 109568 2013-09-30 22:54:39Z twu $";
+static char rcsid[] = "$Id: gsnap.c 131708 2014-03-27 23:34:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,10 +57,14 @@ static char rcsid[] = "$Id: gsnap.c 109568 2013-09-30 22:54:39Z twu $";
 #include "goby.h"
 #include "spanningelt.h"
 #include "splicetrie_build.h"
+#include "splice.h"             /* For Splice_setup */
 #include "oligo.h"		/* For Oligo_setup */
 #include "oligoindex_hr.h"	/* For Oligoindex_hr_setup */
 #include "stage2.h"		/* For Stage2_setup */
+#ifndef LARGE_GENOMES
 #include "sarray-read.h"
+#endif
+#include "indel.h"		/* For Indel_setup */
 #include "stage1hr.h"
 #include "indexdb.h"
 #include "resulthr.h"
@@ -131,7 +135,9 @@ static Genome_T genomebits = NULL;
 static Genome_T genomebits_alt = NULL;
 
 static bool use_sarray_p = true; /* if present */
+#ifndef LARGE_GENOMES
 static Sarray_T sarray = NULL;
+#endif
 
 static bool fastq_format_p = false;
 static bool creads_format_p = false;
@@ -346,6 +352,7 @@ static char *sam_read_group_library = NULL;
 static char *sam_read_group_platform = NULL;
 static bool force_xs_direction_p = false;
 static bool md_lowercase_variant_p = false;
+static bool hide_soft_clips_p = false;
 
 
 /* Goby */
@@ -495,6 +502,7 @@ static struct option long_options[] = {
   {"read-group-platform", required_argument, 0, 0},	/* sam_read_group_platform */
   {"force-xs-dir", no_argument, 0, 0},			/* force_xs_direction_p */
   {"md-lowercase-snp", no_argument, 0, 0},		/* md_lowercase_variant_p */
+  {"hide-soft-clips", no_argument, 0, 0},		/* hide_soft_clips_p */
 
   {"noexceptions", no_argument, 0, '0'}, /* exception_raise_p */
   {"maxsearch", required_argument, 0, 0}, /* maxpaths_search */
@@ -845,7 +853,7 @@ signal_handler (int sig) {
 	fprintf(stderr,"Problem sequence: ");
 	fprintf(stderr,"%s (%d bp)\n",Shortread_accession(queryseq1),Shortread_fulllength(queryseq1));
 	if (queryseq2 == NULL) {
-	  Shortread_print_query_singleend_fasta(stderr,queryseq1);
+	  Shortread_print_query_singleend_fasta(stderr,queryseq1,/*headerseq*/queryseq1);
 	} else {
 	  Shortread_print_query_pairedend_fasta(stderr,queryseq1,queryseq2,
 						invert_first_p,invert_second_p);
@@ -921,7 +929,7 @@ single_thread () {
       }
       fprintf(stderr,"\n");
       if (Request_queryseq2(request) == NULL) {
-	Shortread_print_query_singleend_fasta(stderr,queryseq1);
+	Shortread_print_query_singleend_fasta(stderr,queryseq1,/*headerseq*/queryseq1);
       } else {
 	Shortread_print_query_pairedend_fasta(stderr,queryseq1,Request_queryseq2(request),
 					      invert_first_p,invert_second_p);
@@ -1067,7 +1075,7 @@ worker_thread (void *data) {
       }
       fprintf(stderr,"\n");
       if (Request_queryseq2(request) == NULL) {
-	Shortread_print_query_singleend_fasta(stderr,queryseq1);
+	Shortread_print_query_singleend_fasta(stderr,queryseq1,/*headerseq*/queryseq1);
       } else {
 	Shortread_print_query_pairedend_fasta(stderr,queryseq1,Request_queryseq2(request),
 					      invert_first_p,invert_second_p);
@@ -1585,6 +1593,8 @@ main (int argc, char *argv[]) {
 	force_xs_direction_p = true;
       } else if (!strcmp(long_name,"md-lowercase-snp")) {
 	md_lowercase_variant_p = true;
+      } else if (!strcmp(long_name,"hide-soft-clips")) {
+	hide_soft_clips_p = true;
       } else if (!strcmp(long_name,"read-group-id")) {
 	sam_read_group_id = optarg;
       } else if (!strcmp(long_name,"read-group-name")) {
@@ -2150,7 +2160,7 @@ main (int argc, char *argv[]) {
 #ifdef LARGE_GENOMES
   } else if (Univ_IIT_coord_values_8p(chromosome_iit) == false) {
     fprintf(stderr,"This program gsnapl is designed for large genomes.\n");
-    fprintf(stderr,"For small genomes of less than 2^32 billion nt, please run gsnap instead.\n");
+    fprintf(stderr,"For small genomes of less than 2^32 (4 billion) bp, please run gsnap instead.\n");
     exit(9);
 #endif
   } else {
@@ -2166,11 +2176,13 @@ main (int argc, char *argv[]) {
 			    uncompressedp,genome_access);
     genomebits = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
 			    uncompressedp,genome_access);
+#ifndef LARGE_GENOMES
     if (use_sarray_p == true) {
       if ((sarray = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access)) == NULL) {
 	use_sarray_p = false;
       }
     }
+#endif
 
     if (dibasep == true) {
       fprintf(stderr,"No longer supporting 2-base encoding\n");
@@ -2262,12 +2274,15 @@ main (int argc, char *argv[]) {
 			   uncompressedp,genome_access);
     genomebits_alt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_BITS,
 			       uncompressedp,genome_access);
+
+#ifndef LARGE_GENOMES
     if (use_sarray_p == true) {
       fprintf(stderr,"Note: Suffix arrays will bias against SNP-tolerant alignment.  For bias-free alignment, set --use-sarray=0\n");
       if ((sarray = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access)) == NULL) {
 	use_sarray_p = false;
       }
     }
+#endif
 
     if (dibasep == true) {
       fprintf(stderr,"Currently cannot combine SNPs with 2-base encoding\n");
@@ -2614,12 +2629,14 @@ main (int argc, char *argv[]) {
 
 
   Genome_setup(genomecomp,genomecomp_alt,mode,circular_typeint);
+#ifndef LARGE_GENOMES
   if (sarray != NULL) {
     Sarray_setup(sarray,genomecomp,chromosome_iit,circular_typeint,shortsplicedist,
 		 localsplicing_penalty,
 		 max_deletionlength,max_end_deletions,max_middle_insertions,max_end_insertions,
 		 splicesites,splicetypes,splicedists,nsplicesites);
   }
+#endif
   if (genomebits == NULL) {
     Genome_hr_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL,
 		    query_unk_mismatch_p,genome_unk_mismatch_p,mode,/*genomebits_avail_p*/false);
@@ -2635,7 +2652,10 @@ main (int argc, char *argv[]) {
   Splicetrie_setup(splicecomp,splicesites,splicefrags_ref,splicefrags_alt,
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,amb_clip_p,min_shortend);
+  Splice_setup(min_shortend);
+
   spansize = Spanningelt_setup(index1part,index1interval);
+  Indel_setup(min_indel_end_matches,indel_penalty_middle);
   Stage1hr_setup(use_sarray_p,index1part,index1interval,spansize,chromosome_iit,nchromosomes,
 		 genomecomp_alt,mode,maxpaths_search,terminal_threshold,terminal_output_minlength,
 		 splicesites,splicetypes,splicedists,nsplicesites,
@@ -2660,7 +2680,7 @@ main (int argc, char *argv[]) {
 		/*homopolymerp*/false);
   Oligoindex_hr_setup(Genome_blocks(genomecomp),mode);
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
-	       suboptimal_score_start,suboptimal_score_end,min_intronlength,
+	       suboptimal_score_start,suboptimal_score_end,
 	       mode,/*snps_p*/snps_iit ? true : false);
   Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
 	     force_xs_direction_p,md_lowercase_variant_p,
@@ -2676,9 +2696,9 @@ main (int argc, char *argv[]) {
 		 expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
-		 merge_samechr_p,circularp);
-  SAM_setup(quiet_if_excessive_p,maxpaths_report,sam_multiple_primaries_p,
-	    force_xs_direction_p,md_lowercase_variant_p,snps_iit);
+		 merge_samechr_p,circularp,fails_as_input_p,fastq_format_p);
+  SAM_setup(quiet_if_excessive_p,maxpaths_report,fails_as_input_p,fastq_format_p,hide_soft_clips_p,
+	    sam_multiple_primaries_p,force_xs_direction_p,md_lowercase_variant_p,snps_iit);
   Goby_setup(show_refdiff_p);
 
 
@@ -2817,9 +2837,11 @@ main (int argc, char *argv[]) {
   if (dbversion != NULL) {
     FREE(dbversion);
   }
+#ifndef LARGE_GENOMES
   if (sarray != NULL) {
     Sarray_free(&sarray);
   }
+#endif
   if (genomecomp_alt != NULL) {
     Genome_free(&genomecomp_alt);
     Genome_free(&genomebits_alt);
@@ -2934,7 +2956,7 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
                                       start=2, end=2  => identifier is 071112_SLXA-EAS1_s_7:5:1:817:345\n\
                                       start=1, end=2  => identifier is SRR001666.1 071112_SLXA-EAS1_s_7:5:1:817:345\n\
   --force-single-end             When multiple FASTQ files are provided on the command line, GSNAP assumes\n\
-                                    they are match paired-end files.  This flag treats each file as single-end.\n\
+                                    they are matching paired-end files.  This flag treats each file as single-end.\n\
   --filter-chastity=STRING       Skips reads marked by the Illumina chastity program.  Expecting a string\n\
                                    after the accession having a 'Y' after the first colon, like this:\n\
                                          @accession 1:Y:0:CTTGTA\n\

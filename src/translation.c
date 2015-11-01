@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c 65446 2012-05-31 20:36:07Z twu $";
+static char rcsid[] = "$Id: translation.c 130296 2014-03-17 17:16:05Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -187,7 +187,7 @@ Translation_get_codon (char a, char b, char c) {
 
 #ifndef PMAP
 static void
-find_bounds_forward (int *translation_frame, int *translation_starti, 
+find_bounds_forward (Frame_T *translation_frame, int *translation_starti, 
 		     int *translation_endi, int *translation_length,
 		     bool *endstopp, struct T *translation, 
 		     int translationlen, bool fulllengthp) {
@@ -345,7 +345,7 @@ find_bounds_forward (int *translation_frame, int *translation_starti,
 
 #ifndef PMAP
 static void
-find_bounds_backward (int *translation_frame, int *translation_starti,
+find_bounds_backward (Frame_T *translation_frame, int *translation_starti,
 		      int *translation_endi, int *translation_length,
 		      bool *endstopp, struct T *translation, int translationlen, bool fulllengthp) {
   int beststart0, beststart1, beststart2, bestend0, bestend1, bestend2;
@@ -497,11 +497,12 @@ find_bounds_backward (int *translation_frame, int *translation_starti,
 
 #ifndef PMAP
 static void
-find_bounds_forward_fromstart (int *translation_frame, int *translation_starti, 
+find_bounds_forward_fromstart (Frame_T *translation_frame, int *translation_starti, 
 			       int *translation_endi, int *translation_length,
 			       bool *endstopp, struct T *translation, int translationlen,
 			       int cds_startpos) {
-  int frame_fromstart, phase_fromstart;
+  Frame_T frame_fromstart;
+  int phase_fromstart;
   int beststart0, bestend0;
   int bestorf0 = 0, orf0 = 0;
   int start0 = 0;
@@ -571,11 +572,12 @@ find_bounds_forward_fromstart (int *translation_frame, int *translation_starti,
 
 #ifndef PMAP
 static void
-find_bounds_backward_fromstart (int *translation_frame, int *translation_starti,
+find_bounds_backward_fromstart (Frame_T *translation_frame, int *translation_starti,
 				int *translation_endi, int *translation_length,
 				bool *endstopp, struct T *translation, int translationlen,
 				int cds_startpos, int querylength) {
-  int frame_fromstart, phase_fromstart;
+  Frame_T frame_fromstart;
+  int phase_fromstart;
   int beststart0, bestend0;
   int bestorf0 = 0, orf0 = 0;
   int start0 = translationlen-1;
@@ -1074,7 +1076,8 @@ get_codon_genomic (int *nexti, struct Pair_T *pairs, int npairs, int starti) {
 static int
 assign_cdna_forward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
-  int i, nexti, j = 0, codon;
+  int i, nexti, j = 0;
+  int codon = ' ';
 
   i = starti;
   while (i < npairs && pairs[i].cdna == ' ') {
@@ -1115,6 +1118,7 @@ static int
 assign_cdna_backward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp, int starti) {
   struct Pair_T *pair;
   int i, nexti, j = 0;
+  int codon = ' ';
 
   i = starti;
   while (i >= 0 && pairs[i].cdna == ' ') {
@@ -1122,13 +1126,13 @@ assign_cdna_backward (int ncdna, struct Pair_T *pairs, int npairs, bool revcompp
   }
   while (j < ncdna) {
     pair = &(pairs[i]);
-    pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,revcompp);
+    codon = pair->aa_e = get_codon_backward(&nexti,pairs,npairs,i,revcompp);
     debug2(Pair_dump_one(pair,true));
     debug2(printf(" marked with amino acid %c\n",pair->aa_e));
     i = nexti;
     j += 3;
   }
-  return ncdna;
+  return codon;
 }
 
 static void
@@ -1265,6 +1269,7 @@ mark_cdna_forward (struct Pair_T *pairs, int npairs, bool revcompp, int starti, 
     }
   }
 
+  debug2(printf("Calling terminate_cdna_forward\n"));
   terminate_cdna_forward(pairs,npairs,revcompp,i);
 
   return;
@@ -1276,7 +1281,7 @@ mark_cdna_backward_strict (struct Pair_T *pairs, int npairs, bool revcompp, int 
   struct Pair_T *pair;
   int i, nexti, ncdna, codon = ' ';
 
-  debug2(printf("mark_cdna_backward called with pairs #%d..%d\n",starti,endi));
+  debug2(printf("mark_cdna_backward_strict called with pairs #%d..%d\n",starti,endi));
 
   i = starti;
 
@@ -1348,6 +1353,7 @@ mark_cdna_backward (struct Pair_T *pairs, int npairs, bool revcompp, int starti,
     }
   }
 
+  debug2(printf("Calling terminate_cdna_backward\n"));
   terminate_cdna_backward(pairs,npairs,revcompp,i);
 
   return;
@@ -1485,7 +1491,8 @@ Translation_via_genomic (int *translation_leftpos, int *translation_rightpos, in
   struct T *translation;
   bool endstopp;
   int i, aapos = 0;
-  int translation_frame, translation_starti = 0, translation_endi = 0, phase;
+  Frame_T translation_frame;
+  int translation_starti = 0, translation_endi = 0, phase;
   int minpos, maxpos;
 
   if (npairs < MIN_NPAIRS) {

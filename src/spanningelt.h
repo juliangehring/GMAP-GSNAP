@@ -1,4 +1,4 @@
-/* $Id: spanningelt.h 99756 2013-06-27 21:20:19Z twu $ */
+/* $Id: spanningelt.h 115433 2013-11-18 18:24:33Z twu $ */
 #ifndef SPANNINGELT_INCLUDED
 #define SPANNINGELT_INCLUDED
 #include "bool.h"
@@ -20,15 +20,27 @@ struct T {
   Univcoord_T *intersection_diagonals;
   int intersection_ndiagonals;
 
+#ifdef LARGE_GENOMES
+  unsigned char *partner_positions_high;
+  UINT4 *partner_positions_low;
+#else
   Univcoord_T *partner_positions;
+#endif
   int partner_diagterm;
   int partner_npositions;
 
   Compoundpos_T compoundpos;
   int compoundpos_diagterm;
 
+#ifdef LARGE_GENOMES
+  unsigned char *positions_high_allocated;
+  unsigned char *positions_high;
+  UINT4 *positions_low_allocated;
+  UINT4 *positions_low;
+#else
   Univcoord_T *positions_allocated;
   Univcoord_T *positions;
+#endif
   int diagterm;
   int npositions;
   
@@ -40,9 +52,16 @@ struct T {
   /* Reset values */
   Univcoord_T *intersection_diagonals_reset;
   int intersection_ndiagonals_reset;
+#ifdef LARGE_GENOMES
+  unsigned char *partner_positions_high_reset;
+  UINT4 *partner_positions_low_reset;
+  unsigned char *positions_high_reset;
+  UINT4 *positions_low_reset;
+#else
   Univcoord_T *partner_positions_reset;
-  int partner_npositions_reset;
   Univcoord_T *positions_reset;
+#endif
+  int partner_npositions_reset;
   int npositions_reset;
 };
 
@@ -61,8 +80,12 @@ Spanningelt_print_set (List_T spanningset);
 
 extern List_T
 Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
-		 Univcoord_T ***stage1_positions, int **stage1_npositions,
-		 Indexdb_T indexdb, int query_lastpos, int querylength,
+#ifdef LARGE_GENOMES
+		 unsigned char ***stage1_positions_high, UINT4 ***stage1_positions_low,
+#else
+		 Univcoord_T ***stage1_positions,
+#endif
+		 int **stage1_npositions, Indexdb_T indexdb, int query_lastpos, int querylength,
 		 int mod, bool plusp);
 
 extern int

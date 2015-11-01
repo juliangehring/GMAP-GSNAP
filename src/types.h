@@ -1,4 +1,4 @@
-/* $Id: types.h 102177 2013-07-20 00:51:23Z twu $ */
+/* $Id: types.h 122381 2013-12-24 01:22:55Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -59,10 +59,33 @@ typedef UINT4 Offsetscomp_T;
 /* Some procedures use Shortoligomer_T, which should be the same */
 typedef UINT4 Storedoligomer_T;
 
+
+/* Definitions */
+/* Large genome: Genomic length > 2^32, needing 8-byte Univcoord_T */
+/* Huge genome: Entries in positions file > 2^32, needing 8-byte Positionsptr_T */
+
 /* An offset into the positions file of an IndexDB.  For small genomes
    < 2^32 bp such as human, need 3 billion divided by sampling
-   interval (default 3), requiring a maximum of 32 bits or 4 bytes */
+   interval (default 3), requiring a maximum of 32 bits or 4 bytes
+   (Positionsptr_T).  For huge genomes or more frequent sampling,
+   need 8 bytes, or Hugepositionsptr_T. */
+#ifdef HAVE_64_BIT
+
+#ifdef UTILITYP
+typedef UINT8 Hugepositionsptr_T;
 typedef UINT4 Positionsptr_T;
+#elif defined(LARGE_GENOMES)
+/* Don't really need offsets to be 8-byte unless we have a huge
+   genome, but this simplifies the code */
+typedef UINT8 Hugepositionsptr_T;
+typedef UINT8 Positionsptr_T;
+#else
+typedef UINT4 Positionsptr_T;
+#endif
+
+#else
+typedef UINT4 Positionsptr_T;
+#endif
 
 
 /* For definition of Univcoord_T and Chrpos_T, see genomicpos.h */
@@ -72,7 +95,7 @@ typedef UINT4 Positionsptr_T;
 
 #ifdef UTILITYP
 typedef UINT8 Univcoord_T;
-#elif defined LARGE_GENOMES
+#elif defined(LARGE_GENOMES)
 typedef UINT8 Univcoord_T;
 #else
 typedef UINT4 Univcoord_T;
@@ -88,6 +111,7 @@ typedef UINT4 Triecontent_T;
 
 /* For suffix array */
 typedef UINT4 Sarrayptr_T;
+typedef UINT8 BP_size_t;
 
 #endif
 

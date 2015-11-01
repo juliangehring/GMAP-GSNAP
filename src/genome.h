@@ -1,4 +1,4 @@
-/* $Id: genome.h 101462 2013-07-15 15:07:35Z twu $ */
+/* $Id: genome.h 121509 2013-12-13 21:56:56Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 
@@ -54,6 +54,9 @@ extern void
 Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer);
 extern char
 Genome_get_char (T this, Univcoord_T left);
+/* For searching in a suffix array, where N from end of sequence returns 0, but N internally returns X */
+extern char
+Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength);
 extern char
 Genome_get_char_blocks (char *charalt, Univcoord_T left);
 extern char *

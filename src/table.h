@@ -1,4 +1,4 @@
-/* $Id: table.h 102728 2013-07-24 22:48:20Z twu $ */
+/* $Id: table.h 115432 2013-11-18 18:21:03Z twu $ */
 #ifndef TABLE_INCLUDED
 #define TABLE_INCLUDED
 
@@ -37,7 +37,7 @@ Table_keys_by_timeindex (T table, void *end);
 extern void **
 Table_values (T table, void *end);
 void
-Table_gc (T *table, void (*keyfree)(void **key), void (*valuefree)(void **value));
+Table_gc (T *table, void (*keyfree)(const void **key), void (*valuefree)(void **value));
 
 #undef T
 #endif

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_single.c 132977 2014-04-10 22:09:17Z twu $";
+static char rcsid[] = "$Id: dynprog_single.c 137609 2014-05-30 01:06:40Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -86,15 +86,6 @@ static char rcsid[] = "$Id: dynprog_single.c 132977 2014-04-10 22:09:17Z twu $";
 #define MAX_MICROEXON_LENGTH 12	/* Should be oligomer length - 1 plus peelback */
 #endif
 #define MICROINTRON_LENGTH 9
-
-
-#define SINGLE_OPEN_HIGHQ -12	/* was -10 */
-#define SINGLE_OPEN_MEDQ -8
-#define SINGLE_OPEN_LOWQ -4
-
-#define SINGLE_EXTEND_HIGHQ -3	/* was -3 */
-#define SINGLE_EXTEND_MEDQ -2
-#define SINGLE_EXTEND_LOWQ -1
 
 
 

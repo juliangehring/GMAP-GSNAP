@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 135447 2014-05-07 22:25:45Z twu $";
+static char rcsid[] = "$Id: stage2.c 137652 2014-05-30 16:49:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -198,7 +198,7 @@ Stage2_setup (bool splicingp_in, bool cross_species_p,
 /* Dynamic programming */
 /* Can also define debug9(x) as: if (querypos == XX) {x;} */
 #ifdef DEBUG9
-#define debug9(x) if (querypos == 1756) {x;}
+#define debug9(x) if (querypos == 39) {x;}
 #else 
 #define debug9(x)
 #endif
@@ -1124,7 +1124,8 @@ score_querypos_lookback (
 	    fwd_score -= (diffdistance/ONE + 1);
 	  }
 
-	  if (/*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
+	  if (0 && /*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
+	    /* Misses short exons */
 	    debug9(canonicalsgn = 0);
 	    fwd_score -= NINTRON_PENALTY_MISMATCH;
 
@@ -1624,7 +1625,8 @@ score_querypos_lookforward (
 	    fwd_score -= (diffdistance/ONE + 1);
 	  }
 
-	  if (/*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
+	  if (0 && /*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
+	    /* Misses short exons */
 	    debug9(canonicalsgn = 0);
 	    fwd_score -= NINTRON_PENALTY_MISMATCH;
 

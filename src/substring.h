@@ -1,4 +1,4 @@
-/* $Id: substring.h 136085 2014-05-13 23:00:04Z twu $ */
+/* $Id: substring.h 138720 2014-06-11 17:07:51Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -174,6 +174,8 @@ Substring_chrend (T this);
 
 extern double
 Substring_chimera_prob (T this);
+extern double
+Substring_chimera_prob_2 (T this);
 extern int
 Substring_chimera_pos (T this);
 extern int

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 135779 2014-05-09 21:29:04Z twu $";
+static char rcsid[] = "$Id: gsnap.c 138738 2014-06-11 18:55:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -353,7 +353,6 @@ static int maxpaths_report = 100;
 static bool orderedp = false;
 static bool failsonlyp = false;
 static bool nofailsp = false;
-static bool fails_as_input_p = false;
 
 static bool print_ncolordiffs_p = false;
 static bool print_nsnpdiffs_p = false;
@@ -387,6 +386,7 @@ static Gobywriter_T gobywriter = NULL;
 
 /* Input/output */
 static char *sevenway_root = NULL;
+static char *failedinput_root = NULL;
 static bool appendp = false;
 static Outbuffer_T outbuffer;
 static Inbuffer_T inbuffer;
@@ -535,8 +535,8 @@ static struct option long_options[] = {
   {"print-snps", no_argument, 0, 0}, /* print_snplabels_p */
   {"failsonly", no_argument, 0, 0}, /* failsonlyp */
   {"nofails", no_argument, 0, 0}, /* nofailsp */
-  {"fails-as-input", no_argument, 0, 0}, /* fails_as_input_p */
   {"split-output", required_argument, 0, 0}, /* sevenway_root */
+  {"failed-input", required_argument, 0, 0}, /* failed_input_root */
   {"append-output", no_argument, 0, 0},	     /* appendp */
 
 #ifdef HAVE_GOBY
@@ -672,7 +672,11 @@ check_compiler_assumptions () {
 #ifdef HAVE_SSE2
   int z;
   __m128i a;
+#ifdef HAVE_SSE4_1
+  char negx, negy;
 #endif
+#endif
+
 
   fprintf(stderr,"Checking compiler assumptions for popcnt: ");
   fprintf(stderr,"%08X ",x);
@@ -693,14 +697,36 @@ check_compiler_assumptions () {
   a = _mm_xor_si128(_mm_set1_epi32(x),_mm_set1_epi32(y));
   z = _mm_cvtsi128_si32(a);
   fprintf(stderr," xor=%08X\n",z);
-#endif
 
 #ifdef HAVE_SSE4_1
+  if ((negx = (char) x) > 0) {
+    negx = -negx;
+  }
+  if ((negy = (char) y) > 0) {
+    negy = -negy;
+  }
+
   fprintf(stderr,"Checking compiler assumptions for SSE4.1: ");
-  fprintf(stderr,"%d %d",(char) x,(char) y);
-  a = _mm_max_epi8(_mm_set1_epi8((char) x),_mm_set1_epi8((char) y));
+  fprintf(stderr,"%d %d",negx,negy);
+  a = _mm_max_epi8(_mm_set1_epi8(negx),_mm_set1_epi8(negy));
   z = _mm_extract_epi8(a,0);
-  fprintf(stderr," max=%d\n",z);
+  fprintf(stderr," max=%d => ",z);
+  if (negx > negy) {
+    if (z == (int) negx) {
+      fprintf(stderr,"compiler sign extends\n"); /* technically incorrect, but SIMD procedures behave properly */
+    } else {
+      fprintf(stderr,"compiler zero extends\n");
+    }
+  } else {
+    if (z == (int) negy) {
+      fprintf(stderr,"compiler sign extends\n"); /* technically incorrect, but SIMD procedures behave properly */
+    } else {
+      fprintf(stderr,"compiler zero extends\n");
+    }
+  }
+
+#endif
+
 #endif
 
   return;
@@ -911,6 +937,7 @@ single_thread () {
 
 #ifdef MEMUSAGE
   long int memusage_constant = 0;
+  char *comma1, *comma2, *comma3, *comma4, *comma5;
 #endif
 
   oligoindices_major = Oligoindex_array_new_major(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
@@ -968,12 +995,36 @@ single_thread () {
 
 #ifdef MEMUSAGE
     Outbuffer_print_result(outbuffer,result,request,noutput+1);
-    printf("***%s\n",Shortread_accession(Request_queryseq1(request)));
 #else
     Outbuffer_print_result(outbuffer,result,request);
 #endif
 
     Result_free(&result);
+
+#ifdef MEMUSAGE
+    /* Run with a single thread (-t 0), which should bring usage back down to 0 after each read */
+#if 0
+    printf("Memusage of single thread: standard %ld, keep %ld\n",Mem_usage_report_std(),Mem_usage_report_keep());
+    printf("Memusage of OUT: %ld\n",Mem_usage_report_out());
+    assert(Mem_usage_report_std() == 0);
+    assert(Mem_usage_report_out() == 0);
+#endif
+
+    queryseq1 = Request_queryseq1(request);
+    comma1 = Genomicpos_commafmt(Mem_max_usage_report_std());
+    comma2 = Genomicpos_commafmt(Mem_usage_report_std());
+    comma3 = Genomicpos_commafmt(Mem_usage_report_keep());
+    comma4 = Genomicpos_commafmt(Mem_usage_report_in());
+    comma5 = Genomicpos_commafmt(Mem_usage_report_out());
+
+    fprintf(stderr,"Acc %s: max %s  std %s  keep %s  in %s  out %s\n",
+	    Shortread_accession(queryseq1),comma1,comma2,comma3,comma4,comma5);
+    FREE(comma5);
+    FREE(comma4);
+    FREE(comma3);
+    FREE(comma2);
+    FREE(comma1);
+#endif
 
     /* Allocated by fill_buffer in Inbuffer_get_request */
     Request_free(&request);
@@ -984,14 +1035,6 @@ single_thread () {
       Diagpool_free_memory(diagpool);
       Cellpool_free_memory(cellpool);
     }
-
-#ifdef MEMUSAGE
-    /* Run with a single thread (-t 0), which should bring usage back down to 0 after each read */
-    printf("Memusage of single thread: %ld\n",Mem_usage_report_std());
-    printf("Memusage of OUT: %ld\n",Mem_usage_report_out());
-    assert(Mem_usage_report_std() == 0);
-    assert(Mem_usage_report_out() == 0);
-#endif
 
   }
 
@@ -1044,8 +1087,9 @@ worker_thread (void *data) {
   int worker_jobid = 0;
 
 #ifdef MEMUSAGE
-  long int memusage_constant = 0, memusage;
+  long int memusage_constant = 0, memusage, max_memusage;
   char threadname[12];
+  char *comma1, *comma2, *comma3, *comma4, *comma5;
   sprintf(threadname,"thread-%ld",worker_id);
   Mem_usage_set_threadname(threadname);
 #endif
@@ -1075,6 +1119,7 @@ worker_thread (void *data) {
   while ((request = Inbuffer_get_request(inbuffer)) != NULL) {
     debug(printf("worker_thread %ld got request %d\n",worker_id,Request_id(request)));
     pthread_setspecific(global_request_key,(void *) request);
+
     if (worker_jobid % POOL_FREE_INTERVAL == 0) {
       Pairpool_free_memory(pairpool);
       Diagpool_free_memory(diagpool);
@@ -1089,9 +1134,14 @@ worker_thread (void *data) {
       fflush(stdout);
       exit(9);
     }
+    Mem_usage_reset_max();
 #endif
 
     TRY
+#ifdef MEMUSAGE
+      queryseq1 = Request_queryseq1(request);
+      fprintf(stderr,"Thread %d starting %s\n",worker_id,Shortread_accession(queryseq1));
+#endif
       result = process_request(request,floors_array,oligoindices_major,oligoindices_minor,
 			       pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
@@ -1121,9 +1171,19 @@ worker_thread (void *data) {
 
 #ifdef MEMUSAGE
     queryseq1 = Request_queryseq1(request);
-    fprintf(stderr,"Acc %s, thread %d: max %ld  std %dl  keep %ld  in %ld  out %ld\n",
-	    Shortread_accession(queryseq1),worker_id,Mem_max_usage_report_std(),Mem_usage_report_std(),
-	    Mem_usage_report_keep(),Mem_usage_report_in(),Mem_usage_report_out());
+    comma1 = Genomicpos_commafmt(Mem_max_usage_report_std());
+    comma2 = Genomicpos_commafmt(Mem_usage_report_std());
+    comma3 = Genomicpos_commafmt(Mem_usage_report_keep());
+    comma4 = Genomicpos_commafmt(Mem_usage_report_in());
+    comma5 = Genomicpos_commafmt(Mem_usage_report_out());
+
+    fprintf(stderr,"Acc %s, thread %d: max %s  std %s  keep %s  in %s  out %s\n",
+	    Shortread_accession(queryseq1),worker_id,comma1,comma2,comma3,comma4,comma5);
+    FREE(comma5);
+    FREE(comma4);
+    FREE(comma3);
+    FREE(comma2);
+    FREE(comma1);
 #endif
 
     debug(printf("worker_thread putting result %d\n",Result_id(result)));
@@ -1594,10 +1654,10 @@ main (int argc, char *argv[]) {
 #endif
       } else if (!strcmp(long_name,"split-output")) {
 	sevenway_root = optarg;
+      } else if (!strcmp(long_name,"failed-input")) {
+	failedinput_root = optarg;
       } else if (!strcmp(long_name,"append-output")) {
 	appendp = true;
-      } else if (!strcmp(long_name,"fails-as-input")) {
-	fails_as_input_p = true;
       } else if (!strcmp(long_name,"pairmax-dna")) {
 	pairmax_dna = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"pairmax-rna")) {
@@ -2045,11 +2105,6 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"The distant splicing penalty %d cannot be less than local splicing penalty %d\n",
 	    distantsplicing_penalty,localsplicing_penalty);
     exit(9);
-  }
-
-  if (fails_as_input_p == true && (sevenway_root == NULL && failsonlyp == false)) {
-    fprintf(stderr,"The --fails-as-input option makes sense only with the --split-output or --failsonly option.  Turning it off.\n");
-    fails_as_input_p = false;
   }
 
   if (sam_headers_batch >= 0) {
@@ -2763,6 +2818,37 @@ main (int argc, char *argv[]) {
   FREE(fileroot);
   FREE(dbroot);
 
+
+#ifdef HAVE_GOBY
+  Goby_setup(show_refdiff_p);
+
+  /* Setup outbuffer */
+  if (output_goby_p == true) {
+    if (goby_output_root == NULL) {
+      fprintf(stderr,"--goby-output must be specified for Goby output.  For usage, run 'gsnap --help'\n");
+      /* print_program_usage(); */
+      exit(9);
+    } else if (creads_format_p == false) {
+      fprintf(stderr,"Currently can only write Goby if you read from compact reads files\n");
+      exit(9);
+    } else {
+      gobywriter = Goby_writer_new(goby_output_root,"gsnap",PACKAGE_VERSION);
+      Goby_writer_add_chromosomes(gobywriter,chromosome_iit);
+    }
+  }
+
+  if (gobywriter && failedinput_root != NULL) {
+      fprintf(stderr,"Goby output doesn't support the --failed-input option.  Turning it off.\n");
+      failedinput_root = NULL;
+  }
+  if (gobywriter && sevenway_root != NULL) {
+      fprintf(stderr,"Goby output doesn't support the --split-output option.  Turning it off.\n");
+      sevenway_root = NULL;
+  }
+#endif
+
+
+
   Genome_setup(genomecomp,genomecomp_alt,mode,circular_typeint);
 #ifndef LARGE_GENOMES
   if (sarray_fwd != NULL && sarray_rev != NULL) {
@@ -2832,45 +2918,15 @@ main (int argc, char *argv[]) {
 		 expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
-		 merge_samechr_p,circularp,fails_as_input_p,fastq_format_p);
-  SAM_setup(quiet_if_excessive_p,maxpaths_report,fails_as_input_p,fastq_format_p,hide_soft_clips_p,
+		 merge_samechr_p,circularp,failedinput_root,fastq_format_p);
+  SAM_setup(quiet_if_excessive_p,maxpaths_report,failedinput_root,fastq_format_p,hide_soft_clips_p,
 	    sam_multiple_primaries_p,force_xs_direction_p,md_lowercase_variant_p,snps_iit);
-  Goby_setup(show_refdiff_p);
 
-
-
-  /* Setup outbuffer */
-  if (output_goby_p == true) {
-    if (goby_output_root == NULL) {
-      fprintf(stderr,"--goby-output must be specified for Goby output.  For usage, run 'gsnap --help'\n");
-      /* print_program_usage(); */
-      exit(9);
-    } else if (creads_format_p == false) {
-      fprintf(stderr,"Currently can only write Goby if you read from compact reads files\n");
-      exit(9);
-    } else {
-      gobywriter = Goby_writer_new(goby_output_root,"gsnap",PACKAGE_VERSION);
-      Goby_writer_add_chromosomes(gobywriter,chromosome_iit);
-    }
-  }
-
-#ifdef HAVE_GOBY
-  if (gobywriter && fails_as_input_p) {
-      fprintf(stderr,"Goby output doesn't support the --fails-as-input option.  Turning it off.\n");
-      fails_as_input_p = false;
-  }
-  if (gobywriter && sevenway_root != NULL) {
-      fprintf(stderr,"Goby output doesn't support the --split-output option.  Turning it off.\n");
-      sevenway_root = NULL;
-  }
-#endif
-
-  outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,appendp,
+  outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,failedinput_root,appendp,
 			    chromosome_iit,timingp,
 			    output_sam_p,sam_headers_p,sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
-			    nworkers,orderedp,
-			    gobywriter,nofailsp,failsonlyp,fails_as_input_p,
+			    nworkers,orderedp,gobywriter,nofailsp,failsonlyp,
 			    fastq_format_p,clip_overlap_p,merge_samechr_p,
 			    maxpaths_report,quiet_if_excessive_p,quality_shift,
 			    invert_first_p,invert_second_p,pairmax,argc,argv,optind);
@@ -3414,7 +3470,6 @@ is still designed to be fast.\n\
                                    (not fully implemented yet)\n\
   --failsonly                    Print only failed alignments, those with no results\n\
   --nofails                      Exclude printing of failed alignments\n\
-  --fails-as-input               Print completely failed alignments as input FASTA or FASTQ format\n\
 ");
 
 #ifdef HAVE_GOBY
@@ -3434,10 +3489,13 @@ is still designed to be fast.\n\
   fprintf(stdout,"\
   --split-output=STRING          Basename for multiple-file output, separately for nomapping,\n\
                                    halfmapping_uniq, halfmapping_mult, unpaired_uniq, unpaired_mult,\n\
-                                   paired_uniq, paired_mult, concordant_uniq, and concordant_mult results (up to 9 files,\n\
-                                   or 10 if --fails-as-input is selected, or 3 for single-end reads)\n\
-  --append-output                When --split-output is given, this flag will append output to the\n\
-                                   existing files.  Otherwise, the default is to create new files.\n\
+                                   paired_uniq, paired_mult, concordant_uniq, and concordant_mult results\n\
+  --failed-input=STRING          Print completely failed alignments as input FASTA or FASTQ format,\n\
+                                    to the given file, appending .1 or .2, for paired-end data.\n\
+                                    If the --split-output flag is also given, this file is generated\n\
+                                    in addition to the output in the .nomapping file.\n\
+  --append-output                When --split-output or --failed-input is given, this flag will append output\n\
+                                    to the existing files.  Otherwise, the default is to create new files.\n\
   --output-buffer-size=INT       Buffer size, in queries, for output thread (default 1000).  When the number\n\
                                    of results to be printed exceeds this size, the worker threads are halted\n\
                                    until the backlog is cleared\n\

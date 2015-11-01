@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-read.c 136085 2014-05-13 23:00:04Z twu $";
+static char rcsid[] = "$Id: sarray-read.c 138745 2014-06-11 19:04:25Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2414,7 +2414,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
 	segmentj_acceptor_knownpos[segmentj_acceptor_nknown] = MAX_READLENGTH;
 	segmentj_antidonor_knownpos[segmentj_antidonor_nknown] = MAX_READLENGTH;
 
-	nspliceends = 0;
+	/* nspliceends = 0; */
 	spliceends = Splice_solve_single(&(*found_score),&nspliceends,spliceends,&lowprob,
 					 &segmenti_usedp,&segmentj_usedp,
 					 /*segmenti_left*/left1,/*segmentj_left*/left2,
@@ -2765,7 +2765,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
 	segmentj_acceptor_knownpos[segmentj_acceptor_nknown] = MAX_READLENGTH;
 	segmentj_antidonor_knownpos[segmentj_antidonor_nknown] = MAX_READLENGTH;
 
-	nspliceends = 0;
+	/* nspliceends = 0; */
 	spliceends = Splice_solve_single(&(*found_score),&nspliceends,spliceends,&lowprob,
 					 &segmenti_usedp,&segmentj_usedp,
 					 /*segmenti_left*/left1,/*segmentj_left*/left2,

@@ -1,4 +1,4 @@
-/* $Id: iitdef.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: iitdef.h 138717 2014-06-11 17:06:45Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -35,7 +35,7 @@
    field.  The intent is to have both versions 5 and 6 in current use. */
 
 
-typedef enum {NO_SORT, ALPHA_SORT, NUMERIC_ALPHA_SORT, CHROM_SORT} Sorttype_T;
+typedef enum {NO_SORT, ALPHA_SORT, NUMERIC_ALPHA_SORT, CHROM_SORT, FILENAME_SORT} Sorttype_T;
 
 typedef struct FNode_T *FNode_T;
 struct FNode_T {

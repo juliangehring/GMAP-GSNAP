@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 136085 2014-05-13 23:00:04Z twu $";
+static char rcsid[] = "$Id: substring.c 138720 2014-06-11 17:07:51Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -757,7 +757,6 @@ bool
 Substring_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query_compress_rev) {
   int alignlength, startpos, endpos, pos, i;
   int mismatch_positions[MAX_READLENGTH];
-  int nmismatches;
   float vprob_good, vprob_bad, prev_vprob_good, prev_vprob_bad, good_incr_prob, bad_incr_prob;
 #ifdef DEBUG9
   bool result;
@@ -772,16 +771,20 @@ Substring_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query
     startpos = this->querystart_orig;
     endpos = this->queryend_orig;
     debug9(printf("Calling Genome_mismatches_left from pos5 %d to pos3 %d\n",startpos,endpos));
+#ifdef DEBUG9
     nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/alignlength,
 					 query_compress_fwd,this->left,/*pos5*/startpos,/*pos3*/endpos,
 					 /*plusp*/true,this->genestrand,this->first_read_p);
+#endif
   } else {
     startpos = this->querylength - this->queryend_orig;
     endpos = this->querylength - this->querystart_orig;
     debug9(printf("Calling Genome_mismatches_left from pos5 %d to pos3 %d\n",startpos,endpos));
+#ifdef DEBUG9
     nmismatches = Genome_mismatches_left(mismatch_positions,/*max_mismatches*/alignlength,
 					 query_compress_rev,this->left,/*pos5*/startpos,/*pos3*/endpos,
 					 /*plusp*/false,this->genestrand,this->first_read_p);
+#endif
   }
 
   debug9(printf("%d mismatches:",nmismatches));
@@ -2333,6 +2336,11 @@ Substring_chrend (T this) {
 double
 Substring_chimera_prob (T this) {
   return this->chimera_prob;
+}
+
+double
+Substring_chimera_prob_2 (T this) {
+  return this->chimera_prob_2;
 }
 
 int

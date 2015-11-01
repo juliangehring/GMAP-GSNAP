@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splice.c 136085 2014-05-13 23:00:04Z twu $";
+static char rcsid[] = "$Id: splice.c 138745 2014-06-11 19:04:25Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -118,6 +118,7 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 
   debug1(printf("Splice_solve_single: Getting genome at lefti %u and leftj %u (diff: %d)\n",
 		segmenti_left,segmentj_left,segmentj_left-segmenti_left));
+  *nhits = 0;
 
 #if 0
   int sum, lefti, righti;
@@ -387,7 +388,6 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  if (donor != NULL) Substring_free(&donor);
 	  if (acceptor != NULL) Substring_free(&acceptor);
 	} else {
-	  *nhits += 1;
 	  debug1(printf("Splice_solve_single success\n"));
 	  *segmenti_usedp = *segmentj_usedp = true;
 
@@ -397,6 +397,7 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  sufficient2p = sufficient_splice_prob_local(acceptor_support,best_segmentj_nmismatches,best_acceptor_prob);
 
 	  if (sufficient1p && sufficient2p) {
+	    *nhits += 1;
 	    return List_push(hits,(void *) Stage3end_new_splice(&(*found_score),best_segmenti_nmismatches,best_segmentj_nmismatches,
 								donor,acceptor,/*distance*/segmentj_left - segmenti_left,
 								/*shortdistancep*/true,splicing_penalty,querylength,
@@ -451,7 +452,6 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  if (donor != NULL) Substring_free(&donor);
 	  if (acceptor != NULL) Substring_free(&acceptor);
 	} else {
-	  *nhits += 1;
 	  debug1(printf("Splice_solve_single success\n"));
 	  *segmenti_usedp = *segmentj_usedp = true;
 
@@ -460,6 +460,7 @@ Splice_solve_single (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  sufficient1p = sufficient_splice_prob_local(acceptor_support,best_segmenti_nmismatches,best_acceptor_prob);
 	  sufficient2p = sufficient_splice_prob_local(donor_support,best_segmentj_nmismatches,best_donor_prob);
 	  if (sufficient1p && sufficient2p) {
+	    *nhits += 1;
 	    return List_push(hits,(void *) Stage3end_new_splice(&(*found_score),best_segmentj_nmismatches,best_segmenti_nmismatches,
 								donor,acceptor,/*distance*/segmentj_left - segmenti_left,
 								/*shortdistancep*/true,splicing_penalty,querylength,
@@ -553,6 +554,7 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
   debug2(printf("Splice_solve_double: Getting genome at lefti %u, leftm %u, and leftj %u\n",
 		segmenti_left,segmentm_left,segmentj_left));
 
+  *nhits = 0;
   splice_pos_start = min_shortend;
   splice_pos_end = querylength - min_shortend; /* ? off by 1, so -l 3 allows only ends of up to 2 */
 
@@ -985,7 +987,6 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  if (shortexon != NULL) Substring_free(&shortexon);
 	  if (acceptor != NULL) Substring_free(&acceptor);
 	} else {
-	  *nhits += 1;
 	  *segmenti_usedp = *segmentm_usedp = *segmentj_usedp = true;
 
 	  donor_support = best_splice_pos_1;
@@ -996,6 +997,7 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  sufficient3p = sufficient_splice_prob_local(middle_support,best_segmentm_nmismatches,best_donor2_prob);
 	  sufficient4p = sufficient_splice_prob_local(acceptor_support,best_segmentj_nmismatches,best_acceptor2_prob);
 	  if (sufficient1p && sufficient2p && sufficient3p && sufficient4p) {
+	    *nhits += 1;
 	    hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),donor,acceptor,shortexon,
 								   /*acceptor_distance*/segmentm_left - segmenti_left,
 								   /*donor_distance*/segmentj_left - segmentm_left,
@@ -1062,7 +1064,6 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  if (shortexon != NULL) Substring_free(&shortexon);
 	  if (acceptor != NULL) Substring_free(&acceptor);
 	} else {
-	  *nhits += 1;
 	  *segmenti_usedp = *segmentm_usedp = *segmentj_usedp = true;
 
 	  acceptor_support = best_splice_pos_1;
@@ -1073,6 +1074,7 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
 	  sufficient3p = sufficient_splice_prob_local(middle_support,best_segmentm_nmismatches,best_acceptor2_prob);
 	  sufficient4p = sufficient_splice_prob_local(donor_support,best_segmentj_nmismatches,best_donor2_prob);
 	  if (sufficient1p && sufficient2p && sufficient3p && sufficient4p) {
+	    *nhits += 1;
 	    hits = List_push(hits,(void *) Stage3end_new_shortexon(&(*found_score),donor,acceptor,shortexon,
 								   /*acceptor_distance*/segmentj_left - segmentm_left,
 								   /*donor_distance*/segmentm_left - segmenti_left,

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: segmentpos.c 138719 2014-06-11 17:07:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -132,6 +132,23 @@ Segmentpos_compare_chrom (const void *x, const void *y) {
   int cmp;
 
   if ((cmp = Chrom_cmp_chrom(a->chrom,b->chrom)) != 0) {
+    return cmp;
+  } else if (a->chrpos1 < b->chrpos1) {
+    return -1;
+  } else if (b->chrpos1 < a->chrpos1) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int
+Segmentpos_compare_order (const void *x, const void *y) {
+  T a = * (T *) x;
+  T b = * (T *) y;
+  int cmp;
+
+  if ((cmp = Chrom_cmp_order(a->chrom,b->chrom)) != 0) {
     return cmp;
   } else if (a->chrpos1 < b->chrpos1) {
     return -1;

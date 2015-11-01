@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 128855 2014-02-28 21:50:24Z twu $ */
+/* $Id: outbuffer.h 136794 2014-05-21 18:58:14Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -30,11 +30,11 @@ typedef struct T *T;
 #ifdef GSNAP
 
 extern T
-Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp, Univ_IIT_T chromosome_iit,
+Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, char *failedinput_root,
+	       bool appendp, Univ_IIT_T chromosome_iit,
 	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
-	       int nworkers, bool orderedp,
-	       Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp, bool fails_as_input_p,
+	       int nworkers, bool orderedp, Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp,
 	       bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
 	       int maxpaths_report, bool quiet_if_excessive_p, int quality_shift,
 	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax,
@@ -43,8 +43,8 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 #else
 
 extern T
-Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, bool appendp,
-	       bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
+Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, char *failedinput_root,
+	       bool appendp, bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
 	       char *dbversion, Genome_T genome, Univ_IIT_T chromosome_iit, char *chrsubset_name,
 	       Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
 	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
@@ -54,7 +54,7 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 	       char *sam_read_group_library, char *sam_read_group_platform,
 	       int nworkers, bool orderedp,
 #endif
-	       bool nofailsp, bool failsonlyp, bool fails_as_input_p, int maxpaths_report, bool quiet_if_excessive_p,
+	       bool nofailsp, bool failsonlyp, int maxpaths_report, bool quiet_if_excessive_p,
 	       bool map_exons_p, bool map_bothstrands_p, bool print_comment_p, int nflanking,
 	       int proteinmode, int invertmode, bool nointronlenp, int wraplength,
 	       int ngap, int cds_startpos,

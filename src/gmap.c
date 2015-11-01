@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 135447 2014-05-07 22:25:45Z twu $";
+static char rcsid[] = "$Id: gmap.c 138000 2014-06-04 02:04:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -341,7 +341,6 @@ static bool sam_insert_0M_p = false;
 static bool orderedp = false;
 static bool failsonlyp = false;
 static bool nofailsp = false;
-static bool fails_as_input_p = false;
 static bool checksump = false;
 static int chimera_overlap = 0;
 static bool force_xs_direction_p = false;
@@ -409,6 +408,7 @@ static Triecontent_T *triecontents_max = NULL;
 
 /* Input/output */
 static char *sevenway_root = NULL;
+static char *failedinput_root = NULL;
 static bool appendp = false;
 static Inbuffer_T inbuffer = NULL;
 static Outbuffer_T outbuffer = NULL;
@@ -493,8 +493,8 @@ static struct option long_options[] = {
   {"format", required_argument, 0, 'f'}, /* printtype */
   {"failsonly", no_argument, 0, 0}, /* failsonlyp */
   {"nofails", no_argument, 0, 0}, /* nofailsp */
-  {"fails-as-input", no_argument, 0, 0}, /* fails_as_input_p */
   {"split-output", required_argument, 0, 0}, /* sevenway_root */
+  {"failed-input", required_argument, 0, 0}, /* failedinput_root */
   {"append-output", no_argument, 0, 0},	     /* appendp */
   {"suboptimal-score", required_argument, 0, 0}, /* suboptimal_score */
   {"require-splicedir", no_argument, 0, 0}, /* require_splicedir_p */
@@ -676,7 +676,11 @@ check_compiler_assumptions () {
 #ifdef HAVE_SSE2
   int z;
   __m128i a;
+#ifdef HAVE_SSE4_1
+  char negx, negy;
 #endif
+#endif
+
 
   fprintf(stderr,"Checking compiler assumptions for popcnt: ");
   fprintf(stderr,"%08X ",x);
@@ -697,14 +701,36 @@ check_compiler_assumptions () {
   a = _mm_xor_si128(_mm_set1_epi32(x),_mm_set1_epi32(y));
   z = _mm_cvtsi128_si32(a);
   fprintf(stderr," xor=%08X\n",z);
-#endif
 
 #ifdef HAVE_SSE4_1
+  if ((negx = (char) x) > 0) {
+    negx = -negx;
+  }
+  if ((negy = (char) y) > 0) {
+    negy = -negy;
+  }
+
   fprintf(stderr,"Checking compiler assumptions for SSE4.1: ");
-  fprintf(stderr,"%d %d",(char) x,(char) y);
-  a = _mm_max_epi8(_mm_set1_epi8((char) x),_mm_set1_epi8((char) y));
+  fprintf(stderr,"%d %d",negx,negy);
+  a = _mm_max_epi8(_mm_set1_epi8(negx),_mm_set1_epi8(negy));
   z = _mm_extract_epi8(a,0);
-  fprintf(stderr," max=%d\n",z);
+  fprintf(stderr," max=%d => ",z);
+  if (negx > negy) {
+    if (z == (int) negx) {
+      fprintf(stderr,"compiler sign extends\n"); /* technically incorrect, but SIMD procedures behave properly */
+    } else {
+      fprintf(stderr,"compiler zero extends\n");
+    }
+  } else {
+    if (z == (int) negy) {
+      fprintf(stderr,"compiler sign extends\n"); /* technically incorrect, but SIMD procedures behave properly */
+    } else {
+      fprintf(stderr,"compiler zero extends\n");
+    }
+  }
+
+#endif
+
 #endif
 
   return;
@@ -4719,8 +4745,8 @@ main (int argc, char *argv[]) {
 	} else {
 	  failsonlyp = true;
 	}
-      } else if (!strcmp(long_name,"fails-as-input")) {
-	fails_as_input_p = true;
+      } else if (!strcmp(long_name,"failed-input")) {
+	failedinput_root = optarg;
 #if 0
       } else if (!strcmp(long_name,"quiet-if-excessive")) {
 	quiet_if_excessive_p = true;
@@ -5811,7 +5837,7 @@ main (int argc, char *argv[]) {
   }
 #endif
 
-  outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,appendp,
+  outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,failedinput_root,appendp,
 			    /*chimeras_allowed_p*/chimera_margin > 0 ? true : false,
 			    user_genomicseg,usersegment,dbversion,genomecomp,chromosome_iit,
 			    user_chrsubsetname,contig_iit,altstrain_iit,map_iit,
@@ -5822,7 +5848,7 @@ main (int argc, char *argv[]) {
 			    sam_read_group_library,sam_read_group_platform,
 			    nworkers,orderedp,
 #endif
-			    nofailsp,failsonlyp,fails_as_input_p,maxpaths,quiet_if_excessive_p,
+			    nofailsp,failsonlyp,maxpaths,quiet_if_excessive_p,
 			    map_exons_p,map_bothstrands_p,print_comment_p,nflanking,
 			    proteinmode,invertmode,nointronlenp,wraplength,
 			    ngap,cds_startpos,fulllengthp,truncatep,strictp,diagnosticp,maponlyp,
@@ -6240,7 +6266,6 @@ Output options\n\
   -o, --chimera-overlap          Overlap to show, if any, at chimera breakpoint\n\
   --failsonly                    Print only failed alignments, those with no results\n\
   --nofails                      Exclude printing of failed alignments\n\
-  --fails-as-input               Print completely failed alignments as input FASTA or FASTQ format\n\
 \n\
   -V, --snpsdir=STRING           Directory for SNPs index files (created using snpindex) (default is\n\
                                    location of genome index files specified using -D and -d)\n \
@@ -6251,8 +6276,11 @@ Output options\n\
   fprintf(stdout,"\
   --split-output=STRING          Basename for multiple-file output, separately for nomapping,\n\
                                    uniq, mult, (and chimera, if --chimera-margin is selected)\n\
-  --append-output                When --split-output is given, this flag will append output to the\n\
-                                   existing files.  Otherwise, the default is to create new files.\n\
+  --failed-input=STRING          Print completely failed alignments as input FASTA or FASTQ format\n\
+                                   to the given file.  If the --split-output flag is also given, this file\n\
+                                   is generated in addition to the output in the .nomapping file.\n\
+  --append-output                When --split-output or --failedinput is given, this flag will append output\n\
+                                   to the existing files.  Otherwise, the default is to create new files.\n\
   --output-buffer-size=INT       Buffer size, in queries, for output thread (default 1000).  When the number\n\
                                    of results to be printed exceeds this size, the worker threads are halted\n\
                                    until the backlog is cleared\n\

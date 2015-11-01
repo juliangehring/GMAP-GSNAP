@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage3.c 136372 2014-05-15 15:54:12Z twu $";
+static char rcsid[] = "$Id: stage3.c 138109 2014-06-04 19:33:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6870,7 +6870,6 @@ traverse_single_gap (bool *filledp, int *dynprogindex, List_T pairs, List_T *pat
 
 #endif
 
-
   return pairs;
 }
 
@@ -10938,6 +10937,7 @@ path_compute_end5 (int *ambig_end_length_5, Splicetype_T *ambig_splicetype_5,
 
 
   /* Extend to query end, so we get an accurate count of matches and mismatches */
+  /* This is the first extension */
   /* >>pairs */
   debug(printf("\n*** Pass 8 (dir %d): Extend to ends and determine distalmedial\n",cdna_direction));
   pairs = build_pairs_end5(&knownsplice5p,&(*ambig_end_length_5),&(*ambig_splicetype_5),
@@ -11035,7 +11035,8 @@ path_compute_end5 (int *ambig_end_length_5, Splicetype_T *ambig_splicetype_5,
   }
 
   debug(printf("Pass 11 (dir %d): Final extension, end5\n",cdna_direction));
-  /* Perform final extension so we can compare fwd and rev properly */
+  /* This is the second extension */
+  /* Perform final extension without gaps so we can compare fwd and rev properly */
   pairs = build_pairs_end5(&knownsplice5p,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 			   &chop_exon_p,&dynprogindex_minor,pairs,
 			   chroffset,chrhigh,
@@ -11123,6 +11124,7 @@ path_compute_end3 (int *ambig_end_length_3, Splicetype_T *ambig_splicetype_3,
 
 
   /* Extend to ends */
+  /* This is the first extension */
   /* >>path */
   debug(printf("\n*** Pass 8 (dir %d): Extend to ends and determine distalmedial\n",cdna_direction));
   path = build_path_end3(&knownsplice3p,&(*ambig_end_length_3),&(*ambig_splicetype_3),
@@ -11218,6 +11220,8 @@ path_compute_end3 (int *ambig_end_length_3, Splicetype_T *ambig_splicetype_3,
   }
 
   debug(printf("Pass 11 (dir %d): Final extension, end3\n",cdna_direction));
+  /* This is the second extension */
+  /* Perform final extension without gaps so we can compare fwd and rev properly */
   path = build_path_end3(&knownsplice3p,&(*ambig_end_length_3),&(*ambig_splicetype_3),
 			 &chop_exon_p,&dynprogindex_minor,path,
 			 chroffset,chrhigh,querylength,
@@ -11799,6 +11803,7 @@ path_trim (double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
 	 and with maxpeelback == 0 to ensure we perform no peelback */
       if (trim5p == true) {
 	debug3(printf("Extending at 5'\n"));
+	/* This is the third and final extension */
 	pairs = build_pairs_end5(&knownsplice5p,&(*ambig_end_length_5),&(*ambig_splicetype_5),
 				 &chop_exon_p,&dynprogindex_minor,pairs,
 				 chroffset,chrhigh,knownsplice_limit_low,knownsplice_limit_high,
@@ -11820,6 +11825,7 @@ path_trim (double defect_rate, int *ambig_end_length_5, int *ambig_end_length_3,
 
       if (trim3p == true) {
 	debug3(printf("Extending at 3'\n"));
+	/* This is the third and final extension */
 	path = List_reverse(pairs);
 	path = build_path_end3(&knownsplice3p,&(*ambig_end_length_3),&(*ambig_splicetype_3),
 			       &chop_exon_p,&dynprogindex_minor,path,
@@ -13249,8 +13255,13 @@ merge_local_single (T this_left, T this_right,
 						 /*last_genomedp5*/NULL,/*last_genomedp3*/NULL,
 						 maxpeelback,extraband_single,/*defect_rate*/0,
 						 /*close_indels_mode*/+1,/*forcep*/false,/*finalp*/true)) == NULL) {
+      debug10(printf(" => failed\n"));
+      successp = false;
+    } else if (filledp == false) {
+      debug10(printf(" => failed\n"));
       successp = false;
     } else {
+      debug10(printf(" => succeeded\n"));
       successp = true;
     }
     this_left->pairs = List_reverse(path);
@@ -13310,18 +13321,34 @@ merge_local_single (T this_left, T this_right,
 						 /*last_genomedp5*/NULL,/*last_genomedp3*/NULL,
 						 maxpeelback,extraband_single,/*defect_rate*/0,
 						 /*close_indels_mode*/+1,/*forcep*/false,/*finalp*/true)) == NULL) {
+      debug10(printf(" => failed\n"));
+      successp = false;
+    } else if (filledp == false) {
+      debug10(printf(" => failed\n"));
       successp = false;
     } else {
+      debug10(printf(" => succeeded\n"));
       successp = true;
     }
     this_left->pairs = List_reverse(path);
   }
 
-  if (successp == true) {
+  if (successp == false) {
+    this_left->pairarray = make_pairarray(&this_left->npairs,&this_left->pairs,this_left->cdna_direction,this_left->sensedir,
+					  this_left->watsonp,pairpool,queryseq_ptr,
+					  this_left->chroffset,this_left->chrhigh,ngap,/*subseq_offset*/0,/*skiplength*/0,
+					  /*diagnosticp*/false);
+    this_right->pairarray = make_pairarray(&this_right->npairs,&this_right->pairs,this_right->cdna_direction,this_right->sensedir,
+					  this_right->watsonp,pairpool,queryseq_ptr,
+					  this_right->chroffset,this_right->chrhigh,ngap,/*subseq_offset*/0,/*skiplength*/0,
+					  /*diagnosticp*/false);
+  } else {
     this_left->pairs = List_append(this_left->pairs,this_right->pairs);
     this_right->pairs = (List_T) NULL;
   }
 
+
+  debug10(printf(" => returning successp %d\n",successp));
   return successp;
 }
 

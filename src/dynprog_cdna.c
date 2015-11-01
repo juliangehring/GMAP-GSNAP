@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_cdna.c 135234 2014-05-06 15:54:18Z twu $";
+static char rcsid[] = "$Id: dynprog_cdna.c 138117 2014-06-04 20:28:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -825,7 +825,7 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
   char *gsequence, *gsequence_alt, *rev_gsequence, *rev_gsequence_alt;
   Mismatchtype_T mismatchtype;
   int lbandL, ubandL, lbandR, ubandR;
-  int mismatch, open, extend;
+  int open, extend;
 #if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
   Score8_T **matrix8L_upper, **matrix8L_lower, **matrix8R_upper, **matrix8R_lower;
   Direction8_T **directions8L_upper_nogap, **directions8L_upper_Egap,
@@ -874,17 +874,17 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 
   if (defect_rate < DEFECT_HIGHQ) {
     mismatchtype = HIGHQ;
-    mismatch = MISMATCH_HIGHQ;
+    /* mismatch = MISMATCH_HIGHQ; */
     open = CDNA_OPEN_HIGHQ;
     extend = CDNA_EXTEND_HIGHQ;
   } else if (defect_rate < DEFECT_MEDQ) {
     mismatchtype = MEDQ;
-    mismatch = MISMATCH_MEDQ;
+    /* mismatch = MISMATCH_MEDQ; */
     open = CDNA_OPEN_MEDQ;
     extend = CDNA_EXTEND_MEDQ;
   } else {
     mismatchtype = LOWQ;
-    mismatch = MISMATCH_LOWQ;
+    /* mismatch = MISMATCH_LOWQ; */
     open = CDNA_OPEN_LOWQ;
     extend = CDNA_EXTEND_LOWQ;
   }
@@ -1228,15 +1228,14 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 			     rsequenceL,gsequence,gsequence_alt,rlengthL,glength,
 			     goffset,chroffset,chrhigh,watsonp,
 			     mismatchtype,open,extend,lbandL,ubandL,
-			     jump_late_p,/*revp*/false);
+			     jump_late_p,/*revp*/false,/*saturation*/NEG_INFINITY_INT);
   
   Dynprog_compute_bands(&lbandR,&ubandR,rlengthR,glength,extraband_paired,/*widebandp*/true);
   matrixR = Dynprog_standard(&directionsR_nogap,&directionsR_Egap,&directionsR_Fgap,dynprogR,
 			     rev_rsequenceR,&(rev_gsequence[glength-1]),&(rev_gsequence_alt[glength-1]),
-			     rlengthR,glength,
-			     rev_goffset,chroffset,chrhigh,watsonp,
-			     mismatchtype,open,extend,
-			     lbandL,ubandR,/*for revp true*/!jump_late_p,/*revp*/true);
+			     rlengthR,glength,rev_goffset,chroffset,chrhigh,watsonp,
+			     mismatchtype,open,extend,lbandL,ubandR,
+			     /*for revp true*/!jump_late_p,/*revp*/true,/*saturation*/NEG_INFINITY_INT);
 
   nmatches = nmismatches = nopens = nindels = 0;
 

@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 132978 2014-04-10 22:11:02Z twu $
+# $Id: gmap_build.pl.in 138523 2014-06-09 17:09:03Z twu $
 
 use warnings;	
 
@@ -83,7 +83,13 @@ if (!defined($destdir) || $destdir !~ /\S/) {
 }
 
 if (defined($sorting)) {
-    $chr_order_flag = "-s $sorting";
+    if ($sorting ne "names") {
+	$chr_order_flag = "-s $sorting";
+    } elsif (!defined($chrnamefile)) {
+	die "For --sort=names option, must also provide a filename to --names";
+    } else {
+	$chr_order_flag = "-s $sorting -n $chrnamefile";
+    }
 } else {
     # Default is to order genomes
     print STDERR "Sorting chromosomes in chrom order.  To turn off or sort other ways, use the -s flag.\n";
@@ -384,7 +390,9 @@ Options:
     -n, --names=STRING        Substitute names for chromosomes, provided in a file.  The file should have one line
                                 for each chromosome name to be changed, with the original FASTA name in column 1 and
                                 the desired chromosome name in column 2.  This provides an easy way to change the
-                                names of chromosomes, for example, to add or remove the "chr" prefix.
+                                names of chromosomes, for example, to add or remove the "chr" prefix.  Column 2 may
+                                be blank, which indicates no name change.  This file can also be combined with
+                                --sort=names to provide a particular order for the chromosomes in the genome index.
 
     -M, --mdflag=STRING       Use MD file from NCBI for mapping contigs to chromosomal coordinates
     -C, --contigs-are-mapped  Find a chromosomal region in each FASTA header line.  Useful for contigs that have been mapped
@@ -403,6 +411,7 @@ Options:
 			        alpha - sort chromosomes alphabetically (chr10 before chr 1)
 			        numeric-alpha - chr1, chr1U, chr2, chrM, chrU, chrX, chrY
 			        chrom - chr1, chr2, chrM, chrX, chrY, chr1U, chrU
+				names - sort chromosomes based on file provided to --names flag
 
     -g, --gunzip              Files are gzipped, so need to gunzip each file first
     -E, --fasta-pipe=STRING   Interpret argument as a command, instead of a list of FASTA files

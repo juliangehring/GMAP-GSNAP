@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c 135096 2014-05-05 19:11:57Z twu $";
+static char rcsid[] = "$Id: compress.c 137996 2014-06-04 01:58:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -100,7 +100,11 @@ struct T {
 void
 Compress_free (T *old) {
   if (*old) {
+#ifdef HAVE_SSE2
+    _mm_free((*old)->shift_array[0]);
+#else
     FREE((*old)->shift_array[0]);
+#endif
     FREE((*old)->shift_array);
 #if 0
 #ifdef HAVE_SSE2
@@ -1166,7 +1170,45 @@ shift_sse2 (T this, int nshift) {
 
 
 
-#if defined(HAVE_SSSE3) && !defined(DEFECTIVE_SSE2_COMPILER)
+#ifndef HAVE_SSE2
+Genomecomp_T *
+Compress_shift (T this, int nshift) {
+  Genomecomp_T *shifted;
+  int rightshift;
+  int ptr;
+#ifdef DEBUG9
+  Genomecomp_T high, low, flags;
+#endif
+
+  if (this->availp[nshift] == true) {
+    return this->shift_array[nshift];
+
+  } else {
+    shifted = this->shift_array[nshift];
+
+    /* Shift */
+    ptr = this->nblocks*COMPRESS_BLOCKSIZE;
+    rightshift = 32 - nshift;
+
+    while (ptr > 0) {
+      shifted[ptr+2] = (this->blocks[ptr+2] << nshift) | (this->blocks[ptr-1] >> rightshift);
+      shifted[ptr+1] = (this->blocks[ptr+1] << nshift) | (this->blocks[ptr-2] >> rightshift);
+      shifted[ptr] = (this->blocks[ptr] << nshift) | (this->blocks[ptr-3] >> rightshift);
+      ptr -= COMPRESS_BLOCKSIZE;
+    }
+
+    shifted[2] = this->blocks[2] << nshift;
+    shifted[1] = this->blocks[1] << nshift;
+    shifted[0] = this->blocks[0] << nshift;
+  }
+
+  this->availp[nshift] = true;
+  
+  debug1(Compress_print_blocks(shifted,this->nblocks+1));
+  return shifted;
+}
+
+#elif defined(HAVE_SSSE3) && !defined(DEFECTIVE_SSE2_COMPILER)
 Genomecomp_T *
 Compress_shift (T this, int nshift) {
   Genomecomp_T *shifted;
@@ -1252,7 +1294,8 @@ Compress_shift (T this, int nshift) {
   return shifted;
 }
 
-#elif defined(HAVE_SSE2)
+#else
+/* HAVE_SSE2 but not SSE3 */
 Genomecomp_T *
 Compress_shift (T this, int nshift) {
   Genomecomp_T *shifted;
@@ -1553,49 +1596,10 @@ Compress_shift (T this, int nshift) {
     return shifted;
   }
 }
-
-#else
-Genomecomp_T *
-Compress_shift (T this, int nshift) {
-  Genomecomp_T *shifted;
-  int rightshift;
-  int ptr;
-#ifdef DEBUG9
-  Genomecomp_T high, low, flags;
-#endif
-
-  if (this->availp[nshift] == true) {
-    return this->shift_array[nshift];
-
-  } else {
-    shifted = this->shift_array[nshift];
-
-    /* Shift */
-    ptr = this->nblocks*COMPRESS_BLOCKSIZE;
-    rightshift = 32 - nshift;
-
-    while (ptr > 0) {
-      shifted[ptr+2] = (this->blocks[ptr+2] << nshift) | (this->blocks[ptr-1] >> rightshift);
-      shifted[ptr+1] = (this->blocks[ptr+1] << nshift) | (this->blocks[ptr-2] >> rightshift);
-      shifted[ptr] = (this->blocks[ptr] << nshift) | (this->blocks[ptr-3] >> rightshift);
-      ptr -= COMPRESS_BLOCKSIZE;
-    }
-
-    shifted[2] = this->blocks[2] << nshift;
-    shifted[1] = this->blocks[1] << nshift;
-    shifted[0] = this->blocks[0] << nshift;
-  }
-
-  this->availp[nshift] = true;
-  
-  debug1(Compress_print_blocks(shifted,this->nblocks+1));
-  return shifted;
-}
 #endif
 
 
-
-
+#if 0
 /* Needed for Genome_count_mismatches_fragment_left/right */
 Genomecomp_T *
 Compress32_shift (T this, int nshift) {
@@ -1695,6 +1699,7 @@ Compress32_shift (T this, int nshift) {
     return shifted;
   }
 }
+#endif
 
 
 /* Fragment from pos5 to pos3 is in low 16 bits of each UINT4, with

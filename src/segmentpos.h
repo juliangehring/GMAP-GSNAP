@@ -1,4 +1,4 @@
-/* $Id: segmentpos.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: segmentpos.h 138719 2014-06-11 17:07:13Z twu $ */
 #ifndef SEGMENTPOS_INCLUDED
 #define SEGMENTPOS_INCLUDED
 #include <stdio.h>
@@ -36,6 +36,8 @@ extern int
 Segmentpos_compare_numeric_alpha (const void *x, const void *y);
 extern int
 Segmentpos_compare_chrom (const void *x, const void *y);
+extern int
+Segmentpos_compare_order (const void *x, const void *y);
 
 extern void
 Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T position1,

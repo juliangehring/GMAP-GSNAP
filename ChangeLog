@@ -1,3 +1,110 @@
+2014-06-11  twu
+
+    * VERSION: Updated version number
+
+    * config.site.rescomp.prd, config.site.rescomp.tst, sarray-read.c, splice.c,
+      src, stage1hr.c, stage3hr.c, stage3hr.h, trunk: Merged revisions 138722
+      through 138743 from branches/2014-06-01-amb-shortexon-fix1 to allow for
+      ambiguous shortexons and to place a limit of MAX_LOCALSPLICING_POTENTIAL
+      on splicing and shortexons
+
+    * archive.html, index.html: Put version 2014-05-15.v3 into archive
+
+    * stage1hr.c: Not processing splicing or shortexons if number of
+      possibilities exceeds MAX_LOCALSPLICING_POTENTIAL
+
+    * gsnap.c: In memusage debugging, printing accession for each thread at the
+      start of its processing
+
+    * substring.c, substring.h: Added function Substring_chimera_prob_2
+
+    * segmentpos.c, segmentpos.h: Added function Segmentpos_compare_order
+
+    * samprint.c: Removed unused variable
+
+    * iitdef.h: Added FILENAME_SORT as a sorting type
+
+    * gsnap.c: Added commas to memusage debugging output
+
+    * dynprog_end.c: Removed assertions, which do not hold
+
+2014-06-09  twu
+
+    * gmap_build.pl.in: Added option for sorting chromosomes by order in a file
+
+    * chrom.c, chrom.h, gmapindex.c: Added option for sorting chromosomes by
+      order in a file
+
+2014-06-04  twu
+
+    * VERSION: Updated version number
+
+    * README, configure.ac: Increased default MAX_READLENGTH for GSNAP from 250
+      to 300
+
+    * dynprog_simd.c: Fixed formatting
+
+    * dynprog_genome.c: Using correct interface to Dynprog_standard for non-SSE2
+      systems
+
+    * dynprog_cdna.c: Using correct interface to Dynprog_standard for non-SSE2
+      systems
+
+    * dynprog_end.c: Enabled non-SSE2 compilation to work.  Made traceback
+      procedures follow those in dynprog_simd.c.
+
+    * dynprog.c, dynprog.h: Modified traceback_std (non-SIMD) to behave the same
+      as the SIMD traceback routines.  Improved debugging output.
+
+    * stage3.c: Added comments
+
+    * dynprog.c, dynprog.h: Exposed Dynprog_standard, needed for systems without
+      SSE2 instructions
+
+    * gmap.c, gsnap.c: In checking behavior of _mm_extract_epi8, just reporting
+      results and not exiting based on behavior
+
+    * genome128_hr.c: Casting _mm_extract_epi16 to unsigned short, or a zero
+      extended result, which is technically the correct behavior
+
+    * dynprog_simd.c: Being very explicit about casting between int and Score8_T
+      and Score16_T types
+
+    * dynprog.h: Removed conditionals around defining Score_8 and Score_16 types
+
+    * compress.c: Calling _mm_free to match _mm_malloc
+
+2014-05-31  twu
+
+    * VERSION, compress.c, config.site.rescomp.prd, config.site.rescomp.tst,
+      genome128_hr.c, index.html, src, trunk: Merged revisions 137093 through
+      137694 from branches/2014-05-23-genome128-32bit-shortchut to implement
+      32-bit shortcuts for 128-bit genomebits
+
+2014-05-30  twu
+
+    * stage3hr.c: Not checking any more for duplicate Stage3end_T objects
+
+    * stage2.c: Eliminated penalty when exon length < EXON_DEFN, which misses
+      short exons
+
+    * stage1hr.c: Restored usage of paired_usedp to avoid excess calls to GMAP
+      for halfmapping alignments
+
+    * stage1hr.c: Not using paired_usedp in computing GMAP for halfmapping
+      alignments
+
+    * dynprog_simd.c: Fixed traceback procedures to follow correct paths on gaps
+
+    * dynprog.c, dynprog.h, dynprog_genome.c, dynprog_single.c: Moved gap
+      penalties to dynprog.h, and reduced open penalties to allow for multiple
+      indels
+
+2014-05-28  twu
+
+    * stage3.c: In merge_local_single, checking filledp to see if merge failed. 
+      When merge fails, recompute pairarray for this_left and this_right.
+
 2014-05-27  twu
 
     * dynprog_simd.c: Implemented replacement for _mm_min_epi8 for non-SSE4.1
@@ -5,11 +112,75 @@
 
 2014-05-24  twu
 
-    * dynprog_end.c, dynprog_simd.c: Applied revisions 137142 and 137143 from
-      trunk to use computed lband and uband in find_best_endpoint procedures,
-      and to prevent horizontal or vertical jumps into the empty triangle
+    * dynprog_simd.c: Fixed computations of E and H for values near
+      NEG_INFINITY, to prevent horizontal or vertical jumps into the empty
+      triangle.  Added an E_mask variable to set horizontal/vertical scores into
+      the empty triangle to be NEG_INFINITY.  Setting directions_nogap
+      explicitly to DIAG along the main diagonal to take care of ties between E
+      and H.
 
-    * public-2014-05-15: Created release branch for public version 2014-05-15
+    * dynprog_end.c: Using computed lband and uband in find_best_endpoint
+      procedures, instead of trying to recompute them, which led to incorrect
+      results
+
+2014-05-23  twu
+
+    * get-genome.c, iit-read-univ.c: Fixed zero-based behavior of -L option to
+      one-based behavior. Zero-based behavior introduced in revision 99737 on
+      2013-06-27.
+
+    * index.html: Made changes for version 2014-05-15
+
+    * gmap.c, gsnap.c: Added better test for behavior of max operation in SSE4.1
+
+    * stage1hr.c: Fixed a memory leak involving ambcoords
+
+    * stage1hr.c: Using nmatches_posttrim in evaluating alignments.  Doing a
+      comparison between concordant alignments involving terminals and
+      halfmapping alignments, to determine the best solution.
+
+    * stage3hr.c: Fixed assignment of amb_nmatches to correct end for minus
+      alignments in Stage3end_new_splice.  Extending hardclips by
+      amb_nmatches_start and amb_nmatches_end in Stage3pair_overlap.
+
+    * stage3hr.c, stage3hr.h: Changed Stage3end_nmatches and Stage3pair_nmatches
+      to Stage3end_nmatches_posttrim and Stage3pair_nmatches_posttrim
+
+2014-05-21  twu
+
+    * samprint.c, samprint.h: Fixed typo in keeping a parameter
+
+    * README: Clarified effect of --failed-input option
+
+    * README: Fixed typo
+
+    * acx_mmap_fixed.m4, acx_mmap_variable.m4: Fixed type incompatibility when
+      char * is cast to int
+
+    * stage1hr.c: Changed categories for some debugging statements
+
+    * gmap.c, gsnap.c, outbuffer.c, outbuffer.h, samprint.c, samprint.h,
+      stage3hr.c, stage3hr.h: Changed --fails-as-input flag to --failed-input
+      flag, which takes an argument.  Printing failed inputs in addition to
+      nomapping output.
+
+    * genome.c: Made error message clearer when genomebits128 file not found
+
+2014-05-17  twu
+
+    * stage3hr.c: Setting amb_nmatches_start, amb_nmatches_end,
+      start_ambiguous_p, and end_ambiguous_p based on amb_nmatches for halfdonor
+      and halfacceptor splices, even when ambcoords_left and ambcoords_right are
+      NULL
+
+    * stage1hr.c: Minor fixes to debugging statements
+
+2014-05-16  twu
+
+    * stage1hr.c: Turned on macro for finding middle alignments.
+
+    * stage1hr.c: Turned on finding of middle alignments in find_terminals.  Set
+      length threshold to be querylength/3 instead of index1part.
 
 2014-05-15  twu
 

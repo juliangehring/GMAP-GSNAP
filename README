@@ -53,7 +53,7 @@ then refer to it like this
 
 Note 3: GSNAP is designed for short reads of a limited length, and
 relies upon a maximum read length variable MAX_READLENGTH defined at
-compile time (default 250).  You may set this variable by providing it
+compile time (default 300).  You may set this variable by providing it
 to configure like this
 
     ./configure MAX_READLENGTH=<length>
@@ -697,11 +697,10 @@ below for each output type:
 
   NM (nomapping) (filename suffix ".nomapping"): The entire read
   (single-end or paired-end) could not be aligned.  If the
-  --fails-as-input flag is specified, then these reads are printed in
-  FASTQ or FASTA format (depending on the input format) instead of SAM
-  format, and the filenames end in .nomapping.1.fq and
-  .nomapping.2.fq, respectively, for the first and second ends of the
-  read (if any).
+  --failed-input=FILENAME flag is specified, then these reads are also
+   printed in FASTQ or FASTA format (depending on the input format) in
+  the given file (plus a .1 or .2 ending for the first and second ends
+  of a paired-end read).
 
   CU (concordant unique) (filename suffix ".concordant_uniq"): Both
   ends of a paired-end read could be aligned concordantly to a single
@@ -715,7 +714,8 @@ below for each output type:
   CX (concordant multiple excess) (filename suffix
   ".concordant_mult_xs"): Multiple concordant alignments, but user
   specified --quiet-if-excessive and the number of alignments exceeds
-  "-n" threshold.
+  "-n" threshold.  If the --failed-input option is given, these reads
+  are also printed in FASTA or FASTQ format in the given file.
 
   CT (concordant translocation) (filename suffix
   ".concordant_transloc"): Both ends of a paired-end read could be
@@ -761,27 +761,38 @@ below for each output type:
 
   PX (paired multiple excess) (filename suffix ".paired_mult_xs"):
   Multiple paired alignments, but user specified --quiet-if-excessive
-  and the number of alignments exceeds the "-n" threshold.
+  and the number of alignments exceeds the "-n" threshold.  If the
+  --failed-input option is given, these reads are also printed in
+  FASTA or FASTQ format in the given file.
 
-  HU, HM, HX, HT, HC (halfmapping unique, halfmapping multiple,
-  halfmapping multiple excess, halfmapping translocation, and
-  halfmapping circular, respectively) (filename suffixes:
-  ".halfmapping_uniq", ".halfmapping_mult", ".halfmapping_mult_xs",
+  HU, HM, HT, HC (halfmapping unique, halfmapping multiple,
+  halfmapping translocation, and halfmapping circular, respectively)
+  (filename suffixes: ".halfmapping_uniq", ".halfmapping_mult",
   ".halfmapping_transloc", ".halfmapping_circular): Same as for the
   concordant output types, except that only one end of the paired-end
   read could be aligned, and the other end could not be aligned
   anywhere in the genome.
 
-  UU, UM, UX, UT, UC (unpaired unique, unpaired multiple, unpaired
-  multiple excess, unpaired translocation, and unpaired circular,
-  respectively) (filename suffixes: ".unpaired_uniq",
-  ".unpaired_mult", ".unpaired_mult_xs", ".unpaired_transloc",
+  HX (halfmapping multiple excess) (filename suffix
+  ".halfmapping_mult_xs"): Multiple halfmapping alignments, but user
+  specified --quiet-if-excessive and the number of alignments exceeds
+  the "-n" threshold.  If the --failed-input option is given, these
+  reads are also printed in FASTA or FASTQ format in the given file.
+
+  UU, UM, UT, UC (unpaired unique, unpaired multiple, unpaired
+  translocation, and unpaired circular, respectively) (filename
+  suffixes: ".unpaired_uniq", ".unpaired_mult", ".unpaired_transloc",
   ".unpaired_circular): Same as for the concordant output types,
   except that the two ends could not be aligned concordantly or even
-  paired.  could be aligned, and the other end could not be aligned
-  anywhere in the genome.  These "unpaired" categories are used for
-  single-end reads, since they lack a mate end that can allow for
-  concordance, pairing, or halfmapping.
+  paired.  These "unpaired" categories are also used for single-end
+  reads, since they lack a mate end that can allow for concordance,
+  pairing, or halfmapping.
+
+  UX (unpaired multiple excess) (filename suffix ".unpaired_mult_xs"):
+  Multiple unpaired alignments, but user specified
+  --quiet-if-excessive and the number of alignments on one end exceeds
+  the "-n" threshold.  If the --failed-input option is given, these
+  reads are also printed in FASTA or FASTQ format in the given file.
 
 
 XB: Prints the barcode extracted from the end of the read.  Applies only

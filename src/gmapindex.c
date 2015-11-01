@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 133760 2014-04-20 05:16:56Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 138522 2014-06-09 17:08:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -26,9 +26,9 @@ static char rcsid[] = "$Id: gmapindex.c 133760 2014-04-20 05:16:56Z twu $";
 #include "tableuint8.h"
 typedef Tableuint8_T Table_chrpos_T;
 #else
-#include "tableuint.h"
 typedef Tableuint_T Table_chrpos_T;
 #endif
+#include "tableuint.h"
 #include "compress.h"
 #include "chrom.h"
 #include "segmentpos.h"
@@ -83,6 +83,7 @@ static int nmessages = 50;
 
 static char *mitochondrial_string = NULL;
 static Sorttype_T divsort = CHROM_SORT;
+static char *sortfilename = NULL;
 static bool huge_offsets_p = false;
 
 
@@ -208,14 +209,20 @@ chrlength_update (Table_chrpos_T chrlength_table, Chrom_T chrom, Univcoord_T seg
 }
 
 static void
-store_accession (Table_T accsegmentpos_table, Table_chrpos_T chrlength_table,
+store_accession (Table_T accsegmentpos_table, Table_chrpos_T chrlength_table, Tableuint_T chrorder_table,
 		 char *accession, char *chr_string, Chrpos_T chrpos1, 
 		 Chrpos_T chrpos2, bool revcompp, Chrpos_T seglength, 
 		 int contigtype, unsigned int universal_coord, bool circularp) {
   Chrom_T chrom;
   Segmentpos_T segmentpos;
+  unsigned int order;
 
-  chrom = Chrom_from_string(chr_string,mitochondrial_string,/*order*/universal_coord,circularp);
+  if (chrorder_table != NULL) {
+    order = Tableuint_get(chrorder_table,chr_string);
+    chrom = Chrom_from_string(chr_string,mitochondrial_string,order,circularp);
+  } else {
+    chrom = Chrom_from_string(chr_string,mitochondrial_string,/*order*/universal_coord,circularp);
+  }
 
   segmentpos = Segmentpos_new(chrom,chrpos1,chrpos2,revcompp,seglength,contigtype);
   Table_put(accsegmentpos_table,(void *) accession,(void *) segmentpos);
@@ -299,7 +306,7 @@ skip_sequence (Chrpos_T seglength) {
 
 static bool
 process_sequence_aux (Chrpos_T *seglength, Table_T accsegmentpos_table, Table_chrpos_T chrlength_table,
-		      char *fileroot, int ncontigs) {
+		      Tableuint_T chrorder_table, char *fileroot, int ncontigs) {
   char Buffer[BUFFERSIZE], accession_p[BUFFERSIZE], *accession, 
     chrpos_string[BUFFERSIZE], *chr_string, *coords, *ptr, *p;
   Chrpos_T chrpos1, chrpos2, lower, upper;
@@ -427,7 +434,7 @@ process_sequence_aux (Chrpos_T *seglength, Table_T accsegmentpos_table, Table_ch
     universal_coord = 0U;
   }
 
-  store_accession(accsegmentpos_table,chrlength_table,
+  store_accession(accsegmentpos_table,chrlength_table,chrorder_table,
 		  accession,chr_string,lower,upper,revcompp,
 		  *seglength,/*contigtype*/0,universal_coord,circularp);
 
@@ -465,6 +472,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
     chroms = (Chrom_T *) Tableuint_keys_by_timeindex(chrlength_table,0U);
     n = Tableuint_length(chrlength_table);
 #endif
+
   } else {
     /* Get chromosomes in order */
 #ifdef HAVE_64_BIT
@@ -478,6 +486,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
     case ALPHA_SORT: qsort(chroms,n,sizeof(Chrom_T),Chrom_compare_alpha); break;
     case NUMERIC_ALPHA_SORT: qsort(chroms,n,sizeof(Chrom_T),Chrom_compare_numeric_alpha); break;
     case CHROM_SORT: qsort(chroms,n,sizeof(Chrom_T),Chrom_compare_chrom); break;
+    case FILENAME_SORT: qsort(chroms,n,sizeof(Chrom_T),Chrom_compare_order); break;
     default: abort();
     }
   }
@@ -630,6 +639,8 @@ bysegmentpos_compare (const void *x, const void *y) {
     return Segmentpos_compare_numeric_alpha(&a,&b);
   } else if (divsort == CHROM_SORT) {
     return Segmentpos_compare_chrom(&a,&b);
+  } else if (divsort == FILENAME_SORT) {
+    return Segmentpos_compare_order(&a,&b);
   } else {
     abort();
   }
@@ -925,6 +936,13 @@ int
 main (int argc, char *argv[]) {
   int ncontigs;
   Table_T accsegmentpos_table;
+
+  FILE *fp;
+  char *key, **keys, chrname[1024], chrname_alt[1024], Buffer[1024];
+  Tableuint_T chrorder_table = NULL;
+  unsigned int order;
+  int i;
+
   Table_chrpos_T chrlength_table;
   List_T contigtypelist = NULL, p;
   Genome_T genomecomp, genomebits;
@@ -969,7 +987,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   char *string;
 
-  while ((c = getopt(argc,argv,"F:D:d:z:k:q:ArlGUNHOPSLXYWw:e:Ss:m")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:z:k:q:ArlGUNHOPSLXYWw:e:Ss:n:m")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -1018,11 +1036,15 @@ main (int argc, char *argv[]) {
 	divsort = NUMERIC_ALPHA_SORT;
       } else if (!strcmp(optarg,"chrom")) {
 	divsort = CHROM_SORT;
+      } else if (!strcmp(optarg,"names")) {
+	divsort = FILENAME_SORT;
       } else {
 	fprintf(stderr,"Don't recognize sort type %s.  Allowed values are none, alpha, or chrom.",optarg);
 	exit(9);
       }
       break;
+
+    case 'n': sortfilename = optarg; break;
 
     case 'm': mask_lowercase_p = true; break;
     }
@@ -1054,6 +1076,34 @@ main (int argc, char *argv[]) {
        Writes <destdir>/<dbname>.chromosome and <destdir>/<dbname>.contig files 
        and corresponding .iit files */
 
+    if (divsort == FILENAME_SORT) {
+      if (sortfilename == NULL) {
+	fprintf(stderr,"For sorting by names file, need to provide file to -n flag");
+	exit(9);
+      } else if ((fp = fopen(sortfilename,"r")) == NULL) {
+	fprintf(stderr,"Unable to open file %s provided to -n flag",sortfilename);
+	exit(9);
+      } else {
+	chrorder_table = Tableuint_new(65522,Table_string_compare,Table_string_hash);
+	order = 1;
+	while (fgets(Buffer,1024,fp) != NULL) {
+   	  if (sscanf(Buffer,"%s %s",chrname,chrname_alt) == 2) {	  
+	    key = (char *) CALLOC(strlen(chrname_alt)+1,sizeof(char));
+	    strcpy(key,chrname_alt);
+	    Tableuint_put(chrorder_table,(void *) key,order);
+          } else if (sscanf(Buffer,"%s",chrname) == 1) {
+	    key = (char *) CALLOC(strlen(chrname)+1,sizeof(char));
+	    strcpy(key,chrname);
+	    Tableuint_put(chrorder_table,(void *) key,order);
+          } else {
+	    fprintf(stderr,"Unable to parse line %s\n",Buffer);
+	  }
+          order += 1;
+	}
+	fclose(fp);
+      }
+    }
+
     if (getc(stdin) != '>') {
       fprintf(stderr,"Expected file to start with '>'\n");
       exit(9);
@@ -1084,7 +1134,7 @@ main (int argc, char *argv[]) {
 
     ncontigs = 0;
     totalnts = 0U;
-    while (process_sequence_aux(&seglength,accsegmentpos_table,chrlength_table,fileroot,ncontigs) == true) {
+    while (process_sequence_aux(&seglength,accsegmentpos_table,chrlength_table,chrorder_table,fileroot,ncontigs) == true) {
       if (totalnts + seglength < totalnts) {
 	/* Exceeds 32 bits */
 	fprintf(stderr,"The total length of genomic sequence exceeds 2^32 = 4,294,967,296 bp, which the GMAP index format cannot handle\n");
@@ -1122,6 +1172,15 @@ main (int argc, char *argv[]) {
 
     chrlength_table_gc(&chrlength_table);
     accsegmentpos_table_gc(&accsegmentpos_table);
+
+    if (chrorder_table != NULL) {
+      keys = (char **) Tableuint_keys(chrorder_table,NULL);
+      for (i = 0; i < Tableuint_length(chrorder_table); i++) {
+	FREE(keys[i]);
+      }
+      FREE(keys);
+      Tableuint_free(&chrorder_table);
+    }
 
   } else if (action == GENOME) {
     /* Usage: cat <fastafile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -G

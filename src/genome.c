@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 135233 2014-05-06 15:53:51Z twu $";
+static char rcsid[] = "$Id: genome.c 136793 2014-05-21 18:08:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -170,7 +170,8 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, Genometype_T ge
 	sprintf(filename,"%s/%s.genomebits128",genomesubdir,fileroot);
       }
       if (Access_file_exists_p(filename) == false) {
-	fprintf(stderr,"Detected old version of genome index: genomebits128 file not available.  This version of GSNAP is not backwards compatible.\n");
+	fprintf(stderr,"Unable to detect new version of genome index: genomebits128 file not available.  This version of GSNAP is not backwards compatible.\n");
+	fprintf(stderr,"Looking specifically for %s\n",filename);
 	FREE(filename);
 	FREE(new);
 	exit(9);

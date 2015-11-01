@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 135266 2014-05-06 19:54:34Z twu $ */
+/* $Id: dynprog.h 138110 2014-06-04 19:34:22Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -30,15 +30,30 @@ typedef enum {HIGHQ, MEDQ, LOWQ, ENDQ} Mismatchtype_T;
 #define DEFECT_HIGHQ 0.003
 #define DEFECT_MEDQ 0.014
 
+#define SINGLE_OPEN_HIGHQ -8
+#define SINGLE_OPEN_MEDQ -6
+#define SINGLE_OPEN_LOWQ -4
+
+#define SINGLE_EXTEND_HIGHQ -3
+#define SINGLE_EXTEND_MEDQ -2
+#define SINGLE_EXTEND_LOWQ -1
+
+#define PAIRED_OPEN_HIGHQ -8
+#define PAIRED_OPEN_MEDQ -6
+#define PAIRED_OPEN_LOWQ -4
+
+#define PAIRED_EXTEND_HIGHQ -3
+#define PAIRED_EXTEND_MEDQ -2
+#define PAIRED_EXTEND_LOWQ -1
+
+
 #define UNKNOWNJUMP -1000000
 
-#if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
 typedef char Score8_T;
 typedef char Direction8_T;
 
 typedef short Score16_T;
 typedef short Direction16_T;
-#endif
 
 typedef short Pairdistance_T;
 
@@ -170,17 +185,22 @@ Dynprog_Directions32_print (Direction32_T **directions_nogap, Direction32_T **di
 			    int goffset, Univcoord_T chroffset, Univcoord_T chrhigh,
 			    bool watsonp, bool revp, int lband, int uband);
 
+extern Score32_T **
+Dynprog_standard (Direction32_T ***directions_nogap, Direction32_T ***directions_Egap, Direction32_T ***directions_Fgap,
+		  T this, char *rsequence, char *gsequence, char *gsequence_alt,
+		  int rlength, int glength,
+		  int goffset, Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
+		  Mismatchtype_T mismatchtype, Score32_T open, Score32_T extend,
+		  int lband, int uband, bool jump_late_p, bool revp, int saturation);
+
 extern List_T
 Dynprog_traceback_std (List_T pairs, int *nmatches, int *nmismatches, int *nopens, int *nindels,
-#ifdef HAVE_SSE2
-		       Direction16_T **directions_nogap, Direction16_T **directions_Egap, Direction16_T **directions_Fgap,
-#else
 		       Direction32_T **directions_nogap, Direction32_T **directions_Egap, Direction32_T **directions_Fgap,
-#endif
 		       int r, int c, char *rsequence, char *rsequenceuc, char *gsequence, char *gsequence_alt,
 		       int queryoffset, int genomeoffset, Pairpool_T pairpool, bool revp,
 		       Univcoord_T chroffset, Univcoord_T chrhigh,
 		       int cdna_direction, bool watsonp, int dynprogindex);
+
 
 #undef T
 #endif

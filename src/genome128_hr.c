@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome128_hr.c 134886 2014-05-01 23:26:48Z twu $";
+static char rcsid[] = "$Id: genome128_hr.c 137999 2014-06-04 02:01:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -67,6 +67,13 @@ static char rcsid[] = "$Id: genome128_hr.c 134886 2014-05-01 23:26:48Z twu $";
 #define debug3(x) x
 #else
 #define debug3(x)
+#endif
+
+/* 32-bit shortcuts */
+#ifdef DEBUG14
+#define debug14(x) x
+#else
+#define debug14(x)
 #endif
 
 
@@ -16793,6 +16800,66 @@ typedef UINT4 Genomediff_T;
 #endif
 
 
+static UINT4
+block_diff_standard_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  UINT4 diff;
+
+  debug(printf("Comparing high: query %08X with genome %08X ",query_shifted[0],ref_ptr[0]));
+#ifdef HAVE_SSE2
+  debug(printf("Comparing low: query %08X with genome %08X ",query_shifted[4],ref_ptr[4]));
+#endif
+
+#ifdef HAVE_SSE2
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[4] ^ ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+  diff = (query_shifted[0] ^ Bigendian_convert_uint(ref_ptr[0])) | (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+
+  /* Query Ns */
+#ifdef HAVE_SSE2
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[8];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[8]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[2];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[2]);
+  }
+#endif
+
+  /* Genome Ns */
+  if (genome_unk_mismatch_p) {
+    /* Genome: Considering N as a mismatch */
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= ref_ptr[8];
+#endif
+  } else {
+    /* Genome: Considering N as a wildcard */
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+}
+
+
 static Genomediff_T
 block_diff_standard (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 		     bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
@@ -16865,6 +16932,93 @@ block_diff_standard (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   return diff;
 #endif
 
+}
+
+
+
+static UINT4
+block_diff_standard_wildcard_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
+				   bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  UINT4 diff, non_wildcard;
+
+  /* Taken from block_diff_standard */
+#ifdef HAVE_SSE2
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[4] ^ ref_ptr[4]);
+#else
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+
+  /* Query Ns */
+#ifdef HAVE_SSE2
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[8];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[8]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[2];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[2]);
+  }
+#endif
+
+  /* Genome Ns */
+  if (genome_unk_mismatch_p) {
+    /* Genome: Considering N as a mismatch */
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= ref_ptr[8];
+#endif
+  } else {
+    /* Genome: Considering N as a wildcard */
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+
+  /* Add difference relative to SNP */
+#ifdef HAVE_SSE2
+  diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[4] ^ snp_ptr[4]);
+#else
+  diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[1] ^ snp_ptr[4]);
+#endif
+
+  /* Test for equality of ref and alt */
+  debug(printf("Equality high: ref genome %08X with alt genome %08X ",ref_ptr[0],snp_ptr[0]));
+#ifdef WORDS_BIGENDIAN
+  non_wildcard = (Bigendian_convert_uint(ref_ptr[0]) ^ Bigendian_convert_uint(snp_ptr[0])) |
+    (Bigendian_convert_uint(ref_ptr[4]) ^ Bigendian_convert_uint(snp_ptr[4]));
+#else
+  non_wildcard = (ref_ptr[0] ^ snp_ptr[0]) | (ref_ptr[4] ^ snp_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",non_wildcard));
+  
+  /* Ref flags */
+  debug(printf("Wildcard add ref flags: ref genome %08X and alt genome %08X ",ref_ptr[8],snp_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+  non_wildcard |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+  non_wildcard |= ref_ptr[8];
+#endif
+
+  /* Alt flags */
+  debug(printf("Wildcard add alt flags: ref genome %08X and alt genome %08X ",ref_ptr[8],snp_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+  non_wildcard |= ~(Bigendian_convert_uint(snp_ptr[8]));
+#else
+  non_wildcard |= ~(snp_ptr[8]);
+#endif
+  debug(printf(" => non_wildcard %08X\n",non_wildcard));
+
+  return diff & non_wildcard;
 }
 
 
@@ -16990,6 +17144,78 @@ block_diff_standard_wildcard (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr
  *   CMET
  ************************************************************************/
 
+static UINT4
+block_diff_metct_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		     bool query_unk_mismatch_local_p, bool sarrayp) {
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    diff = 0U;
+  } else {
+    /* Mark genome-T to query-C mismatches */
+#ifdef HAVE_SSE2
+    diff = (~(query_shifted[0]) & query_shifted[4]) & (ref_ptr[0] & ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+    diff = (~(query_shifted[0]) & query_shifted[1]) &
+      (Bigendian_convert_uint(ref_ptr[0]) & Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = (~(query_shifted[0]) & query_shifted[1]) & (ref_ptr[0] & ref_ptr[4]);
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced C->T nts  */
+#ifdef HAVE_SSE2
+  diff |= ((query_shifted[0] | query_shifted[4]) ^ (ref_ptr[0] | ref_ptr[4])) | (query_shifted[4] ^ ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+  diff |= ((query_shifted[0] | query_shifted[1]) ^ (Bigendian_convert_uint(ref_ptr[0]) | Bigendian_convert_uint(ref_ptr[4]))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] | query_shifted[1]) ^ (ref_ptr[0] | ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+
+  /* Flags: Considering N as a mismatch */
+#ifdef HAVE_SSE2
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
+  }
+#endif
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+}
+
+
 /* Convert C to T: high/low (A) 0 0 => new high 0; (C) 0 1 => 1; (G) 1 0 => 1; (T) 1 0 => 1 */
 /* new high = high | low */
 static Genomediff_T
@@ -17085,6 +17311,79 @@ block_diff_metct (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
   return diff;
 #endif
+}
+
+
+static UINT4
+block_diff_metga_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		     bool query_unk_mismatch_local_p, bool sarrayp) {
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    /* Ignore genome-A to query-G mismatches */
+    diff = 0U;
+  } else {
+    /* Mark genome-A to query-G mismatches */
+#ifdef HAVE_SSE2
+    diff = (query_shifted[0] & ~(query_shifted[4])) & ~(ref_ptr[0] | ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+    diff = (query_shifted[0] & ~(query_shifted[1])) &
+      ~(Bigendian_convert_uint(ref_ptr[0]) | Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = (query_shifted[0] & ~(query_shifted[1])) & ~(ref_ptr[0] | ref_ptr[4]);
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced G->A nts  */
+#ifdef HAVE_SSE2
+  diff |= ((query_shifted[0] & query_shifted[4]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[4] ^ ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+  diff |= ((query_shifted[0] & query_shifted[1]) ^ (Bigendian_convert_uint(ref_ptr[0]) & Bigendian_convert_uint(ref_ptr[4]))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] & query_shifted[1]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+
+  /* Flags: Considering N as a mismatch */
+#ifdef HAVE_SSE2
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
+  }
+#endif
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
 }
 
 
@@ -17186,7 +17485,25 @@ block_diff_metga (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
   return diff;
 #endif
+}
+
+static UINT4
+block_diff_cmet_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		    bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp != first_read_p) {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp == first_read_p) {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
   }
+}
 
 static Genomediff_T
 block_diff_cmet (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
@@ -17206,6 +17523,25 @@ block_diff_cmet (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   }
 }
 
+static UINT4
+block_diff_cmet_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+			   bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp != first_read_p) {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+
+  } else {
+    if (plusp == first_read_p) {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  }
+}
+
 static Genomediff_T
 block_diff_cmet_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
@@ -17221,6 +17557,25 @@ block_diff_cmet_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
       return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     } else {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  }
+}
+
+/* Ignores snp_ptr */
+static UINT4
+block_diff_cmet_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
+			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp != first_read_p) {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp == first_read_p) {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   }
 }
@@ -17249,6 +17604,81 @@ block_diff_cmet_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomec
 /************************************************************************
  *   ATOI
  ************************************************************************/
+
+static UINT4
+block_diff_a2iag_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		     bool query_unk_mismatch_local_p, bool sarrayp) {
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    /* Ignore genome-G to query-A mismatches */
+    diff = 0U;
+  } else {
+    /* Mark genome-G to query-A mismatches */
+#ifdef HAVE_SSE2
+    diff = ~(query_shifted[0] | query_shifted[4]) & (ref_ptr[0] & ~(ref_ptr[4]));
+#elif defined(WORDS_BIGENDIAN)
+    diff = ~(query_shifted[0] | query_shifted[1]) &
+      (Bigendian_convert_uint(ref_ptr[0]) & ~Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = ~(query_shifted[0] | query_shifted[1]) & (ref_ptr[0] & ~(ref_ptr[4]));
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced A->G nts  */
+#ifdef HAVE_SSE2
+  diff |= ((query_shifted[0] | ~(query_shifted[4])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[4] ^ ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+  diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) | ~(Bigendian_convert_uint(ref_ptr[4])))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
+  /* Because (a ^ b) = (~a ^ ~b), this is equivalent to 
+  diff |= ((~query_shifted[0] & query_shifted[1]) ^ (~ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+  */
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+  /* Flags: Considering N as a mismatch */
+#ifdef HAVE_SSE2
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
+  }
+#endif
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+}
+
 
 /* Convert A->G: new high = high | ~low */
 static Genomediff_T
@@ -17350,6 +17780,78 @@ block_diff_a2iag (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 }
 
 
+static UINT4
+block_diff_a2itc_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		     bool query_unk_mismatch_local_p, bool sarrayp) {
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    /* Ignore genome-C to query-T mismatches */
+    diff = 0U;
+  } else {
+    /* Mark genome-C to query-T mismatches */
+#ifdef HAVE_SSE2
+    diff = (query_shifted[0] & query_shifted[4]) & (~(ref_ptr[0]) & ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+    diff = (query_shifted[0] & query_shifted[1]) &
+      (~(Bigendian_convert_uint(ref_ptr[0])) & Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = (query_shifted[0] & query_shifted[1]) & (~(ref_ptr[0]) & ref_ptr[4]);
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced T->C nts  */
+#ifdef HAVE_SSE2
+  diff |= ((query_shifted[0] & ~(query_shifted[4])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[4] ^ ref_ptr[4]);
+#elif defined(WORDS_BIGENDIAN)
+  diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) & ~(Bigendian_convert_uint(ref_ptr[4])))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+  /* Flags: Considering N as a mismatch */
+#ifdef HAVE_SSE2
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
+  }
+#endif
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+}
+
+
 /* Convert T->C: new high = high & ~low */
 static Genomediff_T
 block_diff_a2itc (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
@@ -17447,6 +17949,25 @@ block_diff_a2itc (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 }
 
 
+static UINT4
+block_diff_atoi_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		    bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp != first_read_p) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp == first_read_p) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  }
+}
+
+
 static Genomediff_T
 block_diff_atoi (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 		 bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
@@ -17465,9 +17986,27 @@ block_diff_atoi (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   }
 }
 
+static UINT4
+block_diff_atoi_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+			   bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp != first_read_p) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  } else {
+    if (plusp == first_read_p) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  }
+}
+
 static Genomediff_T
 block_diff_atoi_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-				 bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
     if (plusp != first_read_p) {
       return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
@@ -17479,6 +18018,25 @@ block_diff_atoi_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
       return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     } else {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  }
+}
+
+/* Ignores snp_ptr */
+static UINT4
+block_diff_atoi_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
+			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp != first_read_p) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp == first_read_p) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   }
 }
@@ -17507,12 +18065,18 @@ block_diff_atoi_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomec
 /* query_shifted, (snp_ptr,) ref_ptr, plusp, genestrand, first_read_p, query_unk_mismatch_local_p */
 typedef Genomediff_T (*Diffproc_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
 typedef Genomediff_T (*Diffproc_snp_T) (Genomecomp_T *, Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
+typedef UINT4 (*Diffproc_32_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
+typedef UINT4 (*Diffproc_snp_32_T) (Genomecomp_T *, Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
+
 static Diffproc_T block_diff;
 static Diffproc_snp_T block_diff_snp;
+static Diffproc_32_T block_diff_32;
+static Diffproc_snp_32_T block_diff_snp_32;
 
 /* For CMET and ATOI, ignores genome-to-query mismatches.  Used by
    Genome_consecutive procedures, called only by sarray-read.c */
 static Diffproc_T block_diff_sarray; 
+static Diffproc_32_T block_diff_sarray_32; 
 
 #ifdef HAVE_SSE2
 static __m128i _BOUND_HIGH;
@@ -17537,39 +18101,44 @@ Genome_hr_setup (Genomecomp_T *ref_blocks_in, Genomecomp_T *snp_blocks_in,
   case STANDARD:
     block_diff = block_diff_standard;
     block_diff_sarray = block_diff_standard;
+    block_diff_32 = block_diff_standard_32;
+    block_diff_sarray_32 = block_diff_standard_32;
     break;
   case CMET_STRANDED: case CMET_NONSTRANDED:
     block_diff = block_diff_cmet;
     block_diff_sarray = block_diff_cmet_sarray;
+    block_diff_32 = block_diff_cmet_32;
+    block_diff_sarray_32 = block_diff_cmet_sarray_32;
     break;
   case ATOI_STRANDED: case ATOI_NONSTRANDED:
     block_diff = block_diff_atoi;
     block_diff_sarray = block_diff_atoi_sarray;
+    block_diff_32 = block_diff_atoi_32;
+    block_diff_sarray_32 = block_diff_atoi_sarray_32;
     break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
 
 #ifndef GSNAP
   block_diff_snp = block_diff_standard_wildcard;
+  block_diff_snp_32 = block_diff_standard_wildcard_32;
 #else
   switch (mode) {
-  case STANDARD: block_diff_snp = block_diff_standard_wildcard; break;
-  case CMET_STRANDED: case CMET_NONSTRANDED: block_diff_snp = block_diff_cmet_snp; break;
-  case ATOI_STRANDED: case ATOI_NONSTRANDED: block_diff_snp = block_diff_atoi_snp; break;
+  case STANDARD:
+    block_diff_snp = block_diff_standard_wildcard;
+    block_diff_snp_32 = block_diff_standard_wildcard_32;
+    break;
+  case CMET_STRANDED: case CMET_NONSTRANDED:
+    block_diff_snp = block_diff_cmet_snp;
+    block_diff_snp_32 = block_diff_cmet_snp_32;
+    break;
+  case ATOI_STRANDED: case ATOI_NONSTRANDED:
+    block_diff_snp = block_diff_atoi_snp;
+    block_diff_snp_32 = block_diff_atoi_snp_32;
+    break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
 #endif
-
-#if 0
-  if (cmetp == false) {
-    block_diff = block_diff_standard;
-    block_diff_snp = block_diff_snp_standard;
-  } else {
-    block_diff = block_diff_cmet;
-    block_diff_snp = block_diff_snp_cmet;
-  }
-#endif
-
 
   return;
 }
@@ -17585,33 +18154,41 @@ Genome_hr_user_setup (UINT4 *ref_blocks_in,
   genome_unk_mismatch_p = genome_unk_mismatch_p_in;
 
   switch (mode) {
-  case STANDARD: block_diff = block_diff_standard; break;
-  case CMET_STRANDED: case CMET_NONSTRANDED: block_diff = block_diff_cmet; break;
-  case ATOI_STRANDED: case ATOI_NONSTRANDED: block_diff = block_diff_atoi; break;
+  case STANDARD:
+    block_diff = block_diff_standard;
+    block_diff_32 = block_diff_standard_32;
+    break;
+  case CMET_STRANDED: case CMET_NONSTRANDED:
+    block_diff = block_diff_cmet;
+    block_diff_32 = block_diff_cmet_32;
+    break;
+  case ATOI_STRANDED: case ATOI_NONSTRANDED:
+    block_diff = block_diff_atoi;
+    block_diff_32 = block_diff_atoi_32;
+    break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
 
 #ifndef GSNAP
   block_diff_snp = block_diff_standard_wildcard;
+  block_diff_snp_32 = block_diff_standard_wildcard_32;
 #else
   switch (mode) {
-  case STANDARD: block_diff_snp = block_diff_standard_wildcard; break;
-  case CMET_STRANDED: case CMET_NONSTRANDED: block_diff_snp = block_diff_cmet_snp; break;
-  case ATOI_STRANDED: case ATOI_NONSTRANDED: block_diff_snp = block_diff_atoi_snp; break;
+  case STANDARD:
+    block_diff_snp = block_diff_standard_wildcard; 
+    block_diff_snp_32 = block_diff_standard_wildcard_32; 
+    break;
+  case CMET_STRANDED: case CMET_NONSTRANDED:
+    block_diff_snp = block_diff_cmet_snp;
+    block_diff_snp_32 = block_diff_cmet_snp_32;
+    break;
+  case ATOI_STRANDED: case ATOI_NONSTRANDED:
+    block_diff_snp = block_diff_atoi_snp;
+    block_diff_snp_32 = block_diff_atoi_snp_32;
+    break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
 #endif
-
-#if 0
-  if (cmetp == false) {
-    block_diff = block_diff_standard;
-    block_diff_snp = block_diff_snp_standard;
-  } else {
-    block_diff = block_diff_cmet;
-    block_diff_snp = block_diff_snp_cmet;
-  }
-#endif
-
 
   return;
 }
@@ -18011,19 +18588,65 @@ print_diff_leading_zeroes (UINT4 diff, int offset) {
 #endif
 
 
+#define nonzero_p_32(diff) diff
+
+#define clear_start_32(diff,startdiscard) (diff & (~0U << (startdiscard)))
+#define clear_end_32(diff,enddiscard) (diff & ~(~0U << (enddiscard)))
+
+/* Same speed: clear_highbit(diff,relpos) (diff - (HIGH_BIT >> relpos)) */
+/* Note: xor assumes that bit at relpos was on */
+#define clear_highbit_32(diff,relpos) (diff ^ (HIGH_BIT >> relpos))
+
+/* Slower: clear_lowbit(diff,relpos) diff -= (1 << relpos) */
+#define clear_lowbit_32(diff,relpos) (diff & (diff - 1));
+
+
+#ifdef HAVE_POPCNT
+#define popcount_ones_32(diff) (_popcnt32(diff))
+#elif defined(HAVE_BUILTIN_POPCOUNT)
+#define popcount_ones_32(diff) (__builtin_popcount(diff))
+#else
+#define popcount_ones_32(diff) (count_bits[diff & 0x0000FFFF] + count_bits[diff >> 16])
+#endif
+
+#ifdef HAVE_LZCNT
+#define count_leading_zeroes_32(diff) _lzcnt_u32(diff)
+#elif defined(HAVE_BUILTIN_CLZ)
+#define count_leading_zeroes_32(diff) __builtin_clz(diff)
+#else
+#define count_leading_zeroes_32(diff) ((top = diff >> 16) ? clz_table[top] : 16 + clz_table[diff])
+#endif
+
+#ifdef HAVE_BMI1
+#define count_trailing_zeroes_32(diff) _tzcnt_u32(diff)
+#elif defined(HAVE_BUILTIN_CTZ)
+#define count_trailing_zeroes_32(diff) __builtin_ctz(diff)
+#else
+/* lowbit = -diff & diff */
+#define count_trailing_zeroes_32(diff) mod_37_bit_position[(-diff & diff) % 37]
+#endif
+
+/* For trimming */
+#define set_start_32(diff,startdiscard) (diff | ~(~0U << startdiscard))
+#define set_end_32(diff,enddiscard) (diff | (~0U << enddiscard))
+
+
+
 /* Counts matches from pos5 to pos3 up to first mismatch.  Modified from mismatches_left */
 int
 Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 				      bool plusp, int genestrand, bool first_read_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int mismatch_position, offset, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *ptr, *end;
+  UINT4 diff_32;
   Genomediff_T diff;
   int relpos;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
   debug(
 	printf("\n\n");
@@ -18032,33 +18655,80 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = -startdiscard + pos5;
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = -startdiscard + pos5;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_sarray_32)(query_shifted
+#ifdef HAVE_SSE2
+				     + startcolumni
+#endif
+				     ,&(ref_blocks[startblocki_32]),
+                                     plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    if (nonzero_p_32(diff_32)) {
+      mismatch_position = offset + (relpos = count_trailing_zeroes_32(diff_32));
+      debug(printf("Would return %d - %d consecutive matches\n",mismatch_position,pos5));
+#ifdef DEBUG14
+      answer = (mismatch_position - pos5);
+#else
+      return (mismatch_position - pos5);
+#endif
+    } else {
+      debug(printf("Would return %d - %d consecutive matches\n",pos3,pos5));
+#ifdef DEBUG14
+      answer = (pos3 - pos5);
+#else
+      return (pos3 - pos5);
+#endif
+    }
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = -startdiscard + pos5;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[startblocki]),
 			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
@@ -18068,13 +18738,17 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     if (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
       debug(printf("returning %d - %d consecutive matches\n",mismatch_position,pos5));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == (mismatch_position - pos5)));
       return (mismatch_position - pos5);
     } else {
       debug(printf("returning %d - %d consecutive matches\n",pos3,pos5));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == (pos3 - pos5)));
       return (pos3 - pos5);
     }
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[startblocki]),
 			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
@@ -18083,6 +18757,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     if (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
       debug(printf("returning %d - %d consecutive matches\n",mismatch_position,pos5));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == (mismatch_position - pos5)));
       return (mismatch_position - pos5);
     }
 
@@ -18101,6 +18776,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
       if (nonzero_p(diff) /* != 0*/) {
 	mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
 	debug(printf("returning %d - %d consecutive matches\n",mismatch_position,pos5));
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == (mismatch_position - pos5)));
 	return (mismatch_position - pos5);
       }
 
@@ -18120,12 +18796,17 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     if (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
       debug(printf("returning %d - %d consecutive matches\n",mismatch_position,pos5));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == (mismatch_position - pos5)));
       return (mismatch_position - pos5);
     } else {
       debug(printf("returning %d - %d consecutive matches\n",pos3,pos5));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == (pos3 - pos5)));
       return (pos3 - pos5);
     }
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -18133,18 +18814,19 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 int
 Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 				     bool plusp, int genestrand, bool first_read_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int mismatch_position, offset, relpos, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *start, *ptr;
+  UINT4 diff_32;
   Genomediff_T diff;
 #ifndef HAVE_BUILTIN_CLZ
   Genomecomp_T top;
 #endif
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
-
 
   debug(
 	printf("\n\n");
@@ -18153,34 +18835,80 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = (pos3 - 1) - enddiscard + STEP_SIZE;
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
-	       nshift,startdiscard,enddiscard,offset));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos3)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (startblocki_32 == endblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = (pos3 - 1) - enddiscard + 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_sarray_32)(query_shifted
+#ifdef HAVE_SSE2
+				     + endcolumni
+#endif
+				     ,&(ref_blocks[endblocki_32]),
+				     plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    if (nonzero_p_32(diff_32)) {
+      mismatch_position = offset - (relpos = count_leading_zeroes_32(diff_32));
+      debug(printf("returning %d - %d - 1 consecutive matches\n",pos3,mismatch_position));
+#ifdef DEBUG14
+      answer = (pos3 - mismatch_position - 1);
+#else
+      return (pos3 - mismatch_position - 1);
+#endif
+    } else {
+      debug(printf("returning %d - %d consecutive matches\n",pos3,pos5));
+#ifdef DEBUG14
+      answer = (pos3 - pos5);
+#else
+      return (pos3 - pos5);
+#endif
+    }
+  }
+
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
+		 nshift,startdiscard,enddiscard,offset));
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[endblocki]),
 			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
@@ -18190,13 +18918,17 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     if (nonzero_p(diff)) {
       mismatch_position = offset - (relpos = count_leading_zeroes(diff));
       debug(printf("returning %d - %d - 1 consecutive matches\n",pos3,mismatch_position));
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == (pos3 - mismatch_position - 1)));
       return (pos3 - mismatch_position - 1);
     } else {
       debug(printf("returning %d - %d consecutive matches\n",pos3,pos5));
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == (pos3 - pos5)));
       return (pos3 - pos5);
     }
 
   } else {
+#endif
+
     /* Endblock */
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[endblocki]),
 			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
@@ -18205,6 +18937,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     if (nonzero_p(diff)) {
       mismatch_position = offset - (relpos = count_leading_zeroes(diff));
       debug(printf("returning %d - %d - 1 consecutive matches",pos3,mismatch_position));
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == (pos3 - mismatch_position - 1)));
       return (pos3 - mismatch_position - 1);
     }
 
@@ -18223,6 +18956,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
       if (nonzero_p(diff)) {
 	mismatch_position = offset - (relpos = count_leading_zeroes(diff));
 	debug(printf("returning %d - %d - 1 consecutive matches\n",pos3,mismatch_position));
+	debug14(if (startblocki_32 == endblocki_32) assert(answer == (pos3 - mismatch_position - 1)));
 	return (pos3 - mismatch_position - 1);
       }
 
@@ -18242,12 +18976,17 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     if (nonzero_p(diff)) {
       mismatch_position = offset - (relpos = count_leading_zeroes(diff));
       debug(printf("returning %d - %d - 1 consecutive matches\n",pos3,mismatch_position));
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == (pos3 - mismatch_position - 1)));
       return (pos3 - mismatch_position - 1);
     } else {
       debug(printf("returning %d - %d consecutive matches\n",pos3,pos5));
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == (pos3 - pos5)));
       return (pos3 - pos5);
     }
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -18582,16 +19321,18 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
 static int
 count_mismatches_limit (Compress_T query_compress, Univcoord_T left, 
 			int pos5, int pos3, int max_mismatches, bool plusp, int genestrand, bool first_read_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int nmismatches;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *endblock, *ptr;
   Genomecomp_T *query_shifted, *query_shifted_save_start;
   Genomediff_T diff;
+  UINT4 diff_32;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -18601,29 +19342,67 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+  debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
+	       left,pos5,pos3,startblocki,endblocki));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    debug(printf("** Single block **\n"));
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+
+    diff_32 = (block_diff_32)(query_shifted
+#ifdef HAVE_SSE2
+			      + startcolumni
+#endif
+			      ,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+#ifdef DEBUG14
+    answer = popcount_ones_32(diff_32);
+#else
+    return popcount_ones_32(diff_32);
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     debug(printf("** Single block **\n"));
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
@@ -18632,9 +19411,9 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == popcount_ones(diff)));
     return popcount_ones(diff);
 
-#ifdef HAVE_SSE2
   } else if (endblocki == startblocki + 12) {
     /* Only two blocks to check */
 
@@ -18649,6 +19428,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       
       debug(print_diff_popcount(diff));
       if ((nmismatches = popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
       
@@ -18659,6 +19439,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
       return nmismatches + popcount_ones(diff);
 
     } else {
@@ -18673,6 +19454,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       debug(print_diff_popcount(diff));
       if ((nmismatches = popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18682,11 +19464,13 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       diff = clear_start(diff,startdiscard);
 
       debug(print_diff_popcount(diff));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
       return nmismatches + popcount_ones(diff);
     }
-#endif
 
   } else {
+#endif
+
     /* More than 2 blocks to check */
     debug(printf("** More than two blocks **\n"));
 
@@ -18708,6 +19492,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       
       debug(print_diff_popcount(diff));
       if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18729,6 +19514,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       debug(print_diff_popcount(diff));
       if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18738,18 +19524,20 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
       return nmismatches + popcount_ones(diff);
 
     } else {
-      /* 1/n: Go first to start block */
       debug(printf("** Final block, start block first **\n"));
 
+      /* 1/n: Go first to start block */
       diff = (block_diff)(query_shifted_save_start,&(ref_blocks[startblocki]),
 			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
       if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18759,26 +19547,32 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
       return nmismatches + popcount_ones(diff);
     }
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
 static int
 count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int pos5, int pos3, int max_mismatches,
 			     bool plusp, int genestrand, bool first_read_p) {
-  int nmismatches, incr;
+#ifdef DEBUG14
+  int answer;
+#endif
+  int nmismatches;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *endblock;
   Genomecomp_T *query_shifted, *query_shifted_save_start;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
   Genomecomp_T *ref_ptr, *alt_ptr;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -18788,31 +19582,68 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+  debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
+	       left,pos5,pos3,startblocki,endblocki));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
-  
 
+  if (endblocki_32 == startblocki_32) {
+    debug(printf("** Single block **\n"));
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_snp_32)(query_shifted
+#ifdef HAVE_SSE2
+				  + startcolumni
+#endif
+				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+#ifdef DEBUG14
+    answer = popcount_ones_32(diff_32);
+#else
+    return popcount_ones_32(diff_32);
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
-    /* 1/1 blocks */
     debug(printf("** Single block **\n"));
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -18820,14 +19651,16 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
-    nmismatches = popcount_ones(diff);
-    return nmismatches;
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == popcount_ones(diff)));
+    return popcount_ones(diff);
 
-#ifdef HAVE_SSE2
   } else if (endblocki == startblocki + 12) {
     /* Only two blocks to check */
 
     if (STEP_SIZE - startdiscard >= enddiscard) {
+      /* Two blocks to check and more bits counted in startblock */
+      debug(printf("* Two blocks, start block first **\n"));
+
       /* 1/2: Startblock */
       diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -18836,6 +19669,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       debug(print_diff_popcount(diff));
       nmismatches /* init */ = popcount_ones(diff);
       if (nmismatches > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18846,8 +19680,8 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      return nmismatches;
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
+      return nmismatches + popcount_ones(diff);
 
     } else {
       /* Two blocks to check and more bits counted in endblock */
@@ -18862,6 +19696,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       debug(print_diff_popcount(diff));
       nmismatches /* init */ = popcount_ones(diff);
       if (nmismatches > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18871,12 +19706,13 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       diff = clear_start(diff,startdiscard);
 
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      return nmismatches;
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
+      return nmismatches + popcount_ones(diff);
     }
-#endif
 
   } else {
+#endif
+
     /* More than 2 blocks to check */
     debug(printf("** More than two blocks **\n"));
 
@@ -18899,8 +19735,8 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      if (nmismatches > max_mismatches) {
+      if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18913,14 +19749,16 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
     }
 
     if (enddiscard >= STEP_SIZE - startdiscard) {
-      /* n/n: Go first to end block */
+      /* More bits in end block */
       debug(printf("** Final block, end block first **\n"));
+
+      /* n/n: Go first to end block */
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      if (nmismatches > max_mismatches) {
+      if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -18930,8 +19768,8 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      return nmismatches;
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
+      return nmismatches + popcount_ones(diff);
 
     } else {
       debug(printf("** Final block, start block first **\n"));
@@ -18942,8 +19780,8 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      if (nmismatches > max_mismatches) {
+      if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
       
@@ -18953,10 +19791,13 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
-      return nmismatches;
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
+      return nmismatches + popcount_ones(diff);
     }
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -18984,19 +19825,20 @@ Genome_count_mismatches_limit (Compress_T query_compress, Univcoord_T left, int 
 
 
 int
-Genome_count_mismatches_substring_ref (Compress_T query_compress,
-				       Univcoord_T left, int pos5, int pos3,
+Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 				       bool plusp, int genestrand, bool first_read_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int nmismatches;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *ptr, *end;
   Genomecomp_T *query_shifted;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -19006,29 +19848,67 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress,
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+  debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
+	       left,pos5,pos3,startblocki,endblocki));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+
+    diff_32 = (block_diff_32)(query_shifted
+#ifdef HAVE_SSE2
+			      + startcolumni
+#endif
+			      ,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+#ifdef DEBUG14
+    answer = popcount_ones_32(diff_32);
+#else
+    return popcount_ones_32(diff_32);
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -19036,9 +19916,12 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress,
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == popcount_ones(diff)));
     return popcount_ones(diff);
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -19074,23 +19957,29 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress,
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
     return nmismatches + popcount_ones(diff);
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 static int
 count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 				 bool plusp, int genestrand, bool first_read_p) {
-  int nmismatches, incr;
+#ifdef DEBUG14
+  int answer;
+#endif
+  int nmismatches;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *ref_ptr, *alt_ptr, *end;
   Genomecomp_T *query_shifted;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -19100,28 +19989,67 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+  debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
+	       left,pos5,pos3,startblocki,endblocki));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_snp_32)(query_shifted
+#ifdef HAVE_SSE2
+				  + startcolumni
+#endif
+				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+#ifdef DEBUG14
+    answer = popcount_ones_32(diff_32);
+#else
+    return popcount_ones_32(diff_32);
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -19129,17 +20057,19 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
-    nmismatches = popcount_ones(diff);
-    return nmismatches;
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == popcount_ones(diff)));
+    return popcount_ones(diff);
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
 
     debug(print_diff_popcount(diff));
-    nmismatches /* init */ = popcount_ones(diff);
+    nmismatches = popcount_ones(diff);
 
     query_shifted += COMPRESS_BLOCKSIZE;
 #ifdef HAVE_SSE2
@@ -19155,7 +20085,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
       debug(print_diff_popcount(diff));
-      nmismatches += (incr = popcount_ones(diff));
+      nmismatches += popcount_ones(diff);
 
       query_shifted += COMPRESS_BLOCKSIZE;
 #ifdef HAVE_SSE2
@@ -19170,9 +20100,12 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
-    nmismatches += (incr = popcount_ones(diff));
-    return nmismatches;
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
+    return nmismatches + popcount_ones(diff);
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -19206,11 +20139,9 @@ int
 Genome_count_mismatches_fragment_left (Compress_T query_compress, int pos5, int pos3,
 				       Genomecomp_T ref_fragment, Genomecomp_T alt_fragment) {
   Genomecomp_T diff, alt_diff, mask;
-
   int startdiscard;
   Genomecomp_T query_high, query_low, query_flags;
   Genomecomp_T ref_high, ref_low, alt_high, alt_low;
-
 
   Compress_get_16mer_left(&query_high,&query_low,&query_flags,query_compress,pos3);
   startdiscard = 16 - (pos3 - pos5);
@@ -19218,6 +20149,7 @@ Genome_count_mismatches_fragment_left (Compress_T query_compress, int pos5, int 
   mask = clear_start_mask(startdiscard);
   mask &= 0x0000FFFF;		/* Therefore, result of Compress does not need masking */
   debug1(printf("Mask for startdiscard %d: %08X\n",startdiscard,mask));
+
 
   /* Unpack genomic fragments */
   ref_high = ref_fragment >> 16;
@@ -19319,15 +20251,17 @@ static int
 mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
 		 Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
 		 bool query_unk_mismatch_local_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int nmismatches = 0, offset, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *ptr, *end;
+  UINT4 diff_32;
   Genomediff_T diff;
   int relpos;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -19337,33 +20271,75 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
-
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = -startdiscard + pos5;
+  endblocki_32 = endblocki + endcolumni;
 
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = -startdiscard + pos5;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_32)(query_shifted
+#ifdef HAVE_SSE2
+			      + startcolumni
+#endif
+			      ,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    while (nonzero_p_32(diff_32) && nmismatches <= max_mismatches) {
+      mismatch_positions[nmismatches++] = offset + (relpos = count_trailing_zeroes_32(diff_32));
+      diff_32 = clear_lowbit_32(diff_32,relpos);
+    }
+#ifdef DEBUG14
+    debug(printf("Would return nmismatches %d\n",nmismatches));
+    answer = nmismatches;
+    nmismatches = 0;
+#else
+    return nmismatches;
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = -startdiscard + pos5;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19375,9 +20351,12 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
       debug(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
     }
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
     return nmismatches;
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19389,6 +20368,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
       diff = clear_lowbit(diff,relpos);
     }
     if (nmismatches > max_mismatches) {
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
       return nmismatches;
     }
 
@@ -19410,6 +20390,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 	diff = clear_lowbit(diff,relpos);
       }
       if (nmismatches > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -19431,8 +20412,12 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
       debug(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
     }
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
     return nmismatches;
+
+#ifdef HAVE_SSE2
   }
+#endif
 
 }
 
@@ -19441,15 +20426,17 @@ static int
 mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
 		      Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
 		      bool query_unk_mismatch_local_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int nmismatches_both = 0, offset, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *ref_ptr, *alt_ptr, *end;
+  UINT4 diff_32;
   Genomediff_T diff;
   int relpos;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -19459,33 +20446,74 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
-
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = -startdiscard + pos5;
+  endblocki_32 = endblocki + endcolumni;
 
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = -startdiscard + pos5;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_snp_32)(query_shifted
+#ifdef HAVE_SSE2
+				  + startcolumni
+#endif
+				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    while (nonzero_p_32(diff_32) && nmismatches_both <= max_mismatches) {
+      mismatch_positions[nmismatches_both++] = offset + (relpos = count_trailing_zeroes_32(diff_32));
+      diff_32 = clear_lowbit_32(diff_32,relpos);
+    }
+#ifdef DEBUG14
+    answer = nmismatches_both;
+    nmismatches_both = 0;
+#else
+    return nmismatches_both;
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = -startdiscard + pos5;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19497,9 +20525,12 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
       debug(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
     }
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19511,6 +20542,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
       diff = clear_lowbit(diff,relpos);
     }
     if (nmismatches_both > max_mismatches) {
+      debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
       return nmismatches_both;
     }
 
@@ -19534,6 +20566,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
 	diff = clear_lowbit(diff,relpos);
       }
       if (nmismatches_both > max_mismatches) {
+	debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
 	return nmismatches_both;
       }
 
@@ -19555,9 +20588,12 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
       debug(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
     }
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
-  }
 
+#ifdef HAVE_SSE2
+  }
+#endif
 }
 
 
@@ -19651,17 +20687,19 @@ static int
 mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
 		  Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
 		  bool query_unk_mismatch_local_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int nmismatches = 0, offset, relpos, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *start, *ptr;
+  UINT4 diff_32;
   Genomediff_T diff;
 #ifndef HAVE_BUILTIN_CLZ
   Genomecomp_T top;
 #endif
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -19671,34 +20709,74 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
-
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = (pos3 - 1) - enddiscard + STEP_SIZE;
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
-	       nshift,startdiscard,enddiscard,offset));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos3)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (startblocki_32 == endblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = (pos3 - 1) - enddiscard + 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_32)(query_shifted
+#ifdef HAVE_SSE2
+			      + endcolumni
+#endif
+			      ,&(ref_blocks[endblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    while (nonzero_p_32(diff_32) && nmismatches <= max_mismatches) {
+      mismatch_positions[nmismatches++] = offset - (relpos = count_leading_zeroes_32(diff_32));
+      diff_32 = clear_highbit_32(diff_32,relpos);
+    }
+#ifdef DEBUG14
+    answer = nmismatches;
+    nmismatches = 0;
+#else
+    return nmismatches;
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
+		 nshift,startdiscard,enddiscard,offset));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19710,9 +20788,12 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
       debug(print_diff_leading_zeroes(diff,offset));
       diff = clear_highbit(diff,relpos);
     }
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches));
     return nmismatches;
 
   } else {
+#endif
+
     /* Endblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19724,6 +20805,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
       diff = clear_highbit(diff,relpos);
     }
     if (nmismatches > max_mismatches) {
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches));
       return nmismatches;
     }
 
@@ -19745,6 +20827,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 	diff = clear_highbit(diff,relpos);
       }
       if (nmismatches > max_mismatches) {
+	debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches));
 	return nmismatches;
       }
 
@@ -19767,8 +20850,12 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
       diff = clear_highbit(diff,relpos);
     }
 
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches));
     return nmismatches;
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -19776,17 +20863,19 @@ static int
 mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
 		       Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
 		       bool query_unk_mismatch_local_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int nmismatches_both = 0, offset, relpos, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *ref_ptr, *alt_ptr, *start;
+  UINT4 diff_32;
   Genomediff_T diff;
 #ifndef HAVE_BUILTIN_CLZ
   Genomecomp_T top;
 #endif
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -19797,34 +20886,73 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
 	);
 
 
-  nshift = left % STEP_SIZE;
-
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = (pos3 - 1) - enddiscard + STEP_SIZE;
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
-	       nshift,startdiscard,enddiscard,offset));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos3)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (startblocki_32 == endblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = (pos3 - 1) - enddiscard + 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_snp_32)(query_shifted
+#ifdef HAVE_SSE2
+				  + endcolumni
+#endif
+				  ,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    while (nonzero_p_32(diff_32) && nmismatches_both <= max_mismatches) {
+      mismatch_positions[nmismatches_both++] = offset - (relpos = count_leading_zeroes_32(diff_32));
+      diff_32 = clear_highbit_32(diff_32,relpos);
+    }
+#ifdef DEBUG14
+    answer = nmismatches_both;
+    nmismatches_both = 0;
+#else
+    return nmismatches_both;
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
+		 nshift,startdiscard,enddiscard,offset));
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19836,9 +20964,12 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
       debug(print_diff_leading_zeroes(diff,offset));
       diff = clear_highbit(diff,relpos);
     }
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
   } else {
+#endif
+
     /* Endblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
@@ -19850,6 +20981,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
       diff = clear_highbit(diff,relpos);
     }
     if (nmismatches_both > max_mismatches) {
+      debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches_both));
       return nmismatches_both;
     }
 
@@ -19873,6 +21005,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
 	diff = clear_highbit(diff,relpos);
       }
       if (nmismatches_both > max_mismatches) {
+        debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches_both));
 	return nmismatches_both;
       }
 
@@ -19895,9 +21028,12 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
       diff = clear_highbit(diff,relpos);
     }
 
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
-  }
 
+#ifdef HAVE_SSE2
+  }
+#endif
 }
 
 
@@ -19985,16 +21121,18 @@ int
 Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_compress,
 			    Univcoord_T left, int pos5, int pos3, int mismatch_offset,
 			    bool plusp, int genestrand, bool first_read_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int mismatch_position;
   int nmismatches = 0, offset, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *ptr, *end;
+  UINT4 diff_32;
   Genomediff_T diff;
   int relpos;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -20005,37 +21143,88 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  if (plusp == true) {
-    offset = -startdiscard + pos5 + mismatch_offset;
-  } else {
-    offset = -startdiscard + pos5 - mismatch_offset;
-  }
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    if (plusp == true) {
+      offset = -startdiscard + pos5 + mismatch_offset;
+    } else {
+      offset = -startdiscard + pos5 - mismatch_offset;
+    }
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_32)(query_shifted
+#ifdef HAVE_SSE2
+			      + startcolumni
+#endif
+			      ,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    while (nonzero_p_32(diff_32)) {
+      mismatch_position = offset + (relpos = count_trailing_zeroes_32(diff_32));
+      diff_32 = clear_lowbit_32(diff_32,relpos);
+      if (plusp == false) {
+	mismatch_position = (querylength - 1) - mismatch_position;
+      }
+      genomic[mismatch_position] = tolower(genomic[mismatch_position]);
+      nmismatches++;
+    }
+    debug(printf("genomic = %s\n",genomic));
+#ifdef DEBUG14
+    answer = nmismatches;
+    nmismatches = 0;
+#else
+    return nmismatches;
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    if (plusp == true) {
+      offset = -startdiscard + pos5 + mismatch_offset;
+    } else {
+      offset = -startdiscard + pos5 - mismatch_offset;
+    }
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -20053,9 +21242,12 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
       nmismatches++;
     }
     debug(printf("genomic = %s\n",genomic));
+    debug14(if (endblocki_32 == startblocki) assert(answer == nmismatches));
     return nmismatches;
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -20119,9 +21311,12 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
       nmismatches++;
     }
     debug(printf("genomic = %s\n",genomic));
+    debug14(if (endblocki_32 == startblocki) assert(answer == nmismatches));
     return nmismatches;
-  }
 
+#ifdef HAVE_SSE2
+  }
+#endif
 }
 
 /* Derived from mismatches_left_snps() */
@@ -20129,16 +21324,18 @@ static int
 mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 		      Univcoord_T left, int pos5, int pos3, int mismatch_offset,
 		      bool plusp, int genestrand, bool first_read_p) {
+#ifdef DEBUG14
+  int answer;
+#endif
   int mismatch_position;
   int nmismatches_both = 0, offset, nshift;
   int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *query_shifted, *ref_ptr, *alt_ptr, *end;
+  UINT4 diff_32;
   Genomediff_T diff;
   int relpos;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
 
   debug(
@@ -20149,37 +21346,88 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  if (plusp == true) {
-    offset = -startdiscard + pos5 + mismatch_offset;
-  } else {
-    offset = -startdiscard + pos5 - mismatch_offset;
-  }
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    if (plusp == true) {
+      offset = -startdiscard + pos5 + mismatch_offset;
+    } else {
+      offset = -startdiscard + pos5 - mismatch_offset;
+    }
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_snp_32)(query_shifted
+#ifdef HAVE_SSE2
+				  + startcolumni
+#endif
+				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_start_32(diff_32,startdiscard);
+    diff_32 = clear_end_32(diff_32,enddiscard);
+
+    while (nonzero_p_32(diff_32)) {
+      mismatch_position = offset + (relpos = count_trailing_zeroes_32(diff_32));
+      diff_32 = clear_lowbit_32(diff_32,relpos);
+      if (plusp == false) {
+	mismatch_position = (querylength - 1) - mismatch_position;
+      }
+      genomic[mismatch_position] = tolower(genomic[mismatch_position]);
+      nmismatches_both++;
+    }
+    debug(printf("genomic = %s\n",genomic));
+#ifdef DEBUG14
+    answer = nmismatches_both;
+    nmismatches_both = 0;
+#else
+    return nmismatches_both;
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    if (plusp == true) {
+      offset = -startdiscard + pos5 + mismatch_offset;
+    } else {
+      offset = -startdiscard + pos5 - mismatch_offset;
+    }
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -20197,9 +21445,12 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
       nmismatches_both++;
     }
     debug(printf("genomic = %s\n",genomic));
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -20265,9 +21516,12 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
       nmismatches_both++;
     }
     debug(printf("genomic = %s\n",genomic));
+    debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
-  }
 
+#ifdef HAVE_SSE2
+  }
+#endif
 }
 
 
@@ -20307,18 +21561,20 @@ Genome_mark_mismatches (char *genomic, int querylength, Compress_T query_compres
 static int
 trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 		     bool plusp, int genestrand, bool first_read_p) {
-  int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+#ifdef DEBUG14
+  int answer;
+#endif
+  int startdiscard, enddiscard, offset;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *ptr, *start;
   Genomecomp_T *query_shifted;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
   int totalscore, bestscore, score;
-  int trimpos, offset;
+  int trimpos;
   Genomecomp_T p;
 
   debug(
@@ -20328,149 +21584,97 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
-
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+  endblocki_32 = endblocki + endcolumni;
 
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
-	       nshift,startdiscard,enddiscard,offset));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos3)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
-  if (startblocki == endblocki) {
-    diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
-    diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
-    diff = set_start(diff,startdiscard);  /* puts 1 (mismatches) at start */
+  if (startblocki_32 == endblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = (pos3 - 1) - enddiscard + 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-#ifdef HAVE_SSE2    
-    p = 3*(_mm_extract_epi16(diff,7));
-    bestscore = score_high[p];
-    trimpos = offset - score_high[p+1];
-    totalscore = score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
+    diff_32 = (block_diff_32)(query_shifted
+#ifdef HAVE_SSE2
+			      + endcolumni
+#endif
+			      ,&(ref_blocks[endblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff_32 = clear_end_32(diff_32,enddiscard); /* puts 0 (matches) at end */
+    diff_32 = set_start_32(diff_32,startdiscard);  /* puts 1 (mismatches) at start */
 
-    p = 3*(_mm_extract_epi16(diff,5));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(_mm_extract_epi16(diff,3));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(_mm_extract_epi16(diff,2));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(_mm_extract_epi16(diff,1));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(_mm_extract_epi16(diff,0));
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-#else
-    p = 3*(diff >> 16);
+    p = 3*(diff_32 >> 16);
     bestscore = score_high[p];
     trimpos = offset - score_high[p+1];
     totalscore = score_high[p+2];
     debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 diff_32 >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(diff & 0x0000FFFF);
+    p = 3*(diff_32 & 0x0000FFFF);
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     /* totalscore += score_high[p+2]; */
     debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 diff_32 & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
     /* offset -= 16 */
+
+#ifdef DEBUG14
+    answer = (trimpos - 1);
+#else
+    return (trimpos - 1);	/* trimpos-1 is on side of mismatch */
 #endif
 
-    return trimpos - 1;		/* trimpos-1 is on side of mismatch */
+    }
+#ifndef DEBUG14
+    else {
+#endif
 
-  } else {
-    /* Endblock */
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
+		 nshift,startdiscard,enddiscard,offset));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
+  if (startblocki == endblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
+    diff = set_start(diff,startdiscard);  /* puts 1 (mismatches) at start */
 
-#ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,7));
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     bestscore = score_high[p];
     trimpos = offset - score_high[p+1];
     totalscore = score_high[p+2];
@@ -20478,7 +21682,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20488,7 +21692,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20498,7 +21702,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20508,7 +21712,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20518,7 +21722,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20528,7 +21732,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20538,7 +21742,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
@@ -20546,6 +21750,96 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos - 1));
+    return trimpos - 1;		/* trimpos-1 is on side of mismatch */
+
+  } else {
+#endif
+
+    /* Endblock */
+    diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
+			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
+
+#ifdef HAVE_SSE2
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
+    bestscore = score_high[p];
+    trimpos = offset - score_high[p+1];
+    totalscore = score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
 #else
@@ -20580,84 +21874,84 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
       diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
-      p = 3*(_mm_extract_epi16(diff,7));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,7));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,6));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,6));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,5));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,5));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,4));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,4));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,3));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,3));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,2));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,2));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,1));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,1));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,0));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,0));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
 #else
@@ -20695,84 +21989,84 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     diff = set_start(diff,startdiscard); /* puts 1 (mismatches) at start */
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
 #else
@@ -20797,26 +22091,32 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     /* offset -= 16; */
 #endif
     
-    return trimpos - 1;		/* trimpos-1 is on side of mismatch */
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos - 1));
+    return (trimpos - 1);	/* trimpos-1 is on side of mismatch */
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
 static int
 trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 			  bool plusp, int genestrand, bool first_read_p) {
-  int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+#ifdef DEBUG14
+  int answer;
+#endif
+  int startdiscard, enddiscard, offset;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *ref_ptr, *alt_ptr, *start;
   Genomecomp_T *query_shifted;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
   int totalscore, bestscore, score;
-  int trimpos, offset;
+  int trimpos;
   Genomecomp_T p;
 
   debug(
@@ -20826,34 +22126,89 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
-
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-  
-  offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+  endblocki_32 = endblocki + endcolumni;
 
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
-	       nshift,startdiscard,enddiscard,offset));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos3)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
+  if (startblocki_32 == endblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = (pos3 - 1) - enddiscard + 32;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+    diff_32 = (block_diff_snp_32)(query_shifted
+#ifdef HAVE_SSE2
+				  + endcolumni
+#endif
+				  ,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+
+    diff_32 = clear_end_32(diff_32,enddiscard); /* puts 0 (matches) at end */
+    diff_32 = set_start_32(diff_32,startdiscard);  /* puts 1 (mismatches) at start */
+
+
+    p = 3*(diff_32 >> 16);
+    bestscore = score_high[p];
+    trimpos = offset - score_high[p+1];
+    totalscore = score_high[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff_32 >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*(diff_32 & 0x0000FFFF);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    /* totalscore += score_high[p+2]; */
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff_32 & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    /* offset -= 16; */
+    
+#ifdef DEBUG14
+    answer = (trimpos - 1);
+#else
+    return (trimpos - 1);	/* trimpos-1 is on side of mismatch */
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = (pos3 - 1) - enddiscard + STEP_SIZE;
+    
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u, offset = %d\n",
+		 nshift,startdiscard,enddiscard,offset));
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -20861,191 +22216,173 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
     diff = set_start(diff,startdiscard);  /* puts 1 (mismatches) at start */
 
-#ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,7));
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     bestscore = score_high[p];
     trimpos = offset - score_high[p+1];
     totalscore = score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
     
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piecei %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-#else
-    p = 3*(diff >> 16);
-    bestscore = score_high[p];
-    trimpos = offset - score_high[p+1];
-    totalscore = score_high[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    /* totalscore += score_high[p+2]; */
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    /* offset -= 16; */
-#endif
-    
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos - 1));
     return trimpos - 1;		/* trimpos-1 is on side of mismatch */
 
   } else {
+#endif
+
     /* Endblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
-
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     bestscore = score_high[p];
     trimpos = offset - score_high[p+1];
     totalscore = score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
     
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
 #else
@@ -21082,84 +22419,84 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
-      p = 3*(_mm_extract_epi16(diff,7));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,7));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,6));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,6));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,5));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,5));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,4));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,4));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,3));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,3));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,2));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,2));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,1));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,1));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
-      p = 3*(_mm_extract_epi16(diff,0));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,0));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset - score_high[p+1];
       }
       totalscore += score_high[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
 
 #else
@@ -21198,84 +22535,84 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     diff = set_start(diff,startdiscard); /* puts 1 (mismatches) at start */
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset - score_high[p+1];
     }
     totalscore += score_high[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
 
 #else
@@ -21300,8 +22637,12 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     /* offset -= 16; */
 #endif
 
-    return trimpos - 1;		/* trimpos-1 is on side of mismatch */
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos - 1));
+    return (trimpos - 1);	/* trimpos-1 is on side of mismatch */
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -21309,18 +22650,20 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 static int
 trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 		      bool plusp, int genestrand, bool first_read_p) {
-  int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+#ifdef DEBUG14
+  int answer;
+#endif
+  int startdiscard, enddiscard, offset;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *ptr, *end;
   Genomecomp_T *query_shifted;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
   int totalscore, bestscore, score;
-  int trimpos, offset;
+  int trimpos;
   Genomecomp_T p;
 
   debug(
@@ -21330,141 +22673,180 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = -startdiscard + pos5;
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
-  if (endblocki == startblocki) {
-    diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
-    diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
-    diff = set_end(diff,enddiscard);  /* puts 1 (mismatches) at end */
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = -startdiscard + pos5;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+
+    diff_32 = (block_diff_32)(query_shifted
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,0));
-    bestscore = score_low[p];
-    trimpos = offset + score_low[p+1];
-    totalscore = score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
+			      + startcolumni
+#endif
+			      ,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
-    p = 3*(_mm_extract_epi16(diff,1));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
+    diff_32 = clear_start_32(diff_32,startdiscard); /* puts 0 (matches) at start */
+    diff_32 = set_end_32(diff_32,enddiscard);  /* puts 1 (mismatches) at end */
 
-    p = 3*(_mm_extract_epi16(diff,2));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,4));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,5));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,6));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,7));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-#else
-    p = 3*(diff & 0x0000FFFF);
+    p = 3*(diff_32 & 0x0000FFFF);
     bestscore = score_low[p];
     trimpos = offset + score_low[p+1];
     totalscore = score_low[p+2];
     debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 diff_32 & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(diff >> 16);
+    p = 3*(diff_32 >> 16);
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     /* totalscore += score_low[p+2]; */
     debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 diff_32 >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
     /* offset += 16; */
-#endif
     
-    return trimpos + 1;		/* trimpos+1 is on side of mismatch */
+#ifdef DEBUG14
+    answer = (trimpos + 1);
+#else
+    return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = -startdiscard + pos5;
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+#ifndef DEBUG14
+  }
+#endif
+
+
+#ifdef HAVE_SSE2
+  if (endblocki == startblocki) {
+    diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
+			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
+    diff = set_end(diff,enddiscard);  /* puts 1 (mismatches) at end */
+
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
+    bestscore = score_low[p];
+    trimpos = offset + score_low[p+1];
+    totalscore = score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos + 1));
+    return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -21472,82 +22854,82 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     debug(printf("clearing start %08X\n",clear_start_mask(startdiscard)));
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     bestscore = score_low[p];
     trimpos = offset + score_low[p+1];
     totalscore = score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-	      7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+	      7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
       
 #else
@@ -21582,84 +22964,84 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
       diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
-      p = 3*(_mm_extract_epi16(diff,0));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,0));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,1));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,1));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,2));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,2));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,3));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,3));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,4));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,4));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,5));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,5));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,6));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,6));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,7));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,7));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
 #else
@@ -21697,84 +23079,84 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     diff = set_end(diff,enddiscard); /* puts 1 (mismatches) at end */
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
 #else
@@ -21799,8 +23181,12 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     /* offset += 16; */
 #endif
     
-    return trimpos + 1;		/* trimpos+1 is on side of mismatch */
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos + 1));
+    return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 
@@ -21808,18 +23194,20 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 static int
 trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5, int pos3,
 			   bool plusp, int genestrand, bool first_read_p) {
-  int startdiscard, enddiscard;
-  Univcoord_T startblocki, endblocki;
+#ifdef DEBUG14
+  int answer;
+#endif
+  int startdiscard, enddiscard, offset;
+  Univcoord_T startblocki, endblocki, startblocki_32, endblocki_32;
   Genomecomp_T *ref_ptr, *alt_ptr, *end;
   Genomecomp_T *query_shifted;
+  UINT4 diff_32;
   Genomediff_T diff;
   int nshift;
-#ifndef HAVE_SSE2
   int startcolumni, endcolumni;
-#endif
 
   int totalscore, bestscore, score;
-  int trimpos, offset;
+  int trimpos;
   Genomecomp_T p;
 
   debug(
@@ -21829,142 +23217,179 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 	printf("\n");
 	);
 
-  nshift = left % STEP_SIZE;
 
-#ifdef HAVE_SSE2
   startblocki = (left+pos5)/128U*12;
-  endblocki = (left+pos3)/128U*12;
-#else
   startcolumni = ((left+pos5) % 128) / 32;
-  startblocki = (left+pos5)/128U*12 + startcolumni;
+  startblocki_32 = startblocki + startcolumni;
 
+  endblocki = (left+pos3)/128U*12;
   endcolumni = ((left+pos3) % 128) / 32;
-  endblocki = (left+pos3)/128U*12 + endcolumni;
-#endif
+  endblocki_32 = endblocki + endcolumni;
 
-  startdiscard = (left+pos5) % STEP_SIZE;
-  enddiscard = (left+pos3) % STEP_SIZE;
-
-  offset = -startdiscard + pos5;
-  
   debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
-  debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
+  nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
   debug(printf("Query shifted %d:\n",nshift));
   debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
-  if (endblocki == startblocki) {
-    diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+  if (endblocki_32 == startblocki_32) {
+    startdiscard = (left+pos5) % 32;
+    enddiscard = (left+pos3) % 32;
+    offset = -startdiscard + pos5;
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-    diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
-    diff = set_end(diff,enddiscard);  /* puts 1 (mismatches) at end */
 
+    diff_32 = (block_diff_snp_32)(query_shifted
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,0));
-    bestscore = score_low[p];
-    trimpos = offset + score_low[p+1];
-    totalscore = score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
+				  + startcolumni
+#endif
+				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
-    p = 3*(_mm_extract_epi16(diff,1));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
+    diff_32 = clear_start_32(diff_32,startdiscard); /* puts 0 (matches) at start */
+    diff_32 = set_end_32(diff_32,enddiscard);  /* puts 1 (mismatches) at end */
 
-    p = 3*(_mm_extract_epi16(diff,2));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,4));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,5));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,6));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(_mm_extract_epi16(diff,7));
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-#else
-    p = 3*(diff & 0x0000FFFF);
+    p = 3*(diff_32 & 0x0000FFFF);
     bestscore = score_low[p];
     trimpos = offset + score_low[p+1];
     totalscore = score_low[p+2];
     debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 diff_32 & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(diff >> 16);
+    p = 3*(diff_32 >> 16);
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     /* totalscore += score_low[p+2]; */
     debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 diff_32 >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
     /* offset += 16; */
-#endif
     
-    return trimpos + 1;		/* trimpos+1 is on side of mismatch */
+#ifdef DEBUG14
+    answer = (trimpos + 1);
+#else
+    return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
+#endif
+
+  }
+#ifndef DEBUG14
+  else {
+#endif
+
+#ifdef HAVE_SSE2
+#else
+    startblocki = startblocki_32;
+    endblocki = endblocki_32;
+#endif
+
+    startdiscard = (left+pos5) % STEP_SIZE;
+    enddiscard = (left+pos3) % STEP_SIZE;
+    offset = -startdiscard + pos5;
+  
+    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+#ifndef DEBUG14
+  }
+#endif  
+
+
+#ifdef HAVE_SSE2
+  if (endblocki == startblocki) {
+    diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
+			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
+    diff = set_end(diff,enddiscard);  /* puts 1 (mismatches) at end */
+
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
+    bestscore = score_low[p];
+    trimpos = offset + score_low[p+1];
+    totalscore = score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos + 1));
+    return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
 
   } else {
+#endif
+
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
@@ -21972,82 +23397,82 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     bestscore = score_low[p];
     trimpos = offset + score_low[p+1];
     totalscore = score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
 #else
@@ -22084,84 +23509,84 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
-      p = 3*(_mm_extract_epi16(diff,0));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,0));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,1));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,1));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,2));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,2));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,3));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,3));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,4));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,4));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,5));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,5));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,6));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,6));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
-      p = 3*(_mm_extract_epi16(diff,7));
+      p = 3*((unsigned short) _mm_extract_epi16(diff,7));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
 	trimpos = offset + score_low[p+1];
       }
       totalscore += score_low[p+2];
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		   7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
 
 #else
@@ -22200,84 +23625,84 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     diff = set_end(diff,enddiscard); /* puts 1 (mismatches) at end */
 
 #ifdef HAVE_SSE2
-    p = 3*(_mm_extract_epi16(diff,0));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 0,_mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,1));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,1));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 1,_mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 1,(unsigned short) _mm_extract_epi16(diff,1),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,2));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,2));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 2,_mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 2,(unsigned short) _mm_extract_epi16(diff,2),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,3));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,3));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 3,_mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 3,(unsigned short) _mm_extract_epi16(diff,3),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,4));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,4));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 4,_mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 4,(unsigned short) _mm_extract_epi16(diff,4),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,5));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,5));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 5,_mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 5,(unsigned short) _mm_extract_epi16(diff,5),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,6));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,6));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 6,_mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 6,(unsigned short) _mm_extract_epi16(diff,6),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
-    p = 3*(_mm_extract_epi16(diff,7));
+    p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
       trimpos = offset + score_low[p+1];
     }
     totalscore += score_low[p+2];
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 7,_mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
+		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
 
 #else
@@ -22302,8 +23727,12 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     /* offset += 16; */
 #endif
 
-    return trimpos + 1;		/* trimpos+1 is on side of mismatch */
+    debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos + 1));
+    return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
+
+#ifdef HAVE_SSE2
   }
+#endif
 }
 
 

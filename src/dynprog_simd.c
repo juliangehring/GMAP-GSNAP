@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_simd.c 137275 2014-05-27 18:04:12Z twu $";
+static char rcsid[] = "$Id: dynprog_simd.c 138119 2014-06-04 20:29:09Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -525,6 +525,7 @@ Directions8_print (Direction8_T **directions_nogap, Direction8_T **directions_Eg
     printf("\n");
   }
   printf("\n");
+
   return;
 }
 
@@ -632,6 +633,7 @@ Directions8_print_ud (Direction8_T **directions_nogap, Direction8_T **directions
     printf("\n");
   }
   printf("\n");
+
   return;
 }
 
@@ -726,6 +728,7 @@ Directions16_print (Direction16_T **directions_nogap, Direction16_T **directions
     printf("\n");
   }
   printf("\n");
+
   return;
 }
 
@@ -833,6 +836,7 @@ Directions16_print_ud (Direction16_T **directions_nogap, Direction16_T **directi
     printf("\n");
   }
   printf("\n");
+
   return;
 }
 #endif
@@ -1355,7 +1359,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
   int rlo, rhigh, rlo_calc, rhigh_calc;
   int na1, na2, na2_alt;
   Score8_T *pairscores_col0;
-  Score8_T *pairscores[5], *pairscores_std_ptr, *pairscores_alt_ptr, pairscore;
+  Score8_T *pairscores[5], *pairscores_std_ptr, *pairscores_alt_ptr, pairscore, pairscore0;
   Pairdistance_T **pairdistance_array_type;
 
 #ifdef DEBUG14
@@ -1600,15 +1604,16 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  if (c > 0) {
 	    /* Set bottom values to DIAG (not HORIZ) to prevent going outside of lband */
 	    pairscore = pairscores[na2][rhigh_calc];
-	    if ((score = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
-	      pairscore = score;
+	    if ((pairscore0 = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
+	      pairscore = pairscore0;
 	    }
 #ifndef HAVE_SSE4_1
 	    pairscore -= 128;
 #endif
-	    if ((score = matrix[c-1][rhigh_calc-1] + pairscore) < NEG_INFINITY_8) {
+	    if ((score = (int) matrix[c-1][rhigh_calc-1] + (int) pairscore) < NEG_INFINITY_8) {
 	      score_column[rhigh_calc] = NEG_INFINITY_8; /* Saturation */
 	    } else if (score > POS_INFINITY_8) {
+	      /* Should never get here, because we limit size of matrix using 8-bit quantities */
 	      score_column[rhigh_calc] = POS_INFINITY_8; /* Saturation */
 	    } else {
 	      score_column[rhigh_calc] = (Score8_T) score;
@@ -1630,7 +1635,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	} else {
 	  debug3(printf("At c %d, uband %d, reading c_gap %d\n",c,uband,FF[c]));
 	  c_gap = FF[c];
-	  last_nogap = score_column[rlo_calc-1];
+	  last_nogap = (int) score_column[rlo_calc-1];
 	}
 
 	if ((r = rlo_calc) == c - uband) {
@@ -1643,7 +1648,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  /* (*directions_Fgap)[c][r] = DIAG: -- Already initialized to DIAG */
 
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  r++;
 	}
 
@@ -1661,7 +1666,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  }
 	  
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  debug3(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap));
 	  if (c_gap >= last_nogap) {  /* Use >= for jump late */
 	    last_nogap = c_gap;
@@ -1782,15 +1787,16 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  if (c > 0) {
 	    /* Set bottom values to DIAG (not HORIZ) to prevent going outside of lband */
 	    pairscore = pairscores[na2][rhigh_calc];
-	    if ((score = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
-	      pairscore = score;
+	    if ((pairscore0 = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
+	      pairscore = pairscore0;
 	    }
 #ifndef HAVE_SSE4_1
 	    pairscore -= 128;
 #endif
-	    if ((score = matrix[c-1][rhigh_calc-1] + pairscore) < NEG_INFINITY_8) {
+	    if ((score = (int) matrix[c-1][rhigh_calc-1] + (int) pairscore) < NEG_INFINITY_8) {
 	      score_column[rhigh_calc] = NEG_INFINITY_8; /* Saturation */
 	    } else if (score > POS_INFINITY_8) {
+	      /* Should never get here, because we limit size of matrix using 8-bit quantities */
 	      score_column[rhigh_calc] = POS_INFINITY_8; /* Saturation */
 	    } else {
 	      score_column[rhigh_calc] = (Score8_T) score;
@@ -1811,7 +1817,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  last_nogap = NEG_INFINITY_INT;
 	} else {
 	  c_gap = FF[c];
-	  last_nogap = score_column[rlo_calc-1];
+	  last_nogap = (int) score_column[rlo_calc-1];
 	  debug3(printf("LAST_NOGAP gets score_column[%d-1], or %d\n",rlo_calc,last_nogap));
 	}
 
@@ -1825,7 +1831,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  /* (*directions_Fgap)[c][r] = DIAG: -- Already initialized to DIAG */
 
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  r++;
 	}
 
@@ -1843,7 +1849,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 	  }
 	  
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  debug3(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap));
 	  if (c_gap > last_nogap) {  /* Use > for jump early */
 	    last_nogap = c_gap;
@@ -2885,7 +2891,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
   int rlo, rhigh, rlo_calc, rhigh_calc;
   int na1, na2, na2_alt;
   Score16_T *pairscores_col0;
-  Score16_T *pairscores[5], *pairscores_std_ptr, *pairscores_alt_ptr, pairscore;
+  Score16_T *pairscores[5], *pairscores_std_ptr, *pairscores_alt_ptr, pairscore, pairscore0;
   Pairdistance_T **pairdistance_array_type;
 
 #ifdef DEBUG14
@@ -3095,11 +3101,11 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  if (c > 0) {
 	    /* Set bottom values to DIAG (not HORIZ) to prevent going outside of lband */
 	    pairscore = pairscores[na2][rhigh_calc];
-	    if ((score = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
-	      pairscore = score;
+	    if ((pairscore0 = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
+	      pairscore = pairscore0;
 	    }
 	    /* No need to fix for non-SSE4.1: pairscore -= 128; */
-	    if ((score = matrix[c-1][rhigh_calc-1] + pairscore) < NEG_INFINITY_16) {
+	    if ((score = (int) matrix[c-1][rhigh_calc-1] + (int) pairscore) < NEG_INFINITY_16) {
 	      score_column[rhigh_calc] = NEG_INFINITY_16; /* Saturation */
 	    } else if (score > POS_INFINITY_16) {
 	      score_column[rhigh_calc] = POS_INFINITY_16; /* Saturation */
@@ -3123,7 +3129,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	} else {
 	  debug3(printf("At c %d, uband %d, reading c_gap %d\n",c,uband,FF[c]));
 	  c_gap = FF[c];
-	  last_nogap = score_column[rlo_calc-1];
+	  last_nogap = (int) score_column[rlo_calc-1];
 	}
 
 	if ((r = rlo_calc) == c - uband) {
@@ -3136,7 +3142,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  /* (*directions_Fgap)[c][r] = DIAG: -- Already initialized to DIAG */
 
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  r++;
 	}
 
@@ -3154,7 +3160,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  }
 	  
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  debug3(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap));
 	  if (c_gap >= last_nogap) {  /* Use >= for jump late */
 	    last_nogap = c_gap;
@@ -3257,11 +3263,11 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  if (c > 0) {
 	    /* Set bottom values to DIAG (not HORIZ) to prevent going outside of lband */
 	    pairscore = pairscores[na2][rhigh_calc];
-	    if ((score = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
-	      pairscore = score;
+	    if ((pairscore0 = pairscores[(int) na2_alt][rhigh_calc]) > pairscore) {
+	      pairscore = pairscore0;
 	    }
 	    /* No need to fix for non-SSE4.1: pairscore -= 128; */
-	    if ((score = matrix[c-1][rhigh_calc-1] + pairscore) < NEG_INFINITY_16) {
+	    if ((score = (int) matrix[c-1][rhigh_calc-1] + (int) pairscore) < NEG_INFINITY_16) {
 	      score_column[rhigh_calc] = NEG_INFINITY_16; /* Saturation */
 	    } else if (score > POS_INFINITY_16) {
 	      score_column[rhigh_calc] = POS_INFINITY_16; /* Saturation */
@@ -3284,7 +3290,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  last_nogap = NEG_INFINITY_INT;
 	} else {
 	  c_gap = FF[c];
-	  last_nogap = score_column[rlo_calc-1];
+	  last_nogap = (int) score_column[rlo_calc-1];
 	}
 
 	if ((r = rlo_calc) == c - uband) {
@@ -3297,7 +3303,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  /* (*directions_Fgap)[c][r] = DIAG: -- Already initialized to DIAG */
 	  
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  r++;
 	}
 
@@ -3315,7 +3321,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 	  }
 	  
 	  /* NOGAP */
-	  last_nogap = score_column[r];
+	  last_nogap = (int) score_column[r];
 	  debug3(printf("assign nogap at r %d, c %d: H/E %d vs vert + extend %d\n",r,c,last_nogap,c_gap));
 	  if (c_gap > last_nogap) {  /* Use > for jump early */
 	    last_nogap = c_gap;
@@ -4177,7 +4183,7 @@ Dynprog_traceback_8 (List_T pairs, int *nmatches, int *nmismatches, int *nopens,
   while (r > 0 && c > 0) {  /* dir != STOP */
     if ((dir = directions_nogap[c][r]) == HORIZ) {
       dist = 1;
-      while (c > 0 && directions_Egap[--c][r] != DIAG) {
+      while (c > 0 && directions_Egap[c--][r] != DIAG) {
 	dist++;
       }
       if (c == 0) {
@@ -4200,7 +4206,7 @@ Dynprog_traceback_8 (List_T pairs, int *nmatches, int *nmismatches, int *nopens,
 
     } else if (dir == VERT) {
       dist = 1;
-      while (r > 0 && directions_Fgap[c][--r] != DIAG) {
+      while (r > 0 && directions_Fgap[c][r--] != DIAG) {
 	dist++;
       }
       if (r == 0) {
@@ -4330,7 +4336,7 @@ Dynprog_traceback_8_upper (List_T pairs, int *nmatches, int *nmismatches, int *n
       /* Must be HORIZ */
       dist = 1;
       /* Should not need to check for c > 0 if the main diagonal is populated with DIAG */
-      while (/* c > 0 && */ directions_Egap[--c][r] != DIAG) {
+      while (/* c > 0 && */ directions_Egap[c--][r] != DIAG) {
 	dist++;
       }
       assert(c != 0);
@@ -4448,7 +4454,7 @@ Dynprog_traceback_8_lower (List_T pairs, int *nmatches, int *nmismatches, int *n
       /* Must be VERT */
       dist = 1;
       /* Should not need to check for r > 0 if the main diagonal is populated with DIAG */
-      while (/* r > 0 && */ directions_Egap[--r][c] != DIAG) {
+      while (/* r > 0 && */ directions_Egap[r--][c] != DIAG) {
 	dist++;
       }
       assert(r != 0);
@@ -4559,7 +4565,7 @@ Dynprog_traceback_16 (List_T pairs, int *nmatches, int *nmismatches, int *nopens
   while (r > 0 && c > 0) {  /* dir != STOP */
     if ((dir = directions_nogap[c][r]) == HORIZ) {
       dist = 1;
-      while (c > 0 && directions_Egap[--c][r] != DIAG) {
+      while (c > 0 && directions_Egap[c--][r] != DIAG) {
 	dist++;
       }
       if (c == 0) {
@@ -4582,7 +4588,7 @@ Dynprog_traceback_16 (List_T pairs, int *nmatches, int *nmismatches, int *nopens
       
     } else if (dir == VERT) {
       dist = 1;
-      while (r > 0 && directions_Fgap[c][--r] != DIAG) {
+      while (r > 0 && directions_Fgap[c][r--] != DIAG) {
 	dist++;
       }
       if (r == 0) {
@@ -4593,6 +4599,7 @@ Dynprog_traceback_16 (List_T pairs, int *nmatches, int *nmismatches, int *nopens
       }
 
       debug(printf("V%d: ",dist));
+      debug(printf("New dir at %d,%d is %d\n",c,r,dir));
       pairs = Pairpool_add_queryskip(pairs,r+dist,c,dist,rsequence,
 				     queryoffset,genomeoffset,pairpool,revp,
 				     dynprogindex);
@@ -4710,7 +4717,7 @@ Dynprog_traceback_16_upper (List_T pairs, int *nmatches, int *nmismatches, int *
       /* Must be HORIZ */
       dist = 1;
       /* Should not need to check for c > 0 if the main diagonal is populated with DIAG */
-      while (/* c > 0 && */ directions_Egap[--c][r] != DIAG) {
+      while (/* c > 0 && */ directions_Egap[c--][r] != DIAG) {
 	dist++;
       }
       assert(c != 0);
@@ -4828,7 +4835,7 @@ Dynprog_traceback_16_lower (List_T pairs, int *nmatches, int *nmismatches, int *
       /* Must be VERT */
       dist = 1;
       /* Should not need to check for r > 0 if the main diagonal is populated with DIAG */
-      while (/* r > 0 && */ directions_Egap[--r][c] != DIAG) {
+      while (/* r > 0 && */ directions_Egap[r--][c] != DIAG) {
 	dist++;
       }
       assert(r != 0);

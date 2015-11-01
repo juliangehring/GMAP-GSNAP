@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 128855 2014-02-28 21:50:24Z twu $";
+static char rcsid[] = "$Id: get-genome.c 137099 2014-05-23 21:15:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1212,7 +1212,7 @@ main (int argc, char *argv[]) {
       Univ_IIT_dump_sam(/*fp*/stdout,chromosome_iit,/*sam_read_group_id*/NULL,/*sam_read_group_name*/NULL,
 			/*sam_read_group_library*/NULL,/*sam_read_group_platform*/NULL);
     } else {
-      Univ_IIT_dump_table(chromosome_iit,/*zerobasedp*/true);
+      Univ_IIT_dump_table(chromosome_iit,/*zerobasedp*/false);
     }
     Univ_IIT_free(&chromosome_iit);
     return 0;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chrom.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: chrom.c 138522 2014-06-09 17:08:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -219,6 +219,19 @@ Chrom_cmp_chrom (T a, T b) {
       debug(printf("alpha %s cmp %s => %d\n",
 		   a->string,b->string,strcmp(a->string,b->string)));
     return strcmp(a->string,b->string);
+  }
+}
+
+
+int
+Chrom_cmp_order (T a, T b) {
+
+  if (a->order < b->order) {
+    return -1;
+  } else if (b->order < a->order) {
+    return +1;
+  } else {
+    return 0;
   }
 }
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 136085 2014-05-13 23:00:04Z twu $";
+static char rcsid[] = "$Id: samprint.c 138718 2014-06-11 17:06:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -54,7 +54,7 @@ static char rcsid[] = "$Id: samprint.c 136085 2014-05-13 23:00:04Z twu $";
 
 static bool quiet_if_excessive_p;
 static int maxpaths_report;
-static bool fails_as_input_p;
+static char *failedinput_root;
 static bool fastq_format_p;
 static bool hide_soft_clips_p = true;
 
@@ -65,11 +65,11 @@ static IIT_T snps_iit;
 
 void
 SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in,
-	   bool fails_as_input_p_in, bool fastq_format_p_in, bool hide_soft_clips_p_in,
+	   char *failedinput_root_in, bool fastq_format_p_in, bool hide_soft_clips_p_in,
 	   bool sam_multiple_primaries_p_in,
 	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in) {
   quiet_if_excessive_p = quiet_if_excessive_p_in;
-  fails_as_input_p = fails_as_input_p_in;
+  failedinput_root = failedinput_root_in;
   fastq_format_p = fastq_format_p_in;
   hide_soft_clips_p = hide_soft_clips_p_in;
   maxpaths_report = maxpaths_report_in;
@@ -81,8 +81,10 @@ SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in,
 }
 
 
-static FILE *fp_nomapping_1;
-static FILE *fp_nomapping_2;
+static FILE *fp_failedinput_1;
+static FILE *fp_failedinput_2;
+
+static FILE *fp_nomapping;
 static FILE *fp_unpaired_uniq;
 static FILE *fp_unpaired_circular;
 static FILE *fp_unpaired_transloc;
@@ -111,11 +113,13 @@ static FILE *fp_concordant_mult_xs_2;
 
 
 void
-SAM_file_setup_single (FILE *fp_nomapping_1_in,
+SAM_file_setup_single (FILE *fp_failedinput_in, FILE *fp_nomapping_in,
 		       FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
 		       FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in) {
 
-  fp_nomapping_1 = fp_nomapping_1_in;
+  fp_failedinput_1 = fp_failedinput_in;
+
+  fp_nomapping = fp_nomapping_in;
   fp_unpaired_uniq = fp_unpaired_uniq_in;
   fp_unpaired_circular = fp_unpaired_circular_in;
   fp_unpaired_transloc = fp_unpaired_transloc_in;
@@ -126,7 +130,7 @@ SAM_file_setup_single (FILE *fp_nomapping_1_in,
 }
 
 void
-SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+SAM_file_setup_paired (FILE *fp_failedinput_1_in, FILE *fp_failedinput_2_in, FILE *fp_nomapping_in, 
 		       FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
 		       FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
 		       FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
@@ -134,8 +138,10 @@ SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
 		       FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
 		       FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in) {
 
-  fp_nomapping_1 = fp_nomapping_1_in;
-  fp_nomapping_2 = fp_nomapping_2_in;
+  fp_failedinput_1 = fp_failedinput_1_in;
+  fp_failedinput_2 = fp_failedinput_2_in;
+
+  fp_nomapping = fp_nomapping_in;
   fp_halfmapping_uniq = fp_halfmapping_uniq_in;
   fp_halfmapping_circular = fp_halfmapping_circular_in;
   fp_halfmapping_transloc = fp_halfmapping_transloc_in;
@@ -160,7 +166,7 @@ SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
 }
 
 void
-SAM_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+SAM_file_setup_all (FILE *fp_failedinput_1_in, FILE *fp_failedinput_2_in, FILE *fp_nomapping_in,
 		    FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
 		    FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in, FILE *fp_unpaired_mult_xs_2_in,
 		    FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
@@ -170,8 +176,10 @@ SAM_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
 		    FILE *fp_concordant_uniq_in, FILE *fp_concordant_circular_in, FILE *fp_concordant_transloc_in, 
 		    FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in) {
   
-  fp_nomapping_1 = fp_nomapping_1_in;
-  fp_nomapping_2 = fp_nomapping_2_in;
+  fp_failedinput_1 = fp_failedinput_1_in;
+  fp_failedinput_2 = fp_failedinput_2_in;
+
+  fp_nomapping = fp_nomapping_in;
   fp_unpaired_uniq = fp_unpaired_uniq_in;
   fp_unpaired_circular = fp_unpaired_circular_in;
   fp_unpaired_transloc = fp_unpaired_transloc_in;
@@ -1549,7 +1557,6 @@ print_insertion (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   int nmismatches_refdiff = 0, nmismatches_bothdiff = 0, querylength;
   char *genomicfwd_refdiff, *genomicfwd_bothdiff, *genomicdir_refdiff, *genomicdir_bothdiff;
   int substring1_start, substring2_start, substring1_length, substring2_length, matchlength, nindels;
-  int querypos;
   int hardclip_low, hardclip_high;
   /* int mate_hardclip_low, mate_hardclip_high; */
   bool plusp, printp;
@@ -4643,21 +4650,23 @@ SAM_print (FILE *fp, char *abbrev, Stage3end_T this, Stage3end_T mate,
   hittype = Stage3end_hittype(this);
   /* printf("hittype %s, chrpos %u\n",Stage3end_hittype_string(this),chrpos); */
   if (npaths == 0) {		/* was chrpos == 0, but we can actually align to chrpos 0 */
-    if (fails_as_input_p == false) {
-      SAM_print_nomapping(fp,abbrev,queryseq,mate,acc1,acc2,chromosome_iit,resulttype,first_read_p,
-			  npaths_mate,mate_chrpos,quality_shift,
-			  sam_read_group_id,invertp,invert_mate_p);
-    } else if (fastq_format_p == true) {
-      if (first_read_p == true) {
-	Shortread_print_query_singleend_fastq(fp,queryseq,/*headerseq*/queryseq);
+    SAM_print_nomapping(fp,abbrev,queryseq,mate,acc1,acc2,chromosome_iit,resulttype,first_read_p,
+			npaths_mate,mate_chrpos,quality_shift,
+			sam_read_group_id,invertp,invert_mate_p);
+
+    if (failedinput_root != NULL) {
+      if (fastq_format_p == true) {
+	if (first_read_p == true) {
+	  Shortread_print_query_singleend_fastq(fp_failedinput_1,queryseq,/*headerseq*/queryseq);
+	} else {
+	  Shortread_print_query_singleend_fastq(fp_failedinput_1,queryseq,/*headerseq*/queryseq_mate);
+	}
       } else {
-	Shortread_print_query_singleend_fastq(fp,queryseq,/*headerseq*/queryseq_mate);
-      }
-    } else {
-      if (first_read_p == true) {
-	Shortread_print_query_singleend_fasta(fp,queryseq,/*headerseq*/queryseq);
-      } else {
-	Shortread_print_query_singleend_fasta(fp,queryseq,/*headerseq*/queryseq_mate);
+	if (first_read_p == true) {
+	  Shortread_print_query_singleend_fasta(fp_failedinput_2,queryseq,/*headerseq*/queryseq);
+	} else {
+	  Shortread_print_query_singleend_fasta(fp_failedinput_2,queryseq,/*headerseq*/queryseq_mate);
+	}
       }
     }
 
@@ -5063,24 +5072,26 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       /* No output */
       return;
       
-    } else if (fails_as_input_p == false) {
-      SAM_print_nomapping(fp_nomapping_1,ABBREV_NOMAPPING_1,queryseq1,/*mate*/(Stage3end_T) NULL,
+    } else 
+      SAM_print_nomapping(fp_nomapping,ABBREV_NOMAPPING_1,queryseq1,/*mate*/(Stage3end_T) NULL,
 			  acc1,acc2,chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*npaths_mate*/0,
 			  /*mate_chrpos*/0U,quality_shift,
 			  sam_read_group_id,invert_first_p,invert_second_p);
-      SAM_print_nomapping(fp_nomapping_1,ABBREV_NOMAPPING_1,queryseq2,/*mate*/(Stage3end_T) NULL,
+      SAM_print_nomapping(fp_nomapping,ABBREV_NOMAPPING_2,queryseq2,/*mate*/(Stage3end_T) NULL,
 			  acc1,acc2,chromosome_iit,resulttype,
 			  /*first_read_p*/false,/*npaths_mate*/0,
 			  /*mate_chrpos*/0U,quality_shift,
 			  sam_read_group_id,invert_second_p,invert_first_p);
-    } else if (fastq_format_p == true) {
-      Shortread_print_query_pairedend_fastq(fp_nomapping_1,fp_nomapping_2,queryseq1,queryseq2,
-					    invert_first_p,invert_second_p);
-    } else {
-      Shortread_print_query_pairedend_fasta(fp_nomapping_1,queryseq1,queryseq2,
-					    invert_first_p,invert_second_p);
-    }
+      if (failedinput_root != NULL) {
+	if (fastq_format_p == true) {
+	  Shortread_print_query_pairedend_fastq(fp_failedinput_1,fp_failedinput_2,queryseq1,queryseq2,
+						invert_first_p,invert_second_p);
+	} else {
+	  Shortread_print_query_pairedend_fasta(fp_failedinput_1,queryseq1,queryseq2,
+						invert_first_p,invert_second_p);
+	}
+      }
 
   } else {
     if (failsonlyp == true) {
@@ -5157,7 +5168,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* Not able to print as input */
 	  /* Print as nomapping, but send to fp_concordant_transloc */
 	  SAM_print_nomapping(fp_concordant_transloc,ABBREV_CONCORDANT_TRANSLOC,
@@ -5236,26 +5247,27 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
-	if (fails_as_input_p == false) {
-	  /* Print as nomapping, but send to fp_concordant_mult_xs */
-	  SAM_print_nomapping(fp_concordant_mult_xs_1,ABBREV_CONCORDANT_MULT_XS,
-			      queryseq1,/*mate*/(Stage3end_T) NULL,
-			      acc1,acc2,chromosome_iit,resulttype,
-			      /*first_read_p*/true,/*npaths_mate*/npaths,
-			      /*mate_chrpos*/0U,quality_shift,
-			      sam_read_group_id,invert_first_p,invert_second_p);
-	  SAM_print_nomapping(fp_concordant_mult_xs_1,ABBREV_CONCORDANT_MULT_XS,
-			      queryseq2,/*mate*/(Stage3end_T) NULL,
-			      acc1,acc2,chromosome_iit,resulttype,
-			      /*first_read_p*/false,/*npaths_mate*/npaths,
-			      /*mate_chrpos*/0U,quality_shift,
-			      sam_read_group_id,invert_second_p,invert_first_p);
-	} else if (fastq_format_p == true) {
-	  Shortread_print_query_pairedend_fastq(fp_concordant_mult_xs_1,fp_concordant_mult_xs_2,queryseq1,queryseq2,
-						invert_first_p,invert_second_p);
-	} else {
-	  Shortread_print_query_pairedend_fasta(fp_concordant_mult_xs_1,queryseq1,queryseq2,
-						invert_first_p,invert_second_p);
+	/* Print as nomapping, but send to fp_concordant_mult_xs */
+	SAM_print_nomapping(fp_concordant_mult_xs_1,ABBREV_CONCORDANT_MULT_XS,
+			    queryseq1,/*mate*/(Stage3end_T) NULL,
+			    acc1,acc2,chromosome_iit,resulttype,
+			    /*first_read_p*/true,/*npaths_mate*/npaths,
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_first_p,invert_second_p);
+	SAM_print_nomapping(fp_concordant_mult_xs_1,ABBREV_CONCORDANT_MULT_XS,
+			    queryseq2,/*mate*/(Stage3end_T) NULL,
+			    acc1,acc2,chromosome_iit,resulttype,
+			    /*first_read_p*/false,/*npaths_mate*/npaths,
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_second_p,invert_first_p);
+	if (failedinput_root != NULL) {
+	  if (fastq_format_p == true) {
+	    Shortread_print_query_pairedend_fastq(fp_failedinput_1,fp_failedinput_2,queryseq1,queryseq2,
+						  invert_first_p,invert_second_p);
+	  } else {
+	    Shortread_print_query_pairedend_fasta(fp_failedinput_1,queryseq1,queryseq2,
+						  invert_first_p,invert_second_p);
+	  }
 	}
 
       } else {
@@ -5373,26 +5385,28 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       stage3pairarray = (Stage3pair_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
 
       if (quiet_if_excessive_p && npaths > maxpaths_report) {
-	if (fails_as_input_p == false) {
-	  /* Print as nomapping, but send to fp_concordant_mult */
-	  SAM_print_nomapping(fp_paired_mult_xs_1,ABBREV_PAIRED_MULT_XS,
-			      queryseq1,/*mate*/(Stage3end_T) NULL,
-			      acc1,acc2,chromosome_iit,resulttype,
-			      /*first_read_p*/true,/*npaths_mate*/npaths,
-			      /*mate_chrpos*/0U,quality_shift,
-			      sam_read_group_id,invert_first_p,invert_second_p);
-	  SAM_print_nomapping(fp_paired_mult_xs_1,ABBREV_PAIRED_MULT_XS,
-			      queryseq2,/*mate*/(Stage3end_T) NULL,
-			      acc1,acc2,chromosome_iit,resulttype,
-			      /*first_read_p*/false,/*npaths_mate*/npaths,
-			      /*mate_chrpos*/0U,quality_shift,
-			      sam_read_group_id,invert_second_p,invert_first_p);
-	} else if (fastq_format_p == true) {
-	  Shortread_print_query_pairedend_fastq(fp_paired_mult_xs_1,fp_paired_mult_xs_2,queryseq1,queryseq2,
-						invert_first_p,invert_second_p);
-	} else {
-	  Shortread_print_query_pairedend_fasta(fp_paired_mult_xs_1,queryseq1,queryseq2,
-						invert_first_p,invert_second_p);
+	/* Print as nomapping, but send to fp_concordant_mult */
+	SAM_print_nomapping(fp_paired_mult_xs_1,ABBREV_PAIRED_MULT_XS,
+			    queryseq1,/*mate*/(Stage3end_T) NULL,
+			    acc1,acc2,chromosome_iit,resulttype,
+			    /*first_read_p*/true,/*npaths_mate*/npaths,
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_first_p,invert_second_p);
+	SAM_print_nomapping(fp_paired_mult_xs_1,ABBREV_PAIRED_MULT_XS,
+			    queryseq2,/*mate*/(Stage3end_T) NULL,
+			    acc1,acc2,chromosome_iit,resulttype,
+			    /*first_read_p*/false,/*npaths_mate*/npaths,
+			    /*mate_chrpos*/0U,quality_shift,
+			    sam_read_group_id,invert_second_p,invert_first_p);
+
+	if (failedinput_root != NULL) {
+	  if (fastq_format_p == true) {
+	    Shortread_print_query_pairedend_fastq(fp_failedinput_1,fp_failedinput_2,queryseq1,queryseq2,
+						  invert_first_p,invert_second_p);
+	  } else {
+	    Shortread_print_query_pairedend_fasta(fp_failedinput_1,queryseq1,queryseq2,
+						  invert_first_p,invert_second_p);
+	  }
 	}
 
       } else {
@@ -5548,7 +5562,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_first_p,invert_second_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths_report) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* Just printing one end as nomapping */
 	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq1,mate,acc1,acc2,chromosome_iit,
 			      resulttype,/*first_read_p*/true,/*npaths_mate*/npaths2,
@@ -5607,7 +5621,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_second_p,invert_first_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths_report) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* Just printing one end as nomapping */
 	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq2,mate,acc1,acc2,chromosome_iit,
 			      resulttype,/*first_read_p*/false,/*npaths_mate*/npaths1,
@@ -5703,7 +5717,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
       if (npaths1 == 0) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* just printing one end as nomapping */
 	  /* mate should be non-NULL here */
 	  SAM_print_nomapping(fp,abbrev,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
@@ -5731,7 +5745,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_first_p,invert_second_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths1 > maxpaths_report) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* Just printing one end as nomapping */
 	  /* mate should be NULL here */
 	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq1,mate,acc1,acc2,chromosome_iit,resulttype,
@@ -5776,7 +5790,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
       }
 
       if (npaths2 == 0) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* Just printing one end as nomapping */
 	  /* mate should be non-NULL here */
 	  SAM_print_nomapping(fp,abbrev,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,
@@ -5804,7 +5818,7 @@ SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  invert_second_p,invert_first_p,merge_samechr_p);
 
       } else if (quiet_if_excessive_p && npaths2 > maxpaths_report) {
-	if (1 || fails_as_input_p == false) {
+	if (1 || failedinput_root != NULL) {
 	  /* Just printing one end as nomapping */
 	  /* mate should be NULL here */
 	  SAM_print_nomapping(fp_xs,abbrev_xs,queryseq2,mate,acc1,acc2,chromosome_iit,resulttype,

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read-univ.c 133835 2014-04-21 21:36:02Z twu $";
+static char rcsid[] = "$Id: iit-read-univ.c 137099 2014-05-23 21:15:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -543,7 +543,11 @@ Univ_IIT_dump_table (T this, bool zerobasedp) {
     startpos = Univinterval_low(interval);
     endpos = startpos + Univinterval_length(interval) - 1U;
 
-    printf("%lu..%lu\t",startpos,endpos);
+    if (zerobasedp) {
+      printf("%lu..%lu\t",startpos,endpos);
+    } else {
+      printf("%lu..%lu\t",startpos+1,endpos+1);
+    }
 
     printf("%u",Univinterval_length(interval));
     if (Univinterval_type(interval) > 0) {

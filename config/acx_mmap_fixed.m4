@@ -77,7 +77,7 @@ char *malloc ();
 ],
 [
   char *data, *data2, *data3;
-  int i, pagesize;
+  size_t i, pagesize;
   int fd;
 
   pagesize = getpagesize ();
@@ -105,7 +105,7 @@ char *malloc ();
   data2 = (char *) malloc (2 * pagesize);
   if (!data2)
     exit (1);
-  data2 += (pagesize - ((int) data2 & (pagesize - 1))) & (pagesize - 1);
+  data2 += (pagesize - ((size_t) data2 & (pagesize - 1))) & (pagesize - 1);
   if (data2 != mmap (data2, pagesize, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_FIXED, fd, 0L))
     exit (1);

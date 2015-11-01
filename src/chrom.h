@@ -1,4 +1,4 @@
-/* $Id: chrom.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: chrom.h 138522 2014-06-09 17:08:44Z twu $ */
 #ifndef CHROM_INCLUDED
 #define CHROM_INCLUDED
 #include "bool.h"
@@ -23,6 +23,8 @@ extern int
 Chrom_cmp_numeric_alpha (T a, T b);
 extern int
 Chrom_cmp_chrom (T a, T b);
+extern int
+Chrom_cmp_order (T a, T b);
 
 extern int
 Chrom_compare_order (const void *x, const void *y);
@@ -32,6 +34,8 @@ extern int
 Chrom_compare_numeric_alpha (const void *x, const void *y);
 extern int
 Chrom_compare_chrom (const void *x, const void *y);
+extern int
+Chrom_compare_order (const void *x, const void *y);
 
 extern int
 Chrom_compare_table (const void *x, const void *y);

@@ -1,4 +1,4 @@
-/* $Id: samprint.h 128289 2014-02-22 01:10:57Z twu $ */
+/* $Id: samprint.h 136801 2014-05-21 19:22:46Z twu $ */
 #ifndef SAMPRINT_INCLUDED
 #define SAMPRINT_INCLUDED
 
@@ -15,17 +15,17 @@
 
 extern void
 SAM_setup (bool quiet_if_excessive_p_in, int maxpaths_report_in,
-	   bool fails_as_input_p_in, bool fastq_format_p_in, bool hide_soft_clips_p_in,
+	   char *failedinput_root_in, bool fastq_format_p_in, bool hide_soft_clips_p_in,
 	   bool sam_multiple_primaries_p_in,
 	   bool force_xs_direction_p_in, bool md_lowercase_variant_p_in, IIT_T snps_iit_in);
 
 extern void
-SAM_file_setup_single (FILE *fp_nomapping_1_in,
+SAM_file_setup_single (FILE *fp_failedinput_in, FILE *fp_nomapping_in,
 		       FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
 		       FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in);
 
 extern void
-SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+SAM_file_setup_paired (FILE *failedinput_1_in, FILE *failedinput_2_in, FILE *fp_nomapping_in,
 		       FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
 		       FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
 		       FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
@@ -34,7 +34,7 @@ SAM_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
 		       FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
 
 extern void
-SAM_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+SAM_file_setup_all (FILE *failedinput_1_in, FILE *failedinput_2_in, FILE *fp_nomapping_in,
 		    FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
 		    FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in, FILE *fp_unpaired_mult_xs_2_in,
 		    FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,

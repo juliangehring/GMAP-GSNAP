@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_genome.c 136097 2014-05-14 00:30:10Z twu $";
+static char rcsid[] = "$Id: dynprog_genome.c 138118 2014-06-04 20:28:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -91,22 +91,6 @@ static char rcsid[] = "$Id: dynprog_genome.c 136097 2014-05-14 00:30:10Z twu $";
 #define FINAL_GCAG_INTRON 20    /* Amount above regular should approximately
 				   match FINAL_CANONICAL_INTRON - CANONICAL_INTRON */
 #define FINAL_ATAC_INTRON 12
-
-#define PAIRED_OPEN_HIGHQ -12	/* was -18 */
-#define PAIRED_OPEN_MEDQ -8
-#define PAIRED_OPEN_LOWQ -4
-
-#define PAIRED_EXTEND_HIGHQ -3	/* was -3 */
-#define PAIRED_EXTEND_MEDQ -2
-#define PAIRED_EXTEND_LOWQ -1
-
-#define SINGLE_OPEN_HIGHQ -12	/* was -10 */
-#define SINGLE_OPEN_MEDQ -8
-#define SINGLE_OPEN_LOWQ -4
-
-#define SINGLE_EXTEND_HIGHQ -3	/* was -3 */
-#define SINGLE_EXTEND_MEDQ -2
-#define SINGLE_EXTEND_LOWQ -1
 
 /* Don't want to make too high, otherwise we will harm evaluation of
    dual introns vs. single intron */
@@ -2439,7 +2423,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		   Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		   bool halfp, bool finalp, bool jump_late_p) {
   bool result;
-  int bestscore = NEG_INFINITY_32, score, scoreL, scoreR, scoreI, bestscoreI = NEG_INFINITY_32;
+  int bestscore = NEG_INFINITY_32, score, scoreL, scoreR, scoreI;
+  /* int bestscoreI = NEG_INFINITY_32; */
   int bestscore_with_prob = NEG_INFINITY_32;
   int rL, rR, cL, cR;
   int bestrL_with_prob, bestrR_with_prob, bestcL_with_prob, bestcR_with_prob;
@@ -2448,7 +2433,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   char left1, left2, right2, right1, left1_alt, left2_alt, right2_alt, right1_alt;
   int *leftdi, *rightdi, introntype;
   int *left_known, *right_known;
-  double *left_probabilities, *right_probabilities, probL, probR, probL_trunc, probR_trunc, bestprob, bestprob_trunc, prob;
+  double *left_probabilities, *right_probabilities, probL, probR, probL_trunc, probR_trunc, bestprob, bestprob_trunc;
   Univcoord_T splicesitepos, splicesitepos1, splicesitepos2;
   bool bestp;
 
@@ -3826,15 +3811,14 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 			     rsequence,gsequenceL,gsequenceL_alt,rlength,glengthL,
 			     goffsetL,chroffset,chrhigh,watsonp,
 			     mismatchtype,open,extend,lbandL,ubandL,
-			     jump_late_p,/*revp*/false);
+			     jump_late_p,/*revp*/false,/*saturation*/NEG_INFINITY_INT);
   
   Dynprog_compute_bands(&lbandR,&ubandR,rlength,glengthR,extraband_paired,/*widebandp*/true);
   matrixR = Dynprog_standard(&directionsR_nogap,&directionsR_Egap,&directionsR_Fgap,dynprogR,
 			     rev_rsequence,&(rev_gsequenceR[glengthR-1]),&(rev_gsequenceR_alt[glengthR-1]),
-			     rlength,glengthR,
-			     rev_goffsetR,chroffset,chrhigh,watsonp,
-			     mismatchtype,open,extend,
-			     lbandL,ubandR,/*for revp true*/!jump_late_p,/*revp*/true);
+			     rlength,glengthR,rev_goffsetR,chroffset,chrhigh,watsonp,
+			     mismatchtype,open,extend,lbandL,ubandR,
+			     /*for revp true*/!jump_late_p,/*revp*/true,/*saturation*/NEG_INFINITY_INT);
   
   if (bridge_intron_gap(&(*finalscore),&bestrL,&bestrR,&bestcL,&bestcR,
 			&(*introntype),&(*left_prob),&(*right_prob),

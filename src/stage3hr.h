@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 136085 2014-05-13 23:00:04Z twu $ */
+/* $Id: stage3hr.h 138745 2014-06-11 19:04:25Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -42,15 +42,15 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
 		int gmap_min_nconsecutive_in, int index1part, int index1interval,
 		bool novelsplicingp_in, bool merge_samechr_p_in,
-		bool *circularp_in, bool fails_as_input_p_in, bool fastq_format_p_in);
+		bool *circularp_in, char *failedinput_root_in, bool fastq_format_p_in);
 
 extern void
-Stage3hr_file_setup_single (FILE *fp_nomapping_1_in,
+Stage3hr_file_setup_single (FILE *fp_failedinput_in, FILE *fp_nomapping_in,
 			    FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
 			    FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in);
 
 extern void
-Stage3hr_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+Stage3hr_file_setup_paired (FILE *fp_failedinput_1_in, FILE *fp_failedinput_2_in, FILE *fp_nomapping_in,
 			    FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
 			    FILE *fp_halfmapping_mult_in, FILE *fp_halfmapping_mult_xs_1_in, FILE *fp_halfmapping_mult_xs_2_in,
 			    FILE *fp_paired_uniq_circular_in, FILE *fp_paired_uniq_inv_in, FILE *fp_paired_uniq_scr_in,
@@ -59,7 +59,7 @@ Stage3hr_file_setup_paired (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
 			    FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
 
 extern void
-Stage3hr_file_setup_all (FILE *fp_nomapping_1_in, FILE *fp_nomapping_2_in,
+Stage3hr_file_setup_all (FILE *fp_failedinput_1_in, FILE *fp_failedinput_2_in, FILE *fp_nomapping_in,
 			 FILE *fp_unpaired_uniq_in, FILE *fp_unpaired_circular_in, FILE *fp_unpaired_transloc_in,
 			 FILE *fp_unpaired_mult_in, FILE *fp_unpaired_mult_xs_1_in, FILE *fp_unpaired_mult_xs_2_in,
 			 FILE *fp_halfmapping_uniq_in, FILE *fp_halfmapping_circular_in, FILE *fp_halfmapping_transloc_in,
@@ -120,7 +120,7 @@ Stage3end_equiv_score_unpaired_p (List_T hits, int best_score);
 extern int
 Stage3end_best_score_paired (List_T hits);
 extern int
-Stage3end_nmatches (T this);
+Stage3end_nmatches_posttrim (T this);
 extern int
 Stage3end_nmismatches_whole (T this);
 extern int
@@ -187,6 +187,8 @@ extern Chrpos_T
 Stage3end_shortexon_donor_distance (T this);
 extern double
 Stage3end_chimera_prob (T this);
+extern double
+Stage3end_shortexon_prob (T this);
 extern Univcoord_T
 Stage3end_chimera_segmenti_left (T this);
 extern Univcoord_T
@@ -195,6 +197,11 @@ extern int
 Stage3end_chimera_segmenti_cmp (const void *a, const void *b);
 extern int
 Stage3end_chimera_segmentj_cmp (const void *a, const void *b);
+extern int
+Stage3end_shortexon_substringD_cmp (const void *a, const void *b);
+extern int
+Stage3end_shortexon_substringA_cmp (const void *a, const void *b);
+
 extern int
 Stage3end_sensedir (T this);
 extern int
@@ -259,7 +266,7 @@ Stage3pair_absmq_score (Stage3pair_T this);
 extern Chrpos_T
 Stage3pair_pairlength (Stage3pair_T this);
 extern int
-Stage3pair_nmatches (Stage3pair_T this);
+Stage3pair_nmatches_posttrim (int *nmatches5, int *nmatches3, Stage3pair_T this);
 extern bool
 Stage3pair_concordantp (List_T hitpairs);
 extern List_T
@@ -394,8 +401,7 @@ Stage3_determine_pairtype (T hit5, T hit3);
 
 /* If hit5 and hit3 are not NULL, then we know this is part of a pair */
 extern void
-Stage3end_print (FILE *fp, T this, int score,
-		 Univ_IIT_T chromosome_iit, Shortread_T queryseq,
+Stage3end_print (FILE *fp, T this, int score, Univ_IIT_T chromosome_iit, Shortread_T queryseq,
 		 bool invertp, T hit5, T hit3, int pairedlength, int pairscore,
 		 Pairtype_T pairtype, int mapq_score);
 
@@ -408,8 +414,7 @@ extern void
 Stage3pair_print (Result_T result, Resulttype_T resulttype,
 		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  int maxpaths, bool quiet_if_excessive_p,
-		  bool nofailsp, bool failsonlyp,
-		  bool fails_as_input_p, bool fastq_format_p, int quality_shift);
+		  bool nofailsp, bool failsonlyp, bool fastq_format_p, int quality_shift);
 
 extern Stage3pair_T
 Stage3pair_new (T hit5, T hit3, Univcoord_T *splicesites,

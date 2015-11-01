@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 150410 2014-10-09 21:56:30Z twu $
+# $Id: gmap_build.pl.in 153958 2014-11-24 17:56:42Z twu $
 
 use warnings;	
 
@@ -69,6 +69,8 @@ if (!defined($dbname)) {
     $dbdir = $1;
     $dbname = $2;
     if (defined($destdir) && $destdir =~ /\S/) {
+	# Note: The -D and -F arguments to gmapindex are different from the -D argument to gmap/gsnap.
+	# For gmapindex, we use -D /path/to/dir/dbname -d dbname.  For gmap/gsnap, we use -D /path/to/dir -d dbname.
 	$destdir = $destdir . "/" . $dbname;
     } else {
 	$destdir = $dbdir;

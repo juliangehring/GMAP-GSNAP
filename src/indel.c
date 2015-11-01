@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indel.c 148844 2014-09-24 21:32:56Z twu $";
+static char rcsid[] = "$Id: indel.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -64,8 +64,8 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
 
   assert(indels > 0);
   debug2(Genome_fill_buffer_blocks(left+indels,querylength-indels,gbuffer));
-  debug2(printf("solve_middle_indel, plus, insertion: Getting genome at diagonal - querylength %d + indels %d = %lu\n",
-		querylength,indels,left+indels));
+  debug2(printf("solve_middle_indel, plus, insertion: Getting genome at diagonal - querylength %d + indels %d = %llu\n",
+		querylength,indels,(unsigned long long) left+indels));
   debug2(printf("g1: %s\n",gbuffer));
   debug2(printf("g2: %s\n",&(gbuffer[indels])));
 
@@ -227,8 +227,8 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
   assert(indels < 0);
   debug2(gbuffer = (char *) CALLOC(querylength-indels+1,sizeof(char)));
   debug2(Genome_fill_buffer_blocks(left,querylength-indels,gbuffer));
-  debug2(printf("solve_middle_indel, plus, deletion (indels %d): Getting genome at diagonal - querylength %d = %lu\n",
-		indels,querylength,left));
+  debug2(printf("solve_middle_indel, plus, deletion (indels %d): Getting genome at diagonal - querylength %d = %llu\n",
+		indels,querylength,(unsigned long long) left));
   debug2(printf("g1: %s\n",gbuffer));
   debug2(printf("g2: %s\n",&(gbuffer[-indels])));
   debug2(FREE(gbuffer));

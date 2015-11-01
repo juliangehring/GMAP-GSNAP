@@ -1,3 +1,454 @@
+2015-06-15  twu
+
+    * VERSION: Updated version number
+
+    * substring.c: Fixed debugging statements
+
+    * stage3hr.c: Fixed debugging statement
+
+    * pair.c: No longer reporting XS for non-canonical splices
+
+    * splice.c: In group_by_segmenti_aux and group_by_segmentj_aux, checking
+      plusp for each individual hit in deciding whether to group donor or
+      acceptor
+
+2015-05-15  twu
+
+    * gmap.c, gsnap.c, uniqscan.c: Using old interface for Indexdb_new_genome
+
+    * VERSION: Updated version number
+
+    * genome.c, genome128_hr.c, gmap.c, gsnap.c, indexdb.c, mode.h,
+      sarray-read.c, stage1hr.c, substring.c, uniqscan.c: Implemented
+      ttoc-stranded and ttoc-nonstranded modes
+
+    * substring.c, substring.h: Added function Substring_compute_chrpos
+
+    * stage3hr.c: Turned on TRANSLOC_SPECIAL to remove translocations when
+      non-translocation alignments are found.  Using effective_chr for printing
+      purposes.  Pushing both substrings for a distant splice.
+
+    * samprint.c: Using new procedure Substring_compute_chrpos.  No longer using
+      concordant_chrpos.
+
+    * outbuffer.c: Not trying to find substring_low for SAMECHR_SPLICE or
+      TRANSLOC_SPLICE
+
+2015-05-01  twu
+
+    * VERSION: Updated version number
+
+    * chimera.c: Applying patch 162196 from trunk to add range of chimerapos to
+      XT field
+
+    * iit-read.c: Applying patch 164702 from trunk to check for possibility of a
+      zero-length array in IIT_get_highs_for_low and IIT_get_lows_for_high
+
+    * stage3hr.c: Applying patch 164702 from trunk to fix order of LtoH
+      substrings for deletions
+
+2015-03-25  twu
+
+    * VERSION: Updated version number
+
+    * VERSION, public-2014-12-17, src, stage3hr.c: Merged revisions 161720
+      through 161861 from trunk to fix --clip-overlap and --merge-overlap
+
+2015-03-23  twu
+
+    * src, stage3hr.c: Merged revision 161669 from trunk to do final
+      test_hardclip
+
+    * src, substring.c: Merged revision 161663 from trunk to fix alias_circular
+      and unalias_circular for genomicstart_adj
+
+2015-03-22  twu
+
+    * src, stage3hr.c: Merged revision 161659 from trunk to change endpoint test
+      in Stage3end_substring_low
+
+    * src, stage3hr.c, substring.c, substring.h: Merged revisions 161649 through
+      161651 from trunk to add genomicstart_adj and genomicend_adj
+
+2015-03-21  twu
+
+    * src, stage3hr.c, substring.c, substring.h: Merged revisions 161638 and
+      161639 to restore genomicstart for substring2 of insertions and deletions,
+      and to change Substring_convert_to_pairs instead
+
+    * public-2014-12-17: Updated version number
+
+    * pair.c, src: Merged revision 161633 from trunk to make
+      Pairarray_contains_p routine look for any gap or indel
+
+    * public-2014-12-17, src, stage3hr.c: Merged revisions 161606 and 161608
+      from trunk to adjust low_querypos and high_querypos independently
+
+    * public-2014-12-17, src, stage3hr.c: Merged revision 161603 from trunk to
+      make overlap clipping more even
+
+    * src, stage3hr.c: Merged revision 161600 from trunk to fix bug in defining
+      left2 for deletion
+
+    * VERSION, list.c, list.h, pair.c, pair.h, public-2014-12-17, src,
+      stage3hr.c, substring.c: Merged revisions 161197 through 161596 from trunk
+      to fix --clip-overlap and --merge-overlap
+
+2015-03-18  twu
+
+    * public-2014-12-17, src, stage3hr.c: Merged revision 161197 from trunk to
+      fix a fatal bug in adjust_hardclips
+
+    * VERSION, public-2014-12-17, src: Updated version number
+
+    * samprint.c, stage3hr.c, stage3hr.h, substring.c, substring.h: Merged
+      revisions 160877 through 161118 from trunk to undo use of
+      substring_hardclipped, and to use substring_LtoH instead
+
+2015-03-13  twu
+
+    * outbuffer.c, samprint.c, samprint.h: Applied revision 160876 from trunk to
+      change SAM_compute_chrpos to search for the hardclipped substring, rather
+      than using substring_low
+
+    * shortread.c: Initializing nextchar2 in various procedures
+
+    * stage3hr.c: Applied revision 160755 from trunk to restore correct ilength
+      calculations for minus strand and adjust hardclips by checking adjacent
+      positions left and right of the crossover querypos.
+
+2015-03-06  twu
+
+    * stage3hr.c: Fixed bampair_sort_cmp to eliminate duplicates that were not
+      being removed
+
+    * stage3hr.c: Fixes made to computation of overlap
+
+2015-03-03  twu
+
+    * VERSION: Updated version number
+
+    * ax_ext.m4: Checking for tzcnt to run successfully
+
+    * genome128_hr.c: Changed from HAVE_BMI1 to HAVE_TZCNT
+
+    * stage3.c: Turned off branch that can lead to bad CIGAR strings
+
+2015-02-12  twu
+
+    * VERSION, chimera.c, pair.c, pair.h, public-2014-12-17, src: Applied patch
+      158533 from trunk for GMAP chimeras.  Adding a pre-extension slop in
+      finding paths to pair, but not when finding a breakpoint between the final
+      paths.
+
+2015-02-10  twu
+
+    * stage1.c: Merging revision 158350 from trunk to limit number of results in
+      find_range to 100 to avoid getting bogged down in repeats
+
+    * gmap.c, gsnap.c, pair.c, pair.h, uniqscan.c: Merging revision 158352 from
+      trunk to always add a separator line for gff3 output.  Added
+      --gff3-add-separators flag to GMAP.
+
+    * gff3_genes.pl.in, gff3_introns.pl.in, gff3_splicesites.pl.in, util: Merged
+      revision 158348 from trunk to always read chr from line for gff3 files
+      without a gene name
+
+2015-02-04  twu
+
+    * VERSION, public-2014-12-17, src: Updated version number
+
+    * pair.c: Applied patch 158025 to add merge slop in Pair_pathscores to allow
+      better identification of merges
+
+2015-02-03  twu
+
+    * VERSION, gmap.c, pair.c, pair.h, public-2014-12-17, src, stage1hr.c,
+      stage3.c, stage3.h: Merged revisions 157718 to 157789 from trunk to
+      compute goodness for Stage3_T objects every time pairarray is generated
+
+2015-01-29  twu
+
+    * outbuffer.c: Moved mutex of locks outside of loops to clear out backlog in
+      Outbuffer_thread_anyorder and Outbuffer_thread_ordered
+
+    * stage3.c: Applied revision 157718 from trunk to use npairs and matches as
+      secondary criteria beyond goodness in Stage3_cmp
+
+    * stage3.c: Fixed wrong variable name in call to score_introns
+
+2015-01-22  twu
+
+    * memchk.c, popcount.c: Added include of config.h
+
+    * VERSION, bitpack64-read.h, bitpack64-serial-read.h, compress.h, dynprog.h,
+      except.h, genomicpos.h, iit-read.h, indexdb-write.h, indexdb.h,
+      indexdbdef.h, oligoindex_hr.h, popcount.h, public-2014-12-17, samprint.h,
+      sequence.h, sortinfo.h, src: Merged revisions 157224 and 157225 from trunk
+      to remove and add config.h from header files
+
+2015-01-16  twu
+
+    * gmap.c, pair.c, public-2014-12-17, src, stage2.c, stage3.c: Merged
+      revision 156845 from trunk to make better decisions for last exons having
+      partial alignments
+
+    * public-2014-12-17: Created release branch from public-2014-12-16
+
+2015-01-15  twu
+
+    * oligoindex_hr.c: Applied patch 156816 from trunk to allow all diagonals in
+      Oligoindex_get_mappings
+
+    * chimera.c, chimera.h, gmap.c: Applied patch 156811 from trunk to fix
+      non-exon-exon breakpoint and dinucleotides
+
+2015-01-14  twu
+
+    * stage2.c: Applied patch 156104 from trunk to fix uninitialized variable
+      for firstactive
+
+    * stage3hr.c: In anomalous_splice_p procedures, checking for samechr_splice
+      hittypes
+
+    * stage1hr.c: Not running GMAP on samechr_splice hittypes
+
+    * stage1hr.c: Applied patch 156105 from trunk to use correct typecast of
+      ambcoords to (Uint8list_T) NULL for large genomes
+
+2014-12-16  twu
+
+    * sarray-read.c: Applied patch 155495 to fix typo of spliceends_antisense to
+      spliceends_sense
+
+    * samheader.c: Applied patch 155409 to not print tabs if there are no
+      headers
+
+    * doublelist.c: Applied patch 155291 to fix type
+
+    * public-2014-12-16: Created release version from revision 154791
+
+2014-12-06  twu
+
+    * stage1hr.c: Fixed typo in assigning probs_acceptor
+
+    * VERSION, config.site.rescomp.prd, doublelist.c, doublelist.h, gsnap.c,
+      samprint.c, sarray-read.c, splice.c, src, stage1hr.c, stage1hr.h,
+      stage3hr.c, stage3hr.h, trunk, uniqscan.c: Merged revisions 154673 through
+      154777 from branches/2014-12-04-stage1-ambig to compute ambiguous splicing
+      better in suffix array, stage1, and combining splices.  Fixed memory leak
+      and changed criteria for comparing across hits
+
+2014-12-05  twu
+
+    * samprint.c, stage3hr.c, stage3hr.h: Merged revisions 154673 through 154678
+      from branches/2014-12-04-stage1-ambig to change XA field
+
+    * index.html: Updated for latest version
+
+    * configure.ac: Added more detailed messages about our own loading of
+      config.site files to counteract the warning message from the standard
+      autoconf loading
+
+2014-12-04  twu
+
+    * uniqscan.c: Using new interface to Substring_setup
+
+    * gsnap.c: Replaced --terminal-output-minlength with --reject-trimlength
+
+    * stage1hr.c, stage1hr.h: Calling Sarray_search_greedy with nmisses_allowed
+      being cutoff_level, and not querylength.  Using reject_trimlength instead
+      of terminal_output_minlength.
+
+    * stage3hr.c, stage3hr.h: Replaced Stage3_filter_terminals with
+      Stage3_reject_trimlengths
+
+    * substring.c, substring.h: Implemented new logic based on
+      reject_trimlength.  True terminals from the GSNAP algorithm are allowed at
+      this point (but taken care of now by Stage3end_reject_trimlengths).
+
+    * sarray-read.c: Improved debugging statements
+
+2014-12-03  twu
+
+    * stage3hr.c: No longer trying to clip overlaps when the two ends are not in
+      a concordant orientation
+
+    * outbuffer.c: Using new interface to SAM_print_nomapping
+
+    * samprint.c, samprint.h: Allowing for non-zero npaths to be printed in
+      SAM_print_nomapping as an NH field, which can occur with the
+      --quiet-if-excessive feature
+
+    * samread.c: Allowing for the possibility that XO is the first field in a
+      SAM line
+
+    * stage3hr.c: Fixed problem with --merge-distant-samchr feature giving the
+      wrong chrpos on SAM output on distant splices, since this was being
+      treated the same as a translocation (chrnum == 0)
+
+    * samread.c: Terminating parse_XO procedures for either '\0' or '\n'
+
+    * gmap.c, gsnap.c: Including default variables in --help statement
+
+2014-12-02  twu
+
+    * stage3hr.c: Calculating common_shift to get more even splits between the
+      two paired ends, by accounting for the common shared point between
+      common_right and common_left.
+
+    * sarray-read.c: Fixed typo in a for loop
+
+    * sam_sort.c: Made --no-sam-headers option work correctly
+
+    * sam_sort.c, samheader.c, samheader.h: For --split-output function, writing
+      SAM header files to each output file
+
+2014-11-27  twu
+
+    * archive.html, index.html: Updated for latest version
+
+2014-11-26  twu
+
+    * README: Added comment about sam_sort and --split-output
+
+2014-11-25  twu
+
+    * sam_sort.c, samflags.h, samread.c, samread.h: Added --split-output and
+      --append-output options
+
+    * outbuffer.c: Changed abbrev NM in comment
+
+    * stage1hr.c: Changed calculation of amb_nmatches to amb_length
+
+    * stage3hr.c: Swapping ilength_low and ilength_high for GMAP when alignment
+      is minus
+
+    * stage1hr.c: Turning off debugging
+
+    * bootstrap.gsnaptoo: Running automake to add missing files
+
+    * trunk, util: Merged revisions 153682 to 154020 from
+      branches/2014-11-20-redo-overlap to compute overlap better using ilength53
+      and ilength35 and a common shift
+
+    * outbuffer.c, pair.c, pair.h, samprint.c, samprint.h, src, stage3hr.c,
+      stage3hr.h, substring.c, substring.h: Merged revisions 153682 to 154020
+      from branches/2014-11-20-redo-overlap to compute overlap better using
+      ilength53 and ilength35 and a common shift
+
+    * sarray-read.c: Merged revisions 153682 to 154020 to handle ambiguous
+      splicing better
+
+2014-11-24  twu
+
+    * INSTALL, VERSION, config.site.rescomp.prd, index.html, trunk: No longer
+      keeping track of INSTALL
+
+    * config.guess, config.sub, ltmain.sh: No longer keeping track of
+      config.guess, config.sub, or ltmain.sh
+
+    * gmap_build.pl.in: Added comment about meaning of -D flag
+
+    * acinclude.m4, configure.ac: Adding check for MPI
+
+    * ax_mpi.m4: Added code for MPI
+
+    * access.c, bitpack64-read.c, bitpack64-readtwo.c, bitpack64-write.c,
+      compress-write.c, genome-write.c, genome.c, genome128-write.c,
+      genome128.c, genome_sites.c, get-genome.c, gmapindex.c, iit-read-univ.c,
+      iit-read.c, iit_get.c, iit_store.c, indel.c, indexdb-write.c, indexdb.c,
+      indexdb_hr.c, mem.c, oligoindex_hr.c, sam_sort.c, samheader.c, snpindex.c,
+      src, stage1hr.c, stage3.c, table.c, tableuint8.c, uniqscan.c,
+      univinterval.c: Merged revisions 153114 to 153944 from
+      branches/2014-11-12-make-check-i386 to make tests work in i386 computers
+
+    * stage3hr.c: Not using ambiguous splices to update found_score
+
+    * stage2.c: Removed adjacentp as unused variables
+
+    * samprint.c, samprint.h: For circular alignments, checking for sole HS
+      pattern.  Also checking for chrpos > chrlength, and subtracting chrlength
+      if necessary.
+
+    * pair.c, pair.h: Added Cigar_action_T.  Added Pair_check_cigar.  Removed
+      prev as an unused variable.
+
+    * iit-write-univ.c: Handling the case if total_nintervals is 0
+
+    * gmap.c, gsnap.c: Added --action-if-cigar-error
+
+2014-11-18  twu
+
+    * bytecoding.c: Removed unused variable
+
+    * gmapindex.c: Printing genome length to stderr
+
+    * bytecoding.c: Using a buffer of 10,000,000 block-sizes, and writing
+      iteratively, rather than a single buffer and single write.
+
+2014-11-13  twu
+
+    * gmapindex.c: Made some changes in casting.  Fixed printf format to use
+      %llu.
+
+    * stage3hr.c: Renamed amb_nmatches to amb_length.
+
+    * stage3hr.h: Renamed amb_nmatches to amb_length.
+
+    * samprint.c: In adjust_hardclips, not changing hardclips if shift downward
+      fails. Renamed amb_nmatches to amb_length.
+
+    * splice.c: Renamed amb_nmatches to amb_length.  Providing
+      Substring_match_length_orig to amb_length in Stage3end_new_splice and
+      Stage3end_new_shortexon
+
+    * stage1hr.c: Renamed amb_nmatches to amb_length.  Providing
+      Substring_match_length_orig to amb_length in Stage3end_new_splice and
+      Stage3end_new_shortexon
+
+2014-10-31  twu
+
+    * iit-read-univ.c, iit-read.c: Using %llu and casting to (long long int) for
+      printing offset and filesize
+
+    * gmap.c, gsnap.c: Using %zu for printing results of sizeof().
+
+2014-10-29  twu
+
+    * stage3hr.c: Restoring revision of SAM insertlength for ends involving GMAP
+      when method is successful
+
+    * stage3hr.c: Fixed SAM output of insert length of 0 when no overlap is
+      found in a GMAP alignment
+
+    * stage3.c: Added debugging statements
+
+    * gmap.c, gmapindex.c, gsnap.c: Added output statement at end of checking
+      compiler assumptions
+
+    * README: Added comment about change from PG: to XG:
+
+    * ax_ext.m4, configure.ac: Added option to enable or disable sse4.2
+
+    * samprint.c: Fixed typo in adjust_hardclips.  Also, when querypos increase
+      fails, trying querypos decrease.
+
+    * samprint.c: Fixed infinite loop in adjust_hardclips
+
+2014-10-28  twu
+
+    * stage3hr.c: Fixed bug with uninitialized variables
+
+    * outbuffer.c: Fixing potential data race as noted by valgrind for
+      this->ntotal between input and output threads, although not problematic
+      before, because this->ntotal increases monotonically
+
+2014-10-27  twu
+
+    * stage3hr.c: Fixed computation of overlap between GMAP and non-GMAP
+      alignments
+
 2014-10-22  twu
 
     * gregion.c: Checking size before deciding to use alloca or malloc.

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read-univ.c 149319 2014-09-30 02:15:42Z twu $";
+static char rcsid[] = "$Id: iit-read-univ.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -506,7 +506,7 @@ Univ_IIT_dump (T this) {
     startpos = Univinterval_low(interval);
     endpos = startpos + Univinterval_length(interval) - 1U;
 
-    printf(" %lu..%lu",startpos,endpos);
+    printf(" %llu..%llu",(unsigned long long) startpos,(unsigned long long) endpos);
 
     if (Univinterval_type(interval) > 0) {
       printf(" %s",Univ_IIT_typestring(this,Univinterval_type(interval)));
@@ -544,9 +544,9 @@ Univ_IIT_dump_table (T this, bool zerobasedp) {
     endpos = startpos + Univinterval_length(interval) - 1U;
 
     if (zerobasedp) {
-      printf("%lu..%lu\t",startpos,endpos);
+      printf("%llu..%llu\t",(unsigned long long) startpos,(unsigned long long) endpos);
     } else {
-      printf("%lu..%lu\t",startpos+1,endpos+1);
+      printf("%llu..%llu\t",(unsigned long long) startpos+1,(unsigned long long) endpos+1);
     }
 
     printf("%u",Univinterval_length(interval));
@@ -719,16 +719,16 @@ Univ_IIT_dump_contigs (T this, T chromosome_iit, bool directionalp) {
     chrstring = Univ_IIT_label(chromosome_iit,chromosome_index,&allocp); 
 
     if (directionalp == false) {
-      printf("%lu..%lu\t",startpos+1U,endpos+1U);
+      printf("%llu..%llu\t",(unsigned long long) startpos+1U,(unsigned long long) endpos+1U);
       printf("%s:%u..%u\t",chrstring,chrstart+1U,chrend+1U);
 
     } else {
       firstchar = Univ_IIT_annotation_firstchar(this,index+1);
       if (firstchar == '-') {
-	printf("%lu..%lu\t",endpos+1U,startpos+1U);
+	printf("%llu..%llu\t",(unsigned long long) endpos+1U,(unsigned long long) startpos+1U);
 	printf("%s:%u..%u\t",chrstring,chrend+1U,chrstart+1U);
       } else {
-	printf("%lu..%lu\t",startpos+1U,endpos+1U);
+	printf("%llu..%llu\t",(unsigned long long) startpos+1U,(unsigned long long) endpos+1U);
 	printf("%s:%u..%u\t",chrstring,chrstart+1U,chrend+1U);
       }
     }
@@ -800,29 +800,24 @@ Univ_IIT_free (T *old) {
 }
 
 
-#ifdef HAVE_FSEEKO
 
 static void
 move_relative (FILE *fp, off_t offset) {
+
+#ifdef HAVE_FSEEKO
   if (fseeko(fp,offset,SEEK_CUR) < 0) {
     fprintf(stderr,"Error in move_relative, seek\n");
     abort();
   }
-  return;
-}
-
 #else
-
-static void
-move_relative (FILE *fp, long int offset) {
-  if (fseek(fp,offset,SEEK_CUR) < 0) {
+  if (fseek(fp,(long) offset,SEEK_CUR) < 0) {
     fprintf(stderr,"Error in move_relative, seek\n");
     abort();
   }
+#endif
+
   return;
 }
-
-#endif
 
 
 static off_t
@@ -832,8 +827,8 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
   UINT4 uint4;
 
   if ((offset += sizeof(int)*(new->total_nintervals+1)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after sigmas %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after sigmas %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     exit(9);
   } else {
     new->sigmas = (int *) CALLOC(new->total_nintervals+1,sizeof(int));
@@ -844,8 +839,8 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
   }
 
   if ((offset += sizeof(int)*(new->total_nintervals+1)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after omegas %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after omegas %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     exit(9);
   } else {
     new->omegas = (int *) CALLOC(new->total_nintervals+1,sizeof(int));
@@ -892,7 +887,7 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
 	FREAD_INT(&(new->nodes[i].b),fp);
 	FREAD_INT(&(new->nodes[i].leftindex),fp);
 	FREAD_INT(&(new->nodes[i].rightindex),fp);
-	printf("i %d, node value %lu\n",i,new->nodes[i].value);
+	printf("i %d, node value %llu\n",i,(unsigned long long) new->nodes[i].value);
       }
       offset += (sizeof(UINT8)+sizeof(int)+sizeof(int)+sizeof(int)+sizeof(int))*new->nnodes;
 #endif
@@ -909,8 +904,8 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
     }
 #endif
     if (offset > filesize) {
-      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nodes %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	      filename,(unsigned long) offset,(unsigned long) filesize);
+      fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nodes %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	      filename,(long long int) offset,(long long int) filesize);
       exit(9);
     }
   }
@@ -962,8 +957,8 @@ read_intervals_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T n
   }
 #endif
   if (offset > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after intervals %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after intervals %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     exit(9);
   }
 
@@ -1007,14 +1002,14 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
   debug1(printf("Starting read of labelorder offset/length\n"));
   new->labelorder_offset = offset;
   new->labelorder_length = (size_t) (new->total_nintervals*sizeof(int));
-  /* fprintf(stderr,"Doing a move_relative for labelorder_length %lu\n",new->labelorder_length); */
+  /* fprintf(stderr,"Doing a move_relative for labelorder_length %zu\n",new->labelorder_length); */
   move_relative(fp,new->labelorder_length);
   offset += new->labelorder_length;
 
   debug1(printf("Starting read of labelpointer offset/length\n"));
   new->labelpointers_offset = offset;
   new->labelpointers_length = (size_t) ((new->total_nintervals+1)*sizeof(UINT4));
-  /* fprintf(stderr,"Doing a move_relative for labelpointer %lu\n",new->total_nintervals * sizeof(UINT4)); */
+  /* fprintf(stderr,"Doing a move_relative for labelpointer %zu\n",new->total_nintervals * sizeof(UINT4)); */
   move_relative(fp,new->total_nintervals * sizeof(UINT4));
   FREAD_UINT(&length,fp);
   new->label_length = (size_t) length;
@@ -1023,7 +1018,7 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
   debug1(printf("Starting read of label offset/length\n"));
   new->label_offset = offset;
   /* new->label_length computed above */
-  /* fprintf(stderr,"Doing a move_relative for label_length %lu\n",new->label_length); */
+  /* fprintf(stderr,"Doing a move_relative for label_length %zu\n",new->label_length); */
   move_relative(fp,new->label_length);
   offset += new->label_length;
 
@@ -1042,15 +1037,15 @@ read_words (off_t offset, off_t filesize, FILE *fp, T new) {
   fprintf(stderr,"Incorrect length: %u\n",length);
 #else
   new->annot_length = filesize - new->annot_offset;
-  /* fprintf(stderr,"annot_length: %lu\n",new->annot_length); */
+  /* fprintf(stderr,"annot_length: %zu\n",new->annot_length); */
 #endif
 
 #if 0
   /* To do this check, we need to get stringlen for annotation similarly to that for labels */
   last_offset = offset + sizeof(char)*stringlen;
   if (last_offset != filesize) {
-    fprintf(stderr,"Problem with last_offset (%lu) not equal to filesize = (%lu)\n",
-	    (unsigned long) last_offset,(unsigned long) filesize);
+    fprintf(stderr,"Problem with last_offset (%lld) not equal to filesize = (%lld)\n",
+	    (long long int) last_offset,(long long int) filesize);
     exit(9);
   }
 #endif
@@ -1102,7 +1097,7 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
   new->label_length = (size_t) length;
   offset += new->labelpointers_length;
 
-  fprintf(stderr,"label_length: %lu\n",new->label_length);
+  fprintf(stderr,"label_length: %zu\n",new->label_length);
   debug1(printf("Starting read of label offset/length\n"));
   new->label_offset = offset;
   /* new->label_length computed above */
@@ -1124,15 +1119,15 @@ read_words_debug (off_t offset, off_t filesize, FILE *fp, T new) {
   fprintf(stderr,"Incorrect length: %u\n",length);
 #else
   new->annot_length = filesize - new->annot_offset;
-  fprintf(stderr,"annot_length: %lu\n",new->annot_length);
+  fprintf(stderr,"annot_length: %zu\n",new->annot_length);
 #endif
 
 #if 0
   /* To do this check, we need to get stringlen for annotation similarly to that for labels */
   last_offset = offset + sizeof(char)*stringlen;
   if (last_offset != filesize) {
-    fprintf(stderr,"Problem with last_offset (%lu) not equal to filesize = (%lu)\n",
-	    (unsigned long) last_offset,(unsigned long) filesize);
+    fprintf(stderr,"Problem with last_offset (%lld) not equal to filesize = (%lld)\n",
+	    (long long int) last_offset,(long long int) filesize);
     exit(9);
   }
 #endif
@@ -1292,8 +1287,8 @@ Univ_IIT_read (char *filename, bool readonlyp, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     return NULL;
   }
 
@@ -1333,8 +1328,8 @@ Univ_IIT_read (char *filename, bool readonlyp, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     return NULL;
   }
   debug(printf("ntypes: %d\n",new->ntypes));
@@ -1346,8 +1341,8 @@ Univ_IIT_read (char *filename, bool readonlyp, bool add_iit_p) {
     fprintf(stderr,"IIT file %s appears to have a negative number of nodes\n",filename);
     return NULL;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nnodes %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nnodes %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     return NULL;
   }
 
@@ -1419,8 +1414,8 @@ Univ_IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to be empty\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after first byte %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     return;
   }
 
@@ -1452,8 +1447,8 @@ Univ_IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to have a negative number of types\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after ntypes %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     return;
   }
   printf("ntypes: %d\n",new->ntypes);
@@ -1465,8 +1460,8 @@ Univ_IIT_debug (char *filename) {
     fprintf(stderr,"IIT file %s appears to have a negative number of nodes\n",filename);
     return;
   } else if ((offset += sizeof(int)) > filesize) {
-    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nnodes %lu, filesize %lu).  Did you generate it using iit_store?\n",
-	    filename,(unsigned long) offset,(unsigned long) filesize);
+    fprintf(stderr,"IIT file %s has an invalid binary format -- offset is too large (offset after nnodes %lld, filesize %lld).  Did you generate it using iit_store?\n",
+	    filename,(long long int) offset,(long long int) filesize);
     return;
   }
 
@@ -1521,11 +1516,11 @@ fnode_query_aux (int *min, int *max, T this, int nodeindex, Univcoord_T x) {
   }
 
   node = &(this->nodes[nodeindex]);
-  debug(printf("Entered fnode_query_aux with nodeindex %d: a %d, b %d, leftindex %d, rightindex %d, value %lu\n",
-	       nodeindex,node->a,node->b,node->leftindex,node->rightindex,node->value));
+  debug(printf("Entered fnode_query_aux with nodeindex %d: a %d, b %d, leftindex %d, rightindex %d, value %llu\n",
+	       nodeindex,node->a,node->b,node->leftindex,node->rightindex,(unsigned long long) node->value));
 
   if (x == node->value) {
-    debug(printf("%luD:\n",node->value));
+    debug(printf("%lluD:\n",(unsigned long long) node->value));
     if (node->a < *min) {
       *min = node->a;
     }
@@ -1534,9 +1529,9 @@ fnode_query_aux (int *min, int *max, T this, int nodeindex, Univcoord_T x) {
     }
     return;
   } else if (x < node->value) {
-    debug(printf("x %lu < node->value %lu\n",x,node->value));
+    debug(printf("x %llu < node->value %llu\n",(unsigned long long) x,(unsigned long long) node->value));
     fnode_query_aux(&(*min),&(*max),this,node->leftindex,x);
-    debug(printf("%luL:\n",node->value));
+    debug(printf("%lluL:\n",(unsigned long long) node->value));
     if (node->a < *min) {
       *min = node->a;
     }
@@ -1554,9 +1549,9 @@ fnode_query_aux (int *min, int *max, T this, int nodeindex, Univcoord_T x) {
     return;
   } else { 
     /* (node->value < x) */
-    debug(printf("x %lu > node->value %lu\n",x,node->value));
+    debug(printf("x %llu > node->value %llu\n",(unsigned long long) x,(unsigned long long) node->value));
     fnode_query_aux(&(*min),&(*max),this,node->rightindex,x);
-    debug(printf("%luR:\n", node->value));
+    debug(printf("%lluR:\n",(unsigned long long) node->value));
     if (node->b > *max) {
       *max = node->b;
     }
@@ -1816,7 +1811,7 @@ Univ_IIT_get_one (T this, Univcoord_T x, Univcoord_T y) {
 
   min1 = min2 = this->total_nintervals + 1;
 
-  debug(printf("Entering Univ_IIT_get_one with query %lu %lu\n",x,y));
+  debug(printf("Entering Univ_IIT_get_one with query %llu %llu\n",(unsigned long long) x,(unsigned long long) y));
   fnode_query_aux(&min1,&max1,this,0,x);
   fnode_query_aux(&min2,&max2,this,0,y);
   debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));

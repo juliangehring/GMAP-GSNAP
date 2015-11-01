@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 145990 2014-08-25 21:47:32Z twu $";
+static char rcsid[] = "$Id: genome.c 165782 2015-05-15 18:16:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10326,6 +10326,9 @@ Genome_setup (T genome_in, T genomealt_in, Mode_T mode_in, int circular_typeint_
   } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
     fwd_conversion = "GCGT";
     rev_conversion = "ACGC";
+  } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+    fwd_conversion = "ACGC";
+    rev_conversion = "GCGT";
   }
   circular_typeint = circular_typeint_in;
   return;
@@ -10406,7 +10409,7 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_
   }
   gbuffer1[length] = '\0';
 
-  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
 
   /* Fix out of bounds resulting from crossing chromosomes */
   if (chromosome_iit == NULL) {
@@ -10449,7 +10452,7 @@ fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_
 	inbounds_high = high - left;
       }
     }
-    debug(printf("in-bounds at %lu..%lu\n",inbounds_low,inbounds_high));
+    debug(printf("in-bounds at %llu..%llu\n",(unsigned long long) inbounds_low,(unsigned long long) inbounds_high));
     for (pos = 0; pos < inbounds_low; pos++) {
       gbuffer1[pos] = OUTOFBOUNDS;
       *nunknowns += 1;
@@ -10484,11 +10487,7 @@ Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, unsigned c
 
   /* Fix out of bounds resulting from negative numbers */
   if (left + length < left) {
-#ifdef HAVE_64_BIT
-    fprintf(stderr,"left %lu + length %u < left %lu\n",left,length,left);
-#else
-    fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
-#endif
+    fprintf(stderr,"left %llu + length %u < left %llu\n",(unsigned long long) left,length,(unsigned long long) left);
     delta = -left;
     length -= delta;
     for (i = 0; i < delta; i++) {
@@ -10541,7 +10540,7 @@ Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, unsigned c
   }
   gbuffer1[length] = '\0';
 
-  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
 
   return;
 }
@@ -10608,7 +10607,7 @@ Genome_fill_buffer_simple_alt (T genome, T genomealt, Univcoord_T left, Chrpos_T
 
   /* Fix out of bounds resulting from negative numbers */
   if (left + length < left) {
-    fprintf(stderr,"left %lu + length %u < left %lu\n",left,length,left);
+    fprintf(stderr,"left %llu + length %u < left %llu\n",(unsigned long long) left,length,(unsigned long long) left);
     delta = -left;
     length -= delta;
     for (i = 0; i < delta; i++) {
@@ -10657,7 +10656,7 @@ Genome_fill_buffer_simple_alt (T genome, T genomealt, Univcoord_T left, Chrpos_T
   }
   gbuffer1[length] = '\0';
 
-  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
 
   return;
 }
@@ -11004,11 +11003,11 @@ Genome_get_segment (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromo
   if (revcomp == true) {
     /* make_complement_buffered(gbuffer2,gbuffer1,length);*/
     make_complement_inplace(gbuffer,length);
-    debug(printf("Got sequence at %lu with length %u, revcomp\n",left,length));
+    debug(printf("Got sequence at %llu with length %u, revcomp\n",(unsigned long long) left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+    debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
@@ -11031,11 +11030,11 @@ Genome_get_segment_alt (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T ch
   if (revcomp == true) {
     /* make_complement_buffered(gbuffer2,gbuffer1,length); */
     make_complement_inplace(gbuffer,length);
-    debug(printf("Got sequence at %lu with length %u, revcomp\n",left,length));
+    debug(printf("Got sequence at %llu with length %u, revcomp\n",(unsigned long long) left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+    debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer1,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
@@ -11056,11 +11055,11 @@ Genome_get_segment_snp (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T ch
   if (revcomp == true) {
     /* make_complement_buffered(gbuffer2,gbuffer1,length); */
     make_complement_inplace(gbuffer,length);
-    debug(printf("Got sequence at %lu with length %u, revcomp\n",left,length));
+    debug(printf("Got sequence at %llu with length %u, revcomp\n",(unsigned long long) left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   } else {
-    debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+    debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
     debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
     return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
   }
@@ -11144,7 +11143,7 @@ Genome_ntcounts (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T 
     }
   }
 
-  debug(printf("Got sequence at %lu with length %u, forward\n",left,length));
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
 
   return (*na) + (*nc) + (*ng) + (*nt);
 }

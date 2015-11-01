@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 150409 2014-10-09 21:55:59Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -180,6 +180,8 @@ check_compiler_assumptions () {
 #endif
 
 #endif
+
+  fprintf(stderr,"Finished checking compiler assumptions\n");
 
   return;
 }
@@ -417,7 +419,7 @@ process_sequence_aux (Chrpos_T *seglength, Table_T accsegmentpos_table, Table_ch
     return false;
   }
 
-  nitems = sscanf(Buffer,"%s %s %lu",accession_p,chrpos_string,&universal_coord);
+  nitems = sscanf(Buffer,"%s %s %llu",accession_p,chrpos_string,&universal_coord);
   if (nitems < 2) {
     fprintf(stderr,"Can't parse line %s\n",Buffer);
     exit(1);
@@ -563,6 +565,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
   emptystring[0] = '\0';
 
   if (divsort == NO_SORT) {
+    fprintf(stderr,"divsort == NO_SORT\n");
 #ifdef HAVE_64_BIT
     chroms = (Chrom_T *) Tableuint8_keys_by_timeindex(chrlength_table,0U);
     n = Tableuint8_length(chrlength_table);
@@ -588,6 +591,8 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
     default: abort();
     }
   }
+  fprintf(stderr,"Have a total of %d chromosomes\n",n);
+    
 
   /* Write chromosome text file and chrsubset file */
   textfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
@@ -616,15 +621,16 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
   chrtypelist = List_push(chrtypelist,"");
   for (i = 0; i < n; i++) {
 #ifdef HAVE_64_BIT
-    chrlength = (Univcoord_T) Tableuint8_get(chrlength_table,chroms[i]);
+    chrlength = (Chrpos_T) Tableuint8_get(chrlength_table,chroms[i]);
 #else
-    chrlength = (Univcoord_T) Tableuint_get(chrlength_table,chroms[i]);
+    chrlength = (Chrpos_T) Tableuint_get(chrlength_table,chroms[i]);
 #endif
-    assert(chroffset <= chroffset+chrlength-1);
+    assert(chroffset <= chroffset + (Univcoord_T) chrlength - 1);
     chr_string = Chrom_string(chroms[i]);
     if (i < nmessages) {
-      fprintf(stderr,"Chromosome %s has universal coordinates %lu..%lu\n",
-	      chr_string,chroffset+1,chroffset+1+chrlength-1);
+      fprintf(stderr,"Chromosome %s has universal coordinates %llu..%llu\n",
+	      chr_string,(unsigned long long) chroffset+1,
+	      (unsigned long long) chroffset + 1 + (Univcoord_T) chrlength - 1);
     } else if (i == nmessages) {
       fprintf(stderr,"More than %d contigs.  Will stop printing messages\n",nmessages);
     }
@@ -634,8 +640,9 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
       fprintf(chrsubsetfp,"+%s\n",chr_string);
     }
 
-    fprintf(textfp,"%s\t%lu..%lu\t%u",
-	    chr_string,chroffset+1,chroffset+chrlength,chrlength);
+    fprintf(textfp,"%s\t%llu..%llu\t%u",
+	    chr_string,(unsigned long long) chroffset+1,
+	    (unsigned long long) chroffset + (Univcoord_T) chrlength,chrlength);
     if (Chrom_circularp(chroms[i]) == true) {
       fprintf(textfp,"\tcircular");
       typeint = 1;
@@ -644,19 +651,21 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
     }
     fprintf(textfp,"\n");
 
-    intervallist = List_push(intervallist,(void *) Univinterval_new(chroffset,chroffset+chrlength-1U,typeint));
+    intervallist = List_push(intervallist,(void *) Univinterval_new(chroffset,chroffset + (Univcoord_T) chrlength - 1U,typeint));
     labellist = List_push(labellist,(void *) chr_string);
     annotlist = List_push(annotlist,(void *) emptystring); /* No annotations */
+
+    /* Now chrlength_table holds chroffsets, not chrlengths */
 #ifdef HAVE_64_BIT
     Tableuint8_put(chrlength_table,chroms[i],chroffset);
 #else
     Tableuint_put(chrlength_table,chroms[i],chroffset);
 #endif
     if (Chrom_circularp(chroms[i]) == true) {
-      chroffset += chrlength;
-      chroffset += chrlength;
+      chroffset += (Univcoord_T) chrlength;
+      chroffset += (Univcoord_T) chrlength;
     } else {
-      chroffset += chrlength;
+      chroffset += (Univcoord_T) chrlength;
     }
   }
   FREE(chroms);
@@ -669,7 +678,7 @@ write_chromosome_file (char *genomesubdir, char *fileroot, Table_chrpos_T chrlen
   /* Write chromosome IIT file */
   divstring = (char *) CALLOC(1,sizeof(char));
   divstring[0] = '\0';
-  divlist = List_push(NULL,divstring);
+  divlist = List_push(NULL,(void *) divstring);
 
   intervaltable = Table_new(65522,Table_string_compare,Table_string_hash);
   labeltable = Table_new(65522,Table_string_compare,Table_string_hash);
@@ -806,18 +815,18 @@ write_contig_file (char *genomesubdir, char *fileroot, Table_T accsegmentpos_tab
 #else
     chroffset = (Univcoord_T) Tableuint_get(chrlength_table,chrom);
 #endif
-    universalpos1 = chroffset + Segmentpos_chrpos1(segmentpos);
-    universalpos2 = chroffset + Segmentpos_chrpos2(segmentpos);
+    universalpos1 = chroffset + (Univcoord_T) Segmentpos_chrpos1(segmentpos);
+    universalpos2 = chroffset + (Univcoord_T) Segmentpos_chrpos2(segmentpos);
 
     /* Print as 1-based, inclusive [a,b] */
     if (Segmentpos_revcompp(segmentpos) == true) {
-      fprintf(textfp,"%s\t%lu..%lu\t%s:%u..%u\t%u",
-	      accessions[i],universalpos2+1U,universalpos1,
+      fprintf(textfp,"%s\t%llu..%llu\t%s:%u..%u\t%u",
+	      accessions[i],(unsigned long long) universalpos2+1U,(unsigned long long) universalpos1,
 	      Chrom_string(chrom),Segmentpos_chrpos2(segmentpos)+1U,Segmentpos_chrpos1(segmentpos),
 	      Segmentpos_length(segmentpos));
     } else {
-      fprintf(textfp,"%s\t%lu..%lu\t%s:%u..%u\t%u",
-	      accessions[i],universalpos1+1U,universalpos2,
+      fprintf(textfp,"%s\t%llu..%llu\t%s:%u..%u\t%u",
+	      accessions[i],(unsigned long long) universalpos1+1U,(unsigned long long) universalpos2,
 	      Chrom_string(chrom),Segmentpos_chrpos1(segmentpos)+1U,Segmentpos_chrpos2(segmentpos),
 	      Segmentpos_length(segmentpos));
     }
@@ -1238,7 +1247,7 @@ main (int argc, char *argv[]) {
     contigtypelist = List_push(NULL,typestring);
 
     ncontigs = 0;
-    totalnts = 0U;
+    totalnts = 0;
     while (process_sequence_aux(&seglength,accsegmentpos_table,chrlength_table,chrorder_table,fileroot,ncontigs) == true) {
       if (totalnts + seglength < totalnts) {
 	/* Exceeds 32 bits */
@@ -1249,7 +1258,7 @@ main (int argc, char *argv[]) {
       }
       ncontigs++;
     }
-    fprintf(stderr,"Total genomic length = %lu bp\n",totalnts);
+    fprintf(stderr,"Total genomic length = %llu bp\n",(unsigned long long) totalnts);
 
     if (ncontigs == 0) {
       fprintf(stderr,"No contig information was provided to gmapindex\n");
@@ -1257,7 +1266,7 @@ main (int argc, char *argv[]) {
     }
 
 #ifdef HAVE_64_BIT
-    if (totalnts > 4294967295U) {
+    if (totalnts > 4294967295) {
       coord_values_8p = true;
     } else {
       coord_values_8p = false;
@@ -1350,7 +1359,7 @@ main (int argc, char *argv[]) {
 
     noffsets = Indexdb_count_offsets(stdin,chromosome_iit,index1part,index1interval,
 				     genome_lc_p,fileroot,mask_lowercase_p);
-    printf("%lu\n",noffsets);
+    printf("%llu\n",(unsigned long long) noffsets);
 
     Univ_IIT_free(&chromosome_iit);
 #endif
@@ -1477,6 +1486,7 @@ main (int argc, char *argv[]) {
     genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
     Univ_IIT_free(&chromosome_iit);
 
+    fprintf(stderr,"Genome length is %llu\n",(unsigned long long) genomelength);
     if (genomelength > 4294967295) {
       fprintf(stderr,"Suffix arrays not yet supported for large genomes with more than 2^32 bp.  Will use hash table only.\n");
 

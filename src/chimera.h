@@ -1,4 +1,4 @@
-/* $Id: chimera.h 149319 2014-09-30 02:15:42Z twu $ */
+/* $Id: chimera.h 156812 2015-01-15 20:55:07Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -52,8 +52,8 @@ Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chime
 		  Stage3_T *stage3array_sub1, int npaths_sub1, Stage3_T *stage3array_sub2, int npaths_sub2, 
 		  int queryntlength, int chimera_slop, bool localp);
 extern int
-Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T right_part,
-			 int queryntlength);
+Chimera_find_breakpoint (int *chimeraequivpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
+			 Stage3_T left_part, Stage3_T right_part, int queryntlength, Genome_T genome);
 
 #if 0
 extern void

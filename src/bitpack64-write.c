@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-write.c 151045 2014-10-16 19:08:17Z twu $";
+static char rcsid[] = "$Id: bitpack64-write.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -5017,7 +5017,7 @@ Bitpack64_write_differential_huge (char *pagesfile, char *ptrsfile, char *compfi
 
     /* Value for start of block */
     while (ascending[positioni] >= nextpage) {
-      fprintf(stderr,"\nAt position %u (block %u), ascending %lu >= nextpage %lu",
+      fprintf(stderr,"\nAt position %u (block %u), ascending %llu >= nextpage %llu",
 	      positioni,positioni/BLOCKSIZE,ascending[positioni],nextpage);
       pages[pagei++] = positioni/BLOCKSIZE;
       currpage = nextpage;
@@ -5045,7 +5045,7 @@ Bitpack64_write_differential_huge (char *pagesfile, char *ptrsfile, char *compfi
 
     /* Value for start of block */
     while (ascending[positioni] >= nextpage) {
-      fprintf(stderr,"\nAt position %u (block %u), ascending %lu >= nextpage %lu",
+      fprintf(stderr,"\nAt position %u (block %u), ascending %llu >= nextpage %llu",
 	      positioni,positioni/BLOCKSIZE,ascending[positioni],nextpage);
       pages[pagei++] = positioni/BLOCKSIZE;
       currpage = nextpage;
@@ -5079,7 +5079,7 @@ Bitpack64_write_differential_huge (char *pagesfile, char *ptrsfile, char *compfi
 
   /* Value for end of block */
   if (ascending[n] >= nextpage) {
-    fprintf(stderr,"\nAt final oligo %u (block %u), ascending %lu >= nextpage %lu",
+    fprintf(stderr,"\nAt final oligo %u (block %u), ascending %llu >= nextpage %llu",
 	    n,n/BLOCKSIZE,ascending[n],nextpage);
     pages[pagei++] = n/BLOCKSIZE;
     currpage = nextpage;
@@ -5187,7 +5187,7 @@ Bitpack64_write_fixed10_huge (char *pagesfile, char *ptrsfile, char *compfile,
 
     /* Value for start of block */
     while (ascending[positioni] >= nextpage) {
-      fprintf(stderr,"\nAt position %u (block %u), ascending %lu >= nextpage %lu",
+      fprintf(stderr,"\nAt position %u (block %u), ascending %llu >= nextpage %llu",
 	      positioni,positioni/BLOCKSIZE,ascending[positioni],nextpage);
       pages[pagei++] = positioni/BLOCKSIZE;
       currpage = nextpage;
@@ -5219,7 +5219,7 @@ Bitpack64_write_fixed10_huge (char *pagesfile, char *ptrsfile, char *compfile,
 
     /* Value for start of block */
     while (ascending[positioni] >= nextpage) {
-      fprintf(stderr,"\nAt position %u (block %u), ascending %lu >= nextpage %lu",
+      fprintf(stderr,"\nAt position %u (block %u), ascending %llu >= nextpage %llu",
 	      positioni,positioni/BLOCKSIZE,ascending[positioni],nextpage);
       pages[pagei++] = positioni/BLOCKSIZE;
       currpage = nextpage;
@@ -5258,7 +5258,7 @@ Bitpack64_write_fixed10_huge (char *pagesfile, char *ptrsfile, char *compfile,
 
   /* Value for end of block */
   if (ascending[n] >= nextpage) {
-    fprintf(stderr,"\nAt final oligo %u (block %u), ascending %lu >= nextpage %lu",
+    fprintf(stderr,"\nAt final oligo %u (block %u), ascending %llu >= nextpage %llu",
 	    n,n/BLOCKSIZE,ascending[n],nextpage);
     pages[pagei++] = n/BLOCKSIZE;
     currpage = nextpage;

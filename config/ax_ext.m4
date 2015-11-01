@@ -136,8 +136,10 @@ AC_DEFUN([AX_EXT],
       [
         ax_cv_cpu_have_sse42_ext=no
         if test "$((0x$ecx>>20&0x01))" = 1; then
-          ax_cv_cpu_have_sse42_ext=yes
           ax_cv_cpu_features="$ax_cv_cpu_features sse4.2"
+          if test "$ax_cv_want_sse42_ext" = yes; then
+            ax_cv_cpu_have_sse42_ext=yes
+          fi
         fi
       ])
 
@@ -433,8 +435,15 @@ AC_DEFUN([AX_EXT],
             fi
 
             if test "$ax_cv_cpu_have_bmi1_ext" = yes; then
-              SIMD_CFLAGS="$SIMD_CFLAGS -mbmi"
-              AC_DEFINE(HAVE_BMI1,1,[Define to 1 if you support BMI1 (Bit Manipulation Instruction set 1)])
+              CFLAGS=-mbmi
+              AC_RUN_IFELSE(
+                [AC_LANG_PROGRAM([[#include <immintrin.h>]],
+                                 [[return (_tzcnt_u32(0xffffffffu) == 32) ? 0 : 9;]])],
+			         [ax_cv_run_tzcnt_ext=yes])
+              if test x"$ax_cv_run_tzcnt_ext" = x"yes"; then
+                SIMD_CFLAGS="$SIMD_CFLAGS -mbmi"
+                AC_DEFINE(HAVE_TZCNT,1,[Define to 1 if you support Intel intrinsic _tzcnt instruction])
+              fi
             fi
 
             if test "$ax_cv_cpu_have_bmi2_ext" = yes; then

@@ -1,6 +1,10 @@
-/* $Id: except.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: except.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef EXCEPT_INCLUDED
 #define EXCEPT_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_PTHREAD */
+#endif
+
 #include <setjmp.h>
 
 #define T Except_T

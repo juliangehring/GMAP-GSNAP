@@ -1,4 +1,4 @@
-/* $Id: substring.h 148359 2014-09-19 22:09:34Z twu $ */
+/* $Id: substring.h 165781 2015-05-15 18:11:39Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -27,7 +27,8 @@ Substring_setup (bool print_nsnpdiffs_p_in, bool print_snplabels_p_in,
 		 IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 		 int donor_typeint_in, int acceptor_typeint_in, int trim_mismatch_score_in,
 		 bool novelsplicingp_in, bool knownsplicingp_in,
-		 bool output_sam_p_in, Mode_T mode_in, Univcoord_T genomelength_in);
+		 bool output_sam_p_in, Mode_T mode_in, Univcoord_T genomelength_in,
+		 int reject_trimlength_in);
 
 #define T Substring_T
 typedef struct T *T;
@@ -39,8 +40,9 @@ Substring_unalias_circular (T this);
 
 extern T
 Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
-	       Univcoord_T chrhigh, Chrpos_T chrlength,
-	       Univcoord_T left, Univcoord_T genomicstart, Univcoord_T genomicend,
+	       Univcoord_T chrhigh, Chrpos_T chrlength, Univcoord_T left,
+	       Univcoord_T genomicstart, Univcoord_T genomicend,
+	       Univcoord_T genomicstart_adj, Univcoord_T genomicend_adj,
 	       Compress_T query_compress, Endtype_T start_endtype, Endtype_T end_endtype,
 	       int querystart, int queryend, int querylength,
 	       Univcoord_T alignstart, Univcoord_T alignend, int genomiclength,
@@ -73,8 +75,8 @@ extern Chrpos_T
 Substring_insert_length (T substring5, T substring3);
 extern bool
 Substring_overlap_point_trimmed_p (T substring, Univcoord_T endpos);
-extern bool
-Substring_overlap_segment_trimmed_p (T substring1, T substring2);
+extern Univcoord_T
+Substring_overlap_segment_trimmed (T substring1, T substring2);
 
 extern Univcoord_T
 Substring_splicecoord (T this);
@@ -163,14 +165,16 @@ Substring_left_genomicseg (T this);
 extern Univcoord_T
 Substring_genomicstart (T this);
 extern Univcoord_T
+Substring_genomicstart_adj (T this);
+extern Univcoord_T
 Substring_genomicend (T this);
 extern Chrpos_T
 Substring_genomiclength (T this);
 
 extern Chrpos_T
-Substring_chrstart (T this);
+Substring_alignstart_chr (T this);
 extern Chrpos_T
-Substring_chrend (T this);
+Substring_alignend_chr (T this);
 
 extern double
 Substring_chimera_prob (T this);
@@ -222,6 +226,8 @@ extern List_T
 Substring_sort_chimera_halves (List_T hitlist, bool ascendingp);
 
 
+extern Chrpos_T
+Substring_compute_chrpos (T this, int hardclip_low, bool hide_soft_clips_p);
 extern void
 Substring_print_m8 (FILE *fp, T substring, Shortread_T headerseq, char *acc_suffix,
 		    char *chr, bool invertp);
@@ -293,16 +299,16 @@ Substring_count_mismatches_region (T this, int trim_left, int trim_right,
 
 extern List_T
 Substring_convert_to_pairs (List_T pairs, T substring, Shortread_T queryseq,
-			    int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+			    int hardclip_low, int hardclip_high, int queryseq_offset);
 extern List_T
 Substring_add_insertion (List_T pairs, T substringA, T substringB, int insertionlength, Shortread_T queryseq,
-			 int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+			 int hardclip_low, int hardclip_high, int queryseq_offset);
 extern List_T
 Substring_add_deletion (List_T pairs, T substringA, T substringB, char *deletion, int deletionlength,
-			int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+			int hardclip_low, int hardclip_high, int queryseq_offset);
 extern List_T
 Substring_add_intron (List_T pairs, T substringA, T substringB,
-		      int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+		      int hardclip_low, int hardclip_high, int queryseq_offset);
 
 #undef T
 #endif

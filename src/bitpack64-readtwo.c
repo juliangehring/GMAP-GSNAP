@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-readtwo.c 132472 2014-04-06 02:02:52Z twu $";
+static char rcsid[] = "$Id: bitpack64-readtwo.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13763,7 +13763,7 @@ Bitpack64_read_two (UINT4 *end0, Storedoligomer_T oligo, UINT4 *bitpackptrs, UIN
   (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
 
 #ifdef DEBUG
-  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+  printf("oligo: %08X, remainder %d, offset0 %u, offset1 %u\n",
 	 oligo,oligo % BLOCKSIZE,info[1],info[METAINFO_SIZE+1]);
   printf("bitpack:\n");
 
@@ -14087,7 +14087,7 @@ Bitpack64_read_two_huge (UINT8 *end0, Storedoligomer_T oligo,
   (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
 
 #ifdef DEBUG
-  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+  printf("oligo: %08X, remainder %d, offset0 %u, offset1 %u\n",
 	 oligo,oligo % BLOCKSIZE,info[1],info[METAINFO_SIZE+1]);
   printf("bitpack:\n");
 

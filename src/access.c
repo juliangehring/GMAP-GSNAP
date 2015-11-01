@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 140509 2014-07-03 01:47:47Z twu $";
+static char rcsid[] = "$Id: access.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -86,7 +86,7 @@ Access_filesize (char *filename) {
 #else
   stat(filename,&sb);
 #endif
-  debug(printf("filesize is %lu\n",sb.st_size));
+  debug(printf("filesize is %zu\n",sb.st_size));
   return sb.st_size;
 }
 
@@ -440,19 +440,19 @@ Access_mmap (int *fd, size_t *len, char *filename, size_t eltsize, bool randomp)
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on len %ju from length %ju.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on len %jd from length %jd.  Error %d: %s\n",
 	      length,length,errno,strerror(errno));
-      debug(printf("Got MAP_FAILED on len %lu from length %lu\n",length,length));
+      debug(printf("Got MAP_FAILED on len %jd from length %jd\n",length,length));
       memory = NULL;
     } else if (randomp == true) {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %jd bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,*len,MADV_RANDOM);
 #endif
 #endif
     } else {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %jd bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,*len,MADV_DONTNEED);
@@ -505,19 +505,19 @@ Access_mmap_offset (int *remainder, int fd, off_t offset, size_t length, size_t 
 #endif
 		  ,fd,offset);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on fd %d, offset %ju, length %ju.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on fd %d, offset %jd, length %jd.  Error %d: %s\n",
 	      fd,offset,length,errno,strerror(errno));
-      debug(printf("Got MAP_FAILED on fd %d, offset %lu, length %lu\n",fd,offset,length));
+      debug(printf("Got MAP_FAILED on fd %d, offset %jd, length %zu\n",fd,offset,length));
       memory = NULL;
     } else if (randomp == true) {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %jd bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,length,MADV_RANDOM);
 #endif
 #endif
     } else {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %jd bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,length,MADV_DONTNEED);
@@ -575,19 +575,19 @@ Access_mmap_rw (int *fd, size_t *len, char *filename, size_t eltsize, bool rando
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on len %ju from length %ju.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on len %jd from length %jd.  Error %d: %s\n",
 	      *len,length,errno,strerror(errno));
-      debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
+      debug(printf("Got MAP_FAILED on len %zu from length %jd\n",*len,length));
       memory = NULL;
     } else if (randomp == true) {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %jd bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,*len,MADV_RANDOM);
 #endif
 #endif
     } else {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %jd bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,*len,MADV_DONTNEED);
@@ -638,19 +638,19 @@ Access_mmap_offset_rw (int *remainder, int fd, off_t offset, size_t length, size
 #endif
 		  ,fd,offset);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on offset %ju, length %ju.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on offset %jd, length %jd.  Error %d: %s\n",
 	      offset,length,errno,strerror(errno));
-      debug(printf("Got MAP_FAILED on offset %lu, length %lu\n",offset,length));
+      debug(printf("Got MAP_FAILED on offset %jd, length %zu\n",offset,length));
       memory = NULL;
     } else if (randomp == true) {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %zu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_RANDOM
       madvise(memory,length,MADV_RANDOM);
 #endif
 #endif
     } else {
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %zu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_DONTNEED
       madvise(memory,length,MADV_DONTNEED);
@@ -723,15 +723,15 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
 #endif
 		  ,*fd,0);
     if (memory == MAP_FAILED) {
-      fprintf(stderr,"Got mmap failure on len %ju from length %ju.  Error %d: %s\n",
+      fprintf(stderr,"Got mmap failure on len %jd from length %jd.  Error %d: %s\n",
 	      *len,length,errno,strerror(errno));
-      debug(printf("Got MAP_FAILED on len %lu from length %lu\n",*len,length));
+      debug(printf("Got MAP_FAILED on len %jd from length %zu\n",*len,length));
       memory = NULL;
       Stopwatch_stop(stopwatch);
       Stopwatch_free(&stopwatch);
     } else {
       /* Touch all pages */
-      debug(printf("Got mmap of %lu bytes at %p to %p\n",length,memory,memory+length-1));
+      debug(printf("Got mmap of %zu bytes at %p to %p\n",length,memory,memory+length-1));
 #ifdef HAVE_MADVISE
 #ifdef HAVE_MADVISE_MADV_WILLNEED
       madvise(memory,*len,MADV_WILLNEED);

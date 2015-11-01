@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c 149319 2014-09-30 02:15:42Z twu $";
+static char rcsid[] = "$Id: chimera.c 164705 2015-05-01 20:26:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -14,6 +14,7 @@ static char rcsid[] = "$Id: chimera.c 149319 2014-09-30 02:15:42Z twu $";
 #include "maxent.h"
 #include "intron.h"
 #include "comp.h"
+#include "complement.h"
 
 
 #define GBUFFERLEN 1024
@@ -142,6 +143,7 @@ Chimera_print_sam_tag (FILE *fp, T this, Univ_IIT_T chromosome_iit) {
   fprintf(fp,",%c%s@%u..%c%s@%u",
 	  donor_strand,donor_chr,Stage3_chrend(this->from),
 	  acceptor_strand,acceptor_chr,Stage3_chrstart(this->to));
+  fprintf(fp,",%d..%d",this->chimerapos+1,this->equivpos+1);
   if (alloc2p == true) {
     FREE(acceptor_chr);
   }
@@ -208,7 +210,7 @@ Chimera_free (T *old) {
 
 void
 Chimera_print (FILE *fp, T this) {
-  if (this->exonexonpos >= 0) {
+  if (this->exonexonpos > 0) {
     fprintf(fp," *** Possible chimera with exon-exon boundary");
     if (this->cdna_direction > 0) {
       fprintf(fp," (sense)");
@@ -468,6 +470,7 @@ Chimera_distant_join_p (Stage3_T from, Stage3_T to, int chimera_slop) {
 
 
 #define NEG_INFINITY -1000000
+#define PRE_EXTENSION_SLOP 6
 
 bool
 Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chimeraequivpos, int *bestfrom, int *bestto, 
@@ -491,9 +494,11 @@ Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chime
     debug4(printf(" %p",stage3array_sub1[i]));
     matrix_sub1[i] = (int *) CALLOC(queryntlength,sizeof(int));
     gapp_sub1[i] = (bool *) CALLOC(queryntlength,sizeof(bool));
+    debug4(Pair_dump_array(Stage3_pairarray(stage3array_sub1[i]),Stage3_npairs(stage3array_sub1[i]),true));
+    /* Allow pre_extension_slop, in case the parts need extensions to merge */
     Pair_pathscores(gapp_sub1[i],matrix_sub1[i],Stage3_pairarray(stage3array_sub1[i]),
 		    Stage3_npairs(stage3array_sub1[i]),Stage3_cdna_direction(stage3array_sub1[i]),
-		    queryntlength,FIVE);
+		    queryntlength,FIVE,PRE_EXTENSION_SLOP);
   }
   debug4(printf("\n"));
 
@@ -504,9 +509,11 @@ Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chime
     debug4(printf(" %p",stage3array_sub2[i]));
     matrix_sub2[i] = (int *) CALLOC(queryntlength,sizeof(int));
     gapp_sub2[i] = (bool *) CALLOC(queryntlength,sizeof(bool));
+    debug4(Pair_dump_array(Stage3_pairarray(stage3array_sub2[i]),Stage3_npairs(stage3array_sub2[i]),true));
+    /* Allow pre_extension_slop, in case the parts need extensions to merge */
     Pair_pathscores(gapp_sub2[i],matrix_sub2[i],Stage3_pairarray(stage3array_sub2[i]),
 		    Stage3_npairs(stage3array_sub2[i]),Stage3_cdna_direction(stage3array_sub2[i]),
-		    queryntlength,THREE);
+		    queryntlength,THREE,PRE_EXTENSION_SLOP);
   }
   debug4(printf("\n"));
 
@@ -611,24 +618,30 @@ Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chime
   return foundp;
 }
 
+static char *complCode = COMPLEMENT_UC;
 
 /* Modeled after Chimera_bestpath */
+/* Called if Chimera_find_exonexon fails */
 int
-Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T right_part,
-			 int queryntlength) {
-  int chimerapos = 0;
+Chimera_find_breakpoint (int *chimeraequivpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
+			 Stage3_T left_part, Stage3_T right_part, int queryntlength, Genome_T genome) {
+  int chimerapos = 0, breakpoint;
   int *matrix_sub1, *matrix_sub2, pos, score, bestscore;
   bool *gapp_sub1, *gapp_sub2;
+  Univcoord_T left;
 
+  /* Don't allow pre_extension_slop here, because the ends have already been extended */
   matrix_sub1 = (int *) CALLOC(queryntlength,sizeof(int));
   gapp_sub1 = (bool *) CALLOC(queryntlength,sizeof(bool));
+  debug4(Pair_dump_array(Stage3_pairarray(left_part),Stage3_npairs(left_part),true));
   Pair_pathscores(gapp_sub1,matrix_sub1,Stage3_pairarray(left_part),Stage3_npairs(left_part),
-		  Stage3_cdna_direction(left_part),queryntlength,FIVE);
+		  Stage3_cdna_direction(left_part),queryntlength,FIVE,/*pre_extension_slop*/0);
 
   matrix_sub2 = (int *) CALLOC(queryntlength,sizeof(int));
   gapp_sub2 = (bool *) CALLOC(queryntlength,sizeof(bool));
+  debug4(Pair_dump_array(Stage3_pairarray(right_part),Stage3_npairs(right_part),true));
   Pair_pathscores(gapp_sub2,matrix_sub2,Stage3_pairarray(right_part),Stage3_npairs(right_part),
-		  Stage3_cdna_direction(right_part),queryntlength,THREE);
+		  Stage3_cdna_direction(right_part),queryntlength,THREE,/*pre_extension_slop*/0);
 
 
   bestscore = -100000;
@@ -650,7 +663,12 @@ Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T righ
     if (gapp_sub1[pos] == false) {
       if (gapp_sub2[pos+1] == false) {
 	/* Check for the same stage3 object on both lists */
+#if 0
+	/* ? Old formula for use before Pair_pathscores had cdnaend argument */
 	score = matrix_sub2[queryntlength-1] - matrix_sub2[pos] + matrix_sub1[pos] /* - 0 */;
+#else
+	score = matrix_sub1[pos] + matrix_sub2[pos+1];
+#endif
 
 	if (score > bestscore) {
 	  bestscore = score;
@@ -660,7 +678,7 @@ Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T righ
 	}
 
 	debug(
-	      printf("%d",score);
+	      printf("%d = %d + %d",score,matrix_sub1[pos],matrix_sub2[pos+1]);
 	      if (pos >= chimerapos && pos <= *chimeraequivpos) {
 		printf(" ** ");
 	      }
@@ -681,6 +699,28 @@ Chimera_find_breakpoint (int *chimeraequivpos, Stage3_T left_part, Stage3_T righ
 
   FREE(gapp_sub1);
   FREE(matrix_sub1);
+
+  breakpoint = (chimerapos + (*chimeraequivpos))/2;
+
+  if (Stage3_watsonp(left_part) == true) {
+    left = Stage3_genomicpos(left_part,breakpoint,/*headp*/false);
+    *donor1 = Genome_get_char(genome,left+1);
+    *donor2 = Genome_get_char(genome,left+2);
+  } else {
+    left = Stage3_genomicpos(left_part,breakpoint,/*headp*/false);
+    *donor1 = complCode[(int) Genome_get_char(genome,left-1)];
+    *donor2 = complCode[(int) Genome_get_char(genome,left-2)];
+  }
+
+  if (Stage3_watsonp(right_part) == true) {
+    left = Stage3_genomicpos(right_part,breakpoint+1,/*headp*/true);
+    *acceptor2 = Genome_get_char(genome,left-2);
+    *acceptor1 = Genome_get_char(genome,left-1);
+  } else {
+    left = Stage3_genomicpos(right_part,breakpoint+1,/*headp*/true);
+    *acceptor2 = complCode[(int) Genome_get_char(genome,left+2)];
+    *acceptor1 = complCode[(int) Genome_get_char(genome,left+1)];
+  }
 
   return chimerapos;
 }

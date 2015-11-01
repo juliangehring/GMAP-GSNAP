@@ -73,10 +73,7 @@ if (defined($opt_d)) {
 		    if (!defined($gene_name) || $gene_name !~ /\S/) {
 			$gene_name = $last_transcript_id;
 		    }
-		    if (!defined($chr) || $chr !~ /\S/) {
-			$chr = $fields[0];
-		    }
-
+		    $chr = $fields[0];
 		    @exons = ();
 		    @CDS_regions = ();
 

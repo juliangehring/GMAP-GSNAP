@@ -23,7 +23,7 @@ AC_MSG_RESULT(PKG_VERSION)
 
 ### Read defaults
 
-# Handle CONFIG_SITE
+# Handle CONFIG_SITE better than Autoconf does
 for ac_site_file in $CONFIG_SITE; do
   if { (eval echo $ac_site_file | grep '^\./' >/dev/null 2>&1)
        ac_status=$?
@@ -31,20 +31,24 @@ for ac_site_file in $CONFIG_SITE; do
     # ac_site_file starts with ./
     if test -r "$ac_site_file"; then
       ac_site_file="$ac_site_file"
-      echo "loading site script $ac_site_file"
+      echo "really loading site script $ac_site_file: file was found"
       . "$ac_site_file"
       ax_user_site_file_loaded=yes
+    else
+      AC_MSG_ERROR([cannot find $ac_site_file])
     fi
   else
     # ac_site_file does not start with ./
     if test -r "./$ac_site_file"; then
-      echo "loading site script ./$ac_site_file"
+      echo "really loading site script ./$ac_site_file: file was found"
       . "./$ac_site_file"
       ax_user_site_file_loaded=yes
     elif test -r "$ac_site_file"; then
-      echo "loading site script $ac_site_file"
-      . "$ac_site_file"
+      echo "really loading site script $ac_site_file: file was found"
+      . "$ac_site_file" 2>/dev/null
       ax_user_site_file_loaded=yes
+    else
+      AC_MSG_ERROR([cannot find $ac_site_file])
     fi
   fi
 done
@@ -133,8 +137,11 @@ AC_MSG_RESULT($BINDIR)
 # Checks for programs.
 #AC_PATH_PROG([PERL],[perl])
 ACX_PATH_PERL
+
 AC_PROG_CC
 AM_PROG_CC_C_O
+AX_MPI    # Sets MPICC to use for isolated source files that need it
+
 AC_PROG_LIBTOOL
 
 # Checks for libraries.
@@ -310,7 +317,7 @@ case x"$answer" in
      ;;
 
      xno)
-     AC_MSG_RESULT(disabled)
+     AC_MSG_RESULT(disabled by user)
      ax_cv_want_sse2_ext=no
      ;;
 
@@ -343,7 +350,7 @@ else
 	 ;;
 
 	 xno)
-	 AC_MSG_RESULT(disabled)
+	 AC_MSG_RESULT(disabled by user)
 	 ax_cv_want_ssse3_ext=no
 	 ;;
 
@@ -373,7 +380,7 @@ else
 	 ;;
 
 	 xno)
-	 AC_MSG_RESULT(disabled)
+	 AC_MSG_RESULT(disabled by user)
 	 ax_cv_want_sse41_ext=no
 	 ;;
 
@@ -384,14 +391,44 @@ else
     esac	
 fi
 
+
+AC_MSG_CHECKING(whether sse4.2 is enabled)
+AC_ARG_ENABLE([sse4.2],
+	      AC_HELP_STRING([--enable-sse4.2],
+                             [Enable sse4.2 simd commands if they compile and run (default=yes).  Requires that sse4.1 be enabled.]),
+              [answer="$enableval"],
+              [answer=""])
+if test "$ax_cv_want_sse41_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled sse4.1])
+   ax_cv_want_sse42_ext=no
+else
+    case x"$answer" in
+	 xyes)
+	 AC_MSG_RESULT(enabled)
+	 ax_cv_want_sse42_ext=yes
+	 ;;
+
+	 xno)
+	 AC_MSG_RESULT(disabled by user)
+	 ax_cv_want_sse42_ext=no
+	 ;;
+
+	 x)
+	 AC_MSG_RESULT([not specified so enabled by default])
+	 ax_cv_want_sse42_ext=yes
+	 ;;
+    esac	
+fi
+
+
 AC_MSG_CHECKING(whether avx is enabled)
 AC_ARG_ENABLE([avx],
 	      AC_HELP_STRING([--enable-avx],
-                             [Enable avx simd commands if they compile and run (default=yes).  Requires that sse4.1 be enabled.]),
+                             [Enable avx simd commands if they compile and run (default=yes).  Requires that sse4.2 be enabled.]),
               [answer="$enableval"],
               [answer=""])
-if test "$ax_cv_want_sse4.1_ext" = no; then
-   AC_MSG_RESULT([disabled because the user disabled sse4.1])
+if test "$ax_cv_want_sse42_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled sse4.2])
    ax_cv_want_avx_ext=no
 else
     case x"$answer" in
@@ -401,7 +438,7 @@ else
 	 ;;
 
 	 xno)
-	 AC_MSG_RESULT(disabled)
+	 AC_MSG_RESULT(disabled by user)
 	 ax_cv_want_avx_ext=no
 	 ;;
 
@@ -430,7 +467,7 @@ else
 	 ;;
 
 	 xno)
-	 AC_MSG_RESULT(disabled)
+	 AC_MSG_RESULT(disabled by user)
 	 ax_cv_want_avx2_ext=no
 	 ;;
 
@@ -710,6 +747,8 @@ rebuild your compiler and linker.
 ])
 fi
 
+AC_MSG_CHECKING(compiler and flags to be used)
+AC_MSG_RESULT($CC $CFLAGS)
 AC_MSG_CHECKING(pthread compiler flags to be used)
 AC_MSG_RESULT($PTHREAD_CFLAGS)
 AC_MSG_CHECKING(popcnt compiler flags to be used)

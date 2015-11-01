@@ -1,4 +1,4 @@
-/* $Id: samflags.h 149314 2014-09-30 01:14:55Z twu $ */
+/* $Id: samflags.h 154089 2014-11-25 21:03:16Z twu $ */
 #ifndef SAMFLAGS_INCLUDED
 #define SAMFLAGS_INCLUDED
 
@@ -48,6 +48,31 @@
 #define ABBREV_CONCORDANT_TRANSLOC "CT"
 #define ABBREV_CONCORDANT_MULT "CM"
 #define ABBREV_CONCORDANT_MULT_XS "CX"
+
+typedef enum {OUTPUT_NONE,
+	      OUTPUT_NM,	/* nomapping */
+	      OUTPUT_HU,	/* halfmapping_uniq */
+	      OUTPUT_HC,	/* halfmapping_circular */
+	      OUTPUT_HT,	/* halfmapping_transloc */
+	      OUTPUT_HM,	/* halfmapping_mult */
+	      OUTPUT_HX,	/* halfmapping_mult_xs */
+	      OUTPUT_UU,	/* unpaired_uniq */
+	      OUTPUT_UC,	/* unpaired_circular */
+	      OUTPUT_UT,	/* unpaired_transloc */
+	      OUTPUT_UM,	/* unpaired_mult */
+	      OUTPUT_UX,	/* unpaired_mult_xs */
+	      OUTPUT_PC,	/* paired_uniq_circular */
+	      OUTPUT_PI,	/* paired_uniq_inv */
+	      OUTPUT_PS,	/* paired_uniq_scr */
+	      OUTPUT_PL,	/* paired_uniq_long */
+	      OUTPUT_PM,	/* paired_mult */
+	      OUTPUT_PX,	/* paired_mult_xs */
+	      OUTPUT_CU,	/* concordant_uniq */
+	      OUTPUT_CC,	/* concordant_circular */
+	      OUTPUT_CT,	/* concordant_transloc */
+	      OUTPUT_CM,	/* concordant_mult */
+	      OUTPUT_CX}	/* concordant_mult_xs */
+  SAM_split_output_type;
 
 
 #endif

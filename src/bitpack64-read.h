@@ -1,5 +1,9 @@
 #ifndef BITPACK64_READ_INCLUDED
 #define BITPACK64_READ_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_64_BIT */
+#endif
+
 #include "types.h"
 
 /* For reading differential-coded bitstreams */

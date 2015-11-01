@@ -1,4 +1,4 @@
-/* $Id: stage3.h 149319 2014-09-30 02:15:42Z twu $ */
+/* $Id: stage3.h 157977 2015-02-03 18:46:53Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -158,7 +158,7 @@ extern bool
 Stage3_overlap (T x, T y);
 
 extern void
-Stage3_recompute_goodness (List_T stage3list);
+Stage3_compute_mapq (List_T stage3list);
 extern void
 Stage3_recompute_coverage (List_T stage3list, Sequence_T queryseq);
 extern void
@@ -255,8 +255,8 @@ Stage3_print_compressed (FILE *fp, T this, Sequence_T queryseq, Univ_IIT_T chrom
 			 bool checksump, int chimerapos, int chimeraequivpos,
 			 double donor_prob, double acceptor_prob, int chimera_cdna_direction);
 extern T
-Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int cdna_direction, int sensedir,
-	    int stage2_source, int stage2_indexsize,
+Stage3_new (struct Pair_T *pairarray, List_T pairs, int npairs, int goodness,
+	    int cdna_direction, int sensedir, int stage2_source, int stage2_indexsize,
 	    int matches, int unknowns, int mismatches, int qopens, int qindels,
 	    int topens, int tindels, int ncanonical, int nsemicanonical, int nnoncanonical, 
 	    Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
@@ -273,7 +273,7 @@ extern int
 Stage3_good_part (struct Pair_T *pairarray, int npairs, int pos5, int pos3);
 
 extern struct Pair_T *
-Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir,
+Stage3_compute (List_T *pairs, int *npairs, int *goodness, int *cdna_direction, int *sensedir,
 		int *matches, int *nmatches_posttrim, int *max_match_length,
 		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
@@ -281,11 +281,6 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, double *min_splice_prob,
 		Stage2_T stage2,
-#ifdef GSNAP
-#ifdef END_KNOWNSPLICING_SHORTCUT
-		int cutoff_level, char *queryptr, Compress_T query_compress,
-#endif
-#endif
 #ifdef PMAP
 		char *queryaaseq_ptr,
 #endif

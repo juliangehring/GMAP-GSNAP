@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb-write.c 151046 2014-10-16 19:08:41Z twu $";
+static char rcsid[] = "$Id: indexdb-write.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -192,8 +192,9 @@ check_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, Positi
 	fprintf(stderr,"Problem with bitpack at oligo %u+%u = %u: %u != %u.  Please inform twu@gene.com\n",
 		oligoi,i,oligoi+i,offsets_decoded[i],offsets[oligoi+i]);
 #else
-	fprintf(stderr,"Problem with bitpack at oligo %lu+%lu = %lu: %u != %u.  Please inform twu@gene.com\n",
-		oligoi,i,oligoi+i,offsets_decoded[i],offsets[oligoi+i]);
+	fprintf(stderr,"Problem with bitpack at oligo %llu+%llu = %llu: %llu != %llu.  Please inform twu@gene.com\n",
+		(unsigned long long) oligoi,(unsigned long long) i,
+		(unsigned long long) oligoi+i,(unsigned long long) offsets_decoded[i],(unsigned long long) offsets[oligoi+i]);
 #endif
 	exit(9);
       }
@@ -243,11 +244,12 @@ check_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile, 
     for (i = 0; i <= 64; i++) {
       if (offsets64[i] != offsets[oligoi+i]) {
 #ifdef OLIGOSPACE_NOT_LONG
-	fprintf(stderr,"\nProblem with bitpack64 at oligo %u+%u = %u: uncompressed %lu != expected %lu.  Your compiler may be defective.  Please inform twu@gene.com\n",
+	fprintf(stderr,"\nProblem with bitpack64 at oligo %u+%u = %u: uncompressed %u != expected %u.  Your compiler may be defective.  Please inform twu@gene.com\n",
 		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
 #else
-	fprintf(stderr,"\nProblem with bitpack64 at oligo %lu+%lu = %lu: uncompressed %lu != expected %lu.  Your compiler may be defective.  Please inform twu@gene.com\n",
-		oligoi,i,oligoi+i,offsets64[i],offsets[oligoi+i]);
+	fprintf(stderr,"\nProblem with bitpack64 at oligo %llu+%llu = %llu: uncompressed %llu != expected %llu.  Your compiler may be defective.  Please inform twu@gene.com\n",
+		(unsigned long long) oligoi,(unsigned long long) i,(unsigned long long) oligoi+i,
+		(unsigned long long) offsets64[i],(unsigned long long) offsets[oligoi+i]);
 #endif
       }
     }
@@ -373,7 +375,7 @@ Indexdb_count_offsets (FILE *sequence_fp, Univ_IIT_T chromosome_iit,
       if (genome_lc_p == true) {
 	in_counter = 0;
       } else {
-	fprintf(stderr,"Bad character %c at position %lu\n",c,position);
+	fprintf(stderr,"Bad character %c at position %llu\n",c,(unsigned long long) position);
 	abort();
       }
     }
@@ -493,16 +495,17 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
   between_counter[0] = between_counter[1] = between_counter[2] = 0;
   in_counter[0] = in_counter[1] = in_counter[2] = 0;
 #ifdef OLIGOSPACE_NOT_LONG
-  fprintf(stderr,"Allocating %u*%lu bytes for offsets\n",oligospace+1U,sizeof(Positionsptr_T));
+  fprintf(stderr,"Allocating %u*%d bytes for offsets\n",oligospace+1U,(int) sizeof(Positionsptr_T));
 #else
-  fprintf(stderr,"Allocating %lu*%lu bytes for offsets\n",oligospace+1UL,sizeof(Positionsptr_T));
+  fprintf(stderr,"Allocating %llu*%d bytes for offsets\n",(unsigned long long) oligospace+1UL,(int) sizeof(Positionsptr_T));
 #endif
   offsets = (Positionsptr_T *) CALLOC_NO_EXCEPTION(oligospace+1,sizeof(Positionsptr_T));
   if (offsets == NULL) {
 #ifdef OLIGOSPACE_NOT_LONG
     fprintf(stderr,"Unable to allocate %u bytes of memory, needed to build offsets with %d-mers\n",oligospace+1U,index1part_aa);
 #else
-    fprintf(stderr,"Unable to allocate %lu bytes of memory, needed to build offsets with %d-mers\n",oligospace+1UL,index1part_aa);
+    fprintf(stderr,"Unable to allocate %llu bytes of memory, needed to build offsets with %d-mers\n",
+	    (unsigned long long) oligospace+1UL,index1part_aa);
 #endif
     fprintf(stderr,"Either find a computer with more RAM, or lower your value for the k-mer size\n");
     exit(9);
@@ -511,16 +514,17 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
   mask = ~(~0UL << 2*index1part);
   oligospace = power(4,index1part);
 #ifdef OLIGOSPACE_NOT_LONG
-  fprintf(stderr,"Allocating %u*%lu bytes for offsets\n",oligospace+1U,sizeof(Positionsptr_T));
+  fprintf(stderr,"Allocating %u*%d bytes for offsets\n",oligospace+1U,(int) sizeof(Positionsptr_T));
 #else
-  fprintf(stderr,"Allocating %lu*%lu bytes for offsets\n",oligospace+1UL,sizeof(Positionsptr_T));
+  fprintf(stderr,"Allocating %llu*%d bytes for offsets\n",oligospace+1UL,(int) sizeof(Positionsptr_T));
 #endif
   offsets = (Positionsptr_T *) CALLOC_NO_EXCEPTION(oligospace+1,sizeof(Positionsptr_T));
   if (offsets == NULL) {
 #ifdef OLIGOSPACE_NOT_LONG
     fprintf(stderr,"Unable to allocate %u bytes of memory, needed to build offsets with %d-mers\n",oligospace+1U,index1part);
 #else
-    fprintf(stderr,"Unable to allocate %lu bytes of memory, needed to build offsets with %d-mers\n",oligospace+1UL,index1part);
+    fprintf(stderr,"Unable to allocate %llu bytes of memory, needed to build offsets with %d-mers\n",
+	    (unsigned long long) oligospace+1UL,index1part);
 #endif
     fprintf(stderr,"Either find a computer with more RAM, or lower your value for the k-mer size\n");
     exit(9);
@@ -598,7 +602,7 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
       if (genome_lc_p == true) {
 	oligo = 0U; in_counter = 0;
       } else {
-	fprintf(stderr,"Bad character %c at position %lu\n",c,position);
+	fprintf(stderr,"Bad character %c at position %llu\n",c,(unsigned long long) position);
 	abort();
       }
     }
@@ -659,8 +663,8 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 	oligoi = (Oligospace_T) masked + 1UL;
 #endif
 	offsets[oligoi] += 1;
-	debug(printf("Found oligo %06X.  Incremented offsets for %lu to be %u\n",
-		     masked,oligoi,offsets[oligoi]));
+	debug(printf("Found oligo %06X.  Incremented offsets for %llu to be %llu\n",
+		     masked,(unsigned long long) oligoi,(unsigned long long) offsets[oligoi]));
 	between_counter = 0;
       }
       in_counter--;
@@ -735,7 +739,8 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
       fprintf(stderr,"Can't write to file %s\n",offsetsfile);
       exit(9);
     } else {
-      fprintf(stderr,"Writing %lu offsets to file with total of %u k-mers...",oligospace+1,offsets[oligospace]);
+      fprintf(stderr,"Writing %llu offsets to file with total of %llu k-mers...",
+	      (unsigned long long) oligospace+1,(unsigned long long) offsets[oligospace]);
       FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
       fprintf(stderr,"done\n");
     }
@@ -771,7 +776,8 @@ Indexdb_write_offsets (char *destdir, char interval_char, FILE *sequence_fp, Uni
 #ifdef OLIGOSPACE_NOT_LONG
       fprintf(stderr,"Writing %u offsets compressed via bitpack64 to file with total of %u k-mers...",oligospace+1U,offsets[oligospace]);
 #else
-      fprintf(stderr,"Writing %lu offsets compressed via bitpack64 to file with total of %u k-mers...",oligospace+1UL,offsets[oligospace]);
+      fprintf(stderr,"Writing %llu offsets compressed via bitpack64 to file with total of %llu k-mers...",
+	      (unsigned long long) oligospace+1UL,(unsigned long long) offsets[oligospace]);
 #endif
 
       Bitpack64_write_differential(pointersfile,offsetsfile,offsets,oligospace);
@@ -849,16 +855,18 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
   between_counter[0] = between_counter[1] = between_counter[2] = 0;
   in_counter[0] = in_counter[1] = in_counter[2] = 0;
 #ifdef OLIGOSPACE_NOT_LONG
-  fprintf(stderr,"Allocating %u*%lu bytes for offsets\n",oligospace+1U,sizeof(Hugepositionsptr_T));
+  fprintf(stderr,"Allocating %u*%d bytes for offsets\n",oligospace+1U,(int) sizeof(Hugepositionsptr_T));
 #else
-  fprintf(stderr,"Allocating %lu*%lu bytes for offsets\n",oligospace+1UL,sizeof(Hugepositionsptr_T));
+  fprintf(stderr,"Allocating %llu*%d bytes for offsets\n",
+	  (unsigned long long) oligospace+1UL,(int) sizeof(Hugepositionsptr_T));
 #endif
   offsets = (Hugepositionsptr_T *) CALLOC_NO_EXCEPTION(oligospace+1,sizeof(Hugepositionsptr_T));
   if (offsets == NULL) {
 #ifdef OLIGOSPACE_NOT_LONG
     fprintf(stderr,"Unable to allocate %u bytes of memory, needed to build offsets with %d-mers\n",oligospace+1U,index1part_aa);
 #else
-    fprintf(stderr,"Unable to allocate %lu bytes of memory, needed to build offsets with %d-mers\n",oligospace+1UL,index1part_aa);
+    fprintf(stderr,"Unable to allocate %llu bytes of memory, needed to build offsets with %d-mers\n",
+	    (unsigned long long) oligospace+1UL,index1part_aa);
 #endif
     fprintf(stderr,"Either find a computer with more RAM, or lower your value for the k-mer size\n");
     exit(9);
@@ -867,16 +875,17 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
   mask = ~(~0UL << 2*index1part);
   oligospace = power(4,index1part);
 #ifdef OLIGOSPACE_NOT_LONG
-  fprintf(stderr,"Allocating %u*%lu bytes for offsets\n",oligospace+1U,sizeof(Hugepositionsptr_T));
+  fprintf(stderr,"Allocating %u*%d bytes for offsets\n",oligospace+1U,(int) sizeof(Hugepositionsptr_T));
 #else
-  fprintf(stderr,"Allocating %lu*%lu bytes for offsets\n",oligospace+1UL,sizeof(Hugepositionsptr_T));
+  fprintf(stderr,"Allocating %llu*%d bytes for offsets\n",(unsigned long long) oligospace+1UL,(int) sizeof(Hugepositionsptr_T));
 #endif
   offsets = (Hugepositionsptr_T *) CALLOC_NO_EXCEPTION(oligospace+1,sizeof(Hugepositionsptr_T));
   if (offsets == NULL) {
 #ifdef OLIGOSPACE_NOT_LONG
     fprintf(stderr,"Unable to allocate %u bytes of memory, needed to build offsets with %d-mers\n",oligospace+1U,index1part);
 #else
-    fprintf(stderr,"Unable to allocate %lu bytes of memory, needed to build offsets with %d-mers\n",oligospace+1UL,index1part);
+    fprintf(stderr,"Unable to allocate %llu bytes of memory, needed to build offsets with %d-mers\n",
+	    (unsigned long long) oligospace+1UL,index1part);
 #endif
     fprintf(stderr,"Either find a computer with more RAM, or lower your value for the k-mer size\n");
     exit(9);
@@ -953,7 +962,7 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
       if (genome_lc_p == true) {
 	oligo = 0U; in_counter = 0;
       } else {
-	fprintf(stderr,"Bad character %c at position %lu\n",c,position);
+	fprintf(stderr,"Bad character %c at position %llu\n",c,(unsigned long long) position);
 	abort();
       }
     }
@@ -1014,8 +1023,8 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
 	oligoi = (Oligospace_T) masked + 1UL;
 #endif
 	offsets[oligoi] += 1;
-	debug(printf("Found oligo %06X.  Incremented offsets for %lu to be %u\n",
-		     masked,oligoi,offsets[oligoi]));
+	debug(printf("Found oligo %06X.  Incremented offsets for %llu to be %llu\n",
+		     masked,(unsigned long long) oligoi,(unsigned long long) offsets[oligoi]));
 	between_counter = 0;
       }
       in_counter--;
@@ -1119,9 +1128,10 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
 #endif
 
 #ifdef OLIGOSPACE_NOT_LONG
-      fprintf(stderr,"Writing %u offsets compressed via bitpack to file with total of %lu k-mers...",oligospace+1U,offsets[oligospace]);
+      fprintf(stderr,"Writing %u offsets compressed via bitpack to file with total of %u k-mers...",oligospace+1U,offsets[oligospace]);
 #else
-      fprintf(stderr,"Writing %lu offsets compressed via bitpack to file with total of %lu k-mers...",oligospace+1UL,offsets[oligospace]);
+      fprintf(stderr,"Writing %llu offsets compressed via bitpack to file with total of %llu k-mers...",
+	      (unsigned long long) oligospace+1UL,(unsigned long long) offsets[oligospace]);
 #endif
 
       Bitpack64_write_differential_huge(pagesfile,pointersfile,offsetsfile,offsets,oligospace);
@@ -1142,24 +1152,6 @@ Indexdb_write_offsets_huge (char *destdir, char interval_char, FILE *sequence_fp
   }
   
   FREE(offsets);
-
-  return;
-}
-#endif
-
-
-/* FILE *fp is preferable to int fd, because former is buffered.  No
-   need for fseeko, because offsets file is < 2 Gigabytes */
-#if 0
-static void
-offsetsfile_move_absolute (FILE *fp, int ptr) {
-  long int offset = ptr*((long int) sizeof(Positionsptr_T));
-
-  if (fseek(fp,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do fseek on offset %u*%lu=%lu\n",ptr,sizeof(Positionsptr_T),offset);
-    perror("Error in indexdb.c, offsetsfile_move_absolute");
-    exit(9);
-  }
 
   return;
 }
@@ -1190,7 +1182,7 @@ positions_move_absolute_1 (int positions_fd, Positionsptr_T ptr) {
   off_t offset = ptr*((off_t) sizeof(unsigned char));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do lseek on offset %u*%lu=%lu\n",ptr,sizeof(unsigned char),offset);
+    fprintf(stderr,"Attempted to do lseek on offset %jd*%d=%jd\n",ptr,(int) sizeof(unsigned char),offset);
     perror("Error in indexdb.c, positions_move_absolute_1");
     exit(9);
   }
@@ -1202,7 +1194,7 @@ positions_move_absolute_4 (int positions_fd, Positionsptr_T ptr) {
   off_t offset = ptr*((off_t) sizeof(UINT4));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do lseek on offset %u*%lu=%lu\n",ptr,sizeof(UINT4),offset);
+    fprintf(stderr,"Attempted to do lseek on offset %jd*%d=%jd\n",ptr,(int) sizeof(UINT4),offset);
     perror("Error in indexdb.c, positions_move_absolute_4");
     exit(9);
   }
@@ -1216,7 +1208,7 @@ positions_move_absolute_8 (int positions_fd, Positionsptr_T ptr) {
   off_t offset = ptr*((off_t) sizeof(UINT8));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do lseek on offset %u*%lu=%lu\n",ptr,sizeof(UINT8),offset);
+    fprintf(stderr,"Attempted to do lseek on offset %jd*%d=%jd\n",ptr,(int) sizeof(UINT8),offset);
     perror("Error in indexdb.c, positions_move_absolute_8");
     exit(9);
   }
@@ -1342,7 +1334,7 @@ compute_positions_in_file (int positions_high_fd, int positions_low_fd, Position
       if (genome_lc_p == true) {
 	oligo = 0U; in_counter = 0;
       } else {
-	fprintf(stderr,"Bad character %c at position %lu\n",c,position);
+	fprintf(stderr,"Bad character %c at position %llu\n",c,(unsigned long long) position);
 	abort();
       }
     }
@@ -1579,7 +1571,7 @@ compute_positions_in_memory (UINT4 *positions4, unsigned char *positions8_high, 
       if (genome_lc_p == true) {
 	oligo = 0U; in_counter = 0;
       } else {
-	fprintf(stderr,"Bad character %c at position %lu\n",c,position);
+	fprintf(stderr,"Bad character %c at position %llu\n",c,(unsigned long long) position);
 	abort();
       }
     }
@@ -1658,7 +1650,7 @@ compute_positions_in_memory (UINT4 *positions4, unsigned char *positions8_high, 
 	  positions4[offsets[masked]++] = (UINT4) (position - index1part + 1);
 	}
 	debug1(nt = shortoligo_nt(masked,index1part);
-	       printf("Storing %s at %lu, chrpos %u\n",nt,position-index1part+1U,chrpos-index1part+1U);
+	       printf("Storing %s at %llu, chrpos %u\n",nt,(unsigned long long) (position-index1part+1U),chrpos-index1part+1U);
 	       FREE(nt));
 	between_counter = 0;
       }
@@ -1830,7 +1822,7 @@ compute_positions_in_memory_huge (UINT4 *positions4, unsigned char *positions8_h
       if (genome_lc_p == true) {
 	oligo = 0U; in_counter = 0;
       } else {
-	fprintf(stderr,"Bad character %c at position %lu\n",c,position);
+	fprintf(stderr,"Bad character %c at position %llu\n",c,(unsigned long long) position);
 	abort();
       }
     }
@@ -1909,7 +1901,7 @@ compute_positions_in_memory_huge (UINT4 *positions4, unsigned char *positions8_h
 	  positions4[offsets[masked]++] = (UINT4) (position - index1part + 1);
 	}
 	debug1(nt = shortoligo_nt(masked,index1part);
-	       printf("Storing %s at %lu, chrpos %u\n",nt,position-index1part+1U,chrpos-index1part+1U);
+	       printf("Storing %s at %llu, chrpos %u\n",nt,(unsigned long long) (position-index1part+1U),chrpos-index1part+1U);
 	       FREE(nt));
 	between_counter = 0;
       }
@@ -2048,11 +2040,11 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
       close(positions_low_fd);
 
       if ((filesize = Access_filesize(positionsfile_high)) != totalcounts * (off_t) sizeof(unsigned char)) {
-	fprintf(stderr,"Error after file-based build: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	fprintf(stderr,"Error after file-based build: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		positionsfile_high,totalcounts*sizeof(unsigned char),filesize);
 	abort();
       } else if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Error after file-based build: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	fprintf(stderr,"Error after file-based build: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	abort();
       }
@@ -2086,7 +2078,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
       fclose(positions_low_fp);
 
       if ((filesize = Access_filesize(positionsfile_high)) != totalcounts * (off_t) sizeof(unsigned char)) {
-	fprintf(stderr,"Error: expected file size for %s is %lu, but observed only %lu.  Trying now to write with smaller chunks.\n",
+	fprintf(stderr,"Error: expected file size for %s is %zu, but observed only %zu.  Trying now to write with smaller chunks.\n",
 		positionsfile_high,totalcounts*sizeof(unsigned char),filesize);
 	if ((positions_high_fp = FOPEN_WRITE_BINARY(positionsfile_high)) == NULL) {
 	  fprintf(stderr,"Can't open file %s\n",positionsfile_high);
@@ -2101,14 +2093,14 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 	fclose(positions_high_fp);
 
 	if ((filesize = Access_filesize(positionsfile_high)) != totalcounts * (off_t) sizeof(unsigned char)) {
-	  fprintf(stderr,"Error persists: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	  fprintf(stderr,"Error persists: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		  positionsfile_high,totalcounts*sizeof(unsigned char),filesize);
 	  abort();
 	}
       }
 
       if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Error: expected file size for %s is %lu, but observed only %lu.  Trying now to write with smaller chunks.\n",
+	fprintf(stderr,"Error: expected file size for %s is %zu, but observed only %zu.  Trying now to write with smaller chunks.\n",
 		positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	if ((positions_low_fp = FOPEN_WRITE_BINARY(positionsfile_low)) == NULL) {
 	  fprintf(stderr,"Can't open file %s\n",positionsfile_low);
@@ -2123,7 +2115,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 	fclose(positions_low_fp);
 
 	if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	  fprintf(stderr,"Error persists: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	  fprintf(stderr,"Error persists: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		  positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	  abort();
 	}
@@ -2151,7 +2143,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
       close(positions_low_fd);
 
       if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Error after file-based build: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	fprintf(stderr,"Error after file-based build: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	abort();
       }
@@ -2180,7 +2172,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
       fclose(positions_low_fp);
 
       if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Error: expected file size for %s is %lu, but observed only %lu.  Trying now to write with smaller chunks.\n",
+	fprintf(stderr,"Error: expected file size for %s is %zu, but observed only %zu.  Trying now to write with smaller chunks.\n",
 		positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	if ((positions_low_fp = FOPEN_WRITE_BINARY(positionsfile_low)) == NULL) {
 	  fprintf(stderr,"Can't open file %s\n",positionsfile_low);
@@ -2195,7 +2187,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 	fclose(positions_low_fp);
 
 	if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	  fprintf(stderr,"Error persists: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	  fprintf(stderr,"Error persists: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		  positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	  abort();
 	}
@@ -2259,8 +2251,8 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
     abort();
 
   } else if (coord_values_8p == true) {
-    fprintf(stderr,"Trying to allocate %lu*(%d+%d) bytes of memory for positions...",
-	    totalcounts,(int) sizeof(unsigned char),(int) sizeof(UINT8));
+    fprintf(stderr,"Trying to allocate %llu*(%d+%d) bytes of memory for positions...",
+	    (unsigned long long) totalcounts,(int) sizeof(unsigned char),(int) sizeof(UINT8));
     positions8_high = (unsigned char *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(unsigned char));
     positions8_low = (UINT4 *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(UINT4));
     if (positions8_high == NULL || positions8_low == NULL) {
@@ -2286,8 +2278,8 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 				       sequence_fp,chromosome_iit,index1part,index1interval,
 				       genome_lc_p,fileroot,mask_lowercase_p,/*coord_values_8p*/true);
 #endif
-      fprintf(stderr,"Writing %lu genomic positions to files %s and %s...\n",
-	      totalcounts,positionsfile_high,positionsfile_low);
+      fprintf(stderr,"Writing %llu genomic positions to files %s and %s...\n",
+	      (unsigned long long) totalcounts,positionsfile_high,positionsfile_low);
       FWRITE_CHARS(positions8_high,totalcounts,positions_high_fp);
       FWRITE_UINTS(positions8_low,totalcounts,positions_low_fp);
 
@@ -2295,7 +2287,7 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
       fclose(positions_low_fp);
 
       if ((filesize = Access_filesize(positionsfile_high)) != totalcounts * (off_t) sizeof(unsigned char)) {
-	fprintf(stderr,"Error: expected file size for %s is %lu, but observed only %lu.  Trying now to write with smaller chunks.\n",
+	fprintf(stderr,"Error: expected file size for %s is %zu, but observed only %zu.  Trying now to write with smaller chunks.\n",
 		positionsfile_high,totalcounts*sizeof(unsigned char),filesize);
 	if ((positions_high_fp = FOPEN_WRITE_BINARY(positionsfile_high)) == NULL) {
 	  fprintf(stderr,"Can't open file %s\n",positionsfile_high);
@@ -2310,14 +2302,14 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 	fclose(positions_high_fp);
 
 	if ((filesize = Access_filesize(positionsfile_high)) != totalcounts * (off_t) sizeof(unsigned char)) {
-	  fprintf(stderr,"Error persists: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	  fprintf(stderr,"Error persists: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		  positionsfile_high,totalcounts*sizeof(unsigned char),filesize);
 	  abort();
 	}
       }
 
       if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Error: expected file size for %s is %lu, but observed only %lu.  Trying now to write with smaller chunks.\n",
+	fprintf(stderr,"Error: expected file size for %s is %zu, but observed only %zu.  Trying now to write with smaller chunks.\n",
 		positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	if ((positions_low_fp = FOPEN_WRITE_BINARY(positionsfile_low)) == NULL) {
 	  fprintf(stderr,"Can't open file %s\n",positionsfile_low);
@@ -2332,7 +2324,7 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 	fclose(positions_low_fp);
 
 	if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	  fprintf(stderr,"Error persists: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	  fprintf(stderr,"Error persists: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		  positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	  abort();
 	}
@@ -2347,7 +2339,7 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
     fprintf(stderr,"Please report this bug to twu@gene.com\n");
     abort();
 
-    fprintf(stderr,"Trying to allocate %lu*%d bytes of memory for positions...",totalcounts,(int) sizeof(UINT4));
+    fprintf(stderr,"Trying to allocate %llu*%d bytes of memory for positions...",(unsigned long long) totalcounts,(int) sizeof(UINT4));
     positions4 = (UINT4 *) CALLOC_NO_EXCEPTION(totalcounts,sizeof(UINT4));
     if (positions4 == NULL) {
       fprintf(stderr,"failed.  Not able to proceed.\n");
@@ -2368,14 +2360,14 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 				       sequence_fp,chromosome_iit,index1part,index1interval,
 				       genome_lc_p,fileroot,mask_lowercase_p,/*coord_values_8p*/false);
 #endif
-      fprintf(stderr,"Writing %lu genomic positions to file %s ...\n",
-	      totalcounts,positionsfile_low);
+      fprintf(stderr,"Writing %llu genomic positions to file %s ...\n",
+	      (unsigned long long) totalcounts,positionsfile_low);
       FWRITE_UINTS(positions4,totalcounts,positions_low_fp);
 
       fclose(positions_low_fp);
 
       if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Error: expected file size for %s is %lu, but observed only %lu.  Trying now to write with smaller chunks.\n",
+	fprintf(stderr,"Error: expected file size for %s is %zu, but observed only %zu.  Trying now to write with smaller chunks.\n",
 		positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	if ((positions_low_fp = FOPEN_WRITE_BINARY(positionsfile_low)) == NULL) {
 	  fprintf(stderr,"Can't open file %s\n",positionsfile_low);
@@ -2390,7 +2382,7 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 	fclose(positions_low_fp);
 
 	if ((filesize = Access_filesize(positionsfile_low)) != totalcounts * (off_t) sizeof(UINT4)) {
-	  fprintf(stderr,"Error persists: expected file size for %s is %lu, but observed only %lu.  Please notify twu@gene.com of this error.\n",
+	  fprintf(stderr,"Error persists: expected file size for %s is %zu, but observed only %zu.  Please notify twu@gene.com of this error.\n",
 		  positionsfile_low,totalcounts*sizeof(UINT4),filesize);
 	  abort();
 	}

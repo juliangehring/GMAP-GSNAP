@@ -697,8 +697,13 @@ given read.  If there is only a single alignment, this value is 0.
 
 XO: Output type.  GSNAP categorizes its alignments into output types,
 as follows.  Note that the --split-output option will create separate
-output files for each output type, and the filename suffixes are shown
-below for each output type:
+output files for each output type.  Alternatively, if you use
+sam_sort, you should provide --split-output to that program instead
+and achieve the same functionality.  (The reason for this is that
+there may be situations where GSNAP assigns different output types to
+the first and second ends of the reads and sam_sort needs to see
+alignments from both ends together.)  In either case, the output types
+have the following meanings and filename suffixes:
 
   NM (nomapping) (filename suffix ".nomapping"): The entire read
   (single-end or paired-end) could not be aligned.  If the
@@ -856,7 +861,9 @@ NM.
 XG: Indicates which method within GSNAP generated the alignment.  A:
 suffix array method, T: terminal alignment, M: GMAP method, O: merging
 of overlaps.  Absence of XG flag indicates the standard GSNAP hash
-table method.
+table method.  (Note: older versions of GSNAP used "PG:", but some
+downstream software required all PG methods to be listed in the header
+section, so we changed the field name to "XG:")
 
 
 
@@ -1415,4 +1422,16 @@ on your set of short reads.  As with bisulfite sequencing, the
 stranded flag is for laboratory protocols that allow only the 5'-to-3'
 RNA, or sense, reads, and the non-stranded flag is for laboratory
 protocols that allow both sense and antisense reads.
+
+
+16.  Post-processing of SAM output
+==================================
+
+This package includes a program called sam_sort, which can help sort
+and mark duplicates of the SAM output efficiently.  (More
+documentation to follow.)
+
+
+
+
 

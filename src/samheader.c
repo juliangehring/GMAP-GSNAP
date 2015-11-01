@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samheader.c 149320 2014-09-30 02:16:01Z twu $";
+static char rcsid[] = "$Id: samheader.c 155503 2014-12-16 22:22:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,25 +9,28 @@ static char rcsid[] = "$Id: samheader.c 149320 2014-09-30 02:16:01Z twu $";
 #define CHUNK 1024
 
 void
-SAM_header_change_HD_tosorted (FILE *fp, int headerlen) {
+SAM_header_change_HD_tosorted_stdout (FILE *fp, int headerlen) {
   char buffer[CHUNK], c, c0, c1, c2;
-
 
   /* @HD */
   while (headerlen > 0 && (c = fgetc(fp)) != '\t') {
     putchar(c);
     headerlen--;
   }
-  putchar('\t');
-  headerlen--;
+  if (headerlen > 0) {
+    putchar('\t');
+    headerlen--;
+  }
 
   /* VN */
   while (headerlen > 0 && (c = fgetc(fp)) != '\t') {
     putchar(c);
     headerlen--;
   }
-  putchar('\t');
-  headerlen--;
+  if (headerlen > 0) {
+    putchar('\t');
+    headerlen--;
+  }
 
   if (headerlen > 3) {
     /* SO: */
@@ -38,7 +41,7 @@ SAM_header_change_HD_tosorted (FILE *fp, int headerlen) {
     headerlen -= 3;
 
     if (c0 == 'S' && c1 == 'O' && c2 == ':') {
-      printf("sorted\n");
+      printf("coordinate\n");
       while (headerlen > 0 && fgetc(fp) != '\n') {
 	/* Skip given SO value */
 	headerlen--;
@@ -55,6 +58,79 @@ SAM_header_change_HD_tosorted (FILE *fp, int headerlen) {
   if (headerlen > 0) {
     fread(buffer,sizeof(char),headerlen,fp);
     fwrite(buffer,sizeof(char),headerlen,stdout);
+  }
+
+  return;
+}
+
+
+void
+SAM_header_change_HD_tosorted_split (FILE *fp, int headerlen, FILE **outputs, int noutputs) {
+  char buffer[CHUNK], c, c0, c1, c2;
+  int i;
+
+  /* @HD */
+  while (headerlen > 0 && (c = fgetc(fp)) != '\t') {
+    for (i = 1; i <= noutputs; i++) {
+      putc(c,outputs[i]);
+    }
+    headerlen--;
+  }
+  if (headerlen > 0) {
+    for (i = 1; i <= noutputs; i++) {
+      putc('\t',outputs[i]);
+    }
+    headerlen--;
+  }
+
+  /* VN */
+  while (headerlen > 0 && (c = fgetc(fp)) != '\t') {
+    for (i = 1; i <= noutputs; i++) {
+      putc(c,outputs[i]);
+    }
+    headerlen--;
+  }
+  if (headerlen > 0) {
+    for (i = 1; i <= noutputs; i++) {
+      putc('\t',outputs[i]);
+    }
+    headerlen--;
+  }
+
+  if (headerlen > 3) {
+    /* SO: */
+    c0 = fgetc(fp);
+    c1 = fgetc(fp);
+    c2 = fgetc(fp);
+    for (i = 1; i <= noutputs; i++) {
+      fprintf(outputs[i],"%c%c%c",c0,c1,c2);
+    }
+    headerlen -= 3;
+
+    if (c0 == 'S' && c1 == 'O' && c2 == ':') {
+      for (i = 1; i <= noutputs; i++) {
+	fprintf(outputs[i],"coordinate\n");
+      }
+      while (headerlen > 0 && fgetc(fp) != '\n') {
+	/* Skip given SO value */
+	headerlen--;
+      }
+      headerlen--;
+    }
+  }
+
+  while (headerlen > CHUNK) {
+    fread(buffer,sizeof(char),CHUNK,fp);
+    for (i = 1; i <= noutputs; i++) {
+      fwrite(buffer,sizeof(char),CHUNK,outputs[i]);
+    }
+    headerlen -= CHUNK;
+  }
+  if (headerlen > 0) {
+    fread(buffer,sizeof(char),headerlen,fp);
+    for (i = 1; i <= noutputs; i++) {
+      fwrite(buffer,sizeof(char),headerlen,outputs[i]);
+    }
   }
 
   return;

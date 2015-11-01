@@ -1,6 +1,11 @@
-/* $Id: sequence.h 132731 2014-04-08 21:19:57Z twu $ */
+/* $Id: sequence.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_ZLIB, HAVE_BZLIB */
+#endif
+
 #include <stdio.h>
 #include "bool.h"
 

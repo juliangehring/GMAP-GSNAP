@@ -1,6 +1,9 @@
-/* $Id: compress.h 134887 2014-05-01 23:30:10Z twu $ */
+/* $Id: compress.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef COMPRESS_INCLUDED
 #define COMPRESS_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_SSE2 */
+#endif
 
 #include <stdio.h>
 #include "bool.h"

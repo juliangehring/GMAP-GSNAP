@@ -1,6 +1,10 @@
-/* $Id: indexdb.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: indexdb.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_64_BIT */
+#endif
+
 #include <stdio.h>
 #include "access.h"
 #include "types.h"

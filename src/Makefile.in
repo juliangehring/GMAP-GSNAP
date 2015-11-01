@@ -42,7 +42,7 @@ bin_PROGRAMS = gmap$(EXEEXT) gmapl$(EXEEXT) get-genome$(EXEEXT) \
 	cmetindex$(EXEEXT) atoiindex$(EXEEXT) sam_sort$(EXEEXT)
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(srcdir)/config.h.in ChangeLog
+	$(srcdir)/config.h.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/ltoptions.m4 \
@@ -54,6 +54,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/mmap-flags.m4 \
 	$(top_srcdir)/config/acx_mmap_fixed.m4 \
 	$(top_srcdir)/config/acx_mmap_variable.m4 \
+	$(top_srcdir)/config/ax_mpi.m4 \
 	$(top_srcdir)/config/acx_pthread.m4 \
 	$(top_srcdir)/config/builtin-popcount.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
@@ -648,6 +649,8 @@ LTLIBOBJS = @LTLIBOBJS@
 MAKEINFO = @MAKEINFO@
 MAX_READLENGTH = @MAX_READLENGTH@
 MKDIR_P = @MKDIR_P@
+MPICC = @MPICC@
+MPILIBS = @MPILIBS@
 NM = @NM@
 NMEDIT = @NMEDIT@
 OBJDUMP = @OBJDUMP@

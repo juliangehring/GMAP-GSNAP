@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 151086 2014-10-16 23:52:16Z twu $";
+static char rcsid[] = "$Id: stage2.c 156846 2015-01-16 01:53:19Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -289,10 +289,25 @@ Stage2_free (T *old) {
 static T
 Stage2_new (List_T middle, List_T all_starts, List_T all_ends) {
   T new = (T) MALLOC(sizeof(*new));
+#ifdef DEBUG0
+  List_T p;
+#endif
 
   new->middle = middle;
   new->all_starts = all_starts;
   new->all_ends = all_ends;
+
+#ifdef DEBUG0
+  printf("Starts:\n");
+  for (p = all_starts; p != NULL; p = List_next(p)) {
+    Pair_dump_list(List_head(p),true);
+  }
+
+  printf("Ends:\n");
+  for (p = all_ends; p != NULL; p = List_next(p)) {
+    Pair_dump_list(List_head(p),true);
+  }
+#endif
 
   return new;
 }
@@ -778,7 +793,7 @@ score_querypos_lookback_one (
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
   int canonicalsgn = 0;
 #endif
-  bool adjacentp, donep;
+  bool donep;
   int prev_querypos, prevhit;
   Chrpos_T prevposition, gendistance;
   Univcoord_T prevpos, currpos;
@@ -800,7 +815,7 @@ score_querypos_lookback_one (
   enough_consecutive = 32;
 
   /* Parameters for section D, assuming adjacent is false */
-  adjacentp = false;
+  /* adjacentp = false; */
   nlookback = nsufflookback;
   lookback = sufflookback;
 
@@ -836,7 +851,7 @@ score_querypos_lookback_one (
       best_fwd_intronnrev = prevlink->fwd_intronnrev;
       best_fwd_intronnunk = prevlink->fwd_intronnunk;
 #endif
-      adjacentp = true;
+      /* adjacentp = true; */
 
       /* Parameters for section D when adjacent is true, so we don't look so far back */
       nlookback = 1;
@@ -909,7 +924,7 @@ score_querypos_lookback_one (
 	prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
 	gendistance = position - prevposition;
-	assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	assert(gendistance > (Chrpos_T) querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
 	diffdistance = gendistance - querydistance; /* No need for abs() */
 
 	fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
@@ -1415,7 +1430,7 @@ score_querypos_lookback_mult (
 	    prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
 	    gendistance = position - prevposition;
-	    assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	    assert(gendistance > (Chrpos_T) querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
 	    diffdistance = gendistance - querydistance; /* No need for abs() */
 
 	    fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
@@ -1648,7 +1663,7 @@ score_querypos_lookforward_one (
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
   int canonicalsgn = 0;
 #endif
-  bool adjacentp, donep;
+  bool donep;
   int prev_querypos, prevhit;
   Chrpos_T prevposition, gendistance;
   Univcoord_T prevpos, currpos;
@@ -1670,7 +1685,7 @@ score_querypos_lookforward_one (
   enough_consecutive = 32;
 
   /* Parameters for section D, assuming adjacent is false */
-  adjacentp = false;
+  /* adjacentp = false; */
   nlookback = nsufflookback;
   lookback = sufflookback;
 
@@ -1706,7 +1721,7 @@ score_querypos_lookforward_one (
       best_fwd_intronnrev = prevlink->fwd_intronnrev;
       best_fwd_intronnunk = prevlink->fwd_intronnunk;
 #endif
-      adjacentp = true;
+      /* adjacentp = true; */
       /* Parameters for section D when adjacent is true */
       nlookback = 1;
       lookback = sufflookback/2;
@@ -1777,7 +1792,7 @@ score_querypos_lookforward_one (
 	prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
 	gendistance = prevposition - position;
-	assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	assert(gendistance > (Chrpos_T) querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
 	diffdistance = gendistance - querydistance; /* No need for abs() */
 
 	fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
@@ -2277,7 +2292,7 @@ score_querypos_lookforward_mult (
 	    prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
 	    gendistance = prevposition - position;
-	    assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	    assert(gendistance > (Chrpos_T) querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
 	    diffdistance = gendistance - querydistance; /* No need for abs() */
 
 	    fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
@@ -2525,6 +2540,7 @@ revise_active_lookback (int **active, int *firstactive, int *nactive,
     }
 
     nactive[querypos] = 0;
+    firstactive[querypos] = -1;
     ptr = &(firstactive[querypos]);
     hit = low_hit;
     while (hit < high_hit) {
@@ -2601,6 +2617,7 @@ revise_active_lookforward (int **active, int *firstactive, int *nactive,
     }
 
     nactive[querypos] = 0;
+    firstactive[querypos] = -1;
     ptr = &(firstactive[querypos]);
     hit = high_hit - 1;
     while (hit >= low_hit) {

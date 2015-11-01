@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 150878 2014-10-15 18:18:56Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 165777 2015-05-15 18:09:06Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -229,7 +229,7 @@ struct T {
 
 #else
 
-  FILE *fp_nomapping;		/* N1 */
+  FILE *fp_nomapping;		/* NM */
   FILE *fp_uniq;		/* UU */
   FILE *fp_circular;		/* UC */
   FILE *fp_transloc;		/* UT */
@@ -1654,7 +1654,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
       SAM_print_nomapping(this->fp_nomapping,ABBREV_NOMAPPING_1,
 			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			  /*acc2*/NULL,this->chromosome_iit,resulttype,
-			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
+			  /*first_read_p*/true,/*npaths*/0,/*npaths_mate*/0,/*mate_chrpos*/0U,
 			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
       if (this->failedinput_root != NULL) {
 	if (this->fastq_format_p == true) {
@@ -1675,8 +1675,11 @@ print_result_sam (T this, Result_T result, Request_T request) {
       /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
 
       stage3 = stage3array[0];
-      chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,
-				  Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+      if (Stage3end_hittype(stage3) == SAMECHR_SPLICE || Stage3end_hittype(stage3) == TRANSLOC_SPLICE) {
+	chrpos = 0;
+      } else {
+	chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,Shortread_fulllength(queryseq1));
+      }
       if (Stage3end_circularpos(stage3) > 0) {
 	fp = this->fp_unpaired_circular;
 	abbrev = ABBREV_UNPAIRED_CIRCULAR;
@@ -1689,8 +1692,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
 		Stage3end_mapq_score(stage3array[0]),
 		this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
 		/*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
-		/*clipdir*/0,/*hardclip_low*/0,/*hardclip_high*/0,resulttype,
-		/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
+		/*clipdir*/0,/*hardclip5_low*/0,/*hardclip5_high*/0,/*hardclip3_low*/0,/*hardclip3_high*/0,
+		resulttype,/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
 		this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
 		this->merge_samechr_p);
     }
@@ -1707,7 +1710,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
       SAM_print_nomapping(this->fp_unpaired_transloc,ABBREV_UNPAIRED_TRANSLOC,
 			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			  /*acc2*/NULL,this->chromosome_iit,resulttype,
-			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
+			  /*first_read_p*/true,npaths,/*npaths_mate*/0,/*mate_chrpos*/0U,
 			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
 
     } else {
@@ -1716,8 +1719,11 @@ print_result_sam (T this, Result_T result, Request_T request) {
       for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
 
 	stage3 = stage3array[pathnum-1];
-	chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,
-				    Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+	if (Stage3end_hittype(stage3) == SAMECHR_SPLICE || Stage3end_hittype(stage3) == TRANSLOC_SPLICE) {
+	  chrpos = 0;
+	} else {
+	  chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,Shortread_fulllength(queryseq1));
+	}
 	SAM_print(this->fp_unpaired_transloc,ABBREV_UNPAIRED_TRANSLOC,
 		  stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 		  /*acc2*/NULL,pathnum,npaths,
@@ -1725,8 +1731,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
 		  Stage3end_mapq_score(stage3array[pathnum-1]),
 		  this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
 		  /*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
-		  /*clipdir*/0,/*hardclip_low*/0,/*hardclip_high*/0,resulttype,
-		  /*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
+		  /*clipdir*/0,/*hardclip5_low*/0,/*hardclip5_high*/0,/*hardclip3_low*/0,/*hardclip3_high*/0,
+		  resulttype,/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
 		  this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
 		  this->merge_samechr_p);
       }
@@ -1744,7 +1750,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
       SAM_print_nomapping(this->fp_unpaired_mult_xs_1,ABBREV_UNPAIRED_MULT_XS,
 			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			  /*acc2*/NULL,this->chromosome_iit,resulttype,
-			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
+			  /*first_read_p*/true,npaths,/*npaths_mate*/0,/*mate_chrpos*/0U,
 			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
 
     } else {
@@ -1753,8 +1759,11 @@ print_result_sam (T this, Result_T result, Request_T request) {
       for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
 
 	stage3 = stage3array[pathnum-1];
-	chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,
-				    Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
+	if (Stage3end_hittype(stage3) == SAMECHR_SPLICE || Stage3end_hittype(stage3) == TRANSLOC_SPLICE) {
+	  chrpos = 0;
+	} else {
+	  chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,Shortread_fulllength(queryseq1));
+	}
 	SAM_print(this->fp_unpaired_mult,ABBREV_UNPAIRED_MULT,
 		  stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 		  /*acc2*/NULL,pathnum,npaths,
@@ -1762,8 +1771,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
 		  Stage3end_mapq_score(stage3array[pathnum-1]),
 		  this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
 		  /*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
-		  /*clipdir*/0,/*hardclip_low*/0,/*hardclip_high*/0,resulttype,
-		  /*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
+		  /*clipdir*/0,/*hardclip5_low*/0,/*hardclip5_high*/0,/*hardclip3_low*/0,/*hardclip3_high*/0,
+		  resulttype,/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
 		  this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
 		  this->merge_samechr_p);
       }
@@ -2529,7 +2538,7 @@ void *
 Outbuffer_thread_anyorder (void *data) {
   T this = (T) data;
   unsigned int output_buffer_size = this->output_buffer_size;
-  unsigned int noutput = 0;
+  unsigned int noutput = 0, ntotal;
   Result_T result;
   Request_T request;
   
@@ -2537,8 +2546,16 @@ Outbuffer_thread_anyorder (void *data) {
   Mem_usage_set_threadname("outbuffer");
 #endif
 
-  while (noutput < this->ntotal) {
+  /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
+#ifdef HAVE_PTHREAD
+  pthread_mutex_lock(&this->lock);
+#endif
+  ntotal = this->ntotal;
+#ifdef HAVE_PTHREAD
+  pthread_mutex_unlock(&this->lock);
+#endif
 
+  while (noutput < ntotal) {	/* Previously check against this->ntotal */
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->lock);
     while (this->head == NULL && noutput < this->ntotal) {
@@ -2579,11 +2596,11 @@ Outbuffer_thread_anyorder (void *data) {
       Request_free(&request);
       noutput++;
 
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->lock);
+#endif
       if (this->head && this->nprocessed - noutput > output_buffer_size) {
 	/* Clear out backlog */
-#ifdef HAVE_PTHREAD
-	pthread_mutex_lock(&this->lock);
-#endif
 	while (this->head && this->nprocessed - noutput > output_buffer_size) {
 	  this->head = RRlist_pop(this->head,&request,&result);
 	  debug1(RRlist_dump(this->head,this->tail));
@@ -2605,13 +2622,21 @@ Outbuffer_thread_anyorder (void *data) {
 	  Request_free(&request);
 	  noutput++;
 	}
-
-#ifdef HAVE_PTHREAD
-	pthread_mutex_unlock(&this->lock);
-#endif
       }
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->lock);
+#endif
 
     }
+
+    /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->lock);
+#endif
+    ntotal = this->ntotal;
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->lock);
+#endif
   }
 
   assert(this->head == NULL);
@@ -2625,7 +2650,7 @@ void *
 Outbuffer_thread_ordered (void *data) {
   T this = (T) data;
   unsigned int output_buffer_size = this->output_buffer_size;
-  unsigned int noutput = 0, nqueued = 0;
+  unsigned int noutput = 0, nqueued = 0, ntotal;
   Result_T result;
   Request_T request;
   RRlist_T queue = NULL;
@@ -2635,7 +2660,16 @@ Outbuffer_thread_ordered (void *data) {
   Mem_usage_set_threadname("outbuffer");
 #endif
 
-  while (noutput < this->ntotal) {
+  /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
+#ifdef HAVE_PTHREAD
+  pthread_mutex_lock(&this->lock);
+#endif
+  ntotal = this->ntotal;
+#ifdef HAVE_PTHREAD
+  pthread_mutex_unlock(&this->lock);
+#endif
+
+  while (noutput < ntotal) {	/* Previously checked against this->ntotal */
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->lock);
     while (this->head == NULL && noutput < this->ntotal) {
@@ -2702,12 +2736,11 @@ Outbuffer_thread_ordered (void *data) {
 	}
       }
 
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->lock);
+#endif
       if (this->head && this->nprocessed - nqueued - noutput > output_buffer_size) {
 	/* Clear out backlog */
-#ifdef HAVE_PTHREAD
-	pthread_mutex_lock(&this->lock);
-#endif
-
 	while (this->head && this->nprocessed - nqueued - noutput > output_buffer_size) {
 	  this->head = RRlist_pop(this->head,&request,&result);
 	  if ((id = Result_id(result)) != (int) noutput) {
@@ -2755,13 +2788,21 @@ Outbuffer_thread_ordered (void *data) {
 	    }
 	  }
 	}
-
-#ifdef HAVE_PTHREAD
-	pthread_mutex_unlock(&this->lock);
-#endif
       }
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->lock);
+#endif
 
     }
+
+    /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&this->lock);
+#endif
+    ntotal = this->ntotal;
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&this->lock);
+#endif
   }
 
   assert(queue == NULL);

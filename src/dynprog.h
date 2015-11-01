@@ -1,6 +1,9 @@
-/* $Id: dynprog.h 141804 2014-07-17 02:20:36Z twu $ */
+/* $Id: dynprog.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_SSE2, HAVE_SSE4_1 */
+#endif
 
 /* BEST_LOCAL is a local alignment, whereas QUERYEND_INDELS and
    QUERYEND_NOGAPS are global.  QUERYEND_GAP allows an intron at the

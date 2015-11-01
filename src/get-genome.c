@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 149319 2014-09-30 02:15:42Z twu $";
+static char rcsid[] = "$Id: get-genome.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -195,7 +195,7 @@ print_two_coords (Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit) 
   char *chromosome;
   Chrpos_T chrpos;
 
-  printf("%lu%s%lu\t",left+1,SEPARATOR,left+length);
+  printf("%llu%s%llu\t",(unsigned long long) left+1,SEPARATOR,(unsigned long long) left+length);
   chromosome = Univ_IIT_string_from_position(&chrpos,left,chromosome_iit);
   printf("%s:%u\t",chromosome,chrpos+1U);
   FREE(chromosome);
@@ -314,8 +314,8 @@ parse_query (char **divstring, Chrpos_T *coordstart, Chrpos_T *coordend, bool *r
       FREE(query);
       return true;
     } else if (Parserange_israngep(&left,&length,&(*revcomp),coords)) {
-      debug(printf("  and coords %s as a range starting at %lu with length %u and revcomp = %d\n",
-		   coords,left,length,*revcomp));
+      debug(printf("  and coords %s as a range starting at %llu with length %u and revcomp = %d\n",
+		   coords,(unsigned long long) left,length,*revcomp));
       *coordstart = left;
       *coordend = left + length;
       FREE(query);
@@ -413,7 +413,7 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
       } else {
 	printf("%s:%u",chromosome2,chrpos);
       }
-      printf(" %s:%lu%s%lu\n",dbversion,genomicstart+genomiclength,SEPARATOR,genomicstart+1U);
+      printf(" %s:%llu%s%llu\n",dbversion,(unsigned long long) genomicstart+genomiclength,SEPARATOR,(unsigned long long) genomicstart+1U);
       FREE(chromosome2);
     }
     FREE(chromosome1);
@@ -431,7 +431,7 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
       } else {
 	printf("%s:%u",chromosome2,chrpos+1U);
       }
-      printf(" %s:%lu%s%lu\n",dbversion,genomicstart+1U,SEPARATOR,genomicstart+genomiclength);
+      printf(" %s:%llu%s%llu\n",dbversion,(unsigned long long) genomicstart+1U,SEPARATOR,(unsigned long long) genomicstart+genomiclength);
       FREE(chromosome2);
     }
     FREE(chromosome1);
@@ -1254,8 +1254,8 @@ main (int argc, char *argv[]) {
       debug(printf("coordp is true\n"));
       if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
 			       &chroffset,&chrlength,argv[0],genomesubdir,fileroot) == true) {
-	debug(printf("Query %s parsed as: genomicstart = %lu, genomiclength = %u, revcomp = %d\n",
-		     argv[0],genomicstart,genomiclength,revcomp));
+	debug(printf("Query %s parsed as: genomicstart = %llu, genomiclength = %u, revcomp = %d\n",
+		     argv[0],(unsigned long long) genomicstart,genomiclength,revcomp));
 	print_two_coords(genomicstart,genomiclength,chromosome_iit);
       }
       
@@ -1277,8 +1277,8 @@ main (int argc, char *argv[]) {
 
       if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
 			       &chroffset,&chrlength,argv[0],genomesubdir,fileroot) == true) {
-	debug(printf("Query %s parsed as: genomicstart = %lu, genomiclength = %u, revcomp = %d\n",
-		     argv[0],genomicstart,genomiclength,revcomp));
+	debug(printf("Query %s parsed as: genomicstart = %llu, genomiclength = %u, revcomp = %d\n",
+		     argv[0],(unsigned long long) genomicstart,genomiclength,revcomp));
 	print_sequence(genome,genomealt,genomicstart,genomiclength,chromosome_iit,
 		       /*whole_chromosome_p*/false);
       }
@@ -1322,8 +1322,8 @@ main (int argc, char *argv[]) {
       if (force_label_p == false &&
 	  Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
 			       &chroffset,&chrlength,argv[0],genomesubdir,fileroot) == true) {
-	debug(printf("Query %s parsed as: genomicstart = %lu, genomiclength = %u, revcomp = %d\n",
-		     argv[0],genomicstart,genomiclength,revcomp));
+	debug(printf("Query %s parsed as: genomicstart = %llu, genomiclength = %u, revcomp = %d\n",
+		     argv[0],(unsigned long long) genomicstart,genomiclength,revcomp));
 	divstring = Univ_IIT_string_from_position(&chrstart,genomicstart,chromosome_iit);
 	divstring2 = Univ_IIT_string_from_position(&chrend,genomicstart+genomiclength-1U,chromosome_iit);
 	if (strcmp(divstring,divstring2)) {
@@ -1493,8 +1493,8 @@ main (int argc, char *argv[]) {
       if (force_label_p == false &&
 	  Parserange_universal_iit(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
 				   &chroffset,&chrlength,coords,chromosome_iit,contig_iit) == true) {
-	debug(printf("Query %s parsed as: genomicstart = %lu, genomiclength = %u, revcomp = %d\n",
-		     coords,genomicstart,genomiclength,revcomp));
+	debug(printf("Query %s parsed as: genomicstart = %llu, genomiclength = %u, revcomp = %d\n",
+		     coords,(unsigned long long) genomicstart,genomiclength,revcomp));
 	divstring = Univ_IIT_string_from_position(&chrstart,genomicstart,chromosome_iit);
 	divstring2 = Univ_IIT_string_from_position(&chrend,genomicstart+genomiclength-1U,chromosome_iit);
 	if (strcmp(divstring,divstring2)) {

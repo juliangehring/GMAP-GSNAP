@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-write-univ.c 102176 2013-07-20 00:51:14Z twu $";
+static char rcsid[] = "$Id: iit-write-univ.c 153948 2014-11-24 17:46:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -230,8 +230,8 @@ Node_make (int *nnodes, int i, int j, int *sigmas, int *omegas, struct Univinter
     node->a = q + 1;
     node->b = r;
 
-    debug(printf(" NODE=%lu [%d..%d], left: %d, cont: %d, right: %d\n",
-		 node->value, i, j, q - i + 1, r - q, j - r));
+    debug(printf(" NODE=%llu [%d..%d], left: %d, cont: %d, right: %d\n",
+		 (unsigned long long) node->value, i, j, q - i + 1, r - q, j - r));
 
     assert(Node_is_valid_output (node, i, j, sigmas, omegas, intervals));
 
@@ -530,9 +530,11 @@ IIT_write_univ_footer (FILE *fp, List_T divlist, List_T typelist, Table_T interv
   }      
 
   /* Write labelorder */
-  labelorder = get_labelorder(divlist,labeltable,total_nintervals);
-  FWRITE_INTS(labelorder,total_nintervals,fp);
-  FREE(labelorder);
+  if (total_nintervals > 0) {
+    labelorder = get_labelorder(divlist,labeltable,total_nintervals);
+    FWRITE_INTS(labelorder,total_nintervals,fp);
+    FREE(labelorder);
+  }
 
   /* Write label pointers */
 #ifdef HAVE_64_BIT

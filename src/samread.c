@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samread.c 149421 2014-09-30 17:54:10Z twu $";
+static char rcsid[] = "$Id: samread.c 154570 2014-12-03 22:06:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -160,9 +160,317 @@ Samread_get_acc_fromfile (int *acclength, FILE *fp, int linelength) {
 }
 
 
+/* Called just after we read in '\t', so should start at a field */
+static SAM_split_output_type
+parse_XO_fromfile (FILE *fp) {
+  char c = 1, c0, c1;
+  char abbrev0, abbrev1;
+
+  c0 = fgetc(fp);
+  c1 = fgetc(fp);
+  if (c0 == 'X' && c1 == 'O') {
+    fgetc(fp);		/* : */
+    fgetc(fp);		/* type */
+    fgetc(fp);		/* : */
+    abbrev0 = fgetc(fp);
+    abbrev1 = fgetc(fp);
+    switch (abbrev0) {
+    case 'N':
+      if (abbrev1 == 'M') {
+	return OUTPUT_NM;
+      } else {
+	fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	return OUTPUT_NONE;
+      }
+    case 'C':
+      switch (abbrev1) {
+      case 'U': return OUTPUT_CU;
+      case 'C': return OUTPUT_CC;
+      case 'T': return OUTPUT_CT;
+      case 'M': return OUTPUT_CM;
+      case 'X': return OUTPUT_CX;
+      default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+      }
+    case 'H':
+      switch (abbrev1) {
+      case 'U': return OUTPUT_HU;
+      case 'C': return OUTPUT_HC;
+      case 'T': return OUTPUT_HT;
+      case 'M': return OUTPUT_HM;
+      case 'X': return OUTPUT_HX;
+      default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+      }
+    case 'U':
+      switch (abbrev1) {
+      case 'U': return OUTPUT_UU;
+      case 'C': return OUTPUT_UC;
+      case 'T': return OUTPUT_UT;
+      case 'M': return OUTPUT_UM;
+      case 'X': return OUTPUT_UX;
+      default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+      }
+    case 'P':
+      switch (abbrev1) {
+      case 'C': return OUTPUT_PC;
+      case 'I': return OUTPUT_PI;
+      case 'S': return OUTPUT_PS;
+      case 'L': return OUTPUT_PL;
+      case 'M': return OUTPUT_PM;
+      case 'X': return OUTPUT_PX;
+      default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+      }
+    default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+    }
+  }
+
+  while (c != '\0') {
+    while ((c = fgetc(fp)) != '\0' && c != '\t') ;
+    if (c == '\0') {
+      return OUTPUT_NONE;
+    } else {
+      c0 = fgetc(fp);
+      c1 = fgetc(fp);
+      if (c0 == 'X' && c1 == 'O') {
+	fgetc(fp);		/* : */
+	fgetc(fp);		/* type */
+	fgetc(fp);		/* : */
+	abbrev0 = fgetc(fp);
+	abbrev1 = fgetc(fp);
+	switch (abbrev0) {
+	case 'N':
+	  if (abbrev1 == 'M') {
+	    return OUTPUT_NM;
+	  } else {
+	    fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	    return OUTPUT_NONE;
+	  }
+	case 'C':
+	  switch (abbrev1) {
+	  case 'U': return OUTPUT_CU;
+	  case 'C': return OUTPUT_CC;
+	  case 'T': return OUTPUT_CT;
+	  case 'M': return OUTPUT_CM;
+	  case 'X': return OUTPUT_CX;
+	  default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+	  }
+	case 'H':
+	  switch (abbrev1) {
+	  case 'U': return OUTPUT_HU;
+	  case 'C': return OUTPUT_HC;
+	  case 'T': return OUTPUT_HT;
+	  case 'M': return OUTPUT_HM;
+	  case 'X': return OUTPUT_HX;
+	  default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+	  }
+	case 'U':
+	  switch (abbrev1) {
+	  case 'U': return OUTPUT_UU;
+	  case 'C': return OUTPUT_UC;
+	  case 'T': return OUTPUT_UT;
+	  case 'M': return OUTPUT_UM;
+	  case 'X': return OUTPUT_UX;
+	  default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+	  }
+	case 'P':
+	  switch (abbrev1) {
+	  case 'C': return OUTPUT_PC;
+	  case 'I': return OUTPUT_PI;
+	  case 'S': return OUTPUT_PS;
+	  case 'L': return OUTPUT_PL;
+	  case 'M': return OUTPUT_PM;
+	  case 'X': return OUTPUT_PX;
+	  default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+	  }
+	default: fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1); return OUTPUT_NONE;
+	}
+      }
+    }
+  }
+
+  return OUTPUT_NONE;
+}
+
+
+#define HITI_MAXDIGITS 10
+
+/* Called just after we read in '\t', so should start at a field */
+static SAM_split_output_type
+parse_XO_and_HI_fromfile (char **hiti, FILE *fp) {
+  SAM_split_output_type split_output = OUTPUT_NONE;
+  char *p, c = 1, c0, c1;
+  char abbrev0, abbrev1;
+
+  *hiti = MALLOC((HITI_MAXDIGITS + 1) * sizeof(char));
+
+  c0 = fgetc(fp);
+  c1 = fgetc(fp);
+  if (c0 == 'H' && c1 == 'I') {
+    fgetc(fp);		/* : */
+    fgetc(fp);		/* type */
+    fgetc(fp);		/* : */
+
+    p = *hiti;
+    while ((c = *p++ = fgetc(fp)) != '\0' && c != '\t') ;
+    *--p = '\0';			/* terminating char */
+
+  } else if (c0 == 'X' && c1 == 'O') {
+    fgetc(fp);		/* : */
+    fgetc(fp);		/* type */
+    fgetc(fp);		/* : */
+    abbrev0 = fgetc(fp);
+    abbrev1 = fgetc(fp);
+    switch (abbrev0) {
+    case 'N':
+      if (abbrev1 == 'M') {
+	split_output = OUTPUT_NM;
+      } else {
+	fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	split_output = OUTPUT_NONE;
+      }
+    case 'C':
+      switch (abbrev1) {
+      case 'U': split_output = OUTPUT_CU; break;
+      case 'C': split_output = OUTPUT_CC; break;
+      case 'T': split_output = OUTPUT_CT; break;
+      case 'M': split_output = OUTPUT_CM; break;
+      case 'X': split_output = OUTPUT_CX; break;
+      default:
+	fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	split_output = OUTPUT_NONE;
+      }
+    case 'H':
+      switch (abbrev1) {
+      case 'U': split_output = OUTPUT_HU; break;
+      case 'C': split_output = OUTPUT_HC; break;
+      case 'T': split_output = OUTPUT_HT; break;
+      case 'M': split_output = OUTPUT_HM; break;
+      case 'X': split_output = OUTPUT_HX; break;
+      default:
+	fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	split_output = OUTPUT_NONE;
+      }
+    case 'U':
+      switch (abbrev1) {
+      case 'U': split_output = OUTPUT_UU; break;
+      case 'C': split_output = OUTPUT_UC; break;
+      case 'T': split_output = OUTPUT_UT; break;
+      case 'M': split_output = OUTPUT_UM; break;
+      case 'X': split_output = OUTPUT_UX; break;
+      default:
+	fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	split_output = OUTPUT_NONE;
+      }
+    case 'P':
+      switch (abbrev1) {
+      case 'C': split_output = OUTPUT_PC; break;
+      case 'I': split_output = OUTPUT_PI; break;
+      case 'S': split_output = OUTPUT_PS; break;
+      case 'L': split_output = OUTPUT_PL; break;
+      case 'M': split_output = OUTPUT_PM; break;
+      case 'X': split_output = OUTPUT_PX; break;
+      default:
+	fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	split_output = OUTPUT_NONE;
+      }
+    default:
+      fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+      split_output = OUTPUT_NONE;
+    }
+  }
+
+  while (c != '\0') {
+    while ((c = fgetc(fp)) != '\0' && c != '\t') ;
+    if (c == '\0') {
+      return split_output;
+    } else {
+      c0 = fgetc(fp);
+      c1 = fgetc(fp);
+      if (c0 == 'H' && c1 == 'I') {
+	fgetc(fp);		/* : */
+	fgetc(fp);		/* type */
+	fgetc(fp);		/* : */
+
+	p = *hiti;
+	while ((c = *p++ = fgetc(fp)) != '\0' && c != '\t') ;
+	*--p = '\0';			/* terminating char */
+
+      } else if (c0 == 'X' && c1 == 'O') {
+	fgetc(fp);		/* : */
+	fgetc(fp);		/* type */
+	fgetc(fp);		/* : */
+	abbrev0 = fgetc(fp);
+	abbrev1 = fgetc(fp);
+	switch (abbrev0) {
+	case 'N':
+	  if (abbrev1 == 'M') {
+	    split_output = OUTPUT_NM;
+	  } else {
+	    fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	    split_output = OUTPUT_NONE;
+	  }
+	case 'C':
+	  switch (abbrev1) {
+	  case 'U': split_output = OUTPUT_CU; break;
+	  case 'C': split_output = OUTPUT_CC; break;
+	  case 'T': split_output = OUTPUT_CT; break;
+	  case 'M': split_output = OUTPUT_CM; break;
+	  case 'X': split_output = OUTPUT_CX; break;
+	  default:
+	    fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	    split_output = OUTPUT_NONE;
+	  }
+	case 'H':
+	  switch (abbrev1) {
+	  case 'U': split_output = OUTPUT_HU; break;
+	  case 'C': split_output = OUTPUT_HC; break;
+	  case 'T': split_output = OUTPUT_HT; break;
+	  case 'M': split_output = OUTPUT_HM; break;
+	  case 'X': split_output = OUTPUT_HX; break;
+	  default:
+	    fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	    split_output = OUTPUT_NONE;
+	  }
+	case 'U':
+	  switch (abbrev1) {
+	  case 'U': split_output = OUTPUT_UU; break;
+	  case 'C': split_output = OUTPUT_UC; break;
+	  case 'T': split_output = OUTPUT_UT; break;
+	  case 'M': split_output = OUTPUT_UM; break;
+	  case 'X': split_output = OUTPUT_UX; break;
+	  default:
+	    fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	    split_output = OUTPUT_NONE;
+	  }
+	case 'P':
+	  switch (abbrev1) {
+	  case 'C': split_output = OUTPUT_PC; break;
+	  case 'I': split_output = OUTPUT_PI; break;
+	  case 'S': split_output = OUTPUT_PS; break;
+	  case 'L': split_output = OUTPUT_PL; break;
+	  case 'M': split_output = OUTPUT_PM; break;
+	  case 'X': split_output = OUTPUT_PX; break;
+	  default:
+	    fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	    split_output = OUTPUT_NONE;
+	  }
+	default:
+	  fprintf(stderr,"Unexpected output type %c%c\n",abbrev0,abbrev1);
+	  split_output = OUTPUT_NONE;
+	}
+      }
+    }
+  }
+
+  return split_output;
+}
+
+
+
+/* Main parser for processing with dups */
 char *
-Samread_get_acc_and_softclip_fromfile (int *acclength, unsigned int *flag, Univcoord_T *genomicpos, int *initial_softclip, bool *query_lowp,
-				       FILE *fp, Univ_IIT_T chromosome_iit, Univcoord_T *chroffsets, int linelength) {
+Samread_parse_acc_and_softclip_fromfile (int *acclength, unsigned int *flag, SAM_split_output_type *split_output,
+					 char **hiti, Univcoord_T *genomicpos, int *initial_softclip, bool *query_lowp,
+					 FILE *fp, Univ_IIT_T chromosome_iit, Univcoord_T *chroffsets, int linelength) {
   char *acc, *p;
   char *substring;
   Chrnum_T chrnum, mate_chrnum;
@@ -284,6 +592,17 @@ Samread_get_acc_and_softclip_fromfile (int *acclength, unsigned int *flag, Univc
   }
     
   FREEA(substring);
+
+  /* 9. ISIZE: Insert size.  Skip. */
+  while (fgetc(fp) != '\t') ;
+
+  /* 10. SEQ: queryseq.  Skip. */
+  while (fgetc(fp) != '\t') ;
+
+  /* 11. QUAL: quality scores.  Skip. */
+  while (fgetc(fp) != '\t') ;
+
+  *split_output = parse_XO_and_HI_fromfile(&(*hiti),fp);
 
   return acc;
 }
@@ -588,10 +907,10 @@ Samread_parse_linelen_fromfile (FILE *fp) {
 }
 
 
-
+/* Main parser for processing without dups */
 Univcoord_T
-Samread_parse_genomicpos_fromfile (FILE *fp, unsigned int *flag, Univ_IIT_T chromosome_iit, Univcoord_T *chroffsets,
-				   int linelength) {
+Samread_parse_genomicpos_fromfile (FILE *fp, unsigned int *flag, SAM_split_output_type *split_output,
+				   Univ_IIT_T chromosome_iit, Univcoord_T *chroffsets, int linelength) {
   Univcoord_T genomicpos;
   Chrnum_T chrnum;
   Chrpos_T chrpos;
@@ -641,6 +960,29 @@ Samread_parse_genomicpos_fromfile (FILE *fp, unsigned int *flag, Univ_IIT_T chro
   }
   
   FREEA(substring);
+
+  /* 5. MAPQ: Mapping quality.  Skip */
+  while (fgetc(fp) != '\t') ;
+
+  /* 6. CIGAR.  Skip */
+  while (fgetc(fp) != '\t') ;
+
+  /* 7. MRNM: Mate chr.  Skip */
+  while (fgetc(fp) != '\t') ;
+
+  /* 8. MPOS: Mate chrpos.  Skip */
+  while (fgetc(fp) != '\t') ;
+
+  /* 9. ISIZE: Insert size.  Skip. */
+  while (fgetc(fp) != '\t') ;
+
+  /* 10. SEQ: queryseq.  Skip. */
+  while (fgetc(fp) != '\t') ;
+
+  /* 11. QUAL: quality scores.  Skip. */
+  while (fgetc(fp) != '\t') ;
+
+  *split_output = parse_XO_fromfile(fp);
 
   return genomicpos;
 }
@@ -724,7 +1066,7 @@ Samread_parse_read_and_mateinfo_fromfile (FILE *fp, unsigned int *flag, char **m
   *--p = '\0';
 
   /* 8. MPOS: Mate chrpos */
-  p = substring;
+w  p = substring;
   while ((*p++ = fgetc(fp)) != '\t') ;
   *--p = '\0';
 

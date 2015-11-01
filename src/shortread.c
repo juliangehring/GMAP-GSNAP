@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 151067 2014-10-16 21:09:00Z twu $";
+static char rcsid[] = "$Id: shortread.c 160875 2015-03-13 00:26:46Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2122,7 +2122,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
   T queryseq1;
   char *acc, *restofheader, *acc2, *restofheader2;
   char *long_read_1, *long_read_2, *long_quality;
-  int nextchar2;
+  int nextchar2 = '\0';
   int fulllength1, fulllength2, quality_length;
   bool filterp;
 
@@ -2361,7 +2361,7 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
   T queryseq1;
   char *acc, *restofheader, *acc2, *restofheader2;
   char *long_read_1, *long_read_2;
-  int nextchar2;
+  int nextchar2 = '\0';
   int fulllength1, fulllength2;
   bool filterp;
 
@@ -2520,7 +2520,7 @@ Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
   T queryseq1;
   char *acc, *restofheader, *acc2, *restofheader2;
   char *long_read_1, *long_read_2;
-  int nextchar2;
+  int nextchar2 = '\0';
   int fulllength1, fulllength2;
   bool filterp;
 
@@ -2671,7 +2671,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
   T queryseq1;
   char *acc, *restofheader;
   char *long_read_1, *long_read_2, *long_quality;
-  int nextchar2;
+  int nextchar2 = '\0';
   int fulllength, quality_length;
   bool filterp;
 
@@ -2840,7 +2840,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
   T queryseq1;
   char *acc, *restofheader;
   char *long_read_1, *long_read_2, *long_quality;
-  int nextchar2;
+  int nextchar2 = '\0';
   int fulllength, quality_length;
   bool filterp;
 
@@ -3014,7 +3014,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
   T queryseq1;
   char *acc, *restofheader;
   char *long_read_1, *long_read_2, *long_quality;
-  int nextchar2;
+  int nextchar2 = '\0';
   int fulllength, quality_length;
   bool filterp;
 

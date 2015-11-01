@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 150679 2014-10-14 00:46:33Z twu $";
+static char rcsid[] = "$Id: indexdb.c 165782 2015-05-15 18:16:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -225,7 +225,7 @@ Indexdb_mean_size (T this, Mode_T mode, Width_T index1part) {
   n = oligospace = power(this->alphabet_size,index1part);
 #else
   n = oligospace = power(4,index1part);
-  if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED || mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+  if (mode != STANDARD) {
     n = power(3,index1part);
   }
 #endif
@@ -1169,13 +1169,13 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
       end0 = new->offsetsstrm[poly_T+1];
 #ifdef LARGE_GENOMES
       if ((filesize = Access_filesize(filenames->positions_high_filename)) != end0 * (off_t) sizeof(unsigned char)) {
-	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
+	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %zu, but observed %zu.\n",
 		filenames->positions_high_filename,end0*sizeof(unsigned char),filesize);
 	abort();
       }
 #endif
       if ((filesize = Access_filesize(filenames->positions_low_filename)) != end0 * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
+	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %zu, but observed %zu.\n",
 		filenames->positions_low_filename,end0*sizeof(UINT4),filesize);
 	abort();
       }
@@ -1299,13 +1299,13 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 #ifdef LARGE_GENOMES
       ptr0 = Bitpack64_read_two_huge(&end0,poly_T,new->offsetspages,new->offsetsmeta,new->offsetsstrm);
       if ((filesize = Access_filesize(filenames->positions_high_filename)) != end0 * (off_t) sizeof(unsigned char)) {
-	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
+	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %zu, but observed %zu.\n",
 		filenames->positions_high_filename,end0*sizeof(unsigned char),filesize);
 	abort();
       }
 #endif
       if ((filesize = Access_filesize(filenames->positions_low_filename)) != end0 * (off_t) sizeof(UINT4)) {
-	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %lu, but observed %lu.\n",
+	fprintf(stderr,"Something is wrong with the genomic index: expected file size for %s is %zu, but observed %zu.\n",
 		filenames->positions_low_filename,end0*sizeof(UINT4),filesize);
 	abort();
       }
@@ -1520,8 +1520,8 @@ positions_move_absolute_1 (int positions_fd, off_t ptr) {
   off_t offset = ptr*((off_t) sizeof(unsigned char));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do lseek on offset %ld*%lu=%ld\n",
-	    ptr,sizeof(unsigned char),offset);
+    fprintf(stderr,"Attempted to do lseek on offset %jd*%d=%jd\n",
+	    ptr,(int) sizeof(unsigned char),offset);
     perror("Error in indexdb.c, positions_move_absolute");
     exit(9);
   }
@@ -1533,8 +1533,8 @@ positions_move_absolute_4 (int positions_fd, off_t ptr) {
   off_t offset = ptr*((off_t) sizeof(UINT4));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do lseek on offset %ld*%lu=%ld\n",
-	    ptr,sizeof(UINT4),offset);
+    fprintf(stderr,"Attempted to do lseek on offset %jd*%d=%jd\n",
+	    ptr,(int) sizeof(UINT4),offset);
     perror("Error in indexdb.c, positions_move_absolute");
     exit(9);
   }
@@ -1738,7 +1738,7 @@ Indexdb_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
 #endif
 	  );
 #else
-  fprintf(stderr,"Allocating memory (%lu 4-byte words) for offsets, kmer %d...",oligospace+1UL,
+  fprintf(stderr,"Allocating memory (%llu 4-byte words) for offsets, kmer %d...",(unsigned long long) oligospace+1UL,
 #ifdef PMAP
 	  index1part_aa
 #else
@@ -1841,7 +1841,7 @@ Indexdb_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile
 #endif
 	    );
 #else
-    fprintf(stderr,"Allocating memory (%lu 8-byte words) for offsets, kmer %d...",oligospace+1UL,
+    fprintf(stderr,"Allocating memory (%llu 8-byte words) for offsets, kmer %d...",(unsigned long long) oligospace+1UL,
 #ifdef PMAP
 	    index1part_aa
 #else
@@ -2250,7 +2250,7 @@ Indexdb_read_inplace (int *nentries,
     debug0(
 	   printf("%d entries:",*nentries);
 	   for (ptr = ptr0; ptr < end0; ptr++) {
-	     printf(" %d %lu",this->positions_high[ptr],this->positions_low[ptr]);
+	     printf(" %d %u",this->positions_high[ptr],this->positions_low[ptr]);
 	   }
 	   printf("\n");
 	   );
@@ -2261,7 +2261,7 @@ Indexdb_read_inplace (int *nentries,
     debug0(
 	   printf("%d entries:",*nentries);
 	   for (ptr = ptr0; ptr < end0; ptr++) {
-	     printf(" %lu",this->positions[ptr]);
+	     printf(" %u",this->positions[ptr]);
 	   }
 	   printf("\n");
 	   );
@@ -2626,8 +2626,8 @@ Indexdb_new_segment (char *genomicseg,
 	oligoi = (Oligospace_T) masked + 1UL;
 #endif
 	new->offsetsstrm[oligoi] += 1;
-	debug(printf("Found oligo %06X.  Incremented offsets for %lu to be %u\n",
-		     masked,oligoi,new->offsetsstrm[oligoi]));
+	debug(printf("Found oligo %06X.  Incremented offsets for %llu to be %u\n",
+		     masked,(unsigned long long) oligoi,new->offsetsstrm[oligoi]));
 	between_counter = 0;
       }
       in_counter--;

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome_sites.c 145990 2014-08-25 21:47:32Z twu $";
+static char rcsid[] = "$Id: genome_sites.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24726,7 +24726,7 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
   
   /*      high: 9F61B62A  low: 6D68A157  flags: 00000000 */
   printf("                                              \t");
-  printf("%u\t",startblock/3*32U);
+  printf("%llu\t",(unsigned long long) startblock/3*32U);
   for (i = 0; i < startdiscard; i++) {
     printf("*");
   }
@@ -24741,14 +24741,14 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
     high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
 #endif
     printf("high: %08X  low: %08X  flags: %08X\t",high,low,flags);
-    printf("%u\t",ptr/3*32U);
+    printf("%llu\t",(unsigned long long) ptr/3*32U);
     write_chars_comp(high,low,flags);
     printf("\n");
   }
 
   /*      high: 9F61B62A  low: 6D68A157  flags: 00000000 */
   printf("                                              \t");
-  printf("%u\t",(endblock+3)/3*32U);
+  printf("%llu\t",(unsigned long long) (endblock+3)/3*32U);
   for (i = 0; i < enddiscard; i++) {
     printf(" ");
   }
@@ -24960,9 +24960,9 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
 
   offset = -startdiscard + pos5 + splicepos_offset;
   
-  debug2(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
-	       left,pos5,pos3,startblocki,endblocki));
-  debug2(printf("startdiscard = %u, enddiscard = %u\n",startdiscard,enddiscard));
+  debug2(printf("left = %llu, pos5 = %d, pos3 = %d, startblocki = %llu, endblocki = %llu\n",
+		(unsigned long long) left,pos5,pos3,(unsigned long long) startblocki,(unsigned long long) endblocki));
+  debug2(printf("startdiscard = %d, enddiscard = %d\n",startdiscard,enddiscard));
 
   if (endblocki == startblocki) {
     /* Advance knownpos past pos5 */
@@ -25013,7 +25013,7 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
       }
       found -= lowbit;
 #endif
-      debug2(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+      debug2(printf("found is %08X => offset %llu + relpos %d\n",found,(unsigned long long) offset,relpos));
     }
 
     /* Add knownpos to pos3 */
@@ -25074,7 +25074,7 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
       }
       found -= lowbit;
 #endif
-      debug2(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+      debug2(printf("found is %08X => offset %llu + relpos %d\n",found,(unsigned long long) offset,relpos));
     }
 
     ptr = &(ref_blocks[startblocki+3]);
@@ -25090,7 +25090,7 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
       }
 
       if (low_halfsite & prev_high_halfsite) {
-	debug2(printf("low_halfsite & prev_high_halfsite => offset %u - 1\n",offset));
+	debug2(printf("low_halfsite & prev_high_halfsite => offset %llu - 1\n",(unsigned long long) offset));
 	pos = offset - 1;	/* verified that this should be offset - 1 */
 	while (*knownpos < pos) {
 	  site_knowni[nfound] = *knowni++;
@@ -25136,7 +25136,7 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
 	}
 	found -= lowbit;
 #endif
-	debug2(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+	debug2(printf("found is %08X => offset %llu + relpos %d\n",found,(unsigned long long) offset,relpos));
       }
 
       ptr += 3;
@@ -25155,7 +25155,7 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
     debug2(printf("adding end mask %08x\n",clear_end_mask(enddiscard)));
 
     if (low_halfsite & prev_high_halfsite) {
-      debug2(printf("low_halfsite & prev_high_halfsite => offset %u - 1\n",offset));
+      debug2(printf("low_halfsite & prev_high_halfsite => offset %llu - 1\n",(unsigned long long) offset));
       pos = offset - 1;		/* verified that this should be offset - 1 */
       while (*knownpos < pos) {
 	site_knowni[nfound] = *knowni++;
@@ -25201,7 +25201,7 @@ splicesite_positions (int *site_positions, int *site_knowni, int *knownpos, int 
       }
       found -= lowbit;
 #endif
-      debug2(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+      debug2(printf("found is %08X => offset %llu + relpos %d\n",found,(unsigned long long) offset,relpos));
     }
 
     /* Add knownpos to pos3 */
@@ -25271,8 +25271,8 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
 
   debug3a(
 	printf("\n\n");
-	printf("Genome (in prev_dinucleotide_position): chroffset %lu, pos %u, prevpos %u\n",
-	       chroffset,pos-chroffset,prevpos-chroffset);
+	printf("Genome (in prev_dinucleotide_position): chroffset %llu, pos %llu, prevpos %llu\n",
+	       (unsigned long long) chroffset,(unsigned long long) (pos-chroffset),(unsigned long long) (prevpos-chroffset));
 	Genome_print_blocks(ref_blocks,prevpos-chroffset,pos-chroffset);
 	printf("\n");
 	);
@@ -25296,8 +25296,9 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
 #else
       foundpos = offset - (relpos = (top = found >> 16) ? clz_table[top] : 16 + clz_table[found]);
 #endif
-      debug3a(printf("oneblock: found is %08X => offset %u - relpos %d (%lu) => returning %u\n",
-		     found,offset,relpos,foundpos-chroffset,foundpos));
+      debug3a(printf("oneblock: found is %08X => offset %llu - relpos %d (%llu) => returning %llu\n",
+		     found,(unsigned long long) offset,relpos,(unsigned long long) (foundpos-chroffset),
+		     (unsigned long long) foundpos));
       return foundpos;
     } else {
       debug3a(printf("oneblock: not found\n"));
@@ -25320,8 +25321,9 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
 #else
       foundpos = offset - (relpos = (top = found >> 16) ? clz_table[top] : 16 + clz_table[found]);
 #endif
-      debug3a(printf("endblock: found is %08X => offset %u - relpos %d (%lu) => returning %u\n",
-		     found,offset,relpos,foundpos-chroffset,foundpos));
+      debug3a(printf("endblock: found is %08X => offset %llu - relpos %d (%llu) => returning %llu\n",
+		     found,(unsigned long long) offset,relpos,(unsigned long long) (foundpos-chroffset),
+		     (unsigned long long) foundpos));
       return foundpos;
     }
 
@@ -25340,8 +25342,8 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
       }
 
       if (high_halfsite & prev_low_halfsite) {
-	debug3a(printf("high_halfsite & prev_low_halfsite => offset %u - 1 (%lu)\n",
-		       offset,offset));
+	debug3a(printf("high_halfsite & prev_low_halfsite => offset %llu - 1 (%llu)\n",
+		       (unsigned long long) offset,(unsigned long long) offset));
 	return offset;
       } else if (found != 0U) {
 #ifdef HAVE_BUILTIN_CLZ
@@ -25349,8 +25351,9 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
 #else
 	foundpos = offset - (relpos = (top = found >> 16) ? clz_table[top] : 16 + clz_table[found]);
 #endif
-	debug3a(printf("middleblock: found is %08X => offset %u - relpos %d (%lu) => returning %u\n",
-		       found,offset,relpos,foundpos-chroffset,foundpos));
+	debug3a(printf("middleblock: found is %08X => offset %llu - relpos %d (%llu) => returning %llu\n",
+		       found,(unsigned long long) offset,relpos,(unsigned long long) (foundpos-chroffset),
+		       (unsigned long long) foundpos));
 	return foundpos;
       }
 
@@ -25368,8 +25371,8 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
     }
 
     if (high_halfsite & prev_low_halfsite) {
-      debug3a(printf("high_halfsite & prev_low_halfsite => offset %u - 1 (%lu) => returning %u\n",
-		     offset,offset-1-chroffset,offset));
+      debug3a(printf("high_halfsite & prev_low_halfsite => offset %llu - 1 (%llu) => returning %llu\n",
+		     (unsigned long long) offset,(unsigned long long) (offset-1-chroffset),(unsigned long long) offset));
       return offset;
     } else {
       startdiscard = prevpos % 32;
@@ -25381,8 +25384,9 @@ prev_dinucleotide_position (Univcoord_T pos, Univcoord_T prevpos,
 #else
 	foundpos = offset - (relpos = (top = found >> 16) ? clz_table[top] : 16 + clz_table[found]);
 #endif
-	debug3a(printf("startblock: found is %08X => offset %u - relpos %d (%lu) => returning %u\n",
-		       found,offset,relpos,foundpos-chroffset,foundpos));
+	debug3a(printf("startblock: found is %08X => offset %llu - relpos %d (%llu) => returning %llu\n",
+		       found,(unsigned long long) offset,relpos,(unsigned long long) (foundpos-chroffset),
+		       (unsigned long long) foundpos));
 	return foundpos;
       } else {
 	debug3a(printf("startblock: not found\n"));
@@ -25432,9 +25436,9 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
 
   offset = -startdiscard + pos5 + splicepos_offset;
   
-  debug3(printf("genomicstart = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
-		genomicstart,pos5,pos3,startblocki,endblocki));
-  debug3(printf("startdiscard = %u, enddiscard = %u\n",startdiscard,enddiscard));
+  debug3(printf("genomicstart = %llu, pos5 = %d, pos3 = %d, startblocki = %llu, endblocki = %llu\n",
+		(unsigned long long) genomicstart,pos5,pos3,(unsigned long long) startblocki,(unsigned long long) endblocki));
+  debug3(printf("startdiscard = %d, enddiscard = %d\n",startdiscard,enddiscard));
 
   if (endblocki == startblocki) {
     if (snp_blocks) {
@@ -25468,7 +25472,8 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
 
       found -= lowbit;
 #endif
-      debug3(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+      debug3(printf("found is %08X => offset %llu + relpos %d\n",
+		    found,(unsigned long long) offset,relpos));
     }
 
     while (i < genomiclength) {
@@ -25511,7 +25516,8 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
 
       found -= lowbit;
 #endif
-      debug3(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+      debug3(printf("found is %08X => offset %llu + relpos %d\n",
+		    found,(unsigned long long) offset,relpos));
     }
 
     ptr = &(ref_blocks[startblocki+3]);
@@ -25527,7 +25533,7 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
       }
 
       if (low_halfsite & prev_high_halfsite) {
-	debug3(printf("low_halfsite & prev_high_halfsite => offset %u\n",offset));
+	debug3(printf("low_halfsite & prev_high_halfsite => offset %llu\n",(unsigned long long) offset));
 	pos = offset;
 	while (i < pos) {
 	  last_position[i] = lastpos;
@@ -25557,7 +25563,8 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
 
 	found -= lowbit;
 #endif
-	debug3(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+	debug3(printf("found is %08X => offset %llu + relpos %d\n",
+		      found,(unsigned long long) offset,relpos));
       }
 
       ptr += 3;
@@ -25576,7 +25583,7 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
     debug3(printf("adding end mask %08x\n",clear_end_mask(enddiscard)));
 
     if (low_halfsite & prev_high_halfsite) {
-      debug3(printf("low_halfsite & prev_high_halfsite => offset %u\n",offset));
+      debug3(printf("low_halfsite & prev_high_halfsite => offset %llu\n",(unsigned long long) offset));
       pos = offset;
       while (i < pos) {
 	last_position[i] = lastpos;
@@ -25606,7 +25613,8 @@ last_dinucleotide_positions_fwd (int *last_position, Univcoord_T genomicstart,
 
       found -= lowbit;
 #endif
-      debug3(printf("found is %08X => offset %u + relpos %d\n",found,offset,relpos));
+      debug3(printf("found is %08X => offset %llu + relpos %d\n",
+		    found,(unsigned long long) offset,relpos));
     }
 
     while (i < genomiclength) {
@@ -25644,15 +25652,15 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
 
   debug3b(
 	printf("\n\n");
-	printf("Genome (in prev_dinucleotide_position_rev): chrhigh %u, pos %u, prevpos %u\n",
-	       chrhigh,pos,prevpos);
+	printf("Genome (in prev_dinucleotide_position_rev): chrhigh %llu, pos %u, prevpos %u\n",
+	       (unsigned long long) chrhigh,pos,prevpos);
 	Genome_print_blocks(ref_blocks,chrhigh-pos,chrhigh-prevpos);
 	printf("\n");
 	);
 
   offset = pos + startdiscard + splicepos_offset;
-  debug3b(printf("offset %u = pos %d + startdiscard %d + splicepos_offset %u\n",
-		offset,pos,startdiscard,splicepos_offset));
+  debug3b(printf("offset %llu = pos %d + startdiscard %d + splicepos_offset %d\n",
+		 (unsigned long long) offset,pos,startdiscard,splicepos_offset));
 
   if (startblocki == endblocki) {
     if (snp_blocks) {
@@ -25671,8 +25679,8 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
 #else
       foundpos = offset - (relpos = mod_37_bit_position[(lowbit = -found & found) % 37]);
 #endif
-      debug3b(printf("oneblock: found is %08X => offset %u - relpos %d (%lu)\n",
-		     found,offset,relpos,chrhigh - foundpos));
+      debug3b(printf("oneblock: found is %08X => offset %llu - relpos %d (%llu)\n",
+		     found,(unsigned long long) offset,relpos,(unsigned long long) (chrhigh - foundpos)));
       return foundpos;
     } else {
       return (Chrpos_T) -1;
@@ -25689,8 +25697,8 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
 #else
       foundpos = offset - (relpos = mod_37_bit_position[(lowbit = -found & found) % 37]);
 #endif
-      debug3b(printf("startblock: found is %08X => offset %u - relpos %d (%lu)\n",
-		     found,offset,relpos,chrhigh-foundpos));
+      debug3b(printf("startblock: found is %08X => offset %llu - relpos %d (%llu)\n",
+		     found,(unsigned long long) offset,relpos,(unsigned long long) (chrhigh-foundpos)));
       return foundpos;
     }
 
@@ -25709,8 +25717,8 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
       }
 
       if (low_halfsite & prev_high_halfsite) {
-	debug3b(printf("low_halfsite & prev_high_halfsite => offset %u + 1 (%lu)\n",
-		       offset,chrhigh - (offset + 1)));
+	debug3b(printf("low_halfsite & prev_high_halfsite => offset %llu + 1 (%llu)\n",
+		       (unsigned long long) offset,(unsigned long long) (chrhigh - (offset + 1))));
 	return offset + 1;
       } else if (found != 0U) {
 #ifdef HAVE_BUILTIN_CTZ
@@ -25718,8 +25726,8 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
 #else
 	foundpos = offset - (relpos = mod_37_bit_position[(lowbit = -found & found) % 37]);
 #endif
-	debug3b(printf("middleblock: found is %08X => offset %u - relpos %d (%lu)\n",
-		       found,offset,relpos,chrhigh-foundpos));
+	debug3b(printf("middleblock: found is %08X => offset %llu - relpos %d (%llu)\n",
+		       found,(unsigned long long) offset,relpos,(unsigned long long) (chrhigh-foundpos)));
 	return foundpos;
       }
 
@@ -25737,8 +25745,8 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
     }
 
     if (low_halfsite & prev_high_halfsite) {
-      debug3b(printf("low_halfsite & prev_high_halfsite => offset %u + 1 (%lu)\n",
-		     offset,chrhigh - (offset + 1)));
+      debug3b(printf("low_halfsite & prev_high_halfsite => offset %llu + 1 (%llu)\n",
+		     (unsigned long long) offset,(unsigned long long) (chrhigh - (offset + 1))));
       return offset + 1;
     } else {
       enddiscard = (chrhigh-prevpos) % 32;
@@ -25750,8 +25758,8 @@ prev_dinucleotide_position_rev (Chrpos_T pos, Chrpos_T prevpos, Univcoord_T chrh
 #else
 	foundpos = offset - (relpos = mod_37_bit_position[(lowbit = -found & found) % 37]);
 #endif
-	debug3b(printf("endblock: found is %08X => offset %u - relpos %d (%lu)\n",
-		       found,offset,relpos,chrhigh-foundpos));
+	debug3b(printf("endblock: found is %08X => offset %llu - relpos %d (%llu)\n",
+		       found,(unsigned long long) offset,relpos,(unsigned long long) (chrhigh-foundpos)));
 	return foundpos;
       } else {
 	return (Chrpos_T) -1;
@@ -25800,7 +25808,7 @@ last_dinucleotide_positions_rev (int *last_position, Univcoord_T genomicstart,
 
   offset = (originblocki - startblocki) * 32U/3 + origindiscard + splicepos_offset;
 
-  debug3(printf("genomicstart = %u, pos5 = %d, pos3 = %d, genomiclength = %d, startblocki = %u, endblocki = %u, originblocki = %u\n",
+  debug3(printf("genomicstart = %llu, pos5 = %d, pos3 = %d, genomiclength = %d, startblocki = %u, endblocki = %u, originblocki = %u\n",
 		genomicstart,pos5,pos3,genomiclength,startblocki,endblocki,originblocki));
   debug3(printf("startdiscard = %u, enddiscard = %u, origindiscard = %u\n",
 		startdiscard,enddiscard,origindiscard));
@@ -26031,8 +26039,11 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
   Univcoord_T donorpos, acceptorpos;
   Univcoord_T donor_shift, acceptor_shift;
 
-  debug4(printf("Entered Genome_sense_canonicalp with donor %u..%u and acceptor %u..%u\n",
-		donor_leftbound-chroffset,donor_rightbound-chroffset,acceptor_leftbound-chroffset,acceptor_rightbound-chroffset));
+  debug4(printf("Entered Genome_sense_canonicalp with donor %llu..%llu and acceptor %llu..%llu\n",
+		(unsigned long long) (donor_leftbound-chroffset),
+		(unsigned long long) (donor_rightbound-chroffset),
+		(unsigned long long) (acceptor_leftbound-chroffset),
+		(unsigned long long) (acceptor_rightbound-chroffset)));
   if ((donorpos = prev_dinucleotide_position(donor_rightbound+1,donor_leftbound,
 #ifdef DEBUG3A
 					     chroffset,
@@ -26042,7 +26053,8 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
   } else {
     donorpos += 1U;		/* Shift coordinates to match input */
     donor_shift = donor_rightbound - donorpos;
-    debug4(printf("Found donor at %u (shift %u)\n",donorpos-chroffset,donor_shift));
+    debug4(printf("Found donor at %llu (shift %llu)\n",
+		  (unsigned long long) (donorpos-chroffset),(unsigned long long) donor_shift));
   }
 
   if ((acceptorpos = prev_dinucleotide_position(acceptor_rightbound-1,acceptor_leftbound-2,
@@ -26053,11 +26065,13 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
     return false;
   } else {
     acceptor_shift = acceptor_rightbound - acceptorpos; 
-    debug4(printf("Found acceptor at %u (shift %u)\n",acceptorpos-chroffset,acceptor_shift));
+    debug4(printf("Found acceptor at %llu (shift %llu)\n",
+		  (unsigned long long) (acceptorpos-chroffset),(unsigned long long) acceptor_shift));
   }
 
   while (1) {
-    debug4(printf("sense: donor_shift %lu, acceptor_shift %lu\n",donor_shift,acceptor_shift));
+    debug4(printf("sense: donor_shift %llu, acceptor_shift %llu\n",
+		  (unsigned long long) donor_shift,(unsigned long long) acceptor_shift));
     if (donor_shift == acceptor_shift) {
       debug4(printf("donor prob %f, acceptor prob %f\n",
 		    Maxent_hr_donor_prob(donorpos,chroffset),Maxent_hr_acceptor_prob(acceptorpos,chroffset)));
@@ -26073,7 +26087,8 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 	} else {
 	  donorpos += 1U;		/* Shift coordinates to match input */
 	  donor_shift = donor_rightbound - donorpos;
-	  debug4(printf("Found donor at %u (shift %u)\n",donorpos-chroffset,donor_shift));
+	  debug4(printf("Found donor at %llu (shift %llu)\n",
+			(unsigned long long) (donorpos-chroffset),(unsigned long long) donor_shift));
 	}
 
 	if ((acceptorpos = prev_dinucleotide_position((acceptorpos-1)-1,acceptor_leftbound-2,
@@ -26084,7 +26099,8 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 	  return false;
 	} else {
 	  acceptor_shift = acceptor_rightbound - acceptorpos;
-	  debug4(printf("Found acceptor at %u (shift %u)\n",acceptorpos-chroffset,acceptor_shift));
+	  debug4(printf("Found acceptor at %llu (shift %llu)\n",
+			(unsigned long long) (acceptorpos-chroffset),(unsigned long long) acceptor_shift));
 	}
       }
 
@@ -26098,7 +26114,8 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
       } else {
 	donorpos += 1U;		/* Shift coordinates to match input */
 	donor_shift = donor_rightbound - donorpos;
-	debug4(printf("Found donor at %u (shift %u)\n",donorpos-chroffset,donor_shift));
+	debug4(printf("Found donor at %llu (shift %llu)\n",
+		      (unsigned long long) (donorpos-chroffset),(unsigned long long) donor_shift));
       }
     } else {
       if ((acceptorpos = prev_dinucleotide_position((acceptorpos-1)-1,acceptor_leftbound-2,
@@ -26109,7 +26126,8 @@ Genome_sense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_leftbou
 	return false;
       } else {
 	acceptor_shift = acceptor_rightbound - acceptorpos;
-	debug4(printf("Found acceptor at %u (shift %u)\n",acceptorpos-chroffset,acceptor_shift));
+	debug4(printf("Found acceptor at %llu (shift %llu)\n",
+		      (unsigned long long) (acceptorpos-chroffset),(unsigned long long) acceptor_shift));
       }
     }
   }
@@ -26122,8 +26140,11 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
   Univcoord_T donorpos, acceptorpos;
   Univcoord_T donor_shift, acceptor_shift;
 
-  debug4(printf("Entered Genome_antisense_canonicalp with donor %u..%u and acceptor %u..%u\n",
-		donor_leftbound-chroffset,donor_rightbound-chroffset,acceptor_leftbound-chroffset,acceptor_rightbound-chroffset));
+  debug4(printf("Entered Genome_antisense_canonicalp with donor %llu..%llu and acceptor %llu..%llu\n",
+		(unsigned long long) (donor_leftbound-chroffset),
+		(unsigned long long) (donor_rightbound-chroffset),
+		(unsigned long long) (acceptor_leftbound-chroffset),
+		(unsigned long long) (acceptor_rightbound-chroffset)));
   if ((donorpos = prev_dinucleotide_position(donor_rightbound-1,donor_leftbound-2,
 #ifdef DEBUG3A
 					     chroffset,
@@ -26132,7 +26153,8 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
     return false;
   } else {
     donor_shift = donor_rightbound - donorpos;
-    debug4(printf("Found donor at %u (shift %u)\n",donorpos-chroffset,donor_shift));
+    debug4(printf("Found donor at %llu (shift %llu)\n",
+		  (unsigned long long) (donorpos-chroffset),(unsigned long long) donor_shift));
   }
 
   if ((acceptorpos = prev_dinucleotide_position(acceptor_rightbound+1,acceptor_leftbound,
@@ -26144,11 +26166,13 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
   } else {
     acceptorpos += 1U;		/* Shift coordinates to match input */
     acceptor_shift = acceptor_rightbound - acceptorpos;
-    debug4(printf("Found acceptor at %u (shift %u)\n",acceptorpos-chroffset,acceptor_shift));
+    debug4(printf("Found acceptor at %llu (shift %llu)\n",
+		  (unsigned long long) (acceptorpos-chroffset),(unsigned long long) acceptor_shift));
   }
 
   while (1) {
-    debug4(printf("antisense: donor_shift %lu, acceptor_shift %lu\n",donor_shift,acceptor_shift));
+    debug4(printf("antisense: donor_shift %llu, acceptor_shift %llu\n",
+		  (unsigned long long) donor_shift,(unsigned long long) acceptor_shift));
     if (donor_shift == acceptor_shift) {
       debug4(printf("antidonor prob %f, antiacceptor prob %f\n",
 		    Maxent_hr_antidonor_prob(donorpos,chroffset),Maxent_hr_antiacceptor_prob(acceptorpos,chroffset)));
@@ -26163,7 +26187,8 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 	  return false;
 	} else {
 	  donor_shift = donor_rightbound - donorpos;
-	  debug4(printf("Found donor at %u (shift %u)\n",donorpos-chroffset,donor_shift));
+	  debug4(printf("Found donor at %llu (shift %llu)\n",
+			(unsigned long long) (donorpos-chroffset),(unsigned long long) donor_shift));
 	}
 
 	if ((acceptorpos = prev_dinucleotide_position((acceptorpos+1)-1,acceptor_leftbound,
@@ -26175,7 +26200,8 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 	} else {
 	  acceptorpos += 1U;	/* Shift coordinates to match input */
 	  acceptor_shift = acceptor_rightbound - acceptorpos;
-	  debug4(printf("Found acceptor at %u (shift %u)\n",acceptorpos-chroffset,acceptor_shift));
+	  debug4(printf("Found acceptor at %llu (shift %llu)\n",
+			(unsigned long long) (acceptorpos-chroffset),(unsigned long long) acceptor_shift));
 	}
       }
 
@@ -26188,7 +26214,8 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
 	return false;
       } else {
 	donor_shift = donor_rightbound - donorpos;
-	debug4(printf("Found donor at %u (shift %u)\n",donorpos-chroffset,donor_shift));
+	debug4(printf("Found donor at %llu (shift %llu)\n",
+		      (unsigned long long) (donorpos-chroffset),(unsigned long long) donor_shift));
       }
     } else {
       if ((acceptorpos = prev_dinucleotide_position((acceptorpos+1)-1,acceptor_leftbound,
@@ -26200,7 +26227,8 @@ Genome_antisense_canonicalp (Univcoord_T donor_rightbound, Univcoord_T donor_lef
       } else {
 	acceptorpos += 1U;	/* Shift coordinates to match input */
 	acceptor_shift = acceptor_rightbound - acceptorpos;
-	debug4(printf("Found acceptor at %u (shift %u)\n",acceptorpos-chroffset,acceptor_shift));
+	debug4(printf("Found acceptor at %llu (shift %llu)\n",
+		      (unsigned long long) (acceptorpos-chroffset),(unsigned long long) acceptor_shift));
       }
     }
   }

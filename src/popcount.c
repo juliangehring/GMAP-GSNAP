@@ -1,4 +1,8 @@
-static char rcsid[] = "$Id: popcount.c 116713 2013-11-27 19:46:01Z twu $";
+static char rcsid[] = "$Id: popcount.c 157234 2015-01-22 18:59:19Z twu $";
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 
 #ifndef HAVE_BUILTIN_CTZ
 const int mod_37_bit_position[] = 

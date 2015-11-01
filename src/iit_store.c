@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_store.c 118464 2013-11-27 20:12:59Z twu $";
+static char rcsid[] = "$Id: iit_store.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -321,11 +321,8 @@ scan_header_div (int *labellength, bool *seenp, List_T *divlist, List_T *typelis
     debug(printf("  and coords %s as a number\n",coords));
     *end = *start;
   } else if (isrange(&(*start),&(*end),coords)) {
-#ifdef HAVE_64_BIT
-    debug(printf("  and coords %s as a range starting at %lu and ending at %lu\n",coords,*start,*end));
-#else
-    debug(printf("  and coords %s as a range starting at %u and ending at %u\n",coords,*start,*end));
-#endif
+    debug(printf("  and coords %s as a range starting at %llu and ending at %llu\n",
+		 coords,(unsigned long long) *start,(unsigned long long) *end));
   } else {
     fprintf(stderr,"Error parsing %s:%s.  Expecting coords (as <div>:<number>..<number>)\n",query,coords);
     fprintf(stderr,"Problematic line was: %s\n",header);
@@ -410,11 +407,7 @@ scan_header_spaces (int *labellength, bool *seenp, List_T *divlist, List_T *type
   /* Example: >A 1 10 X red.  Here, A is a label, 1 and 10 are start and end, X is a div, and red is a type. */
 
   *seenp = false;
-#ifdef HAVE_64_BIT
-  nscanned = sscanf(header,">%s %lu %lu\n",Buffer,&(*start),&(*end));
-#else
-  nscanned = sscanf(header,">%s %u %u\n",Buffer,&(*start),&(*end));
-#endif
+  nscanned = sscanf(header,">%s %llu %llu\n",Buffer,&(*start),&(*end));
   if (nscanned < 3) {
     fprintf(stderr,"Error parsing %s.  Expecting a FASTA type header with a label, two coordinates, and optional tag.\n",header);
     exit(9);
@@ -657,15 +650,9 @@ parse_fasta (bool *valuep, Univcoord_T *max_coordinate, Univcoord_T *label_total
     FREE(divstring);
   }
   
-#ifdef HAVE_64_BIT
-  fprintf(stderr,"Maximum coordinate: %lu\n",*max_coordinate);
-  fprintf(stderr,"Total label length: %lu + %d separators\n",*label_totallength,nentries);
-  fprintf(stderr,"Total annotation length: %lu + %d separators\n",*annot_totallength,nentries);
-#else
-  fprintf(stderr,"Maximum coordinate: %u\n",*max_coordinate);
-  fprintf(stderr,"Total label length: %u + %d separators\n",*label_totallength,nentries);
-  fprintf(stderr,"Total annotation length: %u + %d separators\n",*annot_totallength,nentries);
-#endif
+  fprintf(stderr,"Maximum coordinate: %llu\n",(unsigned long long) *max_coordinate);
+  fprintf(stderr,"Total label length: %llu + %d separators\n",(unsigned long long) *label_totallength,nentries);
+  fprintf(stderr,"Total annotation length: %llu + %d separators\n",(unsigned long long) *annot_totallength,nentries);
   *label_totallength += nentries;
   *annot_totallength += nentries;
 

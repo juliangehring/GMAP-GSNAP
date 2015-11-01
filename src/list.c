@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c 148359 2014-09-19 22:09:34Z twu $";
+static char rcsid[] = "$Id: list.c 161598 2015-03-21 02:37:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -47,6 +47,20 @@ List_pop (T list, void **x) {
     head = list->rest;
     *x = list->first;
     FREE(list);
+    return head;
+  } else {
+    return list;
+  }
+}
+
+T
+List_pop_out (T list, void **x) {
+  T head;
+
+  if (list) {
+    head = list->rest;
+    *x = list->first;
+    FREE_OUT(list);
     return head;
   } else {
     return list;

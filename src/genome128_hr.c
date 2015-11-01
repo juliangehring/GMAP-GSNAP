@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome128_hr.c 151045 2014-10-16 19:08:17Z twu $";
+static char rcsid[] = "$Id: genome128_hr.c 165782 2015-05-15 18:16:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -36,7 +36,7 @@ static char rcsid[] = "$Id: genome128_hr.c 151045 2014-10-16 19:08:17Z twu $";
 #include <nmmintrin.h>
 #endif
 
-#if defined(HAVE_LZCNT) || defined(HAVE_BMI1)
+#if defined(HAVE_LZCNT) || defined(HAVE_TZCNT)
 #include <immintrin.h>
 #endif
 
@@ -18093,6 +18093,122 @@ block_diff_atoi_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomec
 }
 
 
+/************************************************************************
+ *  TTOC
+ ************************************************************************/
+
+static UINT4
+block_diff_ttoc_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		    bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp) {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  }
+}
+
+
+static Genomediff_T
+block_diff_ttoc (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+		 bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp) {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp) {
+      return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  }
+}
+
+static UINT4
+block_diff_ttoc_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+			   bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  } else {
+    if (plusp) {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  }
+}
+
+static Genomediff_T
+block_diff_ttoc_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp) {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  } else {
+    if (plusp) {
+      return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    }
+  }
+}
+
+/* Ignores snp_ptr */
+static UINT4
+block_diff_ttoc_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp) {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp) {
+      return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  }
+}
+
+/* Ignores snp_ptr */
+static Genomediff_T
+block_diff_ttoc_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
+		     bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
+  if (genestrand == +2) {
+    if (plusp) {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  } else {
+    if (plusp) {
+      return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    }
+  }
+}
+
+
 
 /* query_shifted, (snp_ptr,) ref_ptr, plusp, genestrand, query_unk_mismatch_local_p */
 typedef Genomediff_T (*Diffproc_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool);
@@ -18148,6 +18264,12 @@ Genome_hr_setup (Genomecomp_T *ref_blocks_in, Genomecomp_T *snp_blocks_in,
     block_diff_32 = block_diff_atoi_32;
     block_diff_sarray_32 = block_diff_atoi_sarray_32;
     break;
+  case TTOC_STRANDED: case TTOC_NONSTRANDED:
+    block_diff = block_diff_ttoc;
+    block_diff_sarray = block_diff_ttoc_sarray;
+    block_diff_32 = block_diff_ttoc_32;
+    block_diff_sarray_32 = block_diff_ttoc_sarray_32;
+    break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
 
@@ -18167,6 +18289,10 @@ Genome_hr_setup (Genomecomp_T *ref_blocks_in, Genomecomp_T *snp_blocks_in,
   case ATOI_STRANDED: case ATOI_NONSTRANDED:
     block_diff_snp = block_diff_atoi_snp;
     block_diff_snp_32 = block_diff_atoi_snp_32;
+    break;
+  case TTOC_STRANDED: case TTOC_NONSTRANDED:
+    block_diff_snp = block_diff_ttoc_snp;
+    block_diff_snp_32 = block_diff_ttoc_snp_32;
     break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
@@ -18198,6 +18324,10 @@ Genome_hr_user_setup (UINT4 *ref_blocks_in,
     block_diff = block_diff_atoi;
     block_diff_32 = block_diff_atoi_32;
     break;
+  case TTOC_STRANDED: case TTOC_NONSTRANDED:
+    block_diff = block_diff_ttoc;
+    block_diff_32 = block_diff_ttoc_32;
+    break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
 
@@ -18217,6 +18347,10 @@ Genome_hr_user_setup (UINT4 *ref_blocks_in,
   case ATOI_STRANDED: case ATOI_NONSTRANDED:
     block_diff_snp = block_diff_atoi_snp;
     block_diff_snp_32 = block_diff_atoi_snp_32;
+    break;
+  case TTOC_STRANDED: case TTOC_NONSTRANDED:
+    block_diff_snp = block_diff_ttoc_snp;
+    block_diff_snp_32 = block_diff_ttoc_snp_32;
     break;
   default: fprintf(stderr,"Mode %d not recognized\n",mode); abort();
   }
@@ -18444,7 +18578,7 @@ count_trailing_zeroes (__m128i _diff) {
 #ifdef HAVE_SSE4_1
   UINT8 x;
 
-#ifdef HAVE_BMI1
+#ifdef HAVE_TZCNT
   if ((x = _mm_extract_epi64(_diff,0)) != 0) {
     return (int) _tzcnt_u64(x);
   } else {
@@ -18462,7 +18596,7 @@ count_trailing_zeroes (__m128i _diff) {
 #else
   UINT4 x;
 
-#ifdef HAVE_BMI1
+#ifdef HAVE_TZCNT
   if ((x = (_mm_extract_epi16(_diff,1) << 16) | (_mm_extract_epi16(_diff,0) & 0x0000FFFF)) != 0) {
     debug4(printf("word 0 is non-empty, so returning %d\n",_tzcnt_u32(x)));
     return _tzcnt_u32(x);
@@ -18652,7 +18786,7 @@ print_diff_leading_zeroes (__m128i _diff, int offset) {
 #define count_leading_zeroes(diff) ((diff >> 16) ? clz_table[diff >> 16] : 16 + clz_table[diff])
 #endif
 
-#ifdef HAVE_BMI1
+#ifdef HAVE_TZCNT
 #define count_trailing_zeroes(diff) _tzcnt_u32(diff)
 #elif defined(HAVE_BUILTIN_CTZ)
 #define count_trailing_zeroes(diff) __builtin_ctz(diff)
@@ -18717,7 +18851,7 @@ print_diff_leading_zeroes (UINT4 diff, int offset) {
 #define count_leading_zeroes_32(diff) ((diff >> 16) ? clz_table[diff >> 16] : 16 + clz_table[diff])
 #endif
 
-#ifdef HAVE_BMI1
+#ifdef HAVE_TZCNT
 #define count_trailing_zeroes_32(diff) _tzcnt_u32(diff)
 #elif defined(HAVE_BUILTIN_CTZ)
 #define count_trailing_zeroes_32(diff) __builtin_ctz(diff)

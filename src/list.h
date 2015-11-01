@@ -1,4 +1,4 @@
-/* $Id: list.h 148359 2014-09-19 22:09:34Z twu $ */
+/* $Id: list.h 161598 2015-03-21 02:37:54Z twu $ */
 #ifndef LIST_INCLUDED
 #define LIST_INCLUDED
 
@@ -9,6 +9,7 @@ extern T List_push (T list, void *x);
 extern T List_push_keep (T list, void *x);
 extern T List_push_out (T list, void *x);
 extern T List_pop (T list, void **x);
+extern T List_pop_out (T list, void **x);
 extern void *List_head (T list);
 extern T List_next (T list);
 extern void List_head_set (T list, void *x);

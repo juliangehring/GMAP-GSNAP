@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 133555 2014-04-17 23:06:39Z twu $";
+static char rcsid[] = "$Id: snpindex.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -504,7 +504,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, UINT4 *positions4, U
       }
       if (nsnps == 0) {
 	/* no snps */
-	/* fprintf(stderr,"\nNo snps at position %lu, %s:%u",position,divstring,Interval_low(interval)); */
+	/* fprintf(stderr,"\nNo snps at position %llu, %s:%u",(unsigned long long) position,divstring,Interval_low(interval)); */
       } else if (nsnps > 4) {
 	/* too many snps */
       } else if (badcharp == true) {
@@ -551,8 +551,8 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, UINT4 *positions4, U
 	  oligo = Uintlist_head(p);
 	  nt = shortoligo_nt(oligo,index1part);
 	  if (samep(nt,&(refstring[starti]),index1part) == true) {
-	    fprintf(stderr,"Storing oligomer %s that is the same as the reference at %lu (%s:%u)\n",
-		    nt,position,divstring,chrpos+1U);
+	    fprintf(stderr,"Storing oligomer %s that is the same as the reference at %llu (%s:%u)\n",
+		    nt,(unsigned long long) position,divstring,chrpos+1U);
 	    abort();
 	  }
 	  FREE(nt);
@@ -566,7 +566,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, UINT4 *positions4, U
 	    oligo = Uintlist_head(p);
 	    offsets[oligo + 1U] += 1;
 	    debug1(nt = shortoligo_nt(oligo,index1part);
-		   printf("Storing %s at %lu (%s:%u)\n",nt,position,divstring,chrpos+1U);
+		   printf("Storing %s at %llu (%s:%u)\n",nt,(unsigned long long) position,divstring,chrpos+1U);
 		   FREE(nt));
 	  }
 
@@ -577,7 +577,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, UINT4 *positions4, U
 	      oligo = Uintlist_head(p);
 	      positions8[offsets[oligo]++] = position;
 	      debug1(nt = shortoligo_nt(oligo,index1part);
-		     printf("Storing %s at %lu (%s:%u)\n",nt,position,divstring,chrpos+1U);
+		     printf("Storing %s at %llu (%s:%u)\n",nt,(unsigned long long) position,divstring,chrpos+1U);
 		     FREE(nt));
 	    }
 	    
@@ -586,7 +586,7 @@ process_snp_block (int *nwarnings, Positionsptr_T *offsets, UINT4 *positions4, U
 	      oligo = Uintlist_head(p);
 	      positions4[offsets[oligo]++] = (UINT4) position;
 	      debug1(nt = shortoligo_nt(oligo,index1part);
-		     printf("Storing %s at %lu (%s:%u)\n",nt,position,divstring,chrpos+1U);
+		     printf("Storing %s at %llu (%s:%u)\n",nt,(unsigned long long) position,divstring,chrpos+1U);
 		     FREE(nt));
 	    }
 	  }
@@ -896,7 +896,7 @@ merge_positions8 (FILE *positions_high_fp, FILE *positions_low_fp,
       ptr2++;
     } else {
       nt = shortoligo_nt(oligo,index1part);
-      fprintf(stderr,"Problem: saw duplicate positions %lu in oligo %s\n",*ptr1,nt);
+      fprintf(stderr,"Problem: saw duplicate positions %llu in oligo %s\n",(unsigned long long) *ptr1,nt);
       FREE(nt);
       abort();
       /*
@@ -1158,7 +1158,8 @@ main (int argc, char *argv[]) {
   /* Copy genome */
   nblocks = Genome_totallength(genome)/32U;
   snp_blocks = (Genomecomp_T *) CALLOC(nblocks*3,sizeof(Genomecomp_T));
-  fprintf(stderr,"Allocating %lu*3*%lu bytes for compressed genome\n",nblocks,sizeof(Genomecomp_T));
+  fprintf(stderr,"Allocating %llu*3*%d bytes for compressed genome\n",
+	  (unsigned long long) nblocks,(int) sizeof(Genomecomp_T));
   memcpy(snp_blocks,Genome_blocks(genome),nblocks*3*sizeof(Genomecomp_T));
 
   /* Prepare for write */
@@ -1281,7 +1282,8 @@ main (int argc, char *argv[]) {
   sprintf(filename2,"%s/%s.%s",destdir,filenames->offsets_basename_ptr,snps_root);
 
 
-  fprintf(stderr,"Writing %lu offsets with %u total positions\n",oligospace+1,offsets[oligospace]);
+  fprintf(stderr,"Writing %llu offsets with %llu total positions\n",
+	  (unsigned long long) oligospace+1,(unsigned long long) offsets[oligospace]);
   if (compression_type == BITPACK64_COMPRESSION) {
     Bitpack64_write_differential(/*ptrsfile*/filename1,/*compfile*/filename2,offsets,oligospace);
   } else {

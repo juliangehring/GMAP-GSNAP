@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 149319 2014-09-30 02:15:42Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 165789 2015-05-15 18:45:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -365,8 +365,8 @@ print_program_version () {
 #endif
   fprintf(stdout,"\n");
 
-  fprintf(stdout,"Sizes: off_t (%lu), size_t (%lu), unsigned int (%lu), long int (%lu)\n",
-	  sizeof(off_t),sizeof(size_t),sizeof(unsigned int),sizeof(long int));
+  fprintf(stdout,"Sizes: off_t (%d), size_t (%d), unsigned int (%d), long int (%d), long long int (%d)\n",
+	  (int) sizeof(off_t),(int) sizeof(size_t),(int) sizeof(unsigned int),(int) sizeof(long int),(int) sizeof(long long int));
   fprintf(stdout,"Default gmap directory: %s\n",GMAPDB);
   fprintf(stdout,"Maximum read length: %d\n",MAX_READLENGTH);
   fprintf(stdout,"Thomas D. Wu, Genentech, Inc.\n");
@@ -451,7 +451,7 @@ uniqueness_scan (bool from_right_p) {
 			      /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false,/*skipp*/false);
     stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-				     genome,floors_array,user_maxlevel_float,subopt_levels,
+				     genome,floors_array,user_maxlevel_float,
 				     indel_penalty_middle,indel_penalty_end,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     localsplicing_penalty,/*distantsplicing_penalty*/100,min_shortend,
@@ -495,7 +495,7 @@ uniqueness_scan (bool from_right_p) {
 				  /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false,/*skipp*/false);
 	stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 					 queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-					 genome,floors_array,user_maxlevel_float,subopt_levels,
+					 genome,floors_array,user_maxlevel_float,
 					 indel_penalty_middle,indel_penalty_end,
 					 allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					 localsplicing_penalty,/*distantsplicing_penalty*/100,min_shortend,
@@ -774,8 +774,12 @@ main (int argc, char *argv[]) {
 	  mode = ATOI_STRANDED;
 	} else if (!strcmp(optarg,"atoi-nonstranded")) {
 	  mode = ATOI_NONSTRANDED;
+	} else if (!strcmp(optarg,"ttoc-stranded")) {
+	  mode = TTOC_STRANDED;
+	} else if (!strcmp(optarg,"ttoc-nonstranded")) {
+	  mode = TTOC_NONSTRANDED;
 	} else {
-	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi\n");
+	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, atoi-nonstranded, ttoc-stranded, or ttoc-nonstranded\n");
 	  exit(9);
 	}
 
@@ -1058,6 +1062,28 @@ main (int argc, char *argv[]) {
 	exit(9);
       }
 
+    } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = genomesubdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
+					required_index1part,required_interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
+					 required_index1part,required_interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
 
     } else {
       /* Standard behavior */
@@ -1127,6 +1153,28 @@ main (int argc, char *argv[]) {
 					 required_index1part,required_interval,
 					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+    } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = snpsdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
+					required_index1part,required_interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
+					 required_index1part,required_interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
@@ -1200,7 +1248,7 @@ main (int argc, char *argv[]) {
 		 genomealt,mode,/*maxpaths_search*/10,/*terminal_threshold*/5,/*terminal_output_minlength*/0,
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,distances_observed_p,
-		 max_middle_insertions,max_middle_deletions,
+		 subopt_levels,max_middle_insertions,max_middle_deletions,
 		 shortsplicedist,shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
 		 min_distantsplicing_end_matches,min_distantsplicing_identity,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
@@ -1213,7 +1261,8 @@ main (int argc, char *argv[]) {
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
 		  novelsplicingp,knownsplicingp,/*output_sam_p*/false,mode,
-		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
+		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false),
+		  /*reject_trimlength*/1000);
   Dynprog_single_setup(/*homopolymerp*/false);
   Dynprog_genome_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		       donor_typeint,acceptor_typeint);
@@ -1223,10 +1272,11 @@ main (int argc, char *argv[]) {
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
 	       suboptimal_score_start,suboptimal_score_end,
 	       mode,/*snps_p*/snps_iit ? true : false);
-  Pair_setup(trim_mismatch_score,trim_indel_score,/*sam_insert_0M_p*/false,
+  Pair_setup(trim_mismatch_score,trim_indel_score,/*gff3_separators_p*/false,/*sam_insert_0M_p*/false,
 	     /*force_xs_direction_p*/false,/*md_lowercase_variant_p*/false,
 	     /*snps_p*/snps_iit ? true : false,
-	     Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
+	     Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false),
+	     /*cigar_action*/CIGAR_ACTION_IGNORE);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       /*require_splicedir_p*/false,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,

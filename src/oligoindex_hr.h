@@ -1,10 +1,6 @@
-/* $Id: oligoindex_hr.h 132475 2014-04-06 04:14:11Z twu $ */
+/* $Id: oligoindex_hr.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef OLIGOINDEX_HR_INCLUDED
 #define OLIGOINDEX_HR_INCLUDED
-
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
 
 #include "bool.h"
 #include "types.h"
@@ -13,9 +9,6 @@
 #include "list.h"
 #include "diagpool.h"
 
-#ifdef HAVE_SSE2
-#include <emmintrin.h>
-#endif
 
 #define OVERABUNDANCE_CHECK 50
 #define OVERABUNDANCE_PCT 0.97

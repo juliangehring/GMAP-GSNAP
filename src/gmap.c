@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 150408 2014-10-09 21:55:35Z twu $";
+static char rcsid[] = "$Id: gmap.c 165789 2015-05-15 18:45:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -336,6 +336,9 @@ static int suboptimal_score = 1000000;
 static bool require_splicedir_p = false;
 
 
+/* GFF3 */
+static bool gff3_separators_p = true;
+
 /* SAM */
 #ifndef PMAP
 static bool sam_paired_p = false;
@@ -356,6 +359,7 @@ static bool checksump = false;
 static int chimera_overlap = 0;
 static bool force_xs_direction_p = false;
 static bool md_lowercase_variant_p = false;
+static Cigar_action_T cigar_action = CIGAR_ACTION_WARNING;
 
 /* Map file options */
 static char *user_mapdir = NULL;
@@ -509,6 +513,8 @@ static struct option long_options[] = {
   {"append-output", no_argument, 0, 0},	     /* appendp */
   {"suboptimal-score", required_argument, 0, 0}, /* suboptimal_score */
   {"require-splicedir", no_argument, 0, 0}, /* require_splicedir_p */
+
+  {"gff3-add-separators", required_argument, 0, 0}, /* gff3_separators_p */
 
 #ifndef PMAP
   {"quality-protocol", required_argument, 0, 0}, /* quality_shift */
@@ -678,8 +684,8 @@ print_program_version () {
 #ifdef PMAP
   fprintf(stdout,"Stage 1 index size: %d aa\n",index1part_aa);
 #endif
-  fprintf(stdout,"Sizes: off_t (%lu), size_t (%lu), unsigned int (%lu), long int (%lu)\n",
-	  sizeof(off_t),sizeof(size_t),sizeof(unsigned int),sizeof(long int));
+  fprintf(stdout,"Sizes: off_t (%d), size_t (%d), unsigned int (%d), long int (%d), long long int (%d)\n",
+	  (int) sizeof(off_t),(int) sizeof(size_t),(int) sizeof(unsigned int),(int) sizeof(long int),(int) sizeof(long long int));
   fprintf(stdout,"Default gmap directory (compiled): %s\n",GMAPDB);
   genomedir = Datadir_find_genomedir(/*user_genomedir*/NULL);
   fprintf(stdout,"Default gmap directory (environment): %s\n",genomedir);
@@ -775,6 +781,8 @@ check_compiler_assumptions () {
 
 #endif
 
+  fprintf(stderr,"Finished checking compiler assumptions\n");
+
   return;
 }
 
@@ -846,7 +854,8 @@ stage3array_from_list (int *npaths, int *first_absmq, int *second_absmq, List_T 
   int threshold_score;
 
   debug2(printf("Entering stage3array_from_list\n"));
-  Stage3_recompute_goodness(stage3list); /* Is this necessary? */
+  /* Stage3_recompute_goodness(stage3list); -- No longer necessary */
+  Stage3_compute_mapq(stage3list);
 
   if ((norig = List_length(stage3list)) == 0) {
     *first_absmq = 0;
@@ -906,6 +915,8 @@ stage3array_from_list (int *npaths, int *first_absmq, int *second_absmq, List_T 
     qsort(array0,norig,sizeof(Stage3_T),Stage3_cmp);
     for (i = 0; i < norig; i++) {
       x = array0[i];
+      debug(printf("%d: chr %d:%u..%u, goodness %d, matches %d, npairs %d\n",
+		   i,Stage3_chrnum(x),Stage3_chrstart(x),Stage3_chrend(x),Stage3_goodness(x),Stage3_matches(x),Stage3_npairs(x)));
       for (j = i+1; j < norig; j++) {
 	y = array0[j];
 	if (Stage3_overlap(x,y)) {
@@ -979,6 +990,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 
   struct Pair_T *pairarray;
   List_T pairs;
+  int goodness;
   int npairs, cdna_direction, matches, unknowns, mismatches, qopens, qindels, topens, tindels,
     ncanonical, nsemicanonical, nnoncanonical;
   int sensedir;
@@ -1040,7 +1052,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 #ifdef PMAP
     subseq_offset = Sequence_subseq_offset(queryseq); /* in nucleotides */
 #endif
-    pairarray = Stage3_compute(&pairs,&npairs,&cdna_direction,&sensedir,
+    pairarray = Stage3_compute(&pairs,&npairs,&goodness,&cdna_direction,&sensedir,
 			       &matches,&nmatches_posttrim,&max_match_length,
 			       &ambig_end_length_5,&ambig_end_length_3,
 			       &ambig_splicetype_5,&ambig_splicetype_3,
@@ -1076,7 +1088,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
       /* Skip */
     } else if (matches < min_matches) {
       FREE_OUT(pairarray);
-    } else if ((stage3 = Stage3_new(pairarray,pairs,npairs,cdna_direction,sensedir,
+    } else if ((stage3 = Stage3_new(pairarray,pairs,npairs,goodness,cdna_direction,sensedir,
 				    stage2_source,stage2_indexsize,matches,unknowns,mismatches,
 				    qopens,qindels,topens,tindels,ncanonical,nsemicanonical,nnoncanonical,
 				    chrnum,chroffset,chrhigh,chrlength,watsonp,
@@ -2269,7 +2281,10 @@ find_breakpoint (int *cdna_direction, int *chimerapos, int *chimeraequivpos, int
     debug2(printf("Exon-exon boundary found at %d, which is breakpoint.  Comp = %c\n",
 		  *exonexonpos,comp));
   } else {
-    *chimerapos = Chimera_find_breakpoint(&(*chimeraequivpos),from,to,queryntlength);
+    *chimerapos = Chimera_find_breakpoint(&(*chimeraequivpos),&(*donor1),&(*donor2),&(*acceptor2),&(*acceptor1),
+					  from,to,queryntlength,genome);
+    *donor_prob = *acceptor_prob = 0.0;
+    
     debug2(printf("Chimera_find_breakpoint returns boundary at %d..%d (switch can occur at %d..%d)\n",
 		  *chimerapos,*chimeraequivpos,(*chimerapos)-1,*chimeraequivpos));
 
@@ -2333,7 +2348,7 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
   }
 #endif
 
-  Stage3_recompute_goodness(stage3list);
+  /* Stage3_recompute_goodness(stage3list); */
   max_single_goodness = 0;
   for (p = stage3list; p != NULL; p = List_next(p)) {
     stage3 = (Stage3_T) List_head(p);
@@ -2477,8 +2492,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
       if ((querysubseq = Sequence_subsequence(queryseq,effective_end-extension,queryntlength)) != NULL) {
 	if ((querysubuc = Sequence_subsequence(queryuc,effective_end-extension,queryntlength)) != NULL) {
 	  debug2(printf("5 margin <= 3 margin.  "));
-	  debug2(printf("Beginning Stage1_compute on 3' margin from effective_end %d (%d..%d)\n",
-			effective_end,effective_end-extension,queryntlength));
+	  debug2(printf("Beginning Stage1_compute on 3' margin from effective_end %d (%d..%d) (extension %d)\n",
+			effective_end,effective_end-extension,queryntlength,extension));
 	  debug2(Sequence_print(stdout,querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
 
 	  diagnostic = evaluate_query(&poorp,&repetitivep,Sequence_fullpointer(querysubuc),Sequence_fulllength(querysubuc),
@@ -2519,8 +2534,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
       if ((querysubseq = Sequence_subsequence(queryseq,0,effective_end)) != NULL) {
 	if ((querysubuc = Sequence_subsequence(queryuc,0,effective_end)) != NULL) {
 	  debug2(printf("Recomputing on original part.  "));
-	  debug2(printf("Beginning Stage1_compute on 3' margin from effective_end %d (%d..%d)\n",
-			effective_end,0,effective_end));
+	  debug2(printf("Beginning Stage1_compute on 3' margin from effective_end %d (%d..%d), extension %d\n",
+			effective_end,0,effective_end,extension));
 	  debug2(Sequence_print(stdout,querysubseq,/*uppercasep*/true,wraplength,/*trimmedp*/true));
 
 	  diagnostic = evaluate_query(&poorp,&repetitivep,Sequence_fullpointer(querysubuc),Sequence_fulllength(querysubuc),
@@ -2695,7 +2710,7 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
   }
 #endif
 
-  Stage3_recompute_goodness(stage3list);
+  /* Stage3_recompute_goodness(stage3list); */
   max_single_goodness = 0;
   for (p = stage3list; p != NULL; p = List_next(p)) {
     stage3 = (Stage3_T) List_head(p);
@@ -3679,7 +3694,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
       debug2(printf("\n\n*** Testing for local on %d Stage3_T objects, iter %d ***\n",
 		    List_length(stage3list),iter));
 
-      Stage3_recompute_goodness(stage3list);
+      /* Stage3_recompute_goodness(stage3list); */
       stage3list = stage3list_remove_duplicates(stage3list);
       stage3list = stage3list_sort(stage3list);
 
@@ -3692,26 +3707,34 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
       nonchimericbest = (Stage3_T) List_head(stage3list);
       debug2(printf("nonchimericbest is %p\n",nonchimericbest));
 
+#if 0
+      if (List_length(stage3list) <= 1) {
+	debug2(printf("Only 0 or 1 alignments, so won't look for local\n"));
+	testlocalp = false;
+      }
+      else 
+#endif
+
       if (Stage3_domain(nonchimericbest) < chimera_margin) {
-	debug2(printf("Existing alignment is too short, so won't look for chimera\n"));
+	debug2(printf("Existing alignment is too short, so won't look for local\n"));
 	testlocalp = false;
 
 #if 0
       } else if (Stage3_fracidentity(nonchimericbest) < CHIMERA_IDENTITY &&
 		 Chimera_alignment_break(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq),CHIMERA_FVALUE) >= chimera_margin
 		 ) {
-	debug2(printf("Break in alignment quality at %d..%d detected, so will look for chimera\n",
+	debug2(printf("Break in alignment quality at %d..%d detected, so will look for local\n",
 		      effective_start,effective_end));
 	testlocalp = true;
 #endif
 
       } else if (Stage3_largemargin(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq)) >= chimera_margin) {
-	debug2(printf("Large margin at %d..%d detected (%d >= %d), so will look for chimera\n",
+	debug2(printf("Large margin at %d..%d detected (%d >= %d), so will look for local\n",
 		      effective_start,effective_end,Stage3_largemargin(&effective_start,&effective_end,nonchimericbest,Sequence_ntlength(queryseq)),chimera_margin));
 	testlocalp = true;
 	
       } else {
-	debug2(printf("Good alignment already with identity %f, so won't look for chimera\n",
+	debug2(printf("Good alignment already with identity %f, so won't look for local\n",
 		      Stage3_fracidentity(nonchimericbest)));
 	testlocalp = false;
       }
@@ -3754,7 +3777,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
       debug2(printf("\n\n*** Testing for chimera on %d Stage3_T objects, iter %d ***\n",
 		    List_length(stage3list),iter));
 
-      Stage3_recompute_goodness(stage3list);
+      /* Stage3_recompute_goodness(stage3list); */
       stage3list = stage3list_remove_duplicates(stage3list);
       stage3list = stage3list_sort(stage3list);
 
@@ -3842,7 +3865,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
   debug2(printf("apply_stage3 returning list of length %d\n",List_length(stage3list)));
 
   /* Needed after call to stage3_from_gregions */
-  Stage3_recompute_goodness(stage3list);
+  /* Stage3_recompute_goodness(stage3list); */
 
   /* Final call, so do both filtering and sorting */
   Stage3_recompute_coverage(stage3list,queryseq);
@@ -4810,8 +4833,12 @@ main (int argc, char *argv[]) {
 	  mode = ATOI_STRANDED;
 	} else if (!strcmp(optarg,"atoi-nonstranded")) {
 	  mode = ATOI_NONSTRANDED;
-	} else {
-	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi\n");
+	} else if (!strcmp(optarg,"ttoc-stranded")) {
+	  mode = TTOC_STRANDED;
+	} else if (!strcmp(optarg,"ttoc-nonstranded")) {
+	  mode = TTOC_NONSTRANDED;
+ 	} else {
+	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, atoi-nonstranded, ttoc-stranded, or ttoc-nonstranded\n");
 	  exit(9);
 	}
 
@@ -4850,6 +4877,15 @@ main (int argc, char *argv[]) {
 	sevenway_root = optarg;
       } else if (!strcmp(long_name,"append-output")) {
 	appendp = true;
+      } else if (!strcmp(long_name,"gff3-add-separators")) {
+	if (!strcmp(optarg,"1")) {
+	  gff3_separators_p = true;
+	} else if (!strcmp(optarg,"0")) {
+	  gff3_separators_p = false;
+	} else {
+	  fprintf(stderr,"--gff3-add-separators flag must be 0 or 1\n");
+	  exit(9);
+	}
 #ifndef PMAP
       } else if (!strcmp(long_name,"no-sam-headers")) {
 	sam_headers_p = false;
@@ -4873,6 +4909,17 @@ main (int argc, char *argv[]) {
 	force_xs_direction_p = true;
       } else if (!strcmp(long_name,"md-lowercase-snp")) {
 	md_lowercase_variant_p = true;
+      } else if (!strcmp(long_name,"action-if-cigar-error")) {
+	if (!strcmp(optarg,"ignore")) {
+	  cigar_action = CIGAR_ACTION_IGNORE;
+	} else if (!strcmp(optarg,"warning")) {
+	  cigar_action = CIGAR_ACTION_WARNING;
+	} else if (!strcmp(optarg,"abort")) {
+	  cigar_action = CIGAR_ACTION_ABORT;
+	} else {
+	  fprintf(stderr,"action-if-cigar-error needs to be ignore, warning, or abort\n");
+	  exit(9);
+	}
       } else if (!strcmp(long_name,"read-group-id")) {
 	sam_read_group_id = optarg;
       } else if (!strcmp(long_name,"read-group-name")) {
@@ -5668,6 +5715,29 @@ main (int argc, char *argv[]) {
 	exit(9);
       }
 
+    } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = genomesubdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb_fwd = Indexdb_new_genome(&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
+					    required_index1part,required_index1interval,
+					    expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+      if ((indexdb_rev = Indexdb_new_genome(&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
+					    required_index1part,required_index1interval,
+					    expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
     } else {
       /* Standard behavior */
       if ((indexdb_fwd = Indexdb_new_genome(&index1part,&index1interval,
@@ -5768,6 +5838,28 @@ main (int argc, char *argv[]) {
 					    required_index1part,required_index1interval,
 					    expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+    } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = snpsdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb_fwd = Indexdb_new_genome(&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
+					    required_index1part,required_index1interval,
+					    expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+      if ((indexdb_rev = Indexdb_new_genome(&index1part,&index1interval,
+					    modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
+					    required_index1part,required_index1interval,
+					    expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
@@ -5922,9 +6014,9 @@ main (int argc, char *argv[]) {
 		       donor_typeint,acceptor_typeint);
   Dynprog_end_setup(splicesites,splicetypes,splicedists,nsplicesites,
 		    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
-  Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
+  Pair_setup(trim_mismatch_score,trim_indel_score,gff3_separators_p,sam_insert_0M_p,
 	     force_xs_direction_p,md_lowercase_variant_p,
-	     /*snps_p*/genomecomp_alt ? true : false,genomelength);
+	     /*snps_p*/genomecomp_alt ? true : false,genomelength,cigar_action);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       require_splicedir_p,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,
@@ -6148,16 +6240,21 @@ Usage: gmap [OPTIONS...] <FASTA files...>, or\n\
        cat <FASTA files...> | gmap [OPTIONS...]\n\
 ");
 #endif
+    fprintf(stdout,"\n");
 
-    fprintf(stdout,"\n\
-Input options (must include -d or -g)\n\
-  -D, --dir=directory            Genome directory\n\
+    fprintf(stdout,"Input options (must include -d or -g)\n");
+    fprintf(stdout,"\
+  -D, --dir=directory            Genome directory.  Default (as specified by --with-gmapdb to the configure program) is\n \
+                                   %s\n\
+",GMAPDB);
+    fprintf(stdout,"\
   -d, --db=STRING                Genome database.  If argument is '?' (with\n\
                                    the quotes), this command lists available databases.\n\
 ");
+    fprintf(stdout,"\n");
 
 #ifdef PMAP
-    fprintf(stdout,"\n\
+    fprintf(stdout,"\
   -a, --alphabet=STRING          Alphabet to use in PMAP genome database\n\
                                    (allowed values in order of preference: 20, 15a, 12a).\n\
                                    If not specified, the program will find the first available\n\
@@ -6165,7 +6262,7 @@ Input options (must include -d or -g)\n\
 ");
 #endif
 
-    fprintf(stdout,"\n\
+    fprintf(stdout,"\
   -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less).\n\
                                    If not specified, the program will find the highest available\n\
                                    kmer size in the genome database\n\
@@ -6185,10 +6282,12 @@ Input options (must include -d or -g)\n\
   -q, --part=INT/INT             Process only the i-th out of every n sequences\n\
                                    e.g., 0/100 or 99/100 (useful for distributing jobs\n\
                                    to a computer farm).\n\
-  --input-buffer-size=INT        Size of input buffer (program reads this many sequences\n\
-                                   at a time for efficiency) (default 1000)\n\
-\n\
 ");
+    fprintf(stdout,"\
+  --input-buffer-size=INT        Size of input buffer (program reads this many sequences\n\
+                                   at a time for efficiency) (default %d)\n\
+",inbuffer_nspaces);
+    fprintf(stdout,"\n");
 
     fprintf(stdout,"Computation options\n");
 #ifdef HAVE_MMAP
@@ -6225,17 +6324,29 @@ Input options (must include -d or -g)\n\
     fprintf(stdout,"\
   --nosplicing                   Turns off splicing (useful for aligning genomic sequences\n\
                                    onto a genome)\n\
-  --min-intronlength=INT         Min length for one internal intron (default 9).  Below this size,\n\
+");
+    fprintf(stdout,"\
+  --min-intronlength=INT         Min length for one internal intron (default %d).  Below this size,\n\
                                    a genomic gap will be considered a deletion rather than an intron.\n\
-  -K, --intronlength=INT         Max length for one internal intron (default 1000000)\n\
+",min_intronlength);
+    fprintf(stdout,"\
+  -K, --intronlength=INT         Max length for one internal intron (default %d)\n\
+",maxintronlen_bound);
+    fprintf(stdout,"\
   -w, --localsplicedist=INT      Max length for known splice sites at ends of sequence\n\
-                                   (default 2,000,000)\n\
-  -L, --totallength=INT          Max total intron length (default 2400000)\n\
+                                   (default %d)\n\
+",shortsplicedist);
+    fprintf(stdout,"\
+  -L, --totallength=INT          Max total intron length (default %d)\n\
+",maxtotallen_bound);
+    fprintf(stdout,"\
   -x, --chimera-margin=INT       Amount of unaligned sequence that triggers\n\
-                                   search for the remaining sequence (default 30).\n\
+                                   search for the remaining sequence (default %d).\n\
                                    Enables alignment of chimeric reads, and may help\n\
                                    with some non-chimeric reads.  To turn off, set to\n\
                                    zero.\n\
+",chimera_margin);
+    fprintf(stdout,"\
   --no-chimeras                  Turns off finding of chimeras.  Same effect as --chimera-margin=0\n\
 ");
 
@@ -6258,8 +6369,12 @@ Input options (must include -d or -g)\n\
   -c, --chrsubset=string         Limit search to given chromosome\n\
   -z, --direction=STRING         cDNA direction (sense_force, antisense_force,\n\
                                    sense_filter, antisense_filter,or auto (default))\n\
+");
+    fprintf(stdout,"\
   -H, --trimendexons=INT         Trim end exons with fewer than given number of matches\n\
-                                   (in nt, default 12)\n\
+                                   (in nt, default %d)\n\
+",minendexon);
+    fprintf(stdout,"\
   --canonical-mode=INT           Reward for canonical and semi-canonical introns\n\
                                    0=low reward, 1=high reward (default), 2=low reward for\n\
                                    high-identity sequences and high reward otherwise\n\
@@ -6267,9 +6382,11 @@ Input options (must include -d or -g)\n\
                                    for cross-species alignments and other difficult cases\n\
   --allow-close-indels=INT       Allow an insertion and deletion close to each other\n\
                                    (0=no, 1=yes (default), 2=only for high-quality alignments)\n\
-  --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
-                                   greater than this value (default 0.90)\n\
 ");
+    fprintf(stdout,"\
+  --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
+                                   greater than this value (default %.2f)\n\
+",microexon_spliceprob);
 
 #if 0
     fprintf(stdout,"\
@@ -6285,8 +6402,9 @@ Input options (must include -d or -g)\n\
   --atoidir=STRING               Directory for A-to-I RNA editing index files (created using atoiindex)\n\
                                    (default is location of genome index files specified using -D, -V, and -d)\n\
   --mode=STRING                  Alignment mode: standard (default), cmet-stranded, cmet-nonstranded,\n\
-                                    atoi-stranded, or atoi-nonstranded.  Non-standard modes requires you\n\
-                                    to have previously run the cmetindex or atoiindex programs on the genome\n\
+                                    atoi-stranded, atoi-nonstranded, ttoc-stranded, or ttoc-nonstranded.\n\
+                                    Non-standard modes requires you to have previously run the cmetindex\n\
+                                    or atoiindex programs (which also cover the ttoc modes) on the genome\n\
 ");
 #endif
 
@@ -6304,8 +6422,8 @@ Input options (must include -d or -g)\n\
                                    2=repetitive seqs, 3=poor and repetitive\n\
 ");
 #endif
-
     fprintf(stdout,"\n");
+
     fprintf(stdout,"\
 Output types\n\
   -S, --summary                  Show summary of alignments only\n\
@@ -6362,10 +6480,12 @@ Output types\n\
 
     fprintf(stdout,"\
 Output options\n\
-  -n, --npaths=INT               Maximum number of paths to show (default 5).  If set to 1, GMAP\n\
+  -n, --npaths=INT               Maximum number of paths to show (default %d).  If set to 1, GMAP\n\
                                    will not report chimeric alignments, since those imply\n\
                                    two paths.  If you want a single alignment plus chimeric\n\
                                    alignments, then set this to be 0.\n\
+",maxpaths);
+    fprintf(stdout,"\
   --suboptimal-score=INT         Report only paths whose score is within this value of the\n\
                                    best path.  By default, if this option is not provided,\n\
                                    the program prints all paths found.\n\
@@ -6390,14 +6510,16 @@ Output options\n\
                                    is generated in addition to the output in the .nomapping file.\n\
   --append-output                When --split-output or --failedinput is given, this flag will append output\n\
                                    to the existing files.  Otherwise, the default is to create new files.\n\
-  --output-buffer-size=INT       Buffer size, in queries, for output thread (default 1000).  When the number\n\
+");
+  fprintf(stdout,"\
+  --output-buffer-size=INT       Buffer size, in queries, for output thread (default %d).  When the number\n\
                                    of results to be printed exceeds this size, the worker threads are halted\n\
                                    until the backlog is cleared\n\
-");
+",output_buffer_size);
 
 
 #ifdef PMAP    
-    fprintf(stdout,"\
+  fprintf(stdout,"\
   -Y, --tolerant                 Translates genome with corrections for frameshifts\n\
 ");
 #else
@@ -6410,7 +6532,14 @@ Output options\n\
 ");
 #endif
 
-    fprintf(stdout,"\n");
+  fprintf(stdout,"\n");
+
+  fprintf(stdout,"Options for GFF3 output\n");
+  fprintf(stdout,"\
+  --gff3-add-separators=INT      Whether to add a ### separator after each query sequence\n\
+                                   Values: 0 (no), 1 (yes, default)\n\
+");
+  fprintf(stdout,"\n");
 
 #ifndef PMAP
   fprintf(stdout,"Options for SAM output\n");
@@ -6426,6 +6555,8 @@ Output options\n\
   --md-lowercase-snp             In MD string, when known SNPs are given by the -v flag,\n\
                                    prints difference nucleotides as lower-case when they,\n\
                                    differ from reference but match a known alternate allele\n\
+  --action-if-cigar-error        Action to take if there is a disagreement between CIGAR length and sequence length\n\
+                                   Allowed values: ignore, warning (default), abort\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
   --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\
@@ -6468,9 +6599,16 @@ Alignment output options\n\
                                    0=Don't invert the cDNA (default)\n\
                                    1=Invert cDNA and print genomic (-) strand\n\
                                    2=Invert cDNA and print genomic (+) strand\n\
-  -i, --introngap=INT            Nucleotides to show on each end of intron (default=3)\n\
-  -l, --wraplength=INT           Wrap length for alignment (default=50)\n\
-\n\
+");
+    fprintf(stdout,"\
+  -i, --introngap=INT            Nucleotides to show on each end of intron (default %d)\n\
+",ngap);
+    fprintf(stdout,"\
+  -l, --wraplength=INT           Wrap length for alignment (default %d)\n\
+",wraplength);
+    fprintf(stdout,"\n");
+
+    fprintf(stdout,"\
 Filtering output options\n\
   --min-trimmed-coverage=FLOAT   Do not print alignments with trimmed coverage less\n\
                                    this value (default=0.0, which means no filtering)\n\

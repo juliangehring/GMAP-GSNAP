@@ -1,6 +1,9 @@
-/* $Id: indexdb-write.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: indexdb-write.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef INDEXDB_WRITE_INCLUDED
 #define INDEXDB_WRITE_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_64_BIT */
+#endif
 
 #include "bool.h"
 #include "types.h"		/* For Oligospace_T */

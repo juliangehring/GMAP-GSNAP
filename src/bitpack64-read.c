@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-read.c 132467 2014-04-06 01:31:26Z twu $";
+static char rcsid[] = "$Id: bitpack64-read.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13038,7 +13038,7 @@ Bitpack64_offsetptr (UINT4 *end0, Storedoligomer_T oligo, UINT4 *bitpackptrs, UI
   (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
 
 #ifdef DEBUG
-  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+  printf("oligo: %08X, remainder %d, offset0 %u, offset1 %u\n",
 	 oligo,oligo % BLOCKSIZE,info[1],info[DIFFERENTIAL_METAINFO_SIZE+1]);
   printf("bitpack:\n");
 
@@ -13364,7 +13364,7 @@ Bitpack64_offsetptr_huge (UINT8 *end0, Storedoligomer_T oligo,
   (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
 
 #ifdef DEBUG
-  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+  printf("oligo: %08X, remainder %d, offset0 %u, offset1 %u\n",
 	 oligo,oligo % BLOCKSIZE,info[1],info[DIFFERENTIAL_METAINFO_SIZE+1]);
   printf("bitpack:\n");
 
@@ -13623,7 +13623,7 @@ Bitpack64_offsetptr_paired (UINT4 *end0, Storedoligomer_T oligo, UINT4 *bitpackp
   (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
 
 #ifdef DEBUG
-  printf("oligo: %08X, remainder %d, offset0 %lu, offset1 %lu\n",
+  printf("oligo: %08X, remainder %d, offset0 %u, offset1 %u\n",
 	 oligo,oligo % BLOCKSIZE,info[1],info[DIFFERENTIAL_METAINFO_SIZE+1]);
   printf("bitpack:\n");
 
@@ -14024,7 +14024,7 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
     offset0 += info[1];
     offset1 += info[DIFFERENTIAL_METAINFO_SIZE+1];
   }
-  debug(printf("offset0 = %lu, offset1 = %lu\n",offset0,offset1));
+  debug(printf("offset0 = %u, offset1 = %u\n",offset0,offset1));
 
   psums[0] = psums[1] = offset0;
   psums[2] = psums[3] = offset1;
@@ -14042,7 +14042,7 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
   printf("%d %d %d %d\n",_diffs[12],_diffs[13],_diffs[14],_diffs[15]);
 #endif
 
-  debug(printf("Returning %lu + %d + %d + %d + %d\n",
+  debug(printf("Returning %u + %d + %d + %d + %d\n",
 	       psums[quarter_block],_diffs[row+1],_diffs[row+2],_diffs[row+3],_diffs[row+4]));
   return psums[quarter_block] + (INT4) (_diffs[row+1] + _diffs[row+2] + _diffs[row+3] + _diffs[row+4]);
 
@@ -14243,7 +14243,7 @@ Bitpack64_block_offsets (UINT4 *offsets, Storedoligomer_T oligo,
   packsize = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten)*2;
 
 #ifdef DEBUG
-  printf("oligo: %08X, nwritten %u, offset0 %lu, offset1 %lu, packsize %d\n",
+  printf("oligo: %08X, nwritten %u, offset0 %u, offset1 %u, packsize %d\n",
 	 oligo,nwritten,offset0,offset1,packsize);
 #endif
 
@@ -14405,7 +14405,7 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
 
 
 #ifdef DEBUG
-  printf("oligo: %08X, nwritten %u, offset0 %lu, offset1 %lu, packsize %d\n",
+  printf("oligo: %08X, nwritten %u, offset0 %u, offset1 %u, packsize %d\n",
 	 oligo,nwritten,offset0,offset1,packsize);
 #endif
 
@@ -14429,9 +14429,9 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
   vertical_order_huge_rev(&(offsets[33]),_diffs);
 
 #ifdef DEBUG
-  printf("%lu\n",offsets[i]);
+  printf("%u\n",offsets[i]);
   for (i = 1; i <= 64; i += 4) {
-    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
   }
   printf("end of diffs vertical\n");
 #endif
@@ -14466,9 +14466,9 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
   vertical_order_huge(&(offsets[1]),columnar);
 
 #ifdef DEBUG
-  printf("%lu\n",offset0);
+  printf("%u\n",offset0);
   for (i = 1; i <= 64; i += 4) {
-    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
   }
   printf("end of diffs vertical\n");
 #endif
@@ -14500,13 +14500,13 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
 
 
 #ifdef DEBUG
-  printf("%lu\n",offsets[0]);
+  printf("%u\n",offsets[0]);
   for (i = 1; i <= 32; i += 4) {
-    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
   }
   printf("\n");
   for (i = 33; i <= 64; i += 4) {
-    printf("%lu %lu %lu %lu\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
   }
   printf("end of offsets\n");
 #endif

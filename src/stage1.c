@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 145990 2014-08-25 21:47:32Z twu $";
+static char rcsid[] = "$Id: stage1.c 158357 2015-02-10 19:10:16Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -28,6 +28,11 @@ static char rcsid[] = "$Id: stage1.c 145990 2014-08-25 21:47:32Z twu $";
 /* Restoring old scan_ends algorithm, removed on 2012-05-14, to get
    ends correctly (e.g., NM_004449) */
 #define SCAN_ENDS 1
+
+
+/* Need to limit ninrange in find_range, or else we get bogged down in
+   repeats */
+#define MAX_NINRANGE 100
 
 
 #define MAX_INDELS 15
@@ -1662,7 +1667,7 @@ find_range (int **querypositions, int *ninrange, int starti, int endi,
   }
 
   *ninrange = 0;
-  for (querypos = starti; querypos <= endi; querypos++) {
+  for (querypos = starti; *ninrange < MAX_NINRANGE && querypos <= endi; querypos++) {
     i = binary_search(0,npositions[querypos],positions[querypos],leftbound);
     while (i < npositions[querypos] && positions[querypos][i] < rightbound) {
       debug2(printf("At querypos %d, found position %u in (%u,%u)\n",querypos,positions[querypos][i],leftbound,rightbound));
@@ -1680,7 +1685,7 @@ find_range (int **querypositions, int *ninrange, int starti, int endi,
   }
 
   *ninrange = 0;
-  for (querypos = starti; querypos <= endi; querypos++) {
+  for (querypos = starti; *ninrange < MAX_NINRANGE && querypos <= endi; querypos++) {
     i = binary_search(0,npositions[querypos],positions[querypos],leftbound);
     while (i < npositions[querypos] && positions[querypos][i] < rightbound) {
       (*querypositions)[*ninrange] = querypos;
@@ -1792,11 +1797,11 @@ find_extensions (Univcoord_T *extension5, Univcoord_T *extension3, T this,
 	for (j = i+1; j < ninrange; j++) {
 	  debug2(printf("  %u@%d",range[j],querypositions[j]));
 	  expectedi = range[j] + querypositions[j] - querypositions[i];
-	if (range[i] + 20 > expectedi && range[i] < expectedi + 20) {
-	  concentration++;
-	  lastj = j;
-	  debug2(printf("*"));
-	}
+	  if (range[i] + 20 > expectedi && range[i] < expectedi + 20) {
+	    concentration++;
+	    lastj = j;
+	    debug2(printf("*"));
+	  }
 	}
 	debug2(printf("\nConcentration is %d\n\n",concentration));
 	if (concentration > best_concentration ||
@@ -3718,7 +3723,7 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
   }
 
   /* Clean up gregionlist */
-  debug(printf("Starting extensions\n"));
+  debug(printf("Starting extensions on %d gregions\n",List_length(gregionlist)));
   for (p = gregionlist; p != NULL; p = List_next(p)) {
     gregion = (Gregion_T) List_head(p);
     if (Gregion_extendedp(gregion) == false) {

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c 145990 2014-08-25 21:47:32Z twu $";
+static char rcsid[] = "$Id: mem.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -407,10 +407,10 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld %s: Allocating %p to %p -- Malloc of %lu bytes in standard pool requested from %s:%d\n",
+  debug_heap(printf("%ld %s: Allocating %p to %p -- Malloc of %zu bytes in standard pool requested from %s:%d\n",
 		    memusage_std_heap,threadname,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Malloc of %lu bytes in standard pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Malloc of %zu bytes in standard pool requested from %s:%d\n",
 		    ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -428,7 +428,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to alloc %lu bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to alloc %zu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -482,10 +482,10 @@ Mem_alloc_keep (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld %s-keep: Allocating %p to %p -- Malloc of %lu bytes in keep pool requested from %s:%d\n",
+  debug_heap(printf("%ld %s-keep: Allocating %p to %p -- Malloc of %zu bytes in keep pool requested from %s:%d\n",
 		    memusage_keep,threadname,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Malloc of %lu bytes in keep pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Malloc of %zu bytes in keep pool requested from %s:%d\n",
 		    ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -503,7 +503,7 @@ Mem_alloc_keep (size_t nbytes, const char *file, int line) {
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to alloc %lu bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to alloc %zu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -546,10 +546,10 @@ Mem_alloc_in (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld IN: Allocating %p to %p -- Malloc of %lu bytes in input pool requested from %s:%d\n",
+  debug_heap(printf("%ld IN: Allocating %p to %p -- Malloc of %zu bytes in input pool requested from %s:%d\n",
 		    memusage_in,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Malloc of %lu bytes in input pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Malloc of %zu bytes in input pool requested from %s:%d\n",
 		    ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -567,7 +567,7 @@ Mem_alloc_in (size_t nbytes, const char *file, int line) {
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to alloc %lu bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to alloc %zu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -610,10 +610,10 @@ Mem_alloc_out (size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld OUT: Allocating %p to %p -- Malloc of %lu bytes in output pool requested from %s:%d\n",
+  debug_heap(printf("%ld OUT: Allocating %p to %p -- Malloc of %zu bytes in output pool requested from %s:%d\n",
 		    memusage_out,ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Malloc of %lu bytes in output pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Malloc of %zu bytes in output pool requested from %s:%d\n",
 		    ptr,(char *) ptr + nbytes-1,nbytes,file,line));
 #endif
 
@@ -631,7 +631,7 @@ Mem_alloc_out (size_t nbytes, const char *file, int line) {
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to alloc %lu bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to alloc %zu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -671,7 +671,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -721,15 +721,15 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld %s: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in standard pool requested from %s:%d\n",
+  debug_heap(printf("%ld %s: Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in standard pool requested from %s:%d\n",
 		    memusage_std_heap,threadname,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in standard pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in standard pool requested from %s:%d\n",
 		    ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -762,7 +762,7 @@ Mem_calloc_keep (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -804,15 +804,15 @@ Mem_calloc_keep (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld %s-keep: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in keep pool requested from %s:%d\n",
+  debug_heap(printf("%ld %s-keep: Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in keep pool requested from %s:%d\n",
 		    memusage_keep,threadname,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in keep pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in keep pool requested from %s:%d\n",
 		    ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -843,7 +843,7 @@ Mem_calloc_in (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -878,15 +878,15 @@ Mem_calloc_in (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld IN: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in input pool requested from %s:%d\n",
+  debug_heap(printf("%ld IN: Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in input pool requested from %s:%d\n",
 		    memusage_in,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in input pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in input pool requested from %s:%d\n",
 		    ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -916,7 +916,7 @@ Mem_calloc_out (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -951,15 +951,15 @@ Mem_calloc_out (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-  debug_heap(printf("%ld OUT: Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in output pool requested from %s:%d\n",
+  debug_heap(printf("%ld OUT: Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in output pool requested from %s:%d\n",
 		    memusage_out,ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #else
-  debug_heap(printf("Allocating %p to %p -- Calloc of %lu x %lu = %lu bytes in output pool requested from %s:%d\n",
+  debug_heap(printf("Allocating %p to %p -- Calloc of %zu x %zu = %zu bytes in output pool requested from %s:%d\n",
 		    ptr,(char *) ptr + count*nbytes-1,count,nbytes,count*nbytes,file,line));
 #endif
 
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to calloc %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to calloc %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -991,7 +991,7 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 #endif
 
   if (count <= 0) {
-    fprintf(stderr,"Failed attempt to allocate %lu x %lu bytes\n",count,nbytes);
+    fprintf(stderr,"Failed attempt to allocate %zu x %zu bytes\n",count,nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {
@@ -1275,7 +1275,7 @@ Mem_resize (void *ptr, size_t nbytes, const char *file, int line) {
   assert(nbytes > 0);
   ptr = realloc(ptr, nbytes);
   if (ptr == NULL) {
-    fprintf(stderr,"Failed attempt to realloc %lu bytes\n",nbytes);
+    fprintf(stderr,"Failed attempt to realloc %zu bytes\n",nbytes);
     if (file == NULL) {
       RAISE(Mem_Failed);
     } else {

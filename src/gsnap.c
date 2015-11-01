@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 150408 2014-10-09 21:55:35Z twu $";
+static char rcsid[] = "$Id: gsnap.c 165789 2015-05-15 18:45:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -96,6 +96,7 @@ static char rcsid[] = "$Id: gsnap.c 150408 2014-10-09 21:55:35Z twu $";
 #include "samprint.h"		/* For SAM_setup */
 
 #include "stage3.h"		/* To get EXTRAQUERYGAP */
+#include "pair.h"		/* For Cigar_action_T */
 
 #include "getopt.h"
 
@@ -250,8 +251,8 @@ static int subopt_levels = 0;
 static double user_maxlevel_float = -1.0;
 
 static int terminal_threshold = 2;
-static int terminal_output_minlength = 25;
-static bool user_terminal_output_minlength_p = false;
+static int reject_trimlength = 1000;
+static bool user_reject_trimlength_p = false;
 
 /* Really have only one indel penalty */
 static int indel_penalty_middle = 2;
@@ -391,6 +392,7 @@ static char *sam_read_group_platform = NULL;
 static bool force_xs_direction_p = false;
 static bool md_lowercase_variant_p = false;
 static bool hide_soft_clips_p = false;
+static Cigar_action_T cigar_action = CIGAR_ACTION_WARNING;
 
 
 /* Goby */
@@ -466,7 +468,7 @@ static struct option long_options[] = {
 
   {"max-mismatches", required_argument, 0, 'm'}, /* user_maxlevel_float */
   {"terminal-threshold", required_argument, 0, 0}, /* terminal_threshold */
-  {"terminal-output-minlength", required_argument, 0, 0}, /* terminal_output_minlength, user_terminal_output_minlength_p */
+  {"reject-trimlength", required_argument, 0, 0}, /* reject_trimlength, user_reject_trimlength_p */
 
 #if 0
   {"indel-penalty-middle", required_argument, 0, 'i'}, /* indel_penalty_middle */
@@ -540,7 +542,8 @@ static struct option long_options[] = {
   {"read-group-platform", required_argument, 0, 0},	/* sam_read_group_platform */
   {"force-xs-dir", no_argument, 0, 0},			/* force_xs_direction_p */
   {"md-lowercase-snp", no_argument, 0, 0},		/* md_lowercase_variant_p */
-  {"hide-soft-clips", no_argument, 0, 0},		/* hide_soft_clips_p */
+  {"extend-soft-clips", no_argument, 0, 0},		/* hide_soft_clips_p */
+  {"action-if-cigar-error", required_argument, 0, 0}, /* cigar_action */
 
   {"noexceptions", no_argument, 0, '0'}, /* exception_raise_p */
   {"maxsearch", required_argument, 0, 0}, /* maxpaths_search */
@@ -680,8 +683,8 @@ print_program_version () {
   fprintf(stdout,"\n");
 
 
-  fprintf(stdout,"Sizes: off_t (%lu), size_t (%lu), unsigned int (%lu), long int (%lu)\n",
-	  sizeof(off_t),sizeof(size_t),sizeof(unsigned int),sizeof(long int));
+  fprintf(stdout,"Sizes: off_t (%d), size_t (%d), unsigned int (%d), long int (%d), long long int (%d)\n",
+	  (int) sizeof(off_t),(int) sizeof(size_t),(int) sizeof(unsigned int),(int) sizeof(long int),(int) sizeof(long long int));
   fprintf(stdout,"Default gmap directory (compiled): %s\n",GMAPDB);
   genomedir = Datadir_find_genomedir(/*user_genomedir*/NULL);
   fprintf(stdout,"Default gmap directory (environment): %s\n",genomedir);
@@ -779,6 +782,8 @@ check_compiler_assumptions () {
 
 #endif
 
+  fprintf(stderr,"Finished checking compiler assumptions\n");
+
   return;
 }
 
@@ -819,7 +824,7 @@ process_request (Request_T request, Floors_T *floors_array,
   if (queryseq2 == NULL) {
     stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-				     genomecomp,floors_array,user_maxlevel_float,subopt_levels,
+				     genomecomp,floors_array,user_maxlevel_float,
 				     indel_penalty_middle,indel_penalty_end,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     localsplicing_penalty,distantsplicing_penalty,min_shortend,
@@ -834,7 +839,7 @@ process_request (Request_T request, Floors_T *floors_array,
 						   &stage3array5,&npaths5,&first_absmq5,&second_absmq5,
 						   &stage3array3,&npaths3,&first_absmq3,&second_absmq3,
 						   queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
-						   genomecomp,floors_array,user_maxlevel_float,subopt_levels,
+						   genomecomp,floors_array,user_maxlevel_float,
 						   indel_penalty_middle,indel_penalty_end,
 						   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 						   localsplicing_penalty,distantsplicing_penalty,min_shortend,
@@ -869,7 +874,7 @@ process_request (Request_T request, Floors_T *floors_array,
 					      &stage3array5,&npaths5,&first_absmq5,&second_absmq5,
 					      &stage3array3,&npaths3,&first_absmq3,&second_absmq3,
 					      queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
-					      genomecomp,floors_array,user_maxlevel_float,subopt_levels,
+					      genomecomp,floors_array,user_maxlevel_float,
 					      indel_penalty_middle,indel_penalty_end,
 					      allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					      localsplicing_penalty,distantsplicing_penalty,min_shortend,
@@ -1623,8 +1628,12 @@ main (int argc, char *argv[]) {
 	  mode = ATOI_STRANDED;
 	} else if (!strcmp(optarg,"atoi-nonstranded")) {
 	  mode = ATOI_NONSTRANDED;
+	} else if (!strcmp(optarg,"ttoc-stranded")) {
+	  mode = TTOC_STRANDED;
+	} else if (!strcmp(optarg,"ttoc-nonstranded")) {
+	  mode = TTOC_NONSTRANDED;
 	} else {
-	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, or atoi-nonstranded\n");
+	  fprintf(stderr,"--mode must be standard, cmet-stranded, cmet-nonstranded, atoi-stranded, atoi-nonstranded, ttoc-stranded, or ttoc-nonstranded\n");
 	  exit(9);
 	}
 
@@ -1757,9 +1766,9 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"terminal-threshold")) {
 	terminal_threshold = atoi(check_valid_int(optarg));
 
-      } else if (!strcmp(long_name,"terminal-output-minlength")) {
-	terminal_output_minlength = atoi(check_valid_int(optarg));
-	user_terminal_output_minlength_p = true;
+      } else if (!strcmp(long_name,"reject-trimlength")) {
+	reject_trimlength = atoi(check_valid_int(optarg));
+	user_reject_trimlength_p = true;
 
       } else if (!strcmp(long_name,"antistranded-penalty")) {
 	antistranded_penalty = atoi(check_valid_int(optarg));
@@ -1836,8 +1845,19 @@ main (int argc, char *argv[]) {
 	force_xs_direction_p = true;
       } else if (!strcmp(long_name,"md-lowercase-snp")) {
 	md_lowercase_variant_p = true;
-      } else if (!strcmp(long_name,"hide-soft-clips")) {
+      } else if (!strcmp(long_name,"extend-soft-clips")) {
 	hide_soft_clips_p = true;
+      } else if (!strcmp(long_name,"action-if-cigar-error")) {
+	if (!strcmp(optarg,"ignore")) {
+	  cigar_action = CIGAR_ACTION_IGNORE;
+	} else if (!strcmp(optarg,"warning")) {
+	  cigar_action = CIGAR_ACTION_WARNING;
+	} else if (!strcmp(optarg,"abort")) {
+	  cigar_action = CIGAR_ACTION_ABORT;
+	} else {
+	  fprintf(stderr,"action-if-cigar-error needs to be ignore, warning, or abort\n");
+	  exit(9);
+	}
       } else if (!strcmp(long_name,"read-group-id")) {
 	sam_read_group_id = optarg;
       } else if (!strcmp(long_name,"read-group-name")) {
@@ -2134,37 +2154,16 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"Novel splicing (-N) and known splicing (-s) both turned on => assume reads are RNA-Seq\n");
     pairmax = pairmax_rna;
     shortsplicedist_known = shortsplicedist;
-#if 0
-    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_output_minlength_p == false) {
-      /* terminal alignments don't work well with bisulfite reads */
-      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for RNA-Seq bisulfite reads\n",MAX_READLENGTH);
-      terminal_output_minlength = MAX_READLENGTH;
-    }
-#endif
 
   } else if (knownsplicingp == true) {
     fprintf(stderr,"Known splicing (-s) turned on => assume reads are RNA-Seq\n");
     pairmax = pairmax_rna;
     shortsplicedist_known = shortsplicedist;
-#if 0
-    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_output_minlength_p == false) {
-      /* terminal alignments don't work well with bisulfite reads */
-      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for RNA-Seq bisulfite reads\n",MAX_READLENGTH);
-      terminal_output_minlength = MAX_READLENGTH;
-    }
-#endif
 
   } else if (novelsplicingp == true) {
     fprintf(stderr,"Novel splicing (-N) turned on => assume reads are RNA-Seq\n");
     pairmax = pairmax_rna;
     shortsplicedist_known = 0;
-#if 0
-    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_output_minlength_p == false) {
-      /* terminal alignments don't work well with bisulfite reads */
-      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for RNA-Seq bisulfite reads\n",MAX_READLENGTH);
-      terminal_output_minlength = MAX_READLENGTH;
-    }
-#endif
 
   } else {
     /* Appears to be DNA-Seq */
@@ -2172,14 +2171,6 @@ main (int argc, char *argv[]) {
     pairmax = pairmax_dna;
     shortsplicedist = shortsplicedist_known = 0U;
     shortsplicedist_novelend = 0U;
-    /* terminal alignments still needed for GMAP alignments, so don't touch terminal_threshold, but do set output minlength */
-#if 0
-    if (user_terminal_output_minlength_p == false) {
-      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for DNA-Seq reads\n",
-	      MAX_READLENGTH);
-      terminal_output_minlength = MAX_READLENGTH;
-    }
-#endif
   }
 
   if (shortsplicedist_novelend > shortsplicedist) {
@@ -2517,6 +2508,29 @@ main (int argc, char *argv[]) {
 	exit(9);
       }
 
+    } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = genomesubdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
+					 required_index1part,required_index1interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
 
     } else {
       /* Standard behavior */
@@ -2616,6 +2630,28 @@ main (int argc, char *argv[]) {
 					 required_index1part,required_index1interval,
 					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+
+    } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+      if (user_atoidir == NULL) {
+	modedir = snpsdir;
+      } else {
+	modedir = user_atoidir;
+      }
+
+      if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
+					modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
+					required_index1part,required_index1interval,
+					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
+	exit(9);
+      }
+      if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
+					 modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
+					 required_index1part,required_index1interval,
+					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
 
@@ -2976,10 +3012,11 @@ main (int argc, char *argv[]) {
     Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
 		 suboptimal_score_start,suboptimal_score_end,
 		 mode,/*snps_p*/snps_iit ? true : false);
-    Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
+    Pair_setup(trim_mismatch_score,trim_indel_score,/*gff3_separators_p*/false,sam_insert_0M_p,
 	       force_xs_direction_p,md_lowercase_variant_p,
 	       /*snps_p*/snps_iit ? true : false,
-	       Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
+	       Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false),
+	       cigar_action);
     Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 		 /*require_splicedir_p*/true,splicing_iit,splicing_divint_crosstable,
 		 donor_typeint,acceptor_typeint,
@@ -2993,10 +3030,10 @@ main (int argc, char *argv[]) {
   Splice_setup(min_shortend);
   Indel_setup(min_indel_end_matches,indel_penalty_middle);
   Stage1hr_setup(use_sarray_p,use_only_sarray_p,index1part,index1interval,spansize,chromosome_iit,nchromosomes,
-		 genomecomp_alt,mode,maxpaths_search,terminal_threshold,terminal_output_minlength,
+		 genomecomp_alt,mode,maxpaths_search,terminal_threshold,reject_trimlength,
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,distances_observed_p,
-		 max_middle_insertions,max_middle_deletions,
+		 subopt_levels,max_middle_insertions,max_middle_deletions,
 		 shortsplicedist,shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
 		 min_distantsplicing_end_matches,min_distantsplicing_identity,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
@@ -3009,10 +3046,11 @@ main (int argc, char *argv[]) {
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
 		  novelsplicingp,knownsplicingp,output_sam_p,mode,
-		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
+		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false),
+		  reject_trimlength);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
-		 terminal_output_minlength,distances_observed_p,pairmax,
+		 reject_trimlength,distances_observed_p,pairmax,
 		 expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
@@ -3220,7 +3258,10 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
   /* Input options */
   fprintf(stdout,"Input options (must include -d)\n");
   fprintf(stdout,"\
-  -D, --dir=directory            Genome directory\n\
+  -D, --dir=directory            Genome directory.  Default (as specified by --with-gmapdb to the configure program) is\n\
+                                   %s\n\
+",GMAPDB);
+  fprintf(stdout,"\
   -d, --db=STRING                Genome database\n\
   --use-sarray=INT               Whether to use a suffix array, which will give increased speed.\n\
                                    Allowed values: 0 (no), 1 (yes, plus GSNAP/GMAP algorithm, default),\n\
@@ -3236,10 +3277,16 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
   -q, --part=INT/INT             Process only the i-th out of every n sequences\n\
                                    e.g., 0/100 or 99/100 (useful for distributing jobs\n\
                                    to a computer farm).\n\
+");
+  fprintf(stdout,"\
   --input-buffer-size=INT        Size of input buffer (program reads this many sequences\n\
-                                   at a time for efficiency) (default 1000)\n\
+                                   at a time for efficiency) (default %d)\n\
+",inbuffer_nspaces);
+  fprintf(stdout,"\
   --barcode-length=INT           Amount of barcode to remove from start of read\n\
-                                   (default 0)\n\
+                                   (default %d)\n\
+",barcode_length);
+  fprintf(stdout,"\
   -o, --orientation=STRING       Orientation of paired-end reads\n\
                                    Allowed values: FR (fwd-rev, or typical Illumina; default),\n\
                                    RF (rev-fwd, for circularized inserts), or FF (fwd-fwd, same strand)\n\
@@ -3331,27 +3378,30 @@ is still designed to be fast.\n\
                                    (0=no (default), 1=yes)\n\
   --genome-unk-mismatch=INT      Whether to count unknown (N) characters in the genome as a mismatch\n\
                                    (0=no, 1=yes (default))\n\
-  --maxsearch=INT                Maximum number of alignments to find (default 1000).\n\
+");
+  fprintf(stdout,"\
+  --maxsearch=INT                Maximum number of alignments to find (default %d).\n\
                                    Must be larger than --npaths, which is the number to report.\n\
                                    Keeping this number large will allow for random selection among multiple alignments.\n\
                                    Reducing this number can speed up the program.\n\
-");
+",maxpaths_search);
 
 #if 0
   fprintf(stdout,"\
-  -i, --indel-penalty-middle=INT Penalty for an indel in middle of read (default 1).\n\
+  -i, --indel-penalty-middle=INT Penalty for an indel in middle of read (default %d).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches\n\
-  -I, --indel-penalty-end=INT    Penalty for an indel at end of read (default 2).\n\
+",indel_penalty_middle);
+  fprintf(stdout,"\
+  -I, --indel-penalty-end=INT    Penalty for an indel at end of read (default %d).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches\n\
-");
-#else
+",indel_penalty_end);
+#endif
+
   fprintf(stdout,"\
   --terminal-threshold=INT       Threshold for computing a terminal alignment (from one end of the\n\
-                                   read to the best possible position at the other end) (default 2\n\
-                                   for standard, atoi-stranded, and atoi-nonstranded mode;\n\
-                                   default 1000 for cmet-stranded and cmet-nonstranded mode).\n\
+                                   read to the best possible position at the other end) (default %d)\n\
                                    For example, if this value is 2, then if GSNAP finds an exact or\n\
                                    1-mismatch alignment, it will not try to find a terminal alignment.\n\
                                    To turn off the computation of terminal alignments, set this to a\n\
@@ -3360,18 +3410,19 @@ is still designed to be fast.\n\
                                    find some alignments.  Therefore, to avoid getting terminal alignments\n\
                                    in the output, you should generally set --terminal-output-minlength\n\
                                    instead of this parameter.\n\
-  --terminal-output-minlength=INT\n\
-                                 Threshold alignment length in bp for a terminal alignment result to be printed\n\
-                                   (in bp) (default 25 for RNA-Seq standard, atoi-stranded, and atoi-nonstranded modes;\n\
-                                   default MAX_READLENGTH for other RNA-Seq modes and for DNA-Seq in all modes).\n\
-                                   Setting this parameter to a value of MAX_READLENGTH or more will prevent\n\
-                                   all terminal alignments from being printed.\n\
-  -i, --indel-penalty=INT        Penalty for an indel (default 2).\n\
+",terminal_threshold);
+  fprintf(stdout,"\
+  --reject-trimlength=INT\n\
+                                 Do not print alignments where amount trimmed on both ends totals more than\n\
+                                   this amount (default %d).  Note that ambiguous splicing does not count\n\
+                                   as a trim.\n\
+",reject_trimlength);
+  fprintf(stdout,"\
+  -i, --indel-penalty=INT        Penalty for an indel (default %d).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches.\n\
                                    A value < 2 can lead to false positives at read ends\n\
-");
-#endif
+",indel_penalty_middle);
 
 #if 0
   /* No longer used */
@@ -3389,22 +3440,40 @@ is still designed to be fast.\n\
 #endif
 
   fprintf(stdout,"\
-  --indel-endlength=INT          Minimum length at end required for indel alignments (default 4)\n\
-  -y, --max-middle-insertions=INT  Maximum number of middle insertions allowed (default 9)\n\
-  -z, --max-middle-deletions=INT Maximum number of middle deletions allowed (default 30)\n\
-  -Y, --max-end-insertions=INT   Maximum number of end insertions allowed (default 3)\n\
-  -Z, --max-end-deletions=INT    Maximum number of end deletions allowed (default 6)\n\
-  -M, --suboptimal-levels=INT    Report suboptimal hits beyond best hit (default 0)\n\
+  --indel-endlength=INT          Minimum length at end required for indel alignments (default %d)\n\
+",min_indel_end_matches);
+  fprintf(stdout,"\
+  -y, --max-middle-insertions=INT  Maximum number of middle insertions allowed (default %d)\n\
+",max_middle_insertions);
+  fprintf(stdout,"\
+  -z, --max-middle-deletions=INT Maximum number of middle deletions allowed (default %d)\n\
+",max_middle_deletions);
+  fprintf(stdout,"\
+  -Y, --max-end-insertions=INT   Maximum number of end insertions allowed (default %d)\n\
+",max_end_insertions);
+  fprintf(stdout,"\
+  -Z, --max-end-deletions=INT    Maximum number of end deletions allowed (default %d)\n\
+",max_end_deletions);
+  fprintf(stdout,"\
+  -M, --suboptimal-levels=INT    Report suboptimal hits beyond best hit (default %d)\n\
                                    All hits with best score plus suboptimal-levels are reported\n\
+",subopt_levels);
+  fprintf(stdout,"\
   -a, --adapter-strip=STRING     Method for removing adapters from reads.  Currently allowed values: off, paired.\n\
                                    Default is \"off\".  To turn on, specify \"paired\", which removes adapters\n\
                                    from paired-end reads if they appear to be present.\n\
-  --trim-mismatch-score=INT      Score to use for mismatches when trimming at ends (default is -3;\n\
+");
+  fprintf(stdout,"\
+  --trim-mismatch-score=INT      Score to use for mismatches when trimming at ends (default is %d;\n\
                                    to turn off trimming, specify 0).  Warning: turning trimming off\n\
                                    will give false positive mismatches at the ends of reads\n\
-  --trim-indel-score=INT         Score to use for indels when trimming at ends (default is -4;\n\
+",trim_mismatch_score);
+  fprintf(stdout,"\
+  --trim-indel-score=INT         Score to use for indels when trimming at ends (default is %d;\n\
                                    to turn off trimming, specify 0).  Warning: turning trimming off\n\
                                    will give false positive indels at the ends of reads\n\
+",trim_indel_score);
+  fprintf(stdout,"\
   -V, --snpsdir=STRING           Directory for SNPs index files (created using snpindex) (default is\n\
                                    location of genome index files specified using -D and -d)\n \
   -v, --use-snps=STRING          Use database containing known SNPs (in <STRING>.iit, built\n\
@@ -3414,8 +3483,9 @@ is still designed to be fast.\n\
   --atoidir=STRING               Directory for A-to-I RNA editing index files (created using atoiindex)\n\
                                    (default is location of genome index files specified using -D, -V, and -d)\n\
   --mode=STRING                  Alignment mode: standard (default), cmet-stranded, cmet-nonstranded,\n\
-                                    atoi-stranded, or atoi-nonstranded.  Non-standard modes requires you\n\
-                                    to have previously run the cmetindex or atoiindex programs on the genome\n\
+                                    atoi-stranded, atoi-nonstranded, ttoc-stranded, or ttoc-nonstranded.\n\
+                                    Non-standard modes requires you to have previously run the cmetindex\n\
+                                    or atoiindex programs (which also cover the ttoc modes) on the genome\n\
   --tallydir=STRING              Directory for tally IIT file to resolve concordant multiple results (default is\n\
                                    location of genome index files specified using -D and -d).  Note: can\n\
                                    just give full path name to --use-tally instead.\n\
@@ -3451,19 +3521,33 @@ is still designed to be fast.\n\
                                  Allowed values: none, all, pairsearch, indel_knownsplice, terminal, improve\n\
                                    (or multiple values, separated by commas).\n\
                                    Default: all, i.e., pairsearch,indel_knownsplice,terminal,improve\n\
-  --trigger-score-for-gmap=INT   Try GMAP pairsearch on nearby genomic regions if best score (the total\n\
-                                   of both ends if paired-end) exceeds this value (default 5)\n\
-  --gmap-min-match-length=INT    Keep GMAP hit only if it has this many consecutive matches (default 20)\n\
-  --gmap-allowance=INT           Extra mismatch/indel score allowed for GMAP alignments (default 3)\n\
-  --max-gmap-pairsearch=INT      Perform GMAP pairsearch on nearby genomic regions up to this many\n\
-                                   many candidate ends (default 10).  Requires pairsearch in --gmap-mode\n\
-  --max-gmap-terminal=INT        Perform GMAP terminal on nearby genomic regions up to this many\n\
-                                   candidate ends (default 5).  Requires terminal in --gmap-mode\n\
-  --max-gmap-improvement=INT     Perform GMAP improvement on nearby genomic regions up to this many\n\
-                                   candidate ends (default 5).  Requires improve in --gmap-mode\n\
-  --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
-                                   greater than this value (default 0.90)\n\
 ");
+  fprintf(stdout,"\
+  --trigger-score-for-gmap=INT   Try GMAP pairsearch on nearby genomic regions if best score (the total\n\
+                                   of both ends if paired-end) exceeds this value (default %d)\n\
+",trigger_score_for_gmap);
+  fprintf(stdout,"\
+  --gmap-min-match-length=INT    Keep GMAP hit only if it has this many consecutive matches (default %d)\n\
+",gmap_min_nconsecutive);
+  fprintf(stdout,"\
+  --gmap-allowance=INT           Extra mismatch/indel score allowed for GMAP alignments (default %d)\n\
+",gmap_allowance);
+  fprintf(stdout,"\
+  --max-gmap-pairsearch=INT      Perform GMAP pairsearch on nearby genomic regions up to this many\n\
+                                   many candidate ends (default %d).  Requires pairsearch in --gmap-mode\n\
+",max_gmap_pairsearch);
+  fprintf(stdout,"\
+  --max-gmap-terminal=INT        Perform GMAP terminal on nearby genomic regions up to this many\n\
+                                   candidate ends (default %d).  Requires terminal in --gmap-mode\n\
+",max_gmap_terminal);
+  fprintf(stdout,"\
+  --max-gmap-improvement=INT     Perform GMAP improvement on nearby genomic regions up to this many\n\
+                                   candidate ends (default %d).  Requires improve in --gmap-mode\n\
+",max_gmap_improvement);
+  fprintf(stdout,"\
+  --microexon-spliceprob=FLOAT   Allow microexons only if one of the splice site probabilities is\n\
+                                   greater than this value (default %.2f)\n\
+",microexon_spliceprob);
   fprintf(stdout,"\n");
 
 
@@ -3497,20 +3581,36 @@ is still designed to be fast.\n\
                                          splice site, but extend instead into the intron.  This flag makes\n\
                                          sense only if you provide the --use-splicing flag, and you are trying\n\
                                          to eliminate all soft clipping with --trim-mismatch-score=0\n\
-  -w, --localsplicedist=INT            Definition of local novel splicing event (default 200000)\n\
-  --novelend-splicedist=INT            Distance to look for novel splices at the ends of reads (default 50000)\n\
-  -e, --local-splice-penalty=INT       Penalty for a local splice (default 0).  Counts against mismatches allowed\n\
-  -E, --distant-splice-penalty=INT     Penalty for a distant splice (default 1).  A distant splice is one where\n\
+");
+  fprintf(stdout,"\
+  -w, --localsplicedist=INT            Definition of local novel splicing event (default %d)\n\
+",shortsplicedist);
+  fprintf(stdout,"\
+  --novelend-splicedist=INT            Distance to look for novel splices at the ends of reads (default %d)\n\
+",shortsplicedist_novelend);
+  fprintf(stdout,"\
+  -e, --local-splice-penalty=INT       Penalty for a local splice (default %d).  Counts against mismatches allowed\n\
+",localsplicing_penalty);
+  fprintf(stdout,"\
+  -E, --distant-splice-penalty=INT     Penalty for a distant splice (default %d).  A distant splice is one where\n\
                                          the intron length exceeds the value of -w, or --localsplicedist, or is an\n\
                                          inversion, scramble, or translocation between two different chromosomes\n\
                                          Counts against mismatches allowed\n\
-  -K, --distant-splice-endlength=INT   Minimum length at end required for distant spliced alignments (default 20, min\n\
+",distantsplicing_penalty);
+  fprintf(stdout,"\
+  -K, --distant-splice-endlength=INT   Minimum length at end required for distant spliced alignments (default %d, min\n\
                                          allowed is the value of -k, or kmer size)\n\
-  -l, --shortend-splice-endlength=INT  Minimum length at end required for short-end spliced alignments (default 2,\n\
+",min_distantsplicing_end_matches);
+  fprintf(stdout,"\
+  -l, --shortend-splice-endlength=INT  Minimum length at end required for short-end spliced alignments (default %d,\n\
                                          but unless known splice sites are provided with the -s flag, GSNAP may still\n\
                                          need the end length to be the value of -k, or kmer size to find a given splice\n\
-  --distant-splice-identity=FLOAT      Minimum identity at end required for distant spliced alignments (default 0.95)\n\
-  --antistranded-penalty=INT           (Not currently implemented)\n\
+",min_shortend);
+  fprintf(stdout,"\
+  --distant-splice-identity=FLOAT      Minimum identity at end required for distant spliced alignments (default %.2f)\n\
+",min_distantsplicing_identity);
+  fprintf(stdout,"\
+  --antistranded-penalty=INT           (Not currently implemented, since it leads to poor results)\n\
                                          Penalty for antistranded splicing when using stranded RNA-Seq protocols.\n\
                                          A positive value, such as 1, expects antisense on the first read\n\
                                          and sense on the second read.  Default is 0, which treats sense and antisense\n\
@@ -3526,15 +3626,21 @@ is still designed to be fast.\n\
   fprintf(stdout,"Options for paired-end reads\n");
   fprintf(stdout,"\
   --pairmax-dna=INT              Max total genomic length for DNA-Seq paired reads, or other reads\n\
-                                   without splicing (default 1000).  Used if -N or -s is not specified.\n\
+                                   without splicing (default %d).  Used if -N or -s is not specified.\n\
+",pairmax_dna);
+  fprintf(stdout,"\
   --pairmax-rna=INT              Max total genomic length for RNA-Seq paired reads, or other reads\n\
-                                   that could have a splice (default 200000).  Used if -N or -s is specified.\n\
+                                   that could have a splice (default %d).  Used if -N or -s is specified.\n\
                                    Should probably match the value for -w, --localsplicedist.\n\
-  --pairexpect=INT               Expected paired-end length, used for calling splices in medial part of\n\
-                                   paired-end reads (default 200)\n\
-  --pairdev=INT                  Allowable deviation from expected paired-end length, used for\n\
-                                   calling splices in medial part of paired-end reads (default 100)\n\
-");
+",pairmax_rna);
+  fprintf(stdout,"\
+  --pairexpect=INT               Expected paired-end length, previously used for calling splices in medial part\n\
+                                   of paired-end reads (default %d).  Currently not used.\n\
+",expected_pairlength);
+  fprintf(stdout,"\
+  --pairdev=INT                  Allowable deviation from expected paired-end length, previously used for\n\
+                                   calling splices in medial part of paired-end reads (default %d).  Currently not used.\n\
+",pairlength_deviation);
   fprintf(stdout,"\n");
 
 
@@ -3558,7 +3664,9 @@ is still designed to be fast.\n\
   /* Output options */
   fprintf(stdout,"Output options\n");
   fprintf(stdout,"\
-  -n, --npaths=INT               Maximum number of paths to print (default 100).\n\
+  -n, --npaths=INT               Maximum number of paths to print (default %d).\n\
+",maxpaths_report);
+  fprintf(stdout,"\
   -Q, --quiet-if-excessive       If more than maximum number of paths are found,\n\
                                    then nothing is printed.\n\
   -O, --ordered                  Print output in same order as input (relevant\n\
@@ -3600,10 +3708,12 @@ is still designed to be fast.\n\
                                     to the existing files.  Otherwise, the default is to create new files.\n\
   --order-among-best=STRING      Among alignments tied with the best score, order those alignments in this order.\n\
                                     Allowed values: genomic, random (default)\n\
-  --output-buffer-size=INT       Buffer size, in queries, for output thread (default 1000).  When the number\n\
+");
+  fprintf(stdout,"\
+  --output-buffer-size=INT       Buffer size, in queries, for output thread (default %d).  When the number\n\
                                    of results to be printed exceeds this size, the worker threads are halted\n\
                                    until the backlog is cleared\n\
-");
+",output_buffer_size);
   fprintf(stdout,"\n");
 
   /* SAM options */
@@ -3623,6 +3733,9 @@ is still designed to be fast.\n\
   --md-lowercase-snp             In MD string, when known SNPs are given by the -v flag,\n\
                                    prints difference nucleotides as lower-case when they,\n\
                                    differ from reference but match a known alternate allele\n\
+  --extend-soft-clips            Extends alignments through soft clipped regions\n\
+  --action-if-cigar-error        Action to take if there is a disagreement between CIGAR length and sequence length\n\
+                                   Allowed values: ignore, warning (default), abort\n\
   --read-group-id=STRING         Value to put into read-group id (RG-ID) field\n\
   --read-group-name=STRING       Value to put into read-group name (RG-SM) field\n\
   --read-group-library=STRING    Value to put into read-group library (RG-LB) field\n\

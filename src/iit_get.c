@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c 115892 2013-11-20 22:52:31Z twu $";
+static char rcsid[] = "$Id: iit_get.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -633,7 +633,9 @@ print_interval_univ (Univcoord_T coordstart, Univcoord_T coordend, int index,
       
     debug(printf("index is %d\n",index));
     interval = Univ_IIT_interval(chromosome_iit,index);
-    printf("%lu..%lu",Univinterval_low(interval),Univinterval_high(interval));
+    printf("%llu..%llu",
+	   (unsigned long long) Univinterval_low(interval),
+	   (unsigned long long) Univinterval_high(interval));
     if (Univinterval_type(interval) > 0) {
       printf(" %s",Univ_IIT_typestring(chromosome_iit,Univinterval_type(interval)));
     }

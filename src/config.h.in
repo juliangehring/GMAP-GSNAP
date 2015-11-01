@@ -35,9 +35,6 @@
    */
 #undef HAVE_AVX2
 
-/* Define to 1 if you support BMI1 (Bit Manipulation Instruction set 1) */
-#undef HAVE_BMI1
-
 /* Define to 1 if you support BMI2 (Bit Manipulation Instruction set 2) */
 #undef HAVE_BMI2
 
@@ -145,6 +142,9 @@
    */
 #undef HAVE_MM_POPCNT
 
+/* Define if you have the MPI library. */
+#undef HAVE_MPI
+
 /* Define to 1 if you have the `munmap' function. */
 #undef HAVE_MUNMAP
 
@@ -232,6 +232,9 @@
 
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
+
+/* Define to 1 if you support Intel intrinsic _tzcnt instruction */
+#undef HAVE_TZCNT
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H

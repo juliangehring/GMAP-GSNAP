@@ -1,6 +1,10 @@
-/* $Id: genomicpos.h 145990 2014-08-25 21:47:32Z twu $ */
+/* $Id: genomicpos.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef GENOMICPOS_INCLUDED
 #define GENOMICPOS_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_64_BIT */
+#endif
+
 #include <stdlib.h>
 #include "types.h"
 

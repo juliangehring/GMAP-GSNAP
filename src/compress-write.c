@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress-write.c 132144 2014-04-02 16:02:28Z twu $";
+static char rcsid[] = "$Id: compress-write.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -70,7 +70,8 @@ fill_buffer (int *Buffer, Genomecomp_T high, Genomecomp_T low, Genomecomp_T flag
       } else if (Buffer[i] == 'T') {
 	Buffer[i] = 'X';
       } else {
-	printf("Parsing error; saw non-ACGT flag plus %c at position %lu\n",Buffer[i],position+i);
+	printf("Parsing error; saw non-ACGT flag plus %c at position %llu\n",
+	       Buffer[i],(unsigned long long) position+i);
 	exit(9);
       }
     }
@@ -248,8 +249,8 @@ write_compressed_one (FILE *fp, int *nbadchars, char Buffer[], Univcoord_T posit
     default: 
       (*nbadchars) += 1;
       if (*nbadchars < MAX_BADCHAR_MESSAGES) {
-	fprintf(stderr,"Don't recognize character %c at position %lu.  Using N instead\n",
-		Buffer[i],position+i);
+	fprintf(stderr,"Don't recognize character %c at position %llu.  Using N instead\n",
+		Buffer[i],(unsigned long long) position+i);
       } else if (*nbadchars == MAX_BADCHAR_MESSAGES) {
 	fprintf(stderr,"Too many non-recognizable characters.  Not reporting each individual occurrence anymore.\n");
       } else if ((*nbadchars) % BADCHAR_INTERVAL == 0) {
@@ -296,8 +297,8 @@ put_compressed_one (Genomecomp_T *sectioncomp, int *nbadchars, char Buffer[], Un
     default: 
       (*nbadchars) += 1;
       if (*nbadchars < MAX_BADCHAR_MESSAGES) {
-	fprintf(stderr,"Don't recognize character %c at position %lu.  Using N instead\n",
-		Buffer[i],position+i);
+	fprintf(stderr,"Don't recognize character %c at position %llu.  Using N instead\n",
+		Buffer[i],(unsigned long long) position+i);
       } else if (*nbadchars == MAX_BADCHAR_MESSAGES) {
 	fprintf(stderr,"Too many non-recognizable characters.  Not reporting each individual occurrence anymore.\n");
       } else if ((*nbadchars) % BADCHAR_INTERVAL == 0) {

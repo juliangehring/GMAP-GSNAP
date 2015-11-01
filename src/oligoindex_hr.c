@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 146626 2014-09-02 21:34:26Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 156817 2015-01-15 21:55:11Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17584,7 +17584,7 @@ counts_compare (Count_T *counts1, Count_T *counts2, Oligospace_T oligospace) {
 
   for (i = 0; i < oligospace; i++) {
     if (counts1[i] != counts2[i]) {
-      printf("At oligo %lu, counts1 %d != counts2 %d\n",i,counts1[i],counts2[i]);
+      printf("At oligo %llu, counts1 %d != counts2 %d\n",(unsigned long long) i,counts1[i],counts2[i]);
       abort();
     }
   }
@@ -17600,8 +17600,8 @@ positions_compare (Chrpos_T **positions1, Chrpos_T **positions2, Count_T *counts
     /* nt = shortoligo_nt(i,indexsize); */
     for (hit = 0; hit < counts[i]; hit++) {
       if (positions1[i][hit] != positions2[i][hit]) {
-	printf("At oligo %lu, hit %d, positions1 %u != positions2 %u\n",
-	       i,hit,positions1[i][hit],positions2[i][hit]);
+	printf("At oligo %llu, hit %d, positions1 %u != positions2 %u\n",
+	       (unsigned long long) i,hit,positions1[i][hit],positions2[i][hit]);
 	abort();
       }
     }
@@ -18717,6 +18717,7 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
     good_genomicdiags = List_pop(good_genomicdiags,&item);
     ptr = (Genomicdiag_T) item;
 
+    /* Unclear what relationship should be between ptr->i and querylength */
     if (ptr->i >= querylength) {
 #ifdef USE_DIAGPOOL
       diagonals = Diagpool_push(diagonals,diagpool,/*diagonal*/(ptr->i - querylength),
@@ -18727,8 +18728,18 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
 							ptr->best_consecutive_start,ptr->best_consecutive_end,
 							ptr->best_nconsecutive+1));
 #endif
+    } else {
+      /* But eliminating this branch misses good alignments */
+#ifdef USE_DIAGPOOL
+      diagonals = Diagpool_push(diagonals,diagpool,/*diagonal*/(querylength - ptr->i),
+				ptr->best_consecutive_start,ptr->best_consecutive_end,
+				ptr->best_nconsecutive+1);
+#else
+      diagonals = List_push(diagonals,(void *) Diag_new(/*diagonal*/(querylength - ptr->i),
+							ptr->best_consecutive_start,ptr->best_consecutive_end,
+							ptr->best_nconsecutive+1));
+#endif
     }
-
   }
 
   if (querylength + genomiclength > array->max_querylength + array->max_genomiclength) {

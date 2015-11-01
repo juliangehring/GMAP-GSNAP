@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sam_sort.c 149423 2014-09-30 18:07:12Z twu $";
+static char rcsid[] = "$Id: sam_sort.c 154454 2014-12-02 19:30:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -128,11 +128,17 @@ static bool multiple_primaries_p = false;
 
 static Stopwatch_T stopwatch = NULL;
 
+static char *sevenway_root = NULL;
+static bool appendp = false;
+static FILE **outputs = NULL;
+
 
 static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'}, /* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"split-output", required_argument, 0, 0}, /* outputs */
+  {"append-output", no_argument, 0, 0},	     /* appendp */
 
   {"sort2", required_argument, 0, 0}, /* secondary_sort_method */
 
@@ -170,6 +176,12 @@ Input options\n\
   -D, --dir=STRING        Genome directory\n\
   -d, --db=STRING         Genome database.  If argument is '?' (with\n\
                             the quotes), this command lists available databases.\n\
+Output file options\n\
+  --split-output=STRING   Basename for multiple-file output, separately for nomapping,\n\
+                            halfmapping_uniq, halfmapping_mult, unpaired_uniq, unpaired_mult,\n\
+                            paired_uniq, paired_mult, concordant_uniq, and concordant_mult results\n\
+  --append-output         When --split-output is given, this flag will append output\n\
+                            to the existing files.  Otherwise, the default is to create new files.\n\
 \n\
 Other options\n\
   --sort2=STRING          For positions with the same genomic position, sort secondarily by\n\
@@ -215,6 +227,7 @@ make_complement_inplace (char *sequence, unsigned int length) {
 typedef struct T *T;
 struct T {
   unsigned int flag;
+  SAM_split_output_type split_output;
   bool low_read_p;
 
   Chrnum_T chrnum;
@@ -261,12 +274,14 @@ Cell_standardize_queryseqs (T this) {
 
 /* initial_softclip needs to be determined only if we are marking duplicates */
 static void
-Cell_fill (struct T *this, int readindex, unsigned int flag, bool query_lowp, int initial_softclip,
-	   Univcoord_T genomicpos, off_t fileposition, int linelen) {
+Cell_fill (struct T *this, int readindex, unsigned int flag, SAM_split_output_type split_output,
+	   bool query_lowp, int initial_softclip, Univcoord_T genomicpos, off_t fileposition,
+	   int linelen) {
 
   this->readindex = readindex;
 
   this->flag = flag;
+  this->split_output = split_output;
   this->low_read_p = query_lowp;
 
   this->genomicpos = genomicpos;
@@ -283,12 +298,13 @@ Cell_fill (struct T *this, int readindex, unsigned int flag, bool query_lowp, in
 
 /* initial_softclip needs to be determined only if we are marking duplicates */
 static void
-Cell_fill_nodups (struct T *this, unsigned int flag, Univcoord_T genomicpos,
-		  off_t fileposition, int linelen) {
+Cell_fill_nodups (struct T *this, unsigned int flag, SAM_split_output_type split_output,
+		  Univcoord_T genomicpos, off_t fileposition, int linelen) {
 
   this->readindex = 0;
 
   this->flag = flag;
+  this->split_output = split_output;
   this->low_read_p = true;
 
   this->genomicpos = genomicpos;
@@ -326,24 +342,31 @@ print_fromfile (FILE *fp, off_t fileposition, int linelength) {
 
 
 static void
-Cell_print_fromfile (FILE *fp, T this) {
+Cell_print_fromfile (FILE *fp_input, T this) {
   char buffer[CHUNK];
   int linelength = this->linelen;
+  FILE *fp_output;
 
-  moveto(fp,this->linestart);
+  if (outputs == NULL) {
+    fp_output = stdout;
+  } else {
+    fp_output = outputs[this->split_output];
+  }
+
+  moveto(fp_input,this->linestart);
 
 #ifdef DEBUG
   printf("readindex %d: ",this->readindex);
 #endif
 
   while (linelength > CHUNK) {
-    fread(buffer,sizeof(char),CHUNK,fp);
-    fwrite(buffer,sizeof(char),CHUNK,stdout);
+    fread(buffer,sizeof(char),CHUNK,fp_input);
+    fwrite(buffer,sizeof(char),CHUNK,fp_output);
     linelength -= CHUNK;
   }
   if (linelength > 0) {
-    fread(buffer,sizeof(char),linelength,fp);
-    fwrite(buffer,sizeof(char),linelength,stdout);
+    fread(buffer,sizeof(char),linelength,fp_input);
+    fwrite(buffer,sizeof(char),linelength,fp_output);
   }
 
   return;
@@ -541,6 +564,7 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
   off_t fileposition;
   int linelen;
   unsigned int flag;
+  SAM_split_output_type split_output;
   Univcoord_T genomicpos;
 
   int acclength;
@@ -556,8 +580,9 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
   for (l = linelengths; l != NULL; l = Intlist_next(l)) {
     linelen = Intlist_head(l);
     moveto(fp_sam,fileposition);
-    genomicpos = Samread_parse_genomicpos_fromfile(fp_sam,&flag,chromosome_iit,chroffsets,linelen);
-    Cell_fill_nodups(cells[k++],flag,genomicpos,fileposition,linelen);
+    genomicpos = Samread_parse_genomicpos_fromfile(fp_sam,&flag,&split_output,
+						   chromosome_iit,chroffsets,linelen);
+    Cell_fill_nodups(cells[k++],flag,split_output,genomicpos,fileposition,linelen);
     if (flag & QUERY_UNMAPPED) {
       n_nomappers++;
     } else {
@@ -729,6 +754,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 
   Intlist_T l;
   unsigned int flag;
+  SAM_split_output_type split_output;
   int initial_softclip;
   char *acc, *last_acc, *read;
   int readindex, nreads;
@@ -760,8 +786,9 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   for (l = linelengths; l != NULL; l = Intlist_next(l)) {
     linelen = Intlist_head(l);
     moveto(fp_sam,fileposition);
-    acc = Samread_get_acc_and_softclip_fromfile(&acclength,&flag,&genomicpos,&initial_softclip,&query_lowp,
-						fp_sam,chromosome_iit,chroffsets,linelen);
+    acc = Samread_parse_acc_and_softclip_fromfile(&acclength,&flag,&split_output,&hiti,
+						  &genomicpos,&initial_softclip,&query_lowp,
+						  fp_sam,chromosome_iit,chroffsets,linelen);
     if (acclength != last_acclength) {
       readindex++;
     } else if (strcmp(acc,last_acc)) {
@@ -782,7 +809,10 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
       /* Don't use secondary hit for accessing reads */
 
     } else if (multiple_primaries_p == true) {
+#if 0
+      /* Now always parsed */
       hiti = Samread_parse_aux_fromfile(fp_sam,/*auxfield*/"HI",linelen);
+#endif
       if (strcmp(hiti,"1")) {
 	/* Don't use second or later primary hit for accessing reads */
       } else if (flag & FIRST_READ_P) {
@@ -790,7 +820,6 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
       } else {
 	queryseq3_index[readindex] = k;
       }
-      FREE(hiti);
 
     } else {
       if (flag & FIRST_READ_P) {
@@ -800,7 +829,8 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
       }
     }
 
-    Cell_fill(cells[k++],readindex,flag,query_lowp,initial_softclip,genomicpos,fileposition,linelen);
+    FREE(hiti);
+    Cell_fill(cells[k++],readindex,flag,split_output,query_lowp,initial_softclip,genomicpos,fileposition,linelen);
 
     fileposition += linelen;
   }
@@ -1177,6 +1207,216 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 }
 
 
+/* output 0 is stdout */
+#define N_SPLIT_OUTPUTS 22
+
+static void
+split_output_open (char *sevenway_root, bool appendp) {
+  char *filename;
+  char *write_mode;
+
+  if (appendp == true) {
+    write_mode = "a";
+  } else {
+    write_mode = "w";
+  }
+
+  outputs = (FILE **) MALLOC((1+N_SPLIT_OUTPUTS) * sizeof(FILE *));
+  outputs[OUTPUT_NONE] = stdout;
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".nomapping")+1,sizeof(char));
+  sprintf(filename,"%s.nomapping",sevenway_root);
+  if ((outputs[OUTPUT_NM] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_uniq")+1,sizeof(char));
+  sprintf(filename,"%s.halfmapping_uniq",sevenway_root);
+  if ((outputs[OUTPUT_HU] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_circular")+1,sizeof(char));
+  sprintf(filename,"%s.halfmapping_circular",sevenway_root);
+  if ((outputs[OUTPUT_HC] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_transloc")+1,sizeof(char));
+  sprintf(filename,"%s.halfmapping_transloc",sevenway_root);
+  if ((outputs[OUTPUT_HT] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_mult")+1,sizeof(char));
+  sprintf(filename,"%s.halfmapping_mult",sevenway_root);
+  if ((outputs[OUTPUT_HM] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_mult_xs")+1,sizeof(char));
+  sprintf(filename,"%s.halfmapping_mult_xs",sevenway_root);
+  if ((outputs[OUTPUT_HX] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+    
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_uniq")+1,sizeof(char));
+  sprintf(filename,"%s.unpaired_uniq",sevenway_root);
+  if ((outputs[OUTPUT_UU] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_circular")+1,sizeof(char));
+  sprintf(filename,"%s.unpaired_circular",sevenway_root);
+  if ((outputs[OUTPUT_UC] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_transloc")+1,sizeof(char));
+  sprintf(filename,"%s.unpaired_transloc",sevenway_root);
+  if ((outputs[OUTPUT_UT] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_mult")+1,sizeof(char));
+  sprintf(filename,"%s.unpaired_mult",sevenway_root);
+  if ((outputs[OUTPUT_UM] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_mult_xs")+1,sizeof(char));
+  sprintf(filename,"%s.unpaired_mult_xs",sevenway_root);
+  if ((outputs[OUTPUT_UX] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_uniq")+1,sizeof(char));
+  sprintf(filename,"%s.concordant_uniq",sevenway_root);
+  if ((outputs[OUTPUT_CU] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_circular")+1,sizeof(char));
+  sprintf(filename,"%s.concordant_circular",sevenway_root);
+  if ((outputs[OUTPUT_CC] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_transloc")+1,sizeof(char));
+  sprintf(filename,"%s.concordant_transloc",sevenway_root);
+  if ((outputs[OUTPUT_CT] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_mult")+1,sizeof(char));
+  sprintf(filename,"%s.concordant_mult",sevenway_root);
+  if ((outputs[OUTPUT_CM] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_mult_xs")+1,sizeof(char));
+  sprintf(filename,"%s.concordant_mult_xs",sevenway_root);
+  if ((outputs[OUTPUT_CX] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_circular")+1,sizeof(char));
+  sprintf(filename,"%s.paired_uniq_circular",sevenway_root);
+  if ((outputs[OUTPUT_PC] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_inv")+1,sizeof(char));
+  sprintf(filename,"%s.paired_uniq_inv",sevenway_root);
+  if ((outputs[OUTPUT_PI] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_scr")+1,sizeof(char));
+  sprintf(filename,"%s.paired_uniq_scr",sevenway_root);
+  if ((outputs[OUTPUT_PS] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_long")+1,sizeof(char));
+  sprintf(filename,"%s.paired_uniq_long",sevenway_root);
+  if ((outputs[OUTPUT_PL] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_mult")+1,sizeof(char));
+  sprintf(filename,"%s.paired_mult",sevenway_root);
+  if ((outputs[OUTPUT_PM] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_mult_xs")+1,sizeof(char));
+  sprintf(filename,"%s.paired_mult_xs",sevenway_root);
+  if ((outputs[OUTPUT_PX] = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  return;
+}
+
+static void
+split_output_close ( ) {
+  int i;
+
+  for (i = 1; i <= N_SPLIT_OUTPUTS; i++) {
+    fclose(outputs[i]);
+  }
+  return;
+}
+
+
 
 #define BUFFERLEN 1024
 
@@ -1218,6 +1458,11 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"help")) {
 	print_program_usage();
 	exit(0);
+
+      } else if (!strcmp(long_name,"split-output")) {
+	sevenway_root = optarg;
+      } else if (!strcmp(long_name,"append-output")) {
+	appendp = true;
 
       } else if (!strcmp(long_name,"sort2")) {
 	if (!strcmp(optarg,"none")) {
@@ -1309,6 +1554,11 @@ main (int argc, char *argv[]) {
     FREE(chrlengths);
   }
     
+  if (sevenway_root != NULL) {
+    split_output_open(sevenway_root,appendp);
+  }
+
+
   /* SAM file */
   stopwatch = Stopwatch_new();
   if ((fp_sam = fopen(argv[0],"r")) == NULL) {
@@ -1389,16 +1639,26 @@ main (int argc, char *argv[]) {
 
   if (fileposition != Access_filesize(argv[0])) {
     fprintf(stderr,"Something is wrong with parsing of SAM file\n");
-    fprintf(stderr,"Final file position using sortinfo: %lu\n",fileposition);
-    fprintf(stderr,"File size of SAM output file:       %lu\n",Access_filesize(argv[0]));
+    fprintf(stderr,"Final file position using sortinfo: %llu\n",(unsigned long long) fileposition);
+    fprintf(stderr,"File size of SAM output file:       %llu\n",(unsigned long long) Access_filesize(argv[0]));
     exit(9);
   }
 
   if (ncells == 0) {
     /* Exit without printing header */
-  } else {
+
+  } else if (sam_headers_p == false) {
+    /* Don't print SAM headers */
+
+  } else if (sevenway_root == NULL) {
+    /* Print SAM headers to stdout */
     moveto(fp_sam,0);
-    SAM_header_change_HD_tosorted(fp_sam,headerlen);
+    SAM_header_change_HD_tosorted_stdout(fp_sam,headerlen);
+
+  } else {
+    /* Print SAM headers to each output */
+    moveto(fp_sam,0);
+    SAM_header_change_HD_tosorted_split(fp_sam,headerlen,outputs,N_SPLIT_OUTPUTS);
   }
 
   linelengths = Intlist_reverse(linelengths);
@@ -1412,6 +1672,10 @@ main (int argc, char *argv[]) {
   }
 
   fclose(fp_sam);
+
+  if (sevenway_root != NULL) {
+    split_output_close();
+  }
 
   Intlist_free(&linelengths);
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-read.c 151053 2014-10-16 19:57:23Z twu $";
+static char rcsid[] = "$Id: sarray-read.c 165782 2015-05-15 18:16:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -44,7 +44,8 @@ static char rcsid[] = "$Id: sarray-read.c 151053 2014-10-16 19:57:23Z twu $";
 
 /* A value of 10000 misses various splices, although they are caught by GSNAP algorithm */
 #define EXCESS_SARRAY_HITS 100000
-#define LOCALSPLICING_SLOP 0.05
+#define LOCALSPLICING_NMATCHES_SLOP 1
+#define LOCALSPLICING_PROB_SLOP 0.05
 
 #define USE_SHUFFLE_MASK 1	/* Alternative requires AVX, and that part of the code isn't called much */
 
@@ -252,6 +253,7 @@ static Splicetype_T *splicetypes;
 static Chrpos_T *splicedists;
 static int nsplicesites;
 
+
 #if defined(HAVE_SSE2) && defined(USE_SHUFFLE_MASK)
 static __m128i shuffle_mask16[16];
 #endif
@@ -344,6 +346,9 @@ Sarray_setup (T sarray_fwd_in, T sarray_rev_in, Genome_T genome_in, Mode_T mode,
   } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
     conversion_fwd['A'] = 'G';	/* AG */
     conversion_rev['T'] = 'C';	/* TC */
+  } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+    conversion_fwd['T'] = 'C';	/* TC */
+    conversion_rev['A'] = 'G';	/* AG */
   }
 
   chromosome_iit = chromosome_iit_in;
@@ -472,6 +477,18 @@ Sarray_new (char *dir, char *fileroot, char *snps_root, Access_mode_T sarray_acc
       mode_prefix = ".a2iag.";
     } else {
       mode_prefix = ".a2itc.";
+    }
+  } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+    if (fwdp == true) {
+      mode_prefix = ".a2itc.";
+    } else {
+      mode_prefix = ".a2iag.";
+    }
+  } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+    if (fwdp == true) {
+      mode_prefix = ".a2itc.";
+    } else {
+      mode_prefix = ".a2iag.";
     }
   }
 
@@ -2705,6 +2722,41 @@ extend_leftward (Univcoord_T goal, Univcoord_T chroffset, Univcoord_T chrhigh,
 
 
 
+static int
+donor_match_length_cmp (const void *a, const void *b) {
+  Stage3end_T x = * (Stage3end_T *) a;
+  Stage3end_T y = * (Stage3end_T *) b;
+  
+  int x_length = Substring_match_length_orig(Stage3end_substring_donor(x));
+  int y_length = Substring_match_length_orig(Stage3end_substring_donor(y));
+
+  if (x_length < y_length) {
+    return -1;
+  } else if (y_length < x_length) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+static int
+acceptor_match_length_cmp (const void *a, const void *b) {
+  Stage3end_T x = * (Stage3end_T *) a;
+  Stage3end_T y = * (Stage3end_T *) b;
+  
+  int x_length = Substring_match_length_orig(Stage3end_substring_acceptor(x));
+  int y_length = Substring_match_length_orig(Stage3end_substring_acceptor(y));
+
+  if (x_length < y_length) {
+    return -1;
+  } else if (y_length < x_length) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
 static void
 collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *ambiguous, List_T *singlesplicing,
 		     List_T *doublesplicing, int querystart_same, int queryend_same,
@@ -2713,7 +2765,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
 		     List_T rightward_set, List_T leftward_set, int querylength, Compress_T query_compress,
 		     bool plusp, int genestrand, bool first_read_p, int nmisses_allowed) {
   List_T set, p;
-  Stage3end_T hit;
+  Stage3end_T hit, *hitarray;
   Elt_T elt;
   Univcoord_T left, left1, left2, *array;
   Uintlist_T difflist = NULL;	/* Won't work with LARGE_GENOMES */
@@ -2725,19 +2777,23 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
   int query_indel_pos;
 #endif
 
+  List_T accepted_hits, rejected_hits;
   List_T spliceends_sense, spliceends_antisense, lowprob;
+  List_T donor_hits, acceptor_hits;
+  int donor_length, acceptor_length;
   int nhits, nspliceends_sense, nspliceends_antisense, n_good_spliceends;
   int best_nmismatches, nmismatches_donor, nmismatches_acceptor;
   double best_prob, prob;
   Substring_T donor, acceptor;
 
   int sensedir;
-  Uintlist_T ambcoords, ambcoords_left, ambcoords_right;
+  Uintlist_T ambcoords;
   Intlist_T amb_knowni, amb_nmismatches;
+  Doublelist_T amb_probs;
 
   int segmenti_donor_nknown, segmentj_acceptor_nknown,
     segmentj_antidonor_nknown, segmenti_antiacceptor_nknown;
-  int j, i, n;
+  int k, j, i, n;
   bool segmenti_usedp, segmentj_usedp;
   bool foundp;
 
@@ -2851,7 +2907,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
 
     } else {
       debug7(printf("Result: successful hit saved\n"));
-      debug(printf("Reporting hit with %d mismatches\n",nmismatches));
+      debug(printf("1. Reporting hit with %d mismatches vs %d allowed\n",nmismatches,nmisses_allowed));
       if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 					    left,/*genomiclength*/querylength,
 					    query_compress,plusp,genestrand,first_read_p,
@@ -3045,248 +3101,464 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
     }
 
     if (spliceends_sense != NULL) {
-      /* nmismatches should be the same for all spliceends, so pick based on prob */
-      hit = (Stage3end_T) List_head(spliceends_sense);
-      best_nmismatches = Stage3end_nmismatches_whole(hit);
-
+      /* nmismatches here may be different for spliceends from Splice_solve, so pick based on prob and nmismatches */
+      best_nmismatches = querylength;
       best_prob = 0.0;
       for (p = spliceends_sense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	debug7(printf("analyzing distance %d, probabilities %f and %f\n",
-		      Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	debug7(printf("analyzing distance %d, donor length %d (%llu..%llu) and acceptor length %d (%llu..%llu), nmismatches %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+		      Substring_genomicstart(Stage3end_substring_donor(hit)),Substring_genomicend(Stage3end_substring_donor(hit)),
+		      Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+		      Substring_genomicstart(Stage3end_substring_acceptor(hit)),Substring_genomicend(Stage3end_substring_acceptor(hit)),
+		      Stage3end_nmismatches_whole(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	  best_nmismatches = nmismatches;
+	}
 	if ((prob = Stage3end_chimera_prob(hit)) > best_prob) {
 	  best_prob = prob;
 	}
       }
 
       n_good_spliceends = 0;
+      accepted_hits = rejected_hits = (List_T) NULL;
       for (p = spliceends_sense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	if (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP) {
+	if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP &&
+	    Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
 	  debug7(printf("accepting distance %d, probabilities %f and %f\n",
 			Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
 	  n_good_spliceends += 1;
+	  accepted_hits = List_push(accepted_hits,(void *) hit);
+	} else {
+	  rejected_hits = List_push(rejected_hits,(void *) hit);
 	}
       }
 
-      if (n_good_spliceends == 1) {
+      if (n_good_spliceends == 0) {
+	/* Conjunction is too strict.  Allow for disjunction instead. */
+	List_free(&rejected_hits);
 	for (p = spliceends_sense; p != NULL; p = List_next(p)) {
 	  hit = (Stage3end_T) List_head(p);
-	  if (Stage3end_chimera_prob(hit) == best_prob) {
-	    debug7(printf("pushing distance %d, probabilities %f and %f\n",
+	  if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP ||
+	      Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
+	    debug7(printf("accepting distance %d, probabilities %f and %f\n",
 			  Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
-	    *singlesplicing = List_push(*singlesplicing,(void *) hit);
-	    nhits += 1;
+	    n_good_spliceends += 1;
+	    accepted_hits = List_push(accepted_hits,(void *) hit);
 	  } else {
-	    Stage3end_free(&hit);
+	    rejected_hits = List_push(rejected_hits,(void *) hit);
 	  }
 	}
-	List_free(&spliceends_sense);
+      }
+
+      for (p = rejected_hits; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	Stage3end_free(&hit);
+      }
+      List_free(&rejected_hits);
+      List_free(&spliceends_sense);
+
+      if (n_good_spliceends == 1) {
+	*singlesplicing = List_push(*singlesplicing,List_head(accepted_hits));
+	nhits += 1;
+	List_free(&accepted_hits);
 
       } else {
-	/* Create ambiguous, sense */
-	hit = (Stage3end_T) List_head(spliceends_sense);
-	donor = Stage3end_substring_donor(hit);
-	acceptor = Stage3end_substring_acceptor(hit);
-	sensedir = Stage3end_sensedir(hit);
-
-	ambcoords = (Uintlist_T) NULL;
-	amb_knowni = (Intlist_T) NULL;
-	amb_nmismatches = (Intlist_T) NULL;
-
-	if (Substring_left_genomicseg(donor) == left1) {
-	  for (p = spliceends_sense; p != NULL; p = List_next(p)) {
-	    hit = (Stage3end_T) List_head(p);
-	    acceptor = Stage3end_substring_acceptor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
-	  }
-
-	  nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
-							       donor,/*acceptor*/NULL,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(acceptor),
-							       /*ambcoords_donor*/NULL,ambcoords,
-							       /*amb_knowni_donor*/NULL,amb_knowni,
-							       /*amb_nmismatches_donor*/NULL,amb_nmismatches,
-							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-
-	} else if (Substring_left_genomicseg(acceptor) == left1) {
-	  for (p = spliceends_sense; p != NULL; p = List_next(p)) {
+	/* 1.  Multiple hits, sense, left1 */
+	debug7(printf("multiple hits with best prob, sense\n"));
+	donor_hits = acceptor_hits = (List_T) NULL;
+	if (plusp == true) {
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
 	    hit = (Stage3end_T) List_head(p);
 	    donor = Stage3end_substring_donor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicstart(donor) == left1) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicstart(acceptor) == left1) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
 	  }
-
-	  nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
-							       /*donor*/NULL,acceptor,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(donor),
-							       ambcoords,/*ambcoords_acceptor*/NULL,
-							       amb_knowni,/*amb_knowni_acceptor*/NULL,
-							       amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
-							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-
 	} else {
-	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals left1 %u\n",
-		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),left1);
-	  abort();
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    donor = Stage3end_substring_donor(hit);
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicend(donor) == left1) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicend(acceptor) == left1) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
+	  }
 	}
 
-	for (p = spliceends_sense; p != NULL; p = List_next(p)) {
-	  hit = (Stage3end_T) List_head(p);
-	  Stage3end_free(&hit);
+	if (donor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,donor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),donor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    donor = Stage3end_substring_donor(hit);
+	    donor_length = Substring_match_length_orig(donor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_donor(hitarray[j])) == donor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		acceptor = Stage3end_substring_acceptor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(acceptor));
+	      }
+
+	      nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	      prob = best_prob - Substring_chimera_prob(donor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+								   donor,/*acceptor*/NULL,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(acceptor),/*amb_prob*/prob,
+								   /*ambcoords_donor*/NULL,ambcoords,
+								   /*amb_knowni_donor*/NULL,amb_knowni,
+								   /*amb_nmismatches_donor*/NULL,amb_nmismatches,
+								   /*amb_probs_donor*/NULL,amb_probs,
+								   /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&donor_hits);
 	}
-	List_free(&spliceends_sense);
+
+	if (acceptor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,acceptor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),acceptor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    acceptor_length = Substring_match_length_orig(acceptor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_acceptor(hitarray[j])) == acceptor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		donor = Stage3end_substring_donor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(donor));
+	      }
+	    
+	      nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	      prob = best_prob - Substring_chimera_prob(acceptor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+								   /*donor*/NULL,acceptor,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(donor),/*amb_prob*/prob,
+								   ambcoords,/*ambcoords_acceptor*/NULL,
+								   amb_knowni,/*amb_knowni_acceptor*/NULL,
+								   amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
+								   amb_probs,/*amb_probs_acceptor*/NULL,
+								   /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&acceptor_hits);
+	}
+
+	List_free(&accepted_hits);
       }
     }
 
     if (spliceends_antisense != NULL) {
-      /* nmismatches should be the same for all spliceends, so pick based on prob */
-      hit = (Stage3end_T) List_head(spliceends_antisense);
-      best_nmismatches = Stage3end_nmismatches_whole(hit);
-
+      /* nmismatches here may be different for spliceends from Splice_solve, so pick based on prob and nmismatches */
+      best_nmismatches = querylength;
       best_prob = 0.0;
       for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	debug7(printf("analyzing distance %d, probabilities %f and %f\n",
-		      Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	debug7(printf("analyzing distance %d, donor length %d (%llu..%llu) and acceptor length %d (%llu..%llu), nmismatches %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+		      Substring_genomicstart(Stage3end_substring_donor(hit)),Substring_genomicend(Stage3end_substring_donor(hit)),
+		      Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+		      Substring_genomicstart(Stage3end_substring_acceptor(hit)),Substring_genomicend(Stage3end_substring_acceptor(hit)),
+		      Stage3end_nmismatches_whole(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	  best_nmismatches = nmismatches;
+	}
 	if ((prob = Stage3end_chimera_prob(hit)) > best_prob) {
 	  best_prob = prob;
 	}
       }
 
       n_good_spliceends = 0;
+      accepted_hits = rejected_hits = (List_T) NULL;
       for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	if (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP) {
-	  debug7(printf("accepting distance %d, probabilities %f and %f\n",
-			Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP &&
+	    Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
+	  debug7(printf("accepting distance %d, donor length %d and acceptor length %d, probabilities %f and %f\n",
+			Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+			Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+			Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
 	  n_good_spliceends += 1;
+	  accepted_hits = List_push(accepted_hits,(void *) hit);
+	} else {
+	  rejected_hits = List_push(rejected_hits,(void *) hit);
 	}
       }
 
-      if (n_good_spliceends == 1) {
+      if (n_good_spliceends == 0) {
+	/* Conjunction is too strict.  Allow for disjunction instead. */
+	List_free(&rejected_hits);
 	for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
 	  hit = (Stage3end_T) List_head(p);
-	  if (Stage3end_chimera_prob(hit) == best_prob) {
-	    debug7(printf("pushing distance %d, probabilities %f and %f\n",
-			  Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	  if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP ||
+	      Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
+	    debug7(printf("accepting distance %d, donor length %d and acceptor length %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+			  Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
-	    *singlesplicing = List_push(*singlesplicing,(void *) hit);
-	    nhits += 1;
+	    n_good_spliceends += 1;
+	    accepted_hits = List_push(accepted_hits,(void *) hit);
 	  } else {
-	    Stage3end_free(&hit);
+	    rejected_hits = List_push(rejected_hits,(void *) hit);
 	  }
 	}
-	List_free(&spliceends_antisense);
+      }
+
+      for (p = rejected_hits; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	Stage3end_free(&hit);
+      }
+      List_free(&rejected_hits);
+      List_free(&spliceends_antisense);
+
+      if (n_good_spliceends == 1) {
+	*singlesplicing = List_push(*singlesplicing,List_head(accepted_hits));
+	nhits += 1;
+	List_free(&accepted_hits);
 
       } else {
-	/* Create ambiguous, antisense */
-	hit = (Stage3end_T) List_head(spliceends_antisense);
-	donor = Stage3end_substring_donor(hit);
-	acceptor = Stage3end_substring_acceptor(hit);
-	sensedir = Stage3end_sensedir(hit);
-
-	ambcoords = (Uintlist_T) NULL;
-	amb_knowni = (Intlist_T) NULL;
-	amb_nmismatches = (Intlist_T) NULL;
-
-	if (Substring_left_genomicseg(donor) == left1) {
-	  for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
-	    hit = (Stage3end_T) List_head(p);
-	    acceptor = Stage3end_substring_acceptor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
-	  }
-
-	  nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
-							       donor,/*acceptor*/NULL,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(acceptor),
-							       /*ambcoords_donor*/NULL,ambcoords,
-							       /*amb_knowni_donor*/NULL,amb_knowni,
-							       /*amb_nmismatches_donor*/NULL,amb_nmismatches,
-							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-
-	} else if (Substring_left_genomicseg(acceptor) == left1) {
-	  for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
+	/* 2.  Multiple hits, antisense, left1 */
+	debug7(printf("multiple hits with best prob, antisense\n"));
+	donor_hits = acceptor_hits = (List_T) NULL;
+	if (plusp == true) {
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
 	    hit = (Stage3end_T) List_head(p);
 	    donor = Stage3end_substring_donor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicstart(donor) == left1) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicstart(acceptor) == left1) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
 	  }
-
-	  nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
-							       /*donor*/NULL,acceptor,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(donor),
-							       ambcoords,/*ambcoords_acceptor*/NULL,
-							       amb_knowni,/*amb_knowni_acceptor*/NULL,
-							       amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
-							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-
 	} else {
-	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals left1 %u\n",
-		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),left1);
-	  abort();
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    donor = Stage3end_substring_donor(hit);
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicend(donor) == left1) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicend(acceptor) == left1) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
+	  }
 	}
 
-	for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
-	  hit = (Stage3end_T) List_head(p);
-	  Stage3end_free(&hit);
+	if (donor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,donor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),donor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    donor = Stage3end_substring_donor(hit);
+	    donor_length = Substring_match_length_orig(donor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_donor(hitarray[j])) == donor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+	      
+	      for (k = i; k < j; k++) {
+		acceptor = Stage3end_substring_acceptor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(acceptor));
+	      }
+	      
+	      nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	      prob = best_prob - Substring_chimera_prob(donor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+								   donor,/*acceptor*/NULL,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(acceptor),/*amb_prob*/prob,
+								   /*ambcoords_donor*/NULL,ambcoords,
+								   /*amb_knowni_donor*/NULL,amb_knowni,
+								   /*amb_nmismatches_donor*/NULL,amb_nmismatches,
+								   /*amb_probs_donor*/NULL,amb_probs,
+								   /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&donor_hits);
 	}
-	List_free(&spliceends_antisense);
+
+	if (acceptor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,acceptor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),acceptor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    acceptor_length = Substring_match_length_orig(acceptor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_acceptor(hitarray[j])) == acceptor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		donor = Stage3end_substring_donor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(donor));
+	      }
+	    
+	      nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	      prob = best_prob - Substring_chimera_prob(acceptor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+								   /*donor*/NULL,acceptor,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(donor),/*amb_prob*/prob,
+								   ambcoords,/*ambcoords_acceptor*/NULL,
+								   amb_knowni,/*amb_knowni_acceptor*/NULL,
+								   amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
+								   amb_probs,/*amb_probs_acceptor*/NULL,
+								   /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&acceptor_hits);
+	}
+
+	List_free(&accepted_hits);
       }
     }
 
@@ -3483,248 +3755,465 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
     }
 
     if (spliceends_sense != NULL) {
-      /* nmismatches should be the same for all spliceends, so pick based on prob */
-      hit = (Stage3end_T) List_head(spliceends_sense);
-      best_nmismatches = Stage3end_nmismatches_whole(hit);
-
+      /* nmismatches here may be different for spliceends from Splice_solve, so pick based on prob and nmismatches */
+      best_nmismatches = querylength;
       best_prob = 0.0;
       for (p = spliceends_sense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	debug7(printf("analyzing distance %d, probabilities %f and %f\n",
-		      Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	debug7(printf("analyzing distance %d, donor length %d (%llu..%llu) and acceptor length %d (%llu..%llu), nmismatches %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+		      Substring_genomicstart(Stage3end_substring_donor(hit)),Substring_genomicend(Stage3end_substring_donor(hit)),
+		      Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+		      Substring_genomicstart(Stage3end_substring_acceptor(hit)),Substring_genomicend(Stage3end_substring_acceptor(hit)),
+		      Stage3end_nmismatches_whole(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	  best_nmismatches = nmismatches;
+	}
 	if ((prob = Stage3end_chimera_prob(hit)) > best_prob) {
 	  best_prob = prob;
 	}
       }
 
       n_good_spliceends = 0;
+      accepted_hits = rejected_hits = (List_T) NULL;
       for (p = spliceends_sense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	if (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP) {
+	if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP &&
+	    Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
 	  debug7(printf("accepting distance %d, probabilities %f and %f\n",
 			Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
 	  n_good_spliceends += 1;
+	  accepted_hits = List_push(accepted_hits,(void *) hit);
+	} else {
+	  rejected_hits = List_push(rejected_hits,(void *) hit);
 	}
       }
       
-      if (n_good_spliceends == 1) {
+      if (n_good_spliceends == 0) {
+	/* Conjunction is too strict.  Allow for disjunction instead. */
+	List_free(&rejected_hits);
 	for (p = spliceends_sense; p != NULL; p = List_next(p)) {
 	  hit = (Stage3end_T) List_head(p);
-	  if (Stage3end_chimera_prob(hit) == best_prob) {
-	    debug7(printf("pushing distance %d, probabilities %f and %f\n",
-			  Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	  if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP ||
+	      Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
+	    debug7(printf("accepting distance %d, donor length %d and acceptor length %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+			  Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
-	    *singlesplicing = List_push(*singlesplicing,(void *) hit);
-	    nhits += 1;
+	    n_good_spliceends += 1;
+	    accepted_hits = List_push(accepted_hits,(void *) hit);
 	  } else {
-	    Stage3end_free(&hit);
+	    rejected_hits = List_push(rejected_hits,(void *) hit);
 	  }
 	}
-	List_free(&spliceends_sense);
+      }
+
+      for (p = rejected_hits; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	Stage3end_free(&hit);
+      }
+      List_free(&rejected_hits);
+      List_free(&spliceends_sense);
+
+      if (n_good_spliceends == 1) {
+	*singlesplicing = List_push(*singlesplicing,List_head(accepted_hits));
+	nhits += 1;
+	List_free(&accepted_hits);
 
       } else {
-	/* Create ambiguous, sense */
-	hit = (Stage3end_T) List_head(spliceends_sense);
-	donor = Stage3end_substring_donor(hit);
-	acceptor = Stage3end_substring_acceptor(hit);
-	sensedir = Stage3end_sensedir(hit);
-
-	ambcoords = (Uintlist_T) NULL;
-	amb_knowni = (Intlist_T) NULL;
-	amb_nmismatches = (Intlist_T) NULL;
-
-	if (Substring_left_genomicseg(donor) == left2) {
-	  for (p = spliceends_sense; p != NULL; p = List_next(p)) {
-	    hit = (Stage3end_T) List_head(p);
-	    acceptor = Stage3end_substring_acceptor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
-	  }
-
-	  nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
-							       donor,/*acceptor*/NULL,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(acceptor),
-							       /*ambcoords_donor*/NULL,ambcoords,
-							       /*amb_knowni_donor*/NULL,amb_knowni,
-							       /*amb_nmismatches_donor*/NULL,amb_nmismatches,
-							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-	  
-	} else if (Substring_left_genomicseg(acceptor) == left2) {
-	  for (p = spliceends_sense; p != NULL; p = List_next(p)) {
+	/* 3.  Multiple hits, sense, left2 */
+	debug7(printf("multiple hits with best prob, sense\n"));
+	donor_hits = acceptor_hits = (List_T) NULL;
+	if (plusp == true) {
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
 	    hit = (Stage3end_T) List_head(p);
 	    donor = Stage3end_substring_donor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicstart(donor) == left2) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicstart(acceptor) == left1) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
 	  }
-
-	  nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
-							       /*donor*/NULL,acceptor,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(donor),
-							       ambcoords,/*ambcoords_acceptor*/NULL,
-							       amb_knowni,/*amb_known_acceptor*/NULL,
-							       amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
-							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-
 	} else {
-	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals left2 %u\n",
-		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),left2);
-	  abort();
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    donor = Stage3end_substring_donor(hit);
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicend(donor) == left2) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicend(acceptor) == left1) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
+	  }
+	}
+	  
+	if (donor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,donor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),donor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    donor = Stage3end_substring_donor(hit);
+	    donor_length = Substring_match_length_orig(donor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_donor(hitarray[j])) == donor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		acceptor = Stage3end_substring_acceptor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(acceptor));
+	      }
+
+	      nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	      prob = best_prob - Substring_chimera_prob(donor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+								   donor,/*acceptor*/NULL,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(acceptor),/*amb_prob*/prob,
+								   /*ambcoords_donor*/NULL,ambcoords,
+								   /*amb_knowni_donor*/NULL,amb_knowni,
+								   /*amb_nmismatches_donor*/NULL,amb_nmismatches,
+								   /*amb_probs_donor*/NULL,amb_probs,
+								   /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&donor_hits);
 	}
 
-	for (p = spliceends_sense; p != NULL; p = List_next(p)) {
-	  hit = (Stage3end_T) List_head(p);
-	  Stage3end_free(&hit);
+	if (acceptor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,acceptor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),acceptor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    acceptor_length = Substring_match_length_orig(acceptor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_acceptor(hitarray[j])) == acceptor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		donor = Stage3end_substring_donor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(donor));
+	      }
+
+	      nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	      prob = best_prob - Substring_chimera_prob(acceptor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+								   /*donor*/NULL,acceptor,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(donor),/*amb_prob*/prob,
+								   ambcoords,/*ambcoords_acceptor*/NULL,
+								   amb_knowni,/*amb_knowni_acceptor*/NULL,
+								   amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
+								   amb_probs,/*amb_probs_acceptor*/NULL,
+								   /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&acceptor_hits);
 	}
-	List_free(&spliceends_sense);
+
+	List_free(&accepted_hits);
       }
     }
 
     if (spliceends_antisense != NULL) {
-      /* nmismatches should be the same for all spliceends, so pick based on prob */
-      hit = (Stage3end_T) List_head(spliceends_antisense);
-      best_nmismatches = Stage3end_nmismatches_whole(hit);
-
+      /* nmismatches here may be different for spliceends from Splice_solve, so pick based on prob and nmismatches */
+      best_nmismatches = querylength;
       best_prob = 0.0;
       for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	debug7(printf("analyzing distance %d, probabilities %f and %f\n",
-		      Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	debug7(printf("analyzing distance %d, donor length %d (%llu..%llu) and acceptor length %d (%llu..%llu), nmismatches %d, probabilities %f and %f\n",
+		      Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+		      Substring_genomicstart(Stage3end_substring_donor(hit)),Substring_genomicend(Stage3end_substring_donor(hit)),
+		      Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+		      Substring_genomicstart(Stage3end_substring_acceptor(hit)),Substring_genomicend(Stage3end_substring_acceptor(hit)),
+		      Stage3end_nmismatches_whole(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 		      Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
+	if ((nmismatches = Stage3end_nmismatches_whole(hit)) < best_nmismatches) {
+	  best_nmismatches = nmismatches;
+	}
 	if ((prob = Stage3end_chimera_prob(hit)) > best_prob) {
 	  best_prob = prob;
 	}
       }
 
       n_good_spliceends = 0;
+      accepted_hits = rejected_hits = (List_T) NULL;
       for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
 	hit = (Stage3end_T) List_head(p);
-	if (Stage3end_chimera_prob(hit) > best_prob - LOCALSPLICING_SLOP) {
+	if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP &&
+	    Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
 	  debug7(printf("accepting distance %d, probabilities %f and %f\n",
 			Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
 	  n_good_spliceends += 1;
+	  accepted_hits = List_push(accepted_hits,(void *) hit);
+	} else {
+	  rejected_hits = List_push(rejected_hits,(void *) hit);
 	}
       }
       
-      if (n_good_spliceends == 1) {
+      if (n_good_spliceends == 0) {
+	/* Conjunction is too strict.  Allow for disjunction instead. */
+	List_free(&rejected_hits);
 	for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
 	  hit = (Stage3end_T) List_head(p);
-	  if (Stage3end_chimera_prob(hit) == best_prob) {
-	    debug7(printf("pushing distance %d, probabilities %f and %f\n",
-			  Stage3end_distance(hit),Substring_chimera_prob(Stage3end_substring_donor(hit)),
+	  if (Stage3end_nmismatches_whole(hit) <= best_nmismatches + LOCALSPLICING_NMATCHES_SLOP ||
+	      Stage3end_chimera_prob(hit) >= best_prob - LOCALSPLICING_PROB_SLOP) {
+	    debug7(printf("accepting distance %d, donor length %d and acceptor length %d, probabilities %f and %f\n",
+			  Stage3end_distance(hit),Substring_match_length_orig(Stage3end_substring_donor(hit)),
+			  Substring_match_length_orig(Stage3end_substring_acceptor(hit)),
+			  Substring_chimera_prob(Stage3end_substring_donor(hit)),
 			  Substring_chimera_prob(Stage3end_substring_acceptor(hit))));
-	    *singlesplicing = List_push(*singlesplicing,(void *) hit);
-	    nhits += 1;
+	    n_good_spliceends += 1;
+	    accepted_hits = List_push(accepted_hits,(void *) hit);
 	  } else {
-	    Stage3end_free(&hit);
+	    rejected_hits = List_push(rejected_hits,(void *) hit);
 	  }
 	}
-	List_free(&spliceends_antisense);
+      }
+
+      for (p = rejected_hits; p != NULL; p = List_next(p)) {
+	hit = (Stage3end_T) List_head(p);
+	Stage3end_free(&hit);
+      }
+      List_free(&rejected_hits);
+      List_free(&spliceends_antisense);
+
+      if (n_good_spliceends == 1) {
+	*singlesplicing = List_push(*singlesplicing,List_head(accepted_hits));
+	nhits += 1;
+	List_free(&accepted_hits);
 
       } else {
-	/* Create ambiguous, antisense */
-	hit = (Stage3end_T) List_head(spliceends_antisense);
-	donor = Stage3end_substring_donor(hit);
-	acceptor = Stage3end_substring_acceptor(hit);
-	sensedir = Stage3end_sensedir(hit);
-
-	ambcoords = (Uintlist_T) NULL;
-	amb_knowni = (Intlist_T) NULL;
-	amb_nmismatches = (Intlist_T) NULL;
-
-	if (Substring_left_genomicseg(donor) == left2) {
-	  for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
-	    hit = (Stage3end_T) List_head(p);
-	    acceptor = Stage3end_substring_acceptor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
-	  }
-
-	  nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
-							       donor,/*acceptor*/NULL,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(acceptor),
-							       /*ambcoords_donor*/NULL,ambcoords,
-							       /*amb_knowni_donor*/NULL,amb_knowni,
-							       /*amb_nmismatches_donor*/NULL,amb_nmismatches,
-							       /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-	  
-	} else if (Substring_left_genomicseg(acceptor) == left2) {
-	  for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
+	/* 4.  Multiple hits, antisense, left2 */
+	debug7(printf("multiple hits with best prob, antisense\n"));
+	donor_hits = acceptor_hits = (List_T) NULL;
+	if (plusp == true) {
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
 	    hit = (Stage3end_T) List_head(p);
 	    donor = Stage3end_substring_donor(hit);
-#ifdef LARGE_GENOMES
-	    ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
-#else
-	    ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
-#endif
-	    amb_knowni = Intlist_push(amb_knowni,-1);
-	    amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicstart(donor) == left2) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicstart(acceptor) == left2) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
 	  }
-
-	  nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
-	  *ambiguous = List_push(*ambiguous,
-				 (void *) Stage3end_new_splice(&(*found_score),
-							       nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
-							       /*donor*/NULL,acceptor,/*distance*/0U,
-							       /*shortdistancep*/false,/*penalty*/0,querylength,/*amb_nmatches*/Substring_nmatches_posttrim(donor),
-							       ambcoords,/*ambcoords_acceptor*/NULL,
-							       amb_knowni,/*amb_known_acceptor*/NULL,
-							       amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
-							       /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
-							       sensedir,/*sarrayp*/true));
-	  Intlist_free(&amb_nmismatches);
-	  Intlist_free(&amb_knowni);
-	  Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
-
 	} else {
-	  fprintf(stderr,"Unexpected: Neither donor left %u nor acceptor left %u equals left2 %u\n",
-		  Substring_left_genomicseg(donor),Substring_left_genomicseg(acceptor),left2);
-	  abort();
+	  for (p = accepted_hits; p != NULL; p = List_next(p)) {
+	    hit = (Stage3end_T) List_head(p);
+	    donor = Stage3end_substring_donor(hit);
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    if (Substring_genomicend(donor) == left2) {
+	      donor_hits = List_push(donor_hits,(void *) hit);
+	    } else if (Substring_genomicend(acceptor) == left2) {
+	      acceptor_hits = List_push(acceptor_hits,(void *) hit);
+	    } else {
+	      Stage3end_free(&hit);
+	    }
+	  }
 	}
 
-	for (p = spliceends_antisense; p != NULL; p = List_next(p)) {
-	  hit = (Stage3end_T) List_head(p);
-	  Stage3end_free(&hit);
+	if (donor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,donor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),donor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    donor = Stage3end_substring_donor(hit);
+	    donor_length = Substring_match_length_orig(donor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_donor(hitarray[j])) == donor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		acceptor = Stage3end_substring_acceptor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(acceptor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(acceptor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(acceptor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(acceptor));
+	      }
+
+	      nmismatches_acceptor = best_nmismatches - Substring_nmismatches_whole(donor);
+	      prob = best_prob - Substring_chimera_prob(donor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   /*nmismatches_donor*/Substring_nmismatches_whole(donor),nmismatches_acceptor,
+								   donor,/*acceptor*/NULL,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(acceptor),/*amb_prob*/prob,
+								   /*ambcoords_donor*/NULL,ambcoords,
+								   /*amb_knowni_donor*/NULL,amb_knowni,
+								   /*amb_nmismatches_donor*/NULL,amb_nmismatches,
+								   /*amb_probs_donor*/NULL,amb_probs,
+								   /*copy_donor_p*/true,/*copy_acceptor_p*/false,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&donor_hits);
 	}
-	List_free(&spliceends_antisense);
+
+	if (acceptor_hits != NULL) {
+	  hitarray = (Stage3end_T *) List_to_array_n(&n,acceptor_hits);
+	  qsort(hitarray,n,sizeof(Stage3end_T),acceptor_match_length_cmp);
+	  i = 0;
+	  while (i < n) {
+	    hit = hitarray[i];
+	    acceptor = Stage3end_substring_acceptor(hit);
+	    acceptor_length = Substring_match_length_orig(acceptor);
+	    j = i + 1;
+	    while (j < n && Substring_match_length_orig(Stage3end_substring_acceptor(hitarray[j])) == acceptor_length) {
+	      j++;
+	    }
+	    if (j == i + 1) {
+	      *singlesplicing = List_push(*singlesplicing,(void *) hit);
+	    } else {
+	      ambcoords = (Uintlist_T) NULL;
+	      amb_knowni = (Intlist_T) NULL;
+	      amb_nmismatches = (Intlist_T) NULL;
+	      amb_probs = (Doublelist_T) NULL;
+
+	      for (k = i; k < j; k++) {
+		donor = Stage3end_substring_donor(hitarray[k]);
+#ifdef LARGE_GENOMES
+		ambcoords = Uint8list_push(ambcoords,Substring_splicecoord(donor));
+#else
+		ambcoords = Uintlist_push(ambcoords,Substring_splicecoord(donor));
+#endif
+		amb_knowni = Intlist_push(amb_knowni,-1);
+		amb_nmismatches = Intlist_push(amb_nmismatches,Substring_nmismatches_whole(donor));
+		amb_probs = Doublelist_push(amb_probs,Substring_chimera_prob(donor));
+	      }
+
+	      nmismatches_donor = best_nmismatches - Substring_nmismatches_whole(acceptor);
+	      prob = best_prob - Substring_chimera_prob(acceptor);
+	      *ambiguous = List_push(*ambiguous,
+				     (void *) Stage3end_new_splice(&(*found_score),
+								   nmismatches_donor,/*nmismatches_acceptor*/Substring_nmismatches_whole(acceptor),
+								   /*donor*/NULL,acceptor,/*distance*/0U,
+								   /*shortdistancep*/false,/*penalty*/0,querylength,
+								   /*amb_nmatches*/Substring_match_length_orig(donor),/*amb_prob*/prob,
+								   ambcoords,/*ambcoords_acceptor*/NULL,
+								   amb_knowni,/*amb_knowni_acceptor*/NULL,
+								   amb_nmismatches,/*amb_nmismatches_acceptor*/NULL,
+								   amb_probs,/*amb_probs_acceptor*/NULL,
+								   /*copy_donor_p*/false,/*copy_acceptor_p*/true,first_read_p,
+								   Stage3end_sensedir(hit),/*sarrayp*/true));
+	      Doublelist_free(&amb_probs);
+	      Intlist_free(&amb_nmismatches);
+	      Intlist_free(&amb_knowni);
+	      Uintlist_free(&ambcoords); /* LARGE_GENOMES not possible with suffix array */
+
+	      for (k = i; k < j; k++) {
+		hit = hitarray[k];
+		Stage3end_free(&hit);
+	      }
+	    }
+
+	    i = j;
+	  }
+	  FREE(hitarray);
+	  List_free(&acceptor_hits);
+	}
+
+	List_free(&accepted_hits);
       }
     }
 
@@ -3836,6 +4325,11 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
       debug(printf("Looking at plus position %u => %d mismatches\n",left,nmismatches));
     }
 
+#if 0
+  } else if (terminal_threshold >= *found_score) {
+    debug(printf("terminal_threshold %d exceeds found_score %d, so not checking middle of read\n",terminal_threshold,*found_score));
+#endif
+
   } else {
     /* Try starting from middle of read */
     halfwaypos = querylength/2;
@@ -3895,6 +4389,12 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
       }
       debug(printf("Looking at minus position %u => %d mismatches\n",left,nmismatches));
     }
+
+#if 0
+  } else if (terminal_threshold >= *found_score) {
+    debug(printf("terminal_threshold %d exceeds found_score %d, so not checking middle of read\n",terminal_threshold,*found_score));
+#endif
+
   } else {
     /* Try starting from middle of read */
     halfwaypos = querylength/2;
@@ -3981,8 +4481,8 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
 	}
       }
     } else {
-      /* Second (right) elt is best */
-      debug(printf("Second elt %p is best:\n",elt));
+      /* Second (right) plus elt is best */
+      debug(printf("Second plus elt %p is best:\n",elt));
       plus_set = List_push(NULL,best_plus_elt);
       best_plus_elt = elt;
       best_plus_nmatches = nmatches;
@@ -4059,8 +4559,8 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
 	}
       }
     } else {
-      /* Second (right) elt is best */
-      debug(printf("Second elt %p is best:\n",elt));
+      /* Second (right) minus elt is best */
+      debug(printf("Second minus elt %p is best:\n",elt));
       minus_set = List_push(NULL,best_minus_elt);
       best_minus_elt = elt;
       best_minus_nmatches = nmatches;
@@ -4176,6 +4676,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
 							 /*plusp*/true,genestrand,first_read_p)) <= nmisses_allowed) {
 	  chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	  Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
+	  debug(printf("2. Reporting hit with %d mismatches vs %d allowed\n",nmismatches,nmisses_allowed));
 	  if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 						left,/*genomiclength*/querylength,
 						query_compress_fwd,/*plusp*/true,genestrand,first_read_p,
@@ -4213,6 +4714,7 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
 							 /*plusp*/false,genestrand,first_read_p)) <= nmisses_allowed) {
 	  chrnum = Univ_IIT_get_one(chromosome_iit,left,left);
 	  Univ_IIT_interval_bounds(&chroffset,&chrhigh,&chrlength,chromosome_iit,chrnum,circular_typeint);
+	  debug(printf("3. Reporting hit with %d mismatches vs %d allowed\n",nmismatches,nmisses_allowed));
 	  if ((hit = Stage3end_new_substitution(&(*found_score),nmismatches,
 						left,/*genomiclength*/querylength,
 						query_compress_rev,/*plusp*/false,genestrand,first_read_p,

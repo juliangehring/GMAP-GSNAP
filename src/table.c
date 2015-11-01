@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: table.c 115432 2013-11-18 18:21:03Z twu $";
+static char rcsid[] = "$Id: table.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -94,13 +94,23 @@ Table_get (T table, const void *key) {
   assert(table);
   /* assert(key); -- Doesn't hold for atomic 0 */
   i = (*table->hash)(key)%table->size;
-  /* printf("Doing Table_get on %s at bucket %d\n",(char *) key, i); */
+  /* fprintf(stderr,"Doing Table_get on %p (%s) at bucket %d\n",key,(char *) key, i); */
   for (p = table->buckets[i]; p; p = p->link) {
-    /* printf("  Comparing %s with %s at %p, key = %p\n",(char *) key, (char *) p->key, p, p->key); */
+    /* fprintf(stderr,"  Comparing keys %p and %p\n",key,p->key); */
     if ((*table->cmp)(key, p->key) == 0) {
+      /* fprintf(stderr,"Success: keys are identical\n"); */
       break;
     }
   }
+
+#if 0
+  if (p == NULL) {
+    fprintf(stderr,"p is NULL\n");
+  } else {
+    fprintf(stderr,"Found p with value %p\n",p->value);
+  }
+#endif
+
   return p ? p->value : NULL;
 }
 
@@ -109,6 +119,8 @@ Table_put (T table, const void *key, void *value) {
   int i;
   struct binding *p;
   void *prev;
+
+  /* fprintf(stderr,"Doing Table_put of key = %p (%s), value %p\n",key,(char *) key,value); */
 
   assert(table);
   /* assert(key); -- Doesn't hold for atomic 0 */
@@ -119,6 +131,7 @@ Table_put (T table, const void *key, void *value) {
     }
   }
   if (p == NULL) {
+    /* fprintf(stderr,"New entry\n"); */
     NEW(p);
     p->key = key;
     /* printf("Doing Table_put at %p, key = %p\n",p,p->key); */
@@ -127,6 +140,7 @@ Table_put (T table, const void *key, void *value) {
     table->length++;
     prev = NULL;
   } else {
+    /* fprintf(stderr,"Existing entry\n"); */
     prev = p->value;
   }
   p->value = value;

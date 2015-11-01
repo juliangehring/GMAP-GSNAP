@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bytecoding.c 136085 2014-05-13 23:00:04Z twu $";
+static char rcsid[] = "$Id: bytecoding.c 153444 2014-11-18 01:24:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -140,6 +140,7 @@ Bytecoding_write_exceptions_only (char *excfile, char *guidefile, UINT4 *values,
 
 
 #define LCPCHILDDC_BLOCKSIZE 5
+#define BUFFER_NBLOCKS 10000000
 
 /* Interleaved byte array with lcp info, child info, and
    discriminating chars.  Each lcp and child element takes 1 byte, and
@@ -156,31 +157,37 @@ Bytecoding_write_lcpchilddc (char *bytesfile, char *excfile, char *guidefile, UI
 			     unsigned char *discrim_chars, unsigned char *lcpbytes,
 			     UINT4 genomelength, int guide_interval) {
   FILE *fp_bytes, *fp_guide, *fp_exceptions;
-  unsigned char *bytes, *bytes_orig;
+  unsigned char *bytes_buffer, *bytes_ptr;
   UINT4 nexceptions = 0;
 
   UINT4 n = genomelength, i;
-  size_t nblocks;
+  /* size_t nblocks; */
+  int b;
   
   UINT4 guide_value = 0;
 
-  nblocks = ((n + 1) + 1)/2;
+  /* nblocks = ((n + 1) + 1)/2; */
 
-  bytes_orig = bytes = (unsigned char *) MALLOC(nblocks * LCPCHILDDC_BLOCKSIZE * sizeof(unsigned char));
+  bytes_buffer = (unsigned char *) MALLOC(BUFFER_NBLOCKS * LCPCHILDDC_BLOCKSIZE * sizeof(unsigned char));
+
   fp_exceptions = FOPEN_WRITE_BINARY(excfile);
   fp_guide = FOPEN_WRITE_BINARY(guidefile);
+  fp_bytes = FOPEN_WRITE_BINARY(bytesfile);
 
   i = 0;
+  bytes_ptr = &(bytes_buffer[0]);
+  b = 0;
+  fprintf(stderr,"Writing file %s",bytesfile);
   while (i + 1 <= n) {
-    *bytes++ = lcpbytes[i];
-    *bytes++ = lcpbytes[i+1];
+    *bytes_ptr++ = lcpbytes[i];	/* Byte 0 */
+    *bytes_ptr++ = lcpbytes[i+1]; /* Byte 1 */
 
-    *bytes++ = *discrim_chars++;
+    *bytes_ptr++ = *discrim_chars++; /* Byte 2 */
 
     if (child[i] < 255) {
-      *bytes++ = (unsigned char) child[i];
+      *bytes_ptr++ = (unsigned char) child[i]; /* Byte 3 */
     } else {
-      *bytes++ = (unsigned char) 255; /* Indicates an exception */
+      *bytes_ptr++ = (unsigned char) 255; /* Byte 3.  Indicates an exception */
 
       while (i >= guide_value) {
 	FWRITE_UINT(nexceptions,fp_guide);
@@ -194,9 +201,9 @@ Bytecoding_write_lcpchilddc (char *bytesfile, char *excfile, char *guidefile, UI
     i++;
 
     if (child[i] < 255) {
-      *bytes++ = (unsigned char) child[i];
+      *bytes_ptr++ = (unsigned char) child[i]; /* Byte 4 */
     } else {
-      *bytes++ = (unsigned char) 255; /* Indicates an exception */
+      *bytes_ptr++ = (unsigned char) 255; /* Byte 4.  Indicates an exception */
 
       while (i >= guide_value) {
 	FWRITE_UINT(nexceptions,fp_guide);
@@ -209,18 +216,24 @@ Bytecoding_write_lcpchilddc (char *bytesfile, char *excfile, char *guidefile, UI
     }
     i++;
 
+    if (++b >= BUFFER_NBLOCKS) {
+      fwrite(bytes_buffer,sizeof(unsigned char),BUFFER_NBLOCKS*LCPCHILDDC_BLOCKSIZE,fp_bytes);
+      bytes_ptr = &(bytes_buffer[0]);
+      b = 0;
+      fprintf(stderr,".");
+    }
   }
 
   if (i <= n) {
-    *bytes++ = lcpbytes[i];
-    *bytes++ = 0;
+    *bytes_ptr++ = lcpbytes[i];	/* Byte 0 */
+    *bytes_ptr++ = 0;		/* Byte 1 */
 
-    *bytes++ = *discrim_chars++;
+    *bytes_ptr++ = *discrim_chars++; /* Byte 2 */
 
     if (child[i] < 255) {
-      *bytes++ = (unsigned char) child[i];
+      *bytes_ptr++ = (unsigned char) child[i]; /* Byte 3 */
     } else {
-      *bytes++ = (unsigned char) 255; /* Indicates an exception */
+      *bytes_ptr++ = (unsigned char) 255; /* Byte 3.  Indicates an exception */
 
       while (i >= guide_value) {
 	FWRITE_UINT(nexceptions,fp_guide);
@@ -232,7 +245,14 @@ Bytecoding_write_lcpchilddc (char *bytesfile, char *excfile, char *guidefile, UI
       nexceptions++;
     }
 
-    *bytes++ = 0x00;
+    *bytes_ptr++ = 0x00;	/* Byte 4 */
+
+    if (++b >= BUFFER_NBLOCKS) {
+      fwrite(bytes_buffer,sizeof(unsigned char),BUFFER_NBLOCKS*LCPCHILDDC_BLOCKSIZE,fp_bytes);
+      bytes_ptr = &(bytes_buffer[0]);
+      b = 0;
+      fprintf(stderr,".");
+    }
   }
 
 
@@ -248,18 +268,19 @@ Bytecoding_write_lcpchilddc (char *bytesfile, char *excfile, char *guidefile, UI
 #endif
 
 
+  if (b > 0) {
+    fwrite(bytes_buffer,sizeof(unsigned char),b*LCPCHILDDC_BLOCKSIZE,fp_bytes);
+  }
+  fprintf(stderr,"done\n");
+
+  fclose(fp_bytes);
   fclose(fp_exceptions);
   fclose(fp_guide);
 
   fprintf(stderr,"Byte-coding: %u values < 255, %u exceptions >= 255 (%.1f%%)\n",
 	  (n+1)-nexceptions,nexceptions,100*(double) nexceptions/(double) (n+1));
-  fprintf(stderr,"Writing bytes file...");
-  fp_bytes = FOPEN_WRITE_BINARY(bytesfile);
-  fwrite(bytes_orig,sizeof(unsigned char),nblocks*LCPCHILDDC_BLOCKSIZE,fp_bytes);
-  fclose(fp_bytes);
-  fprintf(stderr,"done\n");
 
-  FREE(bytes_orig);
+  FREE(bytes_buffer);
 
   return;
 }

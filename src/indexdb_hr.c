@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 132144 2014-04-02 16:02:28Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 153955 2014-11-24 17:54:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -173,16 +173,16 @@ check_heap_even (Batch_T *heap, int heapsize) {
 
   for (i = 1; i <= heapsize; i++) {
     if (heap[i]->position > heap[2*i-1]->position) {
-      fprintf(stderr,"Failed because position %lu at heap %d is > position %lu at heap %d\n",
-	      heap[i]->position,i,heap[2*i-1]->position,2*i-1);
+      fprintf(stderr,"Failed because position %llu at heap %d is > position %llu at heap %d\n",
+	      (unsigned long long) heap[i]->position,i,(unsigned long long) heap[2*i-1]->position,2*i-1);
       for (j = 1; j <= heapsize*2; j++) {
 	fprintf(stderr,"%02d %u\n",j,heap[j]->position);
       }
       abort();
     }
     if (heap[i]->position > heap[2*i]->position) {
-      fprintf(stderr,"Failed because position %lu at heap %d is > position %lu at heap %d\n",
-	      heap[i]->position,i,heap[2*i]->position,2*i);
+      fprintf(stderr,"Failed because position %llu at heap %d is > position %llu at heap %d\n",
+	      (unsigned long long) heap[i]->position,i,(unsigned long long) heap[2*i]->position,2*i);
       for (j = 1; j <= heapsize*2; j++) {
 	fprintf(stderr,"%02d %u\n",j,heap[j]->position);
       }
@@ -590,8 +590,8 @@ positions_move_absolute (int positions_fd, Positionsptr_T ptr) {
   off_t offset = ptr*((off_t) sizeof(Univcoord_T));
 
   if (lseek(positions_fd,offset,SEEK_SET) < 0) {
-    fprintf(stderr,"Attempted to do lseek on offset %u*%lu=%lu\n",
-	    ptr,sizeof(Univcoord_T),(long unsigned int) offset);
+    fprintf(stderr,"Attempted to do lseek on offset %zd*%d=%zd\n",
+	    ptr,(int) sizeof(Univcoord_T),offset);
     perror("Error in indexdb.c, positions_move_absolute_4");
     exit(9);
   }
@@ -1115,7 +1115,7 @@ Compoundpos_dump (Compoundpos_T compoundpos, int diagterm) {
   for (i = 0; i < compoundpos->n; i++) {
     for (j = 0; j < compoundpos->npositions[i]; j++) {
 #ifdef LARGE_GENOMES
-      printf(" compound%d.%d:%lu+%d\n",
+      printf(" compound%d.%d:%llu+%d\n",
 	     i,j,((Univcoord_T) compoundpos->positions_high[i][j] << 32) + compoundpos->positions_low[i][j],diagterm);
 #elif defined(WORDS_BIGENDIAN)
       printf(" compound%d.%d:%u+%d\n",
@@ -1537,11 +1537,11 @@ Compoundpos_find (bool *emptyp, Compoundpos_T compoundpos, Univcoord_T local_goa
       debug6(printf("Setting emptyp to be false\n"));
       *emptyp = false;
 #ifdef LARGE_GENOMES
-      debug6(printf("Found! Returning position %lu\n",(((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low)));
+      debug6(printf("Found! Returning position %llu\n",(((Univcoord_T) *batch->positionptr_high) << 32) + (*batch->positionptr_low)));
 #elif defined(WORDS_BIGENDIAN)
-      debug6(printf("Found! Returning position %lu\n",Bigendian_convert_univcoord(*batch->positionptr)));
+      debug6(printf("Found! Returning position %u\n",Bigendian_convert_univcoord(*batch->positionptr)));
 #else
-      debug6(printf("Found! Returning position %lu\n",*batch->positionptr));
+      debug6(printf("Found! Returning position %u\n",*batch->positionptr));
 #endif
 #ifdef LARGE_GENOMES
       ++batch->positionptr_high;
@@ -1663,7 +1663,7 @@ Compoundpos_search (Univcoord_T *value, Compoundpos_T compoundpos, Univcoord_T l
     }
     if (batch->position == local_goal) {
       *value = batch->position;
-      debug3(printf("Found! Returning position %lu\n",*value));
+      debug3(printf("Found! Returning position %llu\n",(unsigned long long) *value));
       return 1;
     }
 
@@ -1783,13 +1783,13 @@ Compoundpos_search (Univcoord_T *value, Compoundpos_T compoundpos, Univcoord_T l
     }
     if (batch->position == local_goal) {
       *value = batch->position;
-      debug3(printf("Found! Returning position %lu\n",*value));
+      debug3(printf("Found! Returning position %llu\n",(unsigned long long) *value));
       return 1;
     }
   }
 
   *value = batch->position;
-  debug3(printf("Returning position %lu\n",*value));
+  debug3(printf("Returning position %llu\n",(unsigned long long) *value));
   return 1;
 }
 

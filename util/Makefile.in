@@ -58,6 +58,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/mmap-flags.m4 \
 	$(top_srcdir)/config/acx_mmap_fixed.m4 \
 	$(top_srcdir)/config/acx_mmap_variable.m4 \
+	$(top_srcdir)/config/ax_mpi.m4 \
 	$(top_srcdir)/config/acx_pthread.m4 \
 	$(top_srcdir)/config/builtin-popcount.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
@@ -152,6 +153,8 @@ LTLIBOBJS = @LTLIBOBJS@
 MAKEINFO = @MAKEINFO@
 MAX_READLENGTH = @MAX_READLENGTH@
 MKDIR_P = @MKDIR_P@
+MPICC = @MPICC@
+MPILIBS = @MPILIBS@
 NM = @NM@
 NMEDIT = @NMEDIT@
 OBJDUMP = @OBJDUMP@

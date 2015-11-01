@@ -1,6 +1,9 @@
-/* $Id: indexdbdef.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: indexdbdef.h 157232 2015-01-22 18:55:31Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
+#ifdef HAVE_CONFIG_H
+#include <config.h>		/* For HAVE_PTHREAD */
+#endif
 
 #include "genomicpos.h"
 #include "access.h"

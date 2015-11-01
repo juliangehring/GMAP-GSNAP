@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 106903 2013-09-05 19:59:00Z twu $";
+static char rcsid[] = "$Id: gsnap.c 109568 2013-09-30 22:54:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -48,6 +48,7 @@ static char rcsid[] = "$Id: gsnap.c 106903 2013-09-05 19:59:00Z twu $";
 #include "stopwatch.h"
 #include "genome.h"
 #include "genome_hr.h"		/* For Genome_hr_setup */
+#include "genome_sites.h"	/* For Genome_sites_setup */
 #include "maxent_hr.h"		/* For Maxent_hr_setup */
 #include "indexdb_hr.h"
 #include "mapq.h"
@@ -59,6 +60,7 @@ static char rcsid[] = "$Id: gsnap.c 106903 2013-09-05 19:59:00Z twu $";
 #include "oligo.h"		/* For Oligo_setup */
 #include "oligoindex_hr.h"	/* For Oligoindex_hr_setup */
 #include "stage2.h"		/* For Stage2_setup */
+#include "sarray-read.h"
 #include "stage1hr.h"
 #include "indexdb.h"
 #include "resulthr.h"
@@ -93,7 +95,7 @@ static char rcsid[] = "$Id: gsnap.c 106903 2013-09-05 19:59:00Z twu $";
 static int gmap_mode = GMAP_PAIRSEARCH | GMAP_INDEL_KNOWNSPLICE | GMAP_TERMINAL | GMAP_IMPROVEMENT;
 static int gmap_min_nconsecutive = 20;
 static int nullgap = 600;
-static int maxpeelback = 20;
+static int maxpeelback = 20;	/* Now controlled by defect_rate */
 static int maxpeelback_distalmedial = 24;
 static int extramaterial_end = 10;
 static int extramaterial_paired = 8;
@@ -106,6 +108,7 @@ static int suboptimal_score_start = -1; /* Determined by simulations to have min
 static int suboptimal_score_end = 3; /* Determined by simulations to have diminishing returns above 3 */
 
 static int trigger_score_for_gmap = 5;
+static int gmap_allowance = 3;
 /* static int trigger_score_for_terminals = 5; -- obsolete */
 
 static int min_intronlength = 9;
@@ -122,9 +125,13 @@ static int nchromosomes = 0;
 static bool *circularp = NULL;
 static Indexdb_T indexdb = NULL;
 static Indexdb_T indexdb2 = NULL; /* For cmet or atoi */
-static Genome_T genome = NULL;
-static Genome_T genomealt = NULL;
-static Genomecomp_T *genome_blocks = NULL;
+static Genome_T genomecomp = NULL;
+static Genome_T genomecomp_alt = NULL;
+static Genome_T genomebits = NULL;
+static Genome_T genomebits_alt = NULL;
+
+static bool use_sarray_p = true; /* if present */
+static Sarray_T sarray = NULL;
 
 static bool fastq_format_p = false;
 static bool creads_format_p = false;
@@ -159,7 +166,7 @@ static bool genome_unk_mismatch_p = true;
 static bool novelsplicingp = false;
 
 static int trim_mismatch_score = -3;
-static int trim_indel_score = -4;
+static int trim_indel_score = -2; /* was -4 */
 
 
 static Access_mode_T offsetscomp_access = USE_ALLOCATE;
@@ -168,9 +175,11 @@ static bool expand_offsets_p = false;
 #ifdef HAVE_MMAP
 static Access_mode_T positions_access = USE_MMAP_PRELOAD;
 static Access_mode_T genome_access = USE_MMAP_PRELOAD;
+static Access_mode_T sarray_access = USE_MMAP_PRELOAD;
 #else
 static Access_mode_T positions_access = USE_ALLOCATE;
 static Access_mode_T genome_access = USE_ALLOCATE;
+static Access_mode_T sarray_access = USE_ALLOCATE;
 #endif
 
 static int pairmax;
@@ -196,7 +205,8 @@ static int subopt_levels = 0;
 static double user_maxlevel_float = -1.0;
 
 static int terminal_threshold = 2;
-static bool user_terminal_threshold_p = false;
+static int terminal_output_minlength = 25;
+static bool user_terminal_output_minlength_p = false;
 
 /* Really have only one indel penalty */
 static int indel_penalty_middle = 2;
@@ -366,6 +376,7 @@ static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'},	/* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
+  {"use-sarray", required_argument, 0, 0}, /* use_sarray_p */
   {"basesize", required_argument, 0, 0}, /* required_basesize, basesize */
   {"kmer", required_argument, 0, 'k'}, /* required_index1part, index1part */
   {"sampling", required_argument, 0, 0}, /* required_index1interval, index1interval */
@@ -409,7 +420,8 @@ static struct option long_options[] = {
   {"novelsplicing", required_argument, 0, 'N'}, /* novelsplicingp */
 
   {"max-mismatches", required_argument, 0, 'm'}, /* user_maxlevel_float */
-  {"terminal-threshold", required_argument, 0, 0}, /* terminal_threshold, user_terminal_threshold_p */
+  {"terminal-threshold", required_argument, 0, 0}, /* terminal_threshold */
+  {"terminal-output-minlength", required_argument, 0, 0}, /* terminal_output_minlength, user_terminal_output_minlength_p */
 
 #if 0
   {"indel-penalty-middle", required_argument, 0, 'i'}, /* indel_penalty_middle */
@@ -458,6 +470,7 @@ static struct option long_options[] = {
   {"gmap-mode", required_argument, 0, 0}, /* gmap_mode */
   {"trigger-score-for-gmap", required_argument, 0, 0}, /* trigger_score_for_gmap */
   {"gmap-min-match-length", required_argument, 0, 0},      /* gmap_min_nconsecutive */
+  {"gmap-allowance", required_argument, 0, 0}, /* gmap_allowance */
   {"max-gmap-pairsearch", required_argument, 0, 0}, /* max_gmap_pairsearch */
   {"max-gmap-terminal", required_argument, 0, 0}, /* max_gmap_terminal */
   {"max-gmap-improvement", required_argument, 0, 0}, /* max_gmap_improvement */
@@ -698,11 +711,10 @@ process_request (Request_T request, Floors_T *floors_array,
   if (queryseq2 == NULL) {
     stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-				     genome,floors_array,user_maxlevel_float,subopt_levels,
+				     genomecomp,floors_array,user_maxlevel_float,subopt_levels,
 				     indel_penalty_middle,indel_penalty_end,
-				     max_middle_insertions,max_middle_deletions,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-				     shortsplicedist,localsplicing_penalty,distantsplicing_penalty,min_shortend,
+				     localsplicing_penalty,distantsplicing_penalty,min_shortend,
 				     oligoindices_major,noligoindices_major,
 				     oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 				     dynprogL,dynprogM,dynprogR,
@@ -715,11 +727,10 @@ process_request (Request_T request, Floors_T *floors_array,
 						   &stage3array5,&npaths5,&first_absmq5,&second_absmq5,
 						   &stage3array3,&npaths3,&first_absmq3,&second_absmq3,
 						   queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
-						   genome,floors_array,user_maxlevel_float,subopt_levels,
+						   genomecomp,floors_array,user_maxlevel_float,subopt_levels,
 						   indel_penalty_middle,indel_penalty_end,
-						   max_middle_insertions,max_middle_deletions,
 						   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-						   shortsplicedist,localsplicing_penalty,distantsplicing_penalty,min_shortend,
+						   localsplicing_penalty,distantsplicing_penalty,min_shortend,
 						   oligoindices_major,noligoindices_major,
 						   oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 						   dynprogL,dynprogM,dynprogR,
@@ -752,11 +763,10 @@ process_request (Request_T request, Floors_T *floors_array,
 					      &stage3array5,&npaths5,&first_absmq5,&second_absmq5,
 					      &stage3array3,&npaths3,&first_absmq3,&second_absmq3,
 					      queryseq1,queryseq2,indexdb,indexdb2,indexdb_size_threshold,
-					      genome,floors_array,user_maxlevel_float,subopt_levels,
+					      genomecomp,floors_array,user_maxlevel_float,subopt_levels,
 					      indel_penalty_middle,indel_penalty_end,
-					      max_middle_insertions,max_middle_deletions,
 					      allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
-					      shortsplicedist,localsplicing_penalty,distantsplicing_penalty,min_shortend,
+					      localsplicing_penalty,distantsplicing_penalty,min_shortend,
 					      oligoindices_major,noligoindices_major,
 					      oligoindices_minor,noligoindices_minor,pairpool,diagpool,
 					      dynprogL,dynprogM,dynprogR,
@@ -1327,6 +1337,16 @@ main (int argc, char *argv[]) {
 	print_program_usage();
 	exit(0);
 	
+      } else if (!strcmp(long_name,"use-sarray")) {
+	if (!strcmp(optarg,"1")) {
+	  use_sarray_p = true;
+	} else if (!strcmp(optarg,"0")) {
+	  use_sarray_p = false;
+	} else {
+	  fprintf(stderr,"--use-sarray flag must be 0 or 1\n");
+	  exit(9);
+	}
+
       } else if (!strcmp(long_name,"expand-offsets")) {
 	if (!strcmp(optarg,"1")) {
 	  expand_offsets_p = true;
@@ -1401,9 +1421,10 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"trigger-score-for-gmap")) {
 	trigger_score_for_gmap = atoi(check_valid_int(optarg));
-
       } else if (!strcmp(long_name,"gmap-min-match-length")) {
 	gmap_min_nconsecutive = atoi(check_valid_int(optarg));
+      } else if (!strcmp(long_name,"gmap-allowance")) {
+	gmap_allowance = atoi(check_valid_int(optarg));
 
       } else if (!strcmp(long_name,"max-gmap-pairsearch")) {
 	max_gmap_pairsearch = atoi(check_valid_int(optarg));
@@ -1486,7 +1507,10 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"terminal-threshold")) {
 	terminal_threshold = atoi(check_valid_int(optarg));
-	user_terminal_threshold_p = true;
+
+      } else if (!strcmp(long_name,"terminal-output-minlength")) {
+	terminal_output_minlength = atoi(check_valid_int(optarg));
+	user_terminal_output_minlength_p = true;
 
       } else if (!strcmp(long_name,"antistranded-penalty")) {
 	antistranded_penalty = atoi(check_valid_int(optarg));
@@ -1841,31 +1865,37 @@ main (int argc, char *argv[]) {
     fprintf(stderr,"Novel splicing (-N) and known splicing (-s) both turned on => assume reads are RNA-Seq\n");
     pairmax = pairmax_rna;
     shortsplicedist_known = shortsplicedist;
-    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_threshold_p == false) {
+#if 0
+    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_output_minlength_p == false) {
       /* terminal alignments don't work well with bisulfite reads */
-      fprintf(stderr,"--terminal-threshold not specified, so turning off terminal alignments for RNA-Seq bisulfite reads\n");
-      terminal_threshold = 1000;
+      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for RNA-Seq bisulfite reads\n",MAX_READLENGTH);
+      terminal_output_minlength = MAX_READLENGTH;
     }
+#endif
 
   } else if (knownsplicingp == true) {
     fprintf(stderr,"Known splicing (-s) turned on => assume reads are RNA-Seq\n");
     pairmax = pairmax_rna;
     shortsplicedist_known = shortsplicedist;
-    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_threshold_p == false) {
+#if 0
+    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_output_minlength_p == false) {
       /* terminal alignments don't work well with bisulfite reads */
-      fprintf(stderr,"--terminal-threshold not specified, so turning off terminal alignments for RNA-Seq bisulfite reads\n");
-      terminal_threshold = 1000;
+      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for RNA-Seq bisulfite reads\n",MAX_READLENGTH);
+      terminal_output_minlength = MAX_READLENGTH;
     }
+#endif
 
   } else if (novelsplicingp == true) {
     fprintf(stderr,"Novel splicing (-N) turned on => assume reads are RNA-Seq\n");
     pairmax = pairmax_rna;
     shortsplicedist_known = 0;
-    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_threshold_p == false) {
+#if 0
+    if ((mode == CMET_STRANDED || mode == CMET_NONSTRANDED) && user_terminal_output_minlength_p == false) {
       /* terminal alignments don't work well with bisulfite reads */
-      fprintf(stderr,"--terminal-threshold not specified, so turning off terminal alignments for RNA-Seq bisulfite reads\n");
-      terminal_threshold = 1000;
+      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for RNA-Seq bisulfite reads\n",MAX_READLENGTH);
+      terminal_output_minlength = MAX_READLENGTH;
     }
+#endif
 
   } else {
     /* Appears to be DNA-Seq */
@@ -1873,11 +1903,12 @@ main (int argc, char *argv[]) {
     pairmax = pairmax_dna;
     shortsplicedist = shortsplicedist_known = 0U;
     shortsplicedist_novelend = 0U;
+    /* terminal alignments still needed for GMAP alignments, so don't touch terminal_threshold, but do set output minlength */
 #if 0
-    if (user_terminal_threshold_p == false) {
-      /* terminal_threshold still useful for finding GMAP alignments */
-      fprintf(stderr,"--terminal-threshold not specified, so turning off terminal alignments for DNA-Seq reads\n");
-      terminal_threshold = 1000;
+    if (user_terminal_output_minlength_p == false) {
+      fprintf(stderr,"--terminal-output-minlength not specified, so setting to MAX_READLENGTH (%d) (meaning off) for DNA-Seq reads\n",
+	      MAX_READLENGTH);
+      terminal_output_minlength = MAX_READLENGTH;
     }
 #endif
   }
@@ -2097,6 +2128,7 @@ main (int argc, char *argv[]) {
     offsetscomp_access = USE_MMAP_ONLY;
     positions_access = USE_MMAP_ONLY;
     genome_access = USE_MMAP_ONLY;
+    sarray_access = USE_MMAP_ONLY;
 #else
     offsetscomp_access = USE_ALLOCATE;
     positions_access = USE_ALLOCATE;
@@ -2130,7 +2162,16 @@ main (int argc, char *argv[]) {
 
 
   if (snps_root == NULL) {
-    genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
+    genomecomp = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			    uncompressedp,genome_access);
+    genomebits = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
+			    uncompressedp,genome_access);
+    if (use_sarray_p == true) {
+      if ((sarray = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access)) == NULL) {
+	use_sarray_p = false;
+      }
+    }
+
     if (dibasep == true) {
       fprintf(stderr,"No longer supporting 2-base encoding\n");
       exit(9);
@@ -2213,8 +2254,20 @@ main (int argc, char *argv[]) {
     }
 
     /* SNPs */
-    genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,genome_access);
-    genomealt = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,genome_access);
+    genomecomp = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			    uncompressedp,genome_access);
+    genomecomp_alt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			       uncompressedp,genome_access);
+    genomebits = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
+			   uncompressedp,genome_access);
+    genomebits_alt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_BITS,
+			       uncompressedp,genome_access);
+    if (use_sarray_p == true) {
+      fprintf(stderr,"Note: Suffix arrays will bias against SNP-tolerant alignment.  For bias-free alignment, set --use-sarray=0\n");
+      if ((sarray = Sarray_new(genomesubdir,fileroot,/*snps_root*/NULL,sarray_access)) == NULL) {
+	use_sarray_p = false;
+      }
+    }
 
     if (dibasep == true) {
       fprintf(stderr,"Currently cannot combine SNPs with 2-base encoding\n");
@@ -2302,7 +2355,6 @@ main (int argc, char *argv[]) {
       FREE(mapdir);
     }
   }
-  genome_blocks = Genome_blocks(genome);
 
   if (min_distantsplicing_end_matches < index1part) {
     fprintf(stderr,"Minimum value for distant-splice-endlength is the value for -k (kmer size) %d\n",index1part);
@@ -2387,7 +2439,7 @@ main (int argc, char *argv[]) {
 							&splicestrings,&splicefrags_ref,&splicefrags_alt,
 							&nsplicesites,splicing_iit,splicing_divint_crosstable,
 							donor_typeint,acceptor_typeint,chromosome_iit,
-							genome,genomealt,shortsplicedist);
+							genomecomp,genomecomp_alt,shortsplicedist);
       if (nsplicesites == 0) {
 	fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
 		dbroot);
@@ -2420,7 +2472,7 @@ main (int argc, char *argv[]) {
       splicesites = Splicetrie_retrieve_via_introns(&splicecomp,&splicetypes,&splicedists,
 						    &splicestrings,&splicefrags_ref,&splicefrags_alt,
 						    &nsplicesites,splicing_iit,splicing_divint_crosstable,
-						    chromosome_iit,genome,genomealt);
+						    chromosome_iit,genomecomp,genomecomp_alt);
       if (nsplicesites == 0) {
 	fprintf(stderr,"\nWarning: No splicesites observed for genome %s.  Are you sure this splicesite file was built for this genome?  Please compare chromosomes below:\n",
 		dbroot);
@@ -2561,10 +2613,22 @@ main (int argc, char *argv[]) {
   FREE(dbroot);
 
 
-  Genome_setup(genome,genomealt,mode,circular_typeint);
-  Genome_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL,
-		  query_unk_mismatch_p,genome_unk_mismatch_p,mode);
-  Maxent_hr_setup(Genome_blocks(genome),/*snp_blocks*/genomealt ? Genome_blocks(genomealt) : NULL);
+  Genome_setup(genomecomp,genomecomp_alt,mode,circular_typeint);
+  if (sarray != NULL) {
+    Sarray_setup(sarray,genomecomp,chromosome_iit,circular_typeint,shortsplicedist,
+		 localsplicing_penalty,
+		 max_deletionlength,max_end_deletions,max_middle_insertions,max_end_insertions,
+		 splicesites,splicetypes,splicedists,nsplicesites);
+  }
+  if (genomebits == NULL) {
+    Genome_hr_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL,
+		    query_unk_mismatch_p,genome_unk_mismatch_p,mode,/*genomebits_avail_p*/false);
+  } else {
+    Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/genomebits_alt ? Genome_blocks(genomebits_alt) : NULL,
+		    query_unk_mismatch_p,genome_unk_mismatch_p,mode,/*genomebits_avail_p*/true);
+  }
+  Genome_sites_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL);
+  Maxent_hr_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL);
   Indexdb_setup(index1part);
   Indexdb_hr_setup(index1part);
   Oligo_setup(index1part);
@@ -2572,15 +2636,16 @@ main (int argc, char *argv[]) {
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,amb_clip_p,min_shortend);
   spansize = Spanningelt_setup(index1part,index1interval);
-  Stage1hr_setup(index1part,index1interval,spansize,chromosome_iit,nchromosomes,
-		 genomealt,mode,maxpaths_search,terminal_threshold,
+  Stage1hr_setup(use_sarray_p,index1part,index1interval,spansize,chromosome_iit,nchromosomes,
+		 genomecomp_alt,mode,maxpaths_search,terminal_threshold,terminal_output_minlength,
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,distances_observed_p,
-		 shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
+		 max_middle_insertions,max_middle_deletions,
+		 shortsplicedist,shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
 		 min_distantsplicing_end_matches,min_distantsplicing_identity,
 		 nullgap,maxpeelback,maxpeelback_distalmedial,
 		 extramaterial_end,extramaterial_paired,gmap_mode,
-		 trigger_score_for_gmap,max_gmap_pairsearch,
+		 trigger_score_for_gmap,gmap_allowance,max_gmap_pairsearch,
 		 max_gmap_terminal,max_gmap_improvement,antistranded_penalty);
   Substring_setup(print_nsnpdiffs_p,print_snplabels_p,
 		  show_refdiff_p,snps_iit,snps_divint_crosstable,
@@ -2591,20 +2656,24 @@ main (int argc, char *argv[]) {
   Dynprog_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		donor_typeint,acceptor_typeint,
 		splicesites,splicetypes,splicedists,nsplicesites,
-		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
-  Oligoindex_hr_setup(Genome_blocks(genome),mode);
-  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,
-	       suboptimal_score_start,suboptimal_score_end,mode,/*snps_p*/snps_iit ? true : false);
+		trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
+		/*homopolymerp*/false);
+  Oligoindex_hr_setup(Genome_blocks(genomecomp),mode);
+  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
+	       suboptimal_score_start,suboptimal_score_end,min_intronlength,
+	       mode,/*snps_p*/snps_iit ? true : false);
   Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
 	     force_xs_direction_p,md_lowercase_variant_p,
 	     /*snps_p*/snps_iit ? true : false);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       /*require_splicedir_p*/true,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,
-	       splicesites,min_intronlength,max_deletionlength,output_sam_p);
+	       splicesites,min_intronlength,max_deletionlength,output_sam_p,
+	       /*homopolymerp*/false,/*stage3debug*/NO_STAGE3DEBUG);
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
-		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
+		 terminal_output_minlength,distances_observed_p,pairmax,
+		 expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
 		 merge_samechr_p,circularp);
@@ -2640,9 +2709,6 @@ main (int argc, char *argv[]) {
 #endif
 
   outbuffer = Outbuffer_new(output_buffer_size,nread,sevenway_root,appendp,
-#ifdef USE_OLD_MAXENT
-			    genome,
-#endif
 			    chromosome_iit,timingp,
 			    output_sam_p,sam_headers_p,sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
@@ -2751,12 +2817,19 @@ main (int argc, char *argv[]) {
   if (dbversion != NULL) {
     FREE(dbversion);
   }
-  if (genomealt != NULL) {
-    Genome_free(&genomealt);
+  if (sarray != NULL) {
+    Sarray_free(&sarray);
+  }
+  if (genomecomp_alt != NULL) {
+    Genome_free(&genomecomp_alt);
+    Genome_free(&genomebits_alt);
     FREE(splicefrags_alt);	/* If genomealt == NULL, then splicefrags_alt == splicefrags_ref */
   }
-  if (genome != NULL) {
-    Genome_free(&genome);
+  if (genomebits != NULL) {
+    Genome_free(&genomebits);
+  }
+  if (genomecomp != NULL) {
+    Genome_free(&genomecomp);
   }
 
   if (nsplicesites > 0) {
@@ -2828,6 +2901,10 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
   fprintf(stdout,"\
   -D, --dir=directory            Genome directory\n\
   -d, --db=STRING                Genome database\n\
+  --use-sarray=INT               Whether to use a suffix array, which will give increased speed.\n\
+                                   Allowed values: 0 (no) or 1 (yes, if available, default).\n\
+                                   Note that suffix arrays will bias against SNP alleles in\n\
+                                   SNP-tolerant alignment.\n\
   -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less)\n\
                                    If not specified, the program will find the highest available\n\
                                    kmer size in the genome database\n\
@@ -2953,18 +3030,24 @@ is still designed to be fast.\n\
 ");
 #else
   fprintf(stdout,"\
-  --terminal-threshold=INT       Threshold for searching for a terminal alignment (from one end of the\n\
+  --terminal-threshold=INT       Threshold for computing a terminal alignment (from one end of the\n\
                                    read to the best possible position at the other end) (default 2\n\
                                    for standard, atoi-stranded, and atoi-nonstranded mode;\n\
                                    default 1000 for cmet-stranded and cmet-nonstranded mode).\n\
                                    For example, if this value is 2, then if GSNAP finds an exact or\n\
                                    1-mismatch alignment, it will not try to find a terminal alignment.\n\
-                                   Note that this default value may not be low enough if you want to\n\
-                                   obtain terminal alignments for very short reads, although such reads\n\
-                                   probably do not have enough specificity for terminal alignments anyway.\n\
-                                   Note also that terminal alignments are needed to help the GMAP algorithm\n\
-                                   find some alignments.  To turn off terminal alignments, set this to a\n\
-                                   high value, greater than the value for --max-mismatches.\n\
+                                   To turn off the computation of terminal alignments, set this to a\n\
+                                   high value, greater than the value for --max-mismatches.  However,\n\
+                                   note hat terminal alignments are needed to help the GMAP algorithm\n\
+                                   find some alignments.  Therefore, to avoid getting terminal alignments\n\
+                                   in the output, you should generally set --terminal-output-minlength\n\
+                                   instead of this parameter.\n\
+  --terminal-output-minlength=INT\n\
+                                 Threshold alignment length in bp for a terminal alignment result to be printed\n\
+                                   (in bp) (default 25 for RNA-Seq standard, atoi-stranded, and atoi-nonstranded modes;\n\
+                                   default MAX_READLENGTH for other RNA-Seq modes and for DNA-Seq in all modes).\n\
+                                   Setting this parameter to a value of MAX_READLENGTH or more will prevent\n\
+                                   all terminal alignments from being printed.\n\
   -i, --indel-penalty=INT        Penalty for an indel (default 2).\n\
                                    Counts against mismatches allowed.  To find indels, make\n\
                                    indel-penalty less than or equal to max-mismatches.\n\
@@ -3053,6 +3136,7 @@ is still designed to be fast.\n\
   --trigger-score-for-gmap=INT   Try GMAP pairsearch on nearby genomic regions if best score (the total\n\
                                    of both ends if paired-end) exceeds this value (default 5)\n\
   --gmap-min-match-length=INT    Keep GMAP hit only if it has this many consecutive matches (default 20)\n\
+  --gmap-allowance=INT           Extra mismatch/indel score allowed for GMAP alignments (default 3)\n\
   --max-gmap-pairsearch=INT      Perform GMAP pairsearch on nearby genomic regions up to this many\n\
                                    many candidate ends (default 10).  Requires pairsearch in --gmap-mode\n\
   --max-gmap-terminal=INT        Perform GMAP terminal on nearby genomic regions up to this many\n\

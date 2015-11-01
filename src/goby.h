@@ -1,4 +1,4 @@
-/* $Id: goby.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: goby.h 101822 2013-07-17 18:43:45Z twu $ */
 #ifndef GOBY_INCLUDED
 #define GOBY_INCLUDED
 
@@ -24,7 +24,7 @@ extern void
 Goby_reader_free (Gobyreader_T *old);
 extern Shortread_T
 Goby_read (Shortread_T *queryseq2, Gobyreader_T reader, int barcode_length,
-	   bool invert_first_p, bool invert_second_p);
+	   bool invert_first_p, bool invert_second_p, bool skipp);
 
 extern Gobywriter_T
 Goby_writer_new (char *output_root, char *aligner_name, char *aligner_version);

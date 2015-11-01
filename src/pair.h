@@ -1,4 +1,4 @@
-/* $Id: pair.h 109764 2013-10-02 17:13:24Z twu $ */
+/* $Id: pair.h 109763 2013-10-02 17:12:58Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -92,8 +92,7 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
 			bool watsonp, int cdna_direction,
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool maponlyp,
-			bool diagnosticp, int stage2_source, int stage2_indexsize,
-			double stage3_defectrate);
+			bool diagnosticp, int stage2_source, int stage2_indexsize);
 
 extern void
 Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
@@ -162,7 +161,7 @@ extern List_T
 Pair_clean_cigar (List_T tokens, bool watsonp);
 
 extern void
-Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
+Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 		char *acc1, char *acc2, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		char *queryseq_ptr, char *quality_string,
 		int clipdir, int hardclip5, int hardclip3, int querylength_given,
@@ -179,7 +178,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 		char *sam_read_group_id, bool invertp, bool circularp);
 
 extern void
-Pair_print_sam_nomapping (FILE *fp, char *acc1, char *acc2, char *queryseq_ptr,
+Pair_print_sam_nomapping (FILE *fp, char *abbrev, char *acc1, char *acc2, char *queryseq_ptr,
 			  char *quality_string, int querylength, int quality_shift,
 			  bool firstp, bool sam_paired_p, char *sam_read_group_id);
 
@@ -279,10 +278,10 @@ Pair_nexons (struct T *pairs, int npairs);
 extern bool
 Pair_consistentp (int *ncanonical, struct T *pairs, int npairs, int cdna_direction);
 
-extern int
+extern Chrpos_T
 Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pairarray,
 			      Chrpos_T goal_start, Chrpos_T goal_end);
-extern int
+extern Chrpos_T
 Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pairarray,
 			       Chrpos_T goal_start, Chrpos_T goal_end);
 #ifndef PMAP
@@ -307,7 +306,7 @@ extern List_T
 Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs);
 
 #ifdef GSNAP
-extern double
+extern float
 Pair_compute_mapq (struct T *pairarray, int npairs, int trim_left, int trim_right,
 		   int querylength, char *quality_string, bool trim_terminals_p);
 extern Overlap_T

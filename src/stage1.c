@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 101789 2013-07-17 14:56:20Z twu $";
+static char rcsid[] = "$Id: stage1.c 113088 2013-10-29 17:37:59Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3366,6 +3366,14 @@ scan_ends (List_T oldlist, T this, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
     matchsize = index1part + 12;
   }
 #endif
+  
+  /* Handle short query sequences */
+  while (matchsize > this->querylength/2) {
+    matchsize -= 6;
+  }
+  if (matchsize < this->oligosize) {
+    matchsize = this->oligosize;
+  }
 
   while (loopp && matchsize >= this->oligosize && foundpairp == false) {
     newlist = find_first_pair(&foundpairp,newlist,this,matchsize,
@@ -3718,16 +3726,17 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
     }
 #endif
 
+    debug0(printf("Before filtering for unique, %d regions\n",List_length(gregionlist)));
     gregionlist = Gregion_filter_unique(gregionlist);
-    debug(printf("After filtering for unique, %d regions\n",List_length(gregionlist)));
-    debug(
+    debug0(printf("After filtering for unique, %d regions\n",List_length(gregionlist)));
+    debug0(
 	  for (p = gregionlist; p != NULL; p = List_next(p)) {
 	    gregion = (Gregion_T) List_head(p);
 	    Gregion_print(gregion);
 	  }
 	  );
 
-    debug(
+    debug0(
 	  if (List_length(gregionlist) > MAX_GREGIONS_POST_UNIQUE) {
 	    printf("Too many gregions %d, so taking the top %d\n",List_length(gregionlist),MAX_GREGIONS_POST_UNIQUE);
 	  });
@@ -4145,15 +4154,15 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 #endif
 
     gregionlist = Gregion_filter_unique(gregionlist);
-    debug(printf("After filtering for unique, %d regions\n",List_length(gregionlist)));
-    debug(
+    debug0(printf("After filtering for unique, %d regions\n",List_length(gregionlist)));
+    debug0(
 	  for (p = gregionlist; p != NULL; p = List_next(p)) {
 	    gregion = (Gregion_T) List_head(p);
 	    Gregion_print(gregion);
 	  }
 	  );
 
-    debug(
+    debug0(
 	  if (List_length(gregionlist) > MAX_GREGIONS_POST_UNIQUE) {
 	    printf("Too many gregions %d, so taking the top %d\n",List_length(gregionlist),MAX_GREGIONS_POST_UNIQUE);
 	  });

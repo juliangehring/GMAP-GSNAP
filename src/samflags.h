@@ -1,4 +1,4 @@
-/* $Id: samflags.h 44093 2011-08-01 23:14:17Z twu $ */
+/* $Id: samflags.h 106634 2013-09-03 17:01:14Z twu $ */
 #ifndef SAMFLAGS_INCLUDED
 #define SAMFLAGS_INCLUDED
 
@@ -21,6 +21,29 @@
 
 /* For forcing a read to be primary */
 #define SET_PRIMARY        0xFEFF /* do a logical-and (&) with this */
+
+
+/* XO tag for output type */
+#define ABBREV_NOMAPPING_1 "N1"
+#define ABBREV_NOMAPPING_2 "N2"
+#define ABBREV_HALFMAPPING_UNIQ "HU"
+#define ABBREV_HALFMAPPING_CIRCULAR "HC"
+#define ABBREV_HALFMAPPING_TRANSLOC "HT"
+#define ABBREV_HALFMAPPING_MULT "HM"
+#define ABBREV_UNPAIRED_UNIQ "UU"
+#define ABBREV_UNPAIRED_CIRCULAR "UC"
+#define ABBREV_UNPAIRED_TRANSLOC "UT"
+#define ABBREV_UNPAIRED_MULT "UM"
+#define ABBREV_PAIRED_UNIQ_CIRCULAR "PC"
+#define ABBREV_PAIRED_UNIQ_INV "PI"
+#define ABBREV_PAIRED_UNIQ_SCR "PS"
+#define ABBREV_PAIRED_UNIQ_LONG "PL"
+#define ABBREV_PAIRED_MULT "PM"
+#define ABBREV_CONCORDANT_UNIQ "CU"
+#define ABBREV_CONCORDANT_CIRCULAR "CC"
+#define ABBREV_CONCORDANT_TRANSLOC "CT"
+#define ABBREV_CONCORDANT_MULT "CM"
+
 
 #endif
 

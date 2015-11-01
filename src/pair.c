@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 109764 2013-10-02 17:13:24Z twu $";
+static char rcsid[] = "$Id: pair.c 109763 2013-10-02 17:12:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -63,7 +63,7 @@ static char rcsid[] = "$Id: pair.c 109764 2013-10-02 17:13:24Z twu $";
 #define debug(x)
 #endif
 
-/* Phase information */
+/* Print pointer information in Pair_dump_one */
 #ifdef DEBUG1
 #define debug1(x) x
 #else
@@ -91,6 +91,13 @@ static char rcsid[] = "$Id: pair.c 109764 2013-10-02 17:13:24Z twu $";
 #define debug4(x)
 #endif
 
+/* Phase information */
+#ifdef DEBUG5
+#define debug5(x) x
+#else
+#define debug5(x)
+#endif
+
 /* trimming */
 #ifdef DEBUG8
 #define debug8(x) x
@@ -98,6 +105,12 @@ static char rcsid[] = "$Id: pair.c 109764 2013-10-02 17:13:24Z twu $";
 #define debug8(x)
 #endif
 
+/* end_bound and start_bound */
+#ifdef DEBUG9
+#define debug9(x) x
+#else
+#define debug9(x)
+#endif
 
 /* binary search */
 #ifdef DEBUG10
@@ -1010,8 +1023,7 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
 			bool watsonp, int cdna_direction,
 			int translation_start, int translation_end, int translation_length,
 			int relaastart, int relaaend, bool maponlyp,
-			bool diagnosticp, int stage2_source, int stage2_indexsize,
-			double stage3_defectrate) {
+			bool diagnosticp, int stage2_source, int stage2_indexsize) {
   int querypos1, querypos2, den;
   double fracidentity, coverage, trimmed_coverage;
   Univcoord_T position1, position2;
@@ -1058,7 +1070,7 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
       fprintf(fp,"    Stage 2 source: %d\n",stage2_source);
       fprintf(fp,"    Stage 2 indexsize: %d\n",stage2_indexsize);
       /* fprintf(fp,"    Stage 3 runtime: %.3f sec\n",stage3_runtime); */
-      fprintf(fp,"    Stage 3 defectrate: %f\n",stage3_defectrate);
+      /* fprintf(fp,"    Stage 3 defectrate: %f\n",stage3_defectrate); */
       fprintf(fp,"    Goodness: %d\n",goodness);
     }
 
@@ -1226,7 +1238,7 @@ Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
   for (i = 0; i < npairs; i++) {
     this = pairs++;
     if (this->gapp == false) {
-#ifdef DEBUG1
+#ifdef DEBUG5
       fprintf(fp,"%d %d %c\t",this->aapos,this->aaphase_e,this->aa_e);
 #else
       if (this->aaphase_e != 0) {
@@ -1250,7 +1262,7 @@ Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 	fprintf(fp," %c",this->genomealt);
       }
 
-#ifdef DEBUG1
+#ifdef DEBUG5
       fprintf(fp,"\t%d %c",this->aaphase_g,this->aa_g);
 #else
       if (this->aaphase_g != 0) {
@@ -1275,7 +1287,9 @@ Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 
 void
 Pair_dump_one (T this, bool zerobasedp) {
-  printf("%p ",this);
+
+  debug1(printf("%p ",this));
+
   if (this->gapp == true && this->extraexonp == false) {
     printf("*** Gap: queryjump = %d, genomejump = %d, type: ",this->queryjump,this->genomejump);
     switch (this->comp) {
@@ -2948,7 +2962,7 @@ print_endtypes (FILE *fp,
 		Endtype_T endtype2, int ntrim2, int nindels2, Chrpos_T splice_dist,
 		int nmatches, int nmismatches_refdiff, int nmismatches_bothdiff,
 		Chrnum_T chrnum, Univcoord_T chroffset,
-		int exon_genomestart, int exon_genomeend,
+		Chrpos_T exon_genomestart, Chrpos_T exon_genomeend,
 		bool watsonp, int cdna_direction,
 		IIT_T splicesites_iit, int *splicesites_divint_crosstable,
 		int donor_typeint, int acceptor_typeint) {
@@ -3701,8 +3715,8 @@ Pair_guess_cdna_direction_array (int *sensedir, struct T *pairs_querydir, int np
 	    this = ptr++;
 	    i++;
 	  }
-	  ptr--;
-	  i--;
+	  /* ptr--; */
+	  /* i--; */
 
 	  splice_site_probs(&sense_prob,&antisense_prob,
 			    prev_splicesitep,splicesitep,chroffset,
@@ -3721,8 +3735,8 @@ Pair_guess_cdna_direction_array (int *sensedir, struct T *pairs_querydir, int np
 	    this = ptr++;
 	    i++;
 	  }
-	  ptr--;
-	  i--;
+	  /* ptr--; */
+	  /* i--; */
 
 	  splice_site_probs(&sense_prob,&antisense_prob,
 			    prev_splicesitep,splicesitep,chroffset,
@@ -4073,7 +4087,7 @@ sensedir_from_cdna_direction (int cdna_direction) {
 /* Derived from print_gff3_cdna_match */
 /* Assumes pairarray has been hard clipped already */
 static void
-print_sam_line (FILE *fp, bool firstp, char *acc1, char *acc2, char *chrstring,
+print_sam_line (FILE *fp, char *abbrev, bool firstp, char *acc1, char *acc2, char *chrstring,
 		bool watsonp, int cdna_direction, List_T cigar_tokens, List_T md_tokens,
 		int nmismatches_refdiff, int nmismatches_bothdiff, int nindels,
 		bool intronp, char *queryseq_ptr, char *quality_string,
@@ -4211,6 +4225,10 @@ print_sam_line (FILE *fp, bool firstp, char *acc1, char *acc2, char *chrstring,
   /* 12. TAGS: X2 */
   fprintf(fp,"\t");
   fprintf(fp,"X2:i:%d",second_absmq);
+
+  /* 12. TAGS: XO */
+  fprintf(fp,"\t");
+  fprintf(fp,"XO:Z:%s",abbrev);
 
   /* 12. TAGS: XS */
   if (intronp == true) {
@@ -5147,7 +5165,7 @@ compute_md_string (int *nmismatches_refdiff, int *nmismatches_bothdiff, int *nin
 
 
 void
-Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
+Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 		char *acc1, char *acc2, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		char *queryseq_ptr, char *quality_string,
 		int clipdir, int hardclip5, int hardclip3, int querylength_given,
@@ -5277,7 +5295,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
   md_tokens = compute_md_string(&nmismatches_refdiff,&nmismatches_bothdiff,&nindels,
 				clipped_pairs,clipped_npairs,watsonp,cigar_tokens);
 
-  print_sam_line(fp,firstp,acc1,acc2,chrstring,
+  print_sam_line(fp,abbrev,firstp,acc1,acc2,chrstring,
 		 watsonp,cdna_direction,cigar_tokens,md_tokens,
 		 nmismatches_refdiff,nmismatches_bothdiff,nindels,
 		 intronp,queryseq_ptr,quality_string,hardclip_low,hardclip_high,
@@ -5309,7 +5327,7 @@ Pair_print_sam (FILE *fp, struct T *pairs, int npairs,
 
 
 void
-Pair_print_sam_nomapping (FILE *fp, char *acc1, char *acc2, char *queryseq_ptr,
+Pair_print_sam_nomapping (FILE *fp, char *abbrev, char *acc1, char *acc2, char *queryseq_ptr,
 			  char *quality_string, int querylength, int quality_shift,
 			  bool firstp, bool sam_paired_p, char *sam_read_group_id) {
   unsigned int flag;
@@ -5360,6 +5378,10 @@ Pair_print_sam_nomapping (FILE *fp, char *acc1, char *acc2, char *queryseq_ptr,
     fprintf(fp,"RG:Z:%s",sam_read_group_id);
   }
   
+  /* 12. TAGS: XO */
+  fprintf(fp,"\t");
+  fprintf(fp,"XO:Z:%s",abbrev);
+
   putc('\n',fp);
 
   return;
@@ -7372,7 +7394,7 @@ Pair_print_introns (FILE *fp, struct T *pairs, int npairs, char *accession,
 
 
 /* goal_start < goal_end */
-int
+Chrpos_T
 Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pairarray,
 			      Chrpos_T goal_start, Chrpos_T goal_end) {
   int middlei;
@@ -7422,7 +7444,7 @@ Pair_binary_search_ascending (int *querypos, int lowi, int highi, struct T *pair
 }
 
 /* goal_start > goal_end */
-int
+Chrpos_T
 Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pairarray,
 			       Chrpos_T goal_start, Chrpos_T goal_end) {
   int middlei;
@@ -7608,6 +7630,8 @@ Pair_start_bound (int *cdna_direction, List_T pairs, int breakpoint) {
   bool in_intron = false;
   List_T p;
 
+  debug9(printf("Entering Pair_start_bound with breakpoint %d\n",breakpoint));
+
   *cdna_direction = 0;
 
   if ((p = pairs) != NULL) {
@@ -7616,13 +7640,18 @@ Pair_start_bound (int *cdna_direction, List_T pairs, int breakpoint) {
 
   while (p != NULL) {
     this = (T) p->first;
-    if (this->querypos < 0) {
-      /* Skip gap */
+    debug9(Pair_dump_one(this,true));
+    debug9(printf("\n"));
 
+
+    if (this->gapp == true) {
+      /* Skip */
     } else if (this->querypos > breakpoint) {
       while (p != NULL) {
 	this = (T) List_head(p);
+
 	if (this->gapp) {
+	  debug9(printf("For start bound, saw gap with comp %c\n",this->comp));
 	  if (!in_intron) {
 	    if (this->comp == FWD_CANONICAL_INTRON_COMP) {
 	      *cdna_direction += 1;
@@ -7636,6 +7665,7 @@ Pair_start_bound (int *cdna_direction, List_T pairs, int breakpoint) {
 	    in_intron = false;
 	  }
 	}
+
 	p = p->rest;
       }
 
@@ -7644,16 +7674,17 @@ Pair_start_bound (int *cdna_direction, List_T pairs, int breakpoint) {
       } else if (*cdna_direction < 0) {
 	*cdna_direction = -1;
       }
-
       return start;
 
     } else {
       start = this;
     }
+
     p = p->rest;
   }
 
 #if 0
+  /* Found no gap beyond start */
   if (*cdna_direction > 0) {
     *cdna_direction = +1;
   } else if (*cdna_direction < 0) {
@@ -7672,6 +7703,8 @@ Pair_end_bound (int *cdna_direction, List_T pairs, int breakpoint) {
   bool in_intron = false;
   List_T p;
 
+  debug9(printf("Entering Pair_end_bound with breakpoint %d\n",breakpoint));
+
   *cdna_direction = 0;
 
   if ((p = pairs) != NULL) {
@@ -7680,36 +7713,38 @@ Pair_end_bound (int *cdna_direction, List_T pairs, int breakpoint) {
 
   while (p != NULL) {
     this = (T) p->first;
-    if (this->querypos < 0) {
-      /* Skip gap */
-
-    } else if (this->querypos > breakpoint) {
-
-      if (*cdna_direction > 0) {
-	*cdna_direction = +1;
-      } else if (*cdna_direction < 0) {
-	*cdna_direction = -1;
+    debug9(Pair_dump_one(this,true));
+    debug9(printf("\n"));
+    if (this->gapp) {
+      debug9(printf("For end bound, saw gap with comp %c\n",this->comp));
+      if (!in_intron) {
+	if (this->comp == FWD_CANONICAL_INTRON_COMP) {
+	  *cdna_direction += 1;
+	} else if (this->comp == REV_CANONICAL_INTRON_COMP) {
+	  *cdna_direction -= 1;
+	}
+	in_intron = true;
       }
-
-      return end;
 
     } else {
-      if (this->gapp) {
-	if (!in_intron) {
-	  if (this->comp == FWD_CANONICAL_INTRON_COMP) {
-	    *cdna_direction += 1;
-	  } else if (this->comp == REV_CANONICAL_INTRON_COMP) {
-	    *cdna_direction -= 1;
-	  }
-	  in_intron = true;
-	}
-      } else {
-	if (in_intron) {
-	  in_intron = false;
-	}
+      if (in_intron) {
+	in_intron = false;
       }
-      end = this;
+
+      if (this->querypos > breakpoint) {
+
+	if (*cdna_direction > 0) {
+	  *cdna_direction = +1;
+	} else if (*cdna_direction < 0) {
+	  *cdna_direction = -1;
+	}
+	return end;
+
+      } else {
+	end = this;
+      }
     }
+
     p = p->rest;
   }
 
@@ -7718,7 +7753,6 @@ Pair_end_bound (int *cdna_direction, List_T pairs, int breakpoint) {
   } else if (*cdna_direction < 0) {
     *cdna_direction = -1;
   }
-
   return end;
 }
 
@@ -7865,6 +7899,12 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
     *trim3p = true;
   }
 
+  if (trim_left == 0) {
+    *trim5p = false;
+  } else {
+    *trim5p = true;
+  }
+
   i = 0;
   while (i < trim_right) {
     pairs = Pairpool_pop(pairs,&this);
@@ -7882,12 +7922,6 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
     i++;
   }
 
-  if (pairs == NULL) {
-    *trim5p = false;
-  } else {
-    *trim5p = true;
-  }
-
   debug8(Pair_dump_list(trimmed,/*zerobasedp*/true));
 
   return trimmed;
@@ -7899,7 +7933,7 @@ static int quality_score_adj = 33; /* Default is Sanger */
 
 /* Taken from mapq.c */
 
-static double
+static float
 mismatch_logprob[MAX_QUALITY_SCORE+1] =
   /* log(1/3*10^(-Q/10)) */
   {-1.098612,
@@ -7915,10 +7949,10 @@ mismatch_logprob[MAX_QUALITY_SCORE+1] =
 
 
 /* Look also at Substring_compute_mapq */
-double
+float
 Pair_compute_mapq (struct T *pairarray, int npairs, int trim_left, int trim_right, int querylength,
 		   char *quality_string, bool trim_terminals_p) {
-  double loglik = 0.0;
+  float loglik = 0.0;
   int Q;
   T pair;
   int querypos, i;

@@ -5,13 +5,13 @@ bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build g
               psl_splicesites psl_introns psl_genes \
               gtf_splicesites gtf_introns gtf_genes \
               gff3_splicesites gff3_introns gff3_genes \
-              dbsnp_iit vcf_iit sam_merge sam_restore
+              dbsnp_iit gvf_iit vcf_iit sam_merge sam_restore
 else
 bin_SCRIPTS = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
               psl_splicesites psl_introns psl_genes \
               gtf_splicesites gtf_introns gtf_genes \
               gff3_splicesites gff3_introns gff3_genes \
-              dbsnp_iit vcf_iit
+              dbsnp_iit gvf_iit vcf_iit
 endif
 
 gmap_compress: gmap_compress.pl
@@ -91,6 +91,10 @@ dbsnp_iit: dbsnp_iit.pl
 	cp dbsnp_iit.pl dbsnp_iit
 	chmod +x dbsnp_iit
 
+gvf_iit: gvf_iit.pl
+	cp gvf_iit.pl gvf_iit
+	chmod +x gvf_iit
+
 vcf_iit: vcf_iit.pl
 	cp vcf_iit.pl vcf_iit
 	chmod +x vcf_iit
@@ -109,12 +113,12 @@ CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gm
              psl_splicesites psl_introns psl_genes \
              gtf_splicesites gtf_introns gtf_genes \
              gff3_splicesites gff3_introns gff3_genes \
-             dbsnp_iit vcf_iif sam_merge sam_restore
+             dbsnp_iit gvf_iit vcf_iit sam_merge sam_restore
 else
 CLEANFILES = gmap_compress gmap_uncompress gmap_process gmap_setup gmap_build gmap_reassemble md_coords fa_coords \
              psl_splicesites psl_introns psl_genes \
              gtf_splicesites gtf_introns gtf_genes \
              gff3_splicesites gff3_introns gff3_genes \
-             dbsnp_iit vcf_iit
+             dbsnp_iit gvf_iit vcf_iit
 endif
 

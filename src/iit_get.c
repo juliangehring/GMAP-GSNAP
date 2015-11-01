@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit_get.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: iit_get.c 107279 2013-09-09 23:18:11Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -831,7 +831,7 @@ get_matches_multiple_typed (int *nmatches, char **divstring, Univcoord_T *coords
 int 
 main (int argc, char *argv[]) {
   char *filename;
-  char *divstring, *lasttypestring, *ptr;
+  char *divstring = NULL, *lasttypestring, *ptr;
   Univcoord_T univ_coordstart, univ_coordend;
   Chrpos_T coordstart, coordend, lastcoord = 0U;
   char Buffer[BUFLEN], nocomment[BUFLEN], query[BUFLEN], typestring[BUFLEN];
@@ -956,87 +956,87 @@ main (int argc, char *argv[]) {
 	  fprintf(stderr,"File %s appears to be an invalid IIT file\n",filename);
 	}
 	exit(9);
+      }
 
-	if (fieldstring != NULL) {
-	  if ((fieldint = IIT_fieldint(iit,fieldstring)) < 0) {
-	    fprintf(stderr,"No field %s defined in iit file.\n",fieldstring);
-	    exit(9);
-	  }
+      if (fieldstring != NULL) {
+	if ((fieldint = IIT_fieldint(iit,fieldstring)) < 0) {
+	  fprintf(stderr,"No field %s defined in iit file.\n",fieldstring);
+	  exit(9);
+	}
+      }
+	
+      while (fgets(Buffer,BUFLEN,stdin) != NULL) {
+	if ((ptr = rindex(Buffer,'\n')) != NULL) {
+	  *ptr = '\0';
+	}
+	strcpy(nocomment,Buffer);
+	if ((ptr = rindex(nocomment,'#')) != NULL) {
+	  *ptr = '\0';
+	}
+
+	skipp = false;
+
+	if ((nargs = sscanf(nocomment,"%s %s",query,typestring)) == 2) {
+	  debug(printf("typestring is %s\n",typestring));
+	  matches = get_matches(&nmatches,&divstring,&univ_coordstart,&univ_coordend,
+				&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
+				query,typestring,&iit,filename);
+	  coordstart = (Chrpos_T) univ_coordstart;
+	  coordend = (Chrpos_T) univ_coordend;
+
+	} else if (nargs == 1) {
+	  debug(printf("typestring is NULL\n"));
+	  matches = get_matches(&nmatches,&divstring,&univ_coordstart,&univ_coordend,
+				&leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
+				query,/*typestring*/NULL,&iit,filename);
+	  coordstart = (Chrpos_T) univ_coordstart;
+	  coordend = (Chrpos_T) univ_coordend;
+
+	} else {
+	  fprintf(stderr,"Can't parse line %s.  Ignoring.\n",nocomment);
+	  skipp = true;
 	}
 	
-	while (fgets(Buffer,BUFLEN,stdin) != NULL) {
-	  if ((ptr = rindex(Buffer,'\n')) != NULL) {
-	    *ptr = '\0';
-	  }
-	  strcpy(nocomment,Buffer);
-	  if ((ptr = rindex(nocomment,'#')) != NULL) {
-	    *ptr = '\0';
-	  }
-
-	  skipp = false;
-
-	  if ((nargs = sscanf(nocomment,"%s %s",query,typestring)) == 2) {
-	    debug(printf("typestring is %s\n",typestring));
-	    matches = get_matches(&nmatches,&divstring,&univ_coordstart,&univ_coordend,
-				  &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
-				  query,typestring,&iit,filename);
-	    coordstart = (Chrpos_T) univ_coordstart;
-	    coordend = (Chrpos_T) univ_coordend;
-
-	  } else if (nargs == 1) {
-	    debug(printf("typestring is NULL\n"));
-	    matches = get_matches(&nmatches,&divstring,&univ_coordstart,&univ_coordend,
-				  &leftflanks,&nleftflanks,&rightflanks,&nrightflanks,
-				  query,/*typestring*/NULL,&iit,filename);
-	    coordstart = (Chrpos_T) univ_coordstart;
-	    coordend = (Chrpos_T) univ_coordend;
-
-	  } else {
-	    fprintf(stderr,"Can't parse line %s.  Ignoring.\n",nocomment);
-	    skipp = true;
-	  }
-	
-	  total = 0;
-	  if (skipp == false) {
-	    fprintf(stdout,"# Query: %s\n",Buffer);
-	    ndivs = IIT_ndivs(iit);
-	    if (nflanking > 0) {
-	      for (i = nleftflanks-1; i >= 0; i--) {
-		debug(printf("\nleft index = %d\n",leftflanks[i]));
-		print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,leftflanks[i],iit,ndivs,fieldint);
-	      }
-	      printf("====================\n");
-	      FREE(leftflanks);
+	total = 0;
+	if (skipp == false) {
+	  fprintf(stdout,"# Query: %s\n",Buffer);
+	  ndivs = IIT_ndivs(iit);
+	  if (nflanking > 0) {
+	    for (i = nleftflanks-1; i >= 0; i--) {
+	      debug(printf("\nleft index = %d\n",leftflanks[i]));
+	      print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,leftflanks[i],iit,ndivs,fieldint);
 	    }
-
-	    lastcoord = coordstart;
-	    for (i = 0; i < nmatches; i++) {
-	      debug(printf("\nindex = %d\n",matches[i]));
-	      total = print_interval(&lastcoord,total,divstring,coordstart,coordend,matches[i],iit,ndivs,fieldint);
-	    }
-
-	    if (nflanking > 0) {
-	      printf("====================\n");
-	      for (i = 0; i < nrightflanks; i++) {
-		debug(printf("\nright index = %d\n",rightflanks[i]));
-		print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,rightflanks[i],iit,ndivs,fieldint);
-	      }
-	      FREE(rightflanks);
-	    }
-
-	    if (zeroesp == true) {
-	      while (lastcoord <= coordend) {
-		printf("%s\t%u\t%d\n",divstring,lastcoord,0);
-		lastcoord++;
-	      }
-	    }
+	    printf("====================\n");
+	    FREE(leftflanks);
 	  }
 
-	  FREE(matches);
-	  printf("%ld\n",total);
-	  fprintf(stdout,"# End\n");
-	  fflush(stdout);
+	  lastcoord = coordstart;
+	  for (i = 0; i < nmatches; i++) {
+	    debug(printf("\nindex = %d\n",matches[i]));
+	    total = print_interval(&lastcoord,total,divstring,coordstart,coordend,matches[i],iit,ndivs,fieldint);
+	  }
+
+	  if (nflanking > 0) {
+	    printf("====================\n");
+	    for (i = 0; i < nrightflanks; i++) {
+	      debug(printf("\nright index = %d\n",rightflanks[i]));
+	      print_interval(&lastcoord,/*total*/0,divstring,coordstart,coordend,rightflanks[i],iit,ndivs,fieldint);
+	    }
+	    FREE(rightflanks);
+	  }
+
+	  if (zeroesp == true) {
+	    while (lastcoord <= coordend) {
+	      printf("%s\t%u\t%d\n",divstring,lastcoord,0);
+	      lastcoord++;
+	    }
+	  }
 	}
+
+	FREE(matches);
+	printf("%ld\n",total);
+	fprintf(stdout,"# End\n");
+	fflush(stdout);
       }
 
     } else {
@@ -1153,7 +1153,7 @@ main (int argc, char *argv[]) {
 
       FREE(matches);
       /* printf("%ld\n",total); */
-      fprintf(stdout,"# End\n");
+      /* fprintf(stdout,"# End\n"); */
       fflush(stdout);
     }
 

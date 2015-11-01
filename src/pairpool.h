@@ -1,4 +1,4 @@
-/* $Id: pairpool.h 82070 2012-12-19 21:42:59Z twu $ */
+/* $Id: pairpool.h 107637 2013-09-12 01:07:15Z twu $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 
@@ -24,10 +24,13 @@ extern List_T
 Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char comp,
 	       char genome, char genomealt, int dynprogindex);
 extern List_T
+Pairpool_push_copy (List_T list, T this, Pair_T orig);
+extern List_T
 Pairpool_push_gapalign (List_T list, T this, int querypos, int genomepos, char cdna, char comp,
 			int introntype, char genome, char genomealt, bool extraexonp);
 extern List_T
-Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump, bool knownp);
+Pairpool_push_gapholder (List_T list, T this, int queryjump, int genomejump,
+			 Pair_T leftpair, Pair_T rightpair, bool knownp);
 extern List_T
 Pairpool_push_existing (List_T list, T this, Pair_T pair);
 extern List_T
@@ -44,6 +47,15 @@ extern List_T
 Pairpool_copy (List_T source, T this);
 extern struct Pair_T *
 Pairpool_copy_array (struct Pair_T *source, int npairs);
+extern void
+Pairpool_clean_join (List_T *left_path, List_T *right_pairs);
+extern List_T
+Pairpool_join_end3 (List_T path_orig, List_T end3_pairs_orig, Pairpool_T pairpool,
+		    bool copy_end_p);
+extern List_T
+Pairpool_join_end5 (List_T pairs_orig, List_T end5_path_orig, Pairpool_T pairpool,
+		    bool copy_end_p);
+
 
 #undef T
 #endif

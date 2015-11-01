@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie_build.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: splicetrie_build.c 101271 2013-07-12 02:44:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,13 +57,6 @@ Splicetype_string (Splicetype_T splicetype) {
 }
 
 
-/*               87654321 */
-#define LEFT_A 0x00000000
-#define LEFT_C 0x40000000
-#define LEFT_G 0x80000000
-#define LEFT_T 0xC0000000
-#define HIGH2  0xC0000000
-
 #define RIGHT_A 0x00
 #define RIGHT_C 0x01
 #define RIGHT_G 0x02
@@ -76,18 +69,21 @@ Splicetype_string (Splicetype_T splicetype) {
 static void
 splicefrag_nt_leftward (char *nt, Genomecomp_T splicefrag) {
   int i, j;
-  Genomecomp_T lowbits;
+  Genomecomp_T highbits, lowbits;
+
+  highbits = splicefrag >> 16;
+  lowbits = splicefrag /* & 0x0000FFFF */;
 
   j = 15;
   for (i = 0; i < 16; i++) {
-    lowbits = splicefrag & LOW_TWO_BITS;
-    switch (lowbits) {
+    switch (((highbits & 0x01) << 1) | (lowbits & 0x01)) {
     case RIGHT_A: nt[j] = 'A'; break;
     case RIGHT_C: nt[j] = 'C'; break;
     case RIGHT_G: nt[j] = 'G'; break;
     case RIGHT_T: nt[j] = 'T'; break;
     }
-    splicefrag >>= 2;
+    highbits >>= 1;
+    lowbits >>= 1;
     j--;
   }
 
@@ -97,18 +93,21 @@ splicefrag_nt_leftward (char *nt, Genomecomp_T splicefrag) {
 static void
 splicefrag_nt_rightward (char *nt, Genomecomp_T splicefrag) {
   int i, j;
-  Genomecomp_T lowbits;
+  Genomecomp_T highbits, lowbits;
+
+  highbits = splicefrag >> 16;
+  lowbits = splicefrag /* & 0x0000FFFF */;
 
   j = 0;
   for (i = 0; i < 16; i++) {
-    lowbits = splicefrag & LOW_TWO_BITS;
-    switch (lowbits) {
+    switch (((highbits & 0x01) << 1) | (lowbits & 0x01)) {
     case RIGHT_A: nt[j] = 'A'; break;
     case RIGHT_C: nt[j] = 'C'; break;
     case RIGHT_G: nt[j] = 'G'; break;
     case RIGHT_T: nt[j] = 'T'; break;
     }
-    splicefrag >>= 2;
+    highbits >>= 1;
+    lowbits >>= 1;
     j++;
   }
 
@@ -183,6 +182,14 @@ Splicetrie_dump (Trieoffset_T *triestart, Univcoord_T *splicesites,
 }
 
 
+/*               87654321 */
+#define LEFT_A 0x00000000
+#define LEFT_C 0x40000000
+#define LEFT_G 0x80000000
+#define LEFT_T 0xC0000000
+#define HIGH2  0xC0000000
+
+
 /* Puts leftmost character into lowest bits */
 /* For right splicestrings, we want the leftmost character in the highest bits */
 
@@ -208,6 +215,7 @@ compress16 (bool *saw_n_p, char *buffer) {
   return low;
 }
 
+
 static Genomecomp_T
 uint4_reverse (Genomecomp_T forward) {
   Genomecomp_T reverse = 0U;
@@ -222,6 +230,51 @@ uint4_reverse (Genomecomp_T forward) {
   }
 
   return reverse;
+}
+
+
+
+/*                   87654321 */
+#define LEFT_SET   0x80000000
+#define LEFT_CLEAR 0x00000000
+
+/* Puts the odd bits in the top 16 bits, and the even bits in the
+   bottom 16 bits.  Needed to match genomebits format, although that
+   has 32-bit blocks instead of 16 bits. */
+static Genomecomp_T
+unshuffle16 (bool *saw_n_p, char *buffer) {
+  Genomecomp_T bits = 0U;
+  int c;
+  int i;
+
+  /* *saw_n_p = false; -- Want to check both ref and alt, so rely on caller to set */
+  /* Low bits */
+  for (i = 0; i < 16; i++) {
+    c = buffer[i];
+    bits >>= 1;
+    switch (c) {
+    case 'A': /* bits |= LEFT_CLEAR; */ break;
+    case 'C':    bits |= LEFT_SET; break;
+    case 'G': /* bits |= LEFT_CLEAR; */ break;
+    case 'T':    bits |= LEFT_SET; break;
+    default: *saw_n_p = true; break;
+    }
+  }
+
+  /* High bits */
+  for (i = 0; i < 16; i++) {
+    c = buffer[i];
+    bits >>= 1;
+    switch (c) {
+    case 'A': /* bits |= LEFT_CLEAR; */ break;
+    case 'C': /* bits |= LEFT_CLEAR; */ break;
+    case 'G':    bits |= LEFT_SET; break;
+    case 'T':    bits |= LEFT_SET; break;
+    default: *saw_n_p = true; break;
+    }
+  }
+
+  return bits;
 }
 
 
@@ -552,10 +605,12 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 
 		saw_n_p = false;
 		Genome_fill_buffer_simple(genome,position-16,16,gbuffer_ref);
-		refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
+		refstring = compress16(&saw_n_p,gbuffer_ref);
+		(*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 		if (genomealt) {
 		  Genome_fill_buffer_simple_alt(genome,genomealt,position-16,16,gbuffer_alt);
-		  altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
+		  altstring = compress16(&saw_n_p,gbuffer_alt);
+		  (*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 		}
 
 		if (saw_n_p == true) {
@@ -591,12 +646,12 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 
 		saw_n_p = false;
 		Genome_fill_buffer_simple(genome,position,16,gbuffer_ref);
-		refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
-		refstring = uint4_reverse(refstring);
+		refstring = uint4_reverse(compress16(&saw_n_p,gbuffer_ref));
+		(*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 		if (genomealt) {
 		  Genome_fill_buffer_simple_alt(genome,genomealt,position,16,gbuffer_alt);
-		  altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
-		  altstring = uint4_reverse(altstring);
+		  altstring = uint4_reverse(compress16(&saw_n_p,gbuffer_alt));
+		  (*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 		}
 
 		if (saw_n_p == true) {
@@ -633,12 +688,12 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 
 		saw_n_p = false;
 		Genome_fill_buffer_simple(genome,position,16,gbuffer_ref);
-		refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
-		refstring = uint4_reverse(refstring);
+		refstring = uint4_reverse(compress16(&saw_n_p,gbuffer_ref));
+		(*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 		if (genomealt) {
 		  Genome_fill_buffer_simple_alt(genome,genomealt,position,16,gbuffer_alt);
-		  altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
-		  altstring = uint4_reverse(altstring);
+		  altstring = uint4_reverse(compress16(&saw_n_p,gbuffer_alt));
+		  (*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 		}
 
 		if (saw_n_p == true) {
@@ -673,10 +728,12 @@ Splicetrie_retrieve_via_splicesites (bool *distances_observed_p,
 
 		saw_n_p = false;
 		Genome_fill_buffer_simple(genome,position-16,16,gbuffer_ref);
-		refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
+		refstring = compress16(&saw_n_p,gbuffer_ref);
+		(*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 		if (genomealt) {
 		  Genome_fill_buffer_simple_alt(genome,genomealt,position-16,16,gbuffer_alt);
-		  altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
+		  altstring = compress16(&saw_n_p,gbuffer_alt);
+		  (*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 		}
 
 		if (saw_n_p == true) {
@@ -932,10 +989,12 @@ Splicetrie_retrieve_via_introns (
 
 	      saw_n_p = false;
 	      Genome_fill_buffer_simple(genome,position-16,16,gbuffer_ref);
-	      refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
+	      refstring = compress16(&saw_n_p,gbuffer_ref);
+	      (*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 	      if (genomealt) {
 		Genome_fill_buffer_simple_alt(genome,genomealt,position-16,16,gbuffer_alt);
-		altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
+		altstring = compress16(&saw_n_p,gbuffer_alt);
+		(*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 	      }
 
 	      if (saw_n_p == true) {
@@ -970,10 +1029,12 @@ Splicetrie_retrieve_via_introns (
 
 	      saw_n_p = false;
 	      Genome_fill_buffer_simple(genome,position-16,16,gbuffer_ref);
-	      refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
+	      refstring = compress16(&saw_n_p,gbuffer_ref);
+	      (*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 	      if (genomealt) {
 		Genome_fill_buffer_simple_alt(genome,genomealt,position-16,16,gbuffer_alt);
-		altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
+		altstring = compress16(&saw_n_p,gbuffer_alt);
+		(*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 	      }
 
 	      if (saw_n_p == true) {
@@ -1027,12 +1088,12 @@ Splicetrie_retrieve_via_introns (
 
 	      saw_n_p = false;
 	      Genome_fill_buffer_simple(genome,position,16,gbuffer_ref);
-	      refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
-	      refstring = uint4_reverse(refstring);
+	      refstring = uint4_reverse(compress16(&saw_n_p,gbuffer_ref));
+	      (*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 	      if (genomealt) {
 		Genome_fill_buffer_simple_alt(genome,genomealt,position,16,gbuffer_alt);
-		altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
-		altstring = uint4_reverse(altstring);
+		altstring = uint4_reverse(compress16(&saw_n_p,gbuffer_alt));
+		(*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 	      }
 
 	      if (saw_n_p == true) {
@@ -1067,12 +1128,12 @@ Splicetrie_retrieve_via_introns (
 
 	      saw_n_p = false;
 	      Genome_fill_buffer_simple(genome,position,16,gbuffer_ref);
-	      refstring = (*splicefrags_ref)[k] = compress16(&saw_n_p,gbuffer_ref);
-	      refstring = uint4_reverse(refstring);
+	      refstring = uint4_reverse(compress16(&saw_n_p,gbuffer_ref));
+	      (*splicefrags_ref)[k] = unshuffle16(&saw_n_p,gbuffer_ref);
 	      if (genomealt) {
 		Genome_fill_buffer_simple_alt(genome,genomealt,position,16,gbuffer_alt);
-		altstring = (*splicefrags_alt)[k] = compress16(&saw_n_p,gbuffer_alt);
-		altstring = uint4_reverse(altstring);
+		altstring = uint4_reverse(compress16(&saw_n_p,gbuffer_alt));
+		(*splicefrags_alt)[k] = unshuffle16(&saw_n_p,gbuffer_alt);
 	      }
 
 	      if (saw_n_p == true) {

@@ -93,8 +93,56 @@ the library files are in /path/to/goby/lib, you can then add the flag
 config.site file to have this directory as the value for "with_goby".
 
 
+2.  Possible issues during compilation
+======================================
 
-2.  Downloading a pre-built GMAP/GSNAP database
+Recent versions of GMAP and GSNAP use certain techniques to achieve
+increased speed.  One of these techniques is special SIMD
+(single-instruction, multiple data) instructions that can perform some
+computations in parallel.  There are various levels of SIMD
+instructions, and we use those from the SSE2 and SSE4.1 instruction
+sets.  Most computers built within the last 10 years should support
+SSE2 at least.  However, you may run into the following issues:
+
+
+Compiler issue 1.  If you compile the code successfully, but when you
+run the program, you see something that says "Illegal instruction",
+then you must be running GMAP or GSNAP on a different computer than
+the one where you compiled it.  You may be using a computer cluster
+with a variety of different computer models.  Each time you start GMAP
+or GSNAP, the program tests to see if the computer can run the same
+set of SSE2 or SSE4.1 instructions as were available when the programs
+were compiled.  (The programs also check for if the popcnt
+instructions work, but popcnt is so widely implemented that they
+generally do not cause any problems.)
+
+In that case, you may need to compile your program for the lowest
+common denominator by disabling SSE2 instructions by providing
+--disable-sse4.1 or --disable-sse2 to ./configure as necessary.
+Alternatively, your computer cluster may have the ability to detect
+the capabilities of each computer when it receives a job.  Then, you
+may want to create different compiled versions of GMAP and GSNAP, and
+call the appropriate binary for that particular job.  You will have to
+work with your system administrator if you want to accomplish this.
+
+
+Compiler issue 2.  The most recent versions of GSNAP (starting with
+2013-10-01) build a suffix array to help with speed.  If your computer
+does not have sufficient RAM, it is possible that the gmap_build 
+step fails after printing something like this:
+
+    SACA_K called with n = 3095693984, K = 5, level 0
+
+If this happens, you either need to find a computer with more RAM, or
+you can build a genome without a suffix array, by providing
+--no-sarray to gmap_build.  The GSNAP program will still work with the
+resulting genome index, but it won't achieve optimal speed.  GMAP does
+not use the suffix array at all.  Also, large genomes of over 4
+billion bp also will not create or use a suffix array.
+
+
+
+3.  Downloading a pre-built GMAP/GSNAP database
 ===============================================
 
 A GMAP/GSNAP "database" is a set of genomic index files, representing
@@ -116,43 +164,36 @@ this
     ...
     /path/to/gmapdb/<genome>/<genome>.version
 
-Note that the GMAP database format has changed with the 2011-08-15
-release.  Older versions of GMAP and GSNAP will not work with the
-newer databases, but the current version of the programs is backward
-compatible with the older databases.  Also, versions of GMAP and GSNAP
-before 2008 may require symbolic links to work even with the older
-databases.
+Note that the GMAP database format has changed with the 2013-10-01
+release to add a suffix array and other new file formats.  However,
+GMAP and GSNAP are both backwards and forwards compatible, meaning
+that new source code will work with older genome indices and that old
+source code will work with newer genome indices.  Mixing up the two,
+though, will result in slower running speed.  To achieve optimal
+speed, you should use both the latest source code and rebuild your
+genome indices with the latest gmap_build program.  You can tell if
+your database has the most recent format if it has files of the type
+<genome>.sarray, <genome>.ref12153bitpackptrs, and
+<genome>.ref12153bitpackcomp.
 
-The old databases have the index files <genome>.ref3offsets and
-<genome>.ref3positions.  The new databases have the index files
-<genome>.ref12153gammaptrs, <genome>.ref12153offsetscomp, and
-<genome>.ref153positions, if built using a base size of 12, a k-mer
-size of 15, and skipping every 3 bp in the genome.  If the k-mer size
-is equal to the base size, then the gammaptrs file will be absent.
-
-Also, the name of the positions file has changed starting with
-2012-02-14 version.  Previously, the file was named
-<genome>.ref12153positions, but it is now named
-<genome>.ref153positions, since the contents are independent of the
-base size.  If you create a database with a newer version of the
-package, and want older versions of the GMAP or GSNAP to work with
-these newer versions, you will need to make a symbolic link like this:
-
-    ln -s <genome>.ref153positions <genome>.ref12153.positions
+Note that the hg19 database provided on the Web site is in the older
+format.  If you want the newer format, you will have to build it
+yourself, as discussed in the next section.
 
 
 
-3.  Setting up to build a GMAP/GSNAP database (one chromosome per FASTA entry)
+4.  Setting up to build a GMAP/GSNAP database (one chromosome per FASTA entry)
 ==============================================================================
 
 You can also build your own genomic database, using one of two utility
 programs provided with this package: gmap_build (the newer, one-step
 method) or gmap_setup (the older way that uses Makefile and requires
-multiple steps).
+multiple steps).  The gmap_build step is currently the best supported.
+
 
 Previous versions limited the total sequence length in your database
 to 2^32 = 4,294,967,296 (about 4 billion) bp.  However, starting with
-version 2013-04-XX, a total "genome" may now contain up to 2^64 bp.
+version 2013-04-01, a total "genome" may now contain up to 2^64 bp.
 However, each individual chromosome is still limited to 2^32 bp.  The
 utility programs below will automatically recognize when a genome is
 larger than 2^32 bp and build the index files accordingly.  Below I
@@ -220,10 +261,15 @@ genome in human beings is circular.
 
 
 
-4.  Setting up to build a GMAP/GSNAP database (more complex cases)
+5.  Setting up to build a GMAP/GSNAP database (more complex cases)
 ==================================================================
 
-If gmap_build works for you, you can skip to section 5.  Otherwise, if
+Note: this section is probably outdated as of 2013-10-01.  If you are
+using a current version of the source code, you should use gmap_build
+and gmap_setup, and skip to section 6.  I include this section for
+those users who are using older versions of the software.
+
+If gmap_build works for you, you can skip to section 6.  Otherwise, if
 you have more complicated needs than gmap_build can handle, there is a
 more general build tool called gmap_setup, which creates a Makefile
 with this command
@@ -231,8 +277,11 @@ with this command
     gmap_setup -d <genome> [-k <kmer size>] <fasta_file>...
 
 and then has you run a few make commands, based on the directions it
-provides.  Again, you can type "gmap_setup --help" to see the full set
-of options.
+provides.  Note that gmap_setup is an older method, and not well
+supported at this point.
+
+As with gmap_build, you can type "gmap_setup --help" to see the full
+set of options.
 
 Note that the term
 
@@ -252,7 +301,7 @@ We show the full set of gmap_setup options under item 4d below, but
 we first discuss some specific situations for using the program.
 
 
-4a.  Chromosomes represented as contig pieces
+5a.  Chromosomes represented as contig pieces
 =============================================
 
 If your FASTA entries consist of contigs, each of which has a mapping
@@ -279,7 +328,7 @@ contigs within each chromosome.  If gmap_setup cannot figure out the
 chromosome, it will assign it to chromosome "NA".
 
 
-4b.  Using an MD file
+5b.  Using an MD file
 =====================
 
 Another possibility is that your FASTA entries consist of contigs,
@@ -295,7 +344,7 @@ formats) and verify with you which columns contain the contig names
 and chromosomal coordinates.
 
 
-4c.  Compressed FASTA files or files requiring processing
+5c.  Compressed FASTA files or files requiring processing
 =========================================================
 
 If your genome files don't satisfy any of the cases above, you may
@@ -310,7 +359,7 @@ You can think of the command as a Unix pipe for processing each FASTA
 file before it is read by gmap_setup.
 
 
-4d.  General use of gmap_setup program
+5d.  General use of gmap_setup program
 ======================================
 
 Any of the steps above (4a, 4b, or 4c) will create a Makefile, called
@@ -373,8 +422,8 @@ value of --with-gmapdb you provided at configure time.
 
 
 
-Running GMAP
-============
+6.  Running GMAP
+================
 
 To see the full set of options, type "gmap --help".  The following are
 some common examples of usage.  For more examples, see the document
@@ -452,8 +501,8 @@ size, and will exit if you try to run them on the wrong-sized genomes.
 
 
 
-Building map files
-==================
+7.  Building map files
+======================
 
 This package includes an implementation of interval index trees
 (IITs), which permits efficient lookup of interval information.  The
@@ -532,8 +581,8 @@ files using its -G and -l flags.  More details about iit_store can be
 found by doing "iit_store --help".
 
 
-Running GSNAP
-=============
+8.  Running GSNAP
+=================
 
 GSNAP uses the same database as GMAP does, so you will need to process
 the genome using gmap_setup as explained above, if you haven't done
@@ -694,8 +743,8 @@ genomes.
 
 
 
-SAM output format
-=======================
+9.  SAM output format
+=====================
 
 GSNAP can generate SAM output format, by providing the "-A sam" flag
 to GSNAP.  In addition, GMAP can also print its alignments in SAM
@@ -714,6 +763,91 @@ XQ: A non-normalized mapping quality score
 
 X2: The second best XQ score among all multimapping alignments for a
 given read.  If there is only a single alignment, this value is 0.
+
+XO: Output type.  GSNAP categorizes its alignments into output types,
+as follows.  Note that the --split-output option will create separate
+output files for each output type, and the filename suffixes are shown
+below for each output type:
+
+  N1 (nomapping read 1) (filename suffix ".nomapping"): The entire
+  read (single-end or paired-end) could not be aligned, and this is
+  the first (or only) end.  If the --fails-as-input flag is specified,
+  then these reads are printed in FASTQ format instead of SAM format.
+
+  N2 (nomapping read 2) (filename suffix ".nomapping"): The entire
+  paired-end read could not be aligned, and this is the second end.
+  If the --fails-as-input flag is specified, then these reads are
+  printed in FASTQ format instead of SAM format.
+
+  CU (concordant unique) (filename suffix ".concordant_uniq"): Both
+  ends of a paired-end read could be aligned concordantly to a single
+  position in the genome.  For a definition of concordance, see the
+  section "Output types" below.
+
+  CM (concordant multiple) (filename suffix ".concordant_mult"): Both
+  ends of a paired-end read could be aligned concordantly, but to more
+  than one position in the genome.
+
+  CT (concordant translocation) (filename suffix
+  ".concordant_transloc"): Both ends of a paired-end read could be
+  aligned concordantly, but one end requires a split alignment to a
+  distant location, such as another chromosome, or a different strand
+  on that chromosome, or a far distance on that strand.  Note that
+  translocation alignments need to be printed on two separate SAM
+  lines.
+
+  CC (concordant circular) (filename suffix ".concordant_circular"):
+  Both ends of a paired-end read could be aligned concordantly, but
+  one or both ends require an alignment that goes around the origin of
+  a circular chromosome.  Circular chromosomes are specified in the
+  gmap_build step by using the -c or --circular flag, as described
+  previously.  Note that circular alignments need to be printed on two
+  separate SAM lines.
+
+  PI (paired unique inversion) (filename suffix ".paired_uniq_inv"):
+  Both ends of a paired-end read could be aligned uniquely, but in a
+  way that indicates that a genomic inversion has occurred between the
+  two ends.
+
+  PS (paired unique scramble) (filename suffix ".paired_uniq_scr"):
+  Both ends of a paired-end read could be aligned uniquely, but in a
+  way that indicates that the genomic order is scrambled.  This
+  typically occurs because of tandem duplications.
+
+  PL (paired unique long) (filename suffix ".paired_uniq_long"): Both
+  ends of a paired-end read could be aligned uniquely, but in a way
+  that indicates that a large genomic deletion has occurred between
+  the two ends.
+
+  PC (paired unique circular) (filename suffix
+  ".paired_uniq_circular"): Both ends of a paired-end read could be
+  aligned uniquely, but not concordantly, representing an inversion,
+  scramble, or deletion.  In addition, one or both ends of the read
+  goes around the origin of a circular chromosome.
+
+  PM (paired multiple) (filename suffix ".paired_uniq_long"): Both
+  ends of a paired-end read could be aligned near each other,
+  representing an inversion, scramble, or deletion, but there are
+  multiple places in the genome where an alignment is found.
+
+  HU, HM, HT, HC (halfmapping unique, halfmapping multiple,
+  halfmapping translocation, and halfmapping circular, respectively)
+  (filename suffixes: ".halfmapping_uniq", ".halfmapping_mult",
+  ".halfmapping_transloc", ".halfmapping_circular): Same as for the
+  concordant output types, except that only one end of the paired-end
+  read could be aligned, and the other end could not be aligned
+  anywhere in the genome.
+
+  UU, UM, UT, UC (unpaired unique, unpaired multiple, unpaired
+  translocation, and unpaired circular, respectively) (filename
+  suffixes: ".unpaired_uniq", ".unpaired_mult", ".unpaired_transloc",
+  ".unpaired_circular): Same as for the concordant output types,
+  except that the two ends could not be aligned concordantly or even
+  paired.  could be aligned, and the other end could not be aligned
+  anywhere in the genome.  These "unpaired" categories are used for
+  single-end reads, since they lack a mate end that can allow for
+  concordance, pairing, or halfmapping.
+
 
 XB: Prints the barcode extracted from the end of the read.  Applies only
 if --barcode-length is not 0.
@@ -750,17 +884,16 @@ genome, and with the exception of indels, should equal the value of
 NM.
 
 
-GSNAP output format
-===================
+
+10.  GSNAP output format
+========================
 
 By default, GSNAP prints its output in a FASTA-like format, which we
 developed before we incorporated the SAM format.  The default GSNAP
 output has some advantages over SAM output, especially for debugging
-purposes.
-
-the orientation of splice junctions, in indicating translocations that
-occur in a single read, and in reflecting information about known
-splice sites or known SNPs.  
+purposes.  However, we routinely use SAM output for our own pipeline,
+and it has been subject to the most testing by ourselves and by outside
+users.
 
 Here is some output from GSNAP on a paired-end read:
 
@@ -778,6 +911,10 @@ sequence in its original direction (and with lower-case preserved if
 any); in column 2, the number of hits for that query and if the read
 is paired-end, the relationship between the ends (as discussed in the
 next paragraph); and in column 3, the accession number for the query.
+
+
+11.  Output types
+=================
 
 The two ends of a paired-end read can have the following
 relationships: "concordant", "paired", or "unpaired".  A paired-end
@@ -890,8 +1027,8 @@ the sum of the alignment scores) and the inferred length of the insert
 (ignoring splices within each segment, but not between segments).  
 
 
-Detecting known and novel splice sites in GSNAP
-===============================================
+12.  Detecting known and novel splice sites in GSNAP
+====================================================
 
 GSNAP can detect splice junctions in individual reads.  You can detect
 splices using a probabilistic model using the --novelsplicing (or -N)
@@ -1059,8 +1196,8 @@ Then, you may use the file by doing this:
     gsnap -d <genome> -s <intronsfile> <shortreads>, or
                                                                                                 
 
-SNP-tolerant alignment in GSNAP
-===============================
+13.  SNP-tolerant alignment in GSNAP
+====================================
 
 GSNAP has the ability to align to a reference space of all possible
 major and minor alleles in a set of known SNPs provided by the user.
@@ -1131,8 +1268,8 @@ where "W" is the reference allele and "X" and "Y" are two different
 alternate alleles.
 
 To help you generate the file, this package includes programs that can
-process known SNP data, either from older dbSNP files or from newer
-files in VCF format.  The older dbSNP files can be obtained from UCSC,
+process known SNP data, from various formats, including dbSNP files,
+VCF format, or GVF format.  The dbSNP files can be obtained from UCSC,
 like this
 
     ftp://hgdownload.cse.ucsc.edu/goldenPath/hg18/database/snp130.txt.gz
@@ -1166,8 +1303,8 @@ However, if you want to include some types of exceptions, you will
 need to modify the dbsnp_iit program (written in Perl) to indicate a
 "1" for the type of exception you want to include.
 
-The more recent SNP data are provided in VCF format, and can be
-retrieved like this:
+Sometimes SNP data are provided in VCF format, and can be retrieved
+like this:
 
     ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606/VCF/00-All.vcf.gz
 
@@ -1186,9 +1323,17 @@ the SNP is allowed.  These rules might not be the best ones; I made
 them up by trying to compare version 135 of the VCF data with
 version 135 of the UCSC dbSNP data.
 
+Likewise, SNP data are sometimes provided in GVF format, and these
+files can be processed using our program gvf_iit, like this:
 
-Once you have built a <snpfile>.txt file using either dbsnp_iit or
-vcf_iit, you create an IIT file by doing this
+    gunzip -c filename.gvf.gz | gvf_iit > <snpfile>.txt
+
+From my limited experience with GVF format, it appears that the file
+contains variants from only one version of dbSNP.
+
+
+Once you have built a <snpfile>.txt file using dbsnp_iit, vcf_iit, or
+gvf_iit, you create an IIT file by doing this
                                                                                                 
     cat <snpfile>.txt | iit_store -o <snpfile>
                                                                                                 
@@ -1226,8 +1371,8 @@ get-genome with the -v and -f flags.  For more details, run
 "get-genome --help".
 
 
-Alignment of reads from bisulfite-treated DNA in GSNAP
-======================================================
+14.  Alignment of reads from bisulfite-treated DNA in GSNAP
+===========================================================
 
 GSNAP has the ability to align reads from bisulfite-treated DNA, which
 converts unmethylated cytosines to uracils that appear as thymines in
@@ -1270,8 +1415,8 @@ A's in half the reads.
 
 
 
-RNA-editing tolerance in GSNAP
-==============================
+15.  RNA-editing tolerance in GSNAP
+===================================
 
 Just as GSNAP has a program cmetindex and a mode called "cmet" for
 tolerance to C-to-T changes, it can be tolerant to A-to-G changes

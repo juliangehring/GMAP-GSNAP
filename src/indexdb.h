@@ -1,4 +1,4 @@
-/* $Id: indexdb.h 99753 2013-06-27 21:13:11Z twu $ */
+/* $Id: indexdb.h 108105 2013-09-16 22:57:25Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #include <stdio.h>
@@ -13,7 +13,6 @@
 #ifdef PMAP
 #include "alphabet.h"
 #endif
-
 
 
 #ifdef PMAP
@@ -57,22 +56,73 @@ Indexdb_positions_fileio_p (T this);
 extern double
 Indexdb_mean_size (T this, Mode_T mode, Width_T index1part);
 
-extern bool
-Indexdb_get_filenames (char **gammaptrs_filename, char **offsetscomp_filename, char **positions_filename,
-		       char **gammaptrs_basename_ptr, char **offsetscomp_basename_ptr, char **positions_basename_ptr,
-		       char **gammaptrs_index1info_ptr, char **offsetscomp_index1info_ptr, char **positions_index1info_ptr,
+
+typedef struct Filenames_T *Filenames_T;
+struct Filenames_T {
+  char *pointers_filename;
+  char *offsets_filename;
+  char *positions_filename;
+
+  char *pointers_basename_ptr;
+  char *offsets_basename_ptr;
+  char *positions_basename_ptr;
+
+  char *pointers_index1info_ptr;
+  char *offsets_index1info_ptr;
+  char *positions_index1info_ptr;
+};
+
+
+extern void
+Filenames_free (Filenames_T *old);
+
+extern Filenames_T
+Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interval,
+				      char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+				      Width_T required_interval, bool offsets_only_p);
+extern Filenames_T
+Indexdb_get_filenames_bitpack64 (
+#ifdef PMAP
+				 Alphabet_T *alphabet, Alphabet_T required_alphabet,
+#endif
+				 Width_T *basesize, Width_T *index1part, Width_T *index1interval,
+				 char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+				 Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
+				 bool offsets_only_p);
+extern Filenames_T
+Indexdb_get_filenames_gamma (
+#ifdef PMAP
+			     Alphabet_T *alphabet, Alphabet_T required_alphabet,
+#endif
+			     Width_T *basesize, Width_T *index1part, Width_T *index1interval,
+			     char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+			     Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
+			     bool offsets_only_p);
+
+extern Filenames_T
+Indexdb_get_filenames (int *compression_type,
 #ifdef PMAP
 		       Alphabet_T *alphabet, Alphabet_T required_alphabet,
 #endif
 		       Width_T *basesize, Width_T *index1part, Width_T *index1interval, char *genomesubdir,
 		       char *fileroot, char *idx_filesuffix, char *snps_root,
-		       Width_T required_basesize, Width_T required_index1part, Width_T required_interval);
+		       Width_T required_basesize, Width_T required_index1part, Width_T required_interval,
+		       bool offsets_only_p);
 
 extern Univcoord_T *
 Indexdb_point_one_shift (int *nentries, T this, Storedoligomer_T subst);
 extern int
 Indexdb_count_one_shift (T this, Storedoligomer_T subst, int nadjacent);
 
+
+Positionsptr_T *
+Indexdb_offsets_from_bitpack (char *bitpackptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize
+#ifdef PMAP
+			     , int alphabet_size, Width_T index1part_aa
+#else
+			     , Width_T index1part
+#endif
+			      );
 
 extern Positionsptr_T *
 Indexdb_offsets_from_gammas (char *gammaptrsfile, char *offsetscompfile, Width_T offsetscomp_basesize

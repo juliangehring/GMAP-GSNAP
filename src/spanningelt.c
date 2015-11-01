@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c 99756 2013-06-27 21:20:19Z twu $";
+static char rcsid[] = "$Id: spanningelt.c 100404 2013-07-03 21:32:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -473,12 +473,11 @@ Spanningelt_pruning_cmp (const void *a, const void *b) {
 #ifdef WORDS_BIGENDIAN
 static int
 binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
-  bool foundp = false;
   int middlei;
 
   debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,goal));
 
-  while (!foundp && lowi < highi) {
+  while (lowi < highi) {
     middlei = (lowi+highi)/2;
     debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		   lowi,Bigendian_convert_univcoord(positions[lowi]),middlei,Bigendian_convert_univcoord(positions[middlei]),
@@ -488,27 +487,22 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
     } else if (goal > Bigendian_convert_univcoord(positions[middlei])) {
       lowi = middlei + 1;
     } else {
-      foundp = true;
+      debug10(printf("binary search returns %d\n",middlei));
+      return middlei;
     }
   }
 
-  if (foundp == true) {
-    debug10(printf("binary search returns %d\n",middlei));
-    return middlei;
-  } else {
-    debug10(printf("binary search returns %d\n",highi));
-    return highi;
-  }
+  debug10(printf("binary search returns %d\n",highi));
+  return highi;
 }
 #else
 static int
 binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
-  bool foundp = false;
   int middlei;
 
   debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,goal));
 
-  while (!foundp && lowi < highi) {
+  while (lowi < highi) {
     middlei = (lowi+highi)/2;
     debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		   lowi,positions[lowi],middlei,positions[middlei],
@@ -518,17 +512,13 @@ binary_search (int lowi, int highi, Univcoord_T *positions, Univcoord_T goal) {
     } else if (goal > positions[middlei]) {
       lowi = middlei + 1;
     } else {
-      foundp = true;
+      debug10(printf("binary search returns %d\n",middlei));
+      return middlei;
     }
   }
 
-  if (foundp == true) {
-    debug10(printf("binary search returns %d\n",middlei));
-    return middlei;
-  } else {
-    debug10(printf("binary search returns %d\n",highi));
-    return highi;
-  }
+  debug10(printf("binary search returns %d\n",highi));
+  return highi;
 }
 #endif
 

@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 103703 2013-08-02 23:08:31Z twu $ */
+/* $Id: outbuffer.h 103696 2013-08-02 22:32:38Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 

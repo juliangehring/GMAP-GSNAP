@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: univinterval.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: univinterval.c 102893 2013-07-25 22:11:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,6 +57,14 @@ Univinterval_free (T *old) {
   }
   return;
 }
+
+void
+Univinterval_table_free (void **x) {
+  T *old = (T *) x;
+  FREE(*old);
+  return;
+}
+
 
 void
 Univinterval_print (T this) {
@@ -282,3 +290,56 @@ Univinterval_cmp_high (const void *a, const void *b) {
 }
 
 
+#if 0
+int
+Univinterval_table_cmp (const void *a, const void *b) {
+  T x = (T) a;
+  T y = (T) b;
+
+  debug(printf("Comparing %u..%u with %u..%u => ",x->low,x->high,y->low,y->high));
+  if (x->low < y->low) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->low > y->low) {
+    debug(printf("+1\n"));
+    return +1;
+  } else if (x->high < y->high) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->high > y->high) {
+    debug(printf("+1\n"));
+    return +1;
+  } else if (x->type < y->type) {
+    debug(printf("-1\n"));
+    return -1;
+  } else if (x->type > y->type) {
+    debug(printf("+1\n"));
+    return +1;
+  } else {
+    debug(printf("0\n"));
+    return 0;
+  }
+}
+#endif
+
+#if 0
+unsigned int
+Univinterval_table_hash (const void *a) {
+  T x = (T) a;
+  return (unsigned int) (x->low + x->high);
+}
+#endif
+
+bool
+Univinterval_equal (T x, T y) {
+  debug(printf("Comparing %u..%u with %u..%u => ",x->low,x->high,y->low,y->high));
+  if (x->low != y->low) {
+    return false;
+  } else if (x->high != y->high) {
+    return false;
+  } else if (x->type != y->type) {
+    return false;
+  } else {
+    return true;
+  }
+}

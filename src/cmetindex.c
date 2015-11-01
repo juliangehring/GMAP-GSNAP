@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: cmetindex.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: cmetindex.c 100231 2013-07-02 21:40:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -74,6 +74,7 @@ static char *user_sourcedir = NULL;
 static char *user_destdir = NULL;
 static char *dbroot = NULL;
 static char *dbversion = NULL;
+static int compression_type;
 static int offsetscomp_basesize = 12;
 static int required_basesize = 0;
 static int index1part = 15;
@@ -284,7 +285,7 @@ compute_offsets_ga (Positionsptr_T *oldoffsets, Oligospace_T oligospace, Storedo
 
 
 static void
-compute_ct (char *gammaptrs_filename, char *offsetscomp_filename,
+compute_ct (char *pointers_filename, char *offsets_filename,
 	    FILE *positions_fp, Positionsptr_T *oldoffsets,
 	    UINT8 *oldpositions8, UINT4 *oldpositions4,
 	    Oligospace_T oligospace, Storedoligomer_T mask,
@@ -462,12 +463,26 @@ compute_ct (char *gammaptrs_filename, char *offsetscomp_filename,
 #ifdef PRE_GAMMA
     FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
 #else
-    Indexdb_write_gammaptrs(gammaptrs_filename,offsetscomp_filename,offsets,oligospace,
-			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    if (compression_type == BITPACK64_COMPRESSION) {
+      Indexdb_write_bitpackptrs(pointers_filename,offsets_filename,offsets,oligospace,
+				/*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else if (compression_type == GAMMA_COMPRESSION) {
+      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,offsets,oligospace,
+			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else {
+      abort();
+    }
 #endif
   } else {
-    Indexdb_write_gammaptrs(gammaptrs_filename,offsetscomp_filename,snpoffsets,oligospace,
-			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    if (compression_type == BITPACK64_COMPRESSION) {
+      Indexdb_write_bitpackptrs(pointers_filename,offsets_filename,snpoffsets,oligospace,
+				/*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else if (compression_type == GAMMA_COMPRESSION) {
+      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,snpoffsets,oligospace,
+			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else {
+      abort();
+    }
     FREE(snpoffsets);
   }
 
@@ -482,7 +497,7 @@ compute_ct (char *gammaptrs_filename, char *offsetscomp_filename,
 }
 
 static void
-compute_ga (char *gammaptrs_filename, char *offsetscomp_filename,
+compute_ga (char *pointers_filename, char *offsets_filename,
 	    FILE *positions_fp, Positionsptr_T *oldoffsets,
 	    UINT8 *oldpositions8, UINT4 *oldpositions4,
 	    Oligospace_T oligospace, Storedoligomer_T mask,
@@ -661,12 +676,26 @@ compute_ga (char *gammaptrs_filename, char *offsetscomp_filename,
 #ifdef PRE_GAMMAS
     FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
 #else
-    Indexdb_write_gammaptrs(gammaptrs_filename,offsetscomp_filename,offsets,oligospace,
-			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    if (compression_type == BITPACK64_COMPRESSION) {
+      Indexdb_write_bitpackptrs(pointers_filename,offsets_filename,offsets,oligospace,
+			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else if (compression_type == GAMMA_COMPRESSION) {
+      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,offsets,oligospace,
+			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else {
+      abort();
+    }
 #endif
   } else {
-    Indexdb_write_gammaptrs(gammaptrs_filename,offsetscomp_filename,snpoffsets,oligospace,
-			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    if (compression_type == BITPACK64_COMPRESSION) {
+      Indexdb_write_bitpackptrs(pointers_filename,offsets_filename,snpoffsets,oligospace,
+				/*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else if (compression_type == GAMMA_COMPRESSION) {
+      Indexdb_write_gammaptrs(pointers_filename,offsets_filename,snpoffsets,oligospace,
+			      /*blocksize*/power(4,index1part - offsetscomp_basesize));
+    } else {
+      abort();
+    }
     FREE(snpoffsets);
   }
 
@@ -688,10 +717,8 @@ compute_ga (char *gammaptrs_filename, char *offsetscomp_filename,
 int
 main (int argc, char *argv[]) {
   char *sourcedir = NULL, *destdir = NULL, *filename, *fileroot;
-  char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
-    *gammaptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
-    *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
-  char *new_gammaptrs_filename, *new_offsetscomp_filename;
+  Filenames_T filenames;
+  char *new_pointers_filename, *new_offsets_filename;
   Univ_IIT_T chromosome_iit;
   Positionsptr_T *ref_offsets;
   Storedoligomer_T mask;
@@ -767,40 +794,44 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
 
-  Indexdb_get_filenames(&gammaptrs_filename,&offsetscomp_filename,&positions_filename,
-			&gammaptrs_basename_ptr,&offsetscomp_basename_ptr,&positions_basename_ptr,
-			&gammaptrs_index1info_ptr,&offsetscomp_index1info_ptr,&positions_index1info_ptr,
-			&offsetscomp_basesize,&index1part,&index1interval,
-			sourcedir,fileroot,IDX_FILESUFFIX,snps_root,
-			required_basesize,required_index1part,required_interval);
+  filenames = Indexdb_get_filenames(&compression_type,&offsetscomp_basesize,&index1part,&index1interval,
+				    sourcedir,fileroot,IDX_FILESUFFIX,snps_root,
+				    required_basesize,required_index1part,required_interval,
+				    /*offsets_only_p*/false);
 
   mask = ~(~0UL << 2*index1part);
   oligospace = power(4,index1part);
 
   /* Read offsets */
-  ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
+  if (compression_type == BITPACK64_COMPRESSION) {
+    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else if (compression_type == GAMMA_COMPRESSION) {
+    ref_offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else {
+    abort();
+  }
 
   /* Read positions */
-  if ((ref_positions_fp = FOPEN_READ_BINARY(positions_filename)) == NULL) {
-    fprintf(stderr,"Can't open file %s\n",positions_filename);
+  if ((ref_positions_fp = FOPEN_READ_BINARY(filenames->positions_filename)) == NULL) {
+    fprintf(stderr,"Can't open file %s\n",filenames->positions_filename);
     exit(9);
   }
 
 #ifdef HAVE_MMAP
   if (coord_values_8p == true) {
     ref_positions8 = (UINT8 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					   positions_filename,sizeof(UINT8),/*randomp*/false);
+					   filenames->positions_filename,sizeof(UINT8),/*randomp*/false);
   } else {
     ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					   positions_filename,sizeof(UINT4),/*randomp*/false);
+					   filenames->positions_filename,sizeof(UINT4),/*randomp*/false);
   }
 #else
   if (coord_values_8p == true) {
     ref_positions8 = (UINT8 *) Access_allocated(&ref_positions_len,&seconds,
-						positions_filename,sizeof(UINT8));
+						filenames->positions_filename,sizeof(UINT8));
   } else {
     ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_len,&seconds,
-						positions_filename,sizeof(UINT4));
+						filenames->positions_filename,sizeof(UINT4));
   }
 #endif
 
@@ -814,21 +845,21 @@ main (int argc, char *argv[]) {
   fprintf(stderr,"Writing cmet index files to %s\n",destdir);
 
   if (index1part == offsetscomp_basesize) {
-    new_gammaptrs_filename = (char *) NULL;
+    new_pointers_filename = (char *) NULL;
   } else {
-    new_gammaptrs_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					     strlen(".")+strlen("metct")+strlen(gammaptrs_index1info_ptr)+1,sizeof(char));
-    sprintf(new_gammaptrs_filename,"%s/%s.%s%s",destdir,fileroot,"metct",gammaptrs_index1info_ptr);
+    new_pointers_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					     strlen(".")+strlen("metct")+strlen(filenames->pointers_index1info_ptr)+1,sizeof(char));
+    sprintf(new_pointers_filename,"%s/%s.%s%s",destdir,fileroot,"metct",filenames->pointers_index1info_ptr);
   }
 
-  new_offsetscomp_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-			     strlen(".")+strlen("metct")+strlen(offsetscomp_index1info_ptr)+1,sizeof(char));
-  sprintf(new_offsetscomp_filename,"%s/%s.%s%s",destdir,fileroot,"metct",offsetscomp_index1info_ptr);
+  new_offsets_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			     strlen(".")+strlen("metct")+strlen(filenames->offsets_index1info_ptr)+1,sizeof(char));
+  sprintf(new_offsets_filename,"%s/%s.%s%s",destdir,fileroot,"metct",filenames->offsets_index1info_ptr);
 
 
   filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-			     strlen(".")+strlen("metct")+strlen(positions_index1info_ptr)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s%s",destdir,fileroot,"metct",positions_index1info_ptr);
+			     strlen(".")+strlen("metct")+strlen(filenames->positions_index1info_ptr)+1,sizeof(char));
+  sprintf(filename,"%s/%s.%s%s",destdir,fileroot,"metct",filenames->positions_index1info_ptr);
 
   if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
@@ -837,33 +868,33 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Compute and write CT files */
-  compute_ct(new_gammaptrs_filename,new_offsetscomp_filename,
+  compute_ct(new_pointers_filename,new_offsets_filename,
 	     positions_fp,ref_offsets,ref_positions8,ref_positions4,
 	     oligospace,mask,coord_values_8p);
   fclose(positions_fp);
-  FREE(new_offsetscomp_filename);
+  FREE(new_offsets_filename);
   if (index1part != offsetscomp_basesize) {
-    FREE(new_gammaptrs_filename);
+    FREE(new_pointers_filename);
   }
 
 
   /* Open GA output files */
   if (index1part == offsetscomp_basesize) {
-    new_gammaptrs_filename = (char *) NULL;
+    new_pointers_filename = (char *) NULL;
   } else {
-    new_gammaptrs_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-					     strlen(".")+strlen("metga")+strlen(gammaptrs_index1info_ptr)+1,sizeof(char));
-    sprintf(new_gammaptrs_filename,"%s/%s.%s%s",destdir,fileroot,"metga",gammaptrs_index1info_ptr);
+    new_pointers_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+					     strlen(".")+strlen("metga")+strlen(filenames->pointers_index1info_ptr)+1,sizeof(char));
+    sprintf(new_pointers_filename,"%s/%s.%s%s",destdir,fileroot,"metga",filenames->pointers_index1info_ptr);
   }
 
-  new_offsetscomp_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-			     strlen(".")+strlen("metga")+strlen(offsetscomp_index1info_ptr)+1,sizeof(char));
-  sprintf(new_offsetscomp_filename,"%s/%s.%s%s",destdir,fileroot,"metga",offsetscomp_index1info_ptr);
+  new_offsets_filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			     strlen(".")+strlen("metga")+strlen(filenames->offsets_index1info_ptr)+1,sizeof(char));
+  sprintf(new_offsets_filename,"%s/%s.%s%s",destdir,fileroot,"metga",filenames->offsets_index1info_ptr);
 
 
   filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-			     strlen(".")+strlen("metga")+strlen(positions_index1info_ptr)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s%s",destdir,fileroot,"metga",positions_index1info_ptr);
+			     strlen(".")+strlen("metga")+strlen(filenames->positions_index1info_ptr)+1,sizeof(char));
+  sprintf(filename,"%s/%s.%s%s",destdir,fileroot,"metga",filenames->positions_index1info_ptr);
 
   if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
@@ -872,13 +903,13 @@ main (int argc, char *argv[]) {
   FREE(filename);
 
   /* Compute and write GA files */
-  compute_ga(new_gammaptrs_filename,new_offsetscomp_filename,
+  compute_ga(new_pointers_filename,new_offsets_filename,
 	     positions_fp,ref_offsets,ref_positions8,ref_positions4,
 	     oligospace,mask,coord_values_8p);
   fclose(positions_fp);
-  FREE(new_offsetscomp_filename);
+  FREE(new_offsets_filename);
   if (index1part != offsetscomp_basesize) {
-    FREE(new_gammaptrs_filename);
+    FREE(new_pointers_filename);
   }
 
 
@@ -901,9 +932,7 @@ main (int argc, char *argv[]) {
   }
 #endif
 
-  FREE(positions_filename);
-  FREE(offsetscomp_filename);
-  FREE(gammaptrs_filename);
+  Filenames_free(&filenames);
 
   FREE(dbversion);
   FREE(fileroot);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 101477 2013-07-15 15:33:07Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -34,9 +34,15 @@ typedef Tableuint_T Table_chrpos_T;
 #include "univinterval.h"
 #include "iit-write-univ.h"
 #include "iit-read-univ.h"
+#include "genome.h"
 #include "genome-write.h"
 #include "indexdb-write.h"
+#include "compress-write.h"
 #include "intlist.h"
+#include "indexdbdef.h"		/* For compression types */
+#include "indexdb.h"		/* For Filenames_T */
+#include "sarray-write.h"
+
 
 #define BUFFERSIZE 8192
 
@@ -48,11 +54,13 @@ typedef Tableuint_T Table_chrpos_T;
 
 
 /* Program variables */
-typedef enum {NONE, AUXFILES, GENOME, COMPRESS, UNCOMPRESS, OFFSETS, POSITIONS} Action_T;
+typedef enum {NONE, AUXFILES, GENOME, UNSHUFFLE, OFFSETS, POSITIONS, SUFFIX_ARRAY, LCP} Action_T;
 static Action_T action = NONE;
 static char *sourcedir = ".";
 static char *destdir = ".";
 static char *fileroot = NULL;
+static int compression_types = BITPACK64_COMPRESSION | GAMMA_COMPRESSION;
+static int compression_type;
 static int offsetscomp_basesize = 12;
 static int index1part = 15;
 static int index1interval = 3;	/* Interval for storing 12-mers */
@@ -874,6 +882,29 @@ remove_slashes (char *buffer) {
 #endif
 
 
+static int
+add_compression_type (char *string) {
+  if (!strcmp(string,"none")) {
+    compression_types = NO_COMPRESSION;
+    return 0;
+  } else if (!strcmp(string,"all")) {
+    compression_types = BITPACK64_COMPRESSION | GAMMA_COMPRESSION;
+    return 1;
+  } else {
+    if (!strcmp(string,"bitpack")) {
+      compression_types |= BITPACK64_COMPRESSION;
+    } else if (!strcmp(string,"gamma")) {
+      compression_types |= GAMMA_COMPRESSION;
+    } else {
+      fprintf(stderr,"Don't recognize compression type %s\n",string);
+      fprintf(stderr,"Allowed values are: none, all, bitpack, gamma\n");
+      exit(9);
+    }
+    return 1;
+  }
+}
+
+
 #ifdef __STRICT_ANSI__
 int getopt (int argc, char *const argv[], const char *optstring);
 #endif
@@ -884,23 +915,35 @@ main (int argc, char *argv[]) {
   Table_T accsegmentpos_table;
   Table_chrpos_T chrlength_table;
   List_T contigtypelist = NULL, p;
+  Genome_T genome;
   Univ_IIT_T chromosome_iit, contig_iit;
   char *typestring;
   Univcoord_T genomelength, totalnts;
-  char *chromosomefile, *iitfile, *positionsfile, *gammaptrsfile, *offsetsfile, interval_char;
+  char *chromosomefile, *iitfile, *positionsfile, interval_char;
+  char *lcpfile, *lcpptrsfile, *lcpcompfile, *saindexfile, *sarrayfile;
+  Filenames_T filenames;
   Chrpos_T seglength;
-  FILE *fp;
   bool coord_values_8p;
 
   int c;
   extern int optind;
   extern char *optarg;
+  char *string;
 
-  while ((c = getopt(argc,argv,"F:D:d:b:k:q:ArlGCUOPWw:e:Ss:m")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:z:b:k:q:ArlGUOPSLWw:e:Ss:m")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
     case 'd': fileroot = optarg; break;
+
+    case 'z':
+      compression_types = NO_COMPRESSION; /* Initialize */
+      string = strtok(optarg,",");
+      if (add_compression_type(string) != 0) {
+	while ((string = strtok(NULL,",")) != NULL && add_compression_type(string) != 0) {
+	}
+      }
+      break;
 
     case 'b': offsetscomp_basesize = atoi(optarg); break;
     case 'k': index1part = atoi(optarg);
@@ -915,19 +958,14 @@ main (int argc, char *argv[]) {
     case 'r': rawp = true; break;
     case 'l': genome_lc_p = true; break;
     case 'G': action = GENOME; break;
-    case 'C': action = COMPRESS; break;
-    case 'U': action = UNCOMPRESS; break;
+    case 'U': action = UNSHUFFLE; break;
     case 'O': action = OFFSETS; break;
     case 'P': action = POSITIONS; break;
+    case 'S': action = SUFFIX_ARRAY; break;
+    case 'L': action = LCP; break;
     case 'W': writefilep = true; break;
     case 'w': wraplength = atoi(optarg); break;
     case 'e': nmessages = atoi(optarg); break;
-
-    case 'S':
-      fprintf(stderr,"Note: -S flag no longer has any effect.  To sort, use the -s flag.\n");
-      fprintf(stderr,"Default is to sort chromosomes according chrom order\n");
-      divsort = NO_SORT;
-      break;
 
     case 's': 
       if (!strcmp(optarg,"none")) {
@@ -967,7 +1005,7 @@ main (int argc, char *argv[]) {
     exit(9);
   }
 
-  if (action != COMPRESS && action != UNCOMPRESS) {
+  if (action != UNSHUFFLE) {
     if (fileroot == NULL) {
       fprintf(stderr,"Missing name of genome database.  Must specify with -d flag.\n");
       exit(9);
@@ -1077,8 +1115,8 @@ main (int argc, char *argv[]) {
     if (Univ_IIT_ntypes(contig_iit) == 1) {
       /* index1part needed only if writing an uncompressed genome using a file */
       Genome_write(destdir,fileroot,stdin,contig_iit,/*altstrain_iit*/NULL,
-		   chromosome_iit,genome_lc_p,rawp,writefilep,genomelength,
-		   index1part,nmessages);
+		   chromosome_iit,genome_lc_p,rawp,writefilep,
+		   genomelength,index1part,nmessages);
     } else if (Univ_IIT_ntypes(contig_iit) > 1) {
       fprintf(stderr,"GMAPINDEX no longer supports alternate strains\n");
       abort();
@@ -1087,7 +1125,17 @@ main (int argc, char *argv[]) {
     Univ_IIT_free(&chromosome_iit);
     Univ_IIT_free(&contig_iit);
 
+  } else if (action == UNSHUFFLE) {
+    /* Usage: cat <fastafile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -G
+       Requires <fastafile> in appropriate format and <sourcedir>/<dbname>.chromosome.iit 
+       and <sourcedir>/<dbname>.contig.iit files.
+       Creates <destdir>/<dbname>.genomebits */
+
+    Compress_unshuffle(stdout,stdin);
+
+#if 0
   } else if (action == COMPRESS) {
+    /* No longer supported.  Need to write nts and flags to separate files now */
     /* Usage: cat <genomefile> | gmapindex -C > <genomecompfile>, or
               gmapindex -C <genomefile> > <genomecompfile> */
 
@@ -1098,8 +1146,11 @@ main (int argc, char *argv[]) {
     } else {
       Compress_compress(stdin);
     }
+#endif
 
+#if 0
   } else if (action == UNCOMPRESS) {
+    /* No longer supported.  Need to read nts and flags as separate files now */
     /* Usage: cat <genomecompfile> | gmapindex -U [-w <wraplength>] > <genomefile>, or
               gmapindex -U [-w <wraplength>] <genomecompfile> > <genomefile> */
     
@@ -1110,10 +1161,19 @@ main (int argc, char *argv[]) {
     } else {
       Compress_uncompress(stdin,wraplength);
     }
+#endif
 
   } else if (action == OFFSETS) {
     /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -O
        Creates <destdir>/<dbname>.idxoffsets */
+
+    if (index1part == offsetscomp_basesize) {
+      if (compression_types != NO_COMPRESSION) {
+	fprintf(stderr,"Note: since base size is equal to the k-mer size %d, offsets will not be compressed\n",
+		index1part);
+	compression_types = NO_COMPRESSION;
+      }
+    }
 
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
@@ -1124,45 +1184,19 @@ main (int argc, char *argv[]) {
     }
     FREE(chromosomefile);
 
-
-    /* Reference strain */
-    if (mask_lowercase_p == true) {
-      gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				      strlen("gammaptrs.masked")+1,sizeof(char));
-      sprintf(gammaptrsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"gammaptrs.masked");
-
-      offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				   strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				   strlen("offsetscomp.masked")+1,sizeof(char));
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp.masked");
-
-    } else {
-      gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				      strlen("gammaptrs")+1,sizeof(char));
-      sprintf(gammaptrsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"gammaptrs");
-
-      offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				    strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				    strlen("offsetscomp")+1,sizeof(char));
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp");
+    fprintf(stderr,"Offset compression types:");
+    if ((compression_types & GAMMA_COMPRESSION) != 0) {
+      fprintf(stderr," gamma");
     }
+    if ((compression_types & BITPACK64_COMPRESSION) != 0) {
+      fprintf(stderr," bitpack");
+    }
+    fprintf(stderr,"\n");
 
-    Indexdb_write_offsets(gammaptrsfile,offsetsfile,stdin,chromosome_iit,
+    Indexdb_write_offsets(destdir,interval_char,stdin,chromosome_iit,
 			  offsetscomp_basesize,index1part,index1interval,
-			  genome_lc_p,fileroot,mask_lowercase_p);
+			  genome_lc_p,fileroot,mask_lowercase_p,compression_types);
 
-    FREE(offsetsfile);
-    FREE(gammaptrsfile);
     Univ_IIT_free(&chromosome_iit);
 
   } else if (action == POSITIONS) {
@@ -1179,53 +1213,19 @@ main (int argc, char *argv[]) {
     }
     FREE(chromosomefile);
 
+    filenames = Indexdb_get_filenames(&compression_type,&offsetscomp_basesize,&index1part,&index1interval,
+				      sourcedir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
+				      /*required_basesize*/offsetscomp_basesize,
+				      /*required_index1part*/index1part,
+				      /*required_interval*/index1interval,/*offsets_only_p*/true);
 
-    if (mask_lowercase_p == true) {
-      gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				      strlen("gammaptrs.masked")+1,sizeof(char));
-      sprintf(gammaptrsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"gammaptrs.masked");
+    positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+				    strlen(".")+strlen(IDX_FILESUFFIX)+
+				    /*for kmer*/2+/*for interval char*/1+
+				    strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
+    sprintf(positionsfile,"%s/%s.%s%02d%c%s",
+	    destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
 
-      offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				   strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				   strlen("offsetscomp.masked")+1,sizeof(char));
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp.masked");
-
-    } else {
-      gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				      strlen("gammaptrs")+1,sizeof(char));
-      sprintf(gammaptrsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"gammaptrs");
-
-      offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				   strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				   strlen("offsetscomp")+1,sizeof(char));
-      sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp");
-    }
-
-    if (mask_lowercase_p == true) {
-      positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for kmer*/2+/*for interval char*/1+
-				      strlen(POSITIONS_FILESUFFIX)+strlen(".masked")+1,sizeof(char));
-      sprintf(positionsfile,"%s/%s.%s%02d%c%s.masked",
-	      destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
-    } else {
-      positionsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				      strlen(".")+strlen(IDX_FILESUFFIX)+
-				      /*for kmer*/2+/*for interval char*/1+
-				      strlen(POSITIONS_FILESUFFIX)+1,sizeof(char));
-      sprintf(positionsfile,"%s/%s.%s%02d%c%s",
-	      destdir,fileroot,IDX_FILESUFFIX,index1part,interval_char,POSITIONS_FILESUFFIX);
-    }
     
     if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
       coord_values_8p = true;
@@ -1233,117 +1233,86 @@ main (int argc, char *argv[]) {
       coord_values_8p = false;
     }
 
-    Indexdb_write_positions(positionsfile,gammaptrsfile,offsetsfile,stdin,chromosome_iit,
+    Indexdb_write_positions(positionsfile,filenames->pointers_filename,
+			    filenames->offsets_filename,stdin,chromosome_iit,
 			    offsetscomp_basesize,index1part,index1interval,
-			    genome_lc_p,writefilep,fileroot,mask_lowercase_p,coord_values_8p);
+			    genome_lc_p,writefilep,fileroot,mask_lowercase_p,
+			    compression_type,coord_values_8p);
+
+    Filenames_free(&filenames);
 
     FREE(positionsfile);
-    FREE(offsetsfile);
-    FREE(gammaptrsfile);
     Univ_IIT_free(&chromosome_iit);
 
+  } else if (action == SUFFIX_ARRAY) {
+    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -S
+       Creates <destdir>/<dbname>.sarray, .lcp, and .saindex */
 
-#if 0
-  } else if (action == GAMMAS) {
-    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -Z
-       Requires <sourcedir>/<dbname>.idxoffsets.
-       Creates <destdir>/<dbname>.idxpositions */
-
-    /* Reference strain */
-    if (mask_lowercase_p == true) {
-      old_offsetsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(IDX_FILESUFFIX)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen(OFFSETS_FILESUFFIX)+strlen(".masked")+1,sizeof(char));
-      sprintf(old_offsetsfile,"%s/%s.%s%02d%02d%c%s.masked",
-	      sourcedir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,OFFSETS_FILESUFFIX);
-    } else {
-      old_offsetsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(IDX_FILESUFFIX)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen(OFFSETS_FILESUFFIX)+1,sizeof(char));
-      sprintf(old_offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      sourcedir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,OFFSETS_FILESUFFIX);
-    }
-    if ((old_offsets_fp = FOPEN_READ_BINARY(old_offsetsfile)) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",old_offsetsfile);
+    chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
+				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
+      fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
       exit(9);
     }
+    FREE(chromosomefile);
 
-    gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				    strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				    strlen("gammaptrs")+1,sizeof(char));
-    sprintf(gammaptrsfile,"%s/%s.%s%02d%02d%c%s",
-	    destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"gammaptrs");
-
-    offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".")+strlen(IDX_FILESUFFIX)+
-				  /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				 strlen("offsetscomp")+1,sizeof(char));
-    sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	    destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp");
-    
-    Indexdb_convert_gammas(gammaptrsfile,offsetsfile,old_offsets_fp,index1part);
-
-    fclose(old_offsets_fp);
-    FREE(offsetsfile);
-    FREE(gammaptrsfile);
-    FREE(old_offsetsfile);
-#endif
-
-#if 0
-  } else if (action == CHECK_GAMMAS) {
-    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -9
-       Requires <sourcedir>/<dbname>.idxoffsets.
-       Creates <destdir>/<dbname>.idxpositions */
-
-    /* Reference strain */
-    if (mask_lowercase_p == true) {
-      old_offsetsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(IDX_FILESUFFIX)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen(OFFSETS_FILESUFFIX)+strlen(".masked")+1,sizeof(char));
-      sprintf(old_offsetsfile,"%s/%s.%s%02d%02d%c%s.masked",
-	      sourcedir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,OFFSETS_FILESUFFIX);
+    if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
+      fprintf(stderr,"Cannot create suffix arrays for large genomes of greater than 2^32 bp\n");
     } else {
-      old_offsetsfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+
-					strlen(".")+strlen(IDX_FILESUFFIX)+
-					/*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-					strlen(OFFSETS_FILESUFFIX)+1,sizeof(char));
-      sprintf(old_offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	      sourcedir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,OFFSETS_FILESUFFIX);
+      genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			  /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+      Sarray_write_all(destdir,fileroot,genome,
+		       /*genomelength*/Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true));
+      Genome_free(&genome);
     }
-    if ((old_offsets_fp = FOPEN_READ_BINARY(old_offsetsfile)) == NULL) {
-      fprintf(stderr,"Can't open file %s\n",old_offsetsfile);
+
+    Univ_IIT_free(&chromosome_iit);
+
+  } else if (action == LCP) {
+    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -L
+       Creates <destdir>/<dbname>.lcp and .saindex */
+
+    chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
+				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
+      fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
       exit(9);
     }
+    FREE(chromosomefile);
 
-    gammaptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				    strlen(".")+strlen(IDX_FILESUFFIX)+
-				    /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				    strlen("gammaptrs")+1,sizeof(char));
-    sprintf(gammaptrsfile,"%s/%s.%s%02d%02d%c%s",
-	    destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"gammaptrs");
+    if (Univ_IIT_coord_values_8p(chromosome_iit) == true) {
+      fprintf(stderr,"Cannot create suffix arrays for large genomes of greater than 2^32 bp\n");
+    } else {
+      genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			  /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
 
-    offsetsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".")+strlen(IDX_FILESUFFIX)+
-				  /*for basesize*/2+/*for kmer*/2+/*for interval char*/1+
-				 strlen("offsetscomp")+1,sizeof(char));
-    sprintf(offsetsfile,"%s/%s.%s%02d%02d%c%s",
-	    destdir,fileroot,IDX_FILESUFFIX,offsetscomp_basesize,index1part,interval_char,"offsetscomp");
-    
-    Indexdb_check_gammas(gammaptrsfile,offsetsfile,old_offsets_fp,index1part);
+      lcpfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcp")+1,sizeof(char));
+      sprintf(lcpfile,"%s/%s.salcp",destdir,fileroot);
+      lcpptrsfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcpptrs")+1,sizeof(char));
+      sprintf(lcpptrsfile,"%s/%s.salcpptrs",destdir,fileroot);
+      lcpcompfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcpcomp")+1,sizeof(char));
+      sprintf(lcpcompfile,"%s/%s.salcpcomp",destdir,fileroot);
+      saindexfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindex")+1,sizeof(char));
+      sprintf(saindexfile,"%s/%s.saindex",destdir,fileroot);
 
-    fclose(old_offsets_fp);
-    FREE(offsetsfile);
-    FREE(gammaptrsfile);
-    FREE(old_offsetsfile);
-#endif
+      sarrayfile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
+      sprintf(sarrayfile,"%s/%s.sarray",sourcedir,fileroot);
 
+      Sarray_write_lcp(lcpfile,lcpptrsfile,lcpcompfile,saindexfile,sarrayfile,genome,
+		       /*genomelength*/Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true));
+      FREE(sarrayfile);
+      FREE(saindexfile);
+      FREE(lcpcompfile);
+      FREE(lcpptrsfile);
+      FREE(lcpfile);
 
+      Genome_free(&genome);
+    }
+
+    Univ_IIT_free(&chromosome_iit);
   }
-
 
   return 0;
 }

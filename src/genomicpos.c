@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genomicpos.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: genomicpos.c 101488 2013-07-15 16:52:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,8 +19,15 @@ static char rcsid[] = "$Id: genomicpos.c 99737 2013-06-27 19:33:03Z twu $";
 
 #define BUFSIZE 100
 
+/* Needs to handle large files */
 char *
-Genomicpos_commafmt (Univcoord_T N) {
+Genomicpos_commafmt (
+#ifdef HAVE_64_BIT
+		     UINT8 N
+#else
+		     UINT4 N
+#endif
+		     ) {
   char *string, *buffer;
   int len, posn = 1;
   char *ptr, *start;

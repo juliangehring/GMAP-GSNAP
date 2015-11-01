@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: dynprog.h 106269 2013-08-29 18:30:43Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -41,7 +41,8 @@ Dynprog_setup (bool novelsplicingp_in,
 	       Univcoord_T *splicesites_in, Splicetype_T *splicetypes_in,
 	       Chrpos_T *splicedists_in, int nsplicesites_in,
 	       Trieoffset_T *trieoffsets_obs_in, Triecontent_T *triecontents_obs_in,
-	       Trieoffset_T *trieoffsets_max_in, Triecontent_T *triecontents_max_in);
+	       Trieoffset_T *trieoffsets_max_in, Triecontent_T *triecontents_max_in,
+	       bool homopolymerp_in);
 
 extern int
 Dynprog_score (int matches, int mismatches, int qopens, int qindels, int topens, int tindels,
@@ -76,8 +77,8 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore,
 #ifdef PMAP
 		    char *queryaaseq,
 #endif
-		    int cdna_direction, bool watsonp, bool jump_late_p, Pairpool_T pairpool,
-		    int extraband_single, double defect_rate, int close_indels_mode, bool widebandp);
+		    bool watsonp, bool jump_late_p, Pairpool_T pairpool,
+		    int extraband_single, double defect_rate, bool widebandp);
 
 extern List_T
 Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,

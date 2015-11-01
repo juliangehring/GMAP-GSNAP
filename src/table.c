@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: table.c 81280 2012-12-11 19:43:18Z twu $";
+static char rcsid[] = "$Id: table.c 102728 2013-07-24 22:48:20Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -272,3 +272,22 @@ Table_free (T *table) {
   }
   FREE(*table);
 }
+
+void
+Table_gc (T *table, void (*keyfree)(void **key), void (*valuefree)(void **value)) {
+  int i;
+  struct binding *p, *q;
+
+  for (i = 0; i < (*table)->size; i++) {
+    for (p = (*table)->buckets[i]; p; p = q) {
+      (*keyfree)(&p->key);
+      (*valuefree)(&p->value);
+      q = p->link;
+      FREE(p);
+    }
+  }
+  FREE(*table);
+  return;
+}
+
+

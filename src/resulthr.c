@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: resulthr.c 91116 2013-04-02 19:50:33Z twu $";
+static char rcsid[] = "$Id: resulthr.c 109569 2013-09-30 22:55:30Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -47,6 +47,7 @@ Pairtype_string (Pairtype_T pairtype) {
   case CONCORDANT: return "concordant";
   case PAIRED_UNSPECIFIED: return "paired_unspecified";
   case PAIRED_INVERSION: return "paired_scramble";
+  case PAIRED_SCRAMBLE: return "paired_scramble";
   case PAIRED_TOOLONG: return "paired_toolong";
   case CONCORDANT_TRANSLOCATIONS: return "concordant_translocations";
   case CONCORDANT_TERMINAL: return "concordant_terminal";

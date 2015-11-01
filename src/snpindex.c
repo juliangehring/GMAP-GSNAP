@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: snpindex.c 101271 2013-07-12 02:44:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -50,6 +50,7 @@ static char rcsid[] = "$Id: snpindex.c 99737 2013-06-27 19:33:03Z twu $";
 #include "access.h"
 #include "types.h"
 
+#include "compress-write.h"
 #include "compress.h"
 #include "interval.h"
 #include "complement.h"
@@ -998,6 +999,7 @@ merge_positions4 (FILE *positions_fp, UINT4 *start1, UINT4 *end1,
 int
 main (int argc, char *argv[]) {
   char *sourcedir = NULL, *destdir = NULL, *mapdir = NULL;
+  int compression_type;
   Univ_IIT_T chromosome_iit;
   IIT_T snps_iit;
   Genome_T genome;
@@ -1015,11 +1017,9 @@ main (int argc, char *argv[]) {
 #endif
 
   bool coord_values_8p;
+  Filenames_T filenames;
   char *filename, *filename1, *filename2;
-  char *gammaptrs_filename, *offsetscomp_filename, *positions_filename,
-    *gammaptrs_basename_ptr, *offsetscomp_basename_ptr, *positions_basename_ptr,
-    *gammaptrs_index1info_ptr, *offsetscomp_index1info_ptr, *positions_index1info_ptr;
-  FILE *genome_fp, *positions_fp, *ref_positions_fp;
+  FILE *genome_fp, *genomebits_fp, *positions_fp, *ref_positions_fp;
   int ref_positions_fd;
   size_t ref_positions_len;
 #ifdef WORDS_BIGENDIAN
@@ -1134,8 +1134,8 @@ main (int argc, char *argv[]) {
   fprintf(stderr,"Chromosomes in the SNPs IIT file: ");
   IIT_dump_divstrings(stderr,snps_iit);
 
-  genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*uncompressedp*/false,
-		      /*access*/USE_MMAP_ONLY);
+  genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+		      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
 
   /* Copy genome */
   nblocks = Genome_totallength(genome)/32U;
@@ -1156,14 +1156,12 @@ main (int argc, char *argv[]) {
   }
 
 
-  Indexdb_get_filenames(&gammaptrs_filename,&offsetscomp_filename,&positions_filename,
-			&gammaptrs_basename_ptr,&offsetscomp_basename_ptr,&positions_basename_ptr,
-			&gammaptrs_index1info_ptr,&offsetscomp_index1info_ptr,&positions_index1info_ptr,
-			&offsetscomp_basesize,&index1part,&index1interval,
-			sourcedir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
-			required_basesize,required_index1part,required_interval);
+  filenames = Indexdb_get_filenames(&compression_type,&offsetscomp_basesize,&index1part,&index1interval,
+				    sourcedir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
+				    required_basesize,required_index1part,required_interval,
+				    /*offsets_only_p*/false);
 
-  /* Compute offsets and write genome */
+  /* Compute offsets and write genomecomp */
   oligospace = power(4,index1part);
   snp_offsets = compute_offsets(snps_iit,chromosome_iit,genome,snp_blocks,oligospace,index1part);
   fprintf(stderr,"last offset = %u\n",snp_offsets[oligospace]);
@@ -1178,8 +1176,28 @@ main (int argc, char *argv[]) {
   FWRITE_UINTS(snp_blocks,nblocks*3,genome_fp);
   fclose(genome_fp);
   FREE(snp_blocks);
-  FREE(filename);
   fprintf(stderr,"done\n");
+
+
+  /* Write genomebits */
+  if ((genome_fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    fprintf(stderr,"Can't open file %s for genome\n",filename);
+    exit(9);
+  }
+  FREE(filename);
+
+  filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+
+			     strlen(".genomebits.")+strlen(snps_root)+1,sizeof(char));
+  sprintf(filename,"%s/%s.genomebits.%s",destdir,fileroot,snps_root);
+  if ((genomebits_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
+    fprintf(stderr,"Can't open file %s for writing genome\n",filename);
+    exit(9);
+  }
+  fprintf(stderr,"Writing filename %s...",filename);
+  Compress_unshuffle(/*out*/genomebits_fp,/*in*/genome_fp);
+  fclose(genomebits_fp);
+  fclose(genome_fp);
+  FREE(filename);
 
 
   /* Compute positions */
@@ -1193,7 +1211,13 @@ main (int argc, char *argv[]) {
 
   /* Read reference offsets and update */
 #ifdef EXTRA_ALLOCATION
-  ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
+  if (compression_type == BITPACK64_COMPRESSION) {
+    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else if (compression_type == GAMMA_COMPRESSION) {
+    ref_offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else {
+    abort();
+  }
   offsets = (Positionsptr_T *) CALLOC(oligospace+1,sizeof(Positionsptr_T));
   offsets[0] = 0U;
   for (oligoi = 1; oligoi <= oligospace; oligoi++) {
@@ -1208,7 +1232,13 @@ main (int argc, char *argv[]) {
 
 #else
   /* This version saves on one allocation of oligospace * sizeof(Positionsptr_T) */
-  offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
+  if (compression_type == BITPACK64_COMPRESSION) {
+    offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else if (compression_type == GAMMA_COMPRESSION) {
+    offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else {
+    abort();
+  }
   for (oligoi = oligospace; oligoi >= 1; oligoi--) {
 #ifdef WORDS_BIGENDIAN
     offsets[oligoi] = Bigendian_convert_uint(offsets[oligoi]) - Bigendian_convert_uint(offsets[oligoi-1]);
@@ -1224,25 +1254,32 @@ main (int argc, char *argv[]) {
 
 
   /* Write offsets */
-  if (gammaptrs_basename_ptr == NULL) {
+  if (filenames->pointers_basename_ptr == NULL) {
     filename1 = (char *) NULL;
   } else {
-    filename1 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(gammaptrs_basename_ptr)+
+    filename1 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(filenames->pointers_basename_ptr)+
 				strlen(".")+strlen(snps_root)+1,sizeof(char));
-    sprintf(filename1,"%s/%s.%s",destdir,gammaptrs_basename_ptr,snps_root);
+    sprintf(filename1,"%s/%s.%s",destdir,filenames->pointers_basename_ptr,snps_root);
   }
 
-  filename2 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(offsetscomp_basename_ptr)+
+  filename2 = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(filenames->offsets_basename_ptr)+
 			      strlen(".")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename2,"%s/%s.%s",destdir,offsetscomp_basename_ptr,snps_root);
+  sprintf(filename2,"%s/%s.%s",destdir,filenames->offsets_basename_ptr,snps_root);
 
 
   fprintf(stderr,"Writing %lu offsets with %u total positions\n",oligospace+1,offsets[oligospace]);
 #ifdef PRE_GAMMAS
   FWRITE_UINTS(offsets,oligospace+1,offsets_fp);
 #else
-  Indexdb_write_gammaptrs(filename1,filename2,offsets,oligospace,
-			  /*blocksize*/power(4,index1part - offsetscomp_basesize));
+  if (compression_type == BITPACK64_COMPRESSION) {
+    Indexdb_write_bitpackptrs(filename1,filename2,offsets,oligospace,
+			      /*offsetscomp_blocksize*/power(4,index1part - offsetscomp_basesize));
+  } else if (compression_type == GAMMA_COMPRESSION) {
+    Indexdb_write_gammaptrs(filename1,filename2,offsets,oligospace,
+			    /*blocksize*/power(4,index1part - offsetscomp_basesize));
+  } else {
+    abort();
+  }
 #endif
   FREE(filename2);
   if (filename1 != NULL) {
@@ -1252,8 +1289,8 @@ main (int argc, char *argv[]) {
 
 
   /* Read reference positions and merge */
-  if ((ref_positions_fp = FOPEN_READ_BINARY(positions_filename)) == NULL) {
-    fprintf(stderr,"Can't open file %s\n",positions_filename);
+  if ((ref_positions_fp = FOPEN_READ_BINARY(filenames->positions_filename)) == NULL) {
+    fprintf(stderr,"Can't open file %s\n",filenames->positions_filename);
     exit(9);
   } else {
     fclose(ref_positions_fp);
@@ -1262,25 +1299,25 @@ main (int argc, char *argv[]) {
 #ifdef HAVE_MMAP
   if (coord_values_8p == true) {
     ref_positions8 = (UINT8 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					   positions_filename,sizeof(UINT8),/*randomp*/false);
+					   filenames->positions_filename,sizeof(UINT8),/*randomp*/false);
   } else {
     ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_fd,&ref_positions_len,
-					   positions_filename,sizeof(UINT4),/*randomp*/false);
+					   filenames->positions_filename,sizeof(UINT4),/*randomp*/false);
   }
 #else
   if (coord_values_8p == true) {
     ref_positions8 = (UINT8 *) Access_allocated(&ref_positions_len,&seconds,
-						positions_filename,sizeof(UINT8));
+						filenames->positions_filename,sizeof(UINT8));
   } else {
     ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_len,&seconds,
-						positions_filename,sizeof(UINT4));
+						filenames->positions_filename,sizeof(UINT4));
   }
 #endif
 
 
-  filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(positions_basename_ptr)+
+  filename = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(filenames->positions_basename_ptr)+
 			     strlen(".")+strlen(snps_root)+1,sizeof(char));
-  sprintf(filename,"%s/%s.%s",destdir,positions_basename_ptr,snps_root);
+  sprintf(filename,"%s/%s.%s",destdir,filenames->positions_basename_ptr,snps_root);
   if ((positions_fp = FOPEN_WRITE_BINARY(filename)) == NULL) {
     fprintf(stderr,"Can't open file %s for writing\n",filename);
     exit(9);
@@ -1289,7 +1326,13 @@ main (int argc, char *argv[]) {
 
   fprintf(stderr,"Merging snp positions with reference positions\n");
 #ifndef EXTRA_ALLOCATION
-  ref_offsets = Indexdb_offsets_from_gammas(gammaptrs_filename,offsetscomp_filename,offsetscomp_basesize,index1part);
+  if (compression_type == BITPACK64_COMPRESSION) {
+    ref_offsets = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else if (compression_type == GAMMA_COMPRESSION) {
+    ref_offsets = Indexdb_offsets_from_gammas(filenames->pointers_filename,filenames->offsets_filename,offsetscomp_basesize,index1part);
+  } else {
+    abort();
+  }
 #endif
 
   if (coord_values_8p == true) {
@@ -1351,9 +1394,7 @@ main (int argc, char *argv[]) {
   Univ_IIT_free(&chromosome_iit);
   IIT_free(&snps_iit);
 
-  FREE(positions_filename);
-  FREE(offsetscomp_filename);
-  FREE(gammaptrs_filename);
+  Filenames_free(&filenames);
 
 
   /* Message about installing IIT file */

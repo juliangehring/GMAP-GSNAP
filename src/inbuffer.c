@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: inbuffer.c 90425 2013-03-27 16:27:35Z twu $";
+static char rcsid[] = "$Id: inbuffer.c 101822 2013-07-17 18:43:45Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -246,6 +246,7 @@ fill_buffer (T this) {
   unsigned int nread = 0;
   unsigned int nchars = 0U;
   Shortread_T queryseq1, queryseq2;
+  bool skipp;
 
   if (this->fastq_format_p == true) {
     if (this->gzipped != NULL) {
@@ -256,13 +257,16 @@ fill_buffer (T this) {
 	     nchars < this->maxchars &&
 #endif
 	     (queryseq1 = Shortread_read_fastq_shortreads_gzip(&this->nextchar,&queryseq2,&this->gzipped,&this->gzipped2,
-							       &this->files,&this->nfiles,
+							       &this->files,&this->nfiles,skipp = (this->inputid % this->part_interval != this->part_modulus),
 							       this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
-	if (this->inputid % this->part_interval != this->part_modulus) {
+	if (skipp) {
+#if 0
+	  /* Shortread procedures won't allocate in this situation */
 	  Shortread_free(&queryseq1);
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+#endif
 
 	} else if (this->filter_if_both_p == true &&
 		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
@@ -297,13 +301,16 @@ fill_buffer (T this) {
 	     nchars < this->maxchars &&
 #endif
 	     (queryseq1 = Shortread_read_fastq_shortreads_bzip2(&this->nextchar,&queryseq2,&this->bzipped,&this->bzipped2,
-								&this->files,&this->nfiles,
+								&this->files,&this->nfiles,skipp = (this->inputid % this->part_interval != this->part_modulus),
 								this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
-	if (this->inputid % this->part_interval != this->part_modulus) {
+	if (skipp) {
+#if 0
+	  /* Shortread procedures won't allocate in this situation */
 	  Shortread_free(&queryseq1);
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+#endif
 
 	} else if (this->filter_if_both_p == true &&
 		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
@@ -337,13 +344,16 @@ fill_buffer (T this) {
 	     nchars < this->maxchars &&
 #endif
 	     (queryseq1 = Shortread_read_fastq_shortreads(&this->nextchar,&queryseq2,&this->input,&this->input2,
-							  &this->files,&this->nfiles,
+							  &this->files,&this->nfiles,skipp = (this->inputid % this->part_interval != this->part_modulus),
 							  this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
-	if (this->inputid % this->part_interval != this->part_modulus) {
+	if (skipp) {
+#if 0
+	  /* Shortread procedures won't allocate in this situation */
 	  Shortread_free(&queryseq1);
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+#endif
 
 	} else if (this->filter_if_both_p == true &&
 		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
@@ -378,12 +388,16 @@ fill_buffer (T this) {
 	   nchars < this->maxchars &&
 #endif
 	   (queryseq1 = Goby_read(&queryseq2,this->gobyreader,this->barcode_length,
-				  this->invert_first_p,this->invert_second_p)) != NULL) {
-      if (this->inputid % this->part_interval != this->part_modulus) {
+				  this->invert_first_p,this->invert_second_p,
+				  skipp = (this->inputid % this->part_interval != this->part_modulus))) != NULL) {
+      if (skipp) {
+#if 0
+	/* Shortread procedures won't allocate in this situation */
 	Shortread_free(&queryseq1);
 	if (queryseq2 != NULL) {
 	  Shortread_free(&queryseq2);
 	}
+#endif
 
       } else if (this->filter_if_both_p == true &&
 		 Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
@@ -419,13 +433,16 @@ fill_buffer (T this) {
 	     nchars < this->maxchars &&
 #endif
 	     (queryseq1 = Shortread_read_fasta_shortreads_gzip(&this->nextchar,&queryseq2,&this->gzipped,&this->gzipped2,
-							       &this->files,&this->nfiles,
+							       &this->files,&this->nfiles,skipp = (this->inputid % this->part_interval != this->part_modulus),
 							       this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
-	if (this->inputid % this->part_interval != this->part_modulus) {
+	if (skipp) {
+#if 0
+	  /* Shortread procedures won't allocate in this situation */
 	  Shortread_free(&queryseq1);
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+#endif
 
 	} else if (this->filter_if_both_p == true &&
 		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
@@ -460,13 +477,16 @@ fill_buffer (T this) {
 	     nchars < this->maxchars &&
 #endif
 	     (queryseq1 = Shortread_read_fasta_shortreads_bzip2(&this->nextchar,&queryseq2,&this->bzipped,&this->bzipped2,
-								&this->files,&this->nfiles,
+								&this->files,&this->nfiles,skipp = (this->inputid % this->part_interval != this->part_modulus),
 								this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
-	if (this->inputid % this->part_interval != this->part_modulus) {
+	if (skipp) {
+#if 0
+	  /* Shortread procedures won't allocate in this situation */
 	  Shortread_free(&queryseq1);
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+#endif
 
 	} else if (this->filter_if_both_p == true &&
 		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {
@@ -500,13 +520,16 @@ fill_buffer (T this) {
 	     nchars < this->maxchars &&
 #endif
 	     (queryseq1 = Shortread_read_fasta_shortreads(&this->nextchar,&queryseq2,&this->input,&this->input2,
-							  &this->files,&this->nfiles,
+							  &this->files,&this->nfiles,skipp = (this->inputid % this->part_interval != this->part_modulus),
 							  this->barcode_length,this->invert_first_p,this->invert_second_p)) != NULL) {
-	if (this->inputid % this->part_interval != this->part_modulus) {
+	if (skipp) {
+#if 0
+	  /* Shortread procedures won't allocate in this situation */
 	  Shortread_free(&queryseq1);
 	  if (queryseq2 != NULL) {
 	    Shortread_free(&queryseq2);
 	  }
+#endif
 
 	} else if (this->filter_if_both_p == true &&
 		   Shortread_filterp(queryseq1) == true && (queryseq2 == NULL || Shortread_filterp(queryseq2) == true)) {

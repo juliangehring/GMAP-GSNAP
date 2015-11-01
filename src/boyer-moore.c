@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: boyer-moore.c 111029 2013-10-11 23:25:53Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -357,6 +357,7 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 }
 
 
+#if 0
 static char complCode[128] = COMPLEMENT_LC;
 
 static char
@@ -389,20 +390,29 @@ get_genomic_nt (char *g_alt, int genomicpos,
     return complCode[(int) c2];
   }
 }
+#endif
 
 
 Intlist_T
 BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
 	       Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp) {
-#ifndef STANDALONE
   Intlist_T hits = NULL;
-#endif
   int i, j, *good_suffix_shift, *bad_char_shift;
-  char g_alt;
+  char *text, *text_alt;
 
   if (query_okay(query,querylen)) {
     good_suffix_shift = precompute_good_suffix_shift(query,querylen);
     bad_char_shift = precompute_bad_char_shift(query,querylen);
+    if (watsonp) {
+      text = Genome_get_segment_blocks_right(&text_alt,/*left*/chroffset+textoffset,textlen+querylen,chrhigh,/*revcomp*/false);
+    } else {
+      text = Genome_get_segment_blocks_left(&text_alt,/*left*/chrhigh-textoffset+1,textlen+querylen,chroffset,/*revcomp*/true);
+    }
+    if (text == NULL) {
+      return hits;
+    }
+
+    /* This makes text[i+j] == get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp) */
 
     debug(
 	  printf("bad_char_shift:\n");
@@ -419,18 +429,12 @@ BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
     j = 0;
     while (j <= textlen - querylen) {
 #ifdef PMAP
-      for (i = querylen - 1;
-	   i >= 0 && matchtable[query[i]-'A'][/*text[i+j]*/get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp)-'A'] == true;
-	   i--) ;
+      for (i = querylen - 1; i >= 0 && matchtable[query[i]-'A'][text[i+j]-'A'] == true; i--) ;
 #else
-      for (i = querylen - 1;
-	   i >= 0 && query[i] == /*text[i+j]*/get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp);
-	   i--) ;
+      for (i = querylen - 1; i >= 0 && query[i] == text[i+j]; i--) ;
 #endif
       if (i < 0) {
-#ifndef STANDALONE
 	hits = Intlist_push(hits,j);
-#endif
 	
 	debug1(printf("Success at %d\n",j));
 	debug(printf("Shift by %d (Gs[0])\n",good_suffix_shift[0]));
@@ -438,33 +442,36 @@ BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
       } else {
 	debug(
 	      if (good_suffix_shift[i] > 
-		  bad_char_shift[na_index(/*text[i+j]*/get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp))] - querylen + 1 + i) {
+		  bad_char_shift[na_index(text[i+j])] - querylen + 1 + i) {
 		printf("Shift by %d (Gs[%d])\n",
 		       good_suffix_shift[i],i);
 	      } else {
 		printf("Shift by %d (Gs[%d] == Bc[%c] - %d + %d)\n",
-		       bad_char_shift[na_index(/*text[i+j]*/get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp))] - querylen + 1 + i,
-		       i,/*text[i+j]*/get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp),querylen,i+1);
+		       bad_char_shift[na_index(text[i+j])] - querylen + 1 + i,
+		       i,text[i+j],querylen,i+1);
 	      }
 	      );
 	j += MAX(good_suffix_shift[i],
-		 bad_char_shift[na_index(/*text[i+j]*/get_genomic_nt(&g_alt,textoffset+i+j,chroffset,chrhigh,watsonp))] - querylen + 1 + i);
+		 bad_char_shift[na_index(text[i+j])] - querylen + 1 + i);
       }
     }
+
+    if (text_alt != text) {
+      FREE(text_alt);
+    }
+    FREE(text);
+
     FREE(bad_char_shift);
     FREE(good_suffix_shift);
   }
 
-#ifndef STANDALONE
   return hits;
-#endif
 }
 
 
 int *
 BoyerMoore_bad_char_shift (char *query, int querylen) {
   int *bad_char_shift;
-  int i;
 
   if (query_okay(query,querylen)) {
     bad_char_shift = precompute_bad_char_shift(query,querylen);
@@ -522,6 +529,7 @@ BoyerMoore_maxprefix (char *query, int querylen, char *text, int textlen,
 
 
 
+#if 0
 static char *
 string_reverse (char *original, int length) {
   char *reverse;
@@ -534,7 +542,7 @@ string_reverse (char *original, int length) {
   }
   return reverse;
 }
-
+#endif
 
 
 #ifdef STANDALONE

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samheader.c 103703 2013-08-02 23:08:31Z twu $";
+static char rcsid[] = "$Id: samheader.c 112663 2013-10-25 16:57:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -13,7 +13,9 @@ SAM_header_print_HD (FILE *fp, int nworkers, bool orderedp) {
   if (nworkers > 1 && orderedp == false) {
     fprintf(fp,"\tSO:unsorted");
   } else {
-    fprintf(fp,"\tSO:unknown");
+    /* Picard does not recognize type unknown */
+    /* fprintf(fp,"\tSO:unknown"); */
+    fprintf(fp,"\tSO:unsorted");
   }
   fprintf(fp,"\n");
   return;

@@ -249,7 +249,6 @@ esac
 
 ACX_ASM_BSR
 
-
 AC_MSG_CHECKING(whether sse2 is enabled)
 AC_ARG_ENABLE([sse2],
 	      AC_HELP_STRING([--enable-sse2],
@@ -272,6 +271,12 @@ case x"$answer" in
      ax_cv_want_sse2_ext=yes
      ;;
 esac	
+
+ax_cv_sse2_shift_defect=no
+if test "$ax_cv_want_sse2_ext" = yes; then
+ACX_SSE2_SHIFT_DEFECT
+fi
+
 
 AC_MSG_CHECKING(whether sse4.1 is enabled)
 AC_ARG_ENABLE([sse4.1],
@@ -485,6 +490,7 @@ AC_CONFIG_FILES([util/gff3_splicesites.pl])
 AC_CONFIG_FILES([util/gff3_introns.pl])
 AC_CONFIG_FILES([util/gff3_genes.pl])
 AC_CONFIG_FILES([util/dbsnp_iit.pl])
+AC_CONFIG_FILES([util/gvf_iit.pl])
 AC_CONFIG_FILES([util/vcf_iit.pl])
 AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/align.test],[chmod +x tests/align.test])
@@ -529,4 +535,16 @@ config.site file and run configure again.  Otherwise, you may proceed
 with the rest of the installation.
 ])
   fi
+fi
+
+if test x"$ax_cv_sse2_shift_defect" = xyes; then
+  AC_MSG_WARN([
+
+WARNING: Your C compiler does not know how to handle a particular
+form of the SSE2 shift commands, and must be somewhat old (probably
+gcc 4.1 or gcc 4.2).  The configure script has therefore substituted
+alternate C code that your compiler can handle.  However, for 
+optimal performance, you may want to obtain a more recent C compiler
+and build the code with that.
+])
 fi

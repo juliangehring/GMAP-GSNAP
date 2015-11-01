@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 101727 2013-07-16 23:42:52Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 102893 2013-07-25 22:11:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,6 +18,15 @@ static char rcsid[] = "$Id: oligoindex_hr.c 101727 2013-07-16 23:42:52Z twu $";
 #include "cmet.h"
 #ifdef HAVE_SSE2
 #include <emmintrin.h>
+#endif
+#ifdef HAVE_SSE4_1
+#include <smmintrin.h>
+#endif
+
+
+#ifdef HAVE_SSE2
+#define USE_SIMD_FOR_COUNTS 1
+#define SIMD_NINTS 4
 #endif
 
 
@@ -41,6 +50,13 @@ static char rcsid[] = "$Id: oligoindex_hr.c 101727 2013-07-16 23:42:52Z twu $";
 #define debug9(x) x
 #else
 #define debug9(x)
+#endif
+
+/* compare SIMD with standard */
+#ifdef DEBUG14
+#define debug14(x) x
+#else
+#define debug14(x)
 #endif
 
 
@@ -8241,9 +8257,6 @@ static const Genomecomp_T reverse_nt[] =
 
 
 
-
-
-
 /* Code starts here */
 
 #define MASK8 0x0000FFFF
@@ -8254,15 +8267,32 @@ static const Genomecomp_T reverse_nt[] =
 static Genomecomp_T *ref_blocks;
 static Mode_T mode;
 
+
+#ifdef USE_SIMD_FOR_COUNTS
+static __m128i mask8;
+static __m128i mask7;
+static __m128i mask6;
+static __m128i mask5;
+#endif
+
+
 void
 Oligoindex_hr_setup (Genomecomp_T *ref_blocks_in, Mode_T mode_in) {
   ref_blocks = ref_blocks_in;
   mode = mode_in;
+#ifdef USE_SIMD_FOR_COUNTS
+  mask8 = _mm_set1_epi32(65535U);
+  mask7 = _mm_set1_epi32(16383U);
+  mask6 = _mm_set1_epi32(4095U);
+  mask5 = _mm_set1_epi32(1023U);
+#endif
   return;
 }
 
 
 
+#if 0
+/* For debugging */
 static void
 write_chars (Genomecomp_T high, Genomecomp_T low, Genomecomp_T flags) {
   char Buffer[33];
@@ -8331,6 +8361,7 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
 
   return;
 }
+#endif
 
 
 /*                87654321 */
@@ -8889,40 +8920,40 @@ static void
 count_8mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 16;		/* 0 */
-  debug(printf("%04X\n",masked));
+  masked = high_rev >> 16;		/* 0, No mask necessary */
+  debug(printf("0 %04X\n",masked));
   counts[masked] += 1;
   
   masked = (high_rev >> 14) & MASK8;	/* 1 */
-  debug(printf("%04X\n",masked));
+  debug(printf("1 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rev >> 12) & MASK8;	/* 2 */
-  debug(printf("%04X\n",masked));
+  debug(printf("2 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rev >> 10) & MASK8;	/* 3 */
-  debug(printf("%04X\n",masked));
+  debug(printf("3 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rev >> 8) & MASK8;	/* 4 */
-  debug(printf("%04X\n",masked));
+  debug(printf("4 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rev >> 6) & MASK8;	/* 5 */
-  debug(printf("%04X\n",masked));
+  debug(printf("5 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rev >> 4) & MASK8;	/* 6 */
-  debug(printf("%04X\n",masked));
+  debug(printf("6 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rev >> 2) & MASK8;	/* 7 */
-  debug(printf("%04X\n",masked));
+  debug(printf("7 %04X\n",masked));
   counts[masked] += 1;
 
   masked = high_rev & MASK8;		/* 8 */
-  debug(printf("%04X\n",masked));
+  debug(printf("8 %04X\n",masked));
   counts[masked] += 1;
 
 
@@ -8930,67 +8961,67 @@ count_8mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
   oligo |= high_rev << 14;
 
   masked = (oligo >> 12) & MASK8; /* 9 */
-  debug(printf("%04X\n",masked));
+  debug(printf("9 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 10) & MASK8; /* 10 */
-  debug(printf("%04X\n",masked));
+  debug(printf("10 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 8) & MASK8; /* 11 */
-  debug(printf("%04X\n",masked));
+  debug(printf("11 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 6) & MASK8; /* 12 */
-  debug(printf("%04X\n",masked));
+  debug(printf("12 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 4) & MASK8; /* 13 */
-  debug(printf("%04X\n",masked));
+  debug(printf("13 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 2) & MASK8; /* 14 */
-  debug(printf("%04X\n",masked));
+  debug(printf("14 %04X\n",masked));
   counts[masked] += 1;
 
   masked = oligo & MASK8; /* 15 */
-  debug(printf("%04X\n",masked));
+  debug(printf("15 %04X\n",masked));
   counts[masked] += 1;
 
-  masked = low_rev >> 16;		/* 16 */
-  debug(printf("%04X\n",masked));
+  masked = low_rev >> 16;		/* 16, No mask necessary */
+  debug(printf("16 %04X\n",masked));
   counts[masked] += 1;
   
   masked = (low_rev >> 14) & MASK8; /* 17 */
-  debug(printf("%04X\n",masked));
+  debug(printf("17 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rev >> 12) & MASK8; /* 18 */
-  debug(printf("%04X\n",masked));
+  debug(printf("18 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rev >> 10) & MASK8; /* 19 */
-  debug(printf("%04X\n",masked));
+  debug(printf("19 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rev >> 8) & MASK8;	/* 20 */
-  debug(printf("%04X\n",masked));
+  debug(printf("20 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rev >> 6) & MASK8;	/* 21 */
-  debug(printf("%04X\n",masked));
+  debug(printf("21 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rev >> 4) & MASK8;	/* 22 */
-  debug(printf("%04X\n",masked));
+  debug(printf("22 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rev >> 2) & MASK8;	/* 23 */
-  debug(printf("%04X\n",masked));
+  debug(printf("23 %04X\n",masked));
   counts[masked] += 1;
 
   masked = low_rev & MASK8;	/* 24 */
-  debug(printf("%04X\n",masked));
+  debug(printf("24 %04X\n",masked));
   counts[masked] += 1;
 
 
@@ -8998,35 +9029,791 @@ count_8mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
   oligo |= low_rev << 14;
 
   masked = (oligo >> 12) & MASK8; /* 25 */
-  debug(printf("%04X\n",masked));
+  debug(printf("25 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 10) & MASK8; /* 26 */
-  debug(printf("%04X\n",masked));
+  debug(printf("26 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 8) & MASK8; /* 27 */
-  debug(printf("%04X\n",masked));
+  debug(printf("27 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 6) & MASK8; /* 28 */
-  debug(printf("%04X\n",masked));
+  debug(printf("28 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 4) & MASK8; /* 29 */
-  debug(printf("%04X\n",masked));
+  debug(printf("29 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 2) & MASK8; /* 30 */
-  debug(printf("%04X\n",masked));
+  debug(printf("30 %04X\n",masked));
   counts[masked] += 1;
 
   masked = oligo & MASK8; /* 31 */
-  debug(printf("%04X\n",masked));
+  debug(printf("31 %04X\n",masked));
   counts[masked] += 1;
 
   return;
 }
+
+
+
+#ifdef USE_SIMD_FOR_COUNTS
+/* Fwd and rev procedures differ only in the order of indices */
+static void
+count_fwdrev_simd (Count_T *counts, UINT4 *array) {
+  UINT4 *ptr;
+
+  /* Fwd: Starts with 0 because we used _setr_ and not _set_ */
+  /* Rev: Starts with 63 because we used _set_ and not _setr_ */
+  ptr = &(array[0]);
+  debug(printf("Fwd:  0 %04X, 16 %04X, 32 %04X, 48 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 63 %04X, 47 %04X, 31 %04X, 15 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 0 */ /* 63 */
+  counts[*ptr++] += 1;	/* 16 */ /* 47 */
+  counts[*ptr++] += 1;	/* 32 */ /* 31 */
+  counts[*ptr++] += 1;	/* 48 */ /* 15 */
+
+  debug(printf("Fwd:  1 %04X, 17 %04X, 33 %04X, 49 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 62 %04X, 46 %04X, 30 %04X, 14 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 1 */ /* 62 */
+  counts[*ptr++] += 1;	/* 17 */ /* 46 */
+  counts[*ptr++] += 1;	/* 33 */ /* 30 */
+  counts[*ptr++] += 1;	/* 49 */ /* 14 */
+
+  debug(printf("Fwd:  2 %04X, 18 %04X, 34 %04X, 50 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 61 %04X, 45 %04X, 29 %04X, 13 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 2 */ /* 61 */
+  counts[*ptr++] += 1;	/* 18 */ /* 45 */
+  counts[*ptr++] += 1;	/* 34 */ /* 29 */
+  counts[*ptr++] += 1;	/* 50 */ /* 13 */
+
+  debug(printf("Fwd:  3 %04X, 19 %04X, 35 %04X, 51 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 60 %04X, 44 %04X, 28 %04X, 12 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 3 */ /* 60 */
+  counts[*ptr++] += 1;	/* 19 */ /* 44 */
+  counts[*ptr++] += 1;	/* 35 */ /* 28 */
+  counts[*ptr++] += 1;	/* 51 */ /* 12 */
+
+  debug(printf("Fwd:  4 %04X, 20 %04X, 36 %04X, 52 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 59 %04X, 43 %04X, 27 %04X, 11 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 4 */ /* 59 */
+  counts[*ptr++] += 1;	/* 20 */ /* 43 */
+  counts[*ptr++] += 1;	/* 36 */ /* 27 */
+  counts[*ptr++] += 1;	/* 52 */ /* 11 */
+
+  debug(printf("Fwd:  5 %04X, 21 %04X, 37 %04X, 53 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 58 %04X, 42 %04X, 26 %04X, 10 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 5 */ /* 58 */
+  counts[*ptr++] += 1;	/* 21 */ /* 42 */
+  counts[*ptr++] += 1;	/* 37 */ /* 26 */
+  counts[*ptr++] += 1;	/* 53 */ /* 10 */
+
+  debug(printf("Fwd:  6 %04X, 22 %04X, 38 %04X, 54 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 57 %04X, 41 %04X, 25 %04X,  9 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 6 */ /* 57 */
+  counts[*ptr++] += 1;	/* 22 */ /* 41 */
+  counts[*ptr++] += 1;	/* 38 */ /* 25 */
+  counts[*ptr++] += 1;	/* 54 */ /* 9 */
+
+  debug(printf("Fwd:  7 %04X, 23 %04X, 39 %04X, 55 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 56 %04X, 40 %04X, 24 %04X,  8 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 7 */ /* 56 */
+  counts[*ptr++] += 1;	/* 23 */ /* 50 */
+  counts[*ptr++] += 1;	/* 39 */ /* 24 */
+  counts[*ptr++] += 1;	/* 55 */ /* 8 */
+
+  debug(printf("Fwd:  8 %04X, 24 %04X, 40 %04X, 56 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 55 %04X, 39 %04X, 23 %04X,  7 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 8 */ /* 55 */
+  counts[*ptr++] += 1;	/* 24 */ /* 39 */
+  counts[*ptr++] += 1;	/* 40 */ /* 23 */
+  counts[*ptr++] += 1;	/* 56 */ /* 7 */
+
+  debug(printf("Fwd:  9 %04X, 25 %04X, 41 %04X, 57 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 54 %04X, 38 %04X, 22 %04X,  6 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 9 */ /* 54 */
+  counts[*ptr++] += 1;	/* 25 */ /* 38 */
+  counts[*ptr++] += 1;	/* 41 */ /* 22 */
+  counts[*ptr++] += 1;	/* 57 */ /* 6 */
+
+  debug(printf("Fwd: 10 %04X, 26 %04X, 42 %04X, 58 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 53 %04X, 37 %04X, 21 %04X,  5 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 10 */ /* 53 */
+  counts[*ptr++] += 1;	/* 26 */ /* 37 */
+  counts[*ptr++] += 1;	/* 42 */ /* 21 */
+  counts[*ptr++] += 1;	/* 58 */ /* 5 */
+
+  debug(printf("Fwd: 11 %04X, 27 %04X, 43 %04X, 59 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 52 %04X, 36 %04X, 20 %04X,  4 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 11 */ /* 52 */
+  counts[*ptr++] += 1;	/* 27 */ /* 36 */
+  counts[*ptr++] += 1;	/* 43 */ /* 20 */
+  counts[*ptr++] += 1;	/* 59 */ /* 4 */
+
+  debug(printf("Fwd: 12 %04X, 28 %04X, 44 %04X, 60 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 51 %04X, 35 %04X, 19 %04X,  3 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 12 */ /* 51 */
+  counts[*ptr++] += 1;	/* 28 */ /* 35 */
+  counts[*ptr++] += 1;	/* 44 */ /* 19 */
+  counts[*ptr++] += 1;	/* 60 */ /* 3 */
+
+  debug(printf("Fwd: 13 %04X, 29 %04X, 45 %04X, 61 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 50 %04X, 34 %04X, 18 %04X,  2 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 13 */ /* 50 */
+  counts[*ptr++] += 1;	/* 29 */ /* 34 */
+  counts[*ptr++] += 1;	/* 45 */ /* 18 */
+  counts[*ptr++] += 1;	/* 61 */ /* 2 */
+
+  debug(printf("Fwd: 14 %04X, 30 %04X, 46 %04X, 62 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 49 %04X, 33 %04X, 17 %04X,  1 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 14 */ /* 49 */
+  counts[*ptr++] += 1;	/* 30 */ /* 33 */
+  counts[*ptr++] += 1;	/* 46 */ /* 17 */
+  counts[*ptr++] += 1;	/* 62 */ /* 1 */
+
+  debug(printf("Fwd: 15 %04X, 31 %04X, 47 %04X, 63 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
+  debug(printf("Rev: 48 %04X, 32 %04X, 16 %04X,  0 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
+  counts[*ptr++] += 1;	/* 15 */ /* 48 */
+  counts[*ptr++] += 1;	/* 31 */ /* 32 */
+  counts[*ptr++] += 1;	/* 47 */ /* 16 */
+  counts[*ptr++] += 1;	/* 63 */ /* 0 */
+
+  return;
+}
+#endif
+
+
+#ifdef USE_SIMD_FOR_COUNTS
+/* Forward and reverse procedures are identical, because forward has
+   chrpos ascending from left and reverse has chrpos ascending from
+   right */
+static Chrpos_T
+store_fwdrev_simd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		   UINT4 *array) {
+  Genomecomp_T masked;
+
+  /* Row 0 */
+  masked = array[0];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos;
+    }
+  }
+
+  masked = array[4];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 1;
+    }
+  }
+
+  masked = array[8];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 2;
+    }
+  }
+
+  masked = array[12];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 3;
+    }
+  }
+
+  masked = array[16];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 4;
+    }
+  }
+
+  masked = array[20];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 5;
+    }
+  }
+
+  masked = array[24];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 6;
+    }
+  }
+
+  masked = array[28];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 7;
+    }
+  }
+
+  masked = array[32];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 8;
+    }
+  }
+
+  masked = array[36];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 9;
+    }
+  }
+
+  masked = array[40];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 10;
+    }
+  }
+
+  masked = array[44];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 11;
+    }
+  }
+
+  masked = array[48];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 12;
+    }
+  }
+
+  masked = array[52];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 13;
+    }
+  }
+
+  masked = array[56];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 14;
+    }
+  }
+
+  masked = array[60];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 15;
+    }
+  }
+
+  /* Row 1 */
+  masked = array[1];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 16;
+    }
+  }
+
+  masked = array[5];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 17;
+    }
+  }
+
+  masked = array[9];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 18;
+    }
+  }
+
+  masked = array[13];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 19;
+    }
+  }
+
+  masked = array[17];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 20;
+    }
+  }
+
+  masked = array[21];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 21;
+    }
+  }
+
+  masked = array[25];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 22;
+    }
+  }
+
+  masked = array[29];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 23;
+    }
+  }
+
+  masked = array[33];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 24;
+    }
+  }
+
+  masked = array[37];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 25;
+    }
+  }
+
+  masked = array[41];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 26;
+    }
+  }
+
+  masked = array[45];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 27;
+    }
+  }
+
+  masked = array[49];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 28;
+    }
+  }
+
+  masked = array[53];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 29;
+    }
+  }
+
+  masked = array[57];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 30;
+    }
+  }
+
+  masked = array[61];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 31;
+    }
+  }
+
+
+  /* Row 2 */
+  masked = array[2];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 32;
+    }
+  }
+
+  masked = array[6];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 33;
+    }
+  }
+
+  masked = array[10];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 34;
+    }
+  }
+
+  masked = array[14];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 35;
+    }
+  }
+
+  masked = array[18];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 36;
+    }
+  }
+
+  masked = array[22];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 37;
+    }
+  }
+
+  masked = array[26];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 38;
+    }
+  }
+
+  masked = array[30];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 39;
+    }
+  }
+
+  masked = array[34];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 40;
+    }
+  }
+
+  masked = array[38];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 41;
+    }
+  }
+
+  masked = array[42];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 42;
+    }
+  }
+
+  masked = array[46];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 43;
+    }
+  }
+
+  masked = array[50];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 44;
+    }
+  }
+
+  masked = array[54];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 45;
+    }
+  }
+
+  masked = array[58];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 46;
+    }
+  }
+
+  masked = array[62];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 47;
+    }
+  }
+
+
+  /* Row 3 */
+  masked = array[3];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 48;
+    }
+  }
+
+  masked = array[7];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 49;
+    }
+  }
+
+  masked = array[11];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 50;
+    }
+  }
+
+  masked = array[15];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 51;
+    }
+  }
+
+  masked = array[19];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 52;
+    }
+  }
+
+  masked = array[23];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 53;
+    }
+  }
+
+  masked = array[27];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 54;
+    }
+  }
+
+  masked = array[31];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 55;
+    }
+  }
+
+  masked = array[35];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 56;
+    }
+  }
+
+  masked = array[39];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 57;
+    }
+  }
+
+  masked = array[43];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 58;
+    }
+  }
+
+  masked = array[47];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 59;
+    }
+  }
+
+  masked = array[51];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 60;
+    }
+  }
+
+  masked = array[55];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 61;
+    }
+  }
+
+  masked = array[59];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 62;
+    }
+  }
+
+  masked = array[63];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked/*+1*/]) {
+      counts[masked] = 0;
+    } else {
+      *(pointers[masked]++) = chrpos + 63;
+    }
+  }
+
+  return chrpos + 64;
+}
+#endif
+
+
+
+/* Expecting current to have {high0_rev, low0_rev, high1_rev,
+   low1_rev}, and next to have {low0_rev, high1_rev, low1_rev, and
+   high2_rev} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_8mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,16)); /* No mask necessary */
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask8));
+  _mm_store_si128(out++, _mm_and_si128( current, mask8));
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,18), _mm_slli_epi32(current,14));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,12), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,10), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask8));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask8));
+
+  return;
+}
+#endif
 
 
 static int
@@ -9034,7 +9821,7 @@ store_8mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 16;		/* 0 */
+  masked = high_rev >> 16;		/* 0, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -9183,7 +9970,7 @@ store_8mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = low_rev >> 16;		/* 16 */
+  masked = low_rev >> 16;		/* 16, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -9335,11 +10122,12 @@ store_8mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
 }
 
 
+
 static void
 count_7mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 18;		/* 0 */
+  masked = high_rev >> 18;		/* 0, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
   
@@ -9408,7 +10196,7 @@ count_7mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
   counts[masked] += 1;
 
 
-  masked = low_rev >> 18;		/* 16 */
+  masked = low_rev >> 18;		/* 16, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
   
@@ -9479,13 +10267,44 @@ count_7mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
   return;
 }
 
+/* Expecting current to have {high0_rev, low0_rev, high1_rev,
+   low1_rev}, and next to have {low0_rev, high1_rev, low1_rev, and
+   high2_rev} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_7mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,18)); /* No mask necessary */
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,16), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask7));
+  _mm_store_si128(out++, _mm_and_si128( current, mask7));
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,20), _mm_slli_epi32(current,12));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,10), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask7));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask7));
+
+  return;
+}
+#endif
+
 
 static int
 store_7mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 18;		/* 0 */
+  masked = high_rev >> 18;		/* 0, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -9634,7 +10453,7 @@ store_7mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = low_rev >> 18;		/* 16 */
+  masked = low_rev >> 18;		/* 16, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -9790,7 +10609,7 @@ static void
 count_6mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 20;		/* 0 */
+  masked = high_rev >> 20;		/* 0, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
   
@@ -9859,7 +10678,7 @@ count_6mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
   counts[masked] += 1;
 
 
-  masked = low_rev >> 20;		/* 16 */
+  masked = low_rev >> 20;	/* 16, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
   
@@ -9931,12 +10750,44 @@ count_6mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
 }
 
 
+/* Expecting current to have {high0_rev, low0_rev, high1_rev,
+   low1_rev}, and next to have {low0_rev, high1_rev, low1_rev, and
+   high2_rev} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_6mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,20)); /* No mask necessary */;
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,18), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,16), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask6));
+  _mm_store_si128(out++, _mm_and_si128( current, mask6));
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,22), _mm_slli_epi32(current,10));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask6));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask6));
+
+  return;
+}
+#endif
+
+
 static int
 store_6mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 20;		/* 0 */
+  masked = high_rev >> 20;		/* 0, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -10085,7 +10936,7 @@ store_6mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = low_rev >> 20;		/* 16 */
+  masked = low_rev >> 20;	/* 16, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -10241,7 +11092,7 @@ static void
 count_5mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 22;		/* 0 */
+  masked = high_rev >> 22;		/* 0, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
   
@@ -10310,7 +11161,7 @@ count_5mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
   counts[masked] += 1;
 
 
-  masked = low_rev >> 22;		/* 16 */
+  masked = low_rev >> 22;		/* 16, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
   
@@ -10382,12 +11233,41 @@ count_5mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, G
 }
 
 
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_5mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,22)); /* No mask necessary */
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,20), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,18), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,16), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask5));
+  _mm_store_si128(out++, _mm_and_si128( current, mask5));
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,24), _mm_slli_epi32(current,8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask5));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask5));
+
+  return;
+}
+#endif
+
+
 static int
 store_5mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
 
-  masked = high_rev >> 22;		/* 0 */
+  masked = high_rev >> 22;		/* 0, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -10536,7 +11416,7 @@ store_5mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = low_rev >> 22;		/* 16 */
+  masked = low_rev >> 22;		/* 16, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -10688,17 +11568,19 @@ store_5mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
 }
 
 
-
+#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
 static void
-count_positions_fwd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
-		     int genestrand) {
+count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
+			 int genestrand) {
   int startdiscard, enddiscard;
   Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
     low, high, nextlow;
 
+  debug(printf("Starting count_positions_fwd_std\n"));
 
   left_plus_length -= indexsize;
 #if 0
+  /* No.  Extends past end. */
   left_plus_length += 1;	/* Needed to get last oligomer to match */
 #endif
 
@@ -10965,12 +11847,529 @@ count_positions_fwd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord
   
   return;
 }
+#endif
 
 
+#if 0
+/* For debugging of SIMD procedures*/
 static void
-store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
-		     Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
-		     int genestrand) {
+print_vector (__m128i x, char *label) {
+  __m128i a[1];
+  unsigned int *s = a;
+
+  _mm_store_si128(a,x);
+  _mm_mfence();
+  printf("%s: %u %u %u %u\n",label,s[0],s[1],s[2],s[3]);
+  return;
+}
+#endif
+
+
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+count_positions_fwd_simd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
+			  int genestrand) {
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
+    low, high, nextlow;
+  Genomecomp_T high0_rev, low0_rev, high1_rev, low1_rev, /*low0,*/ high0, low1, high1;
+  __m128i current, next;
+  __m128i array[16];
+#ifdef HAVE_SSE4_1
+  __m128i temp;
+#endif
+
+
+  debug(printf("Starting count_positions_fwd_simd\n"));
+
+  left_plus_length -= indexsize;
+#if 0
+  /* No.  Extends past end. */
+  left_plus_length += 1;	/* Needed to get last oligomer to match */
+#endif
+
+  ptr = startptr = left/32U*3;
+  endptr = left_plus_length/32U*3;
+  startdiscard = left % 32; /* (left+pos5) % 32 */
+  enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
+  
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    high_rev = reverse_nt[low >> 16];
+    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
+    low_rev = reverse_nt[high >> 16];
+    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+    nexthigh_rev = reverse_nt[nextlow >> 16];
+    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+    if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 7) {
+      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 6) {
+      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 5) {
+      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+  } else {
+    /* Genome_print_blocks(ref_blocks,left,left+16); */
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    high_rev = reverse_nt[low >> 16];
+    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
+    low_rev = reverse_nt[high >> 16];
+    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+    nexthigh_rev = reverse_nt[nextlow >> 16];
+    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+    if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 7) {
+      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 6) {
+      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 5) {
+      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+    ptr += 3;
+
+    if (indexsize == 8) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_8mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	count_8mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 7) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_7mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	count_7mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 6) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_6mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	count_6mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 5) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_5mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	count_5mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else {
+      abort();
+    }
+
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    /* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    /* low = ref_blocks[ptr+1]; */
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    high_rev = nexthigh_rev;	/* depended on low */
+    low_rev = reverse_nt[high >> 16];
+    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+    nexthigh_rev = reverse_nt[nextlow >> 16];
+    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+    if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 7) {
+      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 6) {
+      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 5) {
+      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else {
+      abort();
+    }
+
+  }
+  
+  return;
+}
+#endif
+
+
+#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
+static void
+store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
+			 Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
+			 int genestrand) {
   int startdiscard, enddiscard;
   Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
     low, high, nextlow;
@@ -10978,6 +12377,7 @@ store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 
   left_plus_length -= indexsize;
 #if 0
+  /* No.  Extends past end. */
   left_plus_length += 1;	/* Needed to get last oligomer to match */
 #endif
 
@@ -11104,6 +12504,7 @@ store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 	chrpos = store_8mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
+
     } else if (indexsize == 7) {
       while (ptr < endptr) {
 #ifdef WORDS_BIGENDIAN
@@ -11135,6 +12536,7 @@ store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 	chrpos = store_7mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
+
     } else if (indexsize == 6) {
       while (ptr < endptr) {
 #ifdef WORDS_BIGENDIAN
@@ -11166,6 +12568,7 @@ store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 	chrpos = store_6mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
 	ptr += 3;
       }
+
     } else if (indexsize == 5) {
       while (ptr < endptr) {
 #ifdef WORDS_BIGENDIAN
@@ -11244,6 +12647,508 @@ store_positions_fwd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
   
   return;
 }
+#endif
+
+
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+store_positions_fwd_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
+			  Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
+			  int genestrand) {
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
+    low, high, nextlow;
+  Genomecomp_T high0_rev, low0_rev, high1_rev, low1_rev, /* low0, */ high0, low1, high1;
+  __m128i current, next;
+  __m128i array[16];
+#ifdef HAVE_SSE4_1
+  __m128i temp;
+#endif
+
+
+  debug(printf("Starting store_positions_fwd_simd\n"));
+
+  left_plus_length -= indexsize;
+#if 0
+  /* No.  Extends past end. */
+  left_plus_length += 1;	/* Needed to get last oligomer to match */
+#endif
+
+  ptr = startptr = left/32U*3;
+  endptr = left_plus_length/32U*3;
+  startdiscard = left % 32; /* (left+pos5) % 32 */
+  enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
+  
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    high_rev = reverse_nt[low >> 16];
+    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
+    low_rev = reverse_nt[high >> 16];
+    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+    nexthigh_rev = reverse_nt[nextlow >> 16];
+    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+    if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 7) {
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 6) {
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 5) {
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+  } else {
+    /* Genome_print_blocks(ref_blocks,left,left+16); */
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    high_rev = reverse_nt[low >> 16];
+    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
+    low_rev = reverse_nt[high >> 16];
+    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+    nexthigh_rev = reverse_nt[nextlow >> 16];
+    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+    if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 7) {
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 6) {
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 5) {
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+    ptr += 3;
+
+    if (indexsize == 8) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_8mers_fwd_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	chrpos = store_8mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 7) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_7mers_fwd_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	chrpos = store_7mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 6) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_6mers_fwd_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	chrpos = store_6mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 5) {
+      while (ptr + 3 < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high0_rev = nexthigh_rev; /* depended on low0 */
+	low0_rev = reverse_nt[high0 >> 16];
+	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = reverse_nt[low1 >> 16];
+	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = reverse_nt[high1 >> 16];
+	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_5mers_fwd_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	/* low = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = nexthigh_rev; /* depended on low */
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	chrpos = store_5mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
+	ptr += 3;
+      }
+
+    } else {
+      abort();
+    }
+
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    /* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    /* low = ref_blocks[ptr+1]; */
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    high_rev = nexthigh_rev;	/* depended on low */
+    low_rev = reverse_nt[high >> 16];
+    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+    nexthigh_rev = reverse_nt[nextlow >> 16];
+    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+    if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 7) {
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 6) {
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 5) {
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else {
+      abort();
+    }
+
+  }
+  
+  return;
+}
+#endif
 
 
 /************************************************************************
@@ -11726,68 +13631,68 @@ count_8mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   oligo |= nextlow_rc << 14;
 
   masked = (oligo >> 12) & MASK8; /* 31 */
-  debug(printf("%04X\n",masked));
+  debug(printf("31 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 10) & MASK8; /* 30 */
-  debug(printf("%04X\n",masked));
+  debug(printf("30 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 8) & MASK8; /* 29 */
-  debug(printf("%04X\n",masked));
+  debug(printf("29 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 6) & MASK8; /* 28 */
-  debug(printf("%04X\n",masked));
+  debug(printf("28 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 4) & MASK8; /* 27 */
-  debug(printf("%04X\n",masked));
+  debug(printf("27 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 2) & MASK8; /* 26 */
-  debug(printf("%04X\n",masked));
+  debug(printf("26 %04X\n",masked));
   counts[masked] += 1;
 
   masked = oligo & MASK8; /* 25 */
-  debug(printf("%04X\n",masked));
+  debug(printf("25 %04X\n",masked));
   counts[masked] += 1;
 
 
-  masked = (high_rc >> 16) & MASK8; /* 24 */
-  debug(printf("%04X\n",masked));
+  masked = high_rc >> 16;	/* 24, No mask necessary */
+  debug(printf("24 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 14) & MASK8; /* 23 */
-  debug(printf("%04X\n",masked));
+  debug(printf("23 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 12) & MASK8; /* 22 */
-  debug(printf("%04X\n",masked));
+  debug(printf("22 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 10) & MASK8; /* 21 */
-  debug(printf("%04X\n",masked));
+  debug(printf("21 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 8) & MASK8; /* 20 */
-  debug(printf("%04X\n",masked));
+  debug(printf("20 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 6) & MASK8; /* 19 */
-  debug(printf("%04X\n",masked));
+  debug(printf("19 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 4) & MASK8; /* 18 */
-  debug(printf("%04X\n",masked));
+  debug(printf("18 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (high_rc >> 2) & MASK8; /* 17 */
-  debug(printf("%04X\n",masked));
+  debug(printf("17 %04X\n",masked));
   counts[masked] += 1;
 
   masked = high_rc & MASK8;	/* 16 */
-  debug(printf("%04X\n",masked));
+  debug(printf("16 %04X\n",masked));
   counts[masked] += 1;
 
 
@@ -11795,73 +13700,107 @@ count_8mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   oligo |= high_rc << 14;
 
   masked = (oligo >> 12) & MASK8; /* 15 */
-  debug(printf("%04X\n",masked));
+  debug(printf("15 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 10) & MASK8; /* 14 */
-  debug(printf("%04X\n",masked));
+  debug(printf("14 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 8) & MASK8; /* 13 */
-  debug(printf("%04X\n",masked));
+  debug(printf("13 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 6) & MASK8; /* 12 */
-  debug(printf("%04X\n",masked));
+  debug(printf("12 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 4) & MASK8; /* 11 */
-  debug(printf("%04X\n",masked));
+  debug(printf("11 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (oligo >> 2) & MASK8; /* 10 */
-  debug(printf("%04X\n",masked));
+  debug(printf("10 %04X\n",masked));
   counts[masked] += 1;
 
   masked = oligo & MASK8; /* 9 */
-  debug(printf("%04X\n",masked));
+  debug(printf("9 %04X\n",masked));
   counts[masked] += 1;
 
 
-  masked = (low_rc >> 16) & MASK8; /* 8 */
-  debug(printf("%04X\n",masked));
+  masked = low_rc >> 16;	/* 8, No mask necessary */
+  debug(printf("8 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 14) & MASK8; /* 7 */
-  debug(printf("%04X\n",masked));
+  debug(printf("7 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 12) & MASK8; /* 6 */
-  debug(printf("%04X\n",masked));
+  debug(printf("6 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 10) & MASK8; /* 5 */
-  debug(printf("%04X\n",masked));
+  debug(printf("5 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 8) & MASK8; /* 4 */
-  debug(printf("%04X\n",masked));
+  debug(printf("4 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 6) & MASK8; /* 3 */
-  debug(printf("%04X\n",masked));
+  debug(printf("3 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 4) & MASK8; /* 2 */
-  debug(printf("%04X\n",masked));
+  debug(printf("2 %04X\n",masked));
   counts[masked] += 1;
 
   masked = (low_rc >> 2) & MASK8; /* 1 */
-  debug(printf("%04X\n",masked));
+  debug(printf("1 %04X\n",masked));
   counts[masked] += 1;
 
   masked = low_rc & MASK8;	/* 0 */
-  debug(printf("%04X\n",masked));
+  debug(printf("0 %04X\n",masked));
   counts[masked] += 1;
 
 
   return;
 }
+
+
+
+/* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
+   and next to have {high0_rc, low1_rc, high1_rc, nextlow_rc} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_8mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,18), _mm_slli_epi32(next,14));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,12), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,10), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask8));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask8));
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,16)); /* No mask necessary */;
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask8));
+  _mm_store_si128(out++, _mm_and_si128( current, mask8));
+
+  return;
+}
+#endif
+
+
 
 
 static int
@@ -11936,7 +13875,7 @@ store_8mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (high_rc >> 16) & MASK8; /* 24 */
+  masked = high_rc >> 16;	/* 24, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -12085,7 +14024,7 @@ store_8mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (low_rc >> 16) & MASK8; /* 8 */
+  masked = low_rc >> 16;	/* 8, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -12203,7 +14142,7 @@ count_7mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   counts[masked] += 1;
 
 
-  masked = (high_rc >> 18) & MASK7; /* 25 */
+  masked = high_rc >> 18;	/* 25, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
 
@@ -12272,7 +14211,7 @@ count_7mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   counts[masked] += 1;
 
 
-  masked = (low_rc >> 18) & MASK7; /* 9 */
+  masked = low_rc >> 18;	/* 9, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
 
@@ -12317,7 +14256,38 @@ count_7mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
 }
 
 
-static int
+/* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
+   and next to have {high0_rc, low1_rc, high1_rc, nextlow_rc} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_7mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,20), _mm_slli_epi32(next,12));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,10), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask7));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask7));
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,18)); /* No mask necessary */
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,16), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask7));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask7));
+  _mm_store_si128(out++, _mm_and_si128( current, mask7));
+
+  return;
+}
+#endif
+
+
+static Chrpos_T
 store_7mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
@@ -12380,7 +14350,7 @@ store_7mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (high_rc >> 18) & MASK7; /* 25 */
+  masked = high_rc >> 18;	/* 25, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -12529,7 +14499,7 @@ store_7mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (low_rc >> 18) & MASK7; /* 9 */
+  masked = low_rc >> 18;	/* 9, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -12651,7 +14621,7 @@ count_6mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   counts[masked] += 1;
 
 
-  masked = (high_rc >> 20) & MASK6; /* 26 */
+  masked = high_rc >> 20;	/* 26, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
 
@@ -12720,7 +14690,7 @@ count_6mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   counts[masked] += 1;
 
 
-  masked = (low_rc >> 20) & MASK6; /* 10 */
+  masked = low_rc >> 20;	/* 10, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
 
@@ -12767,6 +14737,36 @@ count_6mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
 
   return;
 }
+
+/* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
+   and next to have {high0_rc, low1_rc, high1_rc, nextlow_rc} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_6mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,22), _mm_slli_epi32(next,10));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask6));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask6));
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,20));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,18), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,16), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask6));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask6));
+  _mm_store_si128(out++, _mm_and_si128( current, mask6));
+
+  return;
+}
+#endif
 
 
 static int
@@ -12823,7 +14823,7 @@ store_6mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (high_rc >> 20) & MASK6; /* 26 */
+  masked = high_rc >> 20;	/* 26, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -12972,7 +14972,7 @@ store_6mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (low_rc >> 20) & MASK6; /* 10 */
+  masked = low_rc >> 20;	/* 10, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -13099,7 +15099,7 @@ count_5mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   counts[masked] += 1;
 
 
-  masked = (high_rc >> 22) & MASK5; /* 27 */
+  masked = high_rc >> 22;	/* 27, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
 
@@ -13168,7 +15168,7 @@ count_5mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   counts[masked] += 1;
 
 
-  masked = (low_rc >> 22) & MASK5; /* 11 */
+  masked = low_rc >> 22;	/* 11, No mask necessary */
   debug(printf("%04X\n",masked));
   counts[masked] += 1;
 
@@ -13220,6 +15220,36 @@ count_5mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Gen
   return;
 }
 
+/* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
+   and next to have {high0_rc, low1_rc, high1_rc, nextlow_rc} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_5mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,24), _mm_slli_epi32(next,8));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask5));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask5));
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,22));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,20), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,18), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,16), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,14), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask5));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask5));
+  _mm_store_si128(out++, _mm_and_si128( current, mask5));
+
+  return;
+}
+#endif
+
 
 static int
 store_5mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
@@ -13266,7 +15296,7 @@ store_5mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (high_rc >> 22) & MASK5; /* 27 */
+  masked = high_rc >> 22;	/* 27, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -13415,7 +15445,7 @@ store_5mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
   }
 
 
-  masked = (low_rc >> 22) & MASK5; /* 11 */
+  masked = low_rc >> 22;	/* 11, No mask necessary */
   if (counts[masked]) {
     if (pointers[masked] == positions[masked/*+1*/]) {
       counts[masked] = 0;
@@ -13527,13 +15557,15 @@ store_5mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
 }
 
 
+#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
 static void
-count_positions_rev (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
-		     int genestrand) {
+count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
+			 int genestrand) {
   int startdiscard, enddiscard;
   Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
 
+  debug(printf("Starting count_positions_rev_std\n"));
 
 #if 0
   /* No.  This extends past the query */
@@ -13784,12 +15816,504 @@ count_positions_rev (Count_T *counts, int indexsize, Univcoord_T left, Univcoord
   
   return;
 }
+#endif
  
 
+#ifdef USE_SIMD_FOR_COUNTS
 static void
-store_positions_rev (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
-		     Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
-		     int genestrand) {
+count_positions_rev_simd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
+			  int genestrand) {
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
+    low, high, nextlow;
+  Genomecomp_T low1_rc, high1_rc, low0, high0, low1, high1;
+  __m128i current, next;
+  __m128i array[16];
+#ifdef HAVE_SSE4_1
+  __m128i temp;
+#endif
+
+  debug(printf("Starting count_positions_rev_simd\n"));
+
+#if 0
+  /* No.  This extends past the query */
+  if (left != 0U) {
+    left -= 1;	/* Needed to get last oligomer to match */
+  }
+#endif
+  left_plus_length -= indexsize;
+
+  startptr = left/32U*3;
+  ptr = endptr = left_plus_length/32U*3;
+  startdiscard = left % 32; /* (left+pos5) % 32 */
+  enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
+  
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    low_rc = ~low;
+    high_rc = ~high;
+    nextlow_rc = ~nextlow;
+
+    if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 7) {
+      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 6) {
+      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 5) {
+      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+  } else {
+    /* Genome_print_blocks(ref_blocks,left,left+16); */
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    low_rc = ~low;
+    high_rc = ~high;
+    nextlow_rc = ~nextlow;
+
+    if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 7) {
+      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 6) {
+      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 5) {
+      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else {
+      abort();
+    }
+
+    if (indexsize == 8) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc; /* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_8mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr;		/* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow; */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	count_8mers_rev(counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else if (indexsize == 7) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_7mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr; /* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	count_7mers_rev(counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else if (indexsize == 6) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_6mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr; /* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	count_6mers_rev(counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else if (indexsize == 5) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_5mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr; /* ptr -= 6; */
+	
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	count_5mers_rev(counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else {
+      abort();
+    }
+
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    /* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    /* nextlow = ref_blocks[ptr+4]; */
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+      }
+    }
+
+    nextlow_rc = low_rc;	/* depended on nextlow */
+    low_rc = ~low;
+    high_rc = ~high;
+
+    if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 7) {
+      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 6) {
+      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 5) {
+      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+  }
+  
+  return;
+}
+#endif
+ 
+
+#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
+static void
+store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
+			 Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
+			 int genestrand) {
   int startdiscard, enddiscard;
   Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
     low, high, nextlow;
@@ -13916,6 +16440,7 @@ store_positions_rev (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 	chrpos = store_8mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
+
     } else if (indexsize == 7) {
       while (ptr > startptr) {
 #ifdef WORDS_BIGENDIAN
@@ -13944,6 +16469,7 @@ store_positions_rev (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 	chrpos = store_7mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
+
     } else if (indexsize == 6) {
       while (ptr > startptr) {
 #ifdef WORDS_BIGENDIAN
@@ -13972,6 +16498,7 @@ store_positions_rev (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 	chrpos = store_6mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
 	ptr -= 3;
       }
+
     } else if (indexsize == 5) {
       while (ptr > startptr) {
 #ifdef WORDS_BIGENDIAN
@@ -14044,6 +16571,497 @@ store_positions_rev (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
   
   return;
 }
+#endif
+
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+store_positions_rev_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
+			  Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
+			  int genestrand) {
+  int startdiscard, enddiscard;
+  Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
+    low, high, nextlow;
+  Genomecomp_T low1_rc, high1_rc, low0, high0, low1, high1;
+  __m128i current, next;
+  __m128i array[16];
+#ifdef HAVE_SSE4_1
+  __m128i temp;
+#endif
+
+
+#if 0
+  /* No.  This extends past the query */
+  if (left != 0U) {
+    left -= 1;	/* Needed to get last oligomer to match */
+  }
+#endif
+  left_plus_length -= indexsize;
+
+  startptr = left/32U*3;
+  ptr = endptr = left_plus_length/32U*3;
+  startdiscard = left % 32; /* (left+pos5) % 32 */
+  enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
+  
+  if (left_plus_length <= left) {
+    /* Skip */
+
+  } else if (startptr == endptr) {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    low_rc = ~low;
+    high_rc = ~high;
+    nextlow_rc = ~nextlow;
+
+    if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 7) {
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 6) {
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 5) {
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+  } else {
+    /* Genome_print_blocks(ref_blocks,left,left+16); */
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    low_rc = ~low;
+    high_rc = ~high;
+    nextlow_rc = ~nextlow;
+
+    if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 7) {
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 6) {
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 5) {
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else {
+      abort();
+    }
+
+    if (indexsize == 8) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_8mers_rev_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */ 		/* ptr is now startptr */
+      } else {
+	ptr = startptr; /* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	chrpos = store_8mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else if (indexsize == 7) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_7mers_rev_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr; /* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	chrpos = store_7mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else if (indexsize == 6) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_6mers_rev_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr; /* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	chrpos = store_6mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else if (indexsize == 5) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low0;
+	high_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	/* Use _set_ and not _setr_ */
+	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+#ifdef HAVE_SSE4_1
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_5mers_rev_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr == startptr + 3) {
+	ptr = startptr;  /* ptr -= 3; */		/* ptr is now startptr */
+      } else {
+	ptr = startptr;  /* ptr -= 6; */
+
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high = ref_blocks[ptr+3];
+	low = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	nextlow_rc = low_rc;	/* depended on nextlow */
+	low_rc = ~low;
+	high_rc = ~high;
+
+	chrpos = store_5mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
+	/* ptr already at startptr */
+      }
+
+    } else {
+      abort();
+    }
+
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(ref_blocks[ptr]);
+    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    /* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+    high = ref_blocks[ptr];
+    low = ref_blocks[ptr+1];
+    /* nextlow = ref_blocks[ptr+4]; */
+#endif
+    if (mode == CMET_STRANDED) {
+      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+      } else {
+	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+      }
+    }
+
+    nextlow_rc = low_rc;	/* depended on nextlow */
+    low_rc = ~low;
+    high_rc = ~high;
+
+    if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 7) {
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 6) {
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 5) {
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+  }
+  
+  return;
+}
+#endif
+
 
 
 #if 0
@@ -14115,20 +17133,6 @@ allocate_positions_check (Chrpos_T **pointers, Chrpos_T **positions,
 #define POLY_T 0xFFFF
 #endif
 
-#ifdef HAVE_SSE2
-
-#if 0
-/* For debugging of SIMD procedures*/
-static void
-print_vector (__m128i x, char *label) {
-  __m128i a[1];
-  unsigned int *s = a;
-
-  _mm_store_si128(a,x);
-  printf("%s: %u %u %u %u\n",label,s[0],s[1],s[2],s[3]);
-  return;
-}
-#endif
 
 #define ONE_CHAR 1
 #define TWO_CHARS 2
@@ -14138,6 +17142,8 @@ print_vector (__m128i x, char *label) {
 #define TWO_INTS 8
 #define SIMD_NINTS 4
 
+
+#ifdef HAVE_SSE2
 static int
 allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 		    Count_T *inquery, Count_T *counts, int oligospace
@@ -14164,7 +17170,8 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
   counts[POLY_T & mask] = 0;
 #endif
 
-  nskip_ptr = nskip = (int *) CALLOC(oligospace/SIMD_NCHARS + 1,sizeof(int));
+  nskip_ptr = nskip = (int *) MALLOC((oligospace/SIMD_NCHARS + 1) * sizeof(int));
+  *nskip_ptr = 0;
 
   inquery_ptr = (__m128i *) inquery;
   counts_ptr = (__m128i *) counts;
@@ -14182,7 +17189,7 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
       _mm_store_si128(terms_ptr,vec);
       totalcounts += terms[0] + terms[1] + terms[2] + terms[3] + terms[4] + terms[5] + terms[6] + terms[7] +
 	terms[8] + terms[9] + terms[10] + terms[11] + terms[12] + terms[13] + terms[14] + terms[15];
-      nskip_ptr++;
+      *(++nskip_ptr) = 0;	/* Advance ptr and initialize */
     }
   }
 
@@ -14205,49 +17212,58 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
     positions[0] = (Chrpos_T *) NULL;
   } else {
     /* Need to assign positions[0] so we can free the space */
-    positions[0] = p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
+    /* pointers[0] = */ positions[0] = p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
 
     nskip_ptr = nskip;
     i = *nskip_ptr++;
     while (i < oligospace) {
-      positions[i] = p;	/* 0 */
+      /* starti = i; */
+      pointers[i] = positions[i] = p;	/* 0 */
       p += counts[i++];
-      positions[i] = p;	/* 1 */
+      pointers[i] = positions[i] = p;	/* 1 */
       p += counts[i++];
-      positions[i] = p;	/* 2 */
+      pointers[i] = positions[i] = p;	/* 2 */
       p += counts[i++];
-      positions[i] = p;	/* 3 */
+      pointers[i] = positions[i] = p;	/* 3 */
       p += counts[i++];
-      positions[i] = p;	/* 4 */
+      pointers[i] = positions[i] = p;	/* 4 */
       p += counts[i++];
-      positions[i] = p;	/* 5 */
+      pointers[i] = positions[i] = p;	/* 5 */
       p += counts[i++];
-      positions[i] = p;	/* 6 */
+      pointers[i] = positions[i] = p;	/* 6 */
       p += counts[i++];
-      positions[i] = p;	/* 7 */
+      pointers[i] = positions[i] = p;	/* 7 */
       p += counts[i++];
-      positions[i] = p;	/* 8 */
+      pointers[i] = positions[i] = p;	/* 8 */
       p += counts[i++];
-      positions[i] = p;	/* 9 */
+      pointers[i] = positions[i] = p;	/* 9 */
       p += counts[i++];
-      positions[i] = p;	/* 10 */
+      pointers[i] = positions[i] = p;	/* 10 */
       p += counts[i++];
-      positions[i] = p;	/* 11 */
+      pointers[i] = positions[i] = p;	/* 11 */
       p += counts[i++];
-      positions[i] = p;	/* 12 */
+      pointers[i] = positions[i] = p;	/* 12 */
       p += counts[i++];
-      positions[i] = p;	/* 13 */
+      pointers[i] = positions[i] = p;	/* 13 */
       p += counts[i++];
-      positions[i] = p;	/* 14 */
+      pointers[i] = positions[i] = p;	/* 14 */
       p += counts[i++];
-      positions[i] = p;	/* 15 */
+      pointers[i] = positions[i] = p;	/* 15 */
       p += counts[i++];
-      positions[i] = p;	/* 16, used for indicating if pointer hits next position */
+      positions[i] = p;	/* 16, used for indicating if pointer hits next position.  Do not need to copy to pointers[i] */
+
+#if 0
+      /* Incremental call.  Turns out to be slightly slower than the individual assignments above. */
+      memcpy((void *) &(pointers[starti]),&(positions[starti]),16*sizeof(Chrpos_T *));
+#endif
 
       i += *nskip_ptr++;
     }
+#if 0
+    /* Single call replaced by incremental calls above */
     /* Does not copy position[oligospace] */
     memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
+#endif
   }
 
   FREE(nskip);
@@ -14307,6 +17323,42 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 #endif
 
 
+#ifdef DEBUG14
+static void
+counts_compare (Count_T *counts1, Count_T *counts2, Oligospace_T oligospace) {
+  Oligospace_T i;
+
+  for (i = 0; i < oligospace; i++) {
+    if (counts1[i] != counts2[i]) {
+      printf("At oligo %lu, counts1 %d != counts2 %d\n",i,counts1[i],counts2[i]);
+      abort();
+    }
+  }
+  return;
+}
+
+static void
+positions_compare (Chrpos_T **positions1, Chrpos_T **positions2, Count_T *counts, int oligospace) {
+  Oligospace_T i;
+  int hit;
+
+  for (i = 0; i < oligospace; i++) {
+    /* nt = shortoligo_nt(i,indexsize); */
+    for (hit = 0; hit < counts[i]; hit++) {
+      if (positions1[i][hit] != positions2[i][hit]) {
+	printf("At oligo %lu, hit %d, positions1 %u != positions2 %u\n",
+	       i,hit,positions1[i][hit],positions2[i][hit]);
+	abort();
+      }
+    }
+  }
+
+  return;
+}
+#endif
+
+
+
 /* Notes: genomicstart and genomicend define the region for alignment.
    Within that interval, mappingstart and mappingend define the region
    for allowable mappings.  This allows GSNAP to define a larger
@@ -14319,6 +17371,11 @@ Oligoindex_hr_tally (T this,
 		     Univcoord_T mappingstart, Univcoord_T mappingend, bool plusp,
 		     char *queryuc_ptr, int querylength, Chrpos_T chrpos, int genestrand) {
   int badoligos, repoligos, trimoligos, trim_start, trim_end;
+#ifdef DEBUG14
+  Count_T *counts_std;
+  Chrpos_T **pointers_std;
+  Chrpos_T **positions_std;
+#endif
 
   Oligoindex_set_inquery(&badoligos,&repoligos,&trimoligos,&trim_start,&trim_end,this,
 			 queryuc_ptr,querylength,/*trimp*/false);
@@ -14352,42 +17409,108 @@ Oligoindex_hr_tally (T this,
   if (plusp == true) {
     debug(printf("plus, first sequencepos is %u\n",chrpos));
 #ifdef PMAP
-    count_positions_fwd(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
+    count_positions_fwd_std(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
     if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
 			   this->oligospace) > 0) {
       /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
-      store_positions_fwd(this->pointers,&(this->positions[1]),this->counts,this->indexsize_aa,mappingstart,mappingend,
-			  chrpos,genestrand);
+      store_positions_fwd_std(this->pointers,&(this->positions[1]),this->counts,this->indexsize_aa,mappingstart,mappingend,
+			      chrpos,genestrand);
     }
 #else
-    count_positions_fwd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
+
+#ifdef USE_SIMD_FOR_COUNTS
+    count_positions_fwd_simd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
+#ifdef DEBUG14
+    counts_std = (Count_T *) CALLOC(this->oligospace,sizeof(Count_T));
+    count_positions_fwd_std(counts_std,this->indexsize,mappingstart,mappingend,genestrand);
+    counts_compare(this->counts,counts_std,this->oligospace);
+#endif
+#else
+    count_positions_fwd_std(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
+#endif
+
     if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
 			   this->oligospace,this->mask) > 0) {
       /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
-      store_positions_fwd(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
-			  chrpos,genestrand);
-    }
+#ifdef USE_SIMD_FOR_COUNTS
+      store_positions_fwd_simd(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+			       chrpos,genestrand);
+#ifdef DEBUG14
+      pointers_std = (Chrpos_T **) CALLOC(this->oligospace,sizeof(Chrpos_T *));
+      positions_std = (Chrpos_T **) CALLOC(this->oligospace+1,sizeof(Chrpos_T *));
+      allocate_positions(pointers_std,positions_std,this->inquery,counts_std,
+			 this->oligospace,this->mask);
+      store_positions_fwd_std(pointers_std,&(positions_std[1]),counts_std,this->indexsize,mappingstart,mappingend,
+			      chrpos,genestrand);
+      positions_compare(this->positions,positions_std,counts_std,this->oligospace);
+      FREE(positions_std);
+      FREE(pointers_std);
 #endif
+
+#else
+      store_positions_fwd_std(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+			      chrpos,genestrand);
+#endif
+    }
+
+#ifdef DEBUG14
+    FREE(counts_std);
+#endif
+
+#endif	/* PMAP */
 
   } else {
     debug(printf("minus, first sequencepos is %u\n",chrpos));
 #ifdef PMAP
-    count_positions_rev(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
+    count_positions_rev_std(this->counts,this->indexsize_aa,mappingstart,mappingend,genestrand);
     if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
 			   this->oligospace) > 0) {
       /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
-      store_positions_rev(this->pointers,&(this->positions[1]),this->counts,this->indexsize_aa,mappingstart,mappingend,
-			  chrpos,genestrand);
+      store_positions_rev_std(this->pointers,&(this->positions[1]),this->counts,this->indexsize_aa,mappingstart,mappingend,
+			      chrpos,genestrand);
     }
 #else
-    count_positions_rev(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
+
+#ifdef USE_SIMD_FOR_COUNTS
+    count_positions_rev_simd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
+#ifdef DEBUG14
+    counts_std = (Count_T *) CALLOC(this->oligospace,sizeof(Count_T));
+    count_positions_rev_std(counts_std,this->indexsize,mappingstart,mappingend,genestrand);
+    counts_compare(this->counts,counts_std,this->oligospace);
+#endif
+#else
+    count_positions_rev_std(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
+#endif
+
     if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
 			   this->oligospace,this->mask) > 0) {
       /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
-      store_positions_rev(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
-			  chrpos,genestrand);
-    }
+#ifdef USE_SIMD_FOR_COUNTS
+      store_positions_rev_simd(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+			       chrpos,genestrand);
+#ifdef DEBUG14
+      pointers_std = (Chrpos_T **) CALLOC(this->oligospace,sizeof(Chrpos_T *));
+      positions_std = (Chrpos_T **) CALLOC(this->oligospace+1,sizeof(Chrpos_T *));
+      allocate_positions(pointers_std,positions_std,this->inquery,counts_std,
+			 this->oligospace,this->mask);
+      store_positions_rev_std(pointers_std,&(positions_std[1]),counts_std,this->indexsize,mappingstart,mappingend,
+			      chrpos,genestrand);
+      positions_compare(this->positions,positions_std,counts_std,this->oligospace);
+      FREE(positions_std);
+      FREE(pointers_std);
 #endif
+
+#else
+      store_positions_rev_std(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+			      chrpos,genestrand);
+#endif
+    }
+
+#ifdef DEBUG14
+    FREE(counts_std);
+#endif
+
+#endif	/* PMAP */
   }
 
 

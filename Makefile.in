@@ -35,7 +35,7 @@ target_triplet = @target@
 subdir = .
 DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in $(top_srcdir)/configure AUTHORS COPYING \
-	ChangeLog INSTALL NEWS config/compile config/config.guess \
+	ChangeLog INSTALL NEWS TODO config/compile config/config.guess \
 	config/config.sub config/depcomp config/install-sh \
 	config/ltmain.sh config/missing
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -54,6 +54,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/struct-stat64.m4 \
 	$(top_srcdir)/config/expand.m4 $(top_srcdir)/config/perl.m4 \
 	$(top_srcdir)/config/fopen.m4 $(top_srcdir)/config/asm-bsr.m4 \
+	$(top_srcdir)/config/sse2_shift_defect.m4 \
 	$(top_srcdir)/config/ax_gcc_x86_cpuid.m4 \
 	$(top_srcdir)/config/ax_check_compile_flag.m4 \
 	$(top_srcdir)/config/ax_ext.m4 $(top_srcdir)/configure.ac
@@ -218,7 +219,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 SUBDIRS = src util tests
-EXTRA_DIST = VERSION config.site
+EXTRA_DIST = VERSION NOTICE config.site
 CLEANFILES = so_locations
 ACLOCAL_AMFLAGS = -I config
 all: all-recursive
@@ -657,7 +658,7 @@ uninstall-am:
 
 
 install-data-local:
-	$(mkinstalldirs) $(GMAPDB)
+#	$(mkinstalldirs) $(GMAPDB)
 
 dist-hook:
 #	svn log -v --xml | ./svncl.pl > ChangeLog

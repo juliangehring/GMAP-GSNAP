@@ -1,4 +1,4 @@
-/* $Id: genomicpos.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: genomicpos.h 101488 2013-07-15 16:52:36Z twu $ */
 #ifndef GENOMICPOS_INCLUDED
 #define GENOMICPOS_INCLUDED
 #include <stdlib.h>
@@ -23,7 +23,13 @@ typedef Uintlist_T Genomicposlist_T;
 typedef UINT4 Chrpos_T;
 
 extern char *
-Genomicpos_commafmt (Univcoord_T N);
+Genomicpos_commafmt (
+#ifdef HAVE_64_BIT
+		     UINT8 N
+#else
+		     UINT4 N
+#endif
+		     );
 extern int
 UINT8_compare (const void *a, const void *b);
 extern int

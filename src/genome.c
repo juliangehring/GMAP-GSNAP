@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: genome.c 111028 2013-10-11 23:23:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -136,7 +136,8 @@ Genome_free (T *old) {
 
 
 T
-Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_p, Access_mode_T access) {
+Genome_new (char *genomesubdir, char *fileroot, char *snps_root, Genometype_T genometype,
+	    bool genome_lc_p, Access_mode_T access) {
   T new = (T) MALLOC(sizeof(*new));
   char *filename;
   bool compressedp = !genome_lc_p;
@@ -147,15 +148,39 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
   new->compressedp = compressedp;
 
   if (compressedp == true) {
-    if (snps_root != NULL) {
-      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".genomecomp.")+strlen(snps_root)+1,sizeof(char));
-      sprintf(filename,"%s/%s.genomecomp.%s",genomesubdir,fileroot,snps_root);
+    if (genometype == GENOME_OLIGOS) {
+      if (snps_root != NULL) {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomecomp.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomecomp.%s",genomesubdir,fileroot,snps_root);
+      } else {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomecomp")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
+      }
+
+    } else if (genometype == GENOME_BITS) {
+      if (snps_root != NULL) {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomebits.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits.%s",genomesubdir,fileroot,snps_root);
+      } else {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomebits")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits",genomesubdir,fileroot);
+      }
+      if (Access_file_exists_p(filename) == false) {
+	fprintf(stderr,"Detected old version of genome index: genomebits file not available, so using genomecomp file, which will be slower\n");
+	FREE(filename);
+	FREE(new);
+	return (T) NULL;
+      }
+
     } else {
-      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".genomecomp")+1,sizeof(char));
-      sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
+      fprintf(stderr,"Don't recognize genome type %d\n",genometype);
+      abort();
     }
+
   } else {
     filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
 			       strlen(".genome")+1,sizeof(char));
@@ -166,7 +191,12 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
     new->chars = (char *) NULL;
 
     if (access == USE_ALLOCATE) {
-      fprintf(stderr,"Allocating memory for compressed genome...");
+      fprintf(stderr,"Allocating memory for compressed genome ");
+      if (genometype == GENOME_OLIGOS) {
+	fprintf(stderr,"(oligos)...");
+      } else if (genometype == GENOME_BITS) {
+	fprintf(stderr,"(bits)...");
+      }
       new->blocks = (Genomecomp_T *) Access_allocated(&new->len,&seconds,filename,sizeof(Genomecomp_T));
       if (new->blocks == NULL) {
 	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
@@ -180,9 +210,14 @@ Genome_new (char *genomesubdir, char *fileroot, char *snps_root, bool genome_lc_
 
 #ifdef HAVE_MMAP
     } else if (access == USE_MMAP_PRELOAD) {
-      fprintf(stderr,"Pre-loading compressed genome...");
+      fprintf(stderr,"Pre-loading compressed genome ");
+      if (genometype == GENOME_OLIGOS) {
+	fprintf(stderr,"(oligos)...");
+      } else if (genometype == GENOME_BITS) {
+	fprintf(stderr,"(bits)...");
+      }
       new->blocks = (Genomecomp_T *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
-						      filename,sizeof(Genomecomp_T));
+							     filename,sizeof(Genomecomp_T));
       if (new->blocks == NULL) {
 	fprintf(stderr,"insufficient memory (will use disk file instead)\n");
 	new->access = FILEIO;
@@ -355,7 +390,9 @@ genomecomp_read_current (T this) {
 
 static char DEFAULT_CHARS[4] = {'A','C','G','T'};
 static char DEFAULT_FLAGS[4] = {'N','N','N','N'};
+#ifdef EXTRACT_GENOMICSEG
 static char A_FLAGS[4] =       {'A','A','A','A'};
+#endif
 
 static char SNP_CHARS[4] = {' ',' ',' ',' '};
 static char SNP_FLAGS[4] = {'A','C','G','T'};
@@ -8576,7 +8613,7 @@ uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos,
   Univcoord_T startblock, endblock, ptr;
   Genomecomp_T high, low, flags;
   char Buffer[32];
-  int startdiscard, enddiscard, i, k = 0;
+  int startdiscard, enddiscard, i;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
@@ -8603,7 +8640,7 @@ uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos,
       flags >>= 1;
     }
     for (i = startdiscard; i < enddiscard; i++) {
-      gbuffer1[k++] = Buffer[i];
+      *gbuffer1++ = Buffer[i];
     }
   } else {
     genomecomp_move_absolute(this,ptr);
@@ -8622,7 +8659,7 @@ uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos,
       flags >>= 1;
     }
     for (i = startdiscard; i < 32; i++) {
-      gbuffer1[k++] = Buffer[i];
+      *gbuffer1++ = Buffer[i];
     }
     ptr += 3;
       
@@ -8632,12 +8669,12 @@ uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos,
       flags = genomecomp_read_current(this);
 
       for (i = 0; i < 16; i++) {
-	gbuffer1[k++] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	gbuffer1[k++] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
 	high >>= 2;
 	flags >>= 1;
       }
@@ -8660,7 +8697,7 @@ uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos,
 	flags >>= 1;
       }
       for (i = 0; i < enddiscard; i++) {
-	gbuffer1[k++] = Buffer[i];
+	*gbuffer1++ = Buffer[i];
       }
     }
   }
@@ -8803,7 +8840,7 @@ uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T star
   Univcoord_T startblock, endblock, ptr;
   Genomecomp_T high, low, flags;
   char Buffer[32];
-  int startdiscard, enddiscard, i, k = 0;
+  int startdiscard, enddiscard, i;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
@@ -8833,7 +8870,7 @@ uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T star
       flags >>= 1;
     }
     for (i = startdiscard; i < enddiscard; i++) {
-      gbuffer1[k++] = Buffer[i];
+      *gbuffer1++ = Buffer[i];
     }
 
   } else {
@@ -8856,7 +8893,7 @@ uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T star
       flags >>= 1;
     }
     for (i = startdiscard; i < 32; i++) {
-      gbuffer1[k++] = Buffer[i];
+      *gbuffer1++ = Buffer[i];
     }
     ptr += 3;
       
@@ -8870,12 +8907,12 @@ uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T star
 #endif
 
       for (i = 0; i < 16; i++) {
-	gbuffer1[k++] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
 	low >>= 2;
 	flags >>= 1;
       }
       for ( ; i < 32; i++) {
-	gbuffer1[k++] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
 	high >>= 2;
 	flags >>= 1;
       }
@@ -8902,7 +8939,7 @@ uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T star
 	flags >>= 1;
       }
       for (i = 0; i < enddiscard; i++) {
-	gbuffer1[k++] = Buffer[i];
+	*gbuffer1++ = Buffer[i];
       }
     }
   }
@@ -8918,7 +8955,8 @@ Genome_uncompress_mmap (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startp
   Univcoord_T startblock, endblock, ptr;
   Genomecomp_T high, low, flags;
   char Buffer[32];
-  int startdiscard, enddiscard, i, k;
+  int startdiscard, enddiscard, i;
+  Univcoord_T k = 0;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
@@ -9026,6 +9064,7 @@ Genome_uncompress_mmap (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startp
 
   return;
 }
+
 
 
 /* Correct procedure should look at alt high/low and normal flags, and substitute N based on normal flags */
@@ -9196,7 +9235,8 @@ uncompress_mmap_snps_only (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T sta
   Univcoord_T startblock, endblock, ptr;
   Genomecomp_T high, low, flags;
   char Buffer[32];
-  int startdiscard, enddiscard, i, k = 0;
+  int startdiscard, enddiscard, i;
+  Univcoord_T k = 0;
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
@@ -9566,7 +9606,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
   /* Chrpos_T length = endpos - startpos; */
   Univcoord_T startblock, endblock, startdiscard, enddiscard, ptr;
   Genomecomp_T high, low, flags;
-  int i, k = 0;
+  int i;
 #ifdef DEBUG3
   char gbuffer_debug[1024];
 #endif
@@ -9599,7 +9639,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	if (flags & 0x01) {
 	  /* return false; */
 	}
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 1, startdiscard %d, enddiscard %d\n",startdiscard,enddiscard);
@@ -9619,7 +9659,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	if (flags & 0x01) {
 	  /* return false; */
 	}
-	gbuffer[k++] = (unsigned char) (high & 0x03);
+	*gbuffer++ = (unsigned char) (high & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 2\n");
@@ -9648,7 +9688,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	if (flags & 0x01) {
 	  /* return false; */
 	}
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 3\n");
@@ -9666,7 +9706,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
       if (flags & 0x01) {
 	/* return false; */
       }
-      gbuffer[k++] = (unsigned char) (high & 0x03);
+      *gbuffer++ = (unsigned char) (high & 0x03);
 #ifdef DEBUG3
       if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	fprintf(stderr,"Case 4, startdiscard %d (after subtracting 16)\n",startdiscard);
@@ -9691,7 +9731,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	/* return false; */
       }
       for (i = 0; i < 16; i++) {
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 5\n");
@@ -9701,7 +9741,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	low >>= 2;
       }
       for ( ; i < 32; i++) {
-	gbuffer[k++] = (unsigned char) (high & 0x03);
+	*gbuffer++ = (unsigned char) (high & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 6\n");
@@ -9727,7 +9767,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	if (flags & 0x01) {
 	  /* return false; */
 	}
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 7\n");
@@ -9742,7 +9782,7 @@ uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *block
 	if (flags & 0x01) {
 	  /* return false; */
 	}
-	gbuffer[k++] = (unsigned char) (high & 0x03);
+	*gbuffer++ = (unsigned char) (high & 0x03);
 #ifdef DEBUG3
 	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
 	  fprintf(stderr,"Case 8\n");
@@ -9767,7 +9807,7 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
   /* Chrpos_T length = endpos - startpos; */
   Univcoord_T startblock, endblock, ptr;
   Genomecomp_T high, low;
-  int startdiscard, enddiscard, i, k = 0;
+  int startdiscard, enddiscard, i;
 
   ptr = startblock = startpos/32U*3;
   endblock = endpos/32U*3;
@@ -9785,7 +9825,7 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
 #endif
       low >>= (startdiscard+startdiscard);
       while (startdiscard < enddiscard && startdiscard < 16) {
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 	low >>= 2;
 	startdiscard++;
       }
@@ -9800,7 +9840,7 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
 #endif
       high >>= (startdiscard+startdiscard);
       while (startdiscard < enddiscard) {
-	gbuffer[k++] = (unsigned char) (high & 0x03);
+	*gbuffer++ = (unsigned char) (high & 0x03);
 	high >>= 2;
 	startdiscard++;
       }
@@ -9816,7 +9856,7 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
     if (startdiscard < 16) {
       low >>= (startdiscard+startdiscard);
       while (startdiscard < 16) {
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 	low >>= 2;
 	startdiscard++;
       }
@@ -9824,7 +9864,7 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
     startdiscard -= 16;
     high >>= (startdiscard+startdiscard);
     while (startdiscard < 16) {
-      gbuffer[k++] = (unsigned char) (high & 0x03);
+      *gbuffer++ = (unsigned char) (high & 0x03);
       high >>= 2;
       startdiscard++;
     }
@@ -9839,11 +9879,11 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
       high = blocks[ptr]; low = blocks[ptr+1];
 #endif
       for (i = 0; i < 16; i++) {
-	gbuffer[k++] = (unsigned char) (low & 0x03);
+	*gbuffer++ = (unsigned char) (low & 0x03);
 	low >>= 2;
       }
       for ( ; i < 32; i++) {
-	gbuffer[k++] = (unsigned char) (high & 0x03);
+	*gbuffer++ = (unsigned char) (high & 0x03);
 	high >>= 2;
       }
 
@@ -9859,12 +9899,12 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
 #endif
     i = 0;
     while (i < enddiscard && i < 16) {
-      gbuffer[k++] = (unsigned char) (low & 0x03);
+      *gbuffer++ = (unsigned char) (low & 0x03);
       low >>= 2;
       i++;
     }
     while (i < enddiscard) {
-      gbuffer[k++] = (unsigned char) (high & 0x03);
+      *gbuffer++ = (unsigned char) (high & 0x03);
       high >>= 2;
       i++;
     }
@@ -9887,6 +9927,183 @@ uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univc
   return;
 }
 
+
+/* Assign A => 0, C => 1, G => 2, T => 3, N/X => 4 */
+static void
+uncompress_mmap_int_string (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+			    Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  int startdiscard, enddiscard, i;
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+
+    if (startdiscard < 16) {
+#ifdef WORDS_BIGENDIAN
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+      low = blocks[ptr+1];
+#endif
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard && startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (low & 0x03);
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    if (enddiscard >= 16) {
+      startdiscard -= 16;
+      enddiscard -= 16;
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+#else
+      high = blocks[ptr];
+#endif
+      high >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (high & 0x03);
+	}
+	high >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (low & 0x03);
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    startdiscard -= 16;
+    high >>= (startdiscard+startdiscard);
+    while (startdiscard < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+      }
+      high >>= 2;
+      flags >>= 1;
+      startdiscard++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      for (i = 0; i < 16; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (low & 0x03);
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (high & 0x03);
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+
+      /* printf("Block %d assigned up to %d\n",ptr,k); */
+      ptr += 3;
+    }
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    i = 0;
+    while (i < enddiscard && i < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = (unsigned char) (low & 0x03);
+      }
+      low >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    while (i < enddiscard) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+      }
+      high >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+  }
+
+#if 0
+  for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+    if (gbuffer[k] > 3) {
+      printf("startpos = %u, endpos = %u, k = %d\n",startpos,endpos,k);
+      printf("startblock %u, endblock %u\n",startblock,endblock);
+      for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+	printf("%u %d %d\n",ptr,k,gbuffer[k]);
+      }
+      abort();
+    }
+  }
+#endif
+
+  return;
+}
 
 
 /************************************************************************
@@ -10287,6 +10504,66 @@ Genome_fill_buffer_nucleotides (T this, Univcoord_T left, Chrpos_T length, unsig
 }
 
 
+void
+Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer) {
+  
+  if (length == 0) {
+    return;
+  }
+
+  /* Fix out of bounds resulting from negative numbers */
+#if 0
+  if (left + length < left) {
+    fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
+    abort();
+  }
+#else
+  assert(left + length >= left);
+#endif
+
+  if (this->compressedp == false) {
+    fprintf(stderr,"Procedure Genome_fill_buffer_nucleotides not designed to work for non-compressed genomes\n");
+    exit(9);
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer,&(this->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      fprintf(stderr,"Procedure Genome_fill_buffer_nucleotides not designed to work under FILEIO access\n");
+      exit(9);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      uncompress_mmap_int_string(gbuffer,this->blocks,left,left+length);
+    }
+  }
+
+  gbuffer[length] = 0xFF;
+
+#if 0
+  for (i = 0; i <= length; i++) {
+    printf("%d ",gbuffer[i]);
+  }
+  printf("\n");
+#endif
+
+  return;
+}
+
+
 char
 Genome_get_char (T this, Univcoord_T left) {
   char c;
@@ -10344,6 +10621,7 @@ Genome_get_char_blocks (char *charalt, Univcoord_T left) {
   
   /* assert(left < 4000000000U); */
 
+  /* printf("Genome_get_char_blocks called with left = %u\n",left); */
   if ((c = uncompress_one_char(genome_blocks,left)) == 'N' || c == 'X') {
     *charalt = c;
   } else {
@@ -10355,6 +10633,93 @@ Genome_get_char_blocks (char *charalt, Univcoord_T left) {
 #endif
 
   return c;
+}
+
+
+char *
+Genome_get_segment_blocks_right (char **segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chrhigh,
+				 bool revcomp) {
+  char *segment;
+  Chrpos_T out_of_bounds, i;
+
+  if (left >= chrhigh) {
+    /* All out of bounds */
+    return (char *) NULL;
+  } else if (left + length >= chrhigh) {
+    segment = (char *) MALLOC((length+1) * sizeof(char));
+    out_of_bounds = left + length - chrhigh;
+    /* Cannot check i >= length - out_of_bounds when i is unsigned */
+    for (i = length - 1; i + out_of_bounds >= length; i--) {
+      segment[i] = '*';
+    }
+  } else {
+    segment = (char *) MALLOC((length+1) * sizeof(char));
+    out_of_bounds = 0;
+  }
+
+  /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",left,revcomp); */
+  Genome_uncompress_mmap(segment,genome_blocks,left,left+length-out_of_bounds);
+  if (revcomp == true) {
+    make_complement_inplace(segment,length);
+  }
+
+  if (genomealt_blocks == genome_blocks) {
+    *segmentalt = segment;
+  } else {
+    *segmentalt = (char *) MALLOC((length+1) * sizeof(char));
+    for (i = length - 1; i >= length - out_of_bounds; i--) {
+      (*segmentalt)[i] = '*';
+    }
+    Genome_uncompress_mmap(*segmentalt,genomealt_blocks,left,left+length-out_of_bounds);
+    if (revcomp == true) {
+      make_complement_inplace(*segmentalt,length);
+    }
+  }
+  
+  return segment;
+}
+
+
+char *
+Genome_get_segment_blocks_left (char **segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chroffset,
+				bool revcomp) {
+  char *segment;
+  Chrpos_T out_of_bounds, i;
+
+
+  if (left < chroffset) {
+    return (char *) NULL;
+  } else if (left < chroffset + length) {
+    segment = (char *) MALLOC((length+1) * sizeof(char));
+    out_of_bounds = chroffset + length - left;
+    for (i = 0; i < out_of_bounds; i++) {
+      segment[i] = '*';
+    }
+  } else {
+    segment = (char *) MALLOC((length+1) * sizeof(char));
+    out_of_bounds = 0;
+  }
+
+  /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",left,revcomp); */
+  Genome_uncompress_mmap(&(segment[out_of_bounds]),genome_blocks,left-length+out_of_bounds,left);
+  if (revcomp == true) {
+    make_complement_inplace(segment,length);
+  }
+
+  if (genomealt_blocks == genome_blocks) {
+    *segmentalt = segment;
+  } else {
+    *segmentalt = (char *) MALLOC((length+1) * sizeof(char));
+    for (i = 0; i < out_of_bounds; i++) {
+      (*segmentalt)[i] = '*';
+    }
+    Genome_uncompress_mmap(&((*segmentalt)[out_of_bounds]),genomealt_blocks,left-length+out_of_bounds,left);
+    if (revcomp == true) {
+      make_complement_inplace(*segmentalt,length);
+    }
+  }
+  
+  return segment;
 }
 
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mapq.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: mapq.c 102893 2013-07-25 22:11:12Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,7 +32,7 @@ MAPQ_init (int quality_score_adj_in) {
 
 
 /* Duplicated in pair.c */
-static double
+static float
 mismatch_logprob[MAX_QUALITY_SCORE+1] =
   /* log(1/3*10^(-Q/10)) */
   {-1.098612,
@@ -46,7 +46,7 @@ mismatch_logprob[MAX_QUALITY_SCORE+1] =
    -9.387919, -9.618177, -9.848436, -10.078694, -10.308953};
 
 #ifdef USE_MATCHES
-static double
+static float
 match_logprob[MAX_QUALITY_SCORE+1] = 
   /* log(1 - 10^(-Q/10)) */
   {/*-Inf*/-1.58,
@@ -96,11 +96,11 @@ MAPQ_max_quality_score (char *quality_string, int querylength) {
 
 
 
-double
+float
 MAPQ_loglik_exact (char *quality_string, int querystart, int queryend) {
 
 #ifdef USE_MATCHES
-  double loglik = 0.0;
+  float loglik = 0.0;
   int Q;
   int querypos;
 
@@ -149,10 +149,10 @@ check_badchar (char c) {
 
 
 
-double
+float
 MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int queryend,
 	     int querylength, char *quality_string, bool plusp, int genestrand) {
-  double loglik = 0.0;
+  float loglik = 0.0;
   int Q;
   int querypos;
 

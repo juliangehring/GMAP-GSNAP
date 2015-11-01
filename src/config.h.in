@@ -3,6 +3,10 @@
 /* Define if building universal (internal helper macro) */
 #undef AC_APPLE_UNIVERSAL_BUILD
 
+/* Define to 1 if your compiler is defective and requires an immediate in sse2
+   shift commands. */
+#undef DEFECTIVE_SSE2_COMPILER
+
 /* Define to 1 if you support Altivec instructions */
 #undef HAVE_ALTIVEC
 
@@ -73,6 +77,9 @@
 
 /* Define to 1 if MADV_RANDOM available for madvise */
 #undef HAVE_MADVISE_MADV_RANDOM
+
+/* Define to 1 if MADV_SEQUENTIAL available for madvise */
+#undef HAVE_MADVISE_MADV_SEQUENTIAL
 
 /* Define to 1 if MADV_WILLNEED available for madvise. */
 #undef HAVE_MADVISE_MADV_WILLNEED

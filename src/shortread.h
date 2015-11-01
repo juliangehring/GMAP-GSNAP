@@ -1,4 +1,4 @@
-/* $Id: shortread.h 98808 2013-06-18 22:16:54Z twu $ */
+/* $Id: shortread.h 101822 2013-07-17 18:43:45Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -82,36 +82,36 @@ Shortread_find_overlap (T queryseq1, T queryseq2);
 extern T
 Shortread_new (char *acc, char *restofheader, bool filterp,
 	       char *sequence, int sequence_length, char *quality, int quality_length,
-	       int barcode_length, bool invertp, bool copy_acc_p);
+	       int barcode_length, bool invertp, bool copy_acc_p, bool skipp);
 
 extern T
 Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FILE **input2,
-				 char ***files, int *nfiles,
+				 char ***files, int *nfiles, bool skipp,
 				 int barcode_length, bool invert_first_p, bool invert_second_p);
 extern T
 Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FILE **input2,
-				 char ***files, int *nfiles,
+				 char ***files, int *nfiles, bool skipp,
 				 int barcode_length, bool invert_first_p, bool invert_second_p);
 
 #ifdef HAVE_ZLIB
 extern T
 Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input1, gzFile *input2,
-				      char ***files, int *nfiles,
+				      char ***files, int *nfiles, bool skipp,
 				      int barcode_length, bool invert_first_p, bool invert_second_p);
 extern T
 Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input1, gzFile *input2,
-				      char ***files, int *nfiles,
+				      char ***files, int *nfiles, bool skipp,
 				      int barcode_length, bool invert_first_p, bool invert_second_p);
 #endif
 
 #ifdef HAVE_BZLIB
 extern T
 Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *input1, Bzip2_T *input2,
-				       char ***files, int *nfiles,
+				       char ***files, int *nfiles, bool skipp,
 				       int barcode_length, bool invert_first_p, bool invert_second_p);
 extern T
 Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *input1, Bzip2_T *input2,
-				       char ***files, int *nfiles,
+				       char ***files, int *nfiles, bool skipp,
 				       int barcode_length, bool invert_first_p, bool invert_second_p);
 #endif
 

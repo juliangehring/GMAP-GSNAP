@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 109764 2013-10-02 17:13:24Z twu $";
+static char rcsid[] = "$Id: substring.c 110466 2013-10-09 00:29:37Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -267,7 +267,7 @@ struct T {
 			     a pointer to genomic_bothdiff.  Use for
 			     NM and MD computations.  */
 
-  double mapq_loglik;
+  float mapq_loglik;
 
   /* for splices */
   bool chimera_sensep;
@@ -755,7 +755,7 @@ Substring_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query
   int alignlength, startpos, endpos, pos, i;
   int mismatch_positions[MAX_READLENGTH];
   int nmismatches;
-  double vprob_good, vprob_bad, prev_vprob_good, prev_vprob_bad, good_incr_prob, bad_incr_prob;
+  float vprob_good, vprob_bad, prev_vprob_good, prev_vprob_bad, good_incr_prob, bad_incr_prob;
 #ifdef DEBUG9
   bool result;
   State_T vstate_good[MAX_READLENGTH], vstate_bad[MAX_READLENGTH], state;
@@ -1091,7 +1091,38 @@ Substring_insert_length (T substring5, T substring3) {
 
 
 bool
-Substring_overlap_trimmed_p (T substring1, T substring2) {
+Substring_overlap_point_trimmed_p (T substring, Univcoord_T endpos) {
+  Univcoord_T low, high;
+
+  if (substring == NULL) {
+    return false;
+  }
+
+  if (substring->plusp == true) {
+    low = substring->alignstart_trim;
+    high = substring->alignend_trim;
+  } else {
+    low = substring->alignend_trim;
+    high = substring->alignstart_trim;
+  }
+
+  debug3(printf("Checking overlap between %u..%u and %u",low,high,endpos));
+
+  if (endpos < low) {
+    debug3(printf(" => no because %u < %u\n",endpos,low));
+    return false;
+  } else if (endpos > high) {
+    debug3(printf(" => no because %u > %u\n",endpos,high));
+    return false;
+  } else {
+    debug3(printf(" => yes\n"));
+    return true;
+  }
+}
+
+
+bool
+Substring_overlap_segment_trimmed_p (T substring1, T substring2) {
   Univcoord_T low1, high1, low2, high2;
 
   if (substring1->plusp == true) {
@@ -1124,28 +1155,56 @@ Substring_overlap_trimmed_p (T substring1, T substring2) {
   }
 }
 
-Chrpos_T
-Substring_insert_length_trimmed (T substring5, T substring3) {
-  Univcoord_T pos5, pos3;
 
-  debug3(printf("substring5 %d..%d out of %d\n",substring5->querystart,substring5->queryend,substring5->querylength));
-  debug3(printf("substring3 %d..%d out of %d\n",substring3->querystart,substring3->queryend,substring3->querylength));
+
+#if 0
+Chrpos_T
+Substring_insert_length_trimmed (T substring5, T substring3, int hit5_trim_left, int hit5_trim_right, int hit3_trim_left, int hit3_trim_right) {
+  Univcoord_T rightpos, leftpos, pos;
+  int right_extent, left_extent;
+  
+  debug3(printf("substring5 %d..%d out of %d.  aligned to %u..%u\n",
+		substring5->querystart,substring5->queryend,substring5->querylength,
+		substring5->alignstart_trim - substring5->chroffset,substring5->alignend_trim - substring5->chroffset));
+  debug3(printf("substring3 %d..%d out of %d.  aligned to %u..%u\n",
+		substring3->querystart,substring3->queryend,substring3->querylength,
+		substring3->alignstart_trim - substring3->chroffset,substring3->alignend_trim - substring3->chroffset));
   if (substring5->plusp == true) {
-    if (substring5->alignend_trim > substring3->alignstart_trim + substring5->queryend + (substring3->querylength - substring3->querystart)) {
-      return 0;
+    if (substring5->alignend_trim > substring3->alignend_trim) {
+      rightpos = substring5->alignend_trim;
+      right_extent = substring5->querylength - substring5->queryend - hit5_trim_right;
     } else {
-      debug3(printf("plus: %u-%u\n",substring3->alignstart_trim,substring5->alignend_trim));
-      return (substring3->alignstart_trim - substring5->alignend_trim) + substring5->queryend + (substring3->querylength - substring3->querystart);
+      rightpos = substring3->alignend_trim;
+      right_extent = substring3->querylength - substring3->queryend - hit3_trim_right;
     }
+    debug3(printf("rightpos = %u, right_extent = %d\n",rightpos,right_extent));
+
+    if (substring5->alignstart_trim < substring3->alignstart_trim) {
+      leftpos = substring5->alignstart_trim;
+      left_extent = substring5->querystart - hit5_trim_left;
+    } else {
+      leftpos = substring3->alignstart_trim;
+      left_extent = substring3->querystart - hit3_trim_left;
+    }
+    debug3(printf("leftpos = %u, left_extent = %d\n",leftpos,left_extent));
+
+    return (rightpos - leftpos) + right_extent + left_extent;
+
   } else {
-    if (substring3->alignstart_trim > substring5->alignend_trim + substring5->queryend + (substring3->querylength - substring3->querystart)) {
+    if (substring3->alignstart_trim > (pos = substring5->alignend_trim + (substring5->queryend - substring5->querystart /* - hit5_trim_left */) +
+				       (substring3->querylength - substring3->querystart - hit3_trim_right))) {
       return 0;
     } else {
-      debug3(printf("minus: %u-%u\n",substring5->alignend_trim,substring3->alignstart_trim));
-      return (substring5->alignend_trim - substring3->alignstart_trim) + substring5->queryend + (substring3->querylength - substring3->querystart);
+      debug3(printf("minus: substring5->alignend_trim %u - substring3->alignstart_trim %u +\n",
+		    substring5->alignend_trim - substring5->chroffset,substring3->alignstart_trim - substring3->chroffset));
+      debug3(printf("      substring5->queryend %d - substring5->querystart %d +\n",substring5->queryend,substring5->querystart));
+      debug3(printf("      substring3->querylength %d - substring3->querystart %d - hit3_trim_right %d\n",
+		    substring3->querylength,substring3->querystart,hit3_trim_right));
+      return (pos - substring3->alignstart_trim);
     }
   }
 }
+#endif
 
 
 
@@ -1794,6 +1853,9 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
   new->chimera_novelp = false;
   new->chimera_novelp_2 = false;
 
+  debug2(printf("Entered Substring_new with chrnum %d (chroffset %u, chrhigh %u)\n",
+		chrnum,chroffset,chrhigh));
+
   /* Compute coordinates */
   if (plusp == true) {
     new->alignoffset = alignstart - genomicstart;
@@ -1815,6 +1877,8 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
     debug2(printf("querylength is %d, genomiclength is %d, alignstart is %u, alignend is %u, genomicstart is %u, genomicend is %u, alignoffset is %d\n",
 		  querylength,genomiclength,alignstart,alignend,genomicstart,genomicend,new->alignoffset));
   }
+  assert(alignstart <= chrhigh);
+  assert(alignend <= chrhigh);
 
   /* Assign new->nmismatches_whole */
   new->nmismatches_whole = nmismatches_whole;
@@ -1944,7 +2008,7 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
 
 
 /* Look also at Pair_compute_mapq */
-double
+float
 Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string, bool trim_terminals_p) {
   int mapq_start, mapq_end;
 
@@ -2211,7 +2275,7 @@ Substring_set_endtypes (T this, Endtype_T start_endtype, Endtype_T end_endtype) 
 
 
 
-double
+float
 Substring_mapq_loglik (T this) {
   return this->mapq_loglik;
 }
@@ -2546,8 +2610,12 @@ Substring_new_donor (int splicesites_i, int splicesites_offset, int donor_pos, i
   Endtype_T start_endtype, end_endtype;
   bool trim_left_p, trim_right_p;
 
-  if (left >= chroffset + chrlength) {
-    /* Don't splice to duplicate length of a circular chromosome */
+  /* Previously checked if left >= chroffset + chrlength to exclude
+     the duplicate length, but now excluding all translocations to
+     circular chromosomes */
+
+  if (chroffset + chrlength < chrhigh) {
+    /* Don't splice to circular chromosomes */
     return (T) NULL;
 
   } else if (plusp == true) {
@@ -2655,8 +2723,12 @@ Substring_new_acceptor (int splicesites_i, int splicesites_offset, int acceptor_
   Endtype_T start_endtype, end_endtype;
   bool trim_left_p, trim_right_p;
 
-  if (left >= chroffset + chrlength) {
-    /* Don't splice to duplicate length of a circular chromosome */
+  /* Previously checked if left >= chroffset + chrlength to exclude
+     the duplicate length, but now excluding all translocations to
+     circular chromosomes */
+
+  if (chroffset + chrlength < chrhigh) {
+    /* Don't splice to circular chromosomes */
     return (T) NULL;
 
   } else if (plusp == true) {

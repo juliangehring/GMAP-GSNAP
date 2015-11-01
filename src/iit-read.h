@@ -1,4 +1,4 @@
-/* $Id: iit-read.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: iit-read.h 102262 2013-07-22 15:46:18Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
 #include <stdio.h>
@@ -139,7 +139,10 @@ extern bool
 IIT_low_exists_signed_p (T this, int divno, Chrpos_T x, int sign);
 extern bool
 IIT_high_exists_signed_p (T this, int divno, Chrpos_T x, int sign);
-
+extern int *
+IIT_get_lows_signed (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, int sign);
+extern int *
+IIT_get_highs_signed (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, int sign);
 
 extern int *
 IIT_get (int *nmatches, T this, char *divstring, Chrpos_T x, Chrpos_T y, bool sortp);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 101271 2013-07-12 02:44:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1037,7 +1037,6 @@ dump_left_aux (int *best_nmismatches, Genomicposlist_T coords, Triecontent_T *tr
   Univcoord_T segment_left;
   int nleaves, i;
   Univcoord_T position;
-  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
 
@@ -1053,9 +1052,8 @@ dump_left_aux (int *best_nmismatches, Genomicposlist_T coords, Triecontent_T *tr
     } else if (charpos - 1 >= pos5) {
       if (pos3 - pos5 <= 16) {
 	/* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	query_shifted = Genome_query_shift_fragment_left(&flags,&mask,query_compress,pos5,pos3);
-	nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-						       splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	nmismatches = Genome_count_mismatches_fragment_left(query_compress,pos5,pos3,
+							    splicefrags_ref[leaf],splicefrags_alt[leaf]);
 	debug3(printf("Found leaf %u at %u, but still have characters to check against Genome: %.*s => %d mismatches by fragment\n",
 		      leaf,position,charpos + 1,&(queryptr[0]),nmismatches));
       } else {
@@ -1108,9 +1106,8 @@ dump_left_aux (int *best_nmismatches, Genomicposlist_T coords, Triecontent_T *tr
       } else if (charpos - 1 >= pos5) {
 	if (pos3 - pos5 <= 16) {
 	  /* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	  query_shifted = Genome_query_shift_fragment_left(&flags,&mask,query_compress,pos5,pos3);
-	  nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-							 splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	  nmismatches = Genome_count_mismatches_fragment_left(query_compress,pos5,pos3,
+							      splicefrags_ref[leaf],splicefrags_alt[leaf]);
 	} else {
 	  /* Can happen */
 	  segment_left = position - pos3;
@@ -1257,7 +1254,6 @@ dump_right_aux (int *best_nmismatches, Genomicposlist_T coords,
   Univcoord_T segment_left;
   int nleaves, i;
   Univcoord_T position;
-  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
 
@@ -1273,9 +1269,8 @@ dump_right_aux (int *best_nmismatches, Genomicposlist_T coords,
     } else if (charpos + 1 < pos3) {
       if (pos3 - pos5 <= 16) {
 	/* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	query_shifted = Genome_query_shift_fragment_right(&flags,&mask,query_compress,pos5,pos3);
-	nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-						       splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	nmismatches = Genome_count_mismatches_fragment_right(query_compress,pos5,pos3,
+							     splicefrags_ref[leaf],splicefrags_alt[leaf]);
 	debug3(printf("Found leaf %u at %u, but still have characters to check against Genome: %.*s => %d mismatches by fragment\n",
 		      leaf,position,charpos + 1,&(queryptr[0]),nmismatches));
       } else {
@@ -1328,9 +1323,8 @@ dump_right_aux (int *best_nmismatches, Genomicposlist_T coords,
       } else if (charpos + 1 < pos3) {
 	if (pos3 - pos5 <= 16) {
 	  /* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	  query_shifted = Genome_query_shift_fragment_right(&flags,&mask,query_compress,pos5,pos3);
-	  nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-							 splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	  nmismatches = Genome_count_mismatches_fragment_right(query_compress,pos5,pos3,
+							       splicefrags_ref[leaf],splicefrags_alt[leaf]);
 	} else {
 	  /* Can happen */
 	  segment_left = position - pos5;
@@ -1484,7 +1478,6 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
   Triecontent_T leaf;
   Univcoord_T segment_left, position;
   int nleaves, i;
-  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
   
@@ -1508,9 +1501,8 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
     } else if (charpos - 1 >= pos5) {
       if (pos3 - pos5 <= 16) {
 	/* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	query_shifted = Genome_query_shift_fragment_left(&flags,&mask,query_compress,pos5,pos3);
-	nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-						       splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	nmismatches = Genome_count_mismatches_fragment_left(query_compress,pos5,pos3,
+							    splicefrags_ref[leaf],splicefrags_alt[leaf]);
       } else {
 	/* Can happen in search for short middle exon */
 	segment_left = splicesites[leaf] - pos3;
@@ -1581,9 +1573,8 @@ search_left (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T splic
       } else if (charpos - 1 >= pos5) {
 	if (pos3 - pos5 <= 16) {
 	  /* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	  query_shifted = Genome_query_shift_fragment_left(&flags,&mask,query_compress,pos5,pos3);
-	  nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-							 splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	  nmismatches = Genome_count_mismatches_fragment_left(query_compress,pos5,pos3,
+							      splicefrags_ref[leaf],splicefrags_alt[leaf]);
 	} else {
 	  /* Can happen in search for short middle exon */
 	  segment_left = splicesites[leaf] - pos3;
@@ -1698,7 +1689,6 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
   Triecontent_T leaf;
   Univcoord_T segment_left, position;
   int nleaves, i;
-  Genomecomp_T query_shifted, flags, mask;
   int offseta, offsetc, offsetg, offsett;
   char c;
   
@@ -1722,9 +1712,8 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
     } else if (charpos + 1 < pos3) {
       if (pos3 - pos5 <= 16) {
 	/* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	query_shifted = Genome_query_shift_fragment_right(&flags,&mask,query_compress,pos5,pos3);
-	nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-						       splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	nmismatches = Genome_count_mismatches_fragment_right(query_compress,pos5,pos3,
+							     splicefrags_ref[leaf],splicefrags_alt[leaf]);
       } else {
 	/* Can happen in search for short middle exon */
 	segment_left = splicesites[leaf] - pos5;
@@ -1794,9 +1783,8 @@ search_right (int *best_nmismatches, Intlist_T *nmismatches_list, Intlist_T spli
       } else if (charpos + 1 < pos3) {
 	if (pos3 - pos5 <= 16) {
 	  /* Recomputes entire segment to determine mismatches (necessary because of splicefrags) */
-	  query_shifted = Genome_query_shift_fragment_right(&flags,&mask,query_compress,pos5,pos3);
-	  nmismatches = Genome_count_mismatches_fragment(query_shifted,flags,mask,
-							 splicefrags_ref[leaf],splicefrags_alt[leaf]);
+	  nmismatches = Genome_count_mismatches_fragment_right(query_compress,pos5,pos3,
+							       splicefrags_ref[leaf],splicefrags_alt[leaf]);
 	} else {
 	  /* Can happen in search for short middle exon */
 	  segment_left = splicesites[leaf] - pos5;

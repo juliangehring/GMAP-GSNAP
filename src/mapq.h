@@ -1,4 +1,4 @@
-/* $Id: mapq.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: mapq.h 102893 2013-07-25 22:11:12Z twu $ */
 #ifndef MAPQ_INCLUDED
 #define MAPQ_INCLUDED
 
@@ -14,9 +14,9 @@ extern void
 MAPQ_init (int quality_score_adj_in);
 extern int
 MAPQ_max_quality_score (char *quality_string, int querylength);
-extern double
+extern float
 MAPQ_loglik_exact (char *quality_string, int querystart, int queryend);
-extern double
+extern float
 MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int queryend,
 	     int querylength, char *quality_string, bool plusp, int genestrand);
 

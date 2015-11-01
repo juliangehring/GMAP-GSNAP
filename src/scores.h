@@ -1,13 +1,13 @@
-/* $Id: scores.h 46279 2011-09-01 17:20:50Z twu $ */
+/* $Id: scores.h 105294 2013-08-20 16:42:39Z twu $ */
 #ifndef SCORES_INCLUDED
 #define SCORES_INCLUDED
 
 #define MATCH 1
 #define MISMATCH -3
-#define QOPEN -5
-#define QINDEL -2
-#define TOPEN -5
-#define TINDEL -2
+#define QOPEN -3
+#define QINDEL -1
+#define TOPEN -3
+#define TINDEL -1
 
 #define CANONICAL_POINTS 12
 #define DUAL_HALFCANONICAL_POINTS 4

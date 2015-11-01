@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: genome-write.c 101271 2013-07-12 02:44:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -25,7 +25,7 @@ static char rcsid[] = "$Id: genome-write.c 99737 2013-06-27 19:33:03Z twu $";
 #include "types.h"
 #include "fopen.h"
 #include "interval.h"
-#include "compress.h"
+#include "compress-write.h"
 #include "iit-write.h"
 #include "complement.h"
 #include "genome.h"		/* For Genome_uncompress_mmap */
@@ -758,6 +758,7 @@ genome_write_memory (FILE *refgenome_fp, FILE *input,
 	    maxposition = currposition;
 	  }
 	}
+
       }
     }
   }
@@ -857,32 +858,5 @@ Genome_write (char *genomesubdir, char *fileroot, FILE *input,
 
   return;
 }
-
-
-Genomecomp_T *
-Genome_create_blocks (char *genomicseg, Univcoord_T genomelength) {
-  Genomecomp_T *genomecomp;
-  size_t nuint4;
-
-  nuint4 = ((genomelength + 31)/32U)*3;
-  genomecomp = (Genomecomp_T *) CALLOC(nuint4+4,sizeof(Genomecomp_T));
-  /* Add 4 because Oligoindex_hr procedures point to nextlow as ptr+4 */
-
-  /* Creates X's at end */
-  genomecomp[nuint4-3] = 0xFFFFFFFF;
-  genomecomp[nuint4-2] = 0xFFFFFFFF;
-  genomecomp[nuint4-1] = 0xFFFFFFFF;
-
-  /* Plus extra 4 */
-  genomecomp[nuint4]   = 0xFFFFFFFF;
-  genomecomp[nuint4+1] = 0xFFFFFFFF;
-  genomecomp[nuint4+2] = 0xFFFFFFFF;
-  genomecomp[nuint4+3] = 0xFFFFFFFF;
-
-  Compress_update_memory(/*nbadchars*/0,genomecomp,genomicseg,/*currposition*/0,genomelength);
-
-  return genomecomp;
-}
-
 
 

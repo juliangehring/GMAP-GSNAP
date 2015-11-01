@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: stage1hr.h 109396 2013-09-27 15:14:11Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 #include "bool.h"
@@ -52,9 +52,8 @@ Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
 		    Shortread_T queryseq, Indexdb_T indexdb, Indexdb_T indexdb2,
 		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
 		    double usermax_level_float, int subopt_levels,
-		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
+		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		    Chrpos_T shortsplicedist,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 		    Oligoindex_T *oligoindices_major, int noligoindices_major,
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
@@ -70,9 +69,9 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 		    Indexdb_T indexdb, Indexdb_T indexdb2, int indexdb_size_threshold,
 		    Genome_T genome, Floors_T *floors_array,
 		    double usermax_level_float, int subopt_levels,
-		    int indel_penalty_middle, int indel_penalty_end, int max_middle_insertions, int max_middle_deletions,
+		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
-		    Chrpos_T shortsplicedist, int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
+		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 		    Oligoindex_T *oligoindices_major, int noligoindices_major,
 		    Oligoindex_T *oligoindices_minor, int noligoindices_minor,
 		    Pairpool_T pairpool, Diagpool_T diagpool,
@@ -83,24 +82,25 @@ extern void
 Stage1hr_cleanup ();
 
 extern void
-Stage1hr_setup (int index1part_in, int index1interval_in, int spansize_in,
-		Univ_IIT_T chromosome_iit_in, int nchromosomes_in,
+Stage1hr_setup (bool use_sarray_p_in, int index1part_in, int index1interval_in,
+		int spansize_in, Univ_IIT_T chromosome_iit_in, int nchromosomes_in,
 		Genome_T genomealt, Mode_T mode_in, int maxpaths_search_in,
-		int terminal_threshold_in,
+		int terminal_threshold_in, int terminal_output_minlength_in,
 
 		Univcoord_T *splicesites_in, Splicetype_T *splicetypes_in,
 		Chrpos_T *splicedists_in, int nsplicesites_in,
 
 		bool novelsplicingp_in, bool knownsplicingp_in,
 		bool distances_observed_p_in,
-		int shortsplicedist_known_in, int shortsplicedist_novelend_in,
+		Chrpos_T max_middle_insertions_in, Chrpos_T max_middle_deletions_in,
+		Chrpos_T shortsplicedist_in, Chrpos_T shortsplicedist_known_in, Chrpos_T shortsplicedist_novelend_in,
 		Chrpos_T min_intronlength_in,
 
 		int min_distantsplicing_end_matches_in, int min_distantsplicing_identity_in,
 
 		int nullgap_in, int maxpeelback_in, int maxpeelback_distalmedial_in,
 		int extramaterial_end_in, int extramaterial_paired_in,
-		int gmap_mode, int trigger_score_for_gmap_in,
+		int gmap_mode, int trigger_score_for_gmap_in, int gmap_allowance_in,
 		int max_gmap_pairsearch_in, int max_gmap_terminal_in,
 		int max_gmap_improvement_in, int antistranded_penalty_in);
 

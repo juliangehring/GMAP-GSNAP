@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 109235 2013-09-25 23:17:24Z twu $";
+static char rcsid[] = "$Id: access.c 109572 2013-09-30 22:57:27Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -245,8 +245,10 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
   if (eltsize == 4) {
     /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
     value = first_nonzero(&i,filename);
-    if (i >= 0 && ((UINT4 *) memory)[i] != value) {
-      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)...reading file in smaller batches...");
+    if (((UINT4 *) memory)[i] != value) {
+      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
+#if 0
+      fprintf(stderr,"...reading file in smaller batches...");
       fp = FOPEN_READ_BINARY(filename);
 
       for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
@@ -260,6 +262,11 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
       }
 
       fclose(fp);
+#else
+      fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
+      exit(9);
+#endif
+
     }
   }
 #endif
@@ -648,6 +655,9 @@ Access_mmap_and_preload (int *fd, size_t *len, int *npages, double *seconds, cha
       for (i = 0; i < totalindices; i += indicesperpage) {
 	if (((char *) memory)[i] == 0) {
 	  nzero++;
+	  if (i % 10000 == 0) {
+	    fprintf(stderr,",");
+	  }
 	} else {
 	  npos++;
 	}

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c 107641 2013-09-12 01:08:38Z twu $";
+static char rcsid[] = "$Id: gregion.c 112656 2013-10-25 16:33:21Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -246,6 +246,7 @@ Gregion_new (int nexons, Univcoord_T genomicstart, Univcoord_T genomicend,
 
   new->nexons = nexons;
   if (chromosome_iit == NULL) {
+    /* Should not reach here, since user_genomicseg does not call stage 1 */
     new->chrnum = 0;
     new->chroffset = 0U;
     new->chrlength = 0U;
@@ -407,6 +408,8 @@ weight_cmp (const void *x, const void *y) {
 static bool
 gregion_overlap_p (T x, T y) {
   Univcoord_T x_genomicstart, x_genomicend, y_genomicstart, y_genomicend;
+  Univcoord_T overlap;
+  double fraction;
 
   if (x->plusp != y->plusp) {
     return false;			/* Different strands */
@@ -418,10 +421,73 @@ gregion_overlap_p (T x, T y) {
     y_genomicend = y->chroffset + y->chrend;
 
     if (y_genomicstart > x_genomicend || x_genomicstart > y_genomicend) {
+      /*
+      /-- x --/ /-- y --/ or /-- y --/ /-- x --/
+      */
       return false;		/* No overlap */
 
+    } else if (y_genomicstart < x_genomicstart) {
+      debug(printf("x %u..%u, y %u..%u",x_genomicstart,x_genomicend,y_genomicstart,y_genomicend));
+      if (y_genomicend < x_genomicend) {
+	/*
+	    /-- x --/
+	/-- y --/
+	*/
+	overlap = y_genomicend - x_genomicstart;
+	if (y_genomicend - y_genomicstart < x_genomicend - x_genomicstart) {
+	  fraction = (double) overlap/(double) (y_genomicend - y_genomicstart);
+	} else {
+	  fraction = (double) overlap/(double) (x_genomicend - x_genomicstart);
+	}
+	debug(printf(" => fraction %f",fraction));
+	if (fraction > 0.5) {
+	  debug(printf(" => overlap\n",fraction));
+	  return true;
+	} else {
+	  debug(printf(" => no overlap\n",fraction));
+	  return false;
+	}
+
+      } else {
+	/*
+	    /-- x --/
+	/----- y -----/
+	*/
+	debug(printf(" => subsumption\n"));
+	return true;
+      }
+
     } else {
-      return true;
+      debug(printf("x %u..%u, y %u..%u\n",x_genomicstart,x_genomicend,y_genomicstart,y_genomicend));
+      if (y_genomicend < x_genomicend) {
+	/*
+	/----- x -----/
+	  /-- y --/
+	*/
+	debug(printf(" => subsumption\n"));
+	return true;
+
+      } else {
+	/*
+	/-- x --/
+	  /-- y --/
+	*/
+	overlap = x_genomicend - y_genomicstart;
+	if (y_genomicend - y_genomicstart < x_genomicend - x_genomicstart) {
+	  fraction = (double) overlap/(double) (y_genomicend - y_genomicstart);
+	} else {
+	  fraction = (double) overlap/(double) (x_genomicend - x_genomicstart);
+	}
+	debug(printf(" => fraction %f",fraction));
+	if (fraction > 0.5) {
+	  debug(printf(" => overlap\n",fraction));
+	  return true;
+	} else {
+	  debug(printf(" => no overlap\n",fraction));
+	  return false;
+	}
+
+      }
     }
   }
 }
@@ -472,7 +538,6 @@ Gregion_filter_unique (List_T gregionlist) {
 	printf("Found overlap between these regions:\n");
 	printf("   ");
 	Gregion_print(x);
-	printf("\n");
 	printf("   ");
 	Gregion_print(y);
 	printf("\n");
@@ -637,10 +702,10 @@ Gregion_extend (T this, Chrpos_T extension5, Chrpos_T extension3, int querylengt
     this->chrstart -= left;
   }
 
-  /* printf("genomicend %u + right %u vs chrhigh %u\n",this->genomicend,right,this->chrhigh); */
+  /* printf("chroffset %u + chrend %u + right %u vs chrhigh %u\n",this->chroffset,this->chrend,right,this->chrhigh); */
   if (this->chroffset + this->chrend + right >= this->chrhigh) {
     /* At end of chromosome */
-    this->chrend = this->chrlength;
+    this->chrend = this->chrlength - 1;
   } else {
     this->chrend += right;
   }

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 100259 2013-07-02 23:46:07Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,7 @@ static char rcsid[] = "$Id: indexdb_hr.c 99737 2013-06-27 19:33:03Z twu $";
 #include "indexdb_hr.h"
 #include "indexdbdef.h"
 #include "genome_hr.h"
+#include "bitpack64-read.h"
 
 
 #ifdef WORDS_BIGENDIAN
@@ -615,15 +616,35 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
   int i;
 #endif
 
+  if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-  if (this->offsetscomp_access == ALLOCATED) {
-    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-  } else {
-    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-  }
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = this->offsetscomp[subst];
+      end0 = this->offsetscomp[subst+1];
+    } else {
+      ptr0 = Bigendian_convert_uint(this->offsetscomp[subst]);
+      end0 = Bigendian_convert_uint(this->offsetscomp[subst+1]);
+    }
 #else
-  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    ptr0 = this->offsetscomp[subst];
+    end0 = this->offsetscomp[subst+1];
 #endif
+
+  } else if (this->compression_type == BITPACK64_COMPRESSION) {
+    ptr0 = Bitpack64_offsetptr(&end0,subst);
+
+  } else if (this->compression_type == GAMMA_COMPRESSION) {
+#ifdef WORDS_BIGENDIAN
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    } else {
+      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+    }
+#else
+    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+#endif
+  }
+
 
   debug(printf("point_one_shift: %08X %u %u\n",subst,ptr0,end0));
 
@@ -712,18 +733,41 @@ static int
 count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
   Positionsptr_T ptr0, end0;
 
+  if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-  if (this->offsetscomp_access == ALLOCATED) {
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = this->offsetscomp[subst];
+      end0 = this->offsetscomp[subst+nadjacent];
+    } else {
+      ptr0 = Bigendian_convert_uint(this->offsetscomp[subst]);
+      end0 = Bigendian_convert_uint(this->offsetscomp[subst+nadjacent]);
+    }
+#else
+    ptr0 = this->offsetscomp[subst];
+    end0 = this->offsetscomp[subst+nadjacent];
+#endif
+
+  } else if (this->compression_type == BITPACK64_COMPRESSION) {
+    ptr0 = Bitpack64_offsetptr_only(subst);
+    end0 = Bitpack64_offsetptr_only(subst+nadjacent);
+
+  } else if (this->compression_type == GAMMA_COMPRESSION) {
+#ifdef WORDS_BIGENDIAN
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+      end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
+    } else {
+      ptr0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
+      end0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
+    }
+#else
     ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
     end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-  } else {
-    ptr0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-    end0 = Genome_offsetptr_only_from_gammas_bigendian(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
-  }
-#else
-  ptr0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst);
-  end0 = Genome_offsetptr_only_from_gammas(this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,subst+nadjacent);
 #endif
+
+  } else {
+    abort();
+  }
 
   debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
 	       subst,shortoligo_nt(subst,index1part),end0,ptr0,end0-ptr0));
@@ -1514,15 +1558,38 @@ int
 Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
   Positionsptr_T ptr0, end0;
 
+  if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-  if (this->offsetscomp_access == ALLOCATED) {
-    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-  } else {
-    ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
-  }
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = this->offsetscomp[oligo];
+      end0 = this->offsetscomp[oligo+1];
+    } else {
+      ptr0 = Bigendian_convert_uint(this->offsetscomp[oligo]);
+      end0 = Bigendian_convert_uint(this->offsetscomp[oligo+1]);
+    }
 #else
-  ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+    ptr0 = this->offsetscomp[oligo];
+    end0 = this->offsetscomp[oligo+1];
 #endif
+
+  } else if (this->compression_type == BITPACK64_COMPRESSION) {
+    ptr0 = Bitpack64_offsetptr(&end0,oligo);
+
+  } else if (this->compression_type == GAMMA_COMPRESSION) {
+#ifdef WORDS_BIGENDIAN
+    if (this->offsetscomp_access == ALLOCATED) {
+      ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+    } else {
+      ptr0 = Genome_offsetptr_from_gammas_bigendian(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+    }
+#else
+    ptr0 = Genome_offsetptr_from_gammas(&end0,this->gammaptrs,this->offsetscomp,this->offsetscomp_blocksize,oligo);
+#endif
+    
+  } else {
+    abort();
+  }
+
 
   debug(printf("count_one_shift: oligo = %06X (%s), %u - %u = %u\n",
 	       oligo,shortoligo_nt(oligo,index1part),end0,ptr0,end0-ptr0));

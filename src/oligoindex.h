@@ -1,4 +1,4 @@
-/* $Id: oligoindex.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: oligoindex.h 100638 2013-07-05 20:20:50Z twu $ */
 #ifndef OLIGOINDEX_INCLUDED
 #define OLIGOINDEX_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -87,9 +87,9 @@ Oligoindex_tally (T this, char *genomicuc_trimptr, int genomicuc_trimlength,
 		  char *queryuc_ptr, int querylength, int sequencepos);
 #endif
 extern void
-Oligoindex_untally (T this);
+Oligoindex_untally (T this, char *queryuc_ptr, int querylength);
 extern void
-Oligoindex_clear_inquery (T this);
+Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querylength);
 extern void
 Oligoindex_free_array (T **oligoindices, int noligoindices);
 

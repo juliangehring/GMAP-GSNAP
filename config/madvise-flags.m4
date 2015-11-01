@@ -30,6 +30,15 @@ AC_COMPILE_IFELSE(
    AC_DEFINE([HAVE_MADVISE_MADV_RANDOM],[1],[Define to 1 if MADV_RANDOM available for madvise])],
   [AC_MSG_RESULT(no)])
 
+AC_MSG_CHECKING(for MADV_SEQUENTIAL in madvise)
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([[#include <sys/types.h>
+#include <sys/mman.h>]],
+                   [[int flags = MADV_SEQUENTIAL;]])],
+  [AC_MSG_RESULT(yes)
+   AC_DEFINE([HAVE_MADVISE_MADV_SEQUENTIAL],[1],[Define to 1 if MADV_SEQUENTIAL available for madvise])],
+  [AC_MSG_RESULT(no)])
+
 AC_LANG_RESTORE
 ])
 

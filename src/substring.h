@@ -1,4 +1,4 @@
-/* $Id: substring.h 109764 2013-10-02 17:13:24Z twu $ */
+/* $Id: substring.h 110466 2013-10-09 00:29:37Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -47,7 +47,7 @@ Substring_new (int nmismatches_whole, Chrnum_T chrnum, Univcoord_T chroffset,
 	       int extraleft, int extraright, bool exactp,
 	       bool plusp, int genestrand, bool trim_left_p, bool trim_right_p, int minlength);
 
-extern double
+extern float
 Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string, bool trim_terminals_p);
 
 extern int
@@ -71,9 +71,9 @@ Substring_overlap_p (T substring1, T substring2);
 extern Chrpos_T
 Substring_insert_length (T substring5, T substring3);
 extern bool
-Substring_overlap_trimmed_p (T substring1, T substring2);
-Chrpos_T
-Substring_insert_length_trimmed (T substring5, T substring3);
+Substring_overlap_point_trimmed_p (T substring, Univcoord_T endpos);
+extern bool
+Substring_overlap_segment_trimmed_p (T substring1, T substring2);
 
 extern int
 Substring_splicesites_i (T this);
@@ -110,7 +110,7 @@ extern Endtype_T
 Substring_end_endtype (T this);
 extern void
 Substring_set_endtypes (T this, Endtype_T start_endtype, Endtype_T end_endtype);
-extern double
+extern float
 Substring_mapq_loglik (T this);
 extern int
 Substring_trim_left (T this);

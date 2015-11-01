@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 109579 2013-09-30 23:14:13Z twu $ */
+/* $Id: stage3hr.h 109557 2013-09-30 22:13:05Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -36,7 +36,7 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		IIT_T genes_iit_in, int *genes_divint_crosstable_in,
 		IIT_T tally_iit_in, int *tally_divint_crosstable_in,
 		IIT_T runlength_iit_in, int *runlength_divint_crosstable_in,
-		bool distances_observed_p, int pairmax_in,
+		int terminal_output_minlength_in, bool distances_observed_p, int pairmax_in,
 		Chrpos_T expected_pairlength, Chrpos_T pairlength_deviation,
 		int localsplicing_penalty_in, int indel_penalty_middle_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
@@ -49,6 +49,12 @@ extern char *
 Stage3end_hittype_string (T this);
 extern int
 Stage3end_genestrand (T this);
+extern bool
+Stage3end_sarrayp (T this);
+extern bool
+Stage3end_improved_by_gmap_p (T this);
+extern void
+Stage3end_set_improved_by_gmap (T this);
 extern bool
 Stage3end_anomalous_splice_p (T this);
 extern Chrnum_T
@@ -83,6 +89,8 @@ extern double
 Stage3end_gmap_min_splice_prob (T this);
 extern int
 Stage3end_best_score (List_T hits);
+extern bool
+Stage3end_equiv_score_unpaired_p (List_T hits, int best_score);
 extern int
 Stage3end_best_score_paired (List_T hits);
 extern int
@@ -169,6 +177,8 @@ extern int
 Stage3end_gmap_queryend (T this);
 extern int
 Stage3end_terminal_trim (T this);
+extern int
+Stage3end_terminal_length (T this);
 extern bool
 Stage3end_contains_known_splicesite (T this);
 extern bool
@@ -183,6 +193,8 @@ Stage3end_genomicbound_from_end (Univcoord_T *genomicbound, T this, int overlap,
 
 extern void
 Stage3end_free (T *old);
+extern void
+Stage3end_list_free (List_T *values);
 
 
 extern bool
@@ -227,29 +239,29 @@ Stage3end_copy (T old);
 extern T
 Stage3end_new_exact (int *found_score, Univcoord_T left, int genomiclength, Compress_T query_compress,
 		     bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
-		     Chrpos_T chrlength);
+		     Chrpos_T chrlength, bool sarrayp);
 extern T
 Stage3end_new_substitution (int *found_score, int nmismatches, Univcoord_T left,
 			    int genomiclength, Compress_T query_compress,
 			    bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
-			    Chrpos_T chrlength);
+			    Chrpos_T chrlength, bool sarrayp);
 extern T
 Stage3end_new_insertion (int *found_score, int nindels, int indel_pos, int nmismatches1, int nmismatches2,
 			 Univcoord_T left, int genomiclength, Compress_T query_compress,
 			 int querylength, bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset,
-			 Univcoord_T chrhigh, Chrpos_T chrlength, int indel_penalty);
+			 Univcoord_T chrhigh, Chrpos_T chrlength, int indel_penalty, bool sarrayp);
 extern T
 Stage3end_new_deletion (int *found_score, int nindels, int indel_pos, int nmismatches1, int nmismatches2,
 			Univcoord_T left, int genomiclength, Compress_T query_compress,
 			int querylength, bool plusp, int genestrand, Chrnum_T chrnum, Univcoord_T chroffset,
-			Univcoord_T chrhigh, Chrpos_T chrlength, int indel_penalty);
+			Univcoord_T chrhigh, Chrpos_T chrlength, int indel_penalty, bool sarrayp);
 
 extern T
 Stage3end_new_terminal (int querystart, int queryend, Univcoord_T left, Compress_T query_compress,
 			int querylength, bool plusp, int genestrand,
 			Endtype_T start_endtype, Endtype_T end_endtype,
 			Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
-			int max_mismatches_allowed);
+			int max_mismatches_allowed, bool sarrayp);
 extern T
 Stage3end_new_splice (int *found_score, int donor_nmismatches, int acceptor_nmismatches,
 		      Substring_T donor, Substring_T acceptor, Chrpos_T distance,
@@ -257,7 +269,7 @@ Stage3end_new_splice (int *found_score, int donor_nmismatches, int acceptor_nmis
 		      int amb_nmatches, Intlist_T ambi_left, Intlist_T ambi_right,
 		      Intlist_T amb_nmismatches_left, Intlist_T amb_nmismatches_right,
 		      bool copy_donor_p, bool copy_acceptor_p,
-		      bool first_read_p, int sensedir);
+		      bool first_read_p, int sensedir, bool sarrayp);
 extern T
 Stage3end_new_shortexon (int *found_score, Substring_T donor, Substring_T acceptor, Substring_T shortexon,
 			 Chrpos_T acceptor_distance, Chrpos_T donor_distance,
@@ -265,7 +277,7 @@ Stage3end_new_shortexon (int *found_score, Substring_T donor, Substring_T accept
 			 Intlist_T ambi_left, Intlist_T ambi_right,
 			 Intlist_T amb_nmismatches_left, Intlist_T amb_nmismatches_right,
 			 bool copy_donor_p, bool copy_acceptor_p, bool copy_shortexon_p,
-			 int splicing_penalty, int querylength, int sensedir);
+			 int splicing_penalty, int querylength, int sensedir, bool sarrayp);
 
 extern T
 Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_length,
@@ -310,6 +322,8 @@ extern int
 Stage3end_noptimal (List_T hitlist);
 extern List_T
 Stage3end_remove_duplicates (List_T hitlist, Shortread_T queryseq1, Shortread_T queryseq2);
+extern List_T
+Stage3end_filter_terminals (List_T hits);
 extern List_T
 Stage3end_remove_overlaps (List_T hitlist, bool finalp);
 extern List_T

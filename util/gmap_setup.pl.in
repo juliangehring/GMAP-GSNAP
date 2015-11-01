@@ -134,7 +134,7 @@ print $MAKEFILE "\n";
 print $MAKEFILE "FILE_ENDINGS = chromosome chromosome.iit chrsubset contig contig.iit \\\n";
 print $MAKEFILE "               genome genomecomp genomealt version \\\n";
 print $MAKEFILE "               ";
-print $MAKEFILE "id*offsetscomp id*positions ref*gammaptrs ref*offsetscomp ref*positions snp*gammaptrs snp*offsetscomp snp*positions \\\n";
+print $MAKEFILE "id*offsetscomp id*positions ref*offsets ref*bitpackptrs ref*bitpackcomp ref*gammaptrs ref*offsetscomp ref*positions snp*offsets snp*bitpackptrs snp*bitpackcomp snp*gammaptrs snp*offsetscomp snp*positions sarray saindex salcpptrs salcpcomp \\\n";
 print $MAKEFILE "               ";
 print $MAKEFILE "pf*gammaptrs pf*offsetscomp pf*positions pr*gammaptrs pr*offsetscomp pr*positions\n";
 
@@ -159,11 +159,11 @@ print $MAKEFILE "\tmkdir -p \$(DESTINATION)/\$(GENOME).maps\n";
 print $MAKEFILE "\tchmod 755 \$(DESTINATION)/\$(GENOME).maps\n";
 print $MAKEFILE "\n";
 
-printf $MAKEFILE "gmapdb: checkcoords \$(GENOME).version \$(GENOME).genomecomp \$(GENOME).ref%d%d%doffsetscomp \$(GENOME).ref%d%d%dpositions gmapmsg\n",
+printf $MAKEFILE "gmapdb: checkcoords \$(GENOME).version \$(GENOME).sarray \$(GENOME).genomecomp \$(GENOME).ref%d%d%doffsetscomp \$(GENOME).ref%d%d%dpositions gmapmsg\n",
     $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
-printf $MAKEFILE "gmapdb_lc: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp_lc \$(GENOME).ref%d%d%dpositions gmapmsg\n",
+printf $MAKEFILE "gmapdb_lc: checkcoords \$(GENOME).version \$(GENOME).sarray \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp_lc \$(GENOME).ref%d%d%dpositions gmapmsg\n",
     $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
-printf $MAKEFILE "gmapdb_lc_masked: checkcoords \$(GENOME).version \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp.masked \$(GENOME).ref%d%d%dpositions.masked gmapmsg\n",
+printf $MAKEFILE "gmapdb_lc_masked: checkcoords \$(GENOME).version \$(GENOME).sarray \$(GENOME).genome \$(GENOME).ref%d%d%doffsetscomp.masked \$(GENOME).ref%d%d%dpositions.masked gmapmsg\n",
     $gmap_basesize,$gmap_kmersize,$gmap_interval,$gmap_basesize,$gmap_kmersize,$gmap_interval;
 
 print $MAKEFILE "coords: \$(COORDS)\n";
@@ -310,6 +310,15 @@ print $MAKEFILE "\techo Making masked index positions file...\n";
 print $MAKEFILE "\tcat \$(GENOME).genome | \$(GMAPINDEX) -d \$(GENOME) -l -m $k_flag $q_flag -P\n";
 print $MAKEFILE "\n";
 
+
+########################################################################
+#   Suffix array files
+########################################################################
+
+print $MAKEFILE "\$(GENOME).sarray: \$(GENOME).genomecomp\n";
+print $MAKEFILE "\techo Making suffix array...\n";
+print $MAKEFILE "\t\$(GMAPINDEX) -d \$(GENOME) -S\n";
+print $MAKEFILE "\n";
 
 ########################################################################
 #   Version file

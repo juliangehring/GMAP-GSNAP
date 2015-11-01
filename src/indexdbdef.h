@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h 99754 2013-06-27 21:14:05Z twu $ */
+/* $Id: indexdbdef.h 99952 2013-06-30 18:10:46Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 
@@ -13,6 +13,12 @@
 
 #define BADVAL (Univcoord_T) -1
 
+/* Compression types */
+#define NO_COMPRESSION 0
+#define GAMMA_COMPRESSION 1
+#define BITPACK64_COMPRESSION 2
+
+
 #define T Indexdb_T
 struct T {
 #ifdef PMAP
@@ -20,6 +26,7 @@ struct T {
   int alphabet_size;
 #endif
 
+  int compression_type;
   Width_T index1part;
   Width_T index1interval;
   Width_T offsetscomp_basesize;		/* e.g., 12 */

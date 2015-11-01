@@ -1,4 +1,4 @@
-/* $Id: univinterval.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: univinterval.h 102893 2013-07-25 22:11:12Z twu $ */
 #ifndef UNIVINTERVAL_INCLUDED
 #define UNIVINTERVAL_INCLUDED
 #include "bool.h"
@@ -20,6 +20,8 @@ extern T
 Univinterval_copy (T old);
 extern void
 Univinterval_free (T *old);
+extern void
+Univinterval_table_free (void **x);
 extern void
 Univinterval_print (T this);
 
@@ -58,6 +60,15 @@ Univinterval_cmp_low (const void *a, const void *b);
 extern int
 Univinterval_cmp_high (const void *a, const void *b);
 
+#if 0
+extern int
+Univinterval_table_cmp (const void *a, const void *b);
+extern unsigned int
+Univinterval_table_hash (const void *a);
+#endif
+
+bool
+Univinterval_equal (T x, T y);
 
 #undef T
 #endif

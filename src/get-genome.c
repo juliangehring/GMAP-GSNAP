@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: get-genome.c 101271 2013-07-12 02:44:39Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1128,16 +1128,16 @@ main (int argc, char *argv[]) {
     FREE(iitfile);
 
     if (snps_root == NULL || print_snps_mode == 0) {
-      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			  /*access*/USE_MMAP_ONLY);
+      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			  uncompressedp,/*access*/USE_MMAP_ONLY);
     } else if (print_snps_mode == 2) {
-      genome = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			  /*access*/USE_MMAP_ONLY);
+      genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			  uncompressedp,/*access*/USE_MMAP_ONLY);
     } else if (print_snps_mode == 1 || print_snps_mode == 3) {
-      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			  /*access*/USE_MMAP_ONLY);
-      genomealt = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			     /*access*/USE_MMAP_ONLY);
+      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			  uncompressedp,/*access*/USE_MMAP_ONLY);
+      genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			     uncompressedp,/*access*/USE_MMAP_ONLY);
     }
 
     for (indx = 1; indx <= Univ_IIT_total_nintervals(chromosome_iit); indx++) {
@@ -1265,16 +1265,16 @@ main (int argc, char *argv[]) {
       debug(printf("No map file\n"));
 
       if (snps_root == NULL || print_snps_mode == 0) {
-	genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			    /*access*/USE_MMAP_ONLY);
+	genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			    uncompressedp,/*access*/USE_MMAP_ONLY);
       } else if (print_snps_mode == 2) {
-	genome = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			    /*access*/USE_MMAP_ONLY);
+	genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			    uncompressedp,/*access*/USE_MMAP_ONLY);
       } else if (print_snps_mode == 1 || print_snps_mode == 3) {
-	genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			    /*access*/USE_MMAP_ONLY);
-	genomealt = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			       /*access*/USE_MMAP_ONLY);
+	genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			    uncompressedp,/*access*/USE_MMAP_ONLY);
+	genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			       uncompressedp,/*access*/USE_MMAP_ONLY);
       }
 
       if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
@@ -1306,17 +1306,17 @@ main (int argc, char *argv[]) {
 
       if (exonsp == true || sequencep == true) {
 	if (snps_root == NULL || print_snps_mode == 0) {
-	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			      /*access*/USE_MMAP_ONLY);
+	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			      uncompressedp,/*access*/USE_MMAP_ONLY);
 	} else if (print_snps_mode == 2) {
-	  genome = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			      /*access*/USE_MMAP_ONLY);
+	  genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			      uncompressedp,/*access*/USE_MMAP_ONLY);
 	} else if (print_snps_mode == 1 || print_snps_mode == 3) {
-	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			      /*access*/USE_MMAP_ONLY);
+	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			      uncompressedp,/*access*/USE_MMAP_ONLY);
 #if 0
-	  genomealt = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-				 /*access*/USE_MMAP_ONLY);
+	  genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+				 uncompressedp,/*access*/USE_MMAP_ONLY);
 #endif
 	}
       }
@@ -1452,16 +1452,16 @@ main (int argc, char *argv[]) {
     FREE(iitfile);
 
     if (snps_root == NULL || print_snps_mode == 0) {
-      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			  /*access*/USE_MMAP_ONLY);
+      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			  uncompressedp,/*access*/USE_MMAP_ONLY);
     } else if (print_snps_mode == 2) {
-      genome = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			  /*access*/USE_MMAP_ONLY);
+      genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			  uncompressedp,/*access*/USE_MMAP_ONLY);
     } else if (print_snps_mode == 1 || print_snps_mode == 3) {
-      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,uncompressedp,
-			  /*access*/USE_MMAP_ONLY);
-      genomealt = Genome_new(snpsdir,fileroot,snps_root,uncompressedp,
-			     /*access*/USE_MMAP_ONLY);
+      genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			  uncompressedp,/*access*/USE_MMAP_ONLY);
+      genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
+			     uncompressedp,/*access*/USE_MMAP_ONLY);
     }
 
     iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+

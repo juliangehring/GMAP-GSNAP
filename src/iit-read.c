@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: iit-read.c 102262 2013-07-22 15:46:18Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3789,6 +3789,151 @@ IIT_high_exists_signed_p (T this, int divno, Chrpos_T x, int sign) {
     return false;
   }
 }
+
+
+int *
+IIT_get_lows_signed (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, int sign) {
+  int *uniq = NULL, *matches, matchstart, neval, nfound, i;
+  int match, lambda, prev;
+  int min1, max1 = 0, min2, max2 = 0;
+  struct Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    *nmatches = 0;
+    return (int *) NULL;
+  } else {
+    min1 = min2 = this->nintervals[divno] + 1;
+  }
+
+  debug(printf("Entering IIT_low_signed_p with divno %d and query %u..%u\n",divno,x,y));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  fnode_query_aux(&min2,&max2,this,divno,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  *nmatches = 0;
+  if (max2 >= min1) {
+    neval = (max2 - min1 + 1) + (max2 - min1 + 1);
+    matches = (int *) CALLOC(neval,sizeof(int));
+
+    nfound = 0;
+    for (lambda = min1; lambda <= max2; lambda++) {
+      match = this->sigmas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.low >= x && interval.low <= y && interval.sign == sign) {
+	matches[nfound++] = match;
+      }
+
+      match = this->omegas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.low >= x && interval.low <= y && interval.sign == sign) {
+	matches[nfound++] = match;
+      }
+    }
+
+    if (nfound == 0) {
+      return (int *) NULL;
+    } else {
+      /* Eliminate duplicates */
+      uniq = (int *) CALLOC(nfound,sizeof(int));
+      qsort(matches,nfound,sizeof(int),int_compare);
+      prev = 0;
+      debug(printf("unique segments in lambda %d to %d:",min1,max2));
+      for (i = 0; i < nfound; i++) {
+	if (matches[i] != prev) {
+	  debug(printf(" %d",matches[i]));
+	  uniq[(*nmatches)++] = matches[i];
+	  prev = matches[i];
+	}
+      }
+      debug(printf("\n"));
+
+      /* No need to check for interval overlap */
+    }
+  }
+
+  matchstart = this->cum_nintervals[divno];
+  for (i = 0; i < *nmatches; i++) {
+    uniq[i] += matchstart;
+  }
+
+  return uniq;
+}
+
+
+int *
+IIT_get_highs_signed (int *nmatches, T this, int divno, Chrpos_T x, Chrpos_T y, int sign) {
+  int *uniq = NULL, *matches, matchstart, neval, nfound, i;
+  int match, lambda, prev;
+  int min1, max1 = 0, min2, max2 = 0;
+  struct Interval_T interval;
+
+  if (divno < 0) {
+    /* fprintf(stderr,"No div %s found in iit file\n",divstring); */
+    *nmatches = 0;
+    return (int *) NULL;
+  } else {
+    min1 = min2 = this->nintervals[divno] + 1;
+  }
+
+  debug(printf("Entering IIT_low_signed_p with divno %d and query %u..%u\n",divno,x,y));
+  fnode_query_aux(&min1,&max1,this,divno,0,x);
+  fnode_query_aux(&min2,&max2,this,divno,0,y);
+  debug(printf("min1=%d max1=%d  min2=%d max2=%d\n",min1,max1,min2,max2));
+
+  *nmatches = 0;
+  if (max2 >= min1) {
+    neval = (max2 - min1 + 1) + (max2 - min1 + 1);
+    matches = (int *) CALLOC(neval,sizeof(int));
+
+    nfound = 0;
+    for (lambda = min1; lambda <= max2; lambda++) {
+      match = this->sigmas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.high >= x && interval.high <= y && interval.sign == sign) {
+	matches[nfound++] = match;
+      }
+
+      match = this->omegas[divno][lambda];
+      /* Have to subtract 1 because intervals array is zero-based */
+      interval = this->intervals[divno][match - 1];
+      if (interval.high >= x && interval.high <= y && interval.sign == sign) {
+	matches[nfound++] = match;
+      }
+    }
+
+    if (nfound == 0) {
+      return (int *) NULL;
+    } else {
+      /* Eliminate duplicates */
+      uniq = (int *) CALLOC(nfound,sizeof(int));
+      qsort(matches,nfound,sizeof(int),int_compare);
+      prev = 0;
+      debug(printf("unique segments in lambda %d to %d:",min1,max2));
+      for (i = 0; i < nfound; i++) {
+	if (matches[i] != prev) {
+	  debug(printf(" %d",matches[i]));
+	  uniq[(*nmatches)++] = matches[i];
+	  prev = matches[i];
+	}
+      }
+      debug(printf("\n"));
+
+      /* No need to check for interval overlap */
+    }
+  }
+
+  matchstart = this->cum_nintervals[divno];
+  for (i = 0; i < *nmatches; i++) {
+    uniq[i] += matchstart;
+  }
+
+  return uniq;
+}
+
 
 
 int *

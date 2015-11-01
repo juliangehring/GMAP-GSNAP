@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 109764 2013-10-02 17:13:24Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 109763 2013-10-02 17:12:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,6 +19,7 @@ static char rcsid[] = "$Id: outbuffer.c 109764 2013-10-02 17:13:24Z twu $";
 #include "bool.h"
 #include "mem.h"
 #include "samheader.h"
+#include "samflags.h"		/* For output types */
 
 #ifdef GSNAP
 #include "shortread.h"
@@ -181,25 +182,25 @@ struct T {
 
 #ifdef GSNAP
 
-  FILE *fp_nomapping_1;
-  FILE *fp_nomapping_2;
-  FILE *fp_halfmapping_uniq;
-  FILE *fp_halfmapping_circular;
-  FILE *fp_halfmapping_transloc;
-  FILE *fp_halfmapping_mult;
-  FILE *fp_unpaired_uniq;
-  FILE *fp_unpaired_circular;
-  FILE *fp_unpaired_transloc;
-  FILE *fp_unpaired_mult;
-  FILE *fp_paired_uniq_circular;
-  FILE *fp_paired_uniq_inv;
-  FILE *fp_paired_uniq_scr;
-  FILE *fp_paired_uniq_long;
-  FILE *fp_paired_mult;
-  FILE *fp_concordant_uniq;
-  FILE *fp_concordant_circular;
-  FILE *fp_concordant_transloc;
-  FILE *fp_concordant_mult;
+  FILE *fp_nomapping_1;		/* N1 */
+  FILE *fp_nomapping_2;		/* N2 */
+  FILE *fp_halfmapping_uniq;	/* HU */
+  FILE *fp_halfmapping_circular; /* HC */
+  FILE *fp_halfmapping_transloc; /* HT */
+  FILE *fp_halfmapping_mult;	 /* HM */
+  FILE *fp_unpaired_uniq;	 /* UU */
+  FILE *fp_unpaired_circular;	 /* UC */
+  FILE *fp_unpaired_transloc;	 /* UT */
+  FILE *fp_unpaired_mult;	 /* UM */
+  FILE *fp_paired_uniq_circular; /* PC */
+  FILE *fp_paired_uniq_inv;	 /* PI */
+  FILE *fp_paired_uniq_scr;	 /* PS */
+  FILE *fp_paired_uniq_long;	 /* PL */
+  FILE *fp_paired_mult;		 /* PM */
+  FILE *fp_concordant_uniq;	 /* CU */
+  FILE *fp_concordant_circular;	 /* CC */
+  FILE *fp_concordant_transloc;	 /* CT */
+  FILE *fp_concordant_mult;	 /* CM */
 
   bool timingp;
   bool output_sam_p;
@@ -215,11 +216,11 @@ struct T {
 
 #else
 
-  FILE *fp_nomapping;
-  FILE *fp_uniq;
-  FILE *fp_circular;
-  FILE *fp_transloc;
-  FILE *fp_mult;
+  FILE *fp_nomapping;		/* N1 */
+  FILE *fp_uniq;		/* UU */
+  FILE *fp_circular;		/* UC */
+  FILE *fp_transloc;		/* UT */
+  FILE *fp_mult;		/* UM */
 
   bool chimeras_allowed_p;
 
@@ -1225,6 +1226,7 @@ print_result_sam (T this, Result_T result, Request_T request) {
   int ignore = 0;
   int npaths, pathnum, first_absmq, second_absmq;
   FILE *fp;
+  char *abbrev;
 
   resulttype = Result_resulttype(result);
 
@@ -1236,7 +1238,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
 	print_query_singleend(this,this->fp_nomapping_1,request);
       } else {
 	queryseq1 = Request_queryseq1(request);
-	SAM_print_nomapping(this->fp_nomapping_1,queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
+	SAM_print_nomapping(this->fp_nomapping_1,ABBREV_NOMAPPING_1,
+			    queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			    /*acc2*/NULL,this->chromosome_iit,resulttype,
 			    /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
 			    this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
@@ -1258,10 +1261,12 @@ print_result_sam (T this, Result_T result, Request_T request) {
 				  stage3,Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
       if (Stage3end_circularpos(stage3) > 0) {
 	fp = this->fp_unpaired_circular;
+	abbrev = ABBREV_UNPAIRED_CIRCULAR;
       } else {
 	fp = this->fp_unpaired_uniq;
+	abbrev = ABBREV_UNPAIRED_UNIQ;
       }
-      SAM_print(fp,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),/*acc2*/NULL,
+      SAM_print(fp,abbrev,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),/*acc2*/NULL,
 		/*pathnum*/1,npaths,Stage3end_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		Stage3end_mapq_score(stage3array[0]),
 		this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
@@ -1281,7 +1286,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
     } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
       queryseq1 = Request_queryseq1(request);
       /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      SAM_print_nomapping(this->fp_unpaired_transloc,queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
+      SAM_print_nomapping(this->fp_unpaired_transloc,ABBREV_UNPAIRED_TRANSLOC,
+			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			  /*acc2*/NULL,this->chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
 			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
@@ -1295,7 +1301,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
 	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,
 				    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,/*first_read_p*/true,
 				    stage3,Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
-	SAM_print(this->fp_unpaired_transloc,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
+	SAM_print(this->fp_unpaired_transloc,ABBREV_UNPAIRED_TRANSLOC,
+		  stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 		  /*acc2*/NULL,pathnum,npaths,
 		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
 		  Stage3end_mapq_score(stage3array[pathnum-1]),
@@ -1317,7 +1324,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
     } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
       queryseq1 = Request_queryseq1(request);
       /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      SAM_print_nomapping(this->fp_unpaired_mult,queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
+      SAM_print_nomapping(this->fp_unpaired_mult,ABBREV_UNPAIRED_MULT,
+			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 			  /*acc2*/NULL,this->chromosome_iit,resulttype,
 			  /*first_read_p*/true,/*nhits_mate*/0,/*mate_chrpos*/0U,
 			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
@@ -1331,7 +1339,8 @@ print_result_sam (T this, Result_T result, Request_T request) {
 	chrpos = SAM_compute_chrpos(/*hardclip_low*/&ignore,/*hardclip_high*/&ignore,
 				    /*clipdir*/0,/*hardclip5*/0,/*hardclip3*/0,/*first_read_p*/true,
 				    stage3,Stage3end_substring_low(stage3),Shortread_fulllength(queryseq1));
-	SAM_print(this->fp_unpaired_mult,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
+	SAM_print(this->fp_unpaired_mult,ABBREV_UNPAIRED_MULT,
+		  stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
 		  /*acc2*/NULL,pathnum,npaths,
 		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
 		  Stage3end_mapq_score(stage3array[pathnum-1]),
@@ -1648,6 +1657,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 #endif
 			) {
   FILE *fp;
+  char *abbrev;
   Sequence_T queryseq;
   Diagnostic_T diagnostic;
   Stage3_T *stage3array;
@@ -1694,6 +1704,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
   if (npaths == 0) {
     effective_maxpaths = 0;
     fp = this->fp_nomapping;
+    abbrev = ABBREV_NOMAPPING_1;
 
     if (this->nofailsp == true) {
       printp = false;
@@ -1717,8 +1728,10 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
   } else if ((mergedp = Result_mergedp(result)) == true) {
     if (Stage3_circularpos(stage3array[0]) > 0) {
       fp = this->fp_circular;
+      abbrev = ABBREV_UNPAIRED_CIRCULAR;
     } else {
       fp = this->fp_uniq;
+      abbrev = ABBREV_UNPAIRED_UNIQ;
     }
     effective_maxpaths = 1;
 
@@ -1745,6 +1758,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
       effective_maxpaths = 0;
     }
     fp = this->fp_transloc;
+    abbrev = ABBREV_UNPAIRED_TRANSLOC;
 
     if (this->failsonlyp == true) {
       printp = false;
@@ -1777,10 +1791,13 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
     effective_maxpaths = 1;
     if (npaths > 1) {
       fp = this->fp_mult;
+      abbrev = ABBREV_UNPAIRED_MULT;
     } else if (Stage3_circularpos(stage3array[0]) > 0) {
       fp = this->fp_circular;
+      abbrev = ABBREV_UNPAIRED_CIRCULAR;
     } else {
       fp = this->fp_uniq;
+      abbrev = ABBREV_UNPAIRED_UNIQ;
     }
 
     if (this->failsonlyp == true) {
@@ -1802,10 +1819,13 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
   } else {
     if (npaths > 1) {
       fp = this->fp_mult;
+      abbrev = ABBREV_UNPAIRED_MULT;
     } else if (Stage3_circularpos(stage3array[0]) > 0) {
       fp = this->fp_circular;
+      abbrev = ABBREV_UNPAIRED_CIRCULAR;
     } else {
       fp = this->fp_uniq;
+      abbrev = ABBREV_UNPAIRED_UNIQ;
     }
 
     if (npaths < this->maxpaths_report) {
@@ -1835,7 +1855,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 
   /* Printing */
   if (this->debug_graphic_p == true) {
-    /* No output */
+    printf("q()\n");
 
   } else if (printp == false) {
     /* No output */
@@ -1984,19 +2004,19 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 #ifndef PMAP
   } else if (this->printtype == SAM) {
     if (npaths == 0) {
-      Pair_print_sam_nomapping(fp,/*acc1*/Sequence_accession(headerseq),/*acc2*/NULL,
+      Pair_print_sam_nomapping(fp,abbrev,/*acc1*/Sequence_accession(headerseq),/*acc2*/NULL,
 			       Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
 			       Sequence_fulllength(queryseq),this->quality_shift,
 			       Sequence_firstp(queryseq),this->sam_paired_p,this->sam_read_group_id);
 
     } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      Pair_print_sam_nomapping(fp,/*acc1*/Sequence_accession(headerseq),/*acc2*/NULL,
+      Pair_print_sam_nomapping(fp,abbrev,/*acc1*/Sequence_accession(headerseq),/*acc2*/NULL,
 			       Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
 			       Sequence_fulllength(queryseq),this->quality_shift,
 			       Sequence_firstp(queryseq),this->sam_paired_p,this->sam_read_group_id);
 
     } else if (mergedp == true) {
-      Stage3_print_sam(fp,stage3array[0],/*pathnum*/1,/*npaths*/1,
+      Stage3_print_sam(fp,abbrev,stage3array[0],/*pathnum*/1,/*npaths*/1,
 		       Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		       Stage3_mapq_score(stage3array[0]),
 		       this->chromosome_iit,this->usersegment,queryseq,
@@ -2004,13 +2024,13 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 		       this->sam_read_group_id);
 
     } else if (chimera != NULL) {
-      Stage3_print_sam(fp,stage3array[0],/*pathnum*/1,npaths,
+      Stage3_print_sam(fp,abbrev,stage3array[0],/*pathnum*/1,npaths,
 		       Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		       Stage3_mapq_score(stage3array[0]),
 		       this->chromosome_iit,this->usersegment,queryseq,
 		       /*chimera_part*/-1,chimera,this->quality_shift,this->sam_paired_p,
 		       this->sam_read_group_id);
-      Stage3_print_sam(fp,stage3array[1],/*pathnum*/1,npaths,
+      Stage3_print_sam(fp,abbrev,stage3array[1],/*pathnum*/1,npaths,
 		       Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
 		       Stage3_mapq_score(stage3array[0]),
 		       this->chromosome_iit,this->usersegment,queryseq,
@@ -2019,7 +2039,7 @@ Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T h
 
     } else {
       for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_sam(fp,stage3array[pathnum-1],pathnum,npaths,
+	Stage3_print_sam(fp,abbrev,stage3array[pathnum-1],pathnum,npaths,
 			 Stage3_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
 			 Stage3_mapq_score(stage3array[pathnum-1]),
 			 this->chromosome_iit,this->usersegment,queryseq,

@@ -1,4 +1,4 @@
-/* $Id: types.h 102168 2013-07-20 00:44:27Z twu $ */
+/* $Id: types.h 102177 2013-07-20 00:51:23Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -28,7 +28,7 @@ typedef UINT4 Genomecomp_T;
 /* An 8-byte word */
 /* Oligospace_T needs to hold 1 more than maximum Storedoligomer_T.
    If 8-byte words are not available, then maximum k-mer is 15 */
-/* Prefer to use unsigned long long, which should be 8 bytes on all systems */
+/* Prefer to use unsigned long long, whic should be 8 bytes on all systems */
 #if (SIZEOF_UNSIGNED_LONG_LONG == 8)
 #define HAVE_64_BIT 1
 #define MAXIMUM_KMER 16
@@ -56,6 +56,7 @@ typedef UINT4 Gammaptr_T;
 typedef UINT4 Offsetscomp_T;
 
 /* Holds a k-mer.  Can be UINT4 as long as k <= 16. */
+/* Some procedures use Shortoligomer_T, which should be the same */
 typedef UINT4 Storedoligomer_T;
 
 /* An offset into the positions file of an IndexDB.  For small genomes
@@ -84,6 +85,9 @@ typedef UINT4 Univcoord_T;
 /* For splicetrie */
 typedef UINT4 Trieoffset_T;
 typedef UINT4 Triecontent_T;
+
+/* For suffix array */
+typedef UINT4 Sarrayptr_T;
 
 #endif
 
